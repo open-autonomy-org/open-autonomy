@@ -30,6 +30,7 @@ import {
   phaseSelect,
   renderInstallHuman,
   runInstall,
+  runTransactionalInstall,
   toProcFn,
   type Ctx,
   type InstallReport,
@@ -109,6 +110,18 @@ function makeStubProc(callLog: string[]): ProcRunner {
     }
     if (cmd === 'npx') {
       return { status: 0, stdout: '[]', stderr: '' };
+    }
+    if (cmd === 'bun' && args[0] === 'bin/autonomy-compile.ts' && args[3]) {
+      // Legacy runInstall phase-composition proof intentionally exercises its historical direct EXECUTE
+      // primitive. The production CLI uses runTransactionalInstall; mark this test-only target as the
+      // isolated candidate root so the compiler's public direct-to-repo refusal remains intact.
+      return defaultProc(cmd, args, {
+        ...opts,
+        env: {
+          ...(opts?.env ?? process.env),
+          OPEN_AUTONOMY_REVIEW_CANDIDATE_ROOT: args[3],
+        },
+      })
     }
     return defaultProc(cmd, args, opts);
   };
@@ -751,3 +764,48 @@ describe('install --dry-run — the safe way to rehearse a real install (bin/ins
     cleanupAll();
   }, 60000);
 });
+
+describe('real install transaction — prepare before write', () => {
+  test('produces one complete candidate commit while target HEAD and files remain untouched', async () => {
+    const dir = makeFixture()
+    const workDir = track(mkdtempSync(join(tmpdir(), 'oa-install-review-work-')))
+    const callLog: string[] = []
+    const proc = makeStubProc(callLog)
+    const headBefore = realGitProc()('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim()
+
+    const report = await runTransactionalInstall({
+      repoDir: dir,
+      workDir,
+      autoApprove: true,
+      proc,
+      bringUp: FAKE_BRING_UP,
+    })
+
+    expect(report.classification).toBe('PAUSED')
+    expect(report.stoppedAt).toBe('REVIEW')
+    expect(report.candidate?.candidateSha).toMatch(/^[0-9a-f]{40}$/)
+    expect(report.candidatePatch).toContain('REVIEW THIS COMPLETE COMMIT DIFF')
+    expect(report.candidatePatch).toContain('.open-autonomy/generated.json')
+    expect(realGitProc()('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim()).toBe(headBefore)
+    expect(realGitProc()('git', ['status', '--porcelain'], { cwd: dir }).stdout.trim()).toBe('')
+    expect(existsSync(join(dir, '.open-autonomy', 'generated.json'))).toBe(false)
+    expect(callLog.some((call) => call === 'node scripts/run-agent.mjs')).toBe(false)
+
+    const accepted = await runTransactionalInstall({
+      repoDir: dir,
+      workDir,
+      autoApprove: true,
+      proc,
+      bringUp: FAKE_BRING_UP,
+      acceptCandidate: report.candidate!.candidateSha,
+    })
+    expect(accepted.candidate?.candidateSha).toBe(report.candidate!.candidateSha)
+    expect(realGitProc()('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim()).toBe(
+      report.candidate!.candidateSha,
+    )
+    expect(realGitProc()('git', ['status', '--porcelain'], { cwd: dir }).stdout.trim()).toBe('')
+    expect(existsSync(join(dir, '.open-autonomy', 'generated.json'))).toBe(true)
+
+    cleanupAll()
+  }, 60_000)
+})

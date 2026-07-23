@@ -94,6 +94,14 @@ describe('open-autonomy --help — adoption hint (OA-11 / F-10)', () => {
     expect(existsSync(zzDir)).toBe(false);
   });
 
+  test('repository installation advertises clean candidate review and exact-SHA acceptance', () => {
+    const { stdout } = help('--help')
+    expect(stdout).toContain('clean Git target')
+    expect(stdout).toContain('candidate commit and full diff')
+    expect(stdout).toContain('accept <full-candidate-sha>')
+    expect(stdout).toContain('exact reviewed commit')
+  })
+
   // OA-11 lazy-import guard (skeptic-panel probe 2e). The whole reason `--help` survives a broken package
   // (OA-01: it was one of only two verbs that still ran in 0.4.x) is that bin/open-autonomy.ts's pre-verb
   // path — the module itself plus everything it STATICALLY imports (now including bin/bundled-profiles.ts)

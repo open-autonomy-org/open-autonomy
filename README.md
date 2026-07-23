@@ -67,7 +67,7 @@ auto-merging PRs on GitHub. Three setups people actually use:
 
 > **`self-driving` is a whole-repo SCAFFOLD, not an overlay** — it carries README.md/package.json/
 > `.gitignore` as resources (this repo's own dogfood setup). Compiling it into a directory with existing,
-> different copies of those files **refuses** (`--force` to override). Adopting into an **existing**
+> different copies of those files makes those replacements explicit in the candidate commit. Adopting into an **existing**
 > repo? Use `simple-gh-sdlc` / `simple-sdlc` / `hello` instead — they're purely additive (see the overlay
 > note in [`OPERATIONS.md`](./docs/OPERATIONS.md#install--operate)).
 
@@ -87,6 +87,18 @@ npx open-autonomy compile simple-gh-sdlc local .       # agents on your machine;
 npx open-autonomy compile simple-sdlc local .          # no GitHub; or `hello` for a zero-tracker demo
 ```
 
+For a Git repository, `compile` never writes those files into the working tree. The worktree must be
+completely clean; OA builds one candidate commit in an isolated worktree and prints its complete diff.
+After the installing agent reviews that exact SHA, accept it separately:
+
+```bash
+open-autonomy accept <full-candidate-sha> --target .
+```
+
+Acceptance refuses if the worktree became dirty or `HEAD` moved. `--force` and the old upgrade `--apply`
+overwrite path cannot bypass this boundary. Compiling to a non-Git directory remains a build-output mode,
+not a repository installation.
+
 > **The two `local` lines above are a teaser, not an entry point — they're step 3 of 8 in the ordered
 > checklist.** Don't start here on a real repo: deps, sign-in, and the termfleet ports/pin come first.
 > Follow the full checklist end to end →
@@ -94,16 +106,18 @@ npx open-autonomy compile simple-sdlc local .          # no GitHub; or `hello` f
 
 > **One-command local install — `oa install`.** `bin/install.ts` (the `open-autonomy install` verb, alias
 > `oa install`) chains the **entire** flow above into one command: detect → select → direction → authorize
-> → execute → validate → hand-off → prove-advancing, pausing at 4 human gates (profile pick, mission
-> content, spend/consent, go-live) and printing exactly which flag to add on your next invocation to
+> → execute → validate → hand-off → prove-advancing, pausing at the human gates plus a mandatory
+> installing-agent review of the complete candidate commit and printing exactly which flag to add to
 > resume. It's the recommended path for the **local** runner once you've cloned this repo:
 > ```bash
 > git clone https://github.com/volter-ai/open-autonomy && cd open-autonomy
 > bun bin/install.ts /path/to/your-repo --pick simple-gh-sdlc --substrate local --owner-repo <owner>/<repo>
+> # review the complete diff it prints, then repeat with:
+> bun bin/install.ts /path/to/your-repo <same-options> --accept <full-candidate-sha>
 > # or fully local, no GitHub at all:
 > bun bin/install.ts /path/to/your-repo --pick simple-sdlc --substrate local
 > ```
-> It calls the exact manual commands above and below **internally** (`compile`, the harness commit, branch-
+> It calls the exact manual commands above and below **internally** (`compile`, the candidate commit, branch-
 > protection provisioning, …) — the manual paths remain valid and are what `oa install` itself calls into;
 > use them directly for fine-grained control over any one step, or read
 > [`docs/INSTALL-AGENT.md`](./docs/INSTALL-AGENT.md) for the phase-by-phase reference `bin/install.ts`
@@ -184,11 +198,12 @@ bun run autonomy conformance exec   # check the Runner contract on the reference
 One command is the front door — `open-autonomy <verb>` (alias `oa`):
 
 ```bash
-open-autonomy compile <profileName|profileDir> <local|gh-actions> [outDir] [--force]  # add --provider-url/--managed-provider-name/--provider-runtime-dir for an owned local provider
+open-autonomy compile <profileName|profileDir> <local|gh-actions> [outDir] [--force]  # --force is build-output-only; Git targets always produce a reviewed candidate
+open-autonomy accept <full-candidate-sha> [--target <git-worktree>]       # accept exactly what the installing agent reviewed
 open-autonomy lint <profileDir>                                          # validate a profile of your own — writes nothing
 open-autonomy preflight                                                  # make an adopter repo install-ready (run after installing the runner deps)
 open-autonomy conformance <exec|termfleet|gh-actions>                    # run the substrate conformance battery ("github" still accepted)
-open-autonomy upgrade --profile <dir> --target <dir> --substrate local|gh-actions [--apply] # re-compile an installation in place
+open-autonomy upgrade --profile <dir> --target <dir> --substrate local|gh-actions [--prune] # prepare and print one reviewed upgrade candidate
 ```
 
 The first argument is a **bundled profile name** (`self-driving`, `simple-gh-sdlc`, `simple-sdlc`, `hello` — shipped with the

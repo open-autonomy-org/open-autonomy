@@ -1,21 +1,26 @@
 #!/usr/bin/env bun
-// Upgrade an installation to a profile's current compiled output — a re-compile, not a file merge.
+// Upgrade an installation to a profile's current compiled output as one reviewable Git commit.
 //   bun bin/autonomy-upgrade.ts --profile <profileDir> --target <installDir>
-//     --substrate <local|gh-actions> [--apply] [--prune]
+//     --substrate <local|gh-actions> [--prune]
+//   bun bin/autonomy-upgrade.ts --target <installDir> --accept <full-candidate-sha>
 //     [--provider-url <url>] [--local-schedule-config <json>]
-// Without --apply it prints the plan (a dry run). The derived files (generated workflows, injected
-// runtime, machinery) are regenerated; the installation's own inputs (roadmap, constitution, repo
-// shell) are seeded only if missing.
+// Preparation refuses a dirty target, compiles in a detached temporary worktree, creates one immutable
+// candidate commit, and prints its complete diff without touching the target. A separate installing-agent
+// review accepts that exact SHA; acceptance rechecks both worktree cleanliness and the original base SHA
+// before fast-forwarding. There is deliberately no raw overwrite / --apply path.
 //
-// DELETION IS OPT-IN. Pruning stale derived files requires BOTH --prune AND --apply, because the prune
-// removes anything in scripts//.github/workflows//.codex/skills/ that the compile no longer produces —
-// safe against a clean installation, but it would delete hand-authored files if pointed at a source/dev
-// checkout. Plain --apply only adds/updates; it never deletes.
+// DELETION IS OPT-IN. --prune may include manifest-owned orphan deletions in the candidate commit; those
+// deletions are visible in the same complete diff and do not reach the target until that commit is accepted.
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseIr, planUpgrade, applyUpgrade } from '@open-autonomy/core';
 import type { CompileOutput } from '@open-autonomy/core';
 import type { LocalScheduleConfig } from '@open-autonomy/substrate-local';
+import {
+  acceptInstallCandidate,
+  prepareInstallCandidate,
+  renderPreparedInstallCandidate,
+} from './git-install-transaction.ts';
 // OA-10: the SAME `.claude/settings.json` merge policy the fresh-compile CLI applies
 // (bin/autonomy-compile.ts) — without it, every upgrade would silently revert an adopter's merged settings
 // file back to the profile's whole-file copy (planUpgrade's `update` on a byte-differing derived file).
@@ -32,10 +37,37 @@ const substrateArg = arg('--substrate');
 const substrate = substrateArg === 'github' ? 'gh-actions' : substrateArg;
 const providerUrl = arg('--provider-url');
 const scheduleConfigPath = arg('--local-schedule-config');
-const apply = process.argv.includes('--apply');
+const accept = arg('--accept');
+const rawApply = process.argv.includes('--apply');
 const prune = process.argv.includes('--prune');
 const usage =
-  'Usage: bun bin/autonomy-upgrade.ts --profile <dir> --target <dir> --substrate <local|gh-actions> [--apply] [--prune] [--provider-url <url>] [--local-schedule-config <json>]';
+  'Usage: bun bin/autonomy-upgrade.ts --profile <dir> --target <dir> --substrate <local|gh-actions> [--prune] [--provider-url <url>] [--local-schedule-config <json>]\n' +
+  '   or: bun bin/autonomy-upgrade.ts --target <dir> --accept <full-candidate-sha>';
+if (rawApply) {
+  process.stderr.write(
+    'open-autonomy: --apply is no longer supported because upgrades may not overwrite a worktree. ' +
+      'Prepare the candidate commit, review its complete diff, then pass --accept <full-candidate-sha>.\n',
+  );
+  process.exit(2);
+}
+if (accept) {
+  if (!targetDir) {
+    process.stderr.write(`${usage}\n`);
+    process.exit(2);
+  }
+  try {
+    const receipt = acceptInstallCandidate(resolve(targetDir), accept, {
+      expectedKind: 'upgrade',
+    });
+    process.stdout.write(
+      `Accepted reviewed ${receipt.kind} candidate ${receipt.candidateSha} onto ${receipt.targetRoot}.\n`,
+    );
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
 if (!profileDir || !targetDir || (substrate !== 'local' && substrate !== 'gh-actions')) {
   process.stderr.write(`${usage}\n`);
   process.exit(2);
@@ -72,19 +104,38 @@ if (substrate === 'local') {
   out = compileGithub(ir);
 }
 const plan = planUpgrade(out, resolve(profileDir), resolve(targetDir), { prune, mergeStrategies: settingsMergeStrategies });
-
-for (const note of plan.notes) process.stdout.write(`${note}\n`);
-
-// Make deletions impossible to miss: list them loudly before doing anything destructive.
-const deletes = plan.changes.filter((c) => c.action === 'delete');
-if (deletes.length) {
-  process.stderr.write(`\n⚠️  --prune will DELETE ${deletes.length} file(s) the compile no longer produces:\n`);
-  for (const d of deletes) process.stderr.write(`     - ${d.path}\n`);
-  process.stderr.write('   (run against an INSTALLATION, never the source repo). Re-run with --apply to execute.\n');
+if (plan.changes.length === 0) {
+  process.stdout.write('Already up to date with the open-autonomy template.\nupgrade-changes=0\n');
+  process.exit(0);
 }
 
-if (apply && plan.changes.length) {
-  applyUpgrade(plan, out, resolve(profileDir), resolve(targetDir), settingsMergeStrategies);
-  process.stdout.write(`\nApplied ${plan.changes.length} change(s)${deletes.length ? ` (incl. ${deletes.length} deletion(s))` : ''} to ${targetDir}. Review with \`git diff\`, then commit and push.\n`);
+try {
+  const candidate = await prepareInstallCandidate({
+    targetDir: resolve(targetDir),
+    kind: 'upgrade',
+    message: `chore: upgrade Open Autonomy (${substrate})`,
+    apply(candidateRoot) {
+      const candidatePlan = planUpgrade(out, resolve(profileDir), candidateRoot, {
+        prune,
+        mergeStrategies: settingsMergeStrategies,
+      });
+      applyUpgrade(
+        candidatePlan,
+        out,
+        resolve(profileDir),
+        candidateRoot,
+        settingsMergeStrategies,
+      );
+    },
+  });
+  if (!candidate) {
+    process.stdout.write('Already up to date with the open-autonomy template.\nupgrade-changes=0\n');
+    process.exit(0);
+  }
+  process.stdout.write(`${renderPreparedInstallCandidate(candidate)}\n`);
+  process.stdout.write(`upgrade-changes=${plan.changes.length}\n`);
+  process.stdout.write(`upgrade-candidate=${candidate.receipt.candidateSha}\n`);
+} catch (error) {
+  process.stderr.write(`${(error as Error).message}\n`);
+  process.exit(1);
 }
-process.stdout.write(`upgrade-changes=${plan.changes.length}\n`);

@@ -29,7 +29,8 @@
 >
 > An installing agent (or human) can now either:
 > - **(a) run `bun bin/install.ts <repoDir> [options]` directly** to execute this exact flow
->   automatically, pausing at the same 4 human gates (`--help` lists every gate-answer flag) — the
+>   automatically, pausing at the human gates plus a mandatory complete candidate-commit review
+>   (`--help` lists every gate-answer flag) — the
 >   recommended path once you've cloned this repo; or
 > - **(b) follow this guide's phases by hand, below**, for full visibility/control at each step — this
 >   remains the authoritative phase-by-phase reference `bin/install.ts` itself implements, and the doc to
@@ -230,6 +231,22 @@ it gates everything.**
 ---
 
 ## Phase 3 — EXECUTE (only after the confirmations)
+
+> **Current Git-target rule (supersedes the expanded legacy command sequence below):** never install
+> repository files by running dependency installs, `compile`, `git add`, or `git commit` directly in the
+> target. The target must be completely clean. From an Open Autonomy source checkout, run:
+>
+> ```bash
+> bun /absolute/path/to/open-autonomy/bin/install.ts /absolute/path/to/target \
+>   --pick simple-gh-sdlc --substrate local --owner-repo <owner>/<repo> <confirmed-gate-flags>
+> ```
+>
+> This prepares dependency/lock, direction, and compiled-overlay changes as one candidate commit in an
+> isolated worktree while leaving the target untouched. Review the complete diff and full SHA it prints,
+> then repeat the identical request with `--accept <full-candidate-sha>`. Acceptance refuses if any
+> worktree byte or the base `HEAD` changed. There is no `--force`, manual staging, or raw `--apply`
+> bypass. The expanded sequence below remains only a phase-by-phase explanation of what the transaction
+> owns; **do not execute it against a Git worktree**.
 
 Use the **detected** package manager (examples show `npm`; for bun use `bun add` / `bun add -d`). Run from
 the repo root. **Order matters: commit the harness first, wire the gate last.**
@@ -498,20 +515,17 @@ Phase 4 proves *one* merge. For the loop to actually run a backlog over days, se
   `docs/OPERATIONS.md#6-give-the-loop-work--by-code-host` (the local-git flavor, right after its
   `ztrack init` line) — read it there; if the GitHub link is missing, fix `.volter/tracker-config.json`
   directly rather than re-running init.
-- **Re-running `compile` regenerates the harness files** (scripts/, .claude/skills/, .open-autonomy/, …) —
-  but two collision classes are now GUARDED, not silent (OA-10): (1) `.claude/settings.json` and
+- **Re-running `compile` prepares a new harness candidate** (scripts/, .claude/skills/, .open-autonomy/, …)
+  without changing the target. Two collision classes remain explicit (OA-10): (1) `.claude/settings.json` and
   `.codex/hooks.json` are **merged**, not overwritten (adopter keys survive; current Stop and SubagentStop
-  gates are installed once) — no `--force` needed for them specifically; (2) re-compiling **refuses** to
-  re-create any OA-generated file you deliberately deleted (e.g. the `dependabot.yml`/`security.yml` from
-  step 4) — it names the path and explains it was in a prior `.open-autonomy/generated.json` but is now
-  gone from disk; `--force` re-creates it if you actually want that (reported as `resurrected:`). State
+  gates are installed once); (2) any proposed restoration of an OA-generated file you deliberately
+  deleted is visible in the complete candidate diff and can be rejected. There is no Git-target force
+  path. State
   files (`.open-autonomy/paused`) are exempt from guard (2) — deleting one is a normal operator action, not
-  a "deletion to undo". Stage only the harness files you actually changed (don't sweep in the `.volter/`
-  sync-state churn a re-compile leaves behind).
-- **`upgrade` does NOT have guard (2)** — it is a re-compile of the derived set and **re-creates** any
-  derived file you deleted (no refusal, no `--force`), so a deletion you want to persist (e.g. removing
-  `security.yml`, or the raw Stop hook) must be **re-applied after every `upgrade`** or dropped at the
-  source (fork the profile). The Stop hook is the exception: its durable sentinel opt-out
+  a "deletion to undo".
+- **`upgrade` uses the same candidate transaction.** It may propose re-creating a derived file you
+  deleted, but the target remains untouched until exact-SHA acceptance. A deletion that must persist
+  belongs at the source (fork the profile). The Stop hook's durable sentinel opt-out
   (`"_openAutonomyStopHookOptOut": true` in `.claude/settings.json`) is honored by `upgrade` too.
 - **Updating the committed harness AFTER the gate is wired:** `enforce_admins:true` (correctly) blocks even
   an admin's direct push to the default branch (`GH006: N of N required status checks are expected`), so an

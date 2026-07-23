@@ -1,5 +1,5 @@
 // OA-10 skeptic-panel coverage gap (Finding 1): the upgrade CLI (bin/autonomy-upgrade.ts) must pass the
-// settings-merge strategy into BOTH planUpgrade and applyUpgrade, or every `upgrade --apply` reverts an
+// settings-merge strategy into BOTH planUpgrade and applyUpgrade, or every accepted upgrade reverts an
 // adopter's merged .claude/settings.json back to the profile's whole-file copy (AC-7). The core contract is
 // unit-tested in packages/core/src/upgrade.test.ts; THIS file pins the CLI WIRING end-to-end, so reverting
 // either settingsMergeStrategies arg in autonomy-upgrade.ts goes red here.
@@ -24,6 +24,31 @@ const upgrade = (dir: string, extra: string[] = [], substrate = 'gh-actions') =>
     ...extra,
   ]);
 
+function git(dir: string, args: string[]): string {
+  const result = run('git', args, dir);
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function commitFixture(dir: string): string {
+  git(dir, ['init', '-q']);
+  git(dir, ['add', '-A']);
+  git(dir, ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'base']);
+  return git(dir, ['rev-parse', 'HEAD']);
+}
+
+function prepareAndAccept(dir: string, extra: string[] = [], substrate = 'gh-actions') {
+  const prepared = upgrade(dir, extra, substrate);
+  expect(prepared.exitCode).toBe(0);
+  const candidate = prepared.stdout.match(/upgrade-candidate=([0-9a-f]{40})/)?.[1];
+  expect(candidate).toBeTruthy();
+  expect(prepared.stdout).toContain('REVIEW THIS COMPLETE COMMIT DIFF');
+  const accepted = upgrade(dir, ['--accept', candidate!], substrate);
+  expect(accepted.exitCode).toBe(0);
+  expect(accepted.stdout).toContain(`Accepted reviewed upgrade candidate ${candidate}`);
+  return { prepared, accepted, candidate: candidate! };
+}
+
 function tree(root: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (dir: string): void => {
@@ -38,7 +63,7 @@ function tree(root: string): Record<string, string> {
 }
 
 describe('autonomy-upgrade CLI — settings.json merge wiring (AC-7, Finding 1)', () => {
-  test('upgrade --apply PRESERVES a merged .claude/settings.json: permissions survive, Stop hook stays length 1', () => {
+  test('reviewed upgrade commit PRESERVES merged settings: permissions survive, Stop hook stays length 1', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa10-upg-'));
     try {
       // Seed an adopter's own settings.json, then merge the OA hook in via a fresh compile.
@@ -56,11 +81,11 @@ describe('autonomy-upgrade CLI — settings.json merge wiring (AC-7, Finding 1)'
       expect(mergedCodex.adopter.keep).toBe(true);
       expect(mergedCodex.hooks.Stop).toHaveLength(1);
       expect(mergedCodex.hooks.SubagentStop).toHaveLength(1);
+      commitFixture(dir);
 
-      // Now the LONG-TERM maintenance path: upgrade --apply. Without the CLI's merge wiring this reverts the
-      // file to the profile's whole-file copy (permissions lost). With it, the adopter's file is preserved.
-      const u = upgrade(dir, ['--apply']);
-      expect(u.exitCode).toBe(0);
+      // Now the LONG-TERM maintenance path: prepare + review + accept. Without the CLI's merge wiring this
+      // reverts the file to the profile's whole-file copy (permissions lost).
+      prepareAndAccept(dir);
       const after = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
       expect(after.permissions.allow).toEqual(['Bash(npm test)']); // NOT reverted
       expect(after.hooks.Stop).toHaveLength(1); // still exactly one — not duplicated, not dropped
@@ -74,7 +99,7 @@ describe('autonomy-upgrade CLI — settings.json merge wiring (AC-7, Finding 1)'
     }
   }, 60_000);
 
-  test('the durable Stop-hook opt-out sentinel SURVIVES upgrade --apply (hook not re-added)', () => {
+  test('the durable Stop-hook opt-out sentinel SURVIVES a reviewed upgrade commit', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa10-upg-optout-'));
     try {
       mkdirSync(join(dir, '.claude'), { recursive: true });
@@ -87,9 +112,9 @@ describe('autonomy-upgrade CLI — settings.json merge wiring (AC-7, Finding 1)'
       const c = compile(['simple-gh-sdlc', 'local', dir]);
       expect(c.exitCode).toBe(0);
       expect(JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8')).hooks).toBeUndefined();
+      commitFixture(dir);
 
-      const u = upgrade(dir, ['--apply']);
-      expect(u.exitCode).toBe(0);
+      prepareAndAccept(dir);
       const after = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
       expect(after.hooks).toBeUndefined(); // STILL no Stop hook — the opt-out held across upgrade
       expect(after._openAutonomyStopHookOptOut).toBe(true); // sentinel untouched
@@ -114,17 +139,24 @@ describe('autonomy-upgrade CLI — substrate-aware local planning and apply (#24
     }
   });
 
-  test('local dry-run plans local machinery and writes zero bytes', () => {
+  test('local preparation surfaces the complete commit diff and leaves target HEAD/files untouched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa241-dry-'));
     try {
       writeFileSync(join(dir, 'owned.txt'), 'keep\n');
+      const base = commitFixture(dir);
       const before = tree(dir);
       const result = upgrade(dir, [], 'local');
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('scheduler/run.mjs');
       expect(result.stdout).toContain('scheduler/schedule.json');
       expect(result.stdout).toContain('scripts/runner.ts');
-      expect(tree(dir)).toEqual(before);
+      expect(result.stdout).toContain('REVIEW THIS COMPLETE COMMIT DIFF');
+      expect(git(dir, ['rev-parse', 'HEAD'])).toBe(base);
+      expect(git(dir, ['status', '--porcelain'])).toBe('');
+      const after = tree(dir);
+      for (const [path, content] of Object.entries(before)) {
+        if (!path.startsWith('.git/')) expect(after[path]).toBe(content);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -138,11 +170,14 @@ describe('autonomy-upgrade CLI — substrate-aware local planning and apply (#24
         schema: 'open-autonomy.local-schedule-config.v1',
         defaults: { retrySeconds: 4321 },
       }));
+      commitFixture(dir);
       const extra = ['--provider-url', 'http://127.0.0.1:7602', '--local-schedule-config', configPath];
       const first = upgrade(dir, extra, 'local');
       expect(first.exitCode).toBe(0);
       expect(first.stdout).toContain('scheduler/schedule.json');
-      const applied = upgrade(dir, [...extra, '--apply'], 'local');
+      const candidate = first.stdout.match(/upgrade-candidate=([0-9a-f]{40})/)?.[1];
+      expect(candidate).toBeTruthy();
+      const applied = upgrade(dir, ['--accept', candidate!], 'local');
       expect(applied.exitCode).toBe(0);
       const schedule = JSON.parse(readFileSync(join(dir, 'scheduler', 'schedule.json'), 'utf8')) as {
         env: Record<string, string>;
@@ -159,7 +194,7 @@ describe('autonomy-upgrade CLI — substrate-aware local planning and apply (#24
     }
   }, 60_000);
 
-  test('local apply preserves an operator-removed pause fence and hand-authored unowned files', () => {
+  test('local preparation preserves an operator-removed pause fence and hand-authored unowned files', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa241-owned-'));
     try {
       const initial = compile(['simple-gh-sdlc', 'local', dir]);
@@ -169,12 +204,31 @@ describe('autonomy-upgrade CLI — substrate-aware local planning and apply (#24
       unlinkSync(pause);
       const custom = join(dir, 'scripts', 'adopter-owned.ts');
       writeFileSync(custom, 'export const keep = true;\n');
-      const result = upgrade(dir, ['--apply', '--prune'], 'local');
+      commitFixture(dir);
+      const result = upgrade(dir, ['--prune'], 'local');
       expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('upgrade-changes=0');
       expect(() => readFileSync(pause)).toThrow();
       expect(readFileSync(custom, 'utf8')).toContain('keep = true');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  test('refuses dirty targets and rejects the retired raw --apply overwrite path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa241-dirty-'));
+    try {
+      writeFileSync(join(dir, 'owned.txt'), 'keep\n');
+      commitFixture(dir);
+      writeFileSync(join(dir, 'untracked.txt'), 'dirty\n');
+      const dirty = upgrade(dir, [], 'local');
+      expect(dirty.exitCode).toBe(1);
+      expect(dirty.stderr).toContain('dirty Git worktree');
+      const rawApply = upgrade(dir, ['--apply'], 'local');
+      expect(rawApply.exitCode).toBe(2);
+      expect(rawApply.stderr).toContain('--apply is no longer supported');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

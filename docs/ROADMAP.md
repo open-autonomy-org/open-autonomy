@@ -920,15 +920,16 @@ repositories.
 
 Build:
 
-- installation command that installs workflows, scripts, docs, labels, and
-  required repo variables (`open-autonomy compile profiles/self-driving github <target>`
-  compiles the profile into the target; `scripts/provision-target-repo.ts` idempotently
+- installation command that prepares workflows, scripts, docs, and repository configuration as one
+  clean-base candidate commit, requires a complete installing-agent diff review, accepts only its exact
+  SHA, then performs external provisioning (`open-autonomy compile profiles/self-driving github <target>`
+  prepares the repository candidate; `scripts/provision-target-repo.ts` idempotently
   creates the GitHub repo and reconciles variables, labels, and branch protection from a
   committed `provision.json` manifest, reporting required secrets as manual
   follow-up)
 - versioned policy/profile file so each repo can declare allowed paths,
   required checks, retry budgets, PM mode, and merge mode
-- upgrade workflow that opens a PR when the compiled open-autonomy install changes
+- upgrade command that uses the same clean-base candidate-commit review and exact-SHA acceptance
   (there is no hand-maintained template — an install is `compile(profile, substrate)`)
 - compatibility checks that report missing secrets, variables, labels, branch
   protection, and workflow permissions before autonomous work starts
@@ -938,7 +939,7 @@ Acceptance criteria:
 - A fresh repo can be converted into a self-driving repo with a documented,
   repeatable command sequence.
 - The testbed can verify both a new install and an upgrade from an older
-  compiled revision.
+  compiled revision, including dirty-worktree refusal and stale-candidate refusal.
 - Each autonomous run records which open-autonomy version/profile it used.
 
 Testbed proof plan:

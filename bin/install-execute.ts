@@ -375,7 +375,7 @@ export function stepInstallDeps(sel: SelectionRecordRef, opts: { proc: ProcRunne
 const AUTONOMY_COMPILE_SCRIPT = 'bin/autonomy-compile.ts';
 const PROVISION_TARGET_REPO_SCRIPT = 'scripts/provision-target-repo.ts';
 
-export function stepCompile(sel: SelectionRecordRef, opts: { proc: ProcRunner; profileDir?: string; force?: boolean; dryRun?: boolean }): ExecuteStepResult {
+export function stepCompile(sel: SelectionRecordRef, opts: { proc: ProcRunner; profileDir?: string; force?: boolean; dryRun?: boolean; reviewCandidate?: boolean }): ExecuteStepResult {
   // SELECT already resolved and validated this profile under the caller's profilesRoot. Preserve that
   // identity through EXECUTE instead of reinterpreting a custom name against OA's bundled catalog.
   const profileArg = opts.profileDir ?? sel.profile;
@@ -402,7 +402,14 @@ export function stepCompile(sel: SelectionRecordRef, opts: { proc: ProcRunner; p
   }
   const args = [AUTONOMY_COMPILE_SCRIPT, profileArg, sel.substrate, sel.detect.repoDir];
   if (opts.force) args.push('--force');
-  const r = opts.proc('bun', args, {});
+  const r = opts.proc('bun', args, opts.reviewCandidate
+    ? {
+        env: {
+          ...process.env,
+          OPEN_AUTONOMY_REVIEW_CANDIDATE_ROOT: sel.detect.repoDir,
+        },
+      }
+    : {});
   if (r.status !== 0) {
     return step('compile', 'blocked', `bun bin/autonomy-compile.ts ${profileArg} ${sel.substrate} ${sel.detect.repoDir} failed (exit ${r.status}): ${firstLine(r.stderr || r.stdout)}`);
   }
@@ -899,6 +906,9 @@ export interface ExecuteOptions {
   force?: boolean;
   proc?: ProcRunner;
   bringUp?: Partial<BringUpOptions>;
+  /** Candidate preparation runs only repository mutations (compile, dependency manifest/lock update,
+   * direction fill). The caller commits the complete worktree as one immutable install candidate. */
+  transactionPhase?: 'prepare' | 'post-accept';
   /** never performs a real npm install / compile write / git commit / termfleet bring-up / branch-protection
    *  mutation / agent dispatch — see runExecute's own header + each step's comment for its exact plan. */
   dryRun?: boolean;
@@ -939,9 +949,47 @@ export async function runExecute(opts: ExecuteOptions): Promise<ExecuteReport> {
     return last.status === 'blocked' ? finish() : undefined;
   };
 
+  if (opts.transactionPhase === 'post-accept') {
+    // The exact reviewed commit is already HEAD. Runtime dependencies are installed from that accepted
+    // manifest, then external/runtime setup proceeds. No compile, direction write, or repository commit is
+    // allowed in this phase: those bytes belonged in the candidate the installing agent reviewed.
+    steps.push(stepInstallDeps(sel, { proc, detectFile: opts.detect, dryRun }));
+    {
+      const h = haltIfBlocked();
+      if (h) return h;
+    }
+    steps.push(await stepProviderUp(sel, { proc, bringUp: opts.bringUp, dryRun }));
+    {
+      const h = haltIfBlocked();
+      if (h) return h;
+    }
+    steps.push(await stepCiAndProvision(sel, authRecord, {
+      proc,
+      profilesRoot,
+      ownerRepo: opts.ownerRepo,
+      dryRun,
+    }));
+    {
+      const h = haltIfBlocked();
+      if (h) return h;
+    }
+    steps.push(stepSeedBoardDrafts(sel, {
+      proc,
+      ownerRepo: opts.ownerRepo,
+      dryRun,
+    }));
+    return finish();
+  }
+
   // D1 fix: compile MUST run before install-deps — see the file-header "EXECUTE order" note above for the
   // full root cause + rationale (a fresh self-driving install used to self-clobber at the compile step).
-  steps.push(stepCompile(sel, { proc, profileDir, force: opts.force, dryRun }));
+  steps.push(stepCompile(sel, {
+    proc,
+    profileDir,
+    force: opts.force,
+    dryRun,
+    reviewCandidate: opts.transactionPhase === 'prepare',
+  }));
   {
     const h = haltIfBlocked();
     if (h) return h;
@@ -959,6 +1007,12 @@ export async function runExecute(opts: ExecuteOptions): Promise<ExecuteReport> {
   {
     const h = haltIfBlocked();
     if (h) return h;
+  }
+
+  if (opts.transactionPhase === 'prepare') {
+    // Deliberately stop before the legacy per-harness commit and every external/runtime action. The
+    // surrounding Git transaction stages ALL repository changes and creates the one candidate commit.
+    return finish();
   }
 
   steps.push(stepCommitHarness(sel, { proc, dryRun, plannedFiles }));

@@ -133,6 +133,15 @@ a substrate is a partial implementation of the standard ; conformance reports wh
 an agent's behavior calls tooling inside its box
 ```
 
+### Repository installation transaction
+
+An installation into a Git repository is one immutable candidate commit, not a set of working-tree
+writes. Preparation requires the target to be the clean worktree root, materializes all repository
+changes in a detached temporary worktree, and surfaces the complete binary-capable commit diff. A separate
+installing-agent review accepts only the full candidate SHA and only while both the original base `HEAD`
+and clean-worktree condition still hold. There is no `--force`, raw `--apply`, or partial-file acceptance
+path around this boundary. A non-Git output directory is compiler build output, not an installed repo.
+
 Per-substrate internal terms are **scoped to their substrate**, not global: github's `control plane`
 / `model proxy` / native `auto-merge`; local's `loop` / `termfleet` / `evidence gate`. **There is no
 `templates/` in the core.**
@@ -178,8 +187,9 @@ bun bin/bench.ts --score --repo <owner/name> --workload self-driving-conformance
 ```
 
 `self-driving-greenfield` is the self-start variant (empty seed, the org bootstraps its own backlog).
-github and local are the **same recipe**; only `provision` differs. "Adopt into my repo" =
-`open-autonomy compile profiles/self-driving github <target>`, not a hand-maintained starter.
+github and local are the **same recipe**; only `provision` differs. "Adopt into my repo" means prepare and
+review the candidate from `open-autonomy compile profiles/self-driving github <target>`, then accept its
+exact SHA; there is no hand-maintained starter.
 
 ## Documentation Map
 

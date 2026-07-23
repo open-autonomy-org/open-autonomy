@@ -63,9 +63,9 @@
 //     spawns it. Every dispatch/launch-command this file's own phases construct forces the provider URL
 //     from the install's own `scheduler/schedule.json` pin (TE.5's `buildBoardSeedDispatchCommand` / TE.6's
 //     `buildLocalGoLive` — reused verbatim, never reinvented) — never an ambient/box-wide provider.
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { detect, type DetectReport } from './install-detect.ts';
 import { run as runSelect, type SelectionRecord, type RunResult as SelectRunResult } from './install-select.ts';
 import { run as runDirection, type DirectionRecord } from './install-direction.ts';
@@ -83,10 +83,25 @@ import { runG4a, G4B_RUNBOOK, type Launcher, type RunG4aReport } from './install
 import { proveAdvancing, renderReportHuman as renderProveAdvancingHuman, type ProveAdvancingReport } from './install-prove-advancing.ts';
 import { profilesRoot as bundledProfilesRoot } from './bundled-profiles.ts';
 import { cleanupProbe } from './doctor-checks.ts';
-import { providerDown, readProviderState, type BringUpOptions } from '../packages/local-runner-cli/src/provider.ts';
+import {
+  pinScheduleProviderUrl,
+  planBringUpProvider,
+  providerDown,
+  readProviderState,
+  type BringUpOptions,
+} from '../packages/local-runner-cli/src/provider.ts';
 import type { ProcRunner } from '../packages/local-runner-cli/src/types.ts';
 import { defaultProc } from '../packages/local-runner-cli/src/proc.ts';
 import type { ProcFn } from './recommend-profile.ts';
+import { ensureCiScaffold } from './ensure-ci-workflow.ts';
+import {
+  acceptInstallCandidate,
+  finalizeInstallCandidate,
+  prepareInstallCandidate,
+  renderPreparedInstallCandidate,
+  requireCleanGitWorktree,
+  type InstallCandidateReceipt,
+} from './git-install-transaction.ts';
 
 export { defaultProc };
 export type { ProcRunner };
@@ -151,6 +166,8 @@ export interface InstallOptions {
   autoApprove?: boolean;
   ownerRepo?: string;
   force?: boolean;
+  /** Full immutable candidate SHA already reviewed by the installing agent. CLI production path only. */
+  acceptCandidate?: string;
   /** passthrough to EXECUTE step 5 (provider-up) — production default is a REAL termfleet bring-up
    *  (TG.1's own `bringUpProvider`); a test/proof harness injects fake port/spawn/fetch seams here so no
    *  real termfleet process is ever started by this repo's own CI/build (see bin/install.test.ts). */
@@ -477,7 +494,7 @@ export type InstallClassification = 'PAUSED' | 'BLOCKED' | 'COMPLETED';
 export interface InstallReport {
   classification: InstallClassification;
   /** which phase/gate the run stopped at, when not COMPLETED. */
-  stoppedAt?: 'G1' | 'G2' | 'G3' | 'EXECUTE';
+  stoppedAt?: 'G1' | 'G2' | 'G3' | 'REVIEW' | 'EXECUTE';
   question?: string;
   resumeHint?: string;
   workDir: string;
@@ -492,6 +509,8 @@ export interface InstallReport {
   validate?: ValidateReport;
   handoff?: RunG4aReport;
   proveAdvancing?: ProveAdvancingReport;
+  candidate?: InstallCandidateReceipt;
+  candidatePatch?: string;
 }
 
 /** LOW#6 fix (owner-mandated aggregate skeptic review of `oa install`): `classification === 'COMPLETED'`
@@ -589,6 +608,220 @@ export async function runInstall(opts: InstallOptions): Promise<InstallReport> {
     handoff: handoffReport,
     proveAdvancing: proveAdvancingReport,
   };
+}
+
+function generatedCandidatePaths(candidateRoot: string): string[] {
+  const manifest = join(candidateRoot, '.open-autonomy', 'generated.json')
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { files?: unknown }
+    return Array.isArray(parsed.files)
+      ? parsed.files.filter((path): path is string => typeof path === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+function ensureRuntimeStateIgnored(candidateRoot: string): void {
+  const path = join(candidateRoot, '.gitignore')
+  const existing = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  const lines = new Set(existing.split(/\r?\n/))
+  const required = [
+    '/.open-autonomy/install.json',
+    '/.open-autonomy/runner-state/',
+    '/.open-autonomy/install-work/',
+  ]
+  const missing = required.filter((line) => !lines.has(line))
+  if (!missing.length) return
+  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n'
+  writeFileSync(
+    path,
+    `${existing}${separator}${missing.join('\n')}\n`,
+  )
+}
+
+function workDirOutsideTarget(targetRoot: string, requested?: string): string {
+  if (!requested) return mkdtempSync(join(tmpdir(), 'oa-install-transaction-'))
+  const absolute = resolve(requested)
+  const fromTarget = relative(targetRoot, absolute)
+  if (fromTarget === '' || (!fromTarget.startsWith('..') && !isAbsolute(fromTarget))) {
+    throw new Error(
+      `open-autonomy: --work-dir must be outside the target worktree during installation (${absolute} is inside ${targetRoot})`,
+    )
+  }
+  return absolute
+}
+
+/**
+ * Production install entrypoint: repository changes are prepared as one immutable candidate commit.
+ * `runInstall` remains the phase-composition primitive used by deterministic tests; the public CLI calls
+ * this transaction wrapper so no production path can materialize directly into the target worktree.
+ */
+export async function runTransactionalInstall(opts: InstallOptions): Promise<InstallReport> {
+  if (opts.dryRun) return runInstall(opts)
+  if (opts.force) {
+    throw new Error(
+      'open-autonomy: --force is not available for installation. The installing agent must review the complete candidate commit.',
+    )
+  }
+
+  const { root } = requireCleanGitWorktree(opts.repoDir)
+  const workDir = workDirOutsideTarget(root, opts.workDir)
+  mkdirSync(workDir, { recursive: true })
+
+  // Reuse the entire read-only gate/dry-run composition so profile, direction, authorization, and every
+  // predicted external action are visible before any candidate exists.
+  const rehearsal = await runInstall({
+    ...opts,
+    repoDir: root,
+    workDir,
+    dryRun: true,
+  })
+  if (!rehearsal.selection || !rehearsal.direction || !rehearsal.authorize) return rehearsal
+
+  const selectionFile = join(workDir, '01-selection.json')
+  const authorizeFile = join(workDir, '03-authorize.json')
+  const detectFile = join(workDir, '00-detect.json')
+  const proc = opts.proc ?? defaultProc
+  const profilesRoot = opts.profilesRoot ?? bundledProfilesRoot
+
+  if (!opts.acceptCandidate) {
+    let providerUrl: string | undefined
+    if (rehearsal.selection.substrate === 'local') {
+      const providerPlan = await planBringUpProvider({
+        ...opts.bringUp,
+        cwd: root,
+      })
+      if (providerPlan.action === 'would-refuse-foreign-occupant') {
+        return {
+          ...rehearsal,
+          classification: 'BLOCKED',
+          stoppedAt: 'EXECUTE',
+          question: providerPlan.detail,
+        }
+      }
+      providerUrl = providerPlan.providerUrl
+    }
+
+    const candidate = await prepareInstallCandidate({
+      targetDir: root,
+      kind: 'install',
+      message: `chore: install Open Autonomy (${rehearsal.selection.profile}@${rehearsal.selection.substrate})`,
+      async apply(candidateRoot) {
+        const prepared = await runExecute({
+          record: selectionFile,
+          authorize: authorizeFile,
+          directionFill: opts.directionFill,
+          detect: detectFile,
+          repoDir: candidateRoot,
+          profilesRoot,
+          ownerRepo: opts.ownerRepo,
+          proc,
+          bringUp: opts.bringUp,
+          transactionPhase: 'prepare',
+        })
+        if (!prepared.ok) {
+          throw new Error(
+            `open-autonomy: candidate preparation blocked: ${prepared.blocker ?? 'unknown execute failure'}`,
+          )
+        }
+        const ci = ensureCiScaffold(candidateRoot, rehearsal.selection!.pack)
+        if (!ci.ok) {
+          throw new Error(
+            `open-autonomy: candidate CI scaffold blocked: ${ci.blocker ?? 'unknown CI scaffold failure'}`,
+          )
+        }
+        ensureRuntimeStateIgnored(candidateRoot)
+        if (providerUrl) pinScheduleProviderUrl(candidateRoot, providerUrl)
+      },
+      forceAddPaths: generatedCandidatePaths,
+    })
+    if (!candidate) {
+      throw new Error(
+        'open-autonomy: install preparation produced no repository changes; use upgrade/status tooling to inspect the existing installation',
+      )
+    }
+    return {
+      ...rehearsal,
+      classification: 'PAUSED',
+      stoppedAt: 'REVIEW',
+      question:
+        `An installing agent must review candidate ${candidate.receipt.candidateSha} in full before it can be accepted.`,
+      resumeHint:
+        `re-invoke with the same options plus --accept ${candidate.receipt.candidateSha} after reviewing that exact commit`,
+      dryRun: false,
+      candidate: candidate.receipt,
+      candidatePatch: renderPreparedInstallCandidate(candidate),
+    }
+  }
+
+  const receipt = acceptInstallCandidate(root, opts.acceptCandidate, {
+    expectedKind: 'install',
+    retainReceipt: true,
+    allowAlreadyAccepted: true,
+  })
+  const executeReport = await runExecute({
+    record: selectionFile,
+    authorize: authorizeFile,
+    detect: detectFile,
+    repoDir: root,
+    profilesRoot,
+    ownerRepo: opts.ownerRepo,
+    proc,
+    bringUp: opts.bringUp,
+    transactionPhase: 'post-accept',
+  })
+  if (!executeReport.ok) {
+    return {
+      ...rehearsal,
+      classification: 'BLOCKED',
+      stoppedAt: 'EXECUTE',
+      question: executeReport.blocker,
+      dryRun: false,
+      execute: executeReport,
+      candidate: receipt,
+    }
+  }
+  try {
+    requireCleanGitWorktree(root)
+  } catch (error) {
+    return {
+      ...rehearsal,
+      classification: 'BLOCKED',
+      stoppedAt: 'EXECUTE',
+      question:
+        `post-accept setup changed reviewed repository bytes, which is forbidden: ${(error as Error).message}`,
+      dryRun: false,
+      execute: executeReport,
+      candidate: receipt,
+    }
+  }
+  finalizeInstallCandidate(root, opts.acceptCandidate)
+
+  const ctx: Ctx = {
+    repoDir: root,
+    workDir,
+    profilesRoot,
+    proc,
+    autoApprove: opts.autoApprove === true,
+    opts: { ...opts, repoDir: root, workDir, dryRun: false },
+  }
+  const validateReport = await phaseValidate(ctx, selectionFile)
+  const handoffReport = phaseHandoff(ctx, rehearsal.selection)
+  const proveAdvancingReport = await phaseProveAdvancing(ctx, rehearsal.selection)
+  return {
+    ...rehearsal,
+    classification: 'COMPLETED',
+    stoppedAt: undefined,
+    question: undefined,
+    resumeHint: undefined,
+    dryRun: false,
+    execute: executeReport,
+    validate: validateReport,
+    handoff: handoffReport,
+    proveAdvancing: proveAdvancingReport,
+    candidate: receipt,
+  }
 }
 
 // =========================================================================================================
@@ -775,6 +1008,15 @@ export function renderInstallHuman(report: InstallReport): string {
   lines.push(`work-dir: ${report.workDir}`);
   lines.push('');
 
+  if (report.stoppedAt === 'REVIEW' && report.candidate && report.candidatePatch) {
+    lines.push('PAUSED FOR INSTALLING-AGENT REVIEW')
+    lines.push('')
+    lines.push(report.candidatePatch)
+    lines.push('')
+    lines.push(`TO CONTINUE: ${report.resumeHint}`)
+    return lines.join('\n')
+  }
+
   if (report.classification !== 'COMPLETED' && !report.execute) {
     // Paused/blocked before EXECUTE ever ran (G1/G2/G3) — nothing else to print.
     lines.push(`${report.classification} at ${report.stoppedAt}`);
@@ -850,6 +1092,12 @@ export interface CliOptions extends InstallOptions {
 
 const USAGE = `usage: bun bin/install.ts <repoDir> [options]
 
+*** REAL INSTALLS ARE REVIEWED COMMITS — NEVER RAW WORKTREE OVERWRITES. ***
+    A real run requires a completely clean Git worktree. It prepares every repository change in an
+    isolated temporary worktree, creates one candidate commit, prints the complete diff, and pauses.
+    After an installing agent reviews that exact commit, re-run with --accept <full-candidate-sha>.
+    Acceptance refuses if the target is dirty or HEAD moved after preparation.
+
 *** --dry-run — THE SAFE WAY TO REHEARSE A REAL INSTALL. RUN THIS FIRST. ***
     Runs the ENTIRE chain (all 7 phases) against your REAL repo but NEVER performs a real side-effecting
     operation anywhere in it: no real npm/bun install, no real compile write, no real git commit,
@@ -879,7 +1127,7 @@ Global:
   --profiles-root <dir>         default: this checkout's bundled profiles/
   --json                        machine-readable final report
   --owner-repo <owner/name>     required for a GitHub-target EXECUTE/HAND-OFF
-  --force                       passthrough to the compile step's --force
+  --accept <full-sha>           accept the exact candidate commit already reviewed by the installing agent
   --auto-approve                PROOF/TEST HARNESS ONLY (see bin/install.ts's own file header) — drives G1
                                  (accept the recommendation) and G3's universal spend/harness-commit consents
                                  automatically. NEVER bypasses G2 (mission content) or G3's GitHub-admin/
@@ -954,8 +1202,17 @@ export function parseArgs(argv: string[]): { opts: CliOptions; error?: string } 
         break;
       }
       case '--force':
-        opts.force = true;
+        return {
+          opts,
+          error:
+            'error: --force is not supported; install changes must be prepared and reviewed as a candidate commit',
+        };
+      case '--accept': {
+        const v = takeValue(a);
+        if (v === undefined) return { opts, error: `error: ${a} requires a full candidate SHA` };
+        opts.acceptCandidate = v;
         break;
+      }
       case '--auto-approve':
       case '--non-interactive':
         opts.autoApprove = true;
@@ -1101,11 +1358,17 @@ if (import.meta.main) {
   const invocationStartedAtMs = Date.now();
   const { disarm } = installOrphanCleanupHandlers(opts.repoDir, invocationStartedAtMs);
 
-  const report = await runInstall(opts);
-  disarm(); // a normal finish never triggers signal-based provider cleanup — see comment above
-  const out = opts.json ? JSON.stringify(report, null, 2) : renderInstallHuman(report);
-  process.stdout.write(`${out}\n`);
-  process.exit(installExitCode(report));
+  try {
+    const report = await runTransactionalInstall(opts);
+    disarm(); // a normal finish never triggers signal-based provider cleanup — see comment above
+    const out = opts.json ? JSON.stringify(report, null, 2) : renderInstallHuman(report);
+    process.stdout.write(`${out}\n`);
+    process.exit(installExitCode(report));
+  } catch (error) {
+    disarm()
+    process.stderr.write(`${(error as Error).message}\n`)
+    process.exit(1)
+  }
 }
 
 // Re-exported so a caller/test can print the G4b async babysit runbook without importing install-handoff.ts

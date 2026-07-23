@@ -17,7 +17,7 @@
 // SAFETY: every scratch dir here comes from `mkdtempSync` — never widen a cleanup `rm` to a raw
 // shell-interpolated variable that could resolve empty; `fs.rmSync` only ever targets a path this script
 // itself just received back from `mkdtempSync`.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
@@ -47,11 +47,18 @@ function run(cmd: string, args: string[], opts: Record<string, unknown> = {}): S
 
 let packDir: string | undefined;
 let installDir: string | undefined;
+const compileOutputDirs: string[] = [];
+
+function compileOutputDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  compileOutputDirs.push(dir);
+  return dir;
+}
 
 function reportAndExit(): never {
   // Cleanup only ever targets a directory THIS script created via mkdtempSync above — never a
   // shell-interpolated variable that could resolve to something unintended.
-  for (const d of [packDir, installDir]) {
+  for (const d of [packDir, installDir, ...compileOutputDirs]) {
     if (d && existsSync(d)) rmSync(d, { recursive: true, force: true });
   }
   if (failures > 0) {
@@ -126,15 +133,15 @@ ok(`installed tarball into throwaway project ${installDir}`);
 
 const pkgRoot = join(installDir, 'node_modules', 'open-autonomy');
 
-// Every verb below runs via `npx --no-install open-autonomy …` — the published bin's shebang is
-// `#!/usr/bin/env node`, so this is plain node, never bun, matching what an adopter actually runs.
+// Run the packed CLI explicitly under plain Node so output repositories may live outside the npm
+// throwaway project's Git tree. The --help probe below additionally exercises the installed npx bin link.
 function cli(args: string[], cwd: string): SpawnSyncReturns<string> {
-  return run('npx', ['--no-install', 'open-autonomy', ...args], { cwd });
+  return run('node', [join(pkgRoot, 'dist', 'cli.js'), ...args], { cwd });
 }
 
 // ---------- --help ----------
 {
-  const r = cli(['--help'], installDir);
+  const r = run('npx', ['--no-install', 'open-autonomy', '--help'], { cwd: installDir });
   if (r.status !== 0 || !(r.stdout || '').trim()) fail('--help', `exit ${r.status}\n${r.stdout}\n${r.stderr}`);
   // OA-11 AC-6: the PACKED artifact's help must carry the corrected adoption hint — overlays first, the
   // whole-repo scaffold labeled SCAFFOLD — not just the source tree. This is the one help check that would
@@ -146,8 +153,7 @@ function cli(args: string[], cwd: string): SpawnSyncReturns<string> {
 
 // ---------- compile simple-sdlc local . — the audit's exact failing command ----------
 {
-  const dir = join(installDir, 'ac-local');
-  mkdirSync(dir, { recursive: true });
+  const dir = compileOutputDir('oa-pack-smoke-local-');
   const r = cli(['compile', 'simple-sdlc', 'local', '.'], dir);
   if (r.status !== 0) fail('compile simple-sdlc local .', `exit ${r.status}\n${r.stdout}\n${r.stderr}`);
   else if (!existsSync(join(dir, 'scheduler', 'run.mjs'))) fail('compile simple-sdlc local .', 'scheduler/run.mjs missing');
@@ -171,8 +177,7 @@ function cli(args: string[], cwd: string): SpawnSyncReturns<string> {
 
 // ---------- compile self-driving gh-actions . ----------
 {
-  const dir = join(installDir, 'ac-gh-selfdriving');
-  mkdirSync(dir, { recursive: true });
+  const dir = compileOutputDir('oa-pack-smoke-gh-selfdriving-');
   const r = cli(['compile', 'self-driving', 'gh-actions', '.'], dir);
   const workflowsDir = join(dir, '.github', 'workflows');
   if (r.status !== 0) fail('compile self-driving gh-actions .', `exit ${r.status}\n${r.stdout}\n${r.stderr}`);
@@ -184,11 +189,55 @@ function cli(args: string[], cwd: string): SpawnSyncReturns<string> {
 
 // ---------- compile simple-gh-sdlc gh-actions . — the additive gh overlay ----------
 {
-  const dir = join(installDir, 'ac-gh-simple');
-  mkdirSync(dir, { recursive: true });
+  const dir = compileOutputDir('oa-pack-smoke-gh-simple-');
   const r = cli(['compile', 'simple-gh-sdlc', 'gh-actions', '.'], dir);
   if (r.status !== 0) fail('compile simple-gh-sdlc gh-actions .', `exit ${r.status}\n${r.stdout}\n${r.stderr}`);
   else ok('compile simple-gh-sdlc gh-actions .');
+}
+
+// ---------- packed Node CLI — Git install candidate + exact-SHA acceptance ----------
+{
+  const dir = compileOutputDir('oa-pack-smoke-git-candidate-');
+  run('git', ['init', '-q'], { cwd: dir });
+  writeFileSync(join(dir, 'README.md'), 'packed candidate smoke\n');
+  run('git', ['add', 'README.md'], { cwd: dir });
+  run(
+    'git',
+    [
+      '-c',
+      'user.name=Pack Smoke',
+      '-c',
+      'user.email=pack-smoke@example.com',
+      'commit',
+      '-q',
+      '-m',
+      'base',
+    ],
+    { cwd: dir },
+  );
+  const before = run('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
+  const prepared = cli(['compile', 'simple-gh-sdlc', 'gh-actions', '.'], dir);
+  const candidate = prepared.stdout?.match(/install-candidate=([0-9a-f]{40})/)?.[1];
+  const unchangedHead = run('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
+  const unchangedStatus = run('git', ['status', '--porcelain'], { cwd: dir }).stdout.trim();
+  if (prepared.status !== 0 || !candidate) {
+    fail('packed Git candidate preparation', `exit ${prepared.status}\n${prepared.stdout}\n${prepared.stderr}`);
+  } else if (unchangedHead !== before || unchangedStatus || existsSync(join(dir, '.open-autonomy', 'generated.json'))) {
+    fail('packed Git candidate preparation', 'target HEAD/status/files changed before acceptance');
+  } else {
+    const accepted = cli(['accept', candidate, '--target', '.'], dir);
+    const acceptedHead = run('git', ['rev-parse', 'HEAD'], { cwd: dir }).stdout.trim();
+    const acceptedStatus = run('git', ['status', '--porcelain'], { cwd: dir }).stdout.trim();
+    if (accepted.status !== 0) {
+      fail('packed Git candidate acceptance', `exit ${accepted.status}\n${accepted.stdout}\n${accepted.stderr}`);
+    } else if (acceptedHead !== candidate || acceptedStatus) {
+      fail('packed Git candidate acceptance', 'HEAD is not the exact reviewed candidate or target is dirty');
+    } else if (!existsSync(join(dir, '.open-autonomy', 'generated.json'))) {
+      fail('packed Git candidate acceptance', '.open-autonomy/generated.json missing after acceptance');
+    } else {
+      ok('packed Node CLI — clean prepare, full-SHA accept, exact clean HEAD');
+    }
+  }
 }
 
 // ---------- compile soc2-baseline gh-actions . — the RUNTIME read of dist/egress-guard.sh ----------
@@ -197,8 +246,7 @@ function cli(args: string[], cwd: string): SpawnSyncReturns<string> {
 // install (the other compiles exercise only the packaging/manifest layers). A present-but-corrupt or
 // absent file fails HERE even if the tarball manifest above looked fine.
 {
-  const dir = join(installDir, 'ac-gh-soc2');
-  mkdirSync(dir, { recursive: true });
+  const dir = compileOutputDir('oa-pack-smoke-gh-soc2-');
   const r = cli(['compile', 'soc2-baseline', 'gh-actions', '.'], dir);
   const emitted = join(dir, 'scripts', 'egress-guard.sh');
   if (r.status !== 0) fail('compile soc2-baseline gh-actions .', `exit ${r.status}\n${r.stdout}\n${r.stderr}`);

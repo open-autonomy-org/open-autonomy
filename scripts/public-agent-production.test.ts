@@ -253,8 +253,12 @@ describe('public agent production readiness', () => {
     // the upgrade is a re-compile: clone the engine, run bin/autonomy-upgrade.ts against this install
     expect(up).toContain('bin/autonomy-upgrade.ts');
     expect(up).toContain('--target');
-    // it applies to the working tree and stops — the human commits & pushes (so workflow changes,
-    // a human_required path the CI token cannot push, go in with the maintainer's own credentials)
+    // it prepares a detached candidate commit and stops — the installing agent reviews the complete diff,
+    // then accepts that exact SHA with maintainer credentials.
+    expect(up).toContain('--accept')
+    expect(up).toContain('candidate')
+    expect(up).toContain('tmpdir')
+    expect(up).not.toContain(' --apply')
     expect(up).not.toContain('gh pr create');
     expect(up).not.toContain('git push');
     // and there is no generated upgrade workflow

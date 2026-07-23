@@ -51,15 +51,15 @@ steps 1–5 (shared) vs step 6 (per code host) below.
 > version this open-autonomy release is tested against); npm may rewrite **existing** dependency ranges
 > while doing so — review the diff it leaves. The OA files are
 > **committed** to the repo (the agents run in git worktrees, which only see committed files — it's how OA
-> maintains itself) — see quickstart [step 4, "Commit the harness"](#4-commit-the-harness).
+> maintains itself) — see quickstart [step 4, "Review and accept the harness commit"](#4-commit-the-harness).
 > `.claude/settings.json` wires a Claude Code Stop hook that runs in **every** Claude Code session in this
 > repo, including your own interactive ones — see [step 3's callout](#claude-settings) before you compile.
 >
 > **`self-driving` is the opposite: a whole-repo SCAFFOLD**, not an overlay — it carries
 > README.md/package.json/.gitignore/CHANGELOG.md as resources (this repo's own dogfood setup). It's for a
 > **new or dedicated** repo, not an adopt-in-place onto something you already have: compiling it into a
-> directory with existing, DIFFERENT copies of those files **refuses** with a clear error listing them
-> (`--force` to overwrite anyway). Adopting into an existing repo → use `simple-gh-sdlc` above instead.
+> Git repository makes every replacement visible in the complete candidate diff; there is no `--force`
+> bypass. Adopting into an existing repo → use `simple-gh-sdlc` above instead.
 >
 > **Letting an agent do the install?** Point it at [`docs/INSTALL-AGENT.md`](./INSTALL-AGENT.md) — a
 > guided detect → ask → execute → verify playbook addressed to the installing agent.
@@ -79,9 +79,9 @@ steps 1–5 (shared) vs step 6 (per code host) below.
 > (`simple-sdlc`, `hello`, `simple-gh-sdlc`/`self-driving` on `local`). This is exactly what's automated,
 > read from `bin/install.ts` + `bin/install-execute.ts` + `bin/install-handoff.ts` directly, not assumed:
 >
-> - **Automated for real:** installing the `ztrack`/`termfleet` deps (step 1's npm installs — not the
->   sign-in/`gh auth`/tmux prereqs, see below), compiling the profile (step 3), committing the harness
->   (step 4, `checkUncommittedHarness`-verified both before and after), and bringing up the local termfleet
+> - **Automated for real:** preparing the `ztrack`/`termfleet` manifest and lockfile changes with the
+>   compiled profile as one candidate commit, pausing for the installing agent to review its complete diff,
+>   accepting only that exact SHA, then installing runtime deps and bringing up the local termfleet
 >   provider (step 2's port/pin, `bringUpProvider`, reused verbatim).
 > - **Automated for real, GitHub code host only (either substrate — `simple-gh-sdlc` on `local` counts, not
 >   just `gh-actions`), and only given `--owner-repo`:** CI-scaffold + **branch-protection provisioning**
@@ -326,7 +326,9 @@ review methodology, or role behavior. Every job remains fenced; omitted values r
 `.open-autonomy/paused` default.
 
 If any of these paths **already exist and differ**, the compile refuses by name instead of silently
-overwriting (`--force` to override) — except the two harness gate files, handled specially next.
+overwriting. In a Git repository it does not write them at all: it prepares a candidate commit containing
+the merge/replacement and prints the complete diff. Git-target `--force` is forbidden; the two harness gate
+files are structurally merged as described next.
 
 <a id="claude-settings"></a>
 > **Claude Code and Codex project validation gates run in every repository session, including yours.**
@@ -347,33 +349,25 @@ overwriting (`--force` to override) — except the two harness gate files, handl
 >   present, and they leave the rest of your file untouched. This is the one opt-out that survives every
 >   re-compile and upgrade. This is explicit maintainer configuration, not an automatic substrate fallback.
 
-### 4. Commit the harness
+<a id="4-commit-the-harness"></a>
+### 4. Review and accept the harness commit
 
-The agents run in **git worktrees, which only see committed files** — an uncommitted harness produces
-workers that die at launch with `Unknown command: /develop`. Commit everything the compile wrote before
-the first tick:
-
-```bash
-git add scripts/ scheduler/ .claude/ .codex/ .open-autonomy/ standards/
-git commit -m "Install the open-autonomy harness"
-```
-
-The list above is the `simple-sdlc` footprint — the exact set **varies by profile** (`hello`, for example,
-emits no `standards/`, and a pathspec matching nothing makes `git add` fail without committing anything).
-The compile prints the correct command for *your* profile in its next-steps output, and the authoritative
-list of what it wrote is `.open-autonomy/generated.json` — this form is always correct:
+The agents run in **git worktrees, which only see committed files**. OA therefore prepares the complete
+repository installation as one commit in an isolated worktree; it never leaves a loose harness for you to
+stage manually. Before preparation, the target must have no tracked, staged, untracked, or submodule
+changes. Review the entire diff printed by `compile` or `oa install`, including merged hook settings,
+dependency/lock changes, deletions, and ignored generated paths. Then accept exactly the full SHA:
 
 ```bash
-git add $(node -p "JSON.parse(require('fs').readFileSync('.open-autonomy/generated.json','utf8')).files.join(' ')")
+open-autonomy accept <full-candidate-sha> --target .
+# For oa install, repeat the same command/options with --accept <full-candidate-sha>
 ```
 
-If any harness path is matched by your `.gitignore`, plain `git add` refuses it — use `git add -f` for
-those paths (or un-ignore them): a gitignored harness file stays untracked, so worktrees won't contain it
-either, and the loop refuses to start until every harness file is committed. Note `.claude/settings.json`
-is part of the harness (the ztrack drive-to-green Stop hook) and is included above. Re-run this step after
-every re-compile/upgrade. **No push is required:** on the local-git code host, worktrees base on your
-**local** trunk — committing locally is sufficient. GitHub code host installs (`simple-gh-sdlc`)
-additionally push as part of their normal PR flow.
+Acceptance rechecks that the target is still clean, `HEAD` is still the reviewed base, the candidate ref
+still resolves to the reviewed SHA, and the candidate has exactly that base as its parent. If any check
+fails, prepare and review a new candidate. No partial staging, `--force`, or raw `--apply` path exists.
+**No push is required:** on the local-git code host, worktrees base on your **local** trunk. GitHub
+code-host installs additionally push the accepted commit through their normal controlled flow.
 
 For a GitHub code-host install, do not start the scheduler from an unmerged feature branch. Fresh
 isolated workspaces intentionally base on the remote default branch, because that is the reviewed
@@ -381,18 +375,17 @@ deployment state. Merge and push the harness there first. The Runner compares an
 launch's skill with the control checkout and refuses before model spend when their contents differ; this
 prevents a feature-branch scheduler or stale trunk from silently executing older same-named doctrine.
 
-**Deleted a harness file on purpose?** (e.g. you don't want `.github/workflows/security.yml`.) A
-**re-compile refuses** instead of silently re-creating it — it names the path and explains it was listed in
-a prior `.open-autonomy/generated.json` but is now gone from disk; `--force` re-creates it (reported as
-`resurrected:`). State/install-owned paths are exempt from this guard — most notably `.open-autonomy/paused`
-(step 5): `rm .open-autonomy/paused` is the intended unpause, never flagged or undone.
+**Deleted a harness file on purpose?** (e.g. you don't want `.github/workflows/security.yml`.) Reconcile
+that deletion in the profile before accepting a new install candidate. A Git-target re-compile cannot
+silently restore it: any restoration is visible in the candidate diff, and there is no force-accept path.
+State/install-owned paths are exempt from generated ownership — most notably `.open-autonomy/paused`
+(step 5): `rm .open-autonomy/paused` is the intended unpause.
 
-> **Scope: this deletion guard is `compile`-only.** `upgrade` is a *re-compile of the derived set* — by
-> design it **re-creates** any derived file you deleted (it has no refusal/`--force` model), so a deletion
-> you want to persist across upgrades must be re-applied after each `upgrade`, or removed at the source
-> (drop it from the profile / fork). The one exception is the Stop hook, which has the durable sentinel
-> opt-out above (`upgrade` honors it too). Install-owned/state paths — `.open-autonomy/paused`, your
-> roadmap/constitution — are seed-once and never reverted by either path.
+> `upgrade` is also a re-compile of the derived set, but now prepares one review-only candidate. It may
+> propose restoring a derived file; reject that candidate and remove the path at the source (drop it from
+> the profile / fork) if the deletion must persist. `--prune` only proposes manifest-owned orphan
+> deletions in that same diff. The Stop-hook sentinel remains the durable opt-out. Install-owned/state
+> paths — `.open-autonomy/paused`, your roadmap/constitution — are seed-once.
 
 ### 5. Run the loop
 
@@ -748,7 +741,7 @@ README or `docs/INSTALL-AGENT.md`; make them link here instead.
 
 | # | Load-bearing fact | Lives in |
 |---|---|---|
-| 1 | Commit the overlay — worktrees only see committed files | [Step 4, "Commit the harness"](#4-commit-the-harness) |
+| 1 | Review and accept the complete overlay commit — worktrees only see committed files | [Step 4, "Review and accept the harness commit"](#4-commit-the-harness) |
 | 2 | Repo-unique provider name, fixed loopback port, and durable runtime identity | [Step 2, "Choose the install's provider identity"](#2-choose-the-installs-provider-identity) |
 | 3 | Managed ownership, pinning, reuse, and collision refusal | [Step 2, "Choose the install's provider identity"](#2-choose-the-installs-provider-identity) |
 | 4 | Teardown / how to back OA out | [Stop & teardown](#stop--teardown), above |

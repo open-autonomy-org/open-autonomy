@@ -6,18 +6,18 @@
 //   ("github" accepted as alias for gh-actions)
 // The first arg is either a BUNDLED profile name (e.g. `self-driving`, resolved to the profiles/ shipped
 // with this package) or a path to a profile dir of your own. With no outDir, prints the installation's file
-// list (a dry run). With outDir, materializes it — refusing if that would overwrite an existing file with
-// DIFFERENT bytes (BL-14, see findClobbers below), or re-create a file the operator deliberately deleted
-// (OA-10, see findResurrections below); --force overrides both. `.claude/settings.json` gets a structured
-// MERGE instead of a refusal (settings-merge.ts). These guards are fresh-compile only — `autonomy-upgrade.ts`
-// legitimately overwrites derived files in place (and applies the same settings.json merge strategy there).
+// list (a dry run). A Git worktree outDir produces one complete review-only candidate commit and never
+// writes the target; it must be accepted separately by full SHA. A non-Git build-output outDir materializes
+// directly, refusing if that would overwrite different bytes (BL-14) or restore an operator deletion
+// (OA-10); --force is limited to that non-Git mode. `.claude/settings.json` gets a structured merge.
 // --provider-url <url> (local substrate only, OA-09): emits a DURABLE TERMFLEET_PROVIDER_URL pin into
 // scheduler/schedule.json's env, so it survives new shells/supervisors/re-runs instead of depending on the
 // operator remembering to export it (docs/adoption-fixes/OA-09-termfleet-coexistence-provider-pinning.md).
 // An ambient TERMFLEET_PROVIDER_URL still overrides this compiled default at runtime (unchanged doctrine).
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { existsSync, readFileSync, realpathSync, readdirSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { bundledProfileNames, profilesRoot } from './bundled-profiles.ts';
 import {
   parseIr,
@@ -36,6 +36,10 @@ import type { LocalScheduleConfig } from '@open-autonomy/substrate-local';
 import { KNOWN_GOOD_ZTRACK, resolveZtrackPreset } from './ztrack-preset.ts';
 import { checkNamespaceCollisions } from './collision-check.ts';
 import { settingsMergeStrategies, GATE_CONFIG_PATHS } from './settings-merge.ts';
+import {
+  prepareInstallCandidate,
+  renderPreparedInstallCandidate,
+} from './git-install-transaction.ts';
 
 // Repo-shell files ONLY a whole-repo SCAFFOLD profile (self-driving) carries as resources. The clobber
 // guard's message adds scaffold-specific advice iff a collision actually names one of THESE — never keyed
@@ -262,6 +266,83 @@ if (badSkills.length) {
 }
 
 if (outDir) {
+  // A repository installation is a reviewed commit, never a compiler overwrite. The compiler may still
+  // materialize ordinary non-repository build directories. For a Git worktree, only the isolated
+  // candidate worktree created by `oa install` is writable; the public direct-to-repo path refuses even
+  // when clean, and --force is never an escape hatch.
+  const absoluteOutDir = resolve(outDir)
+  const resolvedOutDir = existsSync(absoluteOutDir) ? realpathSync(absoluteOutDir) : absoluteOutDir
+  let gitProbeDir = resolvedOutDir
+  while (!existsSync(gitProbeDir) && dirname(gitProbeDir) !== gitProbeDir) {
+    gitProbeDir = dirname(gitProbeDir)
+  }
+  let isReviewedCandidate = false
+  const gitProbe = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: gitProbeDir,
+    encoding: 'utf8',
+  })
+  if (gitProbe.status === 0) {
+    const gitRoot = realpathSync(gitProbe.stdout.trim())
+    if (!existsSync(resolvedOutDir) && resolvedOutDir !== gitRoot) {
+      console.error(
+        `open-autonomy: a repository installation must target the Git worktree root (${gitRoot}), not a new subdirectory (${resolvedOutDir}).`,
+      )
+      process.exit(1)
+    }
+    const candidateRoot = process.env.OPEN_AUTONOMY_REVIEW_CANDIDATE_ROOT
+    isReviewedCandidate =
+      candidateRoot !== undefined &&
+      realpathSync(resolve(candidateRoot)) === resolvedOutDir &&
+      gitRoot === resolvedOutDir
+    if (!isReviewedCandidate) {
+      if (force) {
+        console.error(
+          'open-autonomy: --force is forbidden for a Git worktree install; every replacement must remain visible in the reviewed candidate commit.',
+        )
+        process.exit(1)
+      }
+      if (substrate === 'local' && existsSync(join(resolvedOutDir, 'package.json'))) {
+        const collisions = checkNamespaceCollisions(resolvedOutDir)
+        if (collisions.warns.length) {
+          console.error(
+            `open-autonomy: refusing to prepare "${profileArg}" for "${resolvedOutDir}" — namespace collision(s) between ` +
+              `this repo and the runner's dependency namespace:\n\n` +
+              collisions.warns.map((warning) => `  - ${warning}`).join('\n\n'),
+          )
+          process.exit(1)
+        }
+      }
+      try {
+        const readSource = (from: string) => readFileSync(join(profileDir, from), 'utf8')
+        const candidate = await prepareInstallCandidate({
+          targetDir: resolvedOutDir,
+          kind: 'install',
+          message: `chore: install Open Autonomy (${profileArg}@${substrate})`,
+          apply(candidateRoot) {
+            materialize(out, candidateRoot, readSource, settingsMergeStrategies)
+          },
+          forceAddPaths: () => compiledPaths(out),
+        })
+        if (!candidate) {
+          console.log('open-autonomy: compiled installation already matches the repository; no candidate needed.')
+          process.exit(0)
+        }
+        console.log(renderPreparedInstallCandidate(candidate))
+        console.log(`install-candidate=${candidate.receipt.candidateSha}`)
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    }
+    if (force) {
+      console.error(
+        'open-autonomy: --force is forbidden inside an install candidate; every replacement must remain visible in the reviewed commit diff.',
+      )
+      process.exit(1)
+    }
+  }
+
   // OA-04 namespace-collision gate: when the target already has a package.json, run the SAME check
   // preflight runs (bin/collision-check.ts) against it BEFORE writing anything. At compile time termfleet
   // typically isn't installed yet, so this mainly exercises checks A/B (the host root or a workspace
@@ -296,7 +377,7 @@ if (outDir) {
   // (OA-07's `.open-autonomy/paused`) — see packages/core/src/materialize.ts.
   const priorManifest = readGeneratedManifest(outDir);
   const resurrections = findResurrections(out, outDir, priorManifest);
-  if (resurrections.length && !force) {
+  if (resurrections.length && !force && !isReviewedCandidate) {
     console.error(
       `open-autonomy: compiling "${profileArg}" into "${outDir}" would re-create ${resurrections.length} file(s) you deleted:\n  ${resurrections.join('\n  ')}\n` +
         `These paths are listed in ${GENERATED_MANIFEST_PATH} from a prior install but no longer exist on disk — re-compiling would silently undo that deletion.\n` +
@@ -312,7 +393,7 @@ if (outDir) {
   // settings.json` gets a structured MERGE instead (settingsMergeStrategies, ./settings-merge.ts) whenever
   // the existing file parses as JSON — this only refuses for it when the existing file is NOT valid JSON.
   const clobbers = findClobbers(out, outDir, readSource, settingsMergeStrategies);
-  if (clobbers.length && !force) {
+  if (clobbers.length && !force && !isReviewedCandidate) {
     const disposition = (path: string) =>
       settingsMergeStrategies[path]
         ? '(exists but is not valid JSON — a structured merge needs parseable JSON; fix it or move it aside, then re-run — see docs/OPERATIONS.md#claude-settings)'

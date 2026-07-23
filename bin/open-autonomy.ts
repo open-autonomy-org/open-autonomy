@@ -7,7 +7,8 @@
 //   open-autonomy compile <profileName|profileDir> <local|gh-actions> [outDir]
 //   open-autonomy lint <profileDir>
 //   open-autonomy conformance <exec|termfleet|gh-actions> [probeAgent]
-//   open-autonomy upgrade --profile <dir> --target <dir> --substrate <local|gh-actions> [--apply]
+//   open-autonomy upgrade --profile <dir> --target <dir> --substrate <local|gh-actions>
+//   open-autonomy accept <full-candidate-sha> [--target <dir>]
 //
 // Each subcommand reads process.argv.slice(2); we re-frame argv so the delegated
 // entrypoint sees only its own arguments, then import it (its top-level runs).
@@ -25,13 +26,14 @@ export {}; // make this a module so top-level await is allowed (delegation uses 
 
 const HELP = `open-autonomy <command> [args]
 
-  compile <profileName|profileDir> <local|gh-actions> [outDir]  compile a profile (local supports --provider-url, --managed-provider-name, --provider-runtime-dir)
+  compile <profileName|profileDir> <local|gh-actions> [outDir]  compile a profile; a clean Git target produces one review-only candidate commit and full diff
   lint <profileDir>                                             validate a profile of your own: parses + compiles to every declared target + checks skill/folder names, writes nothing
   preflight                                                     make an adopter repo install-ready (verifies termfleet's PTY module loads + lockfile vs CI Node); run after installing the runner deps
   doctor [--live] [--json] [--branch-prefix oa-doctor]          prove a compiled local-runner install end-to-end (self/env/provider/auth/harness/skills[/live]); run after preflight + before leaving the loop unattended
   harness-push [--repo o/r --branch b]                          push an OA harness/skill update past the enforce_admins gate (relax -> push -> restore)
   conformance <exec|termfleet|gh-actions> [probeAgent]          run the substrate conformance battery
-  upgrade --profile <dir> --target <dir> --substrate <target>   re-compile an installation in place (dry run without --apply)
+  upgrade --profile <dir> --target <dir> --substrate <target>   require a clean target; prepare one complete reviewed upgrade candidate commit
+  accept <full-candidate-sha> [--target <dir>]                  fast-forward a clean, unchanged target to the exact reviewed commit
   install [args]                                                (TE.8) the one-shot install agent — SOURCE-CHECKOUT ONLY (see below)
 
 Adopt into the CURRENT repo (existing repo — additive overlays, write no README.md/package.json/.gitignore):
@@ -82,6 +84,9 @@ switch (sub) {
     break;
   case 'upgrade':
     await import('./autonomy-upgrade.ts');
+    break;
+  case 'accept':
+    await import('./accept-install.ts');
     break;
   case 'install': {
     // TE.8: delegate (spawn, NEVER a dynamic `import('./install.ts')`) to the sibling bin/install.ts

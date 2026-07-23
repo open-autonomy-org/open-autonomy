@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Git repository installs and upgrades now require a completely clean worktree, prepare every repository
+  mutation as one immutable candidate commit in an isolated worktree, print the complete diff for the
+  installing agent, and accept only that full SHA while its reviewed base remains unchanged. Raw `--apply`
+  and Git-target `--force` overwrite paths are retired.
+
 ### Fixed
 
 - Local worktrees now keep workspace dependency links inside the worktree instead of resolving them

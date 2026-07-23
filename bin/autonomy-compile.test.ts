@@ -72,6 +72,41 @@ describe('autonomy-compile — fresh-compile clobber guard (BL-14)', () => {
   }, 30_000);
 });
 
+describe('autonomy-compile — repository writes belong to the reviewed install transaction', () => {
+  test('prepares a candidate commit for a clean Git worktree without changing its HEAD or files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-compile-git-refusal-'))
+    try {
+      writeFileSync(join(dir, 'README.md'), 'clean repository\n')
+      const git = (args: string[]) =>
+        Bun.spawnSync(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+      expect(git(['init', '-q']).exitCode).toBe(0)
+      expect(git(['add', 'README.md']).exitCode).toBe(0)
+      expect(
+        git([
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.com',
+          'commit',
+          '-q',
+          '-m',
+          'base',
+        ]).exitCode,
+      ).toBe(0)
+      const result = compile(['simple-gh-sdlc', 'gh-actions', dir])
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('REVIEW THIS COMPLETE COMMIT DIFF')
+      expect(result.stdout).toMatch(/install-candidate=[0-9a-f]{40}/)
+      expect(readFileSync(join(dir, 'README.md'), 'utf8')).toBe('clean repository\n')
+      expect(
+        git(['status', '--porcelain']).stdout.toString('utf8').trim(),
+      ).toBe('')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('autonomy-compile — local schedule target configuration', () => {
   test('applies independent fences through the real CLI without putting them in profile policy', () => {
     const parent = mkdtempSync(join(tmpdir(), 'oa-schedule-config-'));
