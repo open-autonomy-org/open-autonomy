@@ -926,8 +926,9 @@ while (true) {
 // it at the right per-harness prompt.
 const RUN_AGENT_DRIVER = `#!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { RUNNER_DEFAULTS } from './runner-defaults.mjs';
 const agent = process.env.AUTONOMY_AGENT;
 if (!agent) throw new Error('AUTONOMY_AGENT required');
@@ -937,21 +938,123 @@ const harness = process.env.TERMFLEET_AGENT || RUNNER_DEFAULTS.harness;
 const env = { ...process.env, AUTONOMY_PROMPT_DIR: process.env.AUTONOMY_PROMPT_DIR || join(here, 'prompts', harness) };
 const forward = (process.env.AUTONOMY_FORWARD || '').split(',').map((s) => s.trim()).filter(Boolean);
 const params = forward.flatMap((k) => (process.env[k] ? ['--' + k, process.env[k]] : []));
-// A cron agent (AUTONOMY_SINGLETON) is single-instance: skip this tick if one is already ACTIVELY in flight
-// (running or awaiting-human), so fresh ticks don't pile up sessions while the prior one is still working —
-// the local analogue of github's job concurrency. A finished/idle session does not block (it is reaped, and
-// a fresh tick re-reads state), so the loop keeps ticking.
-if (process.env.AUTONOMY_SINGLETON) {
+
+const parseLastJsonLine = (output) => {
+  for (const line of String(output || '').trim().split('\\n').reverse()) {
+    try { return JSON.parse(line); } catch { /* provider diagnostics may precede the result */ }
+  }
+  return undefined;
+};
+const run = (args) => {
+  const result = spawnSync('node', [runner, ...args], {
+    encoding: 'utf8',
+    timeout: Number(process.env.TERMFLEET_LAUNCH_TIMEOUT_MS || RUNNER_DEFAULTS.launchTimeoutMs),
+    env,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  return result;
+};
+const singletonPath = () => {
+  const root = resolve(process.env.AUTONOMY_CONTROL_ROOT || process.cwd());
+  return join(root, '.open-autonomy', 'runner-state', 'singletons', \`\${agent.replace(/[^0-9A-Za-z._-]/g, '-')}.json\`);
+};
+const readSingleton = (path) => {
   try {
-    const all = JSON.parse(spawnSync('node', [runner, 'list'], { encoding: 'utf8' }).stdout || '[]');
-    const busy = all.filter((s) => s.agent === agent
-      && (s.status === 'running' || s.status === 'paused' || s.status === 'awaiting-human'));
-    if (busy.length) { console.log(\`[run-agent] \${agent} already in flight (\${busy.length}); skipping this tick\`); process.exit(0); }
-  } catch { /* backend unavailable -> fall through and try the launch */ }
+    const record = JSON.parse(readFileSync(path, 'utf8'));
+    return record?.agent === agent ? record : undefined;
+  } catch { return undefined; }
+};
+const writeSingleton = (path, record) => {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = \`\${path}.\${process.pid}.tmp\`;
+  writeFileSync(temporary, \`\${JSON.stringify(record, null, 2)}\\n\`);
+  renameSync(temporary, path);
+};
+const scheduledPrompt = () => {
+  try {
+    const base = readFileSync(join(env.AUTONOMY_PROMPT_DIR, \`\${agent}.txt\`), 'utf8').trim();
+    const invocation = /^[/$]([A-Za-z0-9._-]+)$/.exec(base);
+    if (!invocation) return base;
+    const skillsRoot = harness === 'codex' ? '.codex/skills' : '.claude/skills';
+    return \`Continue the scheduled "\${agent}" tick in this same durable conversation. \` +
+      \`Read and follow \${skillsRoot}/\${invocation[1]}/SKILL.md completely before acting, then perform the tick now.\`;
+  } catch { return agent; }
+};
+
+// AUTONOMY_SINGLETON names one durable logical agent, not merely one in-flight process. The first tick
+// records its harness conversation id; later ticks skip it while active and resume that exact conversation
+// after its turn ends. Ambiguous migration or failed continuation fails closed instead of multiplying agents.
+if (process.env.AUTONOMY_SINGLETON) {
+  const path = singletonPath();
+  let canonical = readSingleton(path);
+  const listed = run(['list']);
+  if (listed.status !== 0 || listed.error) process.exit(listed.status ?? 1);
+  const all = parseLastJsonLine(listed.stdout);
+  if (!Array.isArray(all)) throw new Error(\`[run-agent] could not read runner sessions for singleton "\${agent}"\`);
+  const matching = all.filter((session) => session.agent === agent);
+  if (!canonical && matching.length === 1 && matching[0].ref) {
+    const now = new Date().toISOString();
+    canonical = {
+      schema: 'open-autonomy.agent-singleton.v1', agent, harness, cwd: process.cwd(),
+      terminalId: matching[0].id, agentSessionId: matching[0].ref,
+      createdAt: now, updatedAt: now, adopted: true,
+    };
+    writeSingleton(path, canonical);
+  } else if (!canonical && matching.length > 0) {
+    console.error(\`[run-agent] singleton "\${agent}" has \${matching.length} existing conversations and no canonical identity; refusing to guess. Adopt one explicitly in \${path}.\`);
+    process.exit(1);
+  }
+  if (canonical) {
+    const live = matching.find((session) =>
+      session.id === canonical.terminalId || (canonical.agentSessionId && session.ref === canonical.agentSessionId));
+    if (live && (live.status === 'running' || live.status === 'paused' || live.status === 'awaiting-human')) {
+      console.log(\`[run-agent] singleton "\${agent}" is already active as \${canonical.agentSessionId}; skipping this tick\`);
+      process.exit(0);
+    }
+    const setupEnv = {
+      ...Object.fromEntries(Object.entries(env).filter(([key]) => /^(TERMFLEET_.*|AUTONOMY.*|PATH)$/.test(key))),
+      ...Object.fromEntries(forward.filter((key) => process.env[key]).map((key) => [key, process.env[key]])),
+    };
+    const continued = run([
+      'continue',
+      '--terminal-id', canonical.terminalId || canonical.agentSessionId,
+      '--agent-session-id', canonical.agentSessionId,
+      '--agent', agent,
+      '--cwd', canonical.cwd || process.cwd(),
+      '--instruction', scheduledPrompt(),
+      '--if-idle-only', 'true',
+      '--setup-env', JSON.stringify(setupEnv),
+      ...(canonical.createdAt ? ['--anchor-at', canonical.createdAt] : []),
+    ]);
+    if (continued.status !== 0 || continued.error) {
+      console.error(\`[run-agent] singleton "\${agent}" could not resume its canonical conversation; refusing to launch a replacement automatically.\`);
+      process.exit(continued.status ?? 1);
+    }
+    const result = parseLastJsonLine(continued.stdout);
+    if (!result?.terminalId || !result?.agentSessionId)
+      throw new Error(\`[run-agent] singleton "\${agent}" resumed without a durable session identity\`);
+    writeSingleton(path, {
+      ...canonical, terminalId: result.terminalId, agentSessionId: result.agentSessionId,
+      updatedAt: new Date().toISOString(), lastMode: result.mode,
+    });
+    process.exit(0);
+  }
 }
-const timeout = Number(process.env.TERMFLEET_LAUNCH_TIMEOUT_MS || RUNNER_DEFAULTS.launchTimeoutMs);
-const r = spawnSync('node', [runner, 'launch', agent, ...params], { stdio: 'inherit', timeout, env });
-process.exit(r.error?.code === 'ETIMEDOUT' ? 0 : (r.status ?? 1));
+const r = run(['launch', agent, ...params]);
+if (r.error?.code === 'ETIMEDOUT') process.exit(0);
+if (r.status !== 0 || r.error) process.exit(r.status ?? 1);
+if (process.env.AUTONOMY_SINGLETON) {
+  const launched = parseLastJsonLine(r.stdout);
+  if (!launched?.id || !launched?.ref)
+    throw new Error(\`[run-agent] singleton "\${agent}" launched without a durable session identity\`);
+  const now = new Date().toISOString();
+  writeSingleton(singletonPath(), {
+    schema: 'open-autonomy.agent-singleton.v1', agent, harness, cwd: process.cwd(),
+    terminalId: launched.id, agentSessionId: launched.ref, createdAt: now, updatedAt: now,
+  });
+}
+process.exit(0);
 `;
 
 // A self-describing fence marker. Every distinct job fence is seeded ONLY on a fresh install and added

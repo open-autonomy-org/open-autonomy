@@ -43,10 +43,25 @@ export class TermfleetRunner {
   #cwd;
   harness;
   #clientPromise;
-  constructor({ cwd = process.cwd(), env = process.env } = {}) {
+  constructor({
+    cwd = process.cwd(),
+    env = process.env,
+    client,
+    continuationConfirmMs,
+    continuationPollMs,
+    interruptSettleMs,
+    wait,
+  } = {}) {
     this.#env = env;
     this.#cwd = cwd;
     this.harness = env.TERMFLEET_AGENT || RUNNER_DEFAULTS.harness; // claude|codex|gemini — the coding CLI, not our agent
+    if (client) this.#clientPromise = Promise.resolve(client);
+    this.continuationConfirmMs = continuationConfirmMs
+      ?? Number(env.TERMFLEET_CONTINUATION_CONFIRM_MS || 20_000);
+    this.continuationPollMs = continuationPollMs ?? 250;
+    this.interruptSettleMs = interruptSettleMs
+      ?? Number(env.TERMFLEET_INTERRUPT_SETTLE_MS || 1_000);
+    this.wait = wait ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
   }
   #client() {
     return (this.#clientPromise ??= resolveDefaultProvider({ url: this.#env.TERMFLEET_PROVIDER_URL }).then((p) => {
@@ -153,6 +168,108 @@ export class TermfleetRunner {
       ...(Object.keys(params).length ? { params } : {}),
       ...(controlSha ? { controlSha } : {}),
     };
+  }
+  /**
+   * Continue one exact durable conversation. A live idle window receives the new tick directly; an ended
+   * conversation is resumed by its harness session id. This primitive never launches a fresh conversation.
+   */
+  async continue(agent, options) {
+    if (!options?.terminalId || !options?.cwd || !options?.instruction) {
+      throw new Error('continue requires terminalId, cwd, and instruction');
+    }
+    if (this.harness === 'gemini') throw new Error('gemini does not support history-preserving continuation');
+    const client = await this.#client();
+    const snapshot = await client.snapshot();
+    const explicitSessionId = options.agentSessionId || '';
+    const live = snapshot.windows.find((window) =>
+      window.terminalId === options.terminalId
+      || (explicitSessionId && window.lifecycle?.currentSessionId === explicitSessionId),
+    );
+    const liveSessionId = live?.lifecycle?.currentSessionId;
+    if (live?.terminalId && liveSessionId) {
+      return await this.#sendLiveContinuation(client, liveSessionId, live.terminalId, options);
+    }
+
+    const agentSessionId = explicitSessionId || await this.#resolveEndedSession(client, options.cwd, options.anchorAt);
+    if (!agentSessionId) throw new Error(`no ${this.harness} conversation found for ${options.cwd}`);
+    const alreadyLive = snapshot.windows.find((window) => window.lifecycle?.currentSessionId === agentSessionId);
+    if (alreadyLive?.terminalId) {
+      return await this.#sendLiveContinuation(client, agentSessionId, alreadyLive.terminalId, options);
+    }
+
+    const bareSessionId = agentSessionId.replace(new RegExp(`^${this.harness}:`), '');
+    const setupEnv = options.setupEnv && typeof options.setupEnv === 'object' ? options.setupEnv : {};
+    const setupCommand = Object.entries(setupEnv)
+      .filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+      .map(([key, value]) => `export ${key}=${JSON.stringify(String(value ?? ''))}`)
+      .join('; ');
+    const createTimeoutMs = Number(this.#env.TERMFLEET_CREATE_TIMEOUT_MS || RUNNER_DEFAULTS.createTimeoutMs);
+    const ack = await client.createAgentWindow({
+      agent: this.harness,
+      agentSessionId: bareSessionId,
+      resume: true,
+      cwd: options.cwd,
+      name: agent,
+      prompt: options.instruction.trim(),
+      ...(setupCommand ? { setupCommand } : {}),
+      createTimeoutMs,
+    }, { timeoutMs: createTimeoutMs });
+    const terminalId = ack.result?.terminalId;
+    const resumedSessionId = ack.result?.agentSessionId || agentSessionId;
+    if (!terminalId) throw new Error(ack.error || `Termfleet resumed ${agentSessionId} without a terminal id`);
+    await this.#confirmInstruction(client, resumedSessionId, options.cwd, options.instruction, 0);
+    return { mode: 'resumed', terminalId, agentSessionId: resumedSessionId };
+  }
+  async #sendLiveContinuation(client, agentSessionId, terminalId, options) {
+    const before = await client.getAgentSession(this.harness, agentSessionId, { cwd: options.cwd });
+    if (before?.endOfTurn !== true) {
+      throw new Error(`conversation ${agentSessionId} is active; a scheduled tick must not interrupt it`);
+    }
+    const priorCount = await this.#messageCount(client, agentSessionId, options.cwd);
+    const ack = await client.sendToSession(agentSessionId, `${options.instruction.trim()}\n`, { submitMode: 'retry' });
+    if (ack?.ok === false) throw new Error(ack.error || `Termfleet refused input to ${agentSessionId}`);
+    await this.#confirmInstruction(client, agentSessionId, options.cwd, options.instruction, priorCount);
+    return { mode: 'sent', terminalId, agentSessionId };
+  }
+  async #messageCount(client, agentSessionId, cwd) {
+    try {
+      const session = await client.getAgentSession(this.harness, agentSessionId, { cwd });
+      return Array.isArray(session?.messages) ? session.messages.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+  async #confirmInstruction(client, agentSessionId, cwd, instruction, priorCount) {
+    const expected = instruction.trim();
+    const deadline = Date.now() + this.continuationConfirmMs;
+    let lastError;
+    while (Date.now() <= deadline) {
+      try {
+        const session = await client.getAgentSession(this.harness, agentSessionId, { cwd });
+        const messages = Array.isArray(session?.messages) ? session.messages : [];
+        if (messages.slice(priorCount).some((message) =>
+          message?.role === 'user' && String(message.text || '').trim() === expected)) return;
+      } catch (error) {
+        lastError = error;
+      }
+      await this.wait(this.continuationPollMs);
+    }
+    const detail = lastError instanceof Error ? ` Last transcript error: ${lastError.message}` : '';
+    throw new Error(
+      `Termfleet continuation was sent to ${agentSessionId} but the exact instruction never appeared ` +
+      `in the durable transcript; delivery remains ambiguous and must not be acknowledged.${detail}`,
+    );
+  }
+  async #resolveEndedSession(client, cwd, anchorAt) {
+    const page = await client.listAgentSessions({ limit: 500, query: cwd });
+    const anchorMs = Number.isFinite(Date.parse(anchorAt || '')) ? Date.parse(anchorAt) : Date.now();
+    const candidates = (page.rows || [])
+      .filter((row) => row.cwd === cwd && row.provider === this.harness && typeof row.sessionId === 'string')
+      .sort((a, b) => {
+        const distance = Math.abs(Date.parse(a.updatedAt) - anchorMs) - Math.abs(Date.parse(b.updatedAt) - anchorMs);
+        return distance || b.updatedAt.localeCompare(a.updatedAt);
+      });
+    return candidates[0]?.sessionId || '';
   }
   async get(id) {
     return (await this.list()).find((s) => s.id === id);
@@ -268,6 +385,29 @@ export async function runCli(runner, argv) {
     console.log(JSON.stringify(await runner.launch(agent, parseParams(rest.slice(1)))));
     return 0;
   }
+  if (cmd === 'continue') {
+    const params = parseParams(rest);
+    const terminalId = params['terminal-id'];
+    const instruction = params.instruction;
+    const agent = params.agent;
+    const cwd = params.cwd;
+    if (!terminalId || !instruction || !agent || !cwd) {
+      console.error('usage: autonomy continue --terminal-id <id> --agent <name> --cwd <path> --instruction <direction> [--agent-session-id <id>]');
+      return 2;
+    }
+    let setupEnv = {};
+    try { setupEnv = params['setup-env'] ? JSON.parse(params['setup-env']) : {}; } catch { throw new Error('--setup-env must be JSON'); }
+    console.log(JSON.stringify(await runner.continue(agent, {
+      terminalId,
+      instruction,
+      cwd,
+      setupEnv,
+      ifIdleOnly: params['if-idle-only'] === 'true',
+      ...(params['agent-session-id'] ? { agentSessionId: params['agent-session-id'] } : {}),
+      ...(params['anchor-at'] ? { anchorAt: params['anchor-at'] } : {}),
+    })));
+    return 0;
+  }
   if (cmd === 'get') {
     const session = await runner.get(rest[0] ?? '');
     if (!session) return 1;
@@ -295,7 +435,7 @@ export async function runCli(runner, argv) {
     }
     return (await runner.cancel(id)) ? 0 : 1;
   }
-  console.error('usage: autonomy <launch|get|list|update|cancel>');
+  console.error('usage: autonomy <launch|continue|get|list|update|cancel>');
   return 2;
 }
 

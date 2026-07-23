@@ -460,6 +460,12 @@ PM then launches the workers). To use Codex instead of Claude Code:
 TERMFLEET_AGENT=codex node scheduler/run.mjs
 ```
 
+Cron prose agents are durable singletons on the local runner. The first unpaused tick records one canonical
+harness conversation in `.open-autonomy/runner-state/singletons/`; later ticks skip it while active and
+resume that exact conversation when idle or ended. If an upgraded installation finds exactly one existing
+conversation for that agent, it adopts it. If it finds several and has no canonical receipt, it fails closed
+and names the receipt path rather than guessing or launching another agent.
+
 With the `hello` profile, the first **unpaused** `--once` tick launches a `greeter` session — you'll see
 it in `termfleet sessions recent --live` and the console. That confirms the whole local path works.
 

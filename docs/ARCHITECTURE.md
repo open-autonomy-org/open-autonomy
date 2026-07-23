@@ -78,6 +78,12 @@ There are two normal ways work starts:
   writes a visible status or command comment, and dispatches the matching
   workflow only when the issue is clear enough.
 
+On the local substrate, a cron-fired prose agent is a durable logical singleton. Its first tick records the
+coding-harness conversation identity under `.open-autonomy/runner-state/singletons/`; later ticks leave that
+conversation alone while it is active and resume the same conversation after its turn ends. A failed resume
+never silently creates a replacement. This preserves the PM's operational memory while keeping the trigger
+executor domain-blind—the mechanism applies identically to any scheduled prose agent.
+
 If PM asks for `needs-info`, that is not a failed dispatch. It is the expected
 outcome for broad, risky, or underspecified work. The next useful step is a
 human clarification, after which PM can reconsider the issue.

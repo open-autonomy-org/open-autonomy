@@ -64,13 +64,15 @@ describe('the post-session effect is gated on EXPLICIT signals, never a capabili
     expect(compileLocal(ghLocalIr).generated['scripts/runner.ts']).toContain("cmd === 'cancel'"); // local seam
   });
 
-  test('cron agents are single-instance (AUTONOMY_SINGLETON) so PM ticks do not pile up', () => {
+  test('cron agents are durable singletons (AUTONOMY_SINGLETON) so PM ticks preserve one conversation', () => {
     const out = compileLocal(ghLocalIr);
     const driver = out.generated['scripts/run-agent.mjs'];
-    expect(driver).toContain('AUTONOMY_SINGLETON'); // the skip-if-busy guard
-    expect(driver).toContain("s.status === 'running'");
-    expect(driver).toContain("s.status === 'paused'");
-    expect(driver).toContain("s.status === 'awaiting-human'");
+    expect(driver).toContain('open-autonomy.agent-singleton.v1');
+    expect(driver).toContain("live.status === 'running'");
+    expect(driver).toContain("live.status === 'paused'");
+    expect(driver).toContain("live.status === 'awaiting-human'");
+    expect(driver).toContain("'continue'");
+    expect(driver).toContain('refusing to launch a replacement automatically');
     const schedule = JSON.parse(out.generated['scheduler/schedule.json']) as { jobs: Array<{ command: string }> };
     expect(schedule.jobs.some((job) => job.command.includes('AUTONOMY_SINGLETON=1'))).toBe(true); // the PM tick sets it
   });
