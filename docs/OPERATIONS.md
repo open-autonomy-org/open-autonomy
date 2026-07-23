@@ -459,6 +459,11 @@ resume that exact conversation when idle or ended. If an upgraded installation f
 conversation for that agent, it adopts it. If it finds several and has no canonical receipt, it fails closed
 and names the receipt path rather than guessing or launching another agent.
 
+The scheduler does not reap idle or ended sessions, and an install-owned provider is compiled with its
+ended-session timer disabled. The supervising agent must explicitly close an exact worker only after its
+outcome and required durable state are accounted for. This keeps workflow ownership with supervision rather
+than a wall-clock timer.
+
 With the `hello` profile, the first **unpaused** `--once` tick launches a `greeter` session — you'll see
 it in `termfleet sessions recent --live` and the console. That confirms the whole local path works.
 

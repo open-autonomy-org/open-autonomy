@@ -186,13 +186,10 @@ export function cronToSeconds(cron: string): number {
   return 900;
 }
 
-// The loop driver: fires the schedule's commands every interval, and (continuous mode) reaps idle agent
-// sessions so finished cron ticks don't pile up. A cron tick is ephemeral by design — each fires a FRESH
-// agent that re-reads state; this is the local analogue of a github job, which terminates when done.
-// Locally nothing closes the interactive termfleet window, so the loop reaps it: a session that has been
-// IDLE (termfleet `session_waiting`, no attention signal) for AUTONOMY_IDLE_REAP_MS is closed. A session
-// still working (running / background-running), one a human took over, or one asking/errored is never
-// reaped — keeping the "take over at any time" guarantee. `--once` fires a single tick and exits (no reap).
+// The loop driver fires the schedule's commands and reconciles durable completion effects. It never closes
+// an agent session merely because a timer observes it idle or ended: only the supervising agent has enough
+// workflow context to retire an exact session after its outcome is durably accounted for. `--once` fires a
+// single tick and exits.
 const LOOP_DRIVER = `#!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -723,25 +720,15 @@ if (once) {
   process.exit(0);
 }
 
-// Continuous mode: a fast heartbeat that fires ticks on the schedule interval and reaps idle sessions in
-// between. The runner (termfleet SDK) does the reaping; we keep the persistent idle-since map here.
-const IDLE_REAP_MS = Number(process.env.AUTONOMY_IDLE_REAP_MS ?? 60000);
+// Continuous mode: a foreground heartbeat that fires due jobs and reconciles completion state. Session
+// retirement is deliberately absent; it is an explicit supervising-agent action, never a scheduler timer.
 const POLL_MS = Math.max(1000, Number(process.env.AUTONOMY_REAP_POLL_MS ?? 20000));
 const nextFireAt = new Map(jobs.map((job) => [job.name, 0]));
-// This install's OWN agents = the per-harness launch prompts (one .txt per skill agent). Reaping is
-// scoped to these window names so a human's own terminal / another loop is never touched.
-const harness = process.env.TERMFLEET_AGENT || 'claude';
-let agents = new Set();
-try {
-  agents = new Set(
-    readdirSync(join(here, '..', 'scripts', 'prompts', harness)).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4)),
-  );
-} catch {}
 let runner = null;
 try {
   ({ runner } = await import(join(here, '..', 'scripts', 'autonomy-runner.mjs')).then((m) => ({ runner: new m.TermfleetRunner() })));
 } catch (e) {
-  console.error('[loop] reaping disabled (runner unavailable):', e?.message ?? e);
+  console.error('[loop] completion reconciliation disabled (runner unavailable):', e?.message ?? e);
 }
 
 // Post-session effects: the local mirror of github's post-skill job step. The runner's launch seam
@@ -761,21 +748,6 @@ const configuredWorkspaceLeaseGraceMs = Number(process.env.AUTONOMY_WORKSPACE_LE
 const WORKSPACE_LEASE_BOOTSTRAP_GRACE_MS = Number.isFinite(configuredWorkspaceLeaseGraceMs) && configuredWorkspaceLeaseGraceMs >= 0
   ? configuredWorkspaceLeaseGraceMs
   : 120000;
-function markWorkspaceLeasesObserved(ids) {
-  if (!ids.length) return;
-  const wanted = new Set(ids);
-  let files = [];
-  try { files = readdirSync(WORKSPACES_DIR).filter((file) => file.endsWith('.json')); } catch { return; }
-  const observedLiveAt = new Date().toISOString();
-  for (const file of files) {
-    const path = join(WORKSPACES_DIR, file);
-    try {
-      const lease = JSON.parse(readFileSync(path, 'utf8'));
-      if (!wanted.has(lease.id) || lease.observedLiveAt) continue;
-      writeFileSync(path, JSON.stringify(Object.assign({}, lease, { observedLiveAt }), null, 2) + '\\n');
-    } catch {}
-  }
-}
 async function reconcilePendingEffects(runner) {
   let files = [];
   try { files = readdirSync(EFFECTS_DIR).filter((f) => f.endsWith('.json')); } catch { return; } // no markers dir yet
@@ -887,7 +859,6 @@ async function reconcileWorkspaceLeases(runner) {
     console.log(\`[loop] cleaned workspace for \${lease.agent} (\${lease.id})\`);
   }
 }
-const idleSince = new Map();
 // Report fence transitions once per marker state change. Job eligibility itself remains in fireJobs, so
 // one fenced group never suppresses unrelated work and a marker change takes effect on the next heartbeat.
 let lastBlockedFences = new Set();
@@ -908,13 +879,10 @@ while (true) {
   }
   if (runner) {
     try {
-      const reaped = await runner.reapIdle({ idleMs: IDLE_REAP_MS, agents, since: idleSince });
-      for (const r of reaped) console.log(\`[loop] reaped idle \${r.agent} (\${r.id})\`);
-      markWorkspaceLeasesObserved(reaped.map((result) => result.id));
-      await reconcilePendingEffects(runner); // run finished proposers' effects (the post-skill step's local twin)
+      await reconcilePendingEffects(runner); // explicitly retired proposers' effects (the post-skill step's local twin)
       await reconcileWorkspaceLeases(runner);
     } catch (e) {
-      console.error('[loop] reap error:', e?.message ?? e);
+      console.error('[loop] completion reconciliation error:', e?.message ?? e);
     }
   }
   await sleep(POLL_MS);
@@ -1283,7 +1251,7 @@ export function compileLocal(
         tmuxSocket: opts.managedProviderName,
         count: 1,
         maxWindows: 16,
-        reapEndedAfterSeconds: 300,
+        reapEndedAfterSeconds: 0,
       }
     : undefined;
   const cronJobs = cronAgents.map(([role, agent]) => {

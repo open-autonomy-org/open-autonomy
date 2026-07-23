@@ -115,7 +115,7 @@ describe('emitted scheduler hard controls', () => {
     }
   });
 
-  test('continuous reconciliation does not reap a fresh lease before the provider lists it', async () => {
+  test('continuous reconciliation observes completion without calling the runner reaper', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa-scheduler-lease-grace-'));
     let child;
     try {
@@ -127,7 +127,7 @@ describe('emitted scheduler hard controls', () => {
       const effects = join(dir, '.open-autonomy', 'runner-state', 'effects');
       const effectMarker = join(effects, 'fresh.json');
       const effectSentinel = join(dir, 'effect-ran');
-      const reapMarker = join(dir, 'reap-fresh');
+      const liveMarker = join(dir, 'fresh-is-live');
       mkdirSync(join(dir, 'scheduler'), { recursive: true });
       mkdirSync(join(dir, 'scripts'), { recursive: true });
       mkdirSync(leases, { recursive: true });
@@ -138,8 +138,8 @@ describe('emitted scheduler hard controls', () => {
       writeFileSync(join(dir, 'scripts', 'autonomy-runner.mjs'), `
         import { existsSync } from 'node:fs';
         export class TermfleetRunner {
-          async list(){ return []; }
-          async reapIdle(){ return existsSync(${JSON.stringify(reapMarker)}) ? [{ id: 'fresh', agent: 'test' }] : []; }
+          async list(){ return existsSync(${JSON.stringify(liveMarker)}) ? [{ id: 'fresh', agent: 'test', status: 'running' }] : []; }
+          async reapIdle(){ throw new Error('scheduler must not reap sessions'); }
         }
       `);
       writeFileSync(join(dir, 'scripts', 'effect.mjs'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(effectSentinel)}, 'ran');\n`);
@@ -172,7 +172,11 @@ describe('emitted scheduler hard controls', () => {
       expect(existsSync(fresh)).toBe(true);
       expect(existsSync(effectMarker)).toBe(true);
       expect(existsSync(effectSentinel)).toBe(false);
-      writeFileSync(reapMarker, 'reaped\n');
+      writeFileSync(liveMarker, 'live\n');
+      const observedDeadline = Date.now() + 5000;
+      while (!JSON.parse(readFileSync(fresh, 'utf8')).observedLiveAt && Date.now() < observedDeadline) await Bun.sleep(50);
+      expect(JSON.parse(readFileSync(fresh, 'utf8')).observedLiveAt).toBeTruthy();
+      rmSync(liveMarker);
       const effectDeadline = Date.now() + 5000;
       while ((!existsSync(effectSentinel) || existsSync(effectMarker)) && Date.now() < effectDeadline) await Bun.sleep(50);
       expect(existsSync(effectSentinel)).toBe(true);

@@ -56,7 +56,7 @@ export function validateManagedProviderConfig(input) {
   }
   const count = input.count ?? 1;
   const maxWindows = input.maxWindows ?? 16;
-  const reapEndedAfterSeconds = input.reapEndedAfterSeconds ?? 300;
+  const reapEndedAfterSeconds = input.reapEndedAfterSeconds ?? 0;
   if (!Number.isInteger(count) || count < 0 || count > 8) throw new Error('managed provider count must be an integer from 0 through 8');
   if (!Number.isInteger(maxWindows) || maxWindows < 1 || maxWindows > 128) throw new Error('managed provider maxWindows must be an integer from 1 through 128');
   if (!Number.isInteger(reapEndedAfterSeconds) || reapEndedAfterSeconds < 0 || reapEndedAfterSeconds > 86_400) {

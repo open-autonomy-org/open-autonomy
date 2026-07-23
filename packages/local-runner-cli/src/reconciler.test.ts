@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { backoffMsFor, markWorkspaceLeasesObserved, reconcilePendingEffects, reconcileWorkspaceLeases, start } from './reconciler.ts';
+import { backoffMsFor, reconcilePendingEffects, reconcileWorkspaceLeases, start } from './reconciler.ts';
 import { StubProc, ok } from './test-support/stub-proc.ts';
 import { StubSessionRunner } from './test-support/stub-session-runner.ts';
 import { defaultProc } from './proc.ts';
@@ -105,6 +105,36 @@ describe('generic substrate scheduler', () => {
       stop.abort();
       await running;
       expect(stub.calls.some((call) => call.cmd === 'gh' || call.cmd === 'npx')).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('never asks the runner to reap an idle session', async () => {
+    const dir = repo({ jobs: [{ name: 'maintenance', command: 'bun maintenance.ts', intervalSeconds: 60 }] });
+    try {
+      let reapCalls = 0;
+      const sessions = new StubSessionRunner();
+      sessions.addSession({ id: 'idle-worker', agent: 'develop', status: 'done' });
+      sessions.reapIdle = async () => {
+        reapCalls += 1;
+        throw new Error('scheduler must not own session retirement');
+      };
+      const stop = new AbortController();
+      let beats = 0;
+      const running = start({
+        cwd: dir,
+        proc: new StubProc().on(() => true, () => ok('')).runner,
+        signal: stop.signal,
+        pollMs: 10,
+        sessionRunnerFactory: async () => sessions,
+        onHeartbeat: () => {
+          beats += 1;
+        },
+      });
+      await waitFor(() => beats >= 3);
+      stop.abort();
+      await running;
+      expect(reapCalls).toBe(0);
+      expect(sessions.sessions).toHaveLength(1);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
@@ -296,23 +326,6 @@ test('a stale-generation effect is retained and executes nothing', async () => {
     await reconcilePendingEffects(dir, new StubSessionRunner(), proc.runner);
     expect(existsSync(marker)).toBe(true);
     expect(proc.calls.some((call) => call.cmd === 'bun')).toBe(false);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('a reaped session is persisted as observed so its ready effect does not wait out bootstrap grace', async () => {
-  const dir = repo({ jobs: [{ name: 'maintenance', command: 'bun maintenance.ts', intervalSeconds: 60 }] });
-  try {
-    const effectsDir = join(dir, '.open-autonomy', 'runner-state', 'effects');
-    mkdirSync(effectsDir, { recursive: true });
-    const marker = join(effectsDir, 'session-reaped.json');
-    writeFileSync(marker, JSON.stringify(generationEffect(dir, { id: 'session-reaped', agent: 'worker', effect: 'scripts/effect.ts', worktree: dir })));
-    const lease = workspaceLease(dir, 'session-reaped', dir, new Date().toISOString());
-    const proc = effectProc(dir).onArgs('bun', [join(dir, 'scripts', 'effect.ts')], () => ok(''));
-
-    markWorkspaceLeasesObserved(dir, ['session-reaped']);
-    expect(JSON.parse(readFileSync(lease, 'utf8')).observedLiveAt).toBeTruthy();
-    await reconcilePendingEffects(dir, new StubSessionRunner(), proc.runner);
-    expect(existsSync(marker)).toBe(false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

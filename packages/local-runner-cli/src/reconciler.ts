@@ -71,7 +71,6 @@ export interface StartOptions {
   proc?: ProcRunner;
   signal?: AbortSignal;
   pollMs?: number;
-  idleReapMs?: number;
   sessionRunnerFactory?: SessionRunnerFactory;
   ambient?: NodeJS.ProcessEnv;
   resolveDefault?: () => Promise<{ baseUrl: string; source: string }>;
@@ -94,7 +93,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const ambient = opts.ambient ?? process.env;
   const signal = opts.signal;
   const pollMs = Math.max(10, opts.pollMs ?? Number(process.env.AUTONOMY_REAP_POLL_MS ?? 20000));
-  const idleReapMs = opts.idleReapMs ?? Number(process.env.AUTONOMY_IDLE_REAP_MS ?? 60000);
   const fastDeathMs = opts.fastDeathMs ?? FAST_DEATH_MS;
   const schedule = loadSchedule(cwd);
 
@@ -106,18 +104,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     ...(opts.resolveDefault ? { resolveDefault: opts.resolveDefault } : {}),
   });
   if (!pre.ok) throw new Error(pre.message ?? '[oa] start: preflight failed — see errors above');
-
-  const harness = process.env.TERMFLEET_AGENT || 'claude';
-  let agents = new Set<string>();
-  try {
-    agents = new Set(
-      readdirSync(join(cwd, 'scripts', 'prompts', harness))
-        .filter((f) => f.endsWith('.txt'))
-        .map((f) => f.slice(0, -4)),
-    );
-  } catch {
-    /* script-only schedule */
-  }
 
   const runner = await (opts.sessionRunnerFactory ?? defaultSessionRunner)(cwd, ambient);
   const durableState = loadDurableState(cwd);
@@ -135,7 +121,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     } satisfies JobState];
   }));
   const scheduledAgents = new Set(schedule.jobs.map((job) => job.agent).filter((agent): agent is string => !!agent));
-  const idleSince = new Map<string, number>();
   let heartbeat = 0;
 
   while (!signal?.aborted) {
@@ -202,13 +187,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 
     if (runner) {
       try {
-        const reaped = await runner.reapIdle({ idleMs: idleReapMs, agents, since: idleSince });
-        for (const result of reaped) console.log(`[oa] reaped idle ${result.agent} (${result.id})`);
-        markWorkspaceLeasesObserved(cwd, reaped.map((result) => result.id));
         await reconcilePendingEffects(cwd, runner, proc);
         await reconcileWorkspaceLeases(cwd, runner, proc);
       } catch (error) {
-        console.error('[oa] reap error:', (error as Error)?.message ?? error);
+        console.error('[oa] completion reconciliation error:', (error as Error)?.message ?? error);
       }
     }
 
@@ -361,27 +343,6 @@ function workspaceLeaseBootstrapGraceMs(): number {
   const configured = Number(process.env.AUTONOMY_WORKSPACE_LEASE_GRACE_MS ?? DEFAULT_WORKSPACE_LEASE_BOOTSTRAP_GRACE_MS);
   return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_WORKSPACE_LEASE_BOOTSTRAP_GRACE_MS;
 }
-
-/** Reaping is itself authoritative observation: persist it so a just-reaped session does not wait out the
- * bootstrap grace before its effect and workspace can reconcile. */
-function markWorkspaceLeasesObserved(cwd: string, ids: string[]): void {
-  if (!ids.length) return;
-  const wanted = new Set(ids);
-  const dir = join(cwd, '.open-autonomy', 'runner-state', 'workspaces');
-  let files: string[] = [];
-  try { files = readdirSync(dir).filter((file) => file.endsWith('.json')); } catch { return; }
-  const observedLiveAt = new Date().toISOString();
-  for (const file of files) {
-    const path = join(dir, file);
-    try {
-      const lease = JSON.parse(readFileSync(path, 'utf8')) as WorkspaceLease;
-      if (!wanted.has(lease.id) || lease.observedLiveAt) continue;
-      writeFileSync(path, `${JSON.stringify({ ...lease, observedLiveAt }, null, 2)}\n`);
-    } catch { /* workspace reconciliation owns malformed-lease handling */ }
-  }
-}
-
-export { markWorkspaceLeasesObserved };
 
 /** Reclaim runner-owned isolated workspaces after their session and any completion effect finish.
  * Clean worktrees are removed immediately. Dirty or unreadable worktrees are moved to a quarantine

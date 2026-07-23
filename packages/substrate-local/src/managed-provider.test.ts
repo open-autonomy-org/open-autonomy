@@ -37,7 +37,7 @@ function fixture() {
       tmuxSocket: 'ponder-open-autonomy',
       count: 1,
       maxWindows: 16,
-      reapEndedAfterSeconds: 300,
+      reapEndedAfterSeconds: 0,
     },
   };
 }
@@ -76,7 +76,7 @@ describe('managed virtual-tmux provider ownership', () => {
       tmuxSocket: 'ponder-open-autonomy',
       count: 1,
       maxWindows: 16,
-      reapEndedAfterSeconds: 300,
+      reapEndedAfterSeconds: 0,
     });
     expect(schedule.env.TERMFLEET_PROVIDER_URL).toBe('http://127.0.0.1:17620');
     expect(out.generated['scheduler/ensure-provider.mjs']).toContain('ensureManagedProvider');
