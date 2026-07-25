@@ -6,6 +6,7 @@ import {
   checkReleaseConsistency,
   checkReleaseConsistencyText,
   parseSemver,
+  PROFILE_MIRROR_VERSION,
   PROFILE_MIRROR_VERSION_JSON,
 } from './check-release';
 
@@ -17,6 +18,7 @@ function goodFiles(version = '0.4.1'): {
   versionFile: string;
   versionJson: string;
   profileMirrorVersionJson: string;
+  profileMirrorVersion: string;
   changelog: string;
   docs: Record<string, string | undefined>;
 } {
@@ -26,6 +28,7 @@ function goodFiles(version = '0.4.1'): {
     versionFile: `${version}\n`,
     versionJson: JSON.stringify({ schema: 'open-autonomy.version.v1', version }),
     profileMirrorVersionJson: JSON.stringify({ schema: 'open-autonomy.version.v1', version, profile: 'default' }),
+    profileMirrorVersion: `${version}\n`,
     changelog: `# Changelog\n\n## ${version}\n\nsome notes\n\n## 0.4.0\n\nolder notes\n`,
     docs: {
       'README.md': STAMP(stampMajorMinor),
@@ -88,6 +91,13 @@ describe('checkReleaseConsistencyText — the no-filesystem core', () => {
     ).toBe(true);
   });
 
+  test('the SHIPPED profile plain VERSION drift is named', () => {
+    const files = goodFiles();
+    files.profileMirrorVersion = '0.1.0\n';
+    const failures = checkReleaseConsistencyText(files);
+    expect(failures.some((f) => f.includes(PROFILE_MIRROR_VERSION) && f.includes('0.1.0'))).toBe(true);
+  });
+
   test('a CHANGELOG top heading that does not match package.json is named', () => {
     const files = goodFiles();
     files.changelog = '# Changelog\n\n## 0.4.0\n\nold\n';
@@ -130,6 +140,7 @@ describe('checkReleaseConsistencyText — the no-filesystem core', () => {
     expect(failures.some((f) => f.includes('VERSION'))).toBe(true);
     expect(failures.some((f) => f.includes('.open-autonomy/version.json'))).toBe(true);
     expect(failures.some((f) => f.includes(PROFILE_MIRROR_VERSION_JSON))).toBe(true);
+    expect(failures.some((f) => f.includes(PROFILE_MIRROR_VERSION))).toBe(true);
     expect(failures.some((f) => f.includes('CHANGELOG.md'))).toBe(true);
     expect(failures.some((f) => f.includes('README.md'))).toBe(true);
     expect(failures.some((f) => f.includes('docs/OPERATIONS.md'))).toBe(true);
@@ -149,6 +160,7 @@ describe('checkReleaseConsistency — filesystem wrapper against a real fixture 
       writeFileSync(join(dir, 'VERSION'), files.versionFile);
       writeFileSync(join(dir, '.open-autonomy', 'version.json'), files.versionJson);
       writeFileSync(join(dir, PROFILE_MIRROR_VERSION_JSON), files.profileMirrorVersionJson);
+      writeFileSync(join(dir, PROFILE_MIRROR_VERSION), files.profileMirrorVersion);
       writeFileSync(join(dir, 'CHANGELOG.md'), files.changelog);
       writeFileSync(join(dir, 'README.md'), files.docs['README.md'] as string);
       writeFileSync(join(dir, 'docs', 'OPERATIONS.md'), files.docs['docs/OPERATIONS.md'] as string);

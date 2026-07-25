@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4
+
+### Fixed
+
+- The bundled self-driving profile's plain `VERSION` mirror now matches the release version.
+- Dependency locks now select patched releases for the advisories reported by the repository security
+  gate.
+
 ## 0.4.3
 
 ### Fixed

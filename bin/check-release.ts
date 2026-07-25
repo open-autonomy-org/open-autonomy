@@ -35,6 +35,7 @@ export const STAMPED_DOCS = ['README.md', 'docs/OPERATIONS.md', 'docs/INSTALL-AG
 // a mirror-only skew would sail through `npm publish` and ship a lying version into installs (skeptic
 // FIX 3). This IS the file OPERATIONS' "a stale artifact cannot ship" claim is about.
 export const PROFILE_MIRROR_VERSION_JSON = 'profiles/self-driving/.open-autonomy/version.json';
+export const PROFILE_MIRROR_VERSION = 'profiles/self-driving/VERSION';
 const STAMP_RE = /Documentation for \*\*open-autonomy v(\d+)\.(\d+)\*\*/;
 const CHANGELOG_HEADING_RE = /^## (\d+\.\d+\.\d+)\b/m;
 
@@ -45,6 +46,7 @@ export function checkReleaseConsistencyText(files: {
   versionFile: string;
   versionJson: string;
   profileMirrorVersionJson?: string;
+  profileMirrorVersion?: string;
   changelog: string;
   docs: Record<string, string | undefined>;
 }): string[] {
@@ -96,6 +98,15 @@ export function checkReleaseConsistencyText(files: {
     }
   } else {
     failures.push(`${PROFILE_MIRROR_VERSION_JSON}: file not found (the shipped version mirror)`);
+  }
+
+  const profileMirrorVersion = files.profileMirrorVersion?.trim();
+  if (profileMirrorVersion === undefined) {
+    failures.push(`${PROFILE_MIRROR_VERSION}: file not found (the shipped plain-version mirror)`);
+  } else if (profileMirrorVersion !== pkgVersion) {
+    failures.push(
+      `${PROFILE_MIRROR_VERSION} ("${profileMirrorVersion}") != package.json version ("${pkgVersion}") — bump the SHIPPED profile mirror to match`,
+    );
   }
 
   const headingMatch = CHANGELOG_HEADING_RE.exec(files.changelog);
@@ -167,11 +178,13 @@ export function checkReleaseConsistency(root: string = process.cwd()): string[] 
   const docs: Record<string, string | undefined> = {};
   for (const doc of STAMPED_DOCS) docs[doc] = readMaybe(doc);
   const profileMirrorVersionJson = readMaybe(PROFILE_MIRROR_VERSION_JSON);
+  const profileMirrorVersion = readMaybe(PROFILE_MIRROR_VERSION);
   return checkReleaseConsistencyText({
     packageJson,
     versionFile,
     versionJson,
     profileMirrorVersionJson,
+    profileMirrorVersion,
     changelog,
     docs,
   });
@@ -183,12 +196,12 @@ if (import.meta.main) {
     console.error(
       `check:release-consistency FAIL — version/doc skew (${failures.length} issue(s)):\n` +
         failures.map((f) => `  - ${f}\n`).join('') +
-        `  Fix: bring VERSION, .open-autonomy/version.json, CHANGELOG.md's top entry, and every stamped\n` +
+        `  Fix: bring VERSION, both shipped profile mirrors, .open-autonomy/version.json, CHANGELOG.md's top entry, and every stamped\n` +
         `  doc's vX.Y stamp in line with package.json's version. See docs/OPERATIONS.md#release-process.\n`,
     );
     process.exit(1);
   }
   console.log(
-    'check:release-consistency OK: VERSION, .open-autonomy/version.json, CHANGELOG.md, and all stamped docs agree with package.json',
+    'check:release-consistency OK: VERSION, both shipped profile mirrors, .open-autonomy/version.json, CHANGELOG.md, and all stamped docs agree with package.json',
   );
 }
