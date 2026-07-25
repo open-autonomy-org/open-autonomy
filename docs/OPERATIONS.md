@@ -47,7 +47,7 @@ steps 1–5 (shared) vs step 6 (per code host) below.
 > only OA-specific files (`scripts/`, `.claude/skills/`, `.claude/settings.json`, `scheduler/`,
 > `.open-autonomy/`, `standards/`, `.github/workflows/merge.yml`), so `compile … .` is purely additive — it
 > does **not** generate a `package.json`, `README`, or `.gitignore` over yours. You still merge the runner's
-> deps into your repo (`npm install termfleet` in step 1; `npm install -D ztrack@1.3.1` in step 6 — pin the
+> deps into your repo (`npm install termfleet` in step 1; `npm install -D ztrack@1.4.0` in step 6 — pin the
 > version this open-autonomy release is tested against); npm may rewrite **existing** dependency ranges
 > while doing so — review the diff it leaves. The OA files are
 > **committed** to the repo (the agents run in git worktrees, which only see committed files — it's how OA
@@ -499,14 +499,14 @@ work and how a change lands depends on the code host** you compiled in step 3.
 The agents read work from a local **ztrack** board on disk:
 
 ```bash
-npm install -D ztrack@1.3.1                 # a PROJECT dep, not -g: the installed validation preset
+npm install -D ztrack@1.4.0                 # a PROJECT dep, not -g: the installed validation preset
                                             # `import`s `ztrack/preset-kit`, so it must resolve from the
                                             # repo — a global/npx install fails `ztrack check`.
                                             # PINNED — the version this open-autonomy release is tested
                                             # against; a floating `npx ztrack` may fetch a different major
                                             # than your repo's pin (see package.json's own devDependency).
                                             # NODE_ENV=production / npm omit=dev makes this a silent no-op
-                                            # (exits 0, installs NOTHING) — use: npm install -D ztrack@1.3.1 --include=dev
+                                            # (exits 0, installs NOTHING) — use: npm install -D ztrack@1.4.0 --include=dev
                                             # (works on every omit source; NODE_ENV=development only helps when
                                             # NODE_ENV is the cause)
 npx ztrack init --preset simple-sdlc        # the PR-free dev preset (the `default`); no remote needed
@@ -567,9 +567,9 @@ Here the board is **GitHub issues** and a change lands as an **auto-merging PR**
 
 ```bash
 # a) the tracker, linked to GitHub Issues (GitHub is the source of truth)
-npm install -D ztrack@1.3.1    # or: bun add -d ztrack@1.3.1   (pinned to the version this release is tested against)
+npm install -D ztrack@1.4.0    # or: bun add -d ztrack@1.4.0   (pinned to the version this release is tested against)
                          # NODE_ENV=production / npm omit=dev makes this a silent no-op (exits 0, installs
-                         # NOTHING) — use: npm install -D ztrack@1.3.1 --include=dev (works on every omit source)
+                         # NOTHING) — use: npm install -D ztrack@1.4.0 --include=dev (works on every omit source)
 npx ztrack init --preset simple-gh-sdlc --sync github --repo <owner>/<repo>
 
 # b) require the gate in branch protection (NOT auto-merge yet — that comes after a supervised first merge,

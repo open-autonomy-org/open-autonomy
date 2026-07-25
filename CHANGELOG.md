@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
 ### Added
 
@@ -28,8 +28,6 @@
   require a durable typed ask for genuine human decisions.
 - Human-approval re-evaluations now serialize instead of cancelling an in-flight required check, preventing
   a valid exact-head authorization from remaining merge-blocked by a cancelled duplicate context.
-
-## 0.4.2
 
 **The fixed npx install path.** `0.4.0`/`0.4.1` published DOA on `compile` (OA-01: a missing
 `dist/egress-guard.sh` crashed `compile`/`lint`/`upgrade`/`conformance` on the packed tarball) — every
