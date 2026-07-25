@@ -242,17 +242,17 @@ describe('probeResolution — the authoritative Check C, DI-driven', () => {
     expect(r.reason).toBe('escapes-into-repo');
   });
 
-  test('a subpath specifier (e.g. "@termfleet/core/local-providers.js") is what gets resolved — a package with no root "." export is NOT a false alarm', () => {
+  test('a subpath specifier (e.g. "@termfleet/core/teams/local-providers.js") is what gets resolved — a package with no root "." export is NOT a false alarm', () => {
     const dirs = new Set(['/repo/node_modules', '/repo/node_modules/@termfleet/core']);
     const io = fakeIo(
       { '/repo/node_modules/@termfleet/core/package.json': '{}' },
       dirs,
       (_cmd, args) => {
-        expect(args).toContain('@termfleet/core/local-providers.js'); // NOT the bare "@termfleet/core"
+        expect(args).toContain('@termfleet/core/teams/local-providers.js'); // NOT the bare "@termfleet/core"
         return { status: 0, stdout: 'file:///repo/node_modules/@termfleet/core/dist/local-providers.js\n', stderr: '' };
       },
     );
-    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/local-providers.js', io);
+    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/teams/local-providers.js', io);
     expect(r.ok).toBe(true);
   });
 
@@ -279,14 +279,14 @@ describe('probeResolution — the authoritative Check C, DI-driven', () => {
         { '/repo/node_modules/@termfleet/core/package.json': '{}' },
         dirs,
         (_cmd, args) => {
-          expect(args).toContain('@termfleet/core/local-providers.js');
+          expect(args).toContain('@termfleet/core/teams/local-providers.js');
           // import.meta.resolve realpaths through the pnpm symlink to the .pnpm store copy.
           return { status: 0, stdout: `file://${realTarget}/dist/local-providers.js\n`, stderr: '' };
         },
       ),
       realpathSync: (p) => (p === '/repo/node_modules/@termfleet/core' ? realTarget : p),
     };
-    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/local-providers.js', io);
+    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/teams/local-providers.js', io);
     expect(r).toEqual({ ok: true });
   });
 
@@ -305,7 +305,7 @@ describe('probeResolution — the authoritative Check C, DI-driven', () => {
       ),
       realpathSync: (p) => (p === '/repo/node_modules/@termfleet/core' ? '/repo/packages/core' : p),
     };
-    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/local-providers.js', io);
+    const r = probeResolution('/repo', '@termfleet/core', '@termfleet/core/teams/local-providers.js', io);
     expect(r.ok).toBe(false);
     expect(r.reason === 'outside-node-modules' || r.reason === 'escapes-into-repo').toBe(true);
   });
@@ -533,9 +533,14 @@ describe('checkNamespaceCollisions — LIVE fixtures (real fs, real symlinks, re
       mkdirSync(storeDir, { recursive: true });
       writeFileSync(
         join(storeDir, 'package.json'),
-        JSON.stringify({ name: '@termfleet/core', version: '1.0.0', exports: { './local-providers.js': './local-providers.js' } }),
+        JSON.stringify({
+          name: '@termfleet/core',
+          version: '1.0.0',
+          exports: { './teams/local-providers.js': './teams/local-providers.js' },
+        }),
       );
-      writeFileSync(join(storeDir, 'local-providers.js'), 'export function resolveDefaultProvider() { return {}; }\n');
+      mkdirSync(join(storeDir, 'teams'), { recursive: true });
+      writeFileSync(join(storeDir, 'teams', 'local-providers.js'), 'export function resolveDefaultProvider() { return {}; }\n');
       mkdirSync(join(dir, 'node_modules', '@termfleet'), { recursive: true });
       symlinkSync(storeDir, join(dir, 'node_modules', '@termfleet', 'core'), 'dir');
       const r = checkNamespaceCollisions(dir);
@@ -558,19 +563,23 @@ describe('checkNamespaceCollisions — LIVE fixtures (real fs, real symlinks, re
     const dir = mk();
     try {
       writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'unrelated-host-name', workspaces: ['packages/*'] }));
-      mkdirSync(join(dir, 'packages', 'core'), { recursive: true });
+      mkdirSync(join(dir, 'packages', 'core', 'teams'), { recursive: true });
       writeFileSync(
         join(dir, 'packages', 'core', 'package.json'),
-        JSON.stringify({ name: '@termfleet/core', version: '0.0.0-dev', exports: { './local-providers.js': './local-providers.js' } }),
+        JSON.stringify({
+          name: '@termfleet/core',
+          version: '0.0.0-dev',
+          exports: { './teams/local-providers.js': './teams/local-providers.js' },
+        }),
       );
-      writeFileSync(join(dir, 'packages', 'core', 'local-providers.js'), 'export function resolveDefaultProvider() { return {}; }\n');
+      writeFileSync(join(dir, 'packages', 'core', 'teams', 'local-providers.js'), 'export function resolveDefaultProvider() { return {}; }\n');
       mkdirSync(join(dir, 'node_modules', '@termfleet'), { recursive: true });
       symlinkSync(join(dir, 'packages', 'core'), join(dir, 'node_modules', '@termfleet', 'core'), 'dir');
       const r = checkNamespaceCollisions(dir);
       expect(r.failed).toBe(true);
       // Caught by Check B (workspace shadowing, since it's a declared workspace member here) at minimum;
       // the resolution probe (Check C) must ALSO still see the escape, not be fooled into an 'ok'.
-      const probeResult = probeResolution(dir, '@termfleet/core', '@termfleet/core/local-providers.js');
+      const probeResult = probeResolution(dir, '@termfleet/core', '@termfleet/core/teams/local-providers.js');
       expect(probeResult.ok).toBe(false);
       expect(probeResult.reason).toBe('escapes-into-repo');
     } finally {
@@ -636,7 +645,7 @@ test('RESOLUTION_PROBE_SPECIFIERS pin — Check C probes the ACTUAL runtime spec
   // (bin-only, no importable entry — probing it false-alarms on every healthy install).
   expect(RESOLUTION_PROBE_SPECIFIERS).toEqual([
     { name: 'termfleet', specifier: 'termfleet' },
-    { name: '@termfleet/core', specifier: '@termfleet/core/local-providers.js' },
+    { name: '@termfleet/core', specifier: '@termfleet/core/teams/local-providers.js' },
     { name: 'ztrack', specifier: 'ztrack/preset-kit' },
   ]);
   expect(RESOLUTION_PROBE_SPECIFIERS.some((s) => s.name === 'open-autonomy')).toBe(false);

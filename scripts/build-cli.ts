@@ -25,8 +25,8 @@ mkdirSync(DIST, { recursive: true });
 
 const build = spawnSync(
   'bun',
-  ['build', 'bin/open-autonomy.ts', '--target=node', '--outfile', `${DIST}/cli.js`],
-  { stdio: 'inherit' },
+  ['build', 'bin/open-autonomy.ts', '--target=node', '--production', '--outfile', `${DIST}/cli.js`],
+  { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } },
 );
 if (build.status) process.exit(build.status ?? 1);
 

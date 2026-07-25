@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3
+
+### Fixed
+
+- Local runners now consume Termfleet's current public
+  `@termfleet/core/teams/local-providers.js` export and declare compatible Termfleet dependency minima.
+- Production CLI builds select published package exports deterministically even when invoked from a test
+  process whose ambient `NODE_ENV` is `test`.
+
 ## 0.4.2
 
 ### Added

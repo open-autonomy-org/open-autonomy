@@ -67,14 +67,19 @@ describe('scheduler/run.mjs --once — the termfleet pre-flight guard', () => {
       writeFileSync(join(termfleetReal, 'index.js'), 'export const x = 1;\n');
       symlinkSync(termfleetReal, join(dir, 'node_modules', 'termfleet'), 'dir');
 
-      const coreReal = join(dir, 'node_modules', '.pnpm', '@termfleet+core@0.2.1', 'node_modules', '@termfleet', 'core');
-      mkdirSync(coreReal, { recursive: true });
+      const coreReal = join(dir, 'node_modules', '.pnpm', '@termfleet+core@0.2.2', 'node_modules', '@termfleet', 'core');
+      mkdirSync(join(coreReal, 'teams'), { recursive: true });
       writeFileSync(
         join(coreReal, 'package.json'),
-        JSON.stringify({ name: '@termfleet/core', version: '0.2.1', type: 'module', exports: { './local-providers.js': './local-providers.js' } }),
+        JSON.stringify({
+          name: '@termfleet/core',
+          version: '0.2.2',
+          type: 'module',
+          exports: { './teams/local-providers.js': './teams/local-providers.js' },
+        }),
       );
       writeFileSync(
-        join(coreReal, 'local-providers.js'),
+        join(coreReal, 'teams', 'local-providers.js'),
         `export async function resolveDefaultProvider() { throw new Error('none'); }\n`,
       );
       mkdirSync(join(dir, 'node_modules', '@termfleet'), { recursive: true });
@@ -113,7 +118,7 @@ describe('scheduler/run.mjs --once — the termfleet pre-flight guard', () => {
       // The exact shape npm workspaces produces: the "real" package lives at a repo-tracked path (as if it
       // were a workspace member happening to be named "termfleet"), and node_modules/termfleet is a
       // symlink to it — never a registry copy.
-      mkdirSync(join(dir, 'packages', 'core'), { recursive: true });
+      mkdirSync(join(dir, 'packages', 'core', 'teams'), { recursive: true });
       writeFileSync(
         join(dir, 'packages', 'core', 'package.json'),
         JSON.stringify({ name: 'termfleet', version: '0.0.0-dev', main: 'index.js' }),
@@ -145,15 +150,15 @@ describe('scheduler/run.mjs --once — the termfleet pre-flight guard', () => {
   // OA-04 concern-3: the drift the guard exists to catch is a workspace member named `@termfleet/core`
   // added AFTER install — `termfleet` still resolves fine, so a termfleet-only probe passes and the run
   // dies hops-deep with ERR_PACKAGE_PATH_NOT_EXPORTED (audit mode (a)). The guard must probe
-  // `@termfleet/core/local-providers.js` too. Tamper probe for the multi-specifier loop: dropping
+  // `@termfleet/core/teams/local-providers.js` too. Tamper probe for the multi-specifier loop: dropping
   // @termfleet/core from the emitted RUNNER_SPECS makes this go green-when-it-should-be-red.
   test('a workspace-shadowed @termfleet/core (termfleet itself resolves fine) is refused before any tick, naming @termfleet/core', () => {
     const dir = scaffold(skillAgentIr);
     try {
       installHealthyTermfleet(dir);
-      mkdirSync(join(dir, 'packages', 'core'), { recursive: true });
+      mkdirSync(join(dir, 'packages', 'core', 'teams'), { recursive: true });
       writeFileSync(join(dir, 'packages', 'core', 'package.json'), JSON.stringify({ name: '@termfleet/core', version: '0.0.0-dev' }));
-      writeFileSync(join(dir, 'packages', 'core', 'local-providers.js'), 'export const p = 1;\n');
+      writeFileSync(join(dir, 'packages', 'core', 'teams', 'local-providers.js'), 'export const p = 1;\n');
       mkdirSync(join(dir, 'node_modules', '@termfleet'), { recursive: true });
       symlinkSync(join(dir, 'packages', 'core'), join(dir, 'node_modules', '@termfleet', 'core'), 'dir');
       const r = spawnSync('node', ['scheduler/run.mjs', '--once'], { cwd: dir, encoding: 'utf8' });

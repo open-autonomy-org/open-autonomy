@@ -32,19 +32,23 @@ function installMinimalTermfleet(dir: string): void {
     JSON.stringify({ name: 'termfleet', version: '0.2.0', main: 'index.js', exports: { '.': './index.js' } }),
   );
   writeFileSync(join(dir, 'node_modules', 'termfleet', 'index.js'), 'export const x = 1;\n');
-  mkdirSync(join(dir, 'node_modules', '@termfleet', 'core'), { recursive: true });
+  mkdirSync(join(dir, 'node_modules', '@termfleet', 'core', 'teams'), { recursive: true });
   writeFileSync(
     join(dir, 'node_modules', '@termfleet', 'core', 'package.json'),
-    JSON.stringify({ name: '@termfleet/core', version: '0.2.1', exports: { './local-providers.js': './local-providers.js' } }),
+    JSON.stringify({
+      name: '@termfleet/core',
+      version: '0.2.2',
+      exports: { './teams/local-providers.js': './teams/local-providers.js' },
+    }),
   );
   // A minimal but FUNCTIONAL stand-in for the real @termfleet/core's resolveDefaultProvider — resolvable
   // (satisfies the collision-check probe every needsRunner tick runs) and, for the no-pin test below,
   // genuinely exercised: mirrors the real chain's `if (url) return {baseUrl:url, source:'flag:--url'}`
-  // fast path and its `no_provider` throw when nothing is live (real shape: @termfleet/core@0.2.1
+  // fast path and its `no_provider` throw when nothing is live (real shape: @termfleet/core@0.2.2
   // dist/local-providers.js — verified against the real published package during development, not vendored
   // here to keep this fixture offline/fast).
   writeFileSync(
-    join(dir, 'node_modules', '@termfleet', 'core', 'local-providers.js'),
+    join(dir, 'node_modules', '@termfleet', 'core', 'teams', 'local-providers.js'),
     `export async function resolveDefaultProvider(opts) {\n` +
       `  const url = opts && opts.url ? String(opts.url).trim() : '';\n` +
       `  if (url) return { baseUrl: url, source: 'flag:--url' };\n` +
@@ -137,7 +141,7 @@ describe('scheduler/run.mjs --once — the effective-provider log line (AC-4)', 
     const dir = scaffold(undefined);
     try {
       writeFileSync(
-        join(dir, 'node_modules', '@termfleet', 'core', 'local-providers.js'),
+        join(dir, 'node_modules', '@termfleet', 'core', 'teams', 'local-providers.js'),
         `export async function resolveDefaultProvider(opts) {\n` +
           `  const url = opts && opts.url ? String(opts.url).trim() : '';\n` +
           `  if (url) return { baseUrl: url, source: 'flag:--url' };\n` +
@@ -211,15 +215,20 @@ describe('scripts/autonomy-runner.mjs (backend) — the [runner] provider source
         `  disconnect() {}\n` +
         `}\n`,
     );
-    // Stub `@termfleet/core/local-providers.js`: mirrors the real resolution chain's shape — an explicit url
+    // Stub `@termfleet/core/teams/local-providers.js`: mirrors the real resolution chain's shape — an explicit url
     // returns {source:'flag:--url'}; unpinned returns a fixed live provider tagged {source:'auto-local'}.
-    mkdirSync(join(dir, 'node_modules', '@termfleet', 'core'), { recursive: true });
+    mkdirSync(join(dir, 'node_modules', '@termfleet', 'core', 'teams'), { recursive: true });
     writeFileSync(
       join(dir, 'node_modules', '@termfleet', 'core', 'package.json'),
-      JSON.stringify({ name: '@termfleet/core', version: '0.2.1', type: 'module', exports: { './local-providers.js': './local-providers.js' } }),
+      JSON.stringify({
+        name: '@termfleet/core',
+        version: '0.2.2',
+        type: 'module',
+        exports: { './teams/local-providers.js': './teams/local-providers.js' },
+      }),
     );
     writeFileSync(
-      join(dir, 'node_modules', '@termfleet', 'core', 'local-providers.js'),
+      join(dir, 'node_modules', '@termfleet', 'core', 'teams', 'local-providers.js'),
       `export async function resolveDefaultProvider(opts) {\n` +
         `  const url = opts && opts.url ? String(opts.url).trim() : '';\n` +
         `  if (url) return { baseUrl: url, source: 'flag:--url' };\n` +

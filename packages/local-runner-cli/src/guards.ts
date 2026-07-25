@@ -49,7 +49,7 @@ export function checkTermfleetInstalled(cwd: string): GuardResult {
 // root, in a fresh child `node`) and refuse unless it lands on a REAL copy inside node_modules/.
 const RUNNER_SPECS: Array<[string, string]> = [
   ['termfleet', 'termfleet'],
-  ['@termfleet/core', '@termfleet/core/local-providers.js'],
+  ['@termfleet/core', '@termfleet/core/teams/local-providers.js'],
 ];
 
 function probeSpec(cwd: string, name: string, spec: string, proc: ProcRunner): string | null {

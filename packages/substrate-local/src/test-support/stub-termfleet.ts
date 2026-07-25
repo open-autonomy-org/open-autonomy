@@ -10,7 +10,7 @@
 //
 // The stub satisfies exactly:
 //   - backend.mjs's import surface (`ProviderClient`, `providerRefFromUrl` from `termfleet`;
-//     `resolveDefaultProvider` from `@termfleet/core/local-providers.js`) — the launch/list/cancel path.
+//     `resolveDefaultProvider` from `@termfleet/core/teams/local-providers.js`) — the launch/list/cancel path.
 //   - the extra SDK surface bin/doctor-checks.ts's `checkLive` calls directly for its dead-session evidence
 //     capture (`captureTerminal`, `disconnect`) — NOT exercised by OA-08's suite, which never calls them.
 //
@@ -113,10 +113,15 @@ export function installStubTermfleet(dir: string): void {
   );
   writeFileSync(join(nm, 'termfleet', 'index.js'), TERMFLEET_INDEX_JS);
 
-  mkdirSync(join(nm, '@termfleet', 'core'), { recursive: true });
+  mkdirSync(join(nm, '@termfleet', 'core', 'teams'), { recursive: true });
   writeFileSync(
     join(nm, '@termfleet', 'core', 'package.json'),
-    JSON.stringify({ name: '@termfleet/core', version: '0.0.0-stub', type: 'module', exports: { './local-providers.js': './local-providers.js' } }),
+    JSON.stringify({
+      name: '@termfleet/core',
+      version: '0.0.0-stub',
+      type: 'module',
+      exports: { './teams/local-providers.js': './teams/local-providers.js' },
+    }),
   );
-  writeFileSync(join(nm, '@termfleet', 'core', 'local-providers.js'), TERMFLEET_CORE_LOCAL_PROVIDERS_JS);
+  writeFileSync(join(nm, '@termfleet', 'core', 'teams', 'local-providers.js'), TERMFLEET_CORE_LOCAL_PROVIDERS_JS);
 }

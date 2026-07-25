@@ -422,7 +422,7 @@ export function checkEnv(cwd: string): CheckResult {
 
   // b2. @termfleet/core actually installed + resolvable (mirrors (b) above exactly, for a REQUIRED runtime
   // dependency instead of a devDependency): packages/substrate-local/src/backend.mjs and runner.ts both
-  // `import { resolveDefaultProvider } from '@termfleet/core/local-providers.js'` at runtime, at first live
+  // `import { resolveDefaultProvider } from '@termfleet/core/teams/local-providers.js'` at runtime, at first live
   // scheduler tick — so an install where this doesn't resolve is not merely degraded, it's DEAD on its
   // first tick. Under npm's default hoisting this often worked "by luck" (something else in the tree
   // transitively pulled @termfleet/core in); under pnpm's strict non-hoisting layout nothing hoists it, so
@@ -434,13 +434,13 @@ export function checkEnv(cwd: string): CheckResult {
   if (localRunnerInPlay) {
     let termfleetCoreResolvable = true;
     try {
-      createRequire(join(cwd, 'package.json')).resolve('@termfleet/core/local-providers.js');
+      createRequire(join(cwd, 'package.json')).resolve('@termfleet/core/teams/local-providers.js');
     } catch {
       termfleetCoreResolvable = false;
     }
     if (!termfleetCoreResolvable) {
       problems.push(
-        "'@termfleet/core/local-providers.js' is not resolvable from node_modules — it is a REQUIRED runtime " +
+        "'@termfleet/core/teams/local-providers.js' is not resolvable from node_modules — it is a REQUIRED runtime " +
           "dependency of the local runner (packages/substrate-local's backend.mjs and runner.ts both import it at " +
           "the very first scheduler tick), not merely a dev tool: without it every dispatch dies ERR_MODULE_NOT_FOUND. " +
           'Fix: npm install @termfleet/core (or your package manager\'s equivalent — e.g. pnpm add @termfleet/core, ' +
@@ -569,7 +569,7 @@ function portOf(url: string): number | undefined {
 
 export async function checkProvider(cwd: string): Promise<CheckResult> {
   const pinned = process.env.TERMFLEET_PROVIDER_URL;
-  const localProviders = await importFromRepo(cwd, '@termfleet/core/local-providers.js');
+  const localProviders = await importFromRepo(cwd, '@termfleet/core/teams/local-providers.js');
   const termfleetSdk = await importFromRepo(cwd, 'termfleet');
   if (!localProviders || !termfleetSdk) {
     return SKIP('provider', 'termfleet is not installed in this repo yet — provider identity cannot be checked until it is (npm install termfleet)', ['F-8']);
@@ -1136,7 +1136,7 @@ export async function checkLive(cwd: string, harness: HarnessProbe, skills: Chec
     let sawOk = false;
     if (!alive) {
       const termfleetSdk = await importFromRepo(cwd, 'termfleet');
-      const localProviders = await importFromRepo(cwd, '@termfleet/core/local-providers.js');
+      const localProviders = await importFromRepo(cwd, '@termfleet/core/teams/local-providers.js');
       if (termfleetSdk && localProviders) {
         try {
           const provider = await localProviders.resolveDefaultProvider({ url: process.env.TERMFLEET_PROVIDER_URL });

@@ -55,8 +55,8 @@ export async function resolveProvider(
 }
 
 /** Default `resolveDefault` hook — dynamically imports the adopter repo's own installed
- *  @termfleet/core/local-providers.js (not vendored; a peer dep this CLI drives but never bundles). */
+ *  @termfleet/core/teams/local-providers.js (not vendored; a peer dep this CLI drives but never bundles). */
 export async function defaultResolveDefaultProvider(): Promise<{ baseUrl: string; source: string }> {
-  const { resolveDefaultProvider } = await import('@termfleet/core/local-providers.js');
+  const { resolveDefaultProvider } = await import('@termfleet/core/teams/local-providers.js');
   return resolveDefaultProvider({});
 }

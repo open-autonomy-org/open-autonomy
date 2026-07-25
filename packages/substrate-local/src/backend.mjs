@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProviderClient, providerRefFromUrl } from 'termfleet';
-import { resolveDefaultProvider } from '@termfleet/core/local-providers.js';
+import { resolveDefaultProvider } from '@termfleet/core/teams/local-providers.js';
 import { RUNNER_DEFAULTS } from './runner-defaults.mjs';
 
 /** One bounded retry for the provider's read-only observation pair. A virtual-tmux snapshot performs a

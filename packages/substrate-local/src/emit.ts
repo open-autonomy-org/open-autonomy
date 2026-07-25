@@ -366,13 +366,13 @@ if (needsRunner) {
   // REAL copy inside node_modules/ — the same authoritative probe \`preflight\`/\`compile\` run (Check C in
   // bin/collision-check.ts), inlined here (NOT imported — this file ships dependency-free plain Node into
   // every install; it must never \`import\` from bin/). Probes the SAME specifiers as Check C — critically
-  // \`@termfleet/core/local-providers.js\`, not just \`termfleet\`: a workspace member named \`@termfleet/core\`
+  // \`@termfleet/core/teams/local-providers.js\`, not just \`termfleet\`: a workspace member named \`@termfleet/core\`
   // added AFTER install leaves \`termfleet\` resolving fine while \`@termfleet/core\` shadows, so the run would
   // otherwise still die hops-deep with ERR_PACKAGE_PATH_NOT_EXPORTED (audit mode (a)) at this last chokepoint.
   const nodeModulesRoot = join(repoRoot, 'node_modules');
   const RUNNER_SPECS = [
     ['termfleet', 'termfleet'],
-    ['@termfleet/core', '@termfleet/core/local-providers.js'],
+    ['@termfleet/core', '@termfleet/core/teams/local-providers.js'],
   ];
   const firstErrLine = (s) => {
     const lines = (s || '').split('\\n').map((l) => l.trim()).filter(Boolean);
@@ -477,7 +477,7 @@ if (needsRunner) {
       providerSource = 'schedule';
     } else {
       try {
-        const { resolveDefaultProvider } = await import('@termfleet/core/local-providers.js');
+        const { resolveDefaultProvider } = await import('@termfleet/core/teams/local-providers.js');
         const resolved = await resolveDefaultProvider({});
         providerUrl = resolved.baseUrl;
         providerSource = resolved.source;

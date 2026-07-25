@@ -27,13 +27,17 @@ async function runnerClass() {
     'export class ProviderClient{}; export const providerRefFromUrl=(url)=>url;\n',
   );
   const core = join(root, 'node_modules', '@termfleet', 'core');
-  mkdirSync(core, { recursive: true });
+  mkdirSync(join(core, 'teams'), { recursive: true });
   writeFileSync(
     join(core, 'package.json'),
-    JSON.stringify({ name: '@termfleet/core', type: 'module', exports: { './local-providers.js': './local-providers.js' } }),
+    JSON.stringify({
+      name: '@termfleet/core',
+      type: 'module',
+      exports: { './teams/local-providers.js': './teams/local-providers.js' },
+    }),
   );
   writeFileSync(
-    join(core, 'local-providers.js'),
+    join(core, 'teams', 'local-providers.js'),
     "export const resolveDefaultProvider=async()=>({baseUrl:'http://127.0.0.1'});\n",
   );
   const module = await import(`${pathToFileURL(join(scripts, 'autonomy-runner.mjs')).href}?test=${Date.now()}`);

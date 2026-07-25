@@ -5,6 +5,6 @@
 // declaration exists ONLY so `tsc` can typecheck the dynamic-import call site without the real package
 // installed in THIS monorepo's dependency graph — it mirrors the one function the OA-09 provider-origin
 // resolve actually calls, nothing more.
-declare module '@termfleet/core/local-providers.js' {
+declare module '@termfleet/core/teams/local-providers.js' {
   export function resolveDefaultProvider(opts: { url?: string }): Promise<{ baseUrl: string; source: string }>;
 }

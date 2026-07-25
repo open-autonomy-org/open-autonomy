@@ -53,7 +53,7 @@ export const DIRECT_PROTECTED_NAMES = ['termfleet', '@termfleet/core', 'ztrack',
 export const SELF_REFERENCE_NAMES = ['termfleet', '@termfleet/core', 'ztrack'] as const;
 
 // Check C (the resolution probe) needs the ACTUAL specifier the runtime resolves — which for two of
-// these is a SUBPATH, not the bare package root: `backend.mjs` imports `@termfleet/core/local-providers.js`,
+// these is a SUBPATH, not the bare package root: `backend.mjs` imports `@termfleet/core/teams/local-providers.js`,
 // and the ztrack preset imports `ztrack/preset-kit`. Probing the actual runtime specifier (not the bare
 // package root) is what keeps this from false-alarming: `@termfleet/core`'s published `exports` map has no
 // "." entry, so probing the bare `@termfleet/core` would throw ERR_PACKAGE_PATH_NOT_EXPORTED on a HEALTHY
@@ -72,7 +72,7 @@ export interface ProtectedSpecifier {
 }
 export const RESOLUTION_PROBE_SPECIFIERS: ProtectedSpecifier[] = [
   { name: 'termfleet', specifier: 'termfleet' },
-  { name: '@termfleet/core', specifier: '@termfleet/core/local-providers.js' },
+  { name: '@termfleet/core', specifier: '@termfleet/core/teams/local-providers.js' },
   { name: 'ztrack', specifier: 'ztrack/preset-kit' },
 ];
 
@@ -336,12 +336,12 @@ export function probeResolution(cwdArg: string, name: string, specifier: string,
   }
 
   // The resolved file must live INSIDE this package's own node_modules directory (not just node_modules/
-  // broadly — a subpath specifier like "@termfleet/core/local-providers.js" must resolve under
+  // broadly — a subpath specifier like "@termfleet/core/teams/local-providers.js" must resolve under
   // node_modules/@termfleet/core/, never merely under node_modules/ at large) — OR inside pkgDir's own
   // REALPATH. The second half is required for pnpm: pnpm installs `node_modules/<name>` as a symlink into
   // `node_modules/.pnpm/<name>@<version>/node_modules/<name>`, and Node's ESM `import.meta.resolve`
   // realpaths by default — so on a perfectly healthy pnpm install, resolving even the package's OWN files
-  // (e.g. the subpath specifier `@termfleet/core/local-providers.js`) returns an absolute path inside
+  // (e.g. the subpath specifier `@termfleet/core/teams/local-providers.js`) returns an absolute path inside
   // `node_modules/.pnpm/...`, which does not literally string-prefix-match `node_modules/@termfleet/core/`.
   // Without this, every healthy pnpm install would false-positive here (proven live). Resolving pkgDir's
   // realpath ONCE and accepting either prefix keeps this correct for npm/yarn/bun (whose literal prefix

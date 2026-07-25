@@ -124,13 +124,18 @@ export class ProviderClient {
 }
 `,
   );
-  mkdirSync(join(nm, '@termfleet', 'core'), { recursive: true });
+  mkdirSync(join(nm, '@termfleet', 'core', 'teams'), { recursive: true });
   writeFileSync(
     join(nm, '@termfleet', 'core', 'package.json'),
-    JSON.stringify({ name: '@termfleet/core', version: '0.0.0-stub', type: 'module', exports: { './local-providers.js': './local-providers.js' } }),
+    JSON.stringify({
+      name: '@termfleet/core',
+      version: '0.0.0-stub',
+      type: 'module',
+      exports: { './teams/local-providers.js': './teams/local-providers.js' },
+    }),
   );
   writeFileSync(
-    join(nm, '@termfleet', 'core', 'local-providers.js'),
+    join(nm, '@termfleet', 'core', 'teams', 'local-providers.js'),
     `export async function resolveDefaultProvider() { return { baseUrl: 'http://127.0.0.1:0' }; }\n`,
   );
 }

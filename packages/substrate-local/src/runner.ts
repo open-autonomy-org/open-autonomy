@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { Runner, Session, SessionStatus, LaunchParams } from '@open-autonomy/core';
 import { ProviderClient, providerRefFromUrl } from 'termfleet';
-import { resolveDefaultProvider } from '@termfleet/core/local-providers.js';
+import { resolveDefaultProvider } from '@termfleet/core/teams/local-providers.js';
 import { RUNNER_DEFAULTS } from './runner-config';
 
 type Harness = 'claude' | 'codex' | 'gemini';

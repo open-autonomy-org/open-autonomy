@@ -19,7 +19,7 @@
 // Why the shared stub-termfleet.ts is EXTENDED here rather than reused verbatim (and why that extension
 // lives in THIS file, not in stub-termfleet.ts itself): the shared stub's `resolveDefaultProvider` only
 // ever looks at `opts.url` — it has no notion of `~/.termfleet/current.json` (the real SDK's
-// current-context fallback, OA-09's own root-cause doc, `@termfleet/core@0.2.1 local-providers.js:132-146`).
+// current-context fallback, OA-09's own root-cause doc, `@termfleet/core@0.2.2 teams/local-providers.js`).
 // Without that fallback, staging a "foreign provider on 7373" fixture would be VACUOUS — nothing in the
 // resolution path would ever consult it, pinned or not, so the assertion "the foreign provider gets none"
 // would trivially always pass even with the pin removed entirely. Two local overrides (below) restore just
@@ -107,7 +107,7 @@ function installProviderLandingStub(dir: string): void {
       `  disconnect() {}\n` +
       `}\n`,
   );
-  const localProviders = join(dir, 'node_modules', '@termfleet', 'core', 'local-providers.js');
+  const localProviders = join(dir, 'node_modules', '@termfleet', 'core', 'teams', 'local-providers.js');
   writeFileSync(
     localProviders,
     `import { appendFileSync, existsSync, readFileSync } from 'node:fs';\n` +
@@ -116,7 +116,7 @@ function installProviderLandingStub(dir: string): void {
       `  const explicit = opts && opts.url ? String(opts.url).trim() : '';\n` +
       `  let url = explicit;\n` +
       `  let source = 'flag/env';\n` +
-      // Real precedence (OA-09 doc, citing @termfleet/core@0.2.1 local-providers.js:132-146): an explicit
+      // Real precedence (OA-09 doc, citing @termfleet/core@0.2.2 teams/local-providers.js): an explicit
       // url (flag/TERMFLEET_PROVIDER_URL) short-circuits BEFORE ever consulting current-context — a pin
       // must never even look at a foreign current.json, let alone be beaten by it.
       `  if (!url) {\n` +
