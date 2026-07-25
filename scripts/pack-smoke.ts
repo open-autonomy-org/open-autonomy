@@ -42,7 +42,7 @@ const CHILD_ENV = { ...process.env };
 delete CHILD_ENV.npm_config_dry_run;
 
 function run(cmd: string, args: string[], opts: Record<string, unknown> = {}): SpawnSyncReturns<string> {
-  return spawnSync(cmd, args, { encoding: 'utf8', env: CHILD_ENV, ...opts });
+  return spawnSync(cmd, args, { encoding: 'utf8', env: CHILD_ENV, maxBuffer: 16 * 1024 * 1024, ...opts });
 }
 
 let packDir: string | undefined;
