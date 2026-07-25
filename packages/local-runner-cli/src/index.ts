@@ -24,6 +24,23 @@ export type { NormalizedJob, NormalizedSchedule, NormalizedScript } from './type
 export { bringUpProvider, providerStatus, providerDown } from './provider.ts';
 export type { BringUpOptions, BringUpResult, ProviderState, ProviderStatusResult, ProviderDownResult } from './provider.ts';
 export {
+  disableService,
+  enableService,
+  ensureService,
+  serviceStatus,
+} from './service.ts';
+export type {
+  EnsureServiceResult,
+  ServiceEnableReceipt,
+  ServiceStatus,
+} from './service.ts';
+export {
+  disableZtrackIntegration,
+  enableZtrackIntegration,
+  ZTRACK_SERVICE_HOOK_ID,
+} from './ztrack-integration.ts';
+export type { ZtrackIntegrationOptions } from './ztrack-integration.ts';
+export {
   a1GeneratedJsonValid,
   a2CompileClean,
   a3AutonomyYmlParses,
@@ -57,7 +74,7 @@ export {
 export type { Stage, InstallRecord, InstallSignalEntry, InstallSkipEntry, MaturityOptions, PackInfo, SessionProbe } from './maturity.ts';
 
 import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from './reconciler.ts';
 import { once } from './once.ts';
@@ -71,6 +88,27 @@ import type { MaturityOptions } from './maturity.ts';
 import type { InstallTarget } from './signal-sets.ts';
 import { runInstallDelegate } from './install-delegate.ts';
 import { activationHome, configuredActivationHome, readActivationRoutingState } from './activation-paths.ts';
+import {
+  disableService,
+  enableService,
+  ensureService,
+  readServiceEnable,
+  runService,
+  servicePaths,
+  serviceStatus,
+} from './service.ts';
+import { disableZtrackIntegration, enableZtrackIntegration } from './ztrack-integration.ts';
+import { runResident } from './resident.ts';
+
+function signalExitCode(signal: NodeJS.Signals | null): number {
+  if (!signal) return 0;
+  const numbers: Partial<Record<NodeJS.Signals, number>> = {
+    SIGHUP: 1,
+    SIGINT: 2,
+    SIGTERM: 15,
+  };
+  return 128 + (numbers[signal] ?? 1);
+}
 
 function pkgVersion(): string {
   try {
@@ -85,6 +123,13 @@ function pkgVersion(): string {
 const HELP = `oa <command> [args]  (@volter/oa v${pkgVersion()}) — the local open-autonomy substrate as a CLI
 
   oa start                     continuous scheduler; follows atomic generations when activation is configured
+  oa service enable            arm on-demand recovery for this repository; does not start anything
+  oa service ensure            start the armed service if it is down; otherwise reuse the singleton
+  oa service status            report armed/running state and the repository-scoped service pid
+  oa service disable           disarm recovery and stop the running service, if any
+  oa integration ztrack enable arm the service and register OA through ztrack's public project hook
+  oa integration ztrack disable
+                               remove OA's ztrack hook; does not stop or disarm the service
   oa once                      make one pass over jobs, respecting fences and concurrency
   oa pause [reason]             touch the conventional .open-autonomy/paused job fence
   oa resume                     remove .open-autonomy/paused and re-arm jobs assigned that fence
@@ -122,13 +167,16 @@ const HELP = `oa <command> [args]  (@volter/oa v${pkgVersion()}) — the local o
                                 'oa install --help' for the full flow, or see it directly with
                                 'bun bin/install.ts --help'.
 
-Fence marker files declared by scheduled jobs are the source of truth; this CLI is ergonomics over the
-conventional '.open-autonomy/paused' marker, never a daemon holding its own state. schedule.json/autonomy.yml/prompts are read from the current working
-directory (the repo root) — nothing is bundled or cached from a prior install.
+Fence marker files declared by scheduled jobs remain the source of truth; service receipts control only
+process lifetime, never dispatch policy. schedule.json/autonomy.yml/prompts are read from the current
+working directory (the repo root) — nothing is bundled or cached from a prior install.
 `;
 
 /** Programmatic argv-compatible entry point used by the `oa` executable. */
-export async function runCli(argv: string[]): Promise<number> {
+export async function runCli(
+  argv: string[],
+  options: { launcherPath?: string; ztrackPath?: string; nodePath?: string } = {},
+): Promise<number> {
   const [cmd, ...rest] = argv;
   const cwd = process.cwd();
   const activeRuntime = (): { cwd: string; ambient: NodeJS.ProcessEnv } => {
@@ -151,15 +199,120 @@ export async function runCli(argv: string[]): Promise<number> {
 
   if (!cmd || cmd === 'start') {
     try {
-      if (configuredActivationHome(cwd)) {
-        const { superviseActivation } = await import('./activation-supervisor.ts');
-        await superviseActivation({ cwd });
-      } else await start({ cwd });
-      return 0;
+      let repositoryScoped = true;
+      try {
+        servicePaths(cwd);
+      } catch (error) {
+        if ((error as Error).message !== '[oa] service requires a git repository') throw error;
+        repositoryScoped = false;
+      }
+      if (!repositoryScoped) {
+        if (configuredActivationHome(cwd)) {
+          const { superviseActivation } = await import('./activation-supervisor.ts');
+          await superviseActivation({ cwd });
+        } else await start({ cwd });
+        return 0;
+      }
+      const signal = await runService({
+        cwd,
+        installSignalHandlers: true,
+        run: (abortSignal, onReady) => runResident({ cwd, signal: abortSignal, onReady }),
+      });
+      return signalExitCode(signal);
     } catch (e) {
       // A preflight failure already printed its guard message inside runPreflight; surface the summary +
       // exit nonzero — the exact behavior run.mjs had (process.exit(1) after the guard's console.error).
       console.error((e as Error)?.message ?? e);
+      return 1;
+    }
+  }
+  if (cmd === 'service') {
+    const sub = rest[0];
+    const projectIndex = rest.indexOf('--project');
+    const project = projectIndex >= 0 && rest[projectIndex + 1] ? resolve(rest[projectIndex + 1]!) : cwd;
+    try {
+      if (sub === 'enable') {
+        const launcher = options.launcherPath ?? process.argv[1];
+        if (!launcher) throw new Error('[oa] service enable could not resolve the oa launcher');
+        const receipt = enableService(project, launcher);
+        console.log(
+          `[oa] service enabled for ${receipt.projectRoot}; run \`oa service ensure\` explicitly, ` +
+          `or \`oa integration ztrack enable\` to add an on-demand trigger`,
+        );
+        return 0;
+      }
+      if (sub === 'ensure') {
+        const result = await ensureService(project);
+        console.log(`[oa] service ${result.action} (pid ${result.health.pid})`);
+        return 0;
+      }
+      if (sub === 'status') {
+        const result = await serviceStatus(project);
+        const pid = result.health ? `, pid ${result.health.pid}` : '';
+        console.log(`[oa] service: ${result.enabled ? 'enabled' : 'disabled'}, ${result.state}${pid}`);
+        return result.state === 'port-conflict' ? 1 : 0;
+      }
+      if (sub === 'disable') {
+        const result = await disableService(project);
+        console.log(`[oa] service disabled${result.stopped ? ' and stopped' : ''}`);
+        return 0;
+      }
+      if (sub === 'run') {
+        const signal = await runService({
+          cwd: project,
+          installSignalHandlers: true,
+          run: (abortSignal, onReady) => runResident({ cwd: project, signal: abortSignal, onReady }),
+        });
+        return signalExitCode(signal);
+      }
+      console.error('[oa] service: usage: oa service enable|ensure|status|disable');
+      return 1;
+    } catch (error) {
+      console.error((error as Error)?.message ?? error);
+      return 1;
+    }
+  }
+  if (cmd === 'integration' && rest[0] === 'ztrack') {
+    const action = rest[1];
+    const projectIndex = rest.indexOf('--project');
+    const project = projectIndex >= 0 && rest[projectIndex + 1] ? resolve(rest[projectIndex + 1]!) : cwd;
+    try {
+      if (action === 'enable') {
+        const launcher = options.launcherPath ?? process.argv[1];
+        if (!launcher) throw new Error('[oa] ztrack integration could not resolve the oa launcher');
+        const receipt = enableService(project, launcher);
+        try {
+          enableZtrackIntegration(receipt.projectRoot, {
+            launcherPath: launcher,
+            ...(options.ztrackPath ? { ztrackPath: options.ztrackPath } : {}),
+            ...(options.nodePath ? { nodePath: options.nodePath } : {}),
+          });
+        } catch (error) {
+          console.error((error as Error)?.message ?? error);
+          console.error('[oa] service is armed but has no automatic trigger; use `oa service ensure`');
+          return 1;
+        }
+        console.log(
+          `[oa] ztrack integration enabled for ${receipt.projectRoot}; ` +
+          `a project-bound ztrack invocation will ensure the repository service`,
+        );
+        return 0;
+      }
+      if (action === 'disable') {
+        disableZtrackIntegration(project, options.ztrackPath);
+        console.log('[oa] ztrack integration disabled; service lifecycle is unchanged');
+        return 0;
+      }
+      if (action === 'wake') {
+        const paths = servicePaths(project);
+        if (!readServiceEnable(paths)) return 0;
+        await ensureService(project);
+        return 0;
+      }
+      console.error('[oa] integration ztrack: usage: oa integration ztrack enable|disable');
+      return 1;
+    } catch (error) {
+      console.error((error as Error)?.message ?? error);
       return 1;
     }
   }

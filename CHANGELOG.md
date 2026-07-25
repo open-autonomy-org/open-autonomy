@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- The local OA CLI now supports an explicitly armed, per-Git-repository service lifecycle plus an
+  optional downstream ztrack integration. OA registers its own callback through ztrack's public,
+  machine-local project-hook contract; ztrack contains no OA-specific bridge. A dead process remains
+  down until the next project invocation or explicit ensure, and OA installs no OS supervisor.
+
 ### Changed
 
 - Git repository installs and upgrades now require a completely clean worktree, prepare every repository

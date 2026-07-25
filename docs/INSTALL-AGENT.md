@@ -481,11 +481,15 @@ proven *before* auto-merge went live. That is a proven install.
 Phase 4 proves *one* merge. For the loop to actually run a backlog over days, set these up — otherwise the
 "install" is an ephemeral demo that dies when the terminal closes.
 
-- **Make the loop durable.** `node scheduler/run.mjs &` dies on terminal close / logout / reboot. Run it
-  under a supervisor that restarts it: a `launchd` plist (macOS) / `systemd --user` unit (Linux), or at
-  minimum `nohup node scheduler/run.mjs >> ~/oa-loop.log 2>&1 &` inside a persistent `tmux`. Add a liveness
-  check (is the process up?). The provider is detached and install-owned; every scheduler restart ensures
-  and reuses it automatically.
+- **Make the loop available on demand.** Run `oa integration ztrack enable` once in the installed
+  repository. This arms the OA service and registers OA's callback through ztrack's public
+  `project:invoke` hook API; both records are machine-local under Git's common directory and the command
+  launches nothing. A later project-bound ztrack invocation runs a bounded ensure before its own operation,
+  and concurrent calls converge on one scheduler. A killed process stays down until that next demand—there
+  is no `launchd`/`systemd` installation and no automatic login/reboot restart. If local ztrack does not
+  support project hooks, setup fails visibly and leaves `oa service ensure` as the explicit fallback. Use
+  `oa integration ztrack disable` to remove the trigger, and `oa service status|ensure|disable` for
+  explicit process lifecycle control.
 - **Feed the backlog.** The loop runs whatever is `ready` on the GitHub board. Add work the same way as the
   first issue (`ztrack issue create … --state ready` → `ztrack sync github` → label `ready`). A `ready` issue
   **must already carry** a `## Acceptance Criteria` block and the top `Assignee: <login>` line — the PM never

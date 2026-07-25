@@ -467,16 +467,22 @@ than a wall-clock timer.
 With the `hello` profile, the first **unpaused** `--once` tick launches a `greeter` session — you'll see
 it in `termfleet sessions recent --live` and the console. That confirms the whole local path works.
 
-**Keeping it running (unattended):** a backgrounded `node scheduler/run.mjs &` **dies on terminal close,
-logout, or reboot**. The managed provider is detached and the next scheduler start reuses or restarts it,
-but the scheduler itself still needs supervision. For a loop that survives, run it
-under a supervisor that restarts it: a `launchd` plist (macOS), a `systemd --user` unit (Linux), or at
-minimum `nohup node scheduler/run.mjs >> ~/oa-loop.log 2>&1 &` inside a persistent `tmux`, plus a liveness
-check that the process is up. `docs/INSTALL-AGENT.md`'s
+**Keeping it available on demand:** run `oa integration ztrack enable` once in the installed repository.
+That command arms OA and registers OA's callback through ztrack's public `project:invoke` hook API; it
+does not start OA. The registration is machine-local under Git's common directory, never committed, and
+ztrack itself contains no OA-specific behavior. A later project-bound ztrack invocation runs a bounded
+ensure before the tracker operation. Concurrent calls converge on one repository-scoped process. If OA is
+killed, logs out with the machine, or is absent after reboot, it stays down until the next invocation (or
+an explicit `oa service ensure`); OA installs no login item and does not restart itself. If the installed
+ztrack predates project hooks, integration setup fails visibly while leaving the service armed for explicit
+`oa service ensure`. Inspect with `oa service status`; remove the trigger with
+`oa integration ztrack disable`, and disarm plus stop the service with `oa service disable`.
+`docs/INSTALL-AGENT.md`'s
 ["Durable operation, observability & re-runs"](./INSTALL-AGENT.md#durable-operation-observability--re-runs)
 has the fuller treatment (feeding the backlog, worktree housekeeping, idle spend).
 
-**Stopping the loop:** `Ctrl-C` the scheduler (or `kill` its PID if you backgrounded it). Stopping the
+**Stopping the loop:** use `oa service disable`, or `Ctrl-C` a foreground `oa start`. Merely killing an
+enabled service stops it now, but a later registered project hook will ensure it again. Stopping the
 scheduler stops new launches; the install-owned provider remains available for the next scheduler run,
 and a worker session already running in tmux finishes on its own. Close a worker through Termfleet if you
 need it gone now. On the local runner this is also your spend stop — there is no proxy cap, so a stopped

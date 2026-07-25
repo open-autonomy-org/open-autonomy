@@ -14,10 +14,11 @@ import { runCli } from '../index.ts';
 // TypeScript/module resolver. Keep the lightweight help/pause/status/doctor verbs directly Node-runnable;
 // re-exec only the resident/activation verbs under the already-required Bun runtime.
 const command = process.argv[2];
-if (typeof globalThis.Bun === 'undefined' && (!command || command === 'start' || command === 'activate' || command === 'rollback')) {
+const serviceRun = command === 'service' && process.argv[3] === 'run';
+if (typeof globalThis.Bun === 'undefined' && (!command || command === 'start' || command === 'activate' || command === 'rollback' || serviceRun)) {
   const child = spawnSync('bun', [fileURLToPath(import.meta.url), ...process.argv.slice(2)], { stdio: 'inherit' });
   process.exit(child.status ?? 1);
 }
 
-const code = await runCli(process.argv.slice(2));
+const code = await runCli(process.argv.slice(2), { launcherPath: fileURLToPath(import.meta.url) });
 process.exit(code);

@@ -3,8 +3,8 @@
 // in bin/oa.ts's own header comment, and exercises argv wiring `runCli` alone can't catch (process.exit
 // codes, --help formatting, unknown-command handling).
 import { describe, expect, test } from 'bun:test';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,15 @@ function tmpRepo(schedule: object): string {
   return dir;
 }
 
+async function waitUntil(check: () => boolean, timeoutMs = 4_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await Bun.sleep(25);
+  }
+  throw new Error(`condition was not met within ${timeoutMs}ms`);
+}
+
 describe('oa (real node subprocess)', () => {
   test('--help prints the verb table and exits 0', () => {
     const r = spawnSync('node', [BIN, '--help'], { encoding: 'utf8' });
@@ -29,6 +38,7 @@ describe('oa (real node subprocess)', () => {
     expect(r.stdout).toContain('oa status');
     expect(r.stdout).toContain('oa dispatch');
     expect(r.stdout).toContain('oa doctor');
+    expect(r.stdout).toContain('oa integration ztrack enable');
   });
 
   test('an unknown command exits nonzero and names itself', () => {
@@ -36,6 +46,86 @@ describe('oa (real node subprocess)', () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain('unknown command "bogus"');
   });
+
+  test('service enable arms a git repository without launching OA', () => {
+    const dir = tmpRepo({ intervalSeconds: 900, scripts: ['bun scripts/sweep.ts'] });
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: dir });
+      const enabled = spawnSync('node', [BIN, 'service', 'enable'], { cwd: dir, encoding: 'utf8' });
+      expect(enabled.status).toBe(0);
+      expect(enabled.stdout).toContain('run `oa service ensure` explicitly');
+
+      const status = spawnSync('node', [BIN, 'service', 'status'], { cwd: dir, encoding: 'utf8' });
+      expect(status.status).toBe(0);
+      expect(status.stdout).toContain('enabled, stopped');
+    } finally {
+      spawnSync('node', [BIN, 'service', 'disable'], { cwd: dir, encoding: 'utf8' });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('ztrack integration is an OA-owned adapter over the public hook CLI', () => {
+    const dir = tmpRepo({ intervalSeconds: 900, scripts: ['bun scripts/sweep.ts'] });
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: dir });
+      const binDir = join(dir, 'node_modules', '.bin');
+      mkdirSync(binDir, { recursive: true });
+      const calls = join(dir, 'ztrack-calls.jsonl');
+      const ztrack = join(binDir, 'ztrack');
+      writeFileSync(ztrack, `#!/usr/bin/env node
+require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+`);
+      chmodSync(ztrack, 0o700);
+
+      const enabled = spawnSync('node', [BIN, 'integration', 'ztrack', 'enable'], {
+        cwd: dir,
+        encoding: 'utf8',
+      });
+      expect(enabled.status).toBe(0);
+      expect(enabled.stdout).toContain('ztrack integration enabled');
+      expect(JSON.parse(readFileSync(calls, 'utf8').trim())).toContain('project:invoke');
+
+      const status = spawnSync('node', [BIN, 'service', 'status'], { cwd: dir, encoding: 'utf8' });
+      expect(status.stdout).toContain('enabled, stopped');
+
+      const disabled = spawnSync('node', [BIN, 'integration', 'ztrack', 'disable'], {
+        cwd: dir,
+        encoding: 'utf8',
+      });
+      expect(disabled.status).toBe(0);
+      const callLines = readFileSync(calls, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(callLines.at(-1)).toEqual(['hooks', 'remove', 'open-autonomy.service']);
+    } finally {
+      spawnSync('node', [BIN, 'service', 'disable'], { cwd: dir, encoding: 'utf8' });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test('foreground start retains the historical non-Git script-only path', async () => {
+    const dir = tmpRepo({
+      intervalSeconds: 900,
+      scripts: [`node -e "require('fs').writeFileSync('started.txt','yes')"`],
+    });
+    const indexUrl = new URL('./index.ts', import.meta.url).href;
+    const source = `
+process.chdir(${JSON.stringify(dir)});
+const { runCli } = await import(${JSON.stringify(indexUrl)});
+process.exit(await runCli(['start']));
+`;
+    const child = spawn('bun', ['-e', source], { cwd: dir, stdio: 'ignore' });
+    try {
+      await waitUntil(() => existsSync(join(dir, 'started.txt')));
+      const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+        child.once('exit', (code, signal) => resolve({ code, signal }));
+      });
+      child.kill('SIGINT');
+      const exit = await exited;
+      expect(exit.signal === 'SIGINT' || exit.code === 130).toBe(true);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 10_000);
 
   test('pause then resume round-trips the real marker file on disk', () => {
     const dir = tmpRepo({ intervalSeconds: 900, scripts: ['bun scripts/sweep.ts'] });

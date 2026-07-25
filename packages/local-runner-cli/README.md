@@ -30,6 +30,12 @@ Once it is published, adopting the CLI is a packaging/release change—not a new
 | Verb | What | Was |
 |---|---|---|
 | `oa start` | continuous generic job scheduler with fences, session singleton, concurrency, retry/backoff, reaping, and opaque effects | `node scheduler/run.mjs` |
+| `oa service enable` | arm machine-local, on-demand recovery for this Git repository; does not launch a process | — |
+| `oa service ensure` | reuse the repository's live scheduler or start exactly one when it is down | — |
+| `oa service status` | report whether recovery is armed and whether the service is stopped, starting, or running | — |
+| `oa service disable` | disarm recovery and stop the live service, if any | — |
+| `oa integration ztrack enable` | arm the service and register OA through ztrack's public, machine-local `project:invoke` hook | — |
+| `oa integration ztrack disable` | remove OA's ztrack registration without changing the service lifecycle | — |
 | `oa once` | make one pass over jobs, respecting fences and `maxConcurrent` | `node scheduler/run.mjs --once` |
 | `oa pause [reason]` | touch the conventional `.open-autonomy/paused` fence; jobs assigned that fence drain and stop | `touch .open-autonomy/paused` |
 | `oa resume` | remove `.open-autonomy/paused`; jobs assigned that fence are re-armed within one heartbeat | `rm .open-autonomy/paused` |
@@ -50,6 +56,13 @@ Once it is published, adopting the CLI is a packaging/release change—not a new
   independently controlled job, as the example below does for audits. The scheduler reads each job's
   declared fence; it does not hardcode one marker as an override for every job. Marker files remain the
   source of truth across scheduler restarts—there is no hidden fence state in a daemon.
+- **Service lifetime is explicit and demand-driven.** `oa service enable` writes a mode-`0600` receipt
+  beneath Git's common directory, so linked worktrees share one machine-local opt-in. It does not start
+  OA. `oa integration ztrack enable` is a downstream adapter: it registers OA's callback through ztrack's
+  public `project:invoke` hook CLI, without requiring any OA-specific code or schema in ztrack. The
+  repository-scoped loopback control port is the singleton lease, so concurrent callbacks converge on one
+  scheduler. If that process dies, nothing restarts it until the next qualifying invocation (or an explicit
+  `oa service ensure`). No login item, `launchd` plist, or `systemd` unit is installed.
 - **The repo keeps committing `autonomy.yml`/`schedule.json`/prompts.** This package reads them from `cwd`
   — nothing is bundled, cached, or baked in at publish time. Point `oa` at a different repo and it reads
   *that* repo's config.
