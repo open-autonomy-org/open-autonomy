@@ -7,8 +7,8 @@
 - The bundled self-driving profile's plain `VERSION` mirror now matches the release version.
 - Dependency locks now select patched releases for the advisories reported by the repository security
   gate.
-- Packed-artifact Git candidate smoke tests now retain large reviewed diffs without truncating the
-  trailing machine-readable candidate SHA.
+- Reviewed Git candidate output now flushes the complete diff and machine-readable candidate SHA before
+  the CLI exits; packed-artifact smoke tests also retain large subprocess output.
 
 ## 0.4.3
 

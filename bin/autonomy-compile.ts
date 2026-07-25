@@ -327,8 +327,12 @@ if (outDir) {
           console.log('open-autonomy: compiled installation already matches the repository; no candidate needed.')
           process.exit(0)
         }
-        console.log(renderPreparedInstallCandidate(candidate))
-        console.log(`install-candidate=${candidate.receipt.candidateSha}`)
+        await new Promise<void>((resolveWrite, rejectWrite) => {
+          process.stdout.write(
+            `${renderPreparedInstallCandidate(candidate)}\ninstall-candidate=${candidate.receipt.candidateSha}\n`,
+            (error) => error ? rejectWrite(error) : resolveWrite(),
+          )
+        })
         process.exit(0)
       } catch (error) {
         console.error((error as Error).message)
