@@ -38,23 +38,34 @@ Two paths reach you, and only two:
 
 ## What reaching you looks like
 
-The local runner realizes the engage seam by parking a session. You will see it:
+This profile runs on **Hermes**, whose seam for reaching you is a **blocked card**. A worker that needs
+you calls `kanban_block` with kind `needs_input`; the card stops there and the kernel will not dispatch it
+again until a person acts. Nothing times out, and no model can clear it for you — proven by running: the
+card stayed blocked across three further dispatch ticks with nothing promoting it.
 
-- printed by the runner (`[runner] HUMAN ENGAGE: maintainer #<id> — <ask>`),
-- appended to `.open-autonomy/runner-state/human-attention.md` — tail this file to watch for asks,
-- and, if the install's operator set `AUTONOMY_HUMAN_ENGAGE_CMD`, delivered to that command as JSON on
-  stdin. That is where a real Hermes gateway (Slack, Discord) is wired in: the ask becomes a message in
-  a channel. Optional, never required — the parked session is the source of truth either way.
+You will find asks by looking at the board:
+
+```
+hermes kanban list --json          # a blocked card is one waiting on a person
+hermes kanban show <id> --json     # the ask, and the run history that led to it
+```
+
+If the install's operator runs a Hermes **gateway**, the same event is delivered to a real channel
+(Slack, Discord, Telegram) as `⏸ Kanban <id> blocked <reason>` — that is where a chat notification comes
+from. It is convenience, never the source of truth: the blocked card is.
 
 ## The result that resumes the loop
 
 Do the thing the ask actually asks for, verify the stated `completion.ac` yourself, then:
 
 ```
-bun scripts/runner.ts update <id> --status done
+hermes kanban unblock <id>
 ```
 
-There is no other path to `done`, and nothing else in the system will take it for you.
+That returns the card to the board and the kernel dispatches it again. There is no other path, and nothing
+else in the system will take it for you. (In particular there is no `runner.ts update` verb here — the
+emitted `scripts/runner.ts` implements `launch`, `list`, `get` and `cancel` only. Unblocking is an
+operator act, deliberately not something an agent can call.)
 
 Three things you may legitimately do instead, all of which are better than a reluctant approval:
 
