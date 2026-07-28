@@ -168,6 +168,33 @@ test('the ztrack done-gate is armed only on code:propose holders, and only when 
   expect(compileHermes(ir(source, tracker)).generated['hermes/hooks/ztrack-done-gate.py']).toContain('--auto-scope');
 });
 
+test('a declared result.schema becomes PROSE the worker reads, not just a manifest field', () => {
+  // The defect a full live loop found: `result.schema` was declared, resolved, compiled into the manifest,
+  // and read back by `HermesRunner.result()` — while NOTHING ANYWHERE TOLD THE WORKER TO PRODUCE ONE. The
+  // live develop worker completed with thoughtful freeform metadata under no namespace, because that is
+  // what a competent model does when handed a metadata field and no contract. A Hermes profile is directed
+  // by prose, so the realization is prose appended to its soul.
+  const source =
+    `  develop:\n    behavior: develop\n    capabilities: [code:propose]\n    result: { schema: { $id: x.v1, type: object, additionalProperties: false, required: [outcome], properties: { outcome: { enum: [proposed] } } } }\n    triggers: [{ dispatch: true }]\n` +
+    `  review:\n    behavior: review\n    capabilities: [code:review]\n    result: { schema: open-autonomy.review.v1 }\n    triggers: [{ dispatch: true }]\n` +
+    `  audit:\n    behavior: audit\n    capabilities: [tasks:converse]\n    triggers: [{ dispatch: true }]\n`;
+  const out = loweringFor(ir(source));
+  // An actor with no `result` gets no contract — a completion with no declared shape is not improved by
+  // inventing one.
+  expect(out.resultContractRoles).toEqual(['develop', 'review']);
+
+  const compiled = compileHermes(ir(source));
+  const develop = compiled.generated['hermes/profiles/develop/RESULT-CONTRACT.md']!;
+  // The namespace is the load-bearing part: Hermes stamps `worker_session_id` into EVERY completion's
+  // metadata, which invalidates any envelope declaring `additionalProperties: false` — as this one does.
+  expect(develop).toContain('open_autonomy');
+  expect(develop).toContain('"$id": "x.v1"');
+  // A named standard schema must resolve to its actual JSON Schema, not be quoted as an opaque string —
+  // a worker told only "satisfy open-autonomy.review.v1" has been told nothing.
+  expect(compiled.generated['hermes/profiles/review/RESULT-CONTRACT.md']).toContain('"properties"');
+  expect(compiled.generated['hermes/profiles/audit/RESULT-CONTRACT.md']).toBeUndefined();
+});
+
 test('policy.maxConcurrent is the board cap, and only a cron trigger makes an actor standing', () => {
   const parsed = ir(
     `  a:\n    behavior: a\n    capabilities: []\n    triggers: [{ cron: "0 * * * *" }, { dispatch: true }]\n` +

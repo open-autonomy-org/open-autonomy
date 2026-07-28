@@ -8,6 +8,7 @@
 import { emitAutonomy, type AutonomyIR, type CompileOutput } from '@open-autonomy/core';
 import { stringify as stringifyYaml } from 'yaml';
 import { boardConfig, loweredProfiles, loweringFindings, scriptActors, type HermesProfile, type LoweringFinding } from './lowering';
+import { RESULT_CONTRACT_FILE, resultContracts } from './result-envelope';
 import { runnerFrontendSrc } from './runner-frontend';
 import {
   HERMES_BIN_PLACEHOLDER,
@@ -62,6 +63,9 @@ export interface HermesLowering {
      *  command for `GATE_COMMAND_PLACEHOLDER` */
     configPatch: Record<string, unknown>;
   };
+  /** Roles whose SOUL.md gets the result-envelope contract appended (they declare a resolvable
+   *  `result.schema`). Without it the declaration is decorative — see result-envelope.ts. */
+  resultContractRoles?: string[];
   /** The trigger-param binding: which profiles get the session-env shim that exports a card's declared
    *  launch params into its worker's shell (see session-env.ts). Absent ⇒ no actor declares params. */
   sessionEnv?: {
@@ -88,6 +92,7 @@ export function loweringFor(ir: AutonomyIR): HermesLowering {
   const boundRoles = Object.entries(ir.agents)
     .filter(([role, agent]) => lowered.has(role) && declaresParams(agent))
     .map(([role]) => role);
+  const contractRoles = Object.keys(resultContracts(ir, [...lowered]));
   return {
     schema: 'open-autonomy.hermes-lowering.v1',
     board: boardConfig(ir),
@@ -104,6 +109,7 @@ export function loweringFor(ir: AutonomyIR): HermesLowering {
           },
         }
       : {}),
+    ...(contractRoles.length ? { resultContractRoles: contractRoles } : {}),
     ...(boundRoles.length
       ? {
           sessionEnv: {
@@ -240,6 +246,7 @@ if session_env:
 written = []
 gated = []
 bound = []
+contracted = []
 for profile in lowering["profiles"]:
     role = profile["role"]
     profile_dir = home / "profiles" / role
@@ -288,7 +295,19 @@ for profile in lowering["profiles"]:
     soul_src = here / "profiles" / role / "SOUL.md"
     if not soul_src.exists():
         sys.exit(f"hermes/install.py: missing {soul_src} — the install is incomplete; re-run the compile.")
-    (profile_dir / "SOUL.md").write_text(soul_src.read_text(encoding="utf-8"), encoding="utf-8")
+    # THE SOUL PLUS ITS RESULT CONTRACT. The skill is portable prose and stays verbatim; the envelope
+    # requirement is THIS substrate's realization of the actor's declared \`result.schema\`, appended rather
+    # than spliced so the portable file is never edited. Without it the declaration is decorative: a live
+    # worker completed with thoughtful freeform metadata under no namespace, because nothing had ever told
+    # it there was a contract, and \`HermesRunner.result()\` found nothing to read.
+    soul = soul_src.read_text(encoding="utf-8")
+    contract_src = here / "profiles" / role / "RESULT-CONTRACT.md"
+    if role in (lowering.get("resultContractRoles") or []):
+        if not contract_src.exists():
+            sys.exit(f"hermes/install.py: missing {contract_src} — the install is incomplete; re-run the compile.")
+        soul = soul + contract_src.read_text(encoding="utf-8")
+        contracted.append(role)
+    (profile_dir / "SOUL.md").write_text(soul, encoding="utf-8")
     (profile_dir / ".profile.json").write_text(
         (here / "profiles" / role / ".profile.json").read_text(encoding="utf-8"), encoding="utf-8")
     written.append(f"{role}[{','.join(profile['toolsets']) or 'no-toolsets'}]")
@@ -311,6 +330,9 @@ if ztrack:
         print("[hermes-lowering] WARNING  no \`ztrack\` on PATH here. The gate FAILS CLOSED by design, so a "
               "worker without ztrack cannot complete a card at all. Install ztrack (or set ZTRACK_BIN) in "
               "the environment the WORKERS run in.", file=sys.stderr)
+if lowering.get("resultContractRoles"):
+    print(f"[hermes-lowering] result envelope contract appended to the soul of: {' '.join(contracted) or '(none)'} "
+          f"-- they must complete with metadata.open_autonomy matching their declared result.schema")
 if session_env:
     print(f"[hermes-lowering] trigger params exported into the worker shell on: {' '.join(bound) or '(none)'} "
           f"-- via terminal.shell_init_files -> {session_env_file}")
@@ -461,6 +483,11 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
   // way to file work is `kanban_create`, which bypasses the review edge — `review: <role>` is realized in
   // `HermesRunner.launch`, so a directly-created card is a proposal nobody is scheduled to review.
   generated['scripts/runner.ts'] = runnerFrontendSrc();
+
+  const contracts = resultContracts(ir, lowering.profiles.map((p) => p.role));
+  for (const [role, prose] of Object.entries(contracts)) {
+    generated[`${HERMES_DIR}/profiles/${role}/${RESULT_CONTRACT_FILE}`] = prose;
+  }
 
   for (const profile of lowering.profiles) {
     copies.push({ from: `skills/${profile.behavior}/SKILL.md`, to: `${HERMES_DIR}/profiles/${profile.role}/SOUL.md` });
