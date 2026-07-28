@@ -22,6 +22,7 @@
 // portable skill must stay portable, and the envelope requirement is this substrate's realization of a
 // portable declaration, not new doctrine.
 import { resolveResultSchema, type AutonomyIR } from '@open-autonomy/core';
+import { CODE_HOST_ONLY_RESULT_FIELDS } from './lowering';
 
 export const RESULT_CONTRACT_FILE = 'RESULT-CONTRACT.md';
 
@@ -35,12 +36,30 @@ export function resultContracts(ir: AutonomyIR, lowered: readonly string[]): Rec
     if (!declared) continue;
     const schema = resolveResultSchema(declared);
     if (!schema) continue; // an unresolvable schema is already a core-level finding; don't paper over it
-    out[role] = contractProse(role, schema, typeof declared === 'string' ? declared : undefined);
+    // A required field this substrate cannot source is REMOVED from the contract before the worker ever
+    // sees it. Leaving it in is what produced the live `"pr": 4`: the prose below tells the model to fill
+    // every required field from what it ACTUALLY did AND that an envelope which does not validate counts
+    // for nothing — so when a required field has no honest value, those two instructions make FABRICATING
+    // strictly better than omitting. The substrate wrote that trap, so the substrate removes it rather
+    // than asking a model to resolve a contradiction. The removal is not silent: `loweringFindings`
+    // reports the same field, so an operator reads it at compile time.
+    const unsourceable = ((schema.required as string[] | undefined) ?? []).filter(
+      (f) => CODE_HOST_ONLY_RESULT_FIELDS.has(f) && ir.codeHost !== 'github',
+    );
+    const relaxed = unsourceable.length
+      ? { ...schema, required: (schema.required as string[]).filter((f) => !unsourceable.includes(f)) }
+      : schema;
+    out[role] = contractProse(role, relaxed, typeof declared === 'string' ? declared : undefined, unsourceable);
   }
   return out;
 }
 
-function contractProse(role: string, schema: Record<string, unknown>, namedId?: string): string {
+function contractProse(
+  role: string,
+  schema: Record<string, unknown>,
+  namedId?: string,
+  relaxed: readonly string[] = [],
+): string {
   return `
 ---
 
@@ -65,7 +84,18 @@ that says \`outcome: blocked\` disagree, and the envelope wins — so make it th
 required field from what you ACTUALLY did (real commit SHAs, the ACs you really proved). An envelope that
 does not validate is treated as no envelope at all.
 
-${namedId ? `This is the standard \`${namedId}\` contract.\n\n` : ''}Your envelope must satisfy this JSON Schema:
+${namedId ? `This is the standard \`${namedId}\` contract.\n\n` : ''}${
+    relaxed.length
+      ? `**${relaxed.map((f) => `\`${f}\``).join(', ')} ${relaxed.length === 1 ? 'has' : 'have'} been REMOVED from this
+contract's required fields.** The standard schema requires ${relaxed.length === 1 ? 'it' : 'them'}, but
+${relaxed.length === 1 ? 'it names something' : 'they name things'} that only exist on a code host and this
+project has none — so there is no honest value to give. Omit ${relaxed.length === 1 ? 'it' : 'them'}. Do not
+invent ${relaxed.length === 1 ? 'a number or identifier' : 'numbers or identifiers'} to make a schema pass;
+that is the exact failure this envelope exists to prevent.
+
+`
+      : ''
+  }Your envelope must satisfy this JSON Schema:
 
 \`\`\`json
 ${JSON.stringify(schema, null, 2)}

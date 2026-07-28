@@ -146,6 +146,11 @@ export interface HermesProfile {
   workspace: 'dir' | 'worktree';
   /** Hermes `--max-runtime` seconds for a card dispatched to this profile (IR `timeout` is minutes). */
   maxRuntimeSeconds?: number;
+  /** The actor's cron expression, when it has one. Carried so the installer can create a real Hermes cron
+   *  job: `standing` alone is a CLASSIFICATION, and for a while it was only that — the roster printed
+   *  "standing (own cron)" while no cron job was ever created, so every standing actor silently never
+   *  fired. A schedule that exists only as a boolean is not a schedule. */
+  cron?: string;
   /** true when the actor is fired by its own cron rather than spawned per-card by the dispatcher — the
    *  side of Hermes' `_check_kanban_orchestrator_mode` gate it lands on. The installer writes the same
    *  toolsets either way; this decides which of them are actually OFFERED at runtime. */
@@ -209,6 +214,21 @@ export function loweringFindings(ir: AutonomyIR): LoweringFinding[] {
         });
       }
     }
+    // A `code:propose` actor that is NOT gated is a real loss of guarantee, so it is reported rather than
+    // quietly ungated. It cannot be gated — `ztrack check --auto-scope` resolves the issue from the branch
+    // name, and only an isolated actor has one — but an operator must know that this actor's `done` means
+    // what the KERNEL means by it (a worker returned) and not what the gate means.
+    if (
+      ztrackPresetOf(ir) &&
+      !isHuman(agent) &&
+      agent.execution?.workspace !== 'isolated' &&
+      (agent.capabilities ?? []).some((c) => capabilityAxis(c) === 'code:propose')
+    ) {
+      findings.push({
+        construct: `agents.${role}.capabilities[code:propose]`,
+        detail: `this actor proposes commits but runs in the SHARED checkout, so the ztrack done-gate cannot be armed on it: the gate resolves its issue from the branch name (\`--auto-scope\`) and only an \`execution.workspace: isolated\` actor gets a branch named for its issue. Its completion is therefore NOT verified — \`done\` means only that the worker returned. Give it \`execution: { workspace: isolated }\` to earn the gate. (Gating it anyway would fail closed on every card and wedge it permanently, which is what shipped before this rule existed.)`,
+      });
+    }
     // A required envelope field the substrate cannot supply is worse than an unrealized one: it does not
     // fail, it FABRICATES. Observed live — `open-autonomy.review.v1` requires `pr` (integer >= 1), this
     // profile has no code host, and the reviewer, told to satisfy the schema, wrote `"pr": 4` for a pull
@@ -257,6 +277,7 @@ export function loweredProfiles(ir: AutonomyIR): { profiles: HermesProfile[]; hu
       toolsets,
       workspace: workspaceFor(agent),
       ...(typeof agent.timeout === 'number' ? { maxRuntimeSeconds: agent.timeout * 60 } : {}),
+      ...(cronOf(agent) ? { cron: cronOf(agent)! } : {}),
       standing: isStanding(agent),
     });
   }

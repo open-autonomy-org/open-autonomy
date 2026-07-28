@@ -91,6 +91,29 @@ test('the emitted frontend and HermesRunner issue IDENTICAL kanban commands for 
   expect(fromFrontend).toEqual(fromRunner);
 });
 
+test('...and for list / get / cancel too — every verb, not just the one that was easy to check', async () => {
+  // The first version of this file covered `launch` only, which is exactly the shape of coverage that
+  // reads as a guarantee and is not one: the other three verbs could drift freely while the test stayed
+  // green. `cancel` matters most — it archives CHILDREN first, and a frontend that forgot to would strand
+  // every review card of a cancelled proposal in `todo` forever, waiting on a parent that never completes.
+  for (const argv of [['list'], ['get', 't_stub00'], ['cancel', 't_stub00']]) {
+    const a = stubRepo();
+    const runner = new HermesRunner({ cwd: a.dir, installDir: a.dir, bin: a.bin, env: { ...process.env, RUNNER_ARGV_LOG: a.log } });
+    if (argv[0] === 'list') await runner.list();
+    else if (argv[0] === 'get') await runner.get('t_stub00');
+    else await runner.cancel('t_stub00');
+
+    const b = stubRepo();
+    writeFileSync(join(b.dir, 'runner.ts'), runnerFrontendSrc());
+    const run = spawnSync('bun', [join(b.dir, 'runner.ts'), ...argv], {
+      cwd: b.dir, encoding: 'utf8',
+      env: { ...process.env, RUNNER_ARGV_LOG: b.log, HERMES_BIN: b.bin },
+    });
+    expect(run.status, `frontend ${argv[0]} failed: ${run.stdout}${run.stderr}`).toBe(0);
+    expect(normalize(b.log, b.dir), `verb: ${argv[0]}`).toEqual(normalize(a.log, a.dir));
+  }
+});
+
 test('the frontend refuses --branch instead of ignoring it, and names git’s constraint', () => {
   const b = stubRepo();
   writeFileSync(join(b.dir, 'runner.ts'), runnerFrontendSrc());

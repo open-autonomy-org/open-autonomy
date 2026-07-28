@@ -54,11 +54,22 @@
 # is what the `review:` edge is FOR. Issue-level dependencies stay in ztrack; `--parent` is used only for
 # this within-item sequencing, so there is still exactly one dependency graph per question.
 schema: autonomy.ir.v1
-# `local` for the same reason simple-sdlc is: this is a PR-free process (review = the reviewer's verdict
-# over commit-evidence). `hermes` is now the native target — packages/substrate-hermes landed, and this
-# profile is what it compiles: every actor becomes a Hermes profile whose SOUL.md is that actor's SKILL.md
-# verbatim, `maintainer` deliberately becomes no profile at all, and the kanban kernel is the board.
-targets: [local, hermes]
+# This is what packages/substrate-hermes compiles: every actor becomes a Hermes profile whose SOUL.md is
+# that actor's SKILL.md verbatim, `maintainer` deliberately becomes no profile at all, and the kanban
+# kernel is the board. It stays PR-free (review = the reviewer's verdict over commit-evidence).
+#
+# HERMES ONLY, and this narrowed from `[local, hermes]` once the doctrine actually became native.
+# Two independent reasons, either of which is sufficient:
+#   - Both substrates emit `scripts/runner.ts` (the Runner frontend) with DIFFERENT contents, so compiling
+#     this profile both ways into one repository leaves whichever ran last, silently. `compileHermes`
+#     refuses the pair outright now rather than letting that race decide.
+#   - The skills below are no longer substrate-neutral. They tell a worker that the KERNEL enforces
+#     concurrency, that the reviewer is dispatched into the proposal's worktree after the developer
+#     finishes, and that `--branch` is refused because the runner names branches. Every one of those is
+#     false on `local`, whose runner has no kernel and takes `--branch` from the PM. Compiling this to
+#     `local` would install confident, wrong doctrine — the silent class this profile exists to kill.
+# `simple-sdlc` remains the local-substrate profile; this one is its Hermes-native sibling.
+targets: [hermes]
 codeHost: local-git
 
 agents:

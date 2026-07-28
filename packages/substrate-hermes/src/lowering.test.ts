@@ -156,12 +156,20 @@ test('the ztrack done-gate is armed only on code:propose holders, and only when 
   // different reason — its done-ness is a verdict, and its contract is already the standard review envelope.
   const source =
     `  pm:\n    behavior: pm\n    capabilities: [tasks:author]\n    triggers: [{ cron: "0 * * * *" }]\n` +
-    `  develop:\n    behavior: develop\n    capabilities: [code:propose]\n    triggers: [{ dispatch: true }]\n` +
+    `  develop:\n    behavior: develop\n    capabilities: [code:propose]\n    execution: { workspace: isolated }\n    triggers: [{ dispatch: true }]\n` +
     `  review:\n    behavior: review\n    capabilities: [code:review]\n    triggers: [{ dispatch: true }]\n` +
-    `  audit:\n    behavior: audit\n    capabilities: [code:propose@docs/audits]\n    triggers: [{ dispatch: true }]\n`;
+    `  audit:\n    behavior: audit\n    capabilities: [code:propose@docs/audits]\n    triggers: [{ dispatch: true }]\n` +
+    `  auditor2:\n    behavior: audit\n    capabilities: [code:propose@docs/audits]\n    execution: { workspace: isolated }\n    triggers: [{ dispatch: true }]\n`;
   const tracker = 'policy: { maxConcurrent: 2, box: { tracker: { ztrackPreset: simple-sdlc } } }';
-  // A scoped capability still gates on its AXIS — `audit` proposes commits like anyone else.
-  expect(loweringFor(ir(source, tracker)).ztrack?.gatedRoles).toEqual(['develop', 'audit']);
+  // `audit` is NOT gated, and that correction cost a permanently wedged actor. The gate runs
+  // `ztrack check --auto-scope`, which resolves the issue from the BRANCH NAME — and only an isolated
+  // actor gets a branch named for its issue. A shared-checkout actor sits on trunk, where auto-scope
+  // reports "unresolved" and gates the whole tracker, so the gate fails closed on EVERY card it sees.
+  // `auditor2` is byte-identical except for `workspace: isolated`, and that alone earns the gate.
+  const gated = loweringFor(ir(source, tracker));
+  expect(gated.ztrack?.gatedRoles).toEqual(['develop', 'auditor2']);
+  // The un-gateable actor's lost guarantee is REPORTED, never silently dropped.
+  expect(gated.findings.map((f) => f.detail).join('\n')).toContain('NOT verified');
   // No tracker declared ⇒ no verification plane ⇒ no gate emitted, rather than an inert one.
   expect(loweringFor(ir(source)).ztrack).toBeUndefined();
   expect(compileHermes(ir(source)).generated['hermes/hooks/ztrack-done-gate.py']).toBeUndefined();

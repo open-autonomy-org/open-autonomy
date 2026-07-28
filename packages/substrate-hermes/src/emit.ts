@@ -139,7 +139,7 @@ Reads hermes/lowering.json (the compile's receipt) and writes one Hermes profile
 operator's existing home config supplies model/provider/credentials; this script never invents them and
 never writes a secret into the repo. Idempotent: re-running overwrites the derived files and nothing else.
 """
-import copy, json, os, shutil, sys
+import copy, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
 
@@ -209,19 +209,21 @@ if ztrack:
 # "\$ZTRACK_ISSUE"\` read nothing. This installs a file into \`terminal.shell_init_files\`, which Hermes'
 # session-env login shell sources before snapshotting the environment with \`export -p\`; the file resolves
 # the card by \$HERMES_KANBAN_TASK and exports its params. See substrate-hermes/src/session-env.ts.
+# The \`hermes\` CLI this install drives — the session-env resolver shells out to it, and the cron
+# reconcile below runs it directly. Prefer the sibling of the interpreter running THIS script (that is the
+# venv whose \`hermes\` is the one being configured) and fall back to PATH.
+hermes_bin = Path(sys.executable).parent / ("hermes.exe" if os.name == "nt" else "hermes")
+if not hermes_bin.exists():
+    found = shutil.which("hermes")
+    hermes_bin = Path(found) if found else None
+
 session_env = lowering.get("sessionEnv")
 session_env_file = None
 if session_env:
-    # The \`hermes\` CLI the resolver shells out to. Prefer the sibling of the interpreter running THIS
-    # script — that is the venv whose \`hermes\` is the one being configured — and fall back to PATH.
-    hermes_bin = Path(sys.executable).parent / ("hermes.exe" if os.name == "nt" else "hermes")
-    if not hermes_bin.exists():
-        found = shutil.which("hermes")
-        if not found:
-            sys.exit("hermes/install.py: no \`hermes\` executable beside " + str(sys.executable) + " or on PATH,\\n"
-                     "and the session-env shim shells out to it to read each card's launch params. Run this\\n"
-                     "with the venv interpreter that runs Hermes.")
-        hermes_bin = Path(found)
+    if hermes_bin is None:
+        sys.exit("hermes/install.py: no \`hermes\` executable beside " + str(sys.executable) + " or on PATH,\\n"
+                 "and the session-env shim shells out to it to read each card's launch params. Run this\\n"
+                 "with the venv interpreter that runs Hermes.")
     dest_dir = home / "open-autonomy"
     dest_dir.mkdir(parents=True, exist_ok=True)
     resolver_src = here / "hooks" / "oa-session-params.py"
@@ -312,7 +314,50 @@ for profile in lowering["profiles"]:
         (here / "profiles" / role / ".profile.json").read_text(encoding="utf-8"), encoding="utf-8")
     written.append(f"{role}[{','.join(profile['toolsets']) or 'no-toolsets'}]")
 
+# ---- standing actors get a REAL cron job ----
+# \`standing\` was a classification and nothing else for a while: the roster printed "standing (own cron)"
+# while no cron job was ever created, so pm and audit silently never fired. A schedule that exists only as
+# a boolean is not a schedule. Reconciled BY NAME so re-running the installer replaces rather than stacks
+# — \`cron create\` has no idempotency key, and a duplicated PM tick is two orchestrators on one board.
+scheduled = []
+for profile in lowering["profiles"]:
+    schedule = profile.get("cron")
+    if not schedule:
+        continue
+    role = profile["role"]
+    if hermes_bin is None:
+        print(f"[hermes-lowering] WARNING  cannot create the cron job for '{role}' -- no \`hermes\` executable "
+              f"beside {sys.executable} or on PATH. This actor is STANDING and will never fire.", file=sys.stderr)
+        continue
+    job_name = f"open-autonomy:{role}"
+    cron_env = dict(os.environ)
+    cron_env["HERMES_HOME"] = str(home / "profiles" / role)   # cron jobs are per-profile state
+
+    def _cron(*args):
+        return subprocess.run([str(hermes_bin), "cron", *args], capture_output=True, text=True, env=cron_env)
+
+    listed = _cron("list", "--all").stdout or ""
+    job_id = None
+    for line in listed.splitlines():
+        m = re.match(r"\\s+([0-9a-f]{6,})\\s+\\[", line)
+        if m:
+            job_id = m.group(1)
+        elif job_id and line.strip().startswith("Name:") and line.split("Name:", 1)[1].strip() == job_name:
+            _cron("remove", job_id)
+            job_id = None
+    made = _cron("create", schedule, f"Run one {role} tick now, following your SOUL.md.",
+                 "--name", job_name, "--workdir", str(here.parent))
+    if made.returncode == 0:
+        scheduled.append(f"{role}[{schedule}]")
+    else:
+        print(f"[hermes-lowering] WARNING  could not create the cron job for '{role}': "
+              f"{(made.stderr or made.stdout).strip()[:300]}", file=sys.stderr)
+
 print(f"[hermes-lowering] {len(written)} profile(s) into {home}: {' '.join(written)}")
+if any(p.get("cron") for p in lowering["profiles"]):
+    print(f"[hermes-lowering] cron jobs for standing actors: {' '.join(scheduled) or '(none)'}")
+    print("[hermes-lowering] NOTE  cron fires only while the Hermes GATEWAY runs (\`hermes gateway status\`); "
+          "without it, a standing actor never ticks. \`hermes cron tick\` runs due jobs once by hand.")
 # WHAT THE FLEET WILL SPEND, said out loud at install time. A profile config is a full REPLACEMENT of the
 # home config, so every generated profile necessarily inherits the operator's whole model/provider block —
 # there is no way to write a working profile that does not. That inheritance is correct (the fleet runs on
@@ -450,6 +495,17 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
         `SOUL.md — there is no soul to write for a script, and installing one would produce a profile that ` +
         `dispatches and does nothing. Fix: give the actor a prose skill folder, or compile this profile ` +
         `onto "local", which runs a script behavior directly.`,
+    );
+  }
+
+  // `scripts/runner.ts` is emitted at the SAME path the local substrate emits its own frontend to, with
+  // different contents, and nothing downstream would notice one silently overwriting the other. A profile
+  // that targets both is therefore refused up front rather than compiled into whichever target ran last.
+  if (ir.targets.includes('local')) {
+    throw new Error(
+      `open-autonomy: this profile declares \`targets: [${ir.targets.join(', ')}]\`, but "hermes" and "local" ` +
+        `both emit \`scripts/runner.ts\` — the Runner frontend — with different contents, so compiling both ` +
+        `into one repository would leave whichever ran last, silently. Split the profile, or drop one target.`,
     );
   }
 

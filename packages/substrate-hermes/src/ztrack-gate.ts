@@ -34,15 +34,27 @@ export const ZTRACK_GATE_INSTALLED_SUBPATH = 'open-autonomy/ztrack-done-gate.py'
  *  `ztrack check` per tool use. */
 export const GATED_TOOL = 'kanban_complete';
 
-/** Which actors the gate applies to: the ones holding `code:propose`, because their "done" MEANS code
- *  exists and ztrack's guarantee is exactly commit-backed evidence. Deliberately NOT every actor:
- *   - `pm`/`draft` complete tracker work in a scratch workspace with no branch for `--auto-scope` to
- *     resolve from, so gating them would fail closed on every card and wedge the board.
- *   - `review`'s done-ness is a VERDICT, and its contract is already the standard review envelope
- *     (`open-autonomy.review.v1`) — the merge gate is the reviewer, not a second check of the same commits.
- *   - a `kind: human` actor is never a worker at all. */
+/** Which actors the gate applies to. TWO conditions, and the second one was missing at first — which
+ *  wedged an actor permanently.
+ *
+ *  1. It holds `code:propose`: its "done" MEANS code exists, and ztrack's guarantee is exactly
+ *     commit-backed evidence. (`review`'s done-ness is a VERDICT, and its contract is already the standard
+ *     review envelope — the merge gate is the reviewer, not a second check of the same commits. A
+ *     `kind: human` actor is never a worker at all.)
+ *  2. It runs in an ISOLATED workspace. This is not a preference; it is what makes the gate RESOLVABLE.
+ *     The gate runs `ztrack check --auto-scope`, which resolves the issue from the branch name — and only
+ *     an isolated actor gets a branch named for its issue (`branchFor`, set by the runner at launch). An
+ *     actor in the shared checkout sits on trunk, where `--auto-scope` reports "unresolved (no issue id
+ *     found in branch 'master')" and gates the WHOLE TRACKER, so the gate fails closed on every card it
+ *     ever sees and the actor can never complete anything.
+ *
+ *     This exact wedge shipped: `audit` holds `code:propose@docs/audits` and runs in the shared checkout,
+ *     so it was gated and permanently unable to finish. The original version of this comment already
+ *     excluded `pm`/`draft` for having "no branch for `--auto-scope` to resolve from" — and then failed to
+ *     apply its own rule to the one code:propose actor with the same property. Now the rule is the code. */
 export function isZtrackGated(agent: IRAgent): boolean {
   if (agent.kind === 'human') return false;
+  if (agent.execution?.workspace !== 'isolated') return false;
   return (agent.capabilities ?? []).some((cap) => capabilityAxis(cap) === 'code:propose');
 }
 
