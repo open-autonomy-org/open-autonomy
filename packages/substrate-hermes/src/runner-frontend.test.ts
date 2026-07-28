@@ -114,6 +114,35 @@ test('...and for list / get / cancel too — every verb, not just the one that w
   }
 });
 
+test('...and the SESSION SHAPE they print agrees for every card status, not just the argv', async () => {
+  // The gap that let a real bug through. This file's header claims it is the seam that keeps the two
+  // implementations honest — but it only ever compared the kanban argv handed to the stub, never the JSON
+  // either side PRINTS. So when `triage` was corrected from a healthy `running` session to `paused` on
+  // HermesRunner, the emitted frontend kept reporting a wedged card as running, and this test stayed
+  // green. The frontend is the surface the PM actually reads; a status divergence there is the whole
+  // failure, and the argv was identical throughout.
+  for (const status of ['triage', 'todo', 'scheduled', 'ready', 'running', 'review', 'blocked', 'done', 'archived']) {
+    const a = stubRepo();
+    writeFileSync(join(a.dir, 'runner.ts'), runnerFrontendSrc());
+    writeFileSync(join(a.dir, 'hermes-stub'), STUB.replace('"status":"ready"', `"status":"${status}"`));
+    chmodSync(join(a.dir, 'hermes-stub'), 0o755);
+    const fromRunner = await new HermesRunner({
+      cwd: a.dir, installDir: a.dir, bin: a.bin, env: { ...process.env, RUNNER_ARGV_LOG: a.log },
+    }).get('t_stub00');
+
+    const run = spawnSync('bun', [join(a.dir, 'runner.ts'), 'get', 't_stub00', '--json'], {
+      cwd: a.dir, encoding: 'utf8',
+      env: { ...process.env, RUNNER_ARGV_LOG: `${a.log}.f`, HERMES_BIN: a.bin },
+    });
+    expect(run.status, `frontend get failed for ${status}: ${run.stderr}`).toBe(0);
+    const fromFrontend = JSON.parse(run.stdout);
+    // `status` is the contract vocabulary both must agree on. The frontend additionally carries `card`
+    // (the raw Hermes status) and `branch`/`workspace`/`params`, which HermesRunner returns differently —
+    // those are deliberate, the status mapping is not.
+    expect(fromFrontend.status, `status disagrees for card status "${status}"`).toBe(fromRunner!.status);
+  }
+});
+
 test('the frontend refuses --branch instead of ignoring it, and names git’s constraint', () => {
   const b = stubRepo();
   writeFileSync(join(b.dir, 'runner.ts'), runnerFrontendSrc());
