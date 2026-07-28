@@ -9,6 +9,7 @@ import { emitAutonomy, withGeneratedManifest, type AutonomyIR, type CompileOutpu
 import { stringify as stringifyYaml } from 'yaml';
 import { boardConfig, loweredProfiles, loweringFindings, scriptActors, type HermesProfile, type LoweringFinding } from './lowering';
 import { RESULT_CONTRACT_FILE, resultContracts } from './result-envelope';
+import { SUBSTRATE_FACTS_FILE, substrateFacts } from './substrate-facts';
 import { runnerFrontendSrc } from './runner-frontend';
 import {
   HERMES_BIN_PLACEHOLDER,
@@ -334,6 +335,13 @@ for profile in lowering["profiles"]:
     # worker completed with thoughtful freeform metadata under no namespace, because nothing had ever told
     # it there was a contract, and \`HermesRunner.result()\` found nothing to read.
     soul = soul_src.read_text(encoding="utf-8")
+    # WHERE AM I RUNNING — appended to every soul. The skill is portable prose naming artifacts this
+    # substrate does not have; without this the worker has no way to know which machine it is on, and the
+    # audit actor could not name the substrate it audits.
+    facts_src = here / "profiles" / role / "SUBSTRATE-FACTS.md"
+    if not facts_src.exists():
+        sys.exit(f"hermes/install.py: missing {facts_src} — the install is incomplete; re-run the compile.")
+    soul = soul + facts_src.read_text(encoding="utf-8")
     contract_src = here / "profiles" / role / "RESULT-CONTRACT.md"
     if role in (lowering.get("resultContractRoles") or []):
         if not contract_src.exists():
@@ -587,6 +595,13 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
   // way to file work is `kanban_create`, which bypasses the review edge — `review: <role>` is realized in
   // `HermesRunner.launch`, so a directly-created card is a proposal nobody is scheduled to review.
   generated['scripts/runner.ts'] = runnerFrontendSrc();
+
+  // Every profile learns what machine it is on. See substrate-facts.ts: the SOUL is portable prose that
+  // names artifacts this substrate does not have, and `audit` — the conformance auditor of this very
+  // install — could not name the substrate it audits.
+  for (const profile of lowering.profiles) {
+    generated[`${HERMES_DIR}/profiles/${profile.role}/${SUBSTRATE_FACTS_FILE}`] = substrateFacts(ir, lowering, profile.role);
+  }
 
   const contracts = resultContracts(ir, lowering.profiles.map((p) => p.role));
   for (const [role, prose] of Object.entries(contracts)) {

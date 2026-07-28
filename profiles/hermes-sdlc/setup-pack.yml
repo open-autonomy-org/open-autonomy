@@ -1,7 +1,7 @@
-# simple-sdlc's hand-authored SetupPack facts (TS.1/TP.4 — "the simplest one-shot path", proven early per
+# hermes-sdlc's hand-authored SetupPack facts (TS.1/TP.4 — "the simplest one-shot path", proven early per
 # the task list's own sequencing note). Everything NOT here (targets, codeHost, roster) is a VIEW computed
 # from ir.yml by packages/core/src/setup-pack.ts's getSetupPack. This profile ships NO `provision.json` —
-# it is `targets: [local]` / `codeHost: local-git`, so every GitHub-only pack field (required_checks,
+# it is `targets: [hermes]` / `codeHost: local-git`, so every GitHub-only pack field (required_checks,
 # check_realizations, enforce_admins, labels) is simply absent, and validates OK absent (TS.1 acceptance).
 #
 # landing_mode: PR-FREE. `develop` pushes commits directly (code:propose, no github codeHost is realized as

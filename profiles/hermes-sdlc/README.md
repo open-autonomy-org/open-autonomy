@@ -1,35 +1,36 @@
-# simple-sdlc
+# hermes-sdlc
 
-A minimal software-delivery loop expressed as `autonomy.ir.v1`, ported from the ztrack `simple-sdlc`
-profile. Four agents, each a prose skill the substrate runs model-interpreted:
+A software-delivery loop expressed as `autonomy.ir.v1`, compiled onto a **native Hermes substrate**: Hermes'
+own kanban kernel IS the board, its dispatched workers ARE the launched sessions, and its standing profiles
+are the orchestrators. `simple-sdlc` is the sibling profile for the `local` substrate; this one is not
+portable to it (see `ir.yml`'s `targets:` comment — its doctrine states things that are false on `local`).
 
-| agent | trigger | does |
+| actor | fired as | does |
 |---|---|---|
-| `pm` | `cron */15` | the only dispatcher — sweeps the board, enforces WIP (≤1 in-progress, ≤1 in-review), launches the next eligible worker |
-| `draft` | `dispatch` | shapes an untriaged request into a verifiable Ready issue (sources + 1-3 ACs + evidence scaffold) |
-| `develop` | `dispatch` | implements one Ready issue and produces real evidence per AC; stops on a human-required path/topic |
-| `review` | `dispatch` | gates an In-Review change: `ztrack check` green, every passed AC backed by cited evidence, then Done or rework |
+| `pm` | cron (standing) | **Intake + integration.** Decides what ENTERS the board — applying the risk, allowlist and body-deferral fences no kernel has an opinion about — and merges reviewed branches to trunk. It does **not** schedule: the kernel owns eligibility, WIP, leases, timeouts and termination. |
+| `draft` | dispatch | Shapes an untriaged request into a verifiable Ready issue. Tracker only, never the working tree. |
+| `develop` | dispatch | Implements one Ready issue in its **own git worktree** and produces commit-backed evidence for each AC. |
+| `review` | dispatch (auto) | Verifies one proposal and returns a verdict. Opened automatically as a linked child card at the proposal's launch — nobody has to remember to request review. |
+| `audit` | dispatch + cron | Conformance auditor of the install. |
+| `maintainer` | — | `kind: human`. Gets **no profile**: a person is not something a dispatcher can spawn. Reached through Hermes' own seam — a worker calls `kanban_block(kind="needs_input")` and the card waits for a real operator's `kanban unblock`. |
 
-The PM is the only autonomous trigger (`cron`). The three workers are **`dispatch`** agents: the PM reads
-the ztrack board on its tick, decides the next move from each issue's state (a property it READS, not a
-trigger), and **launches** the matching worker through the Runner (`agent:launch`):
+## The two planes
 
-```bash
-bun scripts/runner.ts launch develop --ref <issue-id>
-```
+Kanban owns **dispatch** (board, WIP, leases, worktrees, the review edge). `ztrack` owns **verification**
+(issues, acceptance criteria, commit-backed proof). A card is a *run of* an issue, never the issue — which
+is why `kanban.db` is disposable and `.volter/tracker/` is not. They meet in exactly two thin places: a
+branch name and an exit code. Neither reads the other's storage.
 
-The work item rides in as `--ref` and the worker reads it as `$ZTRACK_ISSUE` (its `subject.ref` param).
-The dispatch model is substrate-agnostic (`cron` + `agent:launch`), but this profile targets **`local`
-only**: it is **PR-free** — review is the reviewer's verdict over commit-evidence, not a pull request.
-The github substrate lands a `code:propose` change as an auto-merging PR gated by an independent
-`agent-review` status (a boundary this profile doesn't provide), so a PR-free process can't merge there.
-The GitHub PR-based SDLC is `simple-gh-sdlc`'s job.
-
-The agents use [`ztrack`](https://github.com/volter-ai/ztrack) for tooling (issues, checks, evidence);
-the shared `standards/` are read by every skill.
+`develop` runs behind a **done-gate**: a Hermes `pre_tool_call` hook refuses `kanban_complete` until
+`ztrack check` is green, so "done" is unreachable rather than merely discouraged. Read
+`hermes/README.md` in a compiled install for what is gated, what is not, and why.
 
 ## Compile
 
-```bash
-bun bin/autonomy-compile.ts profiles/simple-sdlc local
+```sh
+open-autonomy compile hermes-sdlc hermes <repo>
+HERMES_HOME=~/.hermes <hermes-venv>/bin/python <repo>/hermes/install.py
 ```
+
+The installer prints what it armed, which actors are gated, which are **not** (and what that costs), and the
+model every profile inherits. Read its output — it is the honest receipt.

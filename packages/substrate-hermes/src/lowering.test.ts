@@ -203,6 +203,26 @@ test('a declared result.schema becomes PROSE the worker reads, not just a manife
   expect(compiled.generated['hermes/profiles/audit/RESULT-CONTRACT.md']).toBeUndefined();
 });
 
+test('every soul is told which substrate it is on, and an ungated proposer is told it is unverified', () => {
+  // A SOUL.md is its SKILL.md VERBATIM, and those skills are portable prose naming `oa dispatch`,
+  // `$AUTONOMY_TRIGGER_KIND`, `gh api` — none of which exist here. `audit` is the sharp case: it is the
+  // conformance auditor of THIS install, and `grep -ci hermes` on its installed soul was 0. The skill
+  // cannot be edited (check-profiles' SHARED_SKILLS guard requires `audit` byte-identical across
+  // profiles, correctly), so the substrate states its own facts as an appendix instead.
+  const source =
+    `  develop:\n    behavior: develop\n    capabilities: [code:propose]\n    execution: { workspace: isolated }\n    triggers: [{ dispatch: true }]\n` +
+    `  audit:\n    behavior: audit\n    capabilities: [code:propose@docs/audits]\n    triggers: [{ cron: "0 * * * *" }]\n`;
+  const tracker = 'policy: { maxConcurrent: 2, box: { tracker: { ztrackPreset: simple-sdlc } } }';
+  const g = compileHermes(ir(source, tracker)).generated;
+  expect(g['hermes/profiles/audit/SUBSTRATE-FACTS.md']).toContain('Hermes');
+  // The gate cannot be armed on a shared-checkout proposer, so its soul must SAY its done is unverified —
+  // the alternative is an actor that believes a gate is protecting it.
+  expect(g['hermes/profiles/audit/SUBSTRATE-FACTS.md']).toContain('NOT behind the done-gate');
+  expect(g['hermes/profiles/develop/SUBSTRATE-FACTS.md']).not.toContain('NOT behind the done-gate');
+  // ...and a standing actor is told its dispatch model differs from a per-card worker's.
+  expect(g['hermes/profiles/audit/SUBSTRATE-FACTS.md']).toContain('OWN SCHEDULE');
+});
+
 test('policy.maxConcurrent is the board cap, and only a cron trigger makes an actor standing', () => {
   const parsed = ir(
     `  a:\n    behavior: a\n    capabilities: []\n    triggers: [{ cron: "0 * * * *" }, { dispatch: true }]\n` +
