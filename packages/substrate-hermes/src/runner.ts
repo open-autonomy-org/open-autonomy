@@ -27,6 +27,9 @@ type CardStatus = 'triage' | 'todo' | 'scheduled' | 'ready' | 'running' | 'block
 
 interface Card {
   id: string;
+  /** the kernel's circuit-breaker counter — non-zero means the card was auto-blocked, not human-parked */
+  consecutive_failures?: number | null;
+  last_failure_error?: string | null;
   title: string;
   body: string | null;
   assignee: string | null;
@@ -84,19 +87,34 @@ function decodeParams(body: string | null | undefined): LaunchParams | undefined
 // it, whether or not a worker has claimed it yet. `blocked` is Hermes' human seam (a worker called
 // kanban_block and the card is waiting on a person), which is precisely `paused`.
 const STATUS_NOTE: Record<CardStatus, [SessionStatus, string | undefined]> = {
-  triage: ['running', 'queued for triage — a specifier will flesh out the spec'],
+  // `triage` is NOT benign here. Nothing in this substrate ever files a card into triage deliberately, so
+  // in practice a card only lands there via the kernel's unblock-loop breaker — it is wedged, undispatchable,
+  // and unreachable by every Runner verb except cancel. Reporting it as ordinary progress hid that.
+  triage: ['paused', 'in Hermes `triage` — not dispatchable; needs a human decision or `cancel`'],
   todo: ['running', 'waiting on a dependency (the kernel promotes it when its parents finish)'],
   scheduled: ['running', 'parked until a time, not on human input'],
   ready: ['running', 'eligible — not yet claimed by a worker'],
   running: ['running', undefined],
   review: ['running', 'awaiting review'],
+  // `blocked` covers BOTH a worker's deliberate `kanban_block(needs_input)` (the human seam) and the
+  // kernel's circuit breaker giving up after repeated crashes. Those need different responses, so the note
+  // is resolved from the card rather than assumed — see `noteForBlocked`.
   blocked: ['paused', 'blocked — awaiting a human (`hermes kanban unblock <id>`)'],
   done: ['done', undefined],
   archived: ['cancelled', undefined],
 };
 
 function sessionOf(card: Card): Session {
-  const [status, note] = STATUS_NOTE[card.status] ?? (['running', `unmapped card status "${card.status}"`] as const);
+  const [status, base] = STATUS_NOTE[card.status] ?? (['running', `unmapped card status "${card.status}"`] as const);
+  // A `blocked` card is EITHER a worker's deliberate kanban_block(needs_input) — the human seam — or the
+  // kernel's circuit breaker giving up after repeated crashes/timeouts. Those want opposite responses, and
+  // reporting both as "awaiting a human" made a dead worker look like a considered handoff. The card
+  // carries the distinguishing data; read it rather than assume.
+  const note =
+    card.status === 'blocked' && (card.consecutive_failures ?? 0) > 0
+      ? `auto-blocked by the kernel after ${card.consecutive_failures} consecutive failures` +
+        `${card.last_failure_error ? ` — ${String(card.last_failure_error).slice(0, 200)}` : ''}`
+      : base;
   const params = decodeParams(card.body);
   return {
     id: card.id,
@@ -145,38 +163,41 @@ interface ManifestAgent {
  *  (`kanban edit` takes only result/summary/metadata). A creation-time timestamp has the property that
  *  actually matters: distinct per card. Re-launching the same actor for the same issue does not stack a
  *  branch, because `--idempotency-key` returns the EXISTING card without creating one. */
-export function branchFor(ref: string, now: number = Date.now()): string {
-  return `${ref}-${now.toString(36)}`;
-}
-
 /** The `--workspace` argument for an actor. BOTH kinds carry an explicit absolute path, and both had to
  *  learn that the hard way from a live dispatch:
  *
  *   - `isolated` -> `worktree:<repo>`. A BARE `worktree` defers the repo to the BOARD's `default_workdir`,
- *     and a board without one spawn-fails every card it dispatches ("workspace_kind=worktree but no
- *     workspace_path, and board 'default' has no default_workdir set") — which then trips the
- *     consecutive-failure breaker and auto-blocks the card.
+ *     and a board without one spawn-fails every card it dispatches, then trips the consecutive-failure
+ *     breaker and auto-blocks it.
  *   - `shared` -> `dir:<repo>`, NOT `scratch`. Hermes' `scratch` is a fresh EMPTY directory under
  *     `<board-root>/workspaces/<card-id>/`, auto-deleted on completion — not the checkout. The live
- *     reviewer was dispatched into one with `TERMINAL_CWD` pinned there and had to go hunting for the repo
- *     by path before it could read the history it existed to review. `dir:<path>` is Hermes' own third
- *     workspace kind and means precisely "run in this existing directory".
+ *     reviewer was dispatched into one and had to go hunting for the repo by path. `dir:<path>` is Hermes'
+ *     own third workspace kind and means precisely "run in this existing directory".
  *
- *  The runner already knows the repo — it is the cwd it was invoked in. Saying so is self-contained and
- *  cannot drift from board config. Conformance never caught either of these because conformance never
- *  DISPATCHES; only a live worker does. */
+ *  The runner already knows the repo — it is the cwd it was invoked in. Conformance never caught either of
+ *  these because conformance never DISPATCHES; only a live worker does. */
 export function hermesWorkspace(declared: ManifestAgent | undefined, repo: string): string {
   return `${declared?.execution?.workspace === 'isolated' ? 'worktree' : 'dir'}:${repo}`;
 }
 
 /** Where Hermes materializes a card's linked worktree. Its own rule, quoted from `resolve_workspace`'s
  *  docstring: "If `workspace_path` names a repo root, Hermes treats it as an anchor and materializes a
- *  linked worktree at `<repo>/.worktrees/<task-id>`" — which is what `hermesWorkspace` asks for. Named here
- *  rather than inlined because relying on a convention should be visible, and because `openReviewCard` is
- *  the one caller that must predict the path BEFORE the kernel resolves it (the review card is opened at
- *  the proposal's launch; the proposal's worktree does not exist until the kernel claims it). */
+ *  linked worktree at `<repo>/.worktrees/<task-id>`". Named here rather than inlined because relying on a
+ *  convention should be visible, and because `openReviewCard` must PREDICT the path before the kernel
+ *  resolves it (the review card is opened at the proposal's launch; the worktree does not exist until the
+ *  kernel claims it). Verified live: the predicted path matched byte-for-byte. */
 export function hermesWorktreePath(repo: string, cardId: string): string {
   return join(repo, '.worktrees', cardId);
+}
+
+let branchNonce = 0;
+export function branchFor(ref: string, now: number = Date.now()): string {
+  // The timestamp alone collides: two launches for one ref inside the same millisecond mint the same branch
+  // and the second worktree spawn fails. Idempotency masked that until a `done` hit stopped being treated as
+  // a launch (`createCard`) — its retry loop issues several creates back to back, which is exactly the
+  // sub-millisecond case. A per-process counter closes it deterministically.
+  branchNonce = (branchNonce + 1) % 46656;
+  return `${ref}-${now.toString(36)}-${branchNonce.toString(36)}`;
 }
 
 function subjectRefOf(declared: ManifestAgent | undefined, params: LaunchParams): string | undefined {
@@ -390,7 +411,10 @@ export class HermesRunner implements Runner {
       throw new Error(
         `open-autonomy: launched "${agent}" as card ${parentId} but could not open its "${reviewer}" review ` +
           `card — ${(r.stderr || r.stdout).trim() || 'no output'}. The proposal card exists and is UNREVIEWED; ` +
-          `cancel it (\`hermes kanban archive ${parentId}\`) or open the review card by hand.`,
+          `remove it with \`bun scripts/runner.ts cancel ${parentId}\` (which archives its children FIRST) ` +
+          `or open the review card by hand. Do NOT \`hermes kanban archive\` the proposal on its own: ` +
+          `\`recompute_ready\` treats an archived parent as SATISFIED, so any orphan review card is ` +
+          `released to the dispatcher and spawns a reviewer into a worktree that will never exist.`,
       );
     }
   }
@@ -416,9 +440,13 @@ export class HermesRunner implements Runner {
     return this.readCard(id)?.branch_name ?? undefined;
   }
 
+  /** NOTE on the error path, because the obvious one is dead code: `hermes kanban show <missing>` prints
+   *  "no such task: <id>" and exits **0**, so `r.ok` is true for a card that does not exist. The JSON parse
+   *  is what actually detects it. That also means a REAL failure (locked db, bad --board) is
+   *  indistinguishable from a missing card here — both surface as `undefined` — so callers must treat
+   *  `undefined` as "unknown", never as "definitely absent". */
   private readCard(id: string): Card | undefined {
     const r = this.kanban(['show', id, '--json']);
-    if (!r.ok) return undefined;
     try {
       return (JSON.parse(r.stdout) as { task: Card }).task;
     } catch {
@@ -456,8 +484,24 @@ export class HermesRunner implements Runner {
         return this.kanban(['unblock', id]).ok;
       case 'done':
         return this.kanban(['complete', id]).ok;
-      case 'failed':
-        return this.kanban(['block', id, 'failed', '--kind', 'transient']).ok;
+      case 'failed': {
+        // NOT a bare re-block. Hermes routes a repeated SAME-KIND block-after-unblock to `triage` to break
+        // unblock loops — and `triage` is not dispatchable and no Runner verb except cancel can leave it.
+        // Verified: block/unblock/block put a card in triage while `update` returned TRUE, and the card
+        // then reported as a healthy `running` session forever. So a second failure escalates honestly
+        // instead of silently wedging.
+        const before = this.readCard(id)?.status;
+        const ok = this.kanban(['block', id, 'failed', '--kind', 'transient']).ok;
+        const after = this.readCard(id)?.status;
+        if (after === 'triage' && before !== 'triage') {
+          throw new Error(
+            `open-autonomy: marking ${id} failed pushed it to Hermes' \`triage\` column (repeated same-kind ` +
+              `block after unblock — the kernel's unblock-loop breaker). A triage card is never dispatched ` +
+              `and cannot be unblocked; it needs a human decision, or \`cancel\` to remove it.`,
+          );
+        }
+        return ok;
+      }
       case 'cancelled':
         return this.cancel(id);
     }

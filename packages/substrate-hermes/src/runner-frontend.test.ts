@@ -62,7 +62,7 @@ function stubRepo(): { dir: string; bin: string; log: string } {
 const normalize = (log: string, dir: string) =>
   readFileSync(log, 'utf8')
     .replaceAll(dir, '<repo>')
-    .replace(/LOCAL-1-[0-9a-z]+/g, 'LOCAL-1-<token>')
+    .replace(/LOCAL-1-[0-9a-z]+-[0-9a-z]+/g, 'LOCAL-1-<token>')
     .trim()
     .split('\n');
 

@@ -72,13 +72,17 @@ export const SESSION_ENV_SCRIPT = `# open-autonomy: export this card's declared 
 # No-ops outside a dispatched card (HERMES_KANBAN_TASK unset), so an interactive \`hermes -p <role> chat\`
 # in the same profile is unaffected.
 if [ -n "\${HERMES_KANBAN_TASK:-}" ]; then
-  __oa_exports="\$(${PARAMS_COMMAND_PLACEHOLDER} 2>/dev/null)" || __oa_exports=""
+  __oa_exports="\$(${PARAMS_COMMAND_PLACEHOLDER} 2>/dev/null)"; __oa_rc=\$?
   if [ -n "\$__oa_exports" ]; then
     eval "\$__oa_exports"
-  else
-    export OPEN_AUTONOMY_PARAMS_ERROR="open-autonomy: the params resolver produced nothing for \$HERMES_KANBAN_TASK"
+  elif [ "\$__oa_rc" -ne 0 ]; then
+    # Empty output is the resolver's documented NON-error path for a card open-autonomy did not create
+    # (a hand-made one carries no params marker), so silence alone must not be reported as a failure —
+    # doing so stamped a false error into the environment of every hand-created card. Only a non-zero
+    # exit means the resolver itself could not run.
+    export OPEN_AUTONOMY_PARAMS_ERROR="open-autonomy: the params resolver failed (exit \$__oa_rc) for \$HERMES_KANBAN_TASK"
   fi
-  unset __oa_exports
+  unset __oa_exports __oa_rc
 fi
 `;
 

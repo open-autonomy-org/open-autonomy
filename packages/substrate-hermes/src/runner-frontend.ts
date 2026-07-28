@@ -91,7 +91,13 @@ const encodeParams = (actor, params) =>
   \`Launched by open-autonomy for actor \\\`\${actor}\\\`.\\n\\n\${PARAMS_MARKER}\\n\\\`\\\`\\\`json\\n\${JSON.stringify(params, null, 2)}\\n\\\`\\\`\\\`\\n\`;
 const workspaceOf = (declared) => \`\${declared?.execution?.workspace === 'isolated' ? 'worktree' : 'dir'}:\${CWD}\`;
 const worktreePathOf = (cardId) => join(CWD, '.worktrees', cardId);
-const branchFor = (ref) => \`\${ref}-\${Date.now().toString(36)}\`;
+// Mirrors HermesRunner.branchFor: the timestamp alone collides when createCard's retry loop issues
+// several creates inside one millisecond, so a per-process counter discriminates them.
+let branchNonce = 0;
+const branchFor = (ref) => {
+  branchNonce = (branchNonce + 1) % 46656;
+  return \`\${ref}-\${Date.now().toString(36)}-\${branchNonce.toString(36)}\`;
+};
 
 // Hermes resolves --idempotency-key with \`status != 'archived'\`, so a DONE card is returned as a hit with
 // the same \`Created <id>\` receipt and exit 0. That silently breaks rework: after changes-requested the

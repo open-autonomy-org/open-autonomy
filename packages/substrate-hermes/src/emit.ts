@@ -5,7 +5,7 @@
 //
 // The correspondence itself lives in ./lowering.ts (pure + unit-tested). This module only decides WHERE
 // the lowered artifacts land and emits the installer that writes them into a real $HERMES_HOME.
-import { emitAutonomy, type AutonomyIR, type CompileOutput } from '@open-autonomy/core';
+import { emitAutonomy, withGeneratedManifest, type AutonomyIR, type CompileOutput } from '@open-autonomy/core';
 import { stringify as stringifyYaml } from 'yaml';
 import { boardConfig, loweredProfiles, loweringFindings, scriptActors, type HermesProfile, type LoweringFinding } from './lowering';
 import { RESULT_CONTRACT_FILE, resultContracts } from './result-envelope';
@@ -411,6 +411,14 @@ print(f"[hermes-lowering] every profile inherits model={_model.get('default') or
 if ztrack:
     print(f"[hermes-lowering] ztrack done-gate ({ztrack['preset']}) armed on: {' '.join(gated) or '(none)'} "
           f"-- \`{gate_command}\` refuses kanban_complete until \`ztrack check\` is green")
+# \`scripts/runner.ts\` is a \`#!/usr/bin/env bun\` script and is the ONLY sanctioned way to file work — a PM
+# without it falls back to \`kanban_create\`, which BYPASSES the review edge and produces proposals nobody is
+# scheduled to review. The installer checked for hermes and warned about ztrack, and said nothing about bun.
+if shutil.which("bun") is None:
+    print("[hermes-lowering] WARNING  no \`bun\` on PATH. \`scripts/runner.ts\` is the only sanctioned launch "
+          "path; without bun a PM cannot file work through it and may fall back to creating cards by hand, "
+          "which SKIPS the review edge. Install bun in the environment the PM runs in.", file=sys.stderr)
+if ztrack:
     if shutil.which("ztrack") is None:
         print("[hermes-lowering] WARNING  no \`ztrack\` on PATH here. The gate FAILS CLOSED by design, so a "
               "worker without ztrack cannot complete a card at all. Install ztrack (or set ZTRACK_BIN) in "
@@ -603,5 +611,9 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
     copies.push({ from: r === '.gitignore' ? 'gitignore' : r, to: r });
   }
 
-  return { generated, copies };
+  // `.open-autonomy/generated.json` — the file manifest, which only compileLocal was producing. Without it
+  // the CLI's own receipt points at a file that does not exist, `doctor` reports "not a compiled install",
+  // and `materialize`'s orphan prune has no prior manifest, so a generated file that is renamed or dropped
+  // is never cleaned up on recompile — silently.
+  return withGeneratedManifest({ generated, copies });
 }
