@@ -3,7 +3,7 @@
 // claim leases and real workers with only Anthropic/GitHub/Slack twinned) — not read off documentation.
 // Two of the entries below were recorded as "does not lower" first and corrected only after being run;
 // the comments say which, because the mistake is instructive and the correction is the load-bearing part.
-import { cronOf, isScript, type AutonomyIR, type IRAgent } from '@open-autonomy/core';
+import { cronOf, isScript, resolveResultSchema, type AutonomyIR, type IRAgent } from '@open-autonomy/core';
 
 /** The Hermes toolsets an OA capability grants. Both registries are CLOSED (docs/SPEC.md#capabilities;
  *  Hermes' toolsets.py), so this dict is the ENTIRE correspondence — a capability absent here grants no
@@ -52,6 +52,11 @@ export const ORCHESTRATOR_ONLY_CAPABILITIES: ReadonlyMap<string, string> = new M
   ['agent:list', 'entirely (`kanban_list` is its only realization)'],
   ['agent:update', 'partially (`kanban_complete`/`kanban_block` still work; `kanban_unblock`, which resumes a paused session, does not)'],
 ]);
+
+/** Required result-envelope fields that only a code host can source. `open-autonomy.review.v1` requires
+ *  `pr` unconditionally, which is a GitHub shape baked into a substrate-NEUTRAL contract — see the finding
+ *  in `loweringFindings` for what a worker does when asked for one that cannot exist. */
+export const CODE_HOST_ONLY_RESULT_FIELDS: ReadonlySet<string> = new Set(['pr']);
 
 /** Is this actor STANDING (a long-lived profile Hermes fires on its own cron) rather than
  *  DISPATCHER-SPAWNED (a worker the kanban dispatcher starts for one card)? A cron trigger lowers to a
@@ -201,6 +206,21 @@ export function loweringFindings(ir: AutonomyIR): LoweringFinding[] {
         findings.push({
           construct: `agents.${role}.capabilities[${cap}]`,
           detail: `capability scope "@${cap.split('@')[1]}" is not natively enforced — Hermes grants the toolset on the bare axis; the scope holds only as skill doctrine`,
+        });
+      }
+    }
+    // A required envelope field the substrate cannot supply is worse than an unrealized one: it does not
+    // fail, it FABRICATES. Observed live — `open-autonomy.review.v1` requires `pr` (integer >= 1), this
+    // profile has no code host, and the reviewer, told to satisfy the schema, wrote `"pr": 4` for a pull
+    // request that does not exist. The envelope validated. Nothing anywhere was wrong except the number.
+    // That is the exact failure mode a typed result contract exists to prevent, arriving through the
+    // contract itself, so it is reported rather than smoothed over.
+    const resultSchema = agent.result?.schema ? resolveResultSchema(agent.result.schema) : undefined;
+    for (const field of (resultSchema?.required as string[] | undefined) ?? []) {
+      if (CODE_HOST_ONLY_RESULT_FIELDS.has(field) && ir.codeHost !== 'github') {
+        findings.push({
+          construct: `agents.${role}.result.schema.required[${field}]`,
+          detail: `the declared result envelope REQUIRES "${field}", which only exists on a code host, and this profile declares none (\`codeHost: ${ir.codeHost ?? 'unset'}\`). A worker told to satisfy the schema has no honest value to put there and will invent one — a live reviewer emitted \`"pr": 4\` for a pull request that never existed. Either declare a code host, or use a result schema whose required fields this substrate can actually source.`,
         });
       }
     }
