@@ -65,14 +65,44 @@ test('a kind:human actor is given NO profile, and the omission is named rather t
   expect(compiled.copies).toContainEqual({ from: 'skills/develop/SKILL.md', to: 'hermes/profiles/develop/SOUL.md' });
 });
 
-test('execution.workspace: isolated lowers to a Hermes worktree, shared/omitted to scratch', () => {
+test('execution.workspace: isolated lowers to a worktree, shared/omitted to dir — NEVER scratch', () => {
+  // `scratch` was the first lowering of `shared` and it is wrong in a way only a dispatched worker shows:
+  // Hermes' scratch is a fresh EMPTY dir under `<board-root>/workspaces/<card>/`, not the checkout. The
+  // live reviewer landed in one with no repo, no git history to review, and `ztrack check` exiting 127
+  // (the ztrack shim finds `node_modules/.bin/ztrack` by walking UP from cwd, and a scratch dir is nowhere
+  // near the repo). `dir:<repo>` is Hermes' own name for "run in this existing directory".
   const { profiles } = loweredProfiles(
     ir(
       `  a:\n    behavior: a\n    capabilities: [code:propose]\n    execution: { workspace: isolated }\n    triggers: [{ dispatch: true }]\n` +
-        `  b:\n    behavior: b\n    capabilities: [code:propose]\n    triggers: [{ dispatch: true }]\n`,
+        `  b:\n    behavior: b\n    capabilities: [code:propose]\n    execution: { workspace: shared }\n    triggers: [{ dispatch: true }]\n` +
+        `  c:\n    behavior: c\n    capabilities: [code:propose]\n    triggers: [{ dispatch: true }]\n`,
     ),
   );
-  expect(profiles.map((p) => p.workspace)).toEqual(['worktree', 'scratch']);
+  expect(profiles.map((p) => p.workspace)).toEqual(['worktree', 'dir', 'dir']);
+});
+
+test('a declared trigger param binds to the worker SHELL, and only for actors that declare one', () => {
+  // Hermes' spawn path builds a worker's env from `dict(os.environ)` of the DISPATCHER plus its own pins;
+  // there is no per-card passthrough anywhere in it. So `params: { ZTRACK_ISSUE: subject.ref }` reached a
+  // live worker as an EMPTY STRING while every skill opened with `echo "$ZTRACK_ISSUE"` — the silent class
+  // this package exists to kill. The realization is `terminal.shell_init_files`, sourced by the session-env
+  // login shell before `export -p` snapshots the environment.
+  const source =
+    `  develop:\n    behavior: develop\n    capabilities: [code:propose]\n    triggers: [{ dispatch: true, params: { ZTRACK_ISSUE: subject.ref } }]\n` +
+    `  audit:\n    behavior: audit\n    capabilities: [tasks:converse]\n    triggers: [{ cron: "0 * * * *" }]\n` +
+    `  maintainer:\n    kind: human\n    behavior: maintainer\n    capabilities: [tasks:converse]\n    triggers: [{ dispatch: true, params: { ZTRACK_ISSUE: subject.ref } }]\n`;
+  const out = loweringFor(ir(source));
+  // `audit` declares no params (no shim), and `maintainer` is a human with no profile to configure at all —
+  // boundRoles must stay a subset of the roster the installer actually writes.
+  expect(out.sessionEnv?.boundRoles).toEqual(['develop']);
+  const compiled = compileHermes(ir(source));
+  expect(compiled.generated['hermes/hooks/oa-session-env.sh']).toContain('HERMES_KANBAN_TASK');
+  expect(compiled.generated['hermes/hooks/oa-session-params.py']).toContain('kanban');
+
+  // No actor binds anything ⇒ no shim emitted, rather than an inert one.
+  const bare = ir(`  a:\n    behavior: a\n    capabilities: [code:propose]\n    triggers: [{ dispatch: true }]\n`);
+  expect(loweringFor(bare).sessionEnv).toBeUndefined();
+  expect(compileHermes(bare).generated['hermes/hooks/oa-session-env.sh']).toBeUndefined();
 });
 
 test('a script behavior refuses to compile — a Hermes profile has no soul to write for one', () => {

@@ -10,17 +10,18 @@ Read:
 - `standards/issue-and-evidence.md`
 - `standards/risk-and-review.md`
 
-You run in **this issue's own git worktree** (branch `agent/issue-$ZTRACK_ISSUE`),
-isolated from other workers. Everything you commit stays on that branch until the
-PM integrates it after review — so **commit both your code and the issue's tracker
-changes** (`git add -A` catches the `.volter` updates), or they won't merge.
-`ztrack check`/`ac patch`/`issue edit` auto-scope to your issue from the branch — no
-need to pass the id to `check`.
+You run in **this issue's own git worktree**, on a branch named for the issue and isolated from other
+workers. The branch is created for you — never rename it, and never construct or assume its exact name;
+`git rev-parse --abbrev-ref HEAD` tells you what it is. Everything you commit stays on that branch until
+the PM integrates it after review — so **commit both your code and the issue's tracker changes**
+(`git add -A` catches the `.volter` updates), or they won't merge. `ztrack check`/`ac patch`/`issue edit`
+auto-scope to your issue from the branch — no need to pass the id to `check`.
 
-You **drive your issue to green under `ztrack loop`** (the idiomatic ztrack flow): you
-arm it once and a Stop hook holds your turn, re-running `ztrack check` every time you
-try to stop — so **you cannot end on a fabricated "done."** Keep working until the
-issue is genuinely green, or take an honest escape (which disarms the loop first).
+**You cannot finish while `ztrack check` is red.** Completing your assignment runs a gate that re-checks
+the issue first and REFUSES the completion while anything is failing, handing you the findings instead of
+letting you stop. So there is nothing to arm and nothing to remember: keep iterating until the issue is
+genuinely green, or take an honest escape (below). A fabricated "done" is not a thing you can express here
+— it is a refusal you will read, verbatim, and have to answer.
 
 ## Procedure
 
@@ -28,10 +29,8 @@ issue is genuinely green, or take an honest escape (which disarms the loop first
 2. View only that assigned issue and implement only its ACs.
    Stop with `OUTCOME: blocked human-required` if the issue requires a
    human-required path or topic from `risk-and-review.md`.
-3. **Arm the drive-to-green loop:** `ztrack loop start "$ZTRACK_ISSUE"`. From here, the
-   Stop hook won't let your turn end while `ztrack check` is red — keep iterating until
-   it's green. It auto-disarms once the issue passes (and is capped, so it can't grind
-   forever).
+3. Run `ztrack check` to see the ACs you must satisfy — this is the same check the completion gate
+   will run, so treat its output as the definition of finished.
 4. Run project tests/checks. If a relevant check exits 0, accept it as passing;
    do not rerun only to get prettier reporter output.
 5. Commit the implementation (`git add -A && git commit`).
@@ -43,8 +42,8 @@ issue is genuinely green, or take an honest escape (which disarms the loop first
    ids/`acVersion`; `ztrack check "$ZTRACK_ISSUE"` names the exact command in its fix
    hint. A checked/passed AC with no evidence fails `check` — never fabricate one.
 7. Leave unsupported ACs unchecked. If a claim genuinely can't be satisfied, take an
-   **honest escape** — never fake green to finish. Because the loop is armed, first
-   disarm it (`ztrack loop stop`), then either: leave the AC pending and end
+   **honest escape** — never fake green to finish. The escape is a BLOCK, not a completion, so the
+   done-gate does not stand in its way: either leave the AC pending and block with
    `OUTCOME: blocked <reason>` (the PM re-dispatches); descope the AC; or, for a
    finding an authority knowingly accepts, `ztrack waiver sign "$ZTRACK_ISSUE" --code
    <code> [--ac <acId>] --reason "…"`.

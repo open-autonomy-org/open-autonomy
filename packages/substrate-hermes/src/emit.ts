@@ -8,6 +8,20 @@
 import { emitAutonomy, type AutonomyIR, type CompileOutput } from '@open-autonomy/core';
 import { stringify as stringifyYaml } from 'yaml';
 import { boardConfig, loweredProfiles, loweringFindings, scriptActors, type HermesProfile, type LoweringFinding } from './lowering';
+import { runnerFrontendSrc } from './runner-frontend';
+import {
+  HERMES_BIN_PLACEHOLDER,
+  PARAMS_COMMAND_PLACEHOLDER,
+  SESSION_ENV_FILE_PLACEHOLDER,
+  SESSION_ENV_INSTALLED_SUBPATH,
+  SESSION_ENV_PATH,
+  SESSION_ENV_RESOLVER_INSTALLED_SUBPATH,
+  SESSION_ENV_RESOLVER_PATH,
+  SESSION_ENV_RESOLVER_SCRIPT,
+  SESSION_ENV_SCRIPT,
+  declaresParams,
+  sessionEnvBlock,
+} from './session-env';
 import {
   GATE_COMMAND_PLACEHOLDER,
   ZTRACK_GATE_INSTALLED_SUBPATH,
@@ -48,6 +62,16 @@ export interface HermesLowering {
      *  command for `GATE_COMMAND_PLACEHOLDER` */
     configPatch: Record<string, unknown>;
   };
+  /** The trigger-param binding: which profiles get the session-env shim that exports a card's declared
+   *  launch params into its worker's shell (see session-env.ts). Absent ⇒ no actor declares params. */
+  sessionEnv?: {
+    /** roles whose sessions export their card's params (see `declaresParams`) */
+    boundRoles: string[];
+    installedSubpath: string;
+    resolverInstalledSubpath: string;
+    /** merged into each bound profile's config.yaml, after substituting the installed shim's real path */
+    configPatch: Record<string, unknown>;
+  };
 }
 
 export function loweringFor(ir: AutonomyIR): HermesLowering {
@@ -58,6 +82,12 @@ export function loweringFor(ir: AutonomyIR): HermesLowering {
         .filter(([, agent]) => isZtrackGated(agent))
         .map(([role]) => role)
     : [];
+  // A `kind: human` actor gets no profile at all, so it can bind nothing — filtering by the lowered roster
+  // rather than by ir.agents keeps `boundRoles` a subset of the profiles the installer will actually write.
+  const lowered = new Set(profiles.map((p) => p.role));
+  const boundRoles = Object.entries(ir.agents)
+    .filter(([role, agent]) => lowered.has(role) && declaresParams(agent))
+    .map(([role]) => role);
   return {
     schema: 'open-autonomy.hermes-lowering.v1',
     board: boardConfig(ir),
@@ -71,6 +101,16 @@ export function loweringFor(ir: AutonomyIR): HermesLowering {
             gatedRoles,
             installedSubpath: ZTRACK_GATE_INSTALLED_SUBPATH,
             configPatch: ztrackHooksBlock(GATE_COMMAND_PLACEHOLDER),
+          },
+        }
+      : {}),
+    ...(boundRoles.length
+      ? {
+          sessionEnv: {
+            boundRoles,
+            installedSubpath: SESSION_ENV_INSTALLED_SUBPATH,
+            resolverInstalledSubpath: SESSION_ENV_RESOLVER_INSTALLED_SUBPATH,
+            configPatch: sessionEnvBlock(SESSION_ENV_FILE_PLACEHOLDER),
           },
         }
       : {}),
@@ -95,6 +135,25 @@ never writes a secret into the repo. Idempotent: re-running overwrites the deriv
 """
 import copy, json, os, shutil, sys
 from pathlib import Path
+
+
+def _merge(target, patch):
+    """One-level-deep merge of a generated config patch into a profile config.
+
+    NOT \`dict.update\`. A patch key like \`terminal\` names a block the operator's base config already fills
+    (docker image, timeouts, home_mode, env passthrough); assigning over it to add one key would silently
+    reset all of it. Lists are UNIONED in order for the same reason — \`terminal.shell_init_files\` may
+    already name the operator's own rc file, and appending is the only non-destructive answer.
+    """
+    for key, value in patch.items():
+        current = target.get(key)
+        if isinstance(value, dict) and isinstance(current, dict):
+            _merge(current, value)
+        elif isinstance(value, list) and isinstance(current, list):
+            target[key] = current + [item for item in value if item not in current]
+        else:
+            target[key] = value
+    return target
 
 try:
     import yaml
@@ -138,8 +197,49 @@ if ztrack:
     # argv entries and needs no shell.
     gate_command = f"{sys.executable} {gate_dest}"
 
+# ---- the trigger-param binding (the session-env shim) ----
+# Hermes' spawn path has NO per-card environment passthrough, so a declared \`params: { ZTRACK_ISSUE:
+# subject.ref }\` reached the worker as an empty string and every skill that opens with \`echo
+# "\$ZTRACK_ISSUE"\` read nothing. This installs a file into \`terminal.shell_init_files\`, which Hermes'
+# session-env login shell sources before snapshotting the environment with \`export -p\`; the file resolves
+# the card by \$HERMES_KANBAN_TASK and exports its params. See substrate-hermes/src/session-env.ts.
+session_env = lowering.get("sessionEnv")
+session_env_file = None
+if session_env:
+    # The \`hermes\` CLI the resolver shells out to. Prefer the sibling of the interpreter running THIS
+    # script — that is the venv whose \`hermes\` is the one being configured — and fall back to PATH.
+    hermes_bin = Path(sys.executable).parent / ("hermes.exe" if os.name == "nt" else "hermes")
+    if not hermes_bin.exists():
+        found = shutil.which("hermes")
+        if not found:
+            sys.exit("hermes/install.py: no \`hermes\` executable beside " + str(sys.executable) + " or on PATH,\\n"
+                     "and the session-env shim shells out to it to read each card's launch params. Run this\\n"
+                     "with the venv interpreter that runs Hermes.")
+        hermes_bin = Path(found)
+    dest_dir = home / "open-autonomy"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    resolver_src = here / "hooks" / "oa-session-params.py"
+    shim_src = here / "hooks" / "oa-session-env.sh"
+    for src in (resolver_src, shim_src):
+        if not src.exists():
+            sys.exit(f"hermes/install.py: missing {src} — the install is incomplete; re-run the compile.")
+    resolver_dest = home / session_env["resolverInstalledSubpath"]
+    resolver_dest.write_text(
+        resolver_src.read_text(encoding="utf-8").replace("${HERMES_BIN_PLACEHOLDER}", str(hermes_bin)),
+        encoding="utf-8",
+    )
+    resolver_dest.chmod(0o755)
+    session_env_file = home / session_env["installedSubpath"]
+    session_env_file.write_text(
+        shim_src.read_text(encoding="utf-8").replace(
+            "${PARAMS_COMMAND_PLACEHOLDER}", f"{sys.executable} {resolver_dest}"
+        ),
+        encoding="utf-8",
+    )
+
 written = []
 gated = []
+bound = []
 for profile in lowering["profiles"]:
     role = profile["role"]
     profile_dir = home / "profiles" / role
@@ -169,8 +269,16 @@ for profile in lowering["profiles"]:
     # \`ztrackHooksBlock\` so the shape has one owner; only the command path is filled in here.
     if ztrack and role in ztrack["gatedRoles"]:
         patch = json.loads(json.dumps(ztrack["configPatch"]).replace("${GATE_COMMAND_PLACEHOLDER}", gate_command))
-        config.update(patch)
+        _merge(config, patch)
         gated.append(role)
+
+    # Same trap, third instance: \`terminal\` is a block the base config already fills, so this MERGES.
+    if session_env and role in session_env["boundRoles"]:
+        patch = json.loads(
+            json.dumps(session_env["configPatch"]).replace("${SESSION_ENV_FILE_PLACEHOLDER}", str(session_env_file))
+        )
+        _merge(config, patch)
+        bound.append(role)
 
     (profile_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
@@ -186,6 +294,16 @@ for profile in lowering["profiles"]:
     written.append(f"{role}[{','.join(profile['toolsets']) or 'no-toolsets'}]")
 
 print(f"[hermes-lowering] {len(written)} profile(s) into {home}: {' '.join(written)}")
+# WHAT THE FLEET WILL SPEND, said out loud at install time. A profile config is a full REPLACEMENT of the
+# home config, so every generated profile necessarily inherits the operator's whole model/provider block —
+# there is no way to write a working profile that does not. That inheritance is correct (the fleet runs on
+# whatever the operator configured) and it is also invisible: an operator whose home config points at a
+# metered provider has just pointed EVERY dispatched worker at it, and the first sign is a bill. One line
+# is the whole fix.
+_model = (base.get("model") or {})
+print(f"[hermes-lowering] every profile inherits model={_model.get('default') or '(unset)'} "
+      f"provider={_model.get('provider') or '(unset)'}{' base_url=' + _model['base_url'] if _model.get('base_url') else ''} "
+      f"from {base_config_path} -- every dispatched worker bills there")
 if ztrack:
     print(f"[hermes-lowering] ztrack done-gate ({ztrack['preset']}) armed on: {' '.join(gated) or '(none)'} "
           f"-- \`{gate_command}\` refuses kanban_complete until \`ztrack check\` is green")
@@ -193,6 +311,9 @@ if ztrack:
         print("[hermes-lowering] WARNING  no \`ztrack\` on PATH here. The gate FAILS CLOSED by design, so a "
               "worker without ztrack cannot complete a card at all. Install ztrack (or set ZTRACK_BIN) in "
               "the environment the WORKERS run in.", file=sys.stderr)
+if session_env:
+    print(f"[hermes-lowering] trigger params exported into the worker shell on: {' '.join(bound) or '(none)'} "
+          f"-- via terminal.shell_init_files -> {session_env_file}")
 # A kind:human actor gets NO profile. Not an omission — the translation. A person is not something the
 # dispatcher can spawn, and inventing a profile for one would make the human seam look like an agent that
 # never answers. Hermes reaches people the way it already does: a worker calls
@@ -271,6 +392,26 @@ and it looks exactly like success. Make sure \`ztrack\` is on PATH in the enviro
 
 `
       : ''
+  }${
+    lowering.sessionEnv
+      ? `## Trigger params reach the worker's shell
+
+\`${lowering.sessionEnv.boundRoles.join('`, `')}\` declare trigger \`params\`, so their sessions source
+\`${lowering.sessionEnv.installedSubpath}\` through \`terminal.shell_init_files\`. It resolves the card by
+\`\$HERMES_KANBAN_TASK\`, decodes the params the runner wrote into the card body, and \`export\`s them —
+which is what makes a skill's \`echo "\$ZTRACK_ISSUE"\` answer.
+
+This exists because Hermes' spawn path has **no per-card environment passthrough**: a worker's env is the
+dispatcher's plus Hermes' own pins. Without the shim a declared binding is simply absent, and the worker
+reads an empty string and carries on. Hermes' session-env login shell snapshots with \`export -p\`, so
+anything exported there reaches every later tool call.
+
+Each session also gets \`\$OPEN_AUTONOMY_PARAMS\` (the names that bound) and, on failure,
+\`\$OPEN_AUTONOMY_PARAMS_ERROR\` — so "the binding did not run" is distinguishable from "the launcher passed
+no such param", which is exactly what the silent version destroyed.
+
+`
+      : ''
   }${lowering.findings.length ? `## Not realized by this substrate\n\n${lowering.findings.map((f) => `- \`${f.construct}\` — ${f.detail}`).join('\n')}\n` : `## Not realized by this substrate\n\nNothing: every construct this profile declares has a native Hermes realization.\n`}
 ${ir.codeHost === 'github' ? '\n> `codeHost: github` — Hermes creates worktrees but opens no PRs; the propose/review effects are the agents\' own `gh` calls.\n' : ''}`;
 }
@@ -309,7 +450,17 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
   // The done-gate ships only when the profile declares a ztrack tracker — a profile with no verification
   // plane gets no gate rather than an inert one.
   if (lowering.ztrack) generated[ZTRACK_GATE_PATH] = ZTRACK_GATE_SCRIPT;
+  // Likewise the session-env shim: emitted only when some actor declares trigger params to bind.
+  if (lowering.sessionEnv) {
+    generated[SESSION_ENV_PATH] = SESSION_ENV_SCRIPT;
+    generated[SESSION_ENV_RESOLVER_PATH] = SESSION_ENV_RESOLVER_SCRIPT;
+  }
   generated[`${HERMES_DIR}/README.md`] = readme(ir, lowering);
+  // The Runner contract's CLI frontend, at the SAME path the local substrate emits it, so the portable PM
+  // doctrine (`bun scripts/runner.ts launch develop --ref <id>`) runs unchanged here. Without it a PM's only
+  // way to file work is `kanban_create`, which bypasses the review edge — `review: <role>` is realized in
+  // `HermesRunner.launch`, so a directly-created card is a proposal nobody is scheduled to review.
+  generated['scripts/runner.ts'] = runnerFrontendSrc();
 
   for (const profile of lowering.profiles) {
     copies.push({ from: `skills/${profile.behavior}/SKILL.md`, to: `${HERMES_DIR}/profiles/${profile.role}/SOUL.md` });

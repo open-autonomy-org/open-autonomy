@@ -102,9 +102,23 @@ export function ztrackPresetOf(ir: AutonomyIR): string | undefined {
 
 /** Hermes' `--workspace` for an actor's portable `execution.workspace`. `isolated` asks a realizing runner
  *  for a fresh workspace per launch (docs/SPEC.md#the-runner); Hermes' native answer is a git worktree it
- *  creates and owns per card. `shared` (or omitted) is `scratch` — the ordinary checkout. */
-export function workspaceFor(agent: IRAgent): 'scratch' | 'worktree' {
-  return agent.execution?.workspace === 'isolated' ? 'worktree' : 'scratch';
+ *  creates and owns per card. `shared` (or omitted) is `dir` — the ordinary checkout itself.
+ *
+ *  `dir`, NOT `scratch`, and the difference cost a live run. Hermes has THREE workspace kinds
+ *  (`VALID_WORKSPACE_KINDS = {scratch, worktree, dir}`) and `scratch` is not "the shared checkout" — it is a
+ *  fresh EMPTY directory under `<board-root>/workspaces/<card-id>/`, auto-deleted on completion. A reviewer
+ *  lowered to `scratch` is dispatched into an empty dir with `TERMINAL_CWD` pinned to it: no repo, no git
+ *  history to review, and no repo-local tooling — the live reviewer had to go HUNTING for the checkout by
+ *  path, and `ztrack check` exited 127 there because the ztrack shim resolves `node_modules/.bin/ztrack` by
+ *  walking UP from cwd and a scratch dir is nowhere near the repo. `dir:<repo>` is Hermes' own name for
+ *  "run in this existing directory", which is exactly what OA's `shared` means. (An isolated actor is
+ *  unaffected: a worktree lives at `<repo>/.worktrees/<id>`, so the upward walk finds the repo either way,
+ *  which is why only the reviewer surfaced this.)
+ *
+ *  Both kinds need a PATH the pure lowering does not have; the runner supplies it (`dir:${cwd}`), because
+ *  a bare kind defers to the board's `default_workdir` and a board without one spawn-fails every card. */
+export function workspaceFor(agent: IRAgent): 'dir' | 'worktree' {
+  return agent.execution?.workspace === 'isolated' ? 'worktree' : 'dir';
 }
 
 /** A `kind: human` actor. It deliberately gets NO Hermes profile: a person is not something the dispatcher
@@ -124,7 +138,7 @@ export interface HermesProfile {
   behavior: string;
   capabilities: string[];
   toolsets: string[];
-  workspace: 'scratch' | 'worktree';
+  workspace: 'dir' | 'worktree';
   /** Hermes `--max-runtime` seconds for a card dispatched to this profile (IR `timeout` is minutes). */
   maxRuntimeSeconds?: number;
   /** true when the actor is fired by its own cron rather than spawned per-card by the dispatcher — the

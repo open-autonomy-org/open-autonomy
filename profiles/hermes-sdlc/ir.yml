@@ -131,14 +131,19 @@ agents:
         params: { ZTRACK_ISSUE: subject.ref }
 
   # Verifies one In-Review change and moves it to Done or back for rework.
-  # `workspace: shared` — and this is a deliberate CHANGE from simple-sdlc, forced by how the review edge is
-  # realized here. `develop.review` becomes a linked CHILD CARD (substrate-hermes' `openReviewCard`), and the
+  # `workspace: shared` — a deliberate CHANGE from simple-sdlc, forced by how the review edge is realized
+  # here. `develop.review` becomes a linked CHILD CARD (substrate-hermes' `openReviewCard`), and the
   # proposal's card owns a worktree on a branch named for the issue. Git refuses to check out one branch in
   # two worktrees, so an isolated reviewer could not be placed on the branch it must review — and a failed
-  # workspace resolution auto-blocks the card. A reviewer reads COMMITTED history (`git log <issue-branch>`),
-  # which the ordinary checkout can see, so it needs no tree of its own. The isolation that matters for
-  # correctness — nobody mutating the proposal while it is read — is already provided by the proposal's own
-  # worktree.
+  # workspace resolution auto-blocks the card. A reviewer reads COMMITTED history (`git log <issue-branch>`,
+  # `git show <sha>`), and a worktree shares its repo's object store, so the ordinary checkout can see every
+  # proposal commit. The isolation that matters for correctness — nobody mutating the proposal while it is
+  # read — is already provided by the proposal's own worktree.
+  # A LIVE RUN corrected what `shared` must LOWER to, which is a substrate fact rather than a profile one:
+  # it is Hermes `dir:<repo>` (the checkout itself), never `scratch` (a fresh EMPTY dir under the board root).
+  # The first reviewer to run was dispatched into a scratch dir with no repo in it, had to hunt for the
+  # checkout by path, and got exit 127 from `ztrack check` because the ztrack shim resolves
+  # `node_modules/.bin/ztrack` by walking UP from cwd. See substrate-hermes' `hermesWorkspace`.
   # The result schema is the STANDARD one (open-autonomy.review.v1) because `develop.review` names this agent
   # and the spec requires the bound reviewer to speak the standard contract — the reviewer's verdict is the
   # merge gate, so its shape is not a per-profile choice.

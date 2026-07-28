@@ -126,6 +126,59 @@ interface ManifestAgent {
  *  itself. The MANIFEST declares which param carries the subject (`params: { ZTRACK_ISSUE: subject.ref }`),
  *  and this honors that declaration. A profile that binds no `subject.ref` simply gets no branch and no
  *  idempotency key, and nothing downstream changes. */
+/** The worktree branch for a launch: the issue ref plus a per-create token.
+ *
+ *  BOTH halves are load-bearing, and the first version of this shipped only the first half.
+ *   - The REF must appear because that is the entire join to the verification plane: `ztrack check
+ *     --auto-scope` resolves the issue by matching an id ANYWHERE in the branch name (verified: both
+ *     `LOCAL-1-t_abc123` and `oa/t_abc123/LOCAL-1` resolve to `LOCAL-1`). No env var, no card lookup, no
+ *     change to the gate — the branch name IS the wiring.
+ *   - The TOKEN must appear because git refuses to check out one branch in two worktrees, and Hermes
+ *     creates a worktree PER CARD and never removes it (`complete_task`/`archive_task` do no cleanup; the
+ *     only sweep is a 24-72h stale prune gated on unpushed commits). So a bare `--branch <ref>` makes the
+ *     FIRST card for an issue permanently poison every later one — rework after a review, or a retry after
+ *     a crash, fails to spawn with "fatal: '<ref>' is already used by worktree" and the dispatcher
+ *     auto-blocks the card. Observed live, not theorized.
+ *
+ *  The token would ideally be the card id, which is what a reader expects — but the id is the RETURN VALUE
+ *  of `kanban create` while `--branch` is an argument to it, and no CLI verb sets a branch afterward
+ *  (`kanban edit` takes only result/summary/metadata). A creation-time timestamp has the property that
+ *  actually matters: distinct per card. Re-launching the same actor for the same issue does not stack a
+ *  branch, because `--idempotency-key` returns the EXISTING card without creating one. */
+export function branchFor(ref: string, now: number = Date.now()): string {
+  return `${ref}-${now.toString(36)}`;
+}
+
+/** The `--workspace` argument for an actor. BOTH kinds carry an explicit absolute path, and both had to
+ *  learn that the hard way from a live dispatch:
+ *
+ *   - `isolated` -> `worktree:<repo>`. A BARE `worktree` defers the repo to the BOARD's `default_workdir`,
+ *     and a board without one spawn-fails every card it dispatches ("workspace_kind=worktree but no
+ *     workspace_path, and board 'default' has no default_workdir set") — which then trips the
+ *     consecutive-failure breaker and auto-blocks the card.
+ *   - `shared` -> `dir:<repo>`, NOT `scratch`. Hermes' `scratch` is a fresh EMPTY directory under
+ *     `<board-root>/workspaces/<card-id>/`, auto-deleted on completion — not the checkout. The live
+ *     reviewer was dispatched into one with `TERMINAL_CWD` pinned there and had to go hunting for the repo
+ *     by path before it could read the history it existed to review. `dir:<path>` is Hermes' own third
+ *     workspace kind and means precisely "run in this existing directory".
+ *
+ *  The runner already knows the repo — it is the cwd it was invoked in. Saying so is self-contained and
+ *  cannot drift from board config. Conformance never caught either of these because conformance never
+ *  DISPATCHES; only a live worker does. */
+export function hermesWorkspace(declared: ManifestAgent | undefined, repo: string): string {
+  return `${declared?.execution?.workspace === 'isolated' ? 'worktree' : 'dir'}:${repo}`;
+}
+
+/** Where Hermes materializes a card's linked worktree. Its own rule, quoted from `resolve_workspace`'s
+ *  docstring: "If `workspace_path` names a repo root, Hermes treats it as an anchor and materializes a
+ *  linked worktree at `<repo>/.worktrees/<task-id>`" — which is what `hermesWorkspace` asks for. Named here
+ *  rather than inlined because relying on a convention should be visible, and because `openReviewCard` is
+ *  the one caller that must predict the path BEFORE the kernel resolves it (the review card is opened at
+ *  the proposal's launch; the proposal's worktree does not exist until the kernel claims it). */
+export function hermesWorktreePath(repo: string, cardId: string): string {
+  return join(repo, '.worktrees', cardId);
+}
+
 function subjectRefOf(declared: ManifestAgent | undefined, params: LaunchParams): string | undefined {
   const key = Object.entries(declared?.params ?? {}).find(([, source]) => source === 'subject.ref')?.[0];
   const value = key ? params[key] : undefined;
@@ -190,9 +243,9 @@ export class HermesRunner implements Runner {
 
   async launch(agent: string, params: LaunchParams = {}): Promise<Session> {
     const declared = this.manifestAgent(agent);
-    // The two portable typed execution fields, realized natively. `isolated` -> a git worktree the kernel
-    // creates and owns per card; `timeout` (minutes) -> the dispatcher's own runtime cap.
-    const workspace = declared?.execution?.workspace === 'isolated' ? 'worktree' : 'scratch';
+    // The two portable typed execution fields, realized natively (see `hermesWorkspace` for the workspace
+    // kinds and the two live failures that shaped them); `timeout` (minutes) -> the dispatcher's runtime cap.
+    const workspace = hermesWorkspace(declared, this.cwd);
     const args = [
       'create',
       // Title is derived from the ACTOR alone. Params are opaque to the runner (docs/SPEC.md#the-runner),
@@ -215,7 +268,7 @@ export class HermesRunner implements Runner {
     // from ("built for per-worktree Stop-hook gates", per ztrack's own help). That one flag is what lets
     // the done-gate (ztrack-gate.ts) run with no arguments and still check the right issue.
     const ref = subjectRefOf(declared, params);
-    if (ref && workspace === 'worktree') args.push('--branch', ref);
+    if (ref && workspace.startsWith('worktree')) args.push('--branch', branchFor(ref));
     // A card is a RUN OF an issue, so re-launching the same actor for the same issue must not stack a
     // second card. Keyed by actor+ref because develop and review legitimately each get one.
     if (ref) args.push('--idempotency-key', `open-autonomy:${agent}:${ref}`);
@@ -249,9 +302,24 @@ export class HermesRunner implements Runner {
    *  surface moves a card INTO `review`, and the `sdlc-review` skill does not exist in the repo. That lane
    *  wants one upstream verb; the parent/child edge needs nothing, so it is what this realizes.)
    *
-   *  Deliberately NO `--branch`: the reviewer's workspace must not name the proposal's branch, because git
-   *  refuses to check out one branch in two worktrees and a failed workspace resolution auto-blocks the card.
-   *  The reviewer reads committed history, so a scratch workspace is the right shape (see the profile). */
+   *  THE REVIEWER STANDS IN THE PROPOSAL'S OWN WORKTREE, and getting this wrong twice is what taught it:
+   *
+   *   - `worktree` (its own) is impossible: git refuses to check out one branch in two worktrees, and a
+   *     failed workspace resolution auto-blocks the card. So no `--branch` here, ever.
+   *   - `dir:<repo>` — the plain shared checkout — RUNS, which is what made it look right. It is wrong for a
+   *     reason no single card shows: the reviewer's verdict is a tracker write, `.volter/tracker/` is
+   *     committed, and the proposal's branch carries its own tracker commits. A verdict written on trunk
+   *     conflicts with the branch at integration, EVERY TIME. The PM's conflict rule would then escalate
+   *     every issue to a human — a merge boundary that blocks on itself.
+   *   - `dir:<the proposal's worktree>` is the one that is actually right, and it needs nothing new: by the
+   *     time the kernel releases this card its parent is DONE, so the worktree is idle and its branch is
+   *     checked out there. The reviewer lands on the branch — `--auto-scope` resolves, `git show` reads the
+   *     commits, and the verdict commits where the evidence already lives, exactly as on the local
+   *     substrate. That is also what `execution.workspace: shared` MEANS for a review-edge launch: not "its
+   *     own tree", i.e. the tree of the thing it reviews.
+   *
+   *  A reviewer declared `isolated` still gets its own worktree (`hermesWorkspace`); only the `shared`
+   *  reading is redirected, and only when this launch actually has a proposal to point at. */
   private openReviewCard(
     reviewer: string,
     parentId: string,
@@ -259,7 +327,12 @@ export class HermesRunner implements Runner {
     ref: string | undefined,
     params: LaunchParams,
   ): void {
-    const workspace = this.manifestAgent(reviewer)?.execution?.workspace === 'isolated' ? 'worktree' : 'scratch';
+    const declared = this.manifestAgent(reviewer);
+    const proposalIsIsolated = this.manifestAgent(agent)?.execution?.workspace === 'isolated';
+    const workspace =
+      declared?.execution?.workspace !== 'isolated' && proposalIsIsolated
+        ? `dir:${hermesWorktreePath(this.cwd, parentId)}`
+        : hermesWorkspace(declared, this.cwd);
     const args = [
       'create',
       `open-autonomy: ${reviewer} of ${agent}${ref ? ` (${ref})` : ''}`,
@@ -295,6 +368,17 @@ export class HermesRunner implements Runner {
     } catch {
       return [];
     }
+  }
+
+  /** The card's worktree branch, or undefined for a shared/`dir` workspace that has none.
+   *
+   *  Beyond the Runner contract (like `result`), and load-bearing for the PM: integration means merging the
+   *  branch a proposal was built on, and on this substrate the runner NAMES that branch (`branchFor` — issue
+   *  ref plus a per-create token, because Hermes never removes a card's worktree and git refuses one branch
+   *  in two of them). A PM that CONSTRUCTS `agent/issue-<id>` the way the local substrate's does would be
+   *  naming a branch that does not exist here. So the rule the doctrine follows is: ask the runner. */
+  async branchOf(id: string): Promise<string | undefined> {
+    return this.readCard(id)?.branch_name ?? undefined;
   }
 
   private readCard(id: string): Card | undefined {
