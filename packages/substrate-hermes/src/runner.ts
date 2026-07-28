@@ -33,8 +33,6 @@ interface Card {
   assignee: string | null;
   status: CardStatus;
   workspace_kind?: string | null;
-  /** the card's event log — `kanban show --json` serializes it, and it is where the kernel records giving up */
-  events?: Array<{ kind?: string | null }> | null;
   workspace_path?: string | null;
   branch_name?: string | null;
   started_at?: string | null;
@@ -105,21 +103,33 @@ const STATUS_NOTE: Record<CardStatus, [SessionStatus, string | undefined]> = {
   archived: ['cancelled', undefined],
 };
 
-function sessionOf(card: Card): Session {
+/** Kinds the KERNEL emits when it gives up on a card, verified against `kanban_db.py`'s own event writes —
+ *  not guessed. A `blocked` card is otherwise a worker's deliberate `kanban_block(needs_input)`, i.e. the
+ *  human seam, and reporting a dead worker as a considered handoff sends an operator looking for a decision
+ *  nobody asked for. `block_loop_detected` is the unblock-loop breaker, which lands the card in `triage`. */
+const KERNEL_GAVE_UP: ReadonlySet<string> = new Set([
+  'block_loop_detected',
+  'crashed',
+  'gave_up',
+  'reclaimed',
+  'spawn_failed',
+  'timed_out',
+]);
+
+function sessionOf(card: Card, events: ReadonlyArray<{ kind?: string | null }> = []): Session {
   const [status, base] = STATUS_NOTE[card.status] ?? (['running', `unmapped card status "${card.status}"`] as const);
   // A `blocked` card is EITHER a worker's deliberate kanban_block(needs_input) — the human seam — or the
   // kernel's circuit breaker giving up after repeated crashes/timeouts. Those want opposite responses, and
   // reporting both as "awaiting a human" made a dead worker look like a considered handoff. The card
   // carries the distinguishing data; read it rather than assume.
-  // Read from EVENTS, not from a counter field. The first version of this checked `consecutive_failures`,
-  // which `kanban show --json` does not serialize (`_task_to_dict` emits 22 fields and that is not one of
-  // them) — so the branch never fired and a dead check read exactly like a live one, which is the failure
-  // this whole package is about. `events` IS serialized, and the kernel appends one when it gives up.
-  const autoBlocked =
-    card.status === 'blocked' &&
-    (card.events ?? []).some((e) => /fail|breaker|gave_up|crash|timeout|timed_out/i.test(String(e?.kind ?? '')));
-  const note = autoBlocked
-    ? 'auto-blocked by the kernel after repeated failures — NOT a deliberate human handoff; see `hermes kanban show <id> --json` events'
+  // TWICE this was dead code. First it read `consecutive_failures`, which `kanban show --json` does not
+  // serialize at all. Then it read `card.events`, which does not exist either — `events` is a TOP-LEVEL key
+  // of the show payload, a sibling of `task`, never a field on the card — and matched kinds by a guessed
+  // regex that hit none of the six the kernel really writes. Both versions read exactly like a live check.
+  // So the events are now passed in from where they actually live, and matched against a set taken from
+  // the kernel's own event writes.
+  const note = events.some((e) => KERNEL_GAVE_UP.has(String(e?.kind ?? '')))
+    ? `${base ?? 'blocked'} — but the KERNEL parked this, not a worker: it gave up after repeated failures. Not a human decision; see \`hermes kanban show ${card.id} --json\` events.`
     : base;
   const params = decodeParams(card.body);
   return {
@@ -434,13 +444,7 @@ export class HermesRunner implements Runner {
   }
 
   private childIds(id: string): string[] {
-    const r = this.kanban(['show', id, '--json']);
-    if (!r.ok) return [];
-    try {
-      return (JSON.parse(r.stdout) as { children?: string[] }).children ?? [];
-    } catch {
-      return [];
-    }
+    return this.readShow(id)?.children ?? [];
   }
 
   /** The card's worktree branch, or undefined for a shared/`dir` workspace that has none.
@@ -469,17 +473,24 @@ export class HermesRunner implements Runner {
    *  indistinguishable from a missing card here — both surface as `undefined` — so callers must treat
    *  `undefined` as "unknown", never as "definitely absent". */
   private readCard(id: string): Card | undefined {
+    return this.readShow(id)?.task;
+  }
+
+  /** The whole `kanban show --json` payload. `events`/`children`/`runs` are SIBLINGS of `task`, not fields
+   *  on it — reading them off the card silently yields undefined, which is how the auto-blocked
+   *  discriminator managed to be dead code twice. */
+  private readShow(id: string): { task: Card; events?: Array<{ kind?: string | null }>; children?: string[] } | undefined {
     const r = this.kanban(['show', id, '--json']);
     try {
-      return (JSON.parse(r.stdout) as { task: Card }).task;
+      return JSON.parse(r.stdout);
     } catch {
       return undefined;
     }
   }
 
   async get(id: string): Promise<Session | undefined> {
-    const card = this.readCard(id);
-    return card ? sessionOf(card) : undefined;
+    const shown = this.readShow(id);
+    return shown?.task ? sessionOf(shown.task, shown.events ?? []) : undefined;
   }
 
   async list(): Promise<Session[]> {
@@ -493,7 +504,10 @@ export class HermesRunner implements Runner {
     }
     // The contract's `list` is the RUNNING set. `--archived` is omitted above so a cancelled card is
     // already gone; `done` is filtered here.
-    return cards.map(sessionOf).filter((s) => s.status === 'running' || s.status === 'paused');
+    // `cards.map(sessionOf)` would hand map's INDEX to the events parameter — caught by the compiler here,
+    // but the same shape is exactly how the events bug got in. `kanban list --json` returns bare cards with
+    // no events, so a listed session cannot carry the kernel-gave-up note; `get` is where that shows up.
+    return cards.map((c) => sessionOf(c)).filter((s) => s.status === 'running' || s.status === 'paused');
   }
 
   async update(id: string, patch: { status?: SessionStatus }): Promise<boolean> {
