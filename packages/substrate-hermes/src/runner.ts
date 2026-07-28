@@ -103,18 +103,16 @@ const STATUS_NOTE: Record<CardStatus, [SessionStatus, string | undefined]> = {
   archived: ['cancelled', undefined],
 };
 
-/** Kinds the KERNEL emits when it gives up on a card, verified against `kanban_db.py`'s own event writes —
- *  not guessed. A `blocked` card is otherwise a worker's deliberate `kanban_block(needs_input)`, i.e. the
- *  human seam, and reporting a dead worker as a considered handoff sends an operator looking for a decision
- *  nobody asked for. `block_loop_detected` is the unblock-loop breaker, which lands the card in `triage`. */
-const KERNEL_GAVE_UP: ReadonlySet<string> = new Set([
-  'block_loop_detected',
-  'crashed',
-  'gave_up',
-  'reclaimed',
-  'spawn_failed',
-  'timed_out',
-]);
+/** Kinds that mean the KERNEL gave up for good — TERMINAL ones only, which is the correction that matters.
+ *
+ *  The previous set also carried `crashed`, `spawn_failed`, `timed_out` and `reclaimed`. Those are written
+ *  on EVERY failed attempt, in `_record_task_failure`'s *below-threshold* `else` branch — and `reclaimed`
+ *  is written by ordinary stale-lease recovery and by `HermesRunner.cancel()` itself. Matching them meant a
+ *  card that spawn-failed once weeks ago, then was deliberately parked by a worker, reported as
+ *  kernel-gave-up: the exact inversion of what this discriminator exists to prevent. Only these two are
+ *  terminal (`kanban_db.py`: `gave_up` above the failure threshold, `block_loop_detected` from the
+ *  unblock-loop breaker). */
+const KERNEL_GAVE_UP: ReadonlySet<string> = new Set(['block_loop_detected', 'gave_up']);
 
 function sessionOf(card: Card, events: ReadonlyArray<{ kind?: string | null }> = []): Session {
   const [status, base] = STATUS_NOTE[card.status] ?? (['running', `unmapped card status "${card.status}"`] as const);
@@ -128,9 +126,14 @@ function sessionOf(card: Card, events: ReadonlyArray<{ kind?: string | null }> =
   // regex that hit none of the six the kernel really writes. Both versions read exactly like a live check.
   // So the events are now passed in from where they actually live, and matched against a set taken from
   // the kernel's own event writes.
-  const note = events.some((e) => KERNEL_GAVE_UP.has(String(e?.kind ?? '')))
-    ? `${base ?? 'blocked'} — but the KERNEL parked this, not a worker: it gave up after repeated failures. Not a human decision; see \`hermes kanban show ${card.id} --json\` events.`
-    : base;
+  // GUARDED on the card being parked at all. Dropping this guard (while moving `events` to a parameter)
+  // made the note fire on healthy cards, and `base ?? 'blocked'` then fabricated the word "blocked" onto a
+  // running or completed session. A discriminator that mislabels live work is worse than none.
+  const parked = card.status === 'blocked' || card.status === 'triage';
+  const note =
+    parked && events.some((e) => KERNEL_GAVE_UP.has(String(e?.kind ?? '')))
+      ? `${base ?? 'parked'} — and the KERNEL parked it, not a worker: it gave up after repeated failures. NOT a human decision; see \`hermes kanban show ${card.id} --json\` events.`
+      : base;
   const params = decodeParams(card.body);
   return {
     id: card.id,
@@ -534,7 +537,10 @@ export class HermesRunner implements Runner {
   /** Block a card, and REFUSE to report success if the kernel's unblock-loop breaker wedged it.
    *
    *  Hermes routes a repeated SAME-KIND block-after-unblock to `triage` (BLOCK_RECURRENCE_LIMIT = 2, and
-   *  `unblock` deliberately does not reset the counter). A `triage` card is never dispatched, and
+   *  `unblock` deliberately does not reset the counter). The breaker DOES key on the kind
+   *  (`same_cause = prev_kind == kind`, so alternating kinds reset the count) — which is precisely why both
+   *  `paused` and `failed` need this guard: each kind trips on its OWN repeat, independently of the other.
+   *  A `triage` card is never dispatched, and
    *  `unblock_task` matches `status IN ('blocked','scheduled')` so it cannot come back that way either —
    *  only a human decision or `cancel` moves it. Verified: block/unblock/block put a card in triage while
    *  the call still returned TRUE. Both `paused` and `failed` route here; guarding only one was the bug. */

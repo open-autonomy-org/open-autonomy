@@ -34,6 +34,14 @@ export function substrateFacts(ir: AutonomyIR, lowering: HermesLowering, role: s
   const inProposalWorktree = !!boundReviewerOf && profile?.workspace !== 'worktree';
   const gated = lowering.ztrack?.gatedRoles.includes(role) ?? false;
   const standing = profile?.standing ?? false;
+  // An actor can be BOTH. `audit` declares a cron trigger AND a dispatch trigger, and `isStanding` is just
+  // "has a cron" — so a binary branch told a DISPATCHED audit worker it owned no card and that
+  // `kanban_complete` would fail. Obeying that (the section declares itself authoritative) ends the turn
+  // without completing, the card sits `running` until its lease expires, gets reclaimed, and re-dispatches
+  // forever. `standing` is a property of the RUN, not of the actor, and prose cannot know the run — so when
+  // both are possible the appendix must describe both and tell the worker how to tell them apart.
+  const dispatchable = (ir.agents[role]?.triggers ?? []).some((t) => 'dispatch' in t);
+  const dualMode = standing && dispatchable;
   const ungatedProposer =
     !!lowering.ztrack && !gated && (ir.agents[role]?.capabilities ?? []).some((c) => c.split('@')[0] === 'code:propose');
 
@@ -56,7 +64,9 @@ What exists instead:
 |---|---|
 | your work item | ${
     standing
-      ? 'nothing — you fire on a schedule, own no card, and `$HERMES_KANBAN_TASK` is UNSET. Read the board instead: `bun scripts/runner.ts list --json`.'
+      ? dualMode
+        ? '**check `$HERMES_KANBAN_TASK` first.** Set ⇒ it names your card. Unset ⇒ you were fired by cron and own none; read the board with `bun scripts/runner.ts list --all --json`.'
+        : 'nothing — you fire on a schedule, own no card, and `$HERMES_KANBAN_TASK` is UNSET. Read the board with `bun scripts/runner.ts list --all --json`.'
       : 'the kanban card named by `$HERMES_KANBAN_TASK` (`hermes kanban show "$HERMES_KANBAN_TASK" --json`)'
   } |
 | your workspace | ${
@@ -68,14 +78,16 @@ What exists instead:
   } |
 ${
     (ir.agents[role]?.capabilities ?? []).some((c) => c.split('@')[0] === 'agent:launch')
-      ? '| launching work | `bun scripts/runner.ts launch <actor> --ref <issue>` — the only sanctioned path. It also opens the review card. Never create a board card by hand. |\n'
-      : '| launching work | **not yours.** You do not hold `agent:launch`; filing work for another actor is the PM\'s job. |\n'
+      ? '| launching work | `bun scripts/runner.ts launch <actor> --ref <issue>` — the only sanctioned path. It also opens the review card. Never create a board card by hand. |'
+      : '| launching work | **not yours.** You do not hold `agent:launch`; filing work for another actor is the PM\'s job. |'
   }
-| what is in flight | \`bun scripts/runner.ts list --json\` |
+| what is in flight | \`bun scripts/runner.ts list --json\` — add \`--all\` to include FINISHED cards, which is what integration needs |
 | reaching a human | \`kanban_block\` with kind \`needs_input\`. The card then waits for a real operator's \`hermes kanban unblock\`. That is the ONLY human seam; there is no \`runner.ts update\`. |
 | finishing | ${
     standing
-      ? 'just end your turn — you own no card, so `kanban_complete` has nothing to complete and will fail.'
+      ? dualMode
+        ? '`kanban_complete` **if `$HERMES_KANBAN_TASK` is set**; otherwise just end your turn — with no card there is nothing to complete and the call fails.'
+        : 'just end your turn — you own no card, so `kanban_complete` has nothing to complete and will fail.'
       : `\`kanban_complete\`${gated ? ' — **gated**: it is REFUSED until `ztrack check` is green in your workspace, and the refusal hands you the findings' : ''}`
   } |
 | what this install granted you | \`hermes/lowering.json\` — the compile's receipt: every actor's capabilities, toolsets, workspace, and the honest \`findings\` list of what this substrate does NOT enforce |
@@ -83,7 +95,13 @@ ${
 Your tools are exactly: \`${(profile?.toolsets ?? []).join('`, `') || '(none)'}\`. If your doctrine tells you to
 run something you have no tool for, that is a real finding — report it, do not improvise around it.
 
-${standing ? `You run on your OWN SCHEDULE (a Hermes cron job), not per-card. \`$HERMES_KANBAN_TASK\` is unset in that mode, and Hermes offers you the board-wide tools (\`kanban_list\`) that a per-card worker is denied.\n` : `You were spawned by the dispatcher for ONE card and you end when it does.\n`}${
+${
+    dualMode
+      ? `You can be fired BOTH WAYS, so decide from the environment, not from memory: with \`$HERMES_KANBAN_TASK\` SET you are a per-card worker and must complete that card; UNSET you are a cron run that owns nothing. Hermes also offers the board-wide tools (\`kanban_list\`) only in the second mode.\n`
+      : standing
+        ? `You run on your OWN SCHEDULE (a Hermes cron job), not per-card. \`$HERMES_KANBAN_TASK\` is unset in that mode, and Hermes offers you the board-wide tools (\`kanban_list\`) that a per-card worker is denied.\n`
+        : `You were spawned by the dispatcher for ONE card and you end when it does.\n`
+  }${
     ungatedProposer
       ? `\n**You are NOT behind the done-gate.** You propose commits, but you run in the shared checkout with no issue branch, so \`ztrack check --auto-scope\` has nothing to resolve from and the gate cannot be armed on you. Nothing verifies your completion — your \`done\` means only that you returned. Hold yourself to the standard the gate would have applied.\n`
       : ''

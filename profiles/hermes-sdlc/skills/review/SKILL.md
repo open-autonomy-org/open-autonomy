@@ -35,11 +35,16 @@ the branch after you approve).
 5. Apply `risk-and-review.md`. If the change touches a human-required path or topic without explicit
    approval, it is **not** rework — sending it back to `in-progress` would just have a developer rebuild
    the same thing and stop at the same fence, forever. PARK IT FOR A PERSON instead:
-   - `ztrack issue edit <issue> --add-label human-required` (the PM refuses a labelled issue every tick),
-   - commit that tracker change (`git add -A && git commit -m "review: human-required <issue>"`),
-   - then call `kanban_block` with kind `needs_input` and a reason naming the decision needed. That is the
-     ONLY thing on this substrate that actually stops the loop and waits for a person; a card blocked that
-     way is what an operator's `hermes kanban unblock` resumes.
+   - `ztrack issue edit <issue> --add-label human-required` — **this is the park**. The PM refuses a
+     labelled issue every tick, so the loop stops re-filing it until a person removes the label.
+   - Commit that tracker change (`git add -A && git commit -m "review: human-required <issue>"`).
+   - Then **complete your card normally**, with an envelope carrying `outcome: "human-required"` and the
+     `humanTask` your contract requires.
+   Do **not** call `kanban_block` here. It looks like the human seam and is the wrong tool for this: your
+   card is a review that has finished — it reached a verdict — and completing is how that verdict reaches
+   anyone. (Blocking and then completing does not stack either: `complete_task` accepts a blocked card and
+   overwrites the block, so the park would be silently undone.) The block seam belongs to a worker that
+   cannot finish; you can.
    Leave `OUTCOME: changes-requested human-required`.
 6. If any claim does not hold, send it back the same way (`--remove-label ztrack:reviewing
    --state "in-progress"` + commit) and leave requested changes.

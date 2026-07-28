@@ -57,7 +57,10 @@ export function resultContracts(ir: AutonomyIR, lowered: readonly string[]): Rec
     // validates by id discards every verdict, and this file's own rule is "an envelope that does not
     // validate is treated as no envelope at all". Silently forking an id-bearing contract is a worse trap
     // than the fabricated value it replaces.
-    const relaxedId = namedIdOf(declared) ? `${namedIdOf(declared)}+hermes-no-code-host` : undefined;
+    // Gated on something actually being relaxed. Computed unconditionally, the PROSE named a forked id
+    // while the schema kept the standard one, so a worker on a code host would stamp an id its own `const`
+    // rejects — and by this file's rule that is no envelope at all.
+    const relaxedId = unsourceable.length && namedIdOf(declared) ? `${namedIdOf(declared)}+hermes-no-code-host` : undefined;
     // `properties` is computed ONCE: drop the unsourceable fields AND, if this is a named standard
     // contract, re-pin the `schema` const to the forked id. Two separate spreads silently clobbered each
     // other — the $id said fork, the const still said standard.

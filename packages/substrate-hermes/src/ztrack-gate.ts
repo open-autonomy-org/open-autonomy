@@ -124,10 +124,17 @@ MAX_REASON_CHARS = 4000
 # CLAMPED below Hermes' own hook timeout (${HOOK_TIMEOUT_SECONDS}s). Hermes ALLOWS a tool call whose hook
 # timed out, so a gate budget that outruns the hook does not extend the check — it silently converts this
 # gate from fail-closed to fail-OPEN. The env var can lower the budget; it can no longer disarm the gate.
+# NEVER let this raise. A ValueError here happens BEFORE \`block()\` is even defined, so the process exits
+# non-zero with empty stdout — and Hermes logs a warning and ALLOWS the tool call. \`OPEN_AUTONOMY_ZTRACK_TIMEOUT_S=2m\`
+# would therefore have silently ungated that worker: the same fail-open this clamp was added to close,
+# relocated one line up.
 _HOOK_TIMEOUT = ${HOOK_TIMEOUT_SECONDS}
-TIMEOUT_SECONDS = min(
-    int(os.environ.get("OPEN_AUTONOMY_ZTRACK_TIMEOUT_S") or "${ZTRACK_BUDGET_SECONDS}"), _HOOK_TIMEOUT - 20
-)
+_BUDGET_DEFAULT = ${ZTRACK_BUDGET_SECONDS}
+try:
+    _requested = int(os.environ.get("OPEN_AUTONOMY_ZTRACK_TIMEOUT_S") or _BUDGET_DEFAULT)
+except (TypeError, ValueError):
+    _requested = _BUDGET_DEFAULT
+TIMEOUT_SECONDS = max(1, min(_requested, _HOOK_TIMEOUT - 20))
 
 
 def block(reason):
