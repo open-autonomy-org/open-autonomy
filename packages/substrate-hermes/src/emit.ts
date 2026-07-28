@@ -139,7 +139,7 @@ Reads hermes/lowering.json (the compile's receipt) and writes one Hermes profile
 operator's existing home config supplies model/provider/credentials; this script never invents them and
 never writes a secret into the repo. Idempotent: re-running overwrites the derived files and nothing else.
 """
-import copy, json, os, re, shutil, subprocess, sys
+import copy, json, os, re, shlex, shutil, subprocess, sys
 from pathlib import Path
 
 
@@ -201,7 +201,23 @@ if ztrack:
     # Run the gate with the interpreter that runs HERMES rather than whatever \`python3\` resolves to in a
     # worker's PATH. Hermes \`shlex.split\`s the command with shell=False, so "<python> <script>" is two
     # argv entries and needs no shell.
-    gate_command = f"{sys.executable} {gate_dest}"
+    # SHELL-QUOTED, because Hermes \`shlex.split\`s this command and runs it with shell=False. An unquoted
+    # space anywhere in the interpreter path or $HERMES_HOME (\`C:\\Program Files\\...\`, \`~/My Hermes/\`)
+    # splits into 3+ argv, the spawn raises "command not found", and Hermes' hook runner LOGS A WARNING AND
+    # RETURNS None — which ALLOWS the tool call. An unquoted path is therefore a silently ungated fleet.
+    gate_command = f"{shlex.quote(sys.executable)} {shlex.quote(str(gate_dest))}"
+    # ...and prove the command actually EXECUTES before trusting it, with a payload for a tool the gate must
+    # ignore. If this cannot run at install time it will not run in a worker either, and the failure mode is
+    # invisible: every completion sails through, logged only at WARNING inside the agent log.
+    probe = subprocess.run(shlex.split(gate_command), input=json.dumps({"tool_name": "terminal"}),
+                           capture_output=True, text=True, timeout=60)
+    if probe.returncode != 0 or probe.stdout.strip():
+        sys.exit("hermes/install.py: the done-gate command does not execute cleanly:\\n"
+                 f"    {gate_command}\\n"
+                 f"    exit={probe.returncode} stdout={probe.stdout.strip()[:200]!r} "
+                 f"stderr={probe.stderr.strip()[:200]!r}\\n"
+                 "Hermes ALLOWS a tool call when its hook cannot run, so an unrunnable gate is a silently\\n"
+                 "ungated fleet -- refusing to install one.")
 
 # ---- the trigger-param binding (the session-env shim) ----
 # Hermes' spawn path has NO per-card environment passthrough, so a declared \`params: { ZTRACK_ISSUE:
@@ -240,7 +256,7 @@ if session_env:
     session_env_file = home / session_env["installedSubpath"]
     session_env_file.write_text(
         shim_src.read_text(encoding="utf-8").replace(
-            "${PARAMS_COMMAND_PLACEHOLDER}", f"{sys.executable} {resolver_dest}"
+            "${PARAMS_COMMAND_PLACEHOLDER}", f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_dest))}"
         ),
         encoding="utf-8",
     )
@@ -283,6 +299,21 @@ for profile in lowering["profiles"]:
 
     # Same trap, third instance: \`terminal\` is a block the base config already fills, so this MERGES.
     if session_env and role in session_env["boundRoles"]:
+        # Hermes sources the user's rc files ONLY when \`shell_init_files\` is empty:
+        #   if explicit: candidates = explicit
+        #   elif auto_source_bashrc: candidates = [~/.profile, ~/.bash_profile, ~/.bashrc]
+        # (tools/environments/local.py::_resolve_shell_init_files). So merging the shim into an EMPTY list
+        # turns the list explicit and silently drops every rc-derived PATH entry from the session snapshot.
+        # The most likely casualty is \`ztrack\` itself when node came from nvm/n -- which then trips the
+        # done-gate's fail-closed path on every card. Seed Hermes' own defaults first so adding the shim
+        # ADDS to the environment instead of replacing it.
+        terminal_cfg = config.get("terminal") or {}
+        if not (terminal_cfg.get("shell_init_files") or []) and terminal_cfg.get("auto_source_bashrc", True) \\
+           and os.name != "nt":
+            defaults = [os.path.expanduser(f) for f in ("~/.profile", "~/.bash_profile", "~/.bashrc")]
+            existing = [f for f in defaults if os.path.isfile(f)]
+            if existing:
+                _merge(config, {"terminal": {"shell_init_files": existing}})
         patch = json.loads(
             json.dumps(session_env["configPatch"]).replace("${SESSION_ENV_FILE_PLACEHOLDER}", str(session_env_file))
         )
@@ -356,8 +387,17 @@ for profile in lowering["profiles"]:
 print(f"[hermes-lowering] {len(written)} profile(s) into {home}: {' '.join(written)}")
 if any(p.get("cron") for p in lowering["profiles"]):
     print(f"[hermes-lowering] cron jobs for standing actors: {' '.join(scheduled) or '(none)'}")
-    print("[hermes-lowering] NOTE  cron fires only while the Hermes GATEWAY runs (\`hermes gateway status\`); "
-          "without it, a standing actor never ticks. \`hermes cron tick\` runs due jobs once by hand.")
+    # PROFILE-SCOPED, and the first version of this note was not — which made it advice that cannot work.
+    # Hermes stores AND executes cron per profile (cron/jobs.py: "a profile's jobs are stored AND executed
+    # under that profile's home"), so these jobs live in $HERMES_HOME/profiles/<role>/cron/jobs.json. A bare
+    # \`hermes gateway status\` / \`hermes cron tick\` inspects the ROOT home, finds nothing, and reports
+    #green — the same "standing actor silently never fires" failure, now with a reassuring install log.
+    print("[hermes-lowering] NOTE  these jobs live in each profile's OWN home, and a gateway is per-profile.")
+    for role in [p["role"] for p in lowering["profiles"] if p.get("cron")]:
+        print(f"[hermes-lowering]         {role}:  hermes -p {role} gateway run      "
+              f"(or once by hand: HERMES_HOME={home / 'profiles' / role} hermes cron tick)")
+    print("[hermes-lowering]       A bare \`hermes gateway status\` / \`hermes cron tick\` looks at the ROOT "
+          "home and will show NOTHING — it is not evidence these are scheduled.")
 # WHAT THE FLEET WILL SPEND, said out loud at install time. A profile config is a full REPLACEMENT of the
 # home config, so every generated profile necessarily inherits the operator's whole model/provider block —
 # there is no way to write a working profile that does not. That inheritance is correct (the fleet runs on

@@ -93,11 +93,23 @@ const workspaceOf = (declared) => \`\${declared?.execution?.workspace === 'isola
 const worktreePathOf = (cardId) => join(CWD, '.worktrees', cardId);
 const branchFor = (ref) => \`\${ref}-\${Date.now().toString(36)}\`;
 
-function createCard(args, what) {
-  const r = kanban(args);
-  const id = r.stdout.match(/^Created\\s+(\\S+)/m)?.[1];
-  if (!r.ok || !id) die(\`hermes kanban create failed for \${what} — \${(r.stderr || r.stdout).trim() || 'no output'}\`);
-  return id;
+// Hermes resolves --idempotency-key with \`status != 'archived'\`, so a DONE card is returned as a hit with
+// the same \`Created <id>\` receipt and exit 0. That silently breaks rework: after changes-requested the
+// proposal card is done, so re-filing re-files nothing and the PM loops forever. A hit on a finished card
+// means the key is SPENT -> retry under a discriminated key. (Mirrors HermesRunner.createCard.)
+function createCard(args, what, keyed) {
+  const keyAt = args.indexOf('--idempotency-key');
+  for (let attempt = 1; ; attempt++) {
+    const r = kanban(args);
+    const id = r.stdout.match(/^Created\\s+(\\S+)/m)?.[1];
+    if (!r.ok || !id) die(\`hermes kanban create failed for \${what} — \${(r.stderr || r.stdout).trim() || 'no output'}\`);
+    if (keyAt < 0 || !keyed) return id;
+    if (card(id)?.task?.status !== 'done') return id;
+    if (attempt >= 20) {
+      die(\`every idempotency key for \${what} resolves to a completed card (\${attempt} attempts). Refusing to report a launch that started nothing.\`);
+    }
+    args[keyAt + 1] = \`\${args[keyAt + 1].replace(/#\\d+$/, '')}#\${attempt + 1}\`;
+  }
 }
 
 function launch(actor, ref) {
@@ -109,7 +121,7 @@ function launch(actor, ref) {
   if (typeof declared?.timeout === 'number') args.push('--max-runtime', \`\${declared.timeout}m\`);
   if (ref && workspace.startsWith('worktree')) args.push('--branch', branchFor(ref));
   if (ref) args.push('--idempotency-key', \`open-autonomy:\${actor}:\${ref}\`);
-  const id = createCard(args, \`actor "\${actor}"\`);
+  const id = createCard(args, \`actor "\${actor}"\`, !!ref);
 
   // The merge boundary, opened structurally at launch. The reviewer is placed in the PROPOSAL'S OWN
   // worktree (idle by the time the kernel releases this card), so it stands on the branch it reviews and
@@ -124,7 +136,10 @@ function launch(actor, ref) {
     const rargs = ['create', \`open-autonomy: \${reviewer} of \${actor}\${ref ? \` (\${ref})\` : ''}\`,
                    '--assignee', reviewer, '--parent', id, '--workspace', rws,
                    '--body', encodeParams(reviewer, params), '--created-by', 'open-autonomy'];
-    if (ref) rargs.push('--idempotency-key', \`open-autonomy:\${reviewer}:\${ref}\`);
+    // Keyed on the PARENT too: a review card belongs to one proposal. Keyed on the ref alone, a re-filed
+    // proposal adopts the PREVIOUS proposal's review card — parented to the dead card, released by ITS
+    // archival, so the new proposal ships unreviewed while rc=0 says the edge was opened.
+    if (ref) rargs.push('--idempotency-key', \`open-autonomy:\${reviewer}:\${ref}:\${id}\`);
     const r = kanban(rargs);
     if (!r.ok) {
       // Loud, never best-effort: a launch that quietly loses its review edge is a merge boundary that

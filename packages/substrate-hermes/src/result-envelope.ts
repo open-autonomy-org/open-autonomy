@@ -46,8 +46,25 @@ export function resultContracts(ir: AutonomyIR, lowered: readonly string[]): Rec
     const unsourceable = ((schema.required as string[] | undefined) ?? []).filter(
       (f) => CODE_HOST_ONLY_RESULT_FIELDS.has(f) && ir.codeHost !== 'github',
     );
+    // Removing it from `required` alone was NOT enough, and the same reviewer that ran the loop caught the
+    // same fabricated `"pr": 4` AFTER that fix shipped: the field was still listed in `properties`, and a
+    // property a schema documents reads as a field worth filling. Prose loses to a schema. So the field is
+    // removed from BOTH — and because these envelopes declare `additionalProperties: false`, deleting it
+    // from `properties` makes the fabrication actually INVALID rather than merely discouraged.
     const relaxed = unsourceable.length
-      ? { ...schema, required: (schema.required as string[]).filter((f) => !unsourceable.includes(f)) }
+      ? {
+          ...schema,
+          required: (schema.required as string[]).filter((f) => !unsourceable.includes(f)),
+          ...(schema.properties
+            ? {
+                properties: Object.fromEntries(
+                  Object.entries(schema.properties as Record<string, unknown>).filter(
+                    ([k]) => !unsourceable.includes(k),
+                  ),
+                ),
+              }
+            : {}),
+        }
       : schema;
     out[role] = contractProse(role, relaxed, typeof declared === 'string' ? declared : undefined, unsourceable);
   }
@@ -88,10 +105,12 @@ ${namedId ? `This is the standard \`${namedId}\` contract.\n\n` : ''}${
     relaxed.length
       ? `**${relaxed.map((f) => `\`${f}\``).join(', ')} ${relaxed.length === 1 ? 'has' : 'have'} been REMOVED from this
 contract's required fields.** The standard schema requires ${relaxed.length === 1 ? 'it' : 'them'}, but
-${relaxed.length === 1 ? 'it names something' : 'they name things'} that only exist on a code host and this
-project has none — so there is no honest value to give. Omit ${relaxed.length === 1 ? 'it' : 'them'}. Do not
-invent ${relaxed.length === 1 ? 'a number or identifier' : 'numbers or identifiers'} to make a schema pass;
-that is the exact failure this envelope exists to prevent.
+${relaxed.length === 1 ? 'it names something that exists' : 'they name things that exist'} only on a code host,
+and this project has none — so there is no honest value to give. ${relaxed.length === 1 ? 'It has' : 'They have'}
+also been removed from \`properties\`, and this envelope forbids extra properties, so sending
+${relaxed.length === 1 ? 'it' : 'them'} anyway makes the envelope INVALID. Do not invent
+${relaxed.length === 1 ? 'a number or identifier' : 'numbers or identifiers'} to make a schema pass; that is
+the exact failure this envelope exists to prevent.
 
 `
       : ''

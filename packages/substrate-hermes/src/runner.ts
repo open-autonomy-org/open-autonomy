@@ -273,19 +273,51 @@ export class HermesRunner implements Runner {
     // second card. Keyed by actor+ref because develop and review legitimately each get one.
     if (ref) args.push('--idempotency-key', `open-autonomy:${agent}:${ref}`);
 
-    const r = this.kanban(args);
-    // `kanban create` has no --json, so its one-line receipt is the contract: "Created <id>  (<status>, ...)".
-    const id = r.stdout.match(/^Created\s+(\S+)/m)?.[1];
-    if (!r.ok || !id) {
-      throw new Error(
-        `open-autonomy: hermes kanban create failed for actor "${agent}" — ${(r.stderr || r.stdout).trim() || 'no output'}`,
-      );
-    }
+    const id = this.createCard(args, ref ? `${agent}:${ref}` : agent, ref);
     if (declared?.review) this.openReviewCard(declared.review, id, agent, ref, params);
     const card = this.readCard(id);
     // The id is RECEIVED from the kernel, never invented here — the card is the single handle, so `ref`
     // and `id` are deliberately the same value rather than two identifiers that can drift apart.
     return card ? { ...sessionOf(card), params: Object.keys(params).length ? params : undefined } : { id, agent, status: 'running', ref: id, ...(Object.keys(params).length ? { params } : {}) };
+  }
+
+  /** Create a card, and REFUSE to accept a stale idempotency hit as a launch.
+   *
+   *  Hermes' `create_task` resolves `--idempotency-key` with
+   *  `WHERE idempotency_key = ? AND status != 'archived'` — only ARCHIVED is excluded, so a **`done`** card
+   *  is returned as a hit, with the same `Created <id>` receipt and exit 0. That silently breaks the one
+   *  workflow the doctrine promises: after a reviewer returns changes-requested the proposal card is `done`,
+   *  so "rework is re-filing" re-files nothing. No card, no worker, no error — and because `list` filters
+   *  `done` out, the PM sees no in-flight session and re-files again on the very next tick, forever.
+   *  (Verified against the real kernel: re-running the exact launch argv printed
+   *  `Created t_74c5e682  (done, assignee=develop)` and spawned nothing.)
+   *
+   *  So a hit on a finished card is treated as "this key is SPENT" and the launch retries under a
+   *  discriminated key. That makes re-filing genuinely idempotent per ATTEMPT while still collapsing the
+   *  duplicate-launch case the key exists for: a hit on a card that is still in flight is returned as-is. */
+  private createCard(args: string[], what: string, ref: string | undefined): string {
+    const keyAt = args.indexOf('--idempotency-key');
+    for (let attempt = 1; ; attempt++) {
+      const r = this.kanban(args);
+      // `kanban create` has no --json, so its one-line receipt is the contract: "Created <id>  (<status>, ...)".
+      const id = r.stdout.match(/^Created\s+(\S+)/m)?.[1];
+      if (!r.ok || !id) {
+        throw new Error(
+          `open-autonomy: hermes kanban create failed for ${what} — ${(r.stderr || r.stdout).trim() || 'no output'}`,
+        );
+      }
+      // No key, or the card is genuinely in flight -> this launch is the launch.
+      if (keyAt < 0 || !ref) return id;
+      const status = this.readCard(id)?.status;
+      if (status !== 'done') return id;
+      if (attempt >= 20) {
+        throw new Error(
+          `open-autonomy: every idempotency key for ${what} resolves to a completed card (${attempt} attempts). ` +
+            `Refusing to report a launch that started nothing.`,
+        );
+      }
+      args[keyAt + 1] = `${args[keyAt + 1]!.replace(/#\d+$/, '')}#${attempt + 1}`;
+    }
   }
 
   /** `review: <role>` — the merge boundary — realized as a LINKED CHILD CARD, opened at launch.
@@ -347,7 +379,10 @@ export class HermesRunner implements Runner {
       '--created-by',
       'open-autonomy',
     ];
-    if (ref) args.push('--idempotency-key', `open-autonomy:${reviewer}:${ref}`);
+    // Keyed on the PARENT, not just the ref: a review card belongs to one proposal. Keying it on the ref
+    // alone made a re-filed proposal adopt the PREVIOUS proposal's review card — which is still parented to
+    // the dead card, so it is released by that card's archival and the new proposal ships unreviewed.
+    if (ref) args.push('--idempotency-key', `open-autonomy:${reviewer}:${ref}:${parentId}`);
     const r = this.kanban(args);
     if (!r.ok) {
       // Loud, not best-effort. A launch that quietly loses its review edge is a merge boundary that stopped

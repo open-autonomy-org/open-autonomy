@@ -6,12 +6,21 @@
 // exists in git). Neither reads the other's storage — they meet at a branch name and an exit code.
 //
 // WHY A TOOL GATE RATHER THAN A PORT OF `ztrack loop`
-// ztrack's loop holds an agent's TURN via Claude Code's Stop/SubagentStop hooks. Hermes fires exactly five
-// hook events — pre_llm_call, post_llm_call, pre_tool_call, post_tool_call, on_session_finalize — and none
-// of them can extend a turn, so the ralph loop has nothing to hang on. But Hermes offers a strictly
-// stronger lever: a `pre_tool_call` hook may BLOCK the call. Gating `kanban_complete` makes `done`
-// UNREACHABLE rather than merely nagged at, and the block `reason` is fed back to the model, so the worker
-// reads its own ztrack findings and fixes them — the ralph loop, achieved by refusal.
+// A CORRECTION FIRST, because this comment used to justify the design with a false fact: it claimed Hermes
+// fires "exactly five hook events... and none of them can extend a turn". Both halves are wrong.
+// `hermes_cli/plugins.py` registers far more, and one of them — `pre_verify` — exists for precisely the
+// thing the old comment called impossible: it fires once per turn when the agent has edited code and is
+// about to finish, and a callback returning `{"action": "continue", "message": ...}` KEEPS THE TURN GOING
+// (it even accepts Claude Code's `{"decision": "block", "reason": ...}` Stop shape verbatim). So `ztrack
+// loop` has a native landing place here after all.
+//
+// The tool gate is still the right choice, on its own merits rather than for lack of an alternative:
+// `pre_verify` fires when the model is "about to verify/finish", which is a HEURISTIC about the model's
+// intent, whereas `kanban_complete` is the exact, unambiguous act of declaring the card done. Blocking that
+// call makes `done` UNREACHABLE rather than merely nagged at, and the block `reason` is fed back to the
+// model, so the worker reads its own ztrack findings and fixes them — the ralph loop, achieved by refusal.
+// A `pre_verify` nudge would be a good ADDITION (it would surface findings earlier, mid-turn) and is
+// deliberately not implemented yet; it is an enhancement, not the missing foundation.
 //
 // Hermes' own answer to "is it done" is `goal_mode`, whose judge is an auxiliary LLM re-reading the card
 // (hermes_cli/goals.py). That is precisely the PRESUMPTION this profile exists to reject: the twin run
