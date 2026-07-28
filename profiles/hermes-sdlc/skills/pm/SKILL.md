@@ -85,12 +85,20 @@ centrally and never inspect worktrees by hand.
 
      ```
      git merge --no-ff -m "integrate <id>" <branch-from-the-runner>
+     git worktree remove --force <worktree-from-the-runner> ; git branch -d <branch-from-the-runner>
      ```
 
+     **Tearing down the worktree after a SUCCESSFUL merge is yours, and nothing else will do it.** The
+     kernel creates a card's worktree and owns it while the card is live, but it never reclaims one:
+     `complete`/`archive` do no cleanup, and `kanban gc` prunes only events, logs, and *scratch*
+     workspaces — never a worktree. So every integrated proposal leaves a worktree and a branch behind
+     forever unless you remove them here. (Get both paths from the runner — `runner.ts get <id> --json` —
+     never construct them.)
+
      (If the merge reports a conflict, it is a human-required block: immediately `git merge --abort` so
-     trunk stays clean, leave the branch and worktree intact for a human to resolve, and stop with
-     `OUTCOME: blocked merge-conflict <id>`. Never hand-resolve a conflict or force-land it. Do not remove
-     the worktree yourself either — the kernel owns it.)
+     trunk stays clean, leave the branch and worktree **intact** for a human to resolve, and stop with
+     `OUTCOME: blocked merge-conflict <id>`. Never hand-resolve a conflict or force-land it, and never
+     tear down a worktree whose work has not landed.)
 
    - **File** an eligible issue: else if an issue clears every gate above and has no session yet
      (nothing in step 2 carries its ref), file it:

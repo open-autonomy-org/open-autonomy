@@ -35,6 +35,7 @@ interface Card {
   assignee: string | null;
   status: CardStatus;
   workspace_kind?: string | null;
+  workspace_path?: string | null;
   branch_name?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
@@ -438,6 +439,15 @@ export class HermesRunner implements Runner {
    *  naming a branch that does not exist here. So the rule the doctrine follows is: ask the runner. */
   async branchOf(id: string): Promise<string | undefined> {
     return this.readCard(id)?.branch_name ?? undefined;
+  }
+
+  /** The card's resolved workspace path. Beyond the contract, and needed for the same reason as `branchOf`:
+   *  integrating a proposal means removing its worktree afterwards — nothing else ever does, since
+   *  `complete`/`archive` do no cleanup and `kanban gc` prunes only events, logs and *scratch* workspaces —
+   *  and the doctrine forbids constructing paths. Note this is only populated once the kernel has RESOLVED
+   *  the workspace (at claim time); before that it holds the anchor the card was created with. */
+  async workspaceOf(id: string): Promise<string | undefined> {
+    return this.readCard(id)?.workspace_path ?? undefined;
   }
 
   /** NOTE on the error path, because the obvious one is dead code: `hermes kanban show <missing>` prints

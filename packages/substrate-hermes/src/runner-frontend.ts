@@ -177,6 +177,10 @@ const sessionOf = (t) => ({
   status: t.status === 'blocked' ? 'paused' : t.status === 'done' ? 'done' : t.status === 'archived' ? 'cancelled' : 'running',
   ref: t.id,
   branch: t.branch_name ?? null,
+  // The PM tears down a worktree after integrating (nothing else ever reclaims one), and its doctrine says
+  // ASK for paths rather than construct them — so the path has to be here, or that instruction is
+  // unfollowable.
+  workspace: t.workspace_path ?? null,
   card: t.status,
 });
 

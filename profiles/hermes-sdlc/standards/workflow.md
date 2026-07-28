@@ -14,8 +14,10 @@ Read this from PM and Review skills.
 - The tracker is a **shared board** (central across all worktrees), so the PM reads
   every issue's live state on trunk without inspecting worktrees.
 - **Only the PM touches trunk.** Workers commit on their branch; the PM **integrates**
-  a `done` issue by `git merge --no-ff <branch-from-the-runner>` into trunk. Review is a verdict only —
-  it never merges.
+  a `done` issue by `git merge --no-ff <branch-from-the-runner>` into trunk, **and then removes that
+  worktree and branch** — the kernel never reclaims a worktree (`complete`/`archive` do no cleanup and
+  `kanban gc` prunes only events, logs and scratch workspaces), so integrated work accumulates forever if
+  the PM does not tear it down. Review is a verdict only — it never merges.
 
 ## WIP
 
