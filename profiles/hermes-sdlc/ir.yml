@@ -38,8 +38,12 @@
 #      `kind: human`: no substrate ever launches a job for it — the runner PARKS the ask and the flow resumes
 #      only on a verified resolution (docs/SPEC.md#handoffs, profiles/hello-human is the minimal precedent).
 #
-#   4. THE PM IS INTAKE, NOT A DISPATCHER. See the `pm` block below — the kernel already schedules, so a pm
-#      that also schedules is a second dispatcher racing the first.
+#   4. THE PM ORCHESTRATES BUT DOES NOT SCHEDULE. See the `pm` block below. It still decides what ENTERS
+#      the board and reads what is in flight (`agent:launch` + `agent:list`); the kernel decides when each
+#      card runs, so a pm that also schedules is a second dispatcher racing the first. "Not the scheduler"
+#      is not "not the orchestrator" — a pass of mine collapsed the two and stripped capabilities the pm's
+#      own skill exercises, which made this file UNDER-state its authority. Under-stating is as wrong as
+#      over-stating: `capabilities` is the authority statement the `audit` actor reads.
 #
 # A RETRACTION. An earlier version of this header said Hermes' card dependency links (`link`) were "NOT
 # translated, deliberately", on the grounds that "a dependency edge the kernel enforces would be a second,
@@ -58,22 +62,34 @@ targets: [local, hermes]
 codeHost: local-git
 
 agents:
-  # INTAKE, NOT A SCHEDULER — the one structural difference from simple-sdlc's pm, and the reason this
-  # profile is native rather than ported. simple-sdlc's pm holds `agent:launch`/`agent:list`/`agent:cancel`
-  # because the `local` substrate has no kernel: something has to sweep the board, enforce WIP, and stop a
-  # superseded worker. Hermes HAS a kernel, and it already does every one of those jobs — `recompute_ready`
-  # (eligibility), `max_in_progress` (WIP), claim leases + `release_stale_claims` (liveness),
-  # `enforce_max_runtime` (timeout), `reclaim_task` (cancel). A pm holding those capabilities here is a
+  # STILL THE ORCHESTRATOR — but NOT the scheduler, and separating those two is the one structural
+  # difference from simple-sdlc's pm.
+  #
+  # simple-sdlc's pm is both, because the `local` substrate has no kernel: something must sweep the board,
+  # enforce WIP, and stop a superseded worker. Hermes HAS a kernel and already does every one of those jobs
+  # — `recompute_ready` (eligibility), `max_in_progress` (WIP), claim leases + `release_stale_claims`
+  # (liveness), `enforce_max_runtime` (timeout), `reclaim_task` (cancel). A pm that re-implements them is a
   # SECOND dispatcher racing the first, which is the pattern Hermes itself deprecated: `kanban daemon` is
   # marked "DEPRECATED — dispatcher now runs in the gateway", with its escape hatch hidden from `--help`
   # specifically so nobody "keeps the old double-dispatcher pattern alive".
   #
-  # So the pm's job shrinks to what only it can do: read the TRACKER for newly-actionable issues and file a
-  # card per issue (`tasks:author` -> kanban_create). It never enumerates claims, never cancels a run, and
-  # never decides what runs next. Its cron is an intake poll, not a scheduler tick.
+  # What survives that subtraction is still orchestration, and an earlier pass of mine wrongly stripped it:
+  # the pm decides what ENTERS the board (`agent:launch` — reading the TRACKER for newly-actionable issues,
+  # applying the risk/allowlist/deferral fences no kernel has an opinion about, and filing one card per
+  # eligible issue) and READS what is in flight to decide (`agent:list`). Its own skill runs
+  # `runner.ts launch` and `runner.ts list`, so declaring less than that made the IR UNDER-state its
+  # authority — which the audit actor reads, and which is exactly as wrong as over-stating it.
+  #
+  # `agent:cancel` is genuinely gone, and that part of the subtraction stands: rework is re-filing (the
+  # launch is idempotent per issue), so the pm never reclaims a run. Killing a worker is the kernel's job.
+  #
+  # NOTE what `agent:list` costs: Hermes reserves `kanban_list` for ORCHESTRATOR sessions
+  # (`_check_kanban_orchestrator_mode`, gated on HERMES_KANBAN_TASK being absent), so it lowers only for a
+  # STANDING actor. The cron trigger below is what earns that seat — it is an intake poll, not a scheduler
+  # tick, and it is also the thing that makes this capability lower at all.
   pm:
     behavior: pm
-    capabilities: [tasks:author, tasks:converse]
+    capabilities: [agent:launch, agent:list, tasks:author, tasks:converse]
     triggers:
       - cron: "*/15 * * * *"
 
