@@ -1,0 +1,201 @@
+# hermes-sdlc — simple-sdlc translated for a NATIVE Hermes substrate.
+#
+# "Native" means: Hermes is not activated as a shell an agent is launched into. Hermes' own kanban kernel
+# IS the board (claim_task / heartbeat_claim / release_stale_claims / reclaim_task / enforce_max_runtime),
+# its swarm workers ARE the launched sessions (SwarmWorkerSpec {profile,title,body,skills,priority,
+# max_runtime_seconds}), and its residents are long-lived conversations engaged through the gateway.
+#
+# Three differences from simple-sdlc, and each one is a claim this profile has to survive at runtime, not a
+# preference (see scenarios/hermes-sdlc/run.ts — the dry-run that tries to break each of them):
+#
+#   1. A CLAIM IS A LEASE, NOT A HANDLE. Hermes heartbeats a claim and reclaims it when the heartbeat stops.
+#      So the same work item can be legitimately launched TWICE — once by the PM, once by the kernel after a
+#      reclaim — and the two runs can overlap for as long as the reclaim window. simple-sdlc's `develop`
+#      runs in the SHARED checkout; two overlapping developers there corrupt each other. Here `develop` and
+#      `review` declare `execution: { workspace: isolated }`, which is the portable IR way to say "every
+#      launch gets its own workspace" (docs/SPEC.md#the-runner). This is the ONE structural change.
+#
+#   2. DONE IS VERIFIED, NOT PRESUMED. A Hermes worker's process exit tells you nothing about whether the
+#      work happened — the kernel marks a card done when the worker returns, and a worker that fell over
+#      mid-turn returns just the same. (Observed, not feared: a `develop` worker that produced nothing drove
+#      its card to `done`.) Hermes' own answer is `goal_mode`, whose judge is an auxiliary LLM re-reading the
+#      card — a model grading its own homework, which is the presumption this profile exists to reject.
+#      TWO mechanisms replace it, and they are different layers. Both workers that can change the board
+#      declare a typed `result` envelope, so a routing decision is made from a VALIDATED value rather than an
+#      exit code; and `ztrack` — kept, not dropped — is the DETERMINISTIC oracle underneath it: a checked
+#      acceptance criterion must cite a commit SHA that exists in git. substrate-hermes installs that oracle
+#      as a Hermes `pre_tool_call` hook that REFUSES `kanban_complete` until `ztrack check` is green, so
+#      "done" is unreachable rather than merely discouraged.
+#
+#      The two planes stay separate on purpose. Kanban owns DISPATCH (board, WIP, leases, worktrees); ztrack
+#      owns VERIFICATION (issues, ACs, commit-backed proof). A card is a RUN OF an issue, never the issue
+#      itself — which is why kanban.db is disposable and `.volter/tracker/` is not. They meet in exactly two
+#      thin places: a branch name (`kanban create --branch <issue>`, which `ztrack check --auto-scope`
+#      resolves from) and an exit code. Neither reads the other's storage.
+#
+#   3. THE HUMAN IS ENGAGED, NOT LAUNCHED. Hermes' gateway (Slack/Discord/...) is a messaging channel, and a
+#      person on the other end of it is not a session anyone can start, watch, or cancel. `maintainer` is
+#      `kind: human`: no substrate ever launches a job for it — the runner PARKS the ask and the flow resumes
+#      only on a verified resolution (docs/SPEC.md#handoffs, profiles/hello-human is the minimal precedent).
+#
+#   4. THE PM IS INTAKE, NOT A DISPATCHER. See the `pm` block below — the kernel already schedules, so a pm
+#      that also schedules is a second dispatcher racing the first.
+#
+# A RETRACTION. An earlier version of this header said Hermes' card dependency links (`link`) were "NOT
+# translated, deliberately", on the grounds that "a dependency edge the kernel enforces would be a second,
+# invisible scheduler". That had it exactly backwards: the KERNEL is the first scheduler, and it was the pm
+# that was the second one. Links are now how `develop.review` is realized — the substrate opens the review
+# card as a linked CHILD of the proposal card, so `recompute_ready` promotes it precisely when the proposal
+# reaches done. That makes the merge boundary structural instead of something a model has to remember, which
+# is what the `review:` edge is FOR. Issue-level dependencies stay in ztrack; `--parent` is used only for
+# this within-item sequencing, so there is still exactly one dependency graph per question.
+schema: autonomy.ir.v1
+# `local` for the same reason simple-sdlc is: this is a PR-free process (review = the reviewer's verdict
+# over commit-evidence). `hermes` is now the native target — packages/substrate-hermes landed, and this
+# profile is what it compiles: every actor becomes a Hermes profile whose SOUL.md is that actor's SKILL.md
+# verbatim, `maintainer` deliberately becomes no profile at all, and the kanban kernel is the board.
+targets: [local, hermes]
+codeHost: local-git
+
+agents:
+  # INTAKE, NOT A SCHEDULER — the one structural difference from simple-sdlc's pm, and the reason this
+  # profile is native rather than ported. simple-sdlc's pm holds `agent:launch`/`agent:list`/`agent:cancel`
+  # because the `local` substrate has no kernel: something has to sweep the board, enforce WIP, and stop a
+  # superseded worker. Hermes HAS a kernel, and it already does every one of those jobs — `recompute_ready`
+  # (eligibility), `max_in_progress` (WIP), claim leases + `release_stale_claims` (liveness),
+  # `enforce_max_runtime` (timeout), `reclaim_task` (cancel). A pm holding those capabilities here is a
+  # SECOND dispatcher racing the first, which is the pattern Hermes itself deprecated: `kanban daemon` is
+  # marked "DEPRECATED — dispatcher now runs in the gateway", with its escape hatch hidden from `--help`
+  # specifically so nobody "keeps the old double-dispatcher pattern alive".
+  #
+  # So the pm's job shrinks to what only it can do: read the TRACKER for newly-actionable issues and file a
+  # card per issue (`tasks:author` -> kanban_create). It never enumerates claims, never cancels a run, and
+  # never decides what runs next. Its cron is an intake poll, not a scheduler tick.
+  pm:
+    behavior: pm
+    capabilities: [tasks:author, tasks:converse]
+    triggers:
+      - cron: "*/15 * * * *"
+
+  # Turns an untriaged request into a verifiable Ready issue. Unchanged from simple-sdlc: drafting touches
+  # the tracker, never the working tree, so a duplicate launch needs no isolation.
+  draft:
+    behavior: draft
+    capabilities: [tasks:author, tasks:converse]
+    triggers:
+      - dispatch: true
+        params: { ZTRACK_ISSUE: subject.ref }
+
+  # Implements exactly one Ready issue and produces real evidence for each AC.
+  # `workspace: isolated` — claim #1 above. `result` — claim #2: the PM routes on this envelope, not on exit.
+  # `review: review` — the merge boundary's wiring edge: requesting review is mechanical, so the substrate
+  # triggers the reviewer when the proposal lands rather than trusting a model to remember.
+  develop:
+    behavior: develop
+    capabilities: [code:propose, tasks:converse]
+    execution: { workspace: isolated }
+    review: review
+    result:
+      schema:
+        $id: hermes-sdlc.develop.v1
+        type: object
+        additionalProperties: false
+        required: [schema, ref, headSha, outcome, evidence]
+        properties:
+          schema: { const: hermes-sdlc.develop.v1 }
+          ref: { type: string, minLength: 1, maxLength: 200 }
+          headSha: { type: string, pattern: "^[0-9a-fA-F]{40}$" }
+          outcome: { enum: [proposed, blocked, human-required] }
+          # One entry per acceptance criterion, each citing where the proof lives. An empty array is
+          # legal ONLY for a non-`proposed` outcome — see the allOf below.
+          evidence:
+            type: array
+            maxItems: 50
+            items:
+              type: object
+              additionalProperties: false
+              required: [ac, proof]
+              properties:
+                ac: { type: string, minLength: 1, maxLength: 2000 }
+                proof: { type: string, minLength: 1, maxLength: 2000 }
+          blockedReason: { type: string, minLength: 1, maxLength: 2000 }
+        allOf:
+          # A proposal with no evidence is the exact failure mode #2 exists to catch: a worker that exited
+          # cleanly having done nothing. Reject it at the envelope, before it reaches the PM.
+          - if: { properties: { outcome: { const: proposed } }, required: [outcome] }
+            then: { properties: { evidence: { minItems: 1 } } }
+          - if: { properties: { outcome: { const: blocked } }, required: [outcome] }
+            then: { required: [blockedReason] }
+    triggers:
+      - dispatch: true
+        params: { ZTRACK_ISSUE: subject.ref }
+
+  # Verifies one In-Review change and moves it to Done or back for rework.
+  # `workspace: shared` — and this is a deliberate CHANGE from simple-sdlc, forced by how the review edge is
+  # realized here. `develop.review` becomes a linked CHILD CARD (substrate-hermes' `openReviewCard`), and the
+  # proposal's card owns a worktree on a branch named for the issue. Git refuses to check out one branch in
+  # two worktrees, so an isolated reviewer could not be placed on the branch it must review — and a failed
+  # workspace resolution auto-blocks the card. A reviewer reads COMMITTED history (`git log <issue-branch>`),
+  # which the ordinary checkout can see, so it needs no tree of its own. The isolation that matters for
+  # correctness — nobody mutating the proposal while it is read — is already provided by the proposal's own
+  # worktree.
+  # The result schema is the STANDARD one (open-autonomy.review.v1) because `develop.review` names this agent
+  # and the spec requires the bound reviewer to speak the standard contract — the reviewer's verdict is the
+  # merge gate, so its shape is not a per-profile choice.
+  review:
+    behavior: review
+    capabilities: [code:review, tasks:converse]
+    execution: { workspace: shared }
+    result: { schema: open-autonomy.review.v1 }
+    triggers:
+      - dispatch: true
+        params: { ZTRACK_ISSUE: subject.ref }
+
+  # The human seam. A person, engaged through Hermes' gateway; never a launched session. Reached when the
+  # reviewer returns `outcome: human-required` (which the standard envelope requires to carry a `humanTask`
+  # naming the ask, the assignee, and the completion condition) or when a change touches a
+  # `policy.box.risk.human_required_paths` entry.
+  maintainer:
+    kind: human
+    behavior: maintainer
+    capabilities: [tasks:converse, code:review]
+    triggers:
+      - dispatch: true
+        params: { ZTRACK_ISSUE: subject.ref }
+
+  # Conformance auditor of THIS INSTALL — byte-identical doctrine to simple-sdlc's (bin/check-profiles.ts's
+  # SHARED_SKILLS guard enforces that), so this block is a verbatim carry and must stay one.
+  audit:
+    behavior: audit
+    capabilities: [tasks:converse, code:propose@docs/audits]
+    triggers:
+      - dispatch: true
+        params: { TARGET_REF: subject.ref }
+      - cron: "51 9 * * 0"
+
+policy:
+  maxConcurrent: 2
+  box:
+    tracker:
+      # Kept explicitly on the fork (BL-29): the directory basename is `hermes-sdlc`, and there is no ztrack
+      # preset by that name. Without this key the CLI would fall back to the basename and silently select a
+      # preset that does not exist. The process is simple-sdlc's, so the preset is too.
+      ztrackPreset: simple-sdlc
+    risk:
+      human_required_paths:
+        - .github/workflows/**
+        - .agents/skills/**
+        - .claude/skills/**
+        - profiles/**/skills/**
+        - profiles/**/scheduler/**
+        - .volter/tracker/validation/**
+    dispatch:
+      mode: allowlist
+      allow_label: oa-approved
+
+resources:
+  - .claude/settings.json
+  - .codex/hooks.json
+  - standards/workflow.md
+  - standards/issue-and-evidence.md
+  - standards/risk-and-review.md

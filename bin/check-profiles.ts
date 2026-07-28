@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { parseIr, isInstallOwned, validateSkillFrontmatterIn } from '@open-autonomy/core';
 import { compileGithub } from '@open-autonomy/substrate-github';
 import { compileLocal } from '@open-autonomy/substrate-local';
+import { compileHermes } from '@open-autonomy/substrate-hermes';
 
 const ROOT = 'profiles';
 const errs: string[] = [];
@@ -46,7 +47,13 @@ for (const name of profiles) {
   for (const target of ir.targets) {
     try {
       const out =
-        target === 'gh-actions' ? compileGithub(ir) : target === 'local' ? compileLocal(ir) : null;
+        target === 'gh-actions'
+          ? compileGithub(ir)
+          : target === 'local'
+            ? compileLocal(ir)
+            : target === 'hermes'
+              ? compileHermes(ir)
+              : null;
       if (!out) {
         errs.push(`${name}: unknown target "${target}"`);
         continue;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Compile a profile (an `autonomy.ir.v1` ir.yml) onto a substrate, producing an installation.
-//   bun bin/autonomy-compile.ts <profileName|profileDir> <local|gh-actions> [outDir] [--force]
+//   bun bin/autonomy-compile.ts <profileName|profileDir> <local|gh-actions|hermes> [outDir] [--force]
 //     [--provider-url <url>] [--local-schedule-config <json>]
 //     [--managed-provider-name <name>] [--provider-runtime-dir <path>]
 //   ("github" accepted as alias for gh-actions)
@@ -108,7 +108,7 @@ const managedProviderName = managedProviderNameFlagIdx >= 0 ? rawArgs[managedPro
 const providerRuntimeDirFlagIdx = rawArgs.indexOf('--provider-runtime-dir');
 const providerRuntimeDir = providerRuntimeDirFlagIdx >= 0 ? rawArgs[providerRuntimeDirFlagIdx + 1] : undefined;
 const usage =
-  'usage: autonomy-compile <profileName|profileDir> <local|gh-actions> [outDir] [--force] [--provider-url <url>] [--local-schedule-config <json>] [--managed-provider-name <name>] [--provider-runtime-dir <path>]';
+  'usage: autonomy-compile <profileName|profileDir> <local|gh-actions|hermes> [outDir] [--force] [--provider-url <url>] [--local-schedule-config <json>] [--managed-provider-name <name>] [--provider-runtime-dir <path>]';
 if (providerUrlFlagIdx >= 0) {
   // A missing value, OR the next token being ANOTHER flag (`--provider-url --force` would silently swallow
   // `--force` as the URL), OR an unparseable URL — all reject rather than emit a garbage pin into
@@ -183,7 +183,7 @@ const [profileArg, substrateArg, outDir] = rawArgs.filter(
 );
 // `gh-actions` is the runner-substrate; accept `github` as a back-compat alias. `local` unchanged.
 const substrate = substrateArg === 'github' ? 'gh-actions' : substrateArg;
-if (!profileArg || (substrate !== 'local' && substrate !== 'gh-actions')) {
+if (!profileArg || (substrate !== 'local' && substrate !== 'gh-actions' && substrate !== 'hermes')) {
   console.error(`${usage}\n  bundled profiles: ${bundledProfileNames().join(', ') || '(none found)'}`);
   process.exit(2);
 }
@@ -230,7 +230,9 @@ try {
           managedProviderName,
           providerRuntimeDir,
         })
-      : (await import('@open-autonomy/substrate-github')).compileGithub(ir);
+      : substrate === 'hermes'
+        ? (await import('@open-autonomy/substrate-hermes')).compileHermes(ir, { destDir: outDir })
+        : (await import('@open-autonomy/substrate-github')).compileGithub(ir);
 } catch (e) {
   // A lazy sibling-data read (emit.ts) throws an actionable packaging-bug Error naming the missing file —
   // surface just that message, not a raw Node stack trace, so a corrupted/partial install fails LOUDLY but

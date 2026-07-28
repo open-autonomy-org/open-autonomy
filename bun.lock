@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "volter-public-agent-trial",
@@ -37,6 +38,14 @@
     },
     "packages/substrate-github": {
       "name": "@open-autonomy/substrate-github",
+      "version": "0.0.0",
+      "dependencies": {
+        "@open-autonomy/core": "workspace:*",
+        "yaml": "^2.9.0",
+      },
+    },
+    "packages/substrate-hermes": {
+      "name": "@open-autonomy/substrate-hermes",
       "version": "0.0.0",
       "dependencies": {
         "@open-autonomy/core": "workspace:*",
@@ -87,6 +96,8 @@
     "@open-autonomy/dry-run": ["@open-autonomy/dry-run@workspace:packages/dry-run"],
 
     "@open-autonomy/substrate-github": ["@open-autonomy/substrate-github@workspace:packages/substrate-github"],
+
+    "@open-autonomy/substrate-hermes": ["@open-autonomy/substrate-hermes@workspace:packages/substrate-hermes"],
 
     "@open-autonomy/substrate-local": ["@open-autonomy/substrate-local@workspace:packages/substrate-local"],
 

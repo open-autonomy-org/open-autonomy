@@ -1,0 +1,333 @@
+// Compile an IR to a HERMES installation: the substrate-neutral manifest, plus the Hermes profile roster
+// the kanban kernel dispatches. "Native" means Hermes is not a shell an agent is launched into — Hermes'
+// own kernel IS the board (claim leases, heartbeats, recompute_ready, enforce_max_runtime, reclaim_task),
+// its dispatched workers ARE the launched sessions, and its standing profiles are the orchestrators.
+//
+// The correspondence itself lives in ./lowering.ts (pure + unit-tested). This module only decides WHERE
+// the lowered artifacts land and emits the installer that writes them into a real $HERMES_HOME.
+import { emitAutonomy, type AutonomyIR, type CompileOutput } from '@open-autonomy/core';
+import { stringify as stringifyYaml } from 'yaml';
+import { boardConfig, loweredProfiles, loweringFindings, scriptActors, type HermesProfile, type LoweringFinding } from './lowering';
+import {
+  GATE_COMMAND_PLACEHOLDER,
+  ZTRACK_GATE_INSTALLED_SUBPATH,
+  ZTRACK_GATE_PATH,
+  ZTRACK_GATE_SCRIPT,
+  isZtrackGated,
+  ztrackHooksBlock,
+  ztrackPresetOf,
+} from './ztrack-gate';
+
+/** Where the lowered Hermes artifacts live inside the installed repo. Not `$HERMES_HOME` — a Hermes home
+ *  is mutable per-machine STATE (a live kanban.db, session logs, credentials), and an OA install is
+ *  committed source. So the compile emits the derivation + an installer, and the operator applies it to
+ *  whichever home they run. */
+export const HERMES_DIR = 'hermes';
+export const LOWERING_PATH = `${HERMES_DIR}/lowering.json`;
+export const INSTALLER_PATH = `${HERMES_DIR}/install.py`;
+
+/** The receipt: the full derived lowering, as data. Written to the install so an operator (and the audit
+ *  actor) can read what each actor was granted WITHOUT re-deriving it, and so a diff of two compiles shows
+ *  exactly which authority moved. `findings` is the honest column — what the IR declares and this
+ *  substrate does not realize. */
+export interface HermesLowering {
+  schema: 'open-autonomy.hermes-lowering.v1';
+  board: { max_in_progress: number };
+  profiles: HermesProfile[];
+  /** actors deliberately NOT given a profile — see lowering.ts's `isHuman` */
+  humanRoles: string[];
+  findings: LoweringFinding[];
+  /** The verification plane, when the profile declares a ztrack tracker. Absent ⇒ no done-gate is
+   *  installed, and `kanban_complete` means whatever the kernel means by it (a worker returned). */
+  ztrack?: {
+    preset: string;
+    /** roles whose `kanban_complete` is refused until `ztrack check` is green (see `isZtrackGated`) */
+    gatedRoles: string[];
+    installedSubpath: string;
+    /** merged into each gated profile's config.yaml by the installer, after substituting the real gate
+     *  command for `GATE_COMMAND_PLACEHOLDER` */
+    configPatch: Record<string, unknown>;
+  };
+}
+
+export function loweringFor(ir: AutonomyIR): HermesLowering {
+  const { profiles, humanRoles } = loweredProfiles(ir);
+  const preset = ztrackPresetOf(ir);
+  const gatedRoles = preset
+    ? Object.entries(ir.agents)
+        .filter(([, agent]) => isZtrackGated(agent))
+        .map(([role]) => role)
+    : [];
+  return {
+    schema: 'open-autonomy.hermes-lowering.v1',
+    board: boardConfig(ir),
+    profiles,
+    humanRoles,
+    findings: loweringFindings(ir),
+    ...(preset && gatedRoles.length
+      ? {
+          ztrack: {
+            preset,
+            gatedRoles,
+            installedSubpath: ZTRACK_GATE_INSTALLED_SUBPATH,
+            configPatch: ztrackHooksBlock(GATE_COMMAND_PLACEHOLDER),
+          },
+        }
+      : {}),
+  };
+}
+
+// The installer. Python, not .mjs, for one concrete reason: a Hermes profile's `config.yaml` is a FULL
+// REPLACEMENT of the home config, not an overlay — `get_config_path()` is `get_hermes_home()/config.yaml`
+// and an active profile IS the home (hermes_constants.get_hermes_home). So every profile config must carry
+// the operator's whole model/provider/credential block, which means the installer has to READ the
+// operator's base YAML, not just append to it. PyYAML is a hard dependency of Hermes itself, so running
+// this with the same interpreter that runs Hermes is the one environment where the round-trip is
+// guaranteed available — and it keeps generated credentials out of the committed install entirely.
+const INSTALLER = `#!/usr/bin/env python3
+"""Apply an open-autonomy Hermes lowering to a real \$HERMES_HOME.
+
+    HERMES_HOME=~/.hermes <hermes-venv>/bin/python hermes/install.py
+
+Reads hermes/lowering.json (the compile's receipt) and writes one Hermes profile per lowered actor. The
+operator's existing home config supplies model/provider/credentials; this script never invents them and
+never writes a secret into the repo. Idempotent: re-running overwrites the derived files and nothing else.
+"""
+import copy, json, os, shutil, sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("hermes/install.py: PyYAML not found — run this with the interpreter that runs Hermes, e.g.\\n"
+             "  HERMES_HOME=~/.hermes ~/hermes-agent/.venv/bin/python hermes/install.py")
+
+here = Path(__file__).resolve().parent
+lowering = json.loads((here / "lowering.json").read_text(encoding="utf-8"))
+home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes"))
+base_config_path = home / "config.yaml"
+if not base_config_path.exists():
+    sys.exit(f"hermes/install.py: no {base_config_path} — run \`hermes setup\` first. A Hermes PROFILE config\\n"
+             "is a full replacement of the home config (an active profile IS the home), so each generated\\n"
+             "profile must carry your model/provider block; there is nothing to derive it from yet.")
+base = yaml.safe_load(base_config_path.read_text(encoding="utf-8")) or {}
+
+# The board's own knob. \`policy.maxConcurrent\` (the IR's global fleet cap) and \`kanban.max_in_progress\`
+# are the same quantity. NOTE the semantics that deadlocked a proving run: \`kanban dispatch --max N\` is a
+# CONCURRENCY cap, not a per-tick spawn budget — the dispatcher counts already-running tasks against N.
+kanban = base.setdefault("kanban", {})
+kanban["max_in_progress"] = lowering["board"]["max_in_progress"]
+base_config_path.write_text(yaml.safe_dump(base, sort_keys=False), encoding="utf-8")
+
+# ---- the ztrack done-gate (the verification plane) ----
+# Installed as a Hermes \`pre_tool_call\` shell hook that REFUSES \`kanban_complete\` until
+# \`ztrack check --auto-scope\` is green, so "done" is verified rather than presumed. See
+# packages/substrate-hermes/src/ztrack-gate.ts for why this is a tool gate and not a port of \`ztrack loop\`.
+ztrack = lowering.get("ztrack")
+gate_command = None
+if ztrack:
+    gate_src = here / "hooks" / "ztrack-done-gate.py"
+    if not gate_src.exists():
+        sys.exit(f"hermes/install.py: missing {gate_src} — the install is incomplete; re-run the compile.")
+    gate_dest = home / ztrack["installedSubpath"]
+    gate_dest.parent.mkdir(parents=True, exist_ok=True)
+    gate_dest.write_text(gate_src.read_text(encoding="utf-8"), encoding="utf-8")
+    gate_dest.chmod(0o755)
+    # Run the gate with the interpreter that runs HERMES rather than whatever \`python3\` resolves to in a
+    # worker's PATH. Hermes \`shlex.split\`s the command with shell=False, so "<python> <script>" is two
+    # argv entries and needs no shell.
+    gate_command = f"{sys.executable} {gate_dest}"
+
+written = []
+gated = []
+for profile in lowering["profiles"]:
+    role = profile["role"]
+    profile_dir = home / "profiles" / role
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    config = copy.deepcopy(base)
+    # TWO KEYS, TWO JOBS — and the difference is load-bearing:
+    #   \`platform_toolsets\` scopes which tools a given platform (cli/slack/...) may surface;
+    #   \`toolsets\` is the profile's OWN declared set, and it is the one the orchestrator gate reads
+    #   (\`_profile_has_kanban_toolset\` -> \`load_config().get("toolsets", [])\`, tools/kanban_tools.py).
+    # Writing only \`platform_toolsets\` puts kanban_create in the model's schema and then fails the
+    # orchestrator check at EXECUTION: the tool is offered and silently does nothing. Declare both.
+    # Two SEPARATE list objects, not one shared reference: PyYAML emits an anchor/alias pair
+    # (\`toolsets: &id001 [...]\` / \`platform_toolsets: {cli: *id001}\`) for a list it sees twice. safe_load
+    # resolves that correctly, but the config is also read by eyes and by other tooling, and a config whose
+    # second toolset key is a bare \`*id001\` is exactly the kind of thing that reads as "not set".
+    config["toolsets"] = list(profile["toolsets"])
+    platform_toolsets = dict(config.get("platform_toolsets") or {})
+    platform_toolsets["cli"] = list(profile["toolsets"])
+    config["platform_toolsets"] = platform_toolsets
+
+    # THE SAME TRAP AS ABOVE, ONE LAYER OUT. A profile config REPLACES the home config, so the hooks block
+    # has to be written into every gated profile — a hooks block that lives only in the home config is not
+    # read by a profile session at all. And a DISPATCHED WORKER IS NOT A TTY: without
+    # \`hooks_auto_accept: true\` Hermes skips registration with a log warning and the worker runs UNGATED,
+    # which looks exactly like a worker that passed. Both keys come from ztrack-gate.ts's
+    # \`ztrackHooksBlock\` so the shape has one owner; only the command path is filled in here.
+    if ztrack and role in ztrack["gatedRoles"]:
+        patch = json.loads(json.dumps(ztrack["configPatch"]).replace("${GATE_COMMAND_PLACEHOLDER}", gate_command))
+        config.update(patch)
+        gated.append(role)
+
+    (profile_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    # THE SOUL IS THE SKILL. An OA actor's \`behavior\` names a skill folder whose SKILL.md is the prose that
+    # directs it; a Hermes profile's SOUL.md is the prose that directs it. Same artifact, same role — so it
+    # is copied verbatim rather than paraphrased. The compile already staged it beside this script.
+    soul_src = here / "profiles" / role / "SOUL.md"
+    if not soul_src.exists():
+        sys.exit(f"hermes/install.py: missing {soul_src} — the install is incomplete; re-run the compile.")
+    (profile_dir / "SOUL.md").write_text(soul_src.read_text(encoding="utf-8"), encoding="utf-8")
+    (profile_dir / ".profile.json").write_text(
+        (here / "profiles" / role / ".profile.json").read_text(encoding="utf-8"), encoding="utf-8")
+    written.append(f"{role}[{','.join(profile['toolsets']) or 'no-toolsets'}]")
+
+print(f"[hermes-lowering] {len(written)} profile(s) into {home}: {' '.join(written)}")
+if ztrack:
+    print(f"[hermes-lowering] ztrack done-gate ({ztrack['preset']}) armed on: {' '.join(gated) or '(none)'} "
+          f"-- \`{gate_command}\` refuses kanban_complete until \`ztrack check\` is green")
+    if shutil.which("ztrack") is None:
+        print("[hermes-lowering] WARNING  no \`ztrack\` on PATH here. The gate FAILS CLOSED by design, so a "
+              "worker without ztrack cannot complete a card at all. Install ztrack (or set ZTRACK_BIN) in "
+              "the environment the WORKERS run in.", file=sys.stderr)
+# A kind:human actor gets NO profile. Not an omission — the translation. A person is not something the
+# dispatcher can spawn, and inventing a profile for one would make the human seam look like an agent that
+# never answers. Hermes reaches people the way it already does: a worker calls
+# kanban_block(kind="needs_input") and the card waits for a real operator's \`kanban unblock\`.
+print(f"[hermes-lowering] kind:human actors intentionally NOT lowered to profiles: "
+      f"{' '.join(lowering['humanRoles']) or '(none)'}")
+for finding in lowering["findings"]:
+    print(f"[hermes-lowering] NOT REALIZED  {finding['construct']}: {finding['detail']}", file=sys.stderr)
+`;
+
+function readme(ir: AutonomyIR, lowering: HermesLowering): string {
+  const roles = lowering.profiles.map(
+    (p) => `| \`${p.role}\` | ${p.toolsets.join(', ') || '(none)'} | ${p.workspace} | ${p.standing ? 'standing (own cron)' : 'per-card worker'} |`,
+  );
+  return `# Hermes installation
+
+Compiled from this profile's \`ir.yml\` by \`open-autonomy compile <profile> hermes\`. Hermes' kanban kernel
+is the substrate: cards are the work items, dispatched workers are the launched sessions, and a standing
+profile that declares the \`kanban\` toolset is an orchestrator that can enqueue.
+
+## Install
+
+\`\`\`sh
+HERMES_HOME=~/.hermes <hermes-venv>/bin/python hermes/install.py
+\`\`\`
+
+Run it with the interpreter that runs Hermes (PyYAML). It reads \`hermes/lowering.json\` and writes one
+profile per actor into \`\$HERMES_HOME/profiles/\`, deriving each profile's model/provider block from your
+existing home config — no credential is ever generated into this repo.
+
+## The roster
+
+| actor | toolsets | workspace | fired as |
+|---|---|---|---|
+${roles.join('\n')}
+
+${lowering.humanRoles.length ? `\`${lowering.humanRoles.join('`, `')}\` ${lowering.humanRoles.length === 1 ? 'is a `kind: human` actor and gets' : 'are `kind: human` actors and get'} **no profile**. A person is not something the dispatcher can spawn. The human seam is Hermes' own: a worker calls \`kanban_block(kind="needs_input")\` and the card waits for a real operator's \`kanban unblock\`.` : 'This profile declares no `kind: human` actor.'}
+
+## Driving it
+
+\`\`\`sh
+hermes kanban create "<title>" --assignee <actor> --workspace <scratch|worktree>
+hermes kanban dispatch --max ${lowering.board.max_in_progress}   # a CONCURRENCY cap, not a per-tick spawn budget
+hermes kanban list --json
+hermes kanban reclaim <id>      # frees the card AND terminates the worker
+\`\`\`
+
+\`max_in_progress\` is set to ${lowering.board.max_in_progress} from \`policy.maxConcurrent\`. The same verbs are available
+programmatically through \`HermesRunner\` (\`@open-autonomy/substrate-hermes\`), which is what an actor
+holding \`agent:launch\` / \`agent:list\` / \`agent:cancel\` drives.
+
+## Result envelopes
+
+An actor that declares \`result.schema\` returns its envelope namespaced under \`metadata.open_autonomy\` on
+\`kanban_complete\`. It CANNOT be the metadata object itself: Hermes stamps its own \`worker_session_id\`
+into every completion's metadata, which invalidates any envelope declaring
+\`additionalProperties: false\`. \`HermesRunner.result(id)\` reads it back.
+
+${
+    lowering.ztrack
+      ? `## Done is verified, not presumed
+
+\`${lowering.ztrack.gatedRoles.join('`, `')}\` run behind a **ztrack done-gate**: a Hermes \`pre_tool_call\`
+hook (\`matcher: kanban_complete\`) that refuses the completion unless \`ztrack check --auto-scope\` exits 0
+in the worker's workspace. Hermes' kernel marks a card done when a worker RETURNS — a worker that fell over
+mid-turn returns just the same — so the gate is what makes the card status mean something.
+
+It needs no arguments: \`--auto-scope\` resolves the issue from the git branch, which the runner set with
+\`kanban create --branch\`. That branch name is the whole integration between the board and the tracker;
+neither reads the other's storage.
+
+The gate **fails closed** — no \`ztrack\` on PATH, a timeout, or an unresolvable scope all refuse the
+completion. A wedged card is loud and recoverable; a silently ungated fleet is the failure this prevents,
+and it looks exactly like success. Make sure \`ztrack\` is on PATH in the environment the **workers** run in
+(or set \`ZTRACK_BIN\`).
+
+`
+      : ''
+  }${lowering.findings.length ? `## Not realized by this substrate\n\n${lowering.findings.map((f) => `- \`${f.construct}\` — ${f.detail}`).join('\n')}\n` : `## Not realized by this substrate\n\nNothing: every construct this profile declares has a native Hermes realization.\n`}
+${ir.codeHost === 'github' ? '\n> `codeHost: github` — Hermes creates worktrees but opens no PRs; the propose/review effects are the agents\' own `gh` calls.\n' : ''}`;
+}
+
+export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}): CompileOutput {
+  // A script behavior has no SKILL.md, so it cannot become a SOUL.md — and a Hermes profile is
+  // model-driven by construction. Fail loud rather than install a profile with an empty soul that would
+  // dispatch, spawn, and do nothing. (compileLocal runs such an actor via `bun <behavior>` instead.)
+  const scripts = scriptActors(ir);
+  if (scripts.length) {
+    throw new Error(
+      `open-autonomy: compiling to "hermes" but actor(s) ${scripts.join(', ')} declare a SCRIPT behavior ` +
+        `(a scripts/*.{ts,mjs,js} file). A Hermes profile is a model-driven conversation directed by its ` +
+        `SOUL.md — there is no soul to write for a script, and installing one would produce a profile that ` +
+        `dispatches and does nothing. Fix: give the actor a prose skill folder, or compile this profile ` +
+        `onto "local", which runs a script behavior directly.`,
+    );
+  }
+
+  const lowering = loweringFor(ir);
+  const generated: Record<string, string> = {};
+  const copies: Array<{ from: string; to: string }> = [];
+
+  // Shared layer: the substrate-NEUTRAL manifest, generated the same way for every substrate. The runner
+  // reads it (execution.workspace, timeout, kind, result.schema) and so does every actor's own skill —
+  // which is why an opaque `policy.box` fence like `dispatch.allow_label` lowers here as well as anywhere:
+  // the pm's SOUL.md is its SKILL.md verbatim, and it reads the same file it reads on any substrate.
+  const manifest = emitAutonomy(ir) as Record<string, unknown>;
+  if (!ir.resources.includes('.open-autonomy/autonomy.yml')) {
+    generated['.open-autonomy/autonomy.yml'] = stringifyYaml(manifest);
+  }
+  generated['.open-autonomy/autonomy.json'] = `${JSON.stringify(manifest, null, 2)}\n`;
+
+  generated[LOWERING_PATH] = `${JSON.stringify(lowering, null, 2)}\n`;
+  generated[INSTALLER_PATH] = INSTALLER;
+  // The done-gate ships only when the profile declares a ztrack tracker — a profile with no verification
+  // plane gets no gate rather than an inert one.
+  if (lowering.ztrack) generated[ZTRACK_GATE_PATH] = ZTRACK_GATE_SCRIPT;
+  generated[`${HERMES_DIR}/README.md`] = readme(ir, lowering);
+
+  for (const profile of lowering.profiles) {
+    copies.push({ from: `skills/${profile.behavior}/SKILL.md`, to: `${HERMES_DIR}/profiles/${profile.role}/SOUL.md` });
+    generated[`${HERMES_DIR}/profiles/${profile.role}/.profile.json`] = `${JSON.stringify(
+      {
+        name: profile.role,
+        description: `open-autonomy actor ${profile.role} (${profile.capabilities.join(', ') || 'no capabilities'})`,
+      },
+      null,
+      2,
+    )}\n`;
+  }
+
+  // Profile resources land at the repo root exactly as they do on every other substrate — a Hermes worker
+  // runs in a worktree of this repo, so `standards/*.md` and the harness config are where its skill expects.
+  for (const r of ir.resources) {
+    copies.push({ from: r === '.gitignore' ? 'gitignore' : r, to: r });
+  }
+
+  return { generated, copies };
+}
