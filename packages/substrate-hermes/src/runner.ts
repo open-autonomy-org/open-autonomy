@@ -27,14 +27,14 @@ type CardStatus = 'triage' | 'todo' | 'scheduled' | 'ready' | 'running' | 'block
 
 interface Card {
   id: string;
-  /** the kernel's circuit-breaker counter — non-zero means the card was auto-blocked, not human-parked */
-  consecutive_failures?: number | null;
-  last_failure_error?: string | null;
+
   title: string;
   body: string | null;
   assignee: string | null;
   status: CardStatus;
   workspace_kind?: string | null;
+  /** the card's event log — `kanban show --json` serializes it, and it is where the kernel records giving up */
+  events?: Array<{ kind?: string | null }> | null;
   workspace_path?: string | null;
   branch_name?: string | null;
   started_at?: string | null;
@@ -111,11 +111,16 @@ function sessionOf(card: Card): Session {
   // kernel's circuit breaker giving up after repeated crashes/timeouts. Those want opposite responses, and
   // reporting both as "awaiting a human" made a dead worker look like a considered handoff. The card
   // carries the distinguishing data; read it rather than assume.
-  const note =
-    card.status === 'blocked' && (card.consecutive_failures ?? 0) > 0
-      ? `auto-blocked by the kernel after ${card.consecutive_failures} consecutive failures` +
-        `${card.last_failure_error ? ` — ${String(card.last_failure_error).slice(0, 200)}` : ''}`
-      : base;
+  // Read from EVENTS, not from a counter field. The first version of this checked `consecutive_failures`,
+  // which `kanban show --json` does not serialize (`_task_to_dict` emits 22 fields and that is not one of
+  // them) — so the branch never fired and a dead check read exactly like a live one, which is the failure
+  // this whole package is about. `events` IS serialized, and the kernel appends one when it gives up.
+  const autoBlocked =
+    card.status === 'blocked' &&
+    (card.events ?? []).some((e) => /fail|breaker|gave_up|crash|timeout|timed_out/i.test(String(e?.kind ?? '')));
+  const note = autoBlocked
+    ? 'auto-blocked by the kernel after repeated failures — NOT a deliberate human handoff; see `hermes kanban show <id> --json` events'
+    : base;
   const params = decodeParams(card.body);
   return {
     id: card.id,
@@ -338,7 +343,15 @@ export class HermesRunner implements Runner {
             `Refusing to report a launch that started nothing.`,
         );
       }
-      args[keyAt + 1] = `${args[keyAt + 1]!.replace(/#\d+$/, '')}#${attempt + 1}`;
+      args[keyAt + 1] = `${args[keyAt + 1]!.replace(/ \(attempt \d+\)$/, '')} (attempt ${attempt + 1})`;
+      // ...and MINT A FRESH BRANCH for the retry. The args were built once, so without this every attempt
+      // re-uses the first branch name — and a branch already checked out in the previous card's worktree
+      // (which Hermes never removes) makes the spawn fail and auto-blocks the new card. The retry would
+      // have turned "rework silently did nothing" into "rework reliably wedges", which is not an
+      // improvement. Caught by review, not by a test; the equivalence guard compares argv, and both
+      // implementations were wrong in the same way.
+      const branchAt = args.indexOf('--branch');
+      if (branchAt >= 0 && ref) args[branchAt + 1] = branchFor(ref);
     }
   }
 
@@ -489,32 +502,39 @@ export class HermesRunner implements Runner {
       case 'paused':
         // `needs_input` is the kind that parks a card for a HUMAN. `dependency` would put it in todo for the
         // kernel to auto-promote, which is not a pause at all — it is the kernel's own dependency gate.
-        return this.kanban(['block', id, 'paused by the open-autonomy runner', '--kind', 'needs_input']).ok;
+        // Guarded like `failed`: Hermes' unblock-loop breaker does not care WHICH kind repeats, so
+        // pause -> running -> pause wedges the card into `triage` just the same. The first version of this
+        // fix guarded only the sibling branch.
+        return this.blockGuarded(id, 'paused by the open-autonomy runner', 'needs_input');
       case 'running':
         return this.kanban(['unblock', id]).ok;
       case 'done':
         return this.kanban(['complete', id]).ok;
-      case 'failed': {
-        // NOT a bare re-block. Hermes routes a repeated SAME-KIND block-after-unblock to `triage` to break
-        // unblock loops — and `triage` is not dispatchable and no Runner verb except cancel can leave it.
-        // Verified: block/unblock/block put a card in triage while `update` returned TRUE, and the card
-        // then reported as a healthy `running` session forever. So a second failure escalates honestly
-        // instead of silently wedging.
-        const before = this.readCard(id)?.status;
-        const ok = this.kanban(['block', id, 'failed', '--kind', 'transient']).ok;
-        const after = this.readCard(id)?.status;
-        if (after === 'triage' && before !== 'triage') {
-          throw new Error(
-            `open-autonomy: marking ${id} failed pushed it to Hermes' \`triage\` column (repeated same-kind ` +
-              `block after unblock — the kernel's unblock-loop breaker). A triage card is never dispatched ` +
-              `and cannot be unblocked; it needs a human decision, or \`cancel\` to remove it.`,
-          );
-        }
-        return ok;
-      }
+      case 'failed':
+        return this.blockGuarded(id, 'failed', 'transient');
       case 'cancelled':
         return this.cancel(id);
     }
+  }
+
+  /** Block a card, and REFUSE to report success if the kernel's unblock-loop breaker wedged it.
+   *
+   *  Hermes routes a repeated SAME-KIND block-after-unblock to `triage` (BLOCK_RECURRENCE_LIMIT = 2, and
+   *  `unblock` deliberately does not reset the counter). A `triage` card is never dispatched, and
+   *  `unblock_task` matches `status IN ('blocked','scheduled')` so it cannot come back that way either —
+   *  only a human decision or `cancel` moves it. Verified: block/unblock/block put a card in triage while
+   *  the call still returned TRUE. Both `paused` and `failed` route here; guarding only one was the bug. */
+  private blockGuarded(id: string, reason: string, kind: string): boolean {
+    const before = this.readCard(id)?.status;
+    const ok = this.kanban(['block', id, reason, '--kind', kind]).ok;
+    if (this.readCard(id)?.status === 'triage' && before !== 'triage') {
+      throw new Error(
+        `open-autonomy: blocking ${id} (${kind}) pushed it into Hermes' \`triage\` column — the kernel's ` +
+          `unblock-loop breaker fired on a repeated same-kind block. A triage card is never dispatched and ` +
+          `\`kanban unblock\` will not move it; it needs a human decision (\`kanban specify\`) or \`cancel\`.`,
+      );
+    }
+    return ok;
   }
 
   async cancel(id: string): Promise<boolean> {

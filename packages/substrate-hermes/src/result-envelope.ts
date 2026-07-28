@@ -51,25 +51,38 @@ export function resultContracts(ir: AutonomyIR, lowered: readonly string[]): Rec
     // property a schema documents reads as a field worth filling. Prose loses to a schema. So the field is
     // removed from BOTH — and because these envelopes declare `additionalProperties: false`, deleting it
     // from `properties` makes the fabrication actually INVALID rather than merely discouraged.
+    // A RELAXED CONTRACT NEEDS ITS OWN ID. Keeping `$id: open-autonomy.review.v1` (and the `const` that
+    // pins `schema` to it) would have the worker stamp a versioned cross-substrate contract onto a value
+    // that does not satisfy it — the standard still requires the field we removed. Any consumer that
+    // validates by id discards every verdict, and this file's own rule is "an envelope that does not
+    // validate is treated as no envelope at all". Silently forking an id-bearing contract is a worse trap
+    // than the fabricated value it replaces.
+    const relaxedId = namedIdOf(declared) ? `${namedIdOf(declared)}+hermes-no-code-host` : undefined;
+    // `properties` is computed ONCE: drop the unsourceable fields AND, if this is a named standard
+    // contract, re-pin the `schema` const to the forked id. Two separate spreads silently clobbered each
+    // other — the $id said fork, the const still said standard.
+    const props = schema.properties as Record<string, unknown> | undefined;
+    const relaxedProps = props
+      ? Object.fromEntries(
+          Object.entries(props)
+            .filter(([k]) => !unsourceable.includes(k))
+            .map(([k, v]) => (k === 'schema' && relaxedId && (v as { const?: unknown })?.const ? [k, { const: relaxedId }] : [k, v])),
+        )
+      : undefined;
     const relaxed = unsourceable.length
       ? {
           ...schema,
+          ...(relaxedId ? { $id: relaxedId } : {}),
           required: (schema.required as string[]).filter((f) => !unsourceable.includes(f)),
-          ...(schema.properties
-            ? {
-                properties: Object.fromEntries(
-                  Object.entries(schema.properties as Record<string, unknown>).filter(
-                    ([k]) => !unsourceable.includes(k),
-                  ),
-                ),
-              }
-            : {}),
+          ...(relaxedProps ? { properties: relaxedProps } : {}),
         }
       : schema;
-    out[role] = contractProse(role, relaxed, typeof declared === 'string' ? declared : undefined, unsourceable);
+    out[role] = contractProse(role, relaxed, relaxedId ?? namedIdOf(declared), unsourceable);
   }
   return out;
 }
+
+const namedIdOf = (declared: unknown): string | undefined => (typeof declared === 'string' ? declared : undefined);
 
 function contractProse(
   role: string,

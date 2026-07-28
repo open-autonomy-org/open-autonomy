@@ -21,6 +21,17 @@ export const SUBSTRATE_FACTS_FILE = 'SUBSTRATE-FACTS.md';
 
 export function substrateFacts(ir: AutonomyIR, lowering: HermesLowering, role: string): string {
   const profile = lowering.profiles.find((p) => p.role === role);
+  // A BOUND REVIEWER IS NOT ON TRUNK, and saying so in a section declared authoritative was the worst kind
+  // of wrong: `review` lowers to `dir`, so the naive reading of `profile.workspace` is "the shared
+  // checkout" — but `openReviewCard` places a bound, non-isolated reviewer in the PROPOSAL'S worktree, and
+  // its skill REQUIRES it to commit its verdict there. An appendix that both outranks the skill and
+  // contradicts it leaves the worker with no correct move: refuse to commit (the verdict never lands) or
+  // abort on its own branch assertion. So the workspace line is derived from the review EDGE, not from the
+  // lowered kind alone.
+  const boundReviewerOf = Object.entries(ir.agents).find(
+    ([, a]) => a.review === role && a.execution?.workspace === 'isolated',
+  )?.[0];
+  const inProposalWorktree = !!boundReviewerOf && profile?.workspace !== 'worktree';
   const gated = lowering.ztrack?.gatedRoles.includes(role) ?? false;
   const standing = profile?.standing ?? false;
   const ungatedProposer =
@@ -43,12 +54,30 @@ What exists instead:
 
 | you may need | here it is |
 |---|---|
-| your work item | the kanban card named by \`$HERMES_KANBAN_TASK\` (\`hermes kanban show "$HERMES_KANBAN_TASK" --json\`) |
-| your workspace | \`${profile?.workspace === 'worktree' ? 'your own git worktree, on a branch named for your issue' : 'the shared repository checkout (you are on trunk — do NOT commit there unless your doctrine says you integrate)'}\` |
-| launching work | \`bun scripts/runner.ts launch <actor> --ref <issue>\` — the only sanctioned path. It also opens the review card. Never create a board card by hand. |
+| your work item | ${
+    standing
+      ? 'nothing — you fire on a schedule, own no card, and `$HERMES_KANBAN_TASK` is UNSET. Read the board instead: `bun scripts/runner.ts list --json`.'
+      : 'the kanban card named by `$HERMES_KANBAN_TASK` (`hermes kanban show "$HERMES_KANBAN_TASK" --json`)'
+  } |
+| your workspace | ${
+    inProposalWorktree
+      ? `**the \`${boundReviewerOf}\` worktree you were opened for** — its branch is checked out, its commits are here, and its worker has already finished. Commit your verdict HERE, beside the evidence.`
+      : profile?.workspace === 'worktree'
+        ? 'your own git worktree, on a branch named for your issue'
+        : 'the shared repository checkout (you are on trunk — do NOT commit there unless your doctrine says you integrate)'
+  } |
+${
+    (ir.agents[role]?.capabilities ?? []).some((c) => c.split('@')[0] === 'agent:launch')
+      ? '| launching work | `bun scripts/runner.ts launch <actor> --ref <issue>` — the only sanctioned path. It also opens the review card. Never create a board card by hand. |\n'
+      : '| launching work | **not yours.** You do not hold `agent:launch`; filing work for another actor is the PM\'s job. |\n'
+  }
 | what is in flight | \`bun scripts/runner.ts list --json\` |
 | reaching a human | \`kanban_block\` with kind \`needs_input\`. The card then waits for a real operator's \`hermes kanban unblock\`. That is the ONLY human seam; there is no \`runner.ts update\`. |
-| finishing | \`kanban_complete\`${gated ? ' — **gated**: it is REFUSED until `ztrack check` is green in your workspace, and the refusal hands you the findings' : ''} |
+| finishing | ${
+    standing
+      ? 'just end your turn — you own no card, so `kanban_complete` has nothing to complete and will fail.'
+      : `\`kanban_complete\`${gated ? ' — **gated**: it is REFUSED until `ztrack check` is green in your workspace, and the refusal hands you the findings' : ''}`
+  } |
 | what this install granted you | \`hermes/lowering.json\` — the compile's receipt: every actor's capabilities, toolsets, workspace, and the honest \`findings\` list of what this substrate does NOT enforce |
 
 Your tools are exactly: \`${(profile?.toolsets ?? []).join('`, `') || '(none)'}\`. If your doctrine tells you to

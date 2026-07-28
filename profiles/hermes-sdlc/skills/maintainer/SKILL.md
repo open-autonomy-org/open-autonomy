@@ -62,10 +62,16 @@ Do the thing the ask actually asks for, verify the stated `completion.ac` yourse
 hermes kanban unblock <id>
 ```
 
-That returns the card to the board and the kernel dispatches it again. There is no other path, and nothing
-else in the system will take it for you. (In particular there is no `runner.ts update` verb here — the
-emitted `scripts/runner.ts` implements `launch`, `list`, `get` and `cancel` only. Unblocking is an
-operator act, deliberately not something an agent can call.)
+That returns the card to the board and the kernel dispatches it again. (There is no `runner.ts update` verb
+here — the emitted `scripts/runner.ts` implements `launch`, `list`, `get` and `cancel` only.)
+
+**One honest caveat, because the opposite was claimed here and it was wrong.** `kanban_unblock` is a member
+of Hermes' `kanban` toolset, and Hermes offers it to any session in ORCHESTRATOR mode — a profile that
+declares that toolset and is not scoped to a single card. The standing `pm` is exactly that. So a model
+*can* technically clear a card that was blocked for you; nothing in the kernel prevents it. What stops it is
+doctrine — the PM's skill never unblocks, and an issue labelled `human-required` is refused by it every
+tick. Treat this seam as a strong convention backed by a fence, not as an authority boundary the machine
+enforces. If that distinction matters for a given decision, say so on the card.
 
 Three things you may legitimately do instead, all of which are better than a reluctant approval:
 

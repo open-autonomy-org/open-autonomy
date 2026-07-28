@@ -144,6 +144,18 @@ import copy, json, os, re, shlex, shutil, subprocess, sys
 from pathlib import Path
 
 
+def _substitute(value, token, replacement):
+    """Replace \`token\` inside a parsed JSON structure. Never inside JSON *text*: a Windows path carries
+    backslashes, which become invalid escapes the moment they are spliced into a serialized document."""
+    if isinstance(value, dict):
+        return {k: _substitute(v, token, replacement) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute(v, token, replacement) for v in value]
+    if isinstance(value, str):
+        return value.replace(token, replacement)
+    return value
+
+
 def _merge(target, patch):
     """One-level-deep merge of a generated config patch into a profile config.
 
@@ -210,8 +222,14 @@ if ztrack:
     # ...and prove the command actually EXECUTES before trusting it, with a payload for a tool the gate must
     # ignore. If this cannot run at install time it will not run in a worker either, and the failure mode is
     # invisible: every completion sails through, logged only at WARNING inside the agent log.
-    probe = subprocess.run(shlex.split(gate_command), input=json.dumps({"tool_name": "terminal"}),
-                           capture_output=True, text=True, timeout=60)
+    try:
+        probe = subprocess.run(shlex.split(gate_command), input=json.dumps({"tool_name": "terminal"}),
+                               capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        sys.exit("hermes/install.py: the done-gate command hung for 60s on a no-op payload:\\n"
+                 f"    {gate_command}\\n"
+                 "A gate that cannot answer promptly will TIME OUT in a worker, and Hermes ALLOWS a tool\\n"
+                 "call whose hook timed out -- refusing to install it.")
     if probe.returncode != 0 or probe.stdout.strip():
         sys.exit("hermes/install.py: the done-gate command does not execute cleanly:\\n"
                  f"    {gate_command}\\n"
@@ -250,7 +268,9 @@ if session_env:
             sys.exit(f"hermes/install.py: missing {src} — the install is incomplete; re-run the compile.")
     resolver_dest = home / session_env["resolverInstalledSubpath"]
     resolver_dest.write_text(
-        resolver_src.read_text(encoding="utf-8").replace("${HERMES_BIN_PLACEHOLDER}", str(hermes_bin)),
+        # repr(), not raw interpolation: the path is substituted into a Python string LITERAL in the
+        # generated resolver, so a backslash would be read as an escape sequence there too.
+        resolver_src.read_text(encoding="utf-8").replace('"${HERMES_BIN_PLACEHOLDER}"', repr(str(hermes_bin))),
         encoding="utf-8",
     )
     resolver_dest.chmod(0o755)
@@ -294,7 +314,10 @@ for profile in lowering["profiles"]:
     # which looks exactly like a worker that passed. Both keys come from ztrack-gate.ts's
     # \`ztrackHooksBlock\` so the shape has one owner; only the command path is filled in here.
     if ztrack and role in ztrack["gatedRoles"]:
-        patch = json.loads(json.dumps(ztrack["configPatch"]).replace("${GATE_COMMAND_PLACEHOLDER}", gate_command))
+        # Substituted STRUCTURALLY, not by text-replacing inside a JSON document. The old form spliced a
+        # filesystem path into the serialized JSON, so a single backslash (\`C:\\Python\\python.exe\`) became an
+        # invalid escape and json.loads raised — on the platform this file explicitly branches for.
+        patch = _substitute(ztrack["configPatch"], "${GATE_COMMAND_PLACEHOLDER}", gate_command)
         _merge(config, patch)
         gated.append(role)
 
@@ -315,9 +338,7 @@ for profile in lowering["profiles"]:
             existing = [f for f in defaults if os.path.isfile(f)]
             if existing:
                 _merge(config, {"terminal": {"shell_init_files": existing}})
-        patch = json.loads(
-            json.dumps(session_env["configPatch"]).replace("${SESSION_ENV_FILE_PLACEHOLDER}", str(session_env_file))
-        )
+        patch = _substitute(session_env["configPatch"], "${SESSION_ENV_FILE_PLACEHOLDER}", str(session_env_file))
         _merge(config, patch)
         bound.append(role)
 

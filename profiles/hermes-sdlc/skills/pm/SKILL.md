@@ -76,12 +76,16 @@ centrally and never inspect worktrees by hand.
 ## Tick
 
 1. `ztrack check --json` and `ztrack issue list --state open --limit 100 --json identifier,title,state,labels,assignee`.
-2. `bun scripts/runner.ts list --json` — every session the board is currently running, with its branch.
+2. `bun scripts/runner.ts list --all --json` — every card on the board, running **and finished**. Each
+   entry carries `params` (the issue it is a run of), `branch`, `workspace` and `card` (its board state).
+   **`--all` matters**: without it finished cards are hidden, and a finished proposal is exactly what you
+   integrate. Match issues to cards through `params.ZTRACK_ISSUE` — never through the card id (`ref` is the
+   card's own handle, not the issue) and never by parsing a branch name.
 3. Take **exactly one** action, in this priority order. State is a PROPERTY you READ to decide:
 
-   - **Integrate** a finished issue: if an issue is `done` and its proposal's branch still exists, merge it
-     to trunk. Get the branch from the runner (step 2, or `get <session-id> --json`) — never from a naming
-     convention:
+   - **Integrate** a finished issue: if an issue is `done` and step 2 shows a `develop` card for it with
+     `card: done` and a `branch` that still exists, merge it to trunk. Take the `branch` and `workspace`
+     from that entry — never from a naming convention:
 
      ```
      git merge --no-ff -m "integrate <id>" <branch-from-the-runner>
@@ -100,8 +104,8 @@ centrally and never inspect worktrees by hand.
      `OUTCOME: blocked merge-conflict <id>`. Never hand-resolve a conflict or force-land it, and never
      tear down a worktree whose work has not landed.)
 
-   - **File** an eligible issue: else if an issue clears every gate above and has no session yet
-     (nothing in step 2 carries its ref), file it:
+   - **File** an eligible issue: else if an issue clears every gate above and no **unfinished** card in
+     step 2 carries it in `params.ZTRACK_ISSUE`, file it:
 
      ```
      bun scripts/runner.ts launch develop --ref <id>

@@ -21,11 +21,12 @@ Read this from PM and Review skills.
 
 ## WIP
 
-- At most one issue in `in-progress`, at most one in `in-review`.
-- **The board's kernel enforces concurrency**, from `policy.maxConcurrent`; the PM does not count workers
-  and must not re-implement the cap. To see what is actually in flight, ask the Runner
-  (`runner.ts list --json`) — never infer it from branches or worktree directories, which outlive the
-  sessions that made them.
+- **The board's kernel caps how many CARDS run at once** (`policy.maxConcurrent` → `max_in_progress`).
+  That is a cap on concurrent cards of any actor, review cards included — it is NOT the same thing as
+  "one issue in-progress, one in-review", and nothing in this system enforces that older rule. Do not
+  write doctrine that assumes it. The PM does not count workers and must not re-implement the kernel's cap.
+- To see what is in flight, ask the Runner (`runner.ts list --json`, or `--all` to include finished cards)
+  — never infer it from branches or worktree directories, which outlive the sessions that made them.
 - PM is the only integrator, and decides only what ENTERS the board; the kernel decides when each card runs.
 - Develop and Review agents handle one issue and stop.
 - **`ready` means implementable, not necessarily *approved for the loop*: dispatch eligibility

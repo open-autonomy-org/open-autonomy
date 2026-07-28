@@ -76,10 +76,17 @@ export function isZtrackGated(agent: IRAgent): boolean {
  *  WITH A LOG WARNING and the worker runs ungated: the gate silently does not exist. That is the same
  *  silent-no-op class as writing only `platform_toolsets`, and it is why this is emitted as config rather
  *  than left to the operator. */
+export const HOOK_TIMEOUT_SECONDS = 180;
+/** The gate's own budget, kept strictly BELOW the hook timeout — see `ZTRACK_GATE_SCRIPT`, which clamps to
+ *  it. If ztrack outran the hook, Hermes' runner would log a warning and return `None`, which ALLOWS the
+ *  call: the gate's documented remedy ("raise OPEN_AUTONOMY_ZTRACK_TIMEOUT_S") would have silently
+ *  converted fail-closed into fail-open. The two numbers are coupled here so they cannot drift. */
+export const ZTRACK_BUDGET_SECONDS = 120;
+
 export function ztrackHooksBlock(gateCommand: string): Record<string, unknown> {
   return {
     hooks: {
-      pre_tool_call: [{ command: gateCommand, matcher: GATED_TOOL, timeout: 180 }],
+      pre_tool_call: [{ command: gateCommand, matcher: GATED_TOOL, timeout: HOOK_TIMEOUT_SECONDS }],
     },
     hooks_auto_accept: true,
   };
@@ -114,7 +121,13 @@ import subprocess
 import sys
 
 MAX_REASON_CHARS = 4000
-TIMEOUT_SECONDS = int(os.environ.get("OPEN_AUTONOMY_ZTRACK_TIMEOUT_S") or "120")
+# CLAMPED below Hermes' own hook timeout (${HOOK_TIMEOUT_SECONDS}s). Hermes ALLOWS a tool call whose hook
+# timed out, so a gate budget that outruns the hook does not extend the check — it silently converts this
+# gate from fail-closed to fail-OPEN. The env var can lower the budget; it can no longer disarm the gate.
+_HOOK_TIMEOUT = ${HOOK_TIMEOUT_SECONDS}
+TIMEOUT_SECONDS = min(
+    int(os.environ.get("OPEN_AUTONOMY_ZTRACK_TIMEOUT_S") or "${ZTRACK_BUDGET_SECONDS}"), _HOOK_TIMEOUT - 20
+)
 
 
 def block(reason):
@@ -160,7 +173,8 @@ except subprocess.TimeoutExpired:
     block(
         "open-autonomy: \`ztrack check\` did not finish within %ds, so completion cannot be verified and is "
         "refused. Re-run it by hand in this workspace to see what is slow "
-        "(OPEN_AUTONOMY_ZTRACK_TIMEOUT_S raises the budget)." % TIMEOUT_SECONDS
+        "(the budget is capped below Hermes' hook timeout on purpose: a hook that times out is ALLOWED, "
+        "not refused, so it cannot be raised past that)." % TIMEOUT_SECONDS
     )
 except OSError as exc:
     block(

@@ -21,7 +21,7 @@ export function runnerFrontendSrc(): string {
 //
 // The Runner contract's verbs over Hermes' kanban kernel. Every one of them is the kernel's own:
 //   launch <actor> --ref <id>   -> kanban create (+ the linked review card, when the actor declares one)
-//   list [actor]                -> kanban list      (the RUNNING set: cards not done/archived)
+//   list [actor] [--all]        -> kanban list      (running set; --all also shows finished cards)
 //   get <id>                    -> kanban show
 //   cancel <id>                 -> kanban reclaim (stops the worker) + archive (leaves the running set)
 //
@@ -114,7 +114,11 @@ function createCard(args, what, keyed) {
     if (attempt >= 20) {
       die(\`every idempotency key for \${what} resolves to a completed card (\${attempt} attempts). Refusing to report a launch that started nothing.\`);
     }
-    args[keyAt + 1] = \`\${args[keyAt + 1].replace(/#\\d+$/, '')}#\${attempt + 1}\`;
+    args[keyAt + 1] = \`\${args[keyAt + 1].replace(/ \\(attempt \\d+\\)$/, '')} (attempt \${attempt + 1})\`;
+    // Fresh branch per retry — the args were built once, and re-using a branch whose worktree still
+    // exists makes the spawn fail and auto-blocks the card. (Mirrors HermesRunner.createCard.)
+    const branchAt = args.indexOf('--branch');
+    if (branchAt >= 0 && keyed) args[branchAt + 1] = branchFor(keyed);
   }
 }
 
@@ -127,7 +131,7 @@ function launch(actor, ref) {
   if (typeof declared?.timeout === 'number') args.push('--max-runtime', \`\${declared.timeout}m\`);
   if (ref && workspace.startsWith('worktree')) args.push('--branch', branchFor(ref));
   if (ref) args.push('--idempotency-key', \`open-autonomy:\${actor}:\${ref}\`);
-  const id = createCard(args, \`actor "\${actor}"\`, !!ref);
+  const id = createCard(args, \`actor "\${actor}"\`, ref);
 
   // The merge boundary, opened structurally at launch. The reviewer is placed in the PROPOSAL'S OWN
   // worktree (idle by the time the kernel releases this card), so it stands on the branch it reviews and
@@ -170,17 +174,40 @@ function card(id) {
   }
 }
 
-const RUNNING = new Set(['triage', 'todo', 'scheduled', 'ready', 'running', 'review', 'blocked']);
+// \`triage\` is NOT running: it is where the kernel's unblock-loop breaker parks a card, undispatchable and
+// unreachable by \`kanban unblock\`. Reporting it as a live session hid a wedge. (The equivalent fix landed
+// on HermesRunner first and missed this file — the one the PM actually reads.)
+const RUNNING = new Set(['todo', 'scheduled', 'ready', 'running', 'review', 'blocked', 'triage']);
+const PAUSED = new Set(['blocked', 'triage']);
+// The card body carries the launch params (see encodeParams). Without surfacing them a session's only
+// identifier is its CARD id, so the PM cannot answer "does this issue already have a session?" or "which
+// card belongs to LOCAL-3?" — both of which its doctrine requires. \`ref\` stays the card handle (that is
+// the Runner contract); the issue arrives as \`params\`, exactly as HermesRunner.sessionOf returns it.
+const decodeParams = (body) => {
+  if (!body) return undefined;
+  const at = body.indexOf(PARAMS_MARKER);
+  if (at < 0) return undefined;
+  const m = body.slice(at + PARAMS_MARKER.length).match(/\`\`\`json\\n([\\s\\S]*?)\\n\`\`\`/);
+  if (!m) return undefined;
+  try {
+    const parsed = JSON.parse(m[1]);
+    return Object.keys(parsed).length ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const sessionOf = (t) => ({
   id: t.id,
   agent: t.assignee ?? '',
-  status: t.status === 'blocked' ? 'paused' : t.status === 'done' ? 'done' : t.status === 'archived' ? 'cancelled' : 'running',
+  status: PAUSED.has(t.status) ? 'paused' : t.status === 'done' ? 'done' : t.status === 'archived' ? 'cancelled' : 'running',
   ref: t.id,
   branch: t.branch_name ?? null,
   // The PM tears down a worktree after integrating (nothing else ever reclaims one), and its doctrine says
   // ASK for paths rather than construct them — so the path has to be here, or that instruction is
   // unfollowable.
   workspace: t.workspace_path ?? null,
+  params: decodeParams(t.body) ?? null,
   card: t.status,
 });
 
@@ -195,12 +222,16 @@ switch (verb) {
   }
   case 'list': {
     const actor = argv[1] && !argv[1].startsWith('--') ? argv[1] : undefined;
+    // --all includes FINISHED cards. Without it \`list\` is the running set only, and the PM — whose one
+    // remaining job is integrating a \`done\` proposal's branch — could not see a single card it was
+    // supposed to act on, while its doctrine forbade recovering the branch any other way.
+    const all = argv.includes('--all');
     const r = kanban(['list', '--json']);
     let cards = [];
     try {
       cards = JSON.parse(r.stdout);
     } catch { /* an unreadable board lists nothing rather than crashing a tick */ }
-    const sessions = cards.filter((t) => RUNNING.has(t.status)).map(sessionOf).filter((s) => !actor || s.agent === actor);
+    const sessions = cards.filter((t) => all || RUNNING.has(t.status)).map(sessionOf).filter((s) => !actor || s.agent === actor);
     if (json) console.log(JSON.stringify(sessions));
     else if (!sessions.length) console.log(\`(no running sessions\${actor ? \` for \${actor}\` : ''})\`);
     else for (const s of sessions) console.log(\`\${s.id}  \${s.agent}  \${s.card}\${s.branch ? \`  \${s.branch}\` : ''}\`);
@@ -211,7 +242,7 @@ switch (verb) {
     if (!id) die('usage: runner.ts get <id> [--json]');
     const t = card(id)?.task;
     if (!t) die(\`no such session \${id}\`);
-    console.log(JSON.stringify(sessionOf(t), null, json ? 0 : 2));
+    console.log(json ? JSON.stringify(sessionOf(t)) : JSON.stringify(sessionOf(t), null, 2));
     break;
   }
   case 'cancel': {

@@ -32,11 +32,15 @@ the branch after you approve).
    about them: a cited SHA existing is what `ztrack check` proves, and whether it contains the claimed
    change is what only you can. If a cited test/check exits 0, accept the command as passing; do not rerun
    only to get prettier reporter output.
-5. Apply `risk-and-review.md`. If the change touches a human-required path or
-   topic without explicit approval, send it back:
-   `ztrack issue edit <issue> --remove-label ztrack:reviewing --state "in-progress"`,
-   then `git add -A && git commit -m "review: changes-requested"`, and leave
-   `OUTCOME: changes-requested human-required`.
+5. Apply `risk-and-review.md`. If the change touches a human-required path or topic without explicit
+   approval, it is **not** rework — sending it back to `in-progress` would just have a developer rebuild
+   the same thing and stop at the same fence, forever. PARK IT FOR A PERSON instead:
+   - `ztrack issue edit <issue> --add-label human-required` (the PM refuses a labelled issue every tick),
+   - commit that tracker change (`git add -A && git commit -m "review: human-required <issue>"`),
+   - then call `kanban_block` with kind `needs_input` and a reason naming the decision needed. That is the
+     ONLY thing on this substrate that actually stops the loop and waits for a person; a card blocked that
+     way is what an operator's `hermes kanban unblock` resumes.
+   Leave `OUTCOME: changes-requested human-required`.
 6. If any claim does not hold, send it back the same way (`--remove-label ztrack:reviewing
    --state "in-progress"` + commit) and leave requested changes.
 7. If all claims hold, approve: `ztrack issue edit <issue> --remove-label ztrack:reviewing --state done`,

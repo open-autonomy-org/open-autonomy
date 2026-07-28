@@ -47,10 +47,9 @@ genuinely green, or take an honest escape (below). A fabricated "done" is not a 
    `OUTCOME: blocked <reason>` (the PM re-dispatches); descope the AC; or, for a
    finding an authority knowingly accepts, `ztrack waiver sign "$ZTRACK_ISSUE" --code
    <code> [--ac <acId>] --reason "…"`.
-8. Move the issue to `in-review` only when **`ztrack check`** (auto-scoped to your
-   issue) is green and no other issue is already `in-review`:
-   `ztrack issue edit <issue> --state "in-review"`. If another issue is in review,
-   leave this issue `in-progress` and end with `OUTCOME: blocked review-capacity`.
+8. Move the issue to `in-review` when **`ztrack check`** (auto-scoped to your issue) is green:
+   `ztrack issue edit <issue> --state "in-review"`. Do **not** survey other issues first — capacity is the
+   kernel's business, not yours, and your reviewer is a card that was opened the moment you were filed.
 9. **Commit the tracker change too** so it integrates with the code:
    `git add -A && git commit -m "evidence + in-review: $ZTRACK_ISSUE"`. Do **not**
    merge to trunk — the PM integrates your branch after review approves.
