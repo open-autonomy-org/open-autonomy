@@ -24,7 +24,17 @@ REAL_HERMES_HOME="${REAL_HERMES_HOME:-$HOME/.hermes}"
 # Sonnet 5 for live runs: the operator's standing instruction, and the rig must not silently inherit
 # whatever the real home's default happens to be (it is opus today, which costs several times more per
 # card for work this loop does not need it for).
-RIG_MODEL="${RIG_MODEL:-anthropic/claude-sonnet-5}"
+RIG_MODEL="${RIG_MODEL:-claude-sonnet-5}"
+# Direct Anthropic API by default. A BARE model id is required here — `anthropic/claude-sonnet-5` is an
+# OpenRouter-style route and a direct-API provider rejects it.
+RIG_PROVIDER="${RIG_PROVIDER:-anthropic}"
+#
+# THE MODEL/PROVIDER MUST BE FINAL BEFORE install.py RUNS. Hermes pins each cron job to the global inference
+# config it was created under and REFUSES to run an unpinned job whose config has since drifted
+# ("Skipped to prevent unintended spend: global inference config drifted since this job was created").
+# That is a good guard and a real operational trap: change the model on a live install and every standing
+# actor silently stops firing — loud in the job log, invisible on the board — until the installer is re-run
+# (it reconciles the jobs by name) or each job is pinned by hand.
 
 die() { echo "rig: $*" >&2; exit 1; }
 
@@ -40,17 +50,51 @@ up() {
   # ---- the isolated Hermes home ----
   # config.yaml is COPIED (it is not a secret, and each generated profile config is a full replacement of
   # it, so the rig must carry the operator's real provider block) but with the model pinned to Sonnet 5.
-  "$HERMES_VENV_PY" - "$REAL_HERMES_HOME/config.yaml" "$home/config.yaml" "$RIG_MODEL" <<'PY'
+  "$HERMES_VENV_PY" - "$REAL_HERMES_HOME/config.yaml" "$home/config.yaml" "$RIG_MODEL" "$RIG_PROVIDER" <<'PY'
 import sys, yaml
-src, dst, model = sys.argv[1], sys.argv[2], sys.argv[3]
+src, dst, model, provider = sys.argv[1:5]
 cfg = yaml.safe_load(open(src, encoding="utf-8")) or {}
-cfg["model"] = {**(cfg.get("model") if isinstance(cfg.get("model"), dict) else {}), "default": model}
+# ASSIGNED, not merged: a stale `base_url` from the operator's config (an OpenRouter route, say) silently
+# overrides the provider chosen here and the run fails as a model/provider mismatch.
+cfg["model"] = {"default": model, "provider": provider}
 open(dst, "w", encoding="utf-8").write(yaml.safe_dump(cfg, sort_keys=False))
 PY
-  # Secrets: SYMLINKED. A copied credential outlives its usefulness and its owner's intent.
-  for secret in .env auth.json; do
-    [ -e "$REAL_HERMES_HOME/$secret" ] && ln -s "$REAL_HERMES_HOME/$secret" "$home/$secret"
+
+  # ---- credentials ----
+  # Preference order, and the first one that answers wins:
+  #   1. CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY / OPENROUTER_API_KEY already exported — the operator
+  #      is telling us which account to bill, so write exactly that into the rig's OWN .env.
+  #   2. the Claude Code credential on disk (~/.claude/.credentials.json) — "my default claude".
+  #   3. fall back to symlinking the operator's real ~/.hermes/.env.
+  # Written to the RIG's own .env, at 0600, never by writing through a symlink into the real home.
+  local wrote_env=""
+  for var in CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY OPENROUTER_API_KEY; do
+    if [ -n "${!var:-}" ]; then
+      ( umask 077; printf '%s=%s\n' "$var" "${!var}" > "$home/.env" )
+      wrote_env="$var (from the environment)"
+      break
+    fi
   done
+  if [ -z "$wrote_env" ] && [ -f "$HOME/.claude/.credentials.json" ]; then
+    if "$HERMES_VENV_PY" - "$HOME/.claude/.credentials.json" "$home/.env" <<'PY'
+import json, os, sys
+src, dst = sys.argv[1], sys.argv[2]
+tok = (json.load(open(src)).get("claudeAiOauth") or {}).get("accessToken")
+if not tok:
+    sys.exit(1)
+fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write("CLAUDE_CODE_OAUTH_TOKEN=%s\n" % tok)
+PY
+    then wrote_env="CLAUDE_CODE_OAUTH_TOKEN (from ~/.claude/.credentials.json)"; fi
+  fi
+  if [ -z "$wrote_env" ]; then
+    # Secrets: SYMLINKED. A copied credential outlives its usefulness and its owner's intent.
+    [ -e "$REAL_HERMES_HOME/.env" ] && ln -s "$REAL_HERMES_HOME/.env" "$home/.env"
+    wrote_env="symlink -> $REAL_HERMES_HOME/.env"
+  fi
+  [ -e "$REAL_HERMES_HOME/auth.json" ] && ln -s "$REAL_HERMES_HOME/auth.json" "$home/auth.json"
+  RIG_CREDENTIAL="$wrote_env"
 
   # ---- the throwaway repo ----
   cd "$repo"
@@ -89,7 +133,8 @@ rig up.
   root:   $root
   repo:   $repo
   home:   $home
-  model:  $RIG_MODEL
+  model:  $RIG_MODEL (provider $RIG_PROVIDER)
+  creds:  $RIG_CREDENTIAL
 
   board:      HERMES_HOME=$home hermes kanban list --json
   gateway:    cd $repo && HERMES_HOME=$home hermes -p pm gateway run
