@@ -45,14 +45,34 @@ case "$*" in
 esac
 `;
 
-function stubRepo(): { dir: string; bin: string; log: string } {
+/** The same stub, but the FIRST `show` answers `done` — a spent idempotency key. Hermes resolves
+ *  `--idempotency-key` with `status != 'archived'`, so a finished card comes back as a hit with the same
+ *  `Created <id>` receipt and exit 0; both implementations must detect that and retry under a discriminated
+ *  key AND a fresh branch. A counter file makes the answer depend on call order, which is the only way to
+ *  drive a retry loop from a stub. */
+const STUB_SPENT_KEY = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$RUNNER_ARGV_LOG"
+case "$*" in
+  *" create "*) echo "Created t_stub00  (ready, assignee)";;
+  *" show "*)
+    n=0
+    [ -f "$STUB_COUNTER" ] && n=$(cat "$STUB_COUNTER")
+    n=$((n + 1)); echo "$n" > "$STUB_COUNTER"
+    if [ "$n" = "1" ]; then st=done; else st=ready; fi
+    echo "{\\"task\\":{\\"id\\":\\"t_stub00\\",\\"title\\":\\"t\\",\\"body\\":null,\\"assignee\\":\\"develop\\",\\"status\\":\\"$st\\",\\"workspace_kind\\":\\"worktree\\",\\"branch_name\\":\\"LOCAL-1-abc\\"},\\"children\\":[]}"
+    ;;
+  *) echo '[]';;
+esac
+`;
+
+function stubRepo(stub: string = STUB): { dir: string; bin: string; log: string; counter: string } {
   const dir = mkdtempSync(join(tmpdir(), 'oa-frontend-'));
   mkdirSync(join(dir, '.open-autonomy'), { recursive: true });
   writeFileSync(join(dir, '.open-autonomy', 'autonomy.json'), JSON.stringify(MANIFEST));
   const bin = join(dir, 'hermes-stub');
-  writeFileSync(bin, STUB);
+  writeFileSync(bin, stub);
   chmodSync(bin, 0o755);
-  return { dir, bin, log: join(dir, 'argv.log') };
+  return { dir, bin, log: join(dir, 'argv.log'), counter: join(dir, 'counter') };
 }
 
 /** Exactly two things legitimately differ between the runs and both are identity, not rule: each gets its
@@ -141,6 +161,67 @@ test('...and the SESSION SHAPE they print agrees for every card status, not just
     // those are deliberate, the status mapping is not.
     expect(fromFrontend.status, `status disagrees for card status "${status}"`).toBe(fromRunner!.status);
   }
+});
+
+test('a SPENT idempotency key retries under a new key AND a new branch — in both implementations', async () => {
+  // THE REWORK PATH, and until now it was exercised by nothing on either side. Hermes matches
+  // `--idempotency-key` on `status != 'archived'`, so after a reviewer requests changes the proposal card
+  // is `done` and re-filing returns THAT card with exit 0 and a `Created` receipt — no new card, no worker,
+  // no error, and `list` hides `done`, so the PM re-files forever. Both implementations detect the spent
+  // key and retry.
+  //
+  // The FRESH BRANCH is the half that reviewers caught and a test did not: the argv is built once, so a
+  // retry that reuses the first branch hands git a branch already checked out in the previous card's
+  // worktree (which Hermes never removes), the spawn fails, and the card auto-blocks. That would have
+  // turned "rework silently does nothing" into "rework reliably wedges".
+  const runs: Array<{ log: string; dir: string }> = [];
+
+  const a = stubRepo(STUB_SPENT_KEY);
+  await new HermesRunner({
+    cwd: a.dir,
+    installDir: a.dir,
+    bin: a.bin,
+    env: { ...process.env, RUNNER_ARGV_LOG: a.log, STUB_COUNTER: a.counter },
+  }).launch('develop', { ZTRACK_ISSUE: 'LOCAL-1' });
+  runs.push({ log: a.log, dir: a.dir });
+
+  const b = stubRepo(STUB_SPENT_KEY);
+  writeFileSync(join(b.dir, 'runner.ts'), runnerFrontendSrc());
+  const run = spawnSync('bun', [join(b.dir, 'runner.ts'), 'launch', 'develop', '--ref', 'LOCAL-1'], {
+    cwd: b.dir,
+    encoding: 'utf8',
+    env: { ...process.env, RUNNER_ARGV_LOG: b.log, STUB_COUNTER: b.counter, HERMES_BIN: b.bin },
+  });
+  expect(run.status, `frontend failed: ${run.stdout}${run.stderr}`).toBe(0);
+  runs.push({ log: b.log, dir: b.dir });
+
+  for (const { log, dir } of runs) {
+    const raw = readFileSync(log, 'utf8');
+    const which = dir === a.dir ? 'HermesRunner' : 'frontend';
+
+    // THREE creates: the proposal, its retry under the spent key, and the review card.
+    const creates = raw.split('\n').filter((l) => l.includes(' create '));
+    expect(creates.length, `${which}: expected proposal + retry + review card`).toBe(3);
+
+    // The retry is discriminated, and only the retry. Keys are pulled from the RAW log rather than the
+    // `create` lines: the card body is multi-line, and every flag after `--body` therefore lands on a later
+    // line of the argv log than the word `create` does.
+    const keys = [...raw.matchAll(/--idempotency-key (open-autonomy:\S+(?: \(attempt \d+\))?)/g)].map((m) => m[1]!);
+    expect(keys, `${which}: proposal, its retry, then the review card`).toEqual([
+      'open-autonomy:develop:LOCAL-1',
+      'open-autonomy:develop:LOCAL-1 (attempt 2)',
+      'open-autonomy:review:LOCAL-1:t_stub00',
+    ]);
+
+    // ...and it carries a DIFFERENT branch. Compared before `normalize`, which masks branch tokens on
+    // purpose — so this assertion cannot live in the equivalence comparison below.
+    const branches = [...raw.matchAll(/--branch (\S+)/g)].map((m) => m[1]!);
+    expect(branches.length, `${which}: one branch per proposal attempt`).toBe(2);
+    expect(branches[0], `${which}: the retry reused the first branch`).not.toBe(branches[1]);
+  }
+
+  // And the two implementations did all of that identically.
+  expect(normalize(b.log, b.dir)).toEqual(normalize(a.log, a.dir));
 });
 
 test('the frontend refuses --branch instead of ignoring it, and names git’s constraint', () => {
