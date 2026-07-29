@@ -562,3 +562,48 @@ T3.5 (gateway restart); and Phase 4's sustained multi-card soak with a forced re
 NEXT: diagnose why the cron scheduler's request is rejected when the dispatcher's is not — comparing the
 two call paths in `cron/scheduler.py` vs the gateway's spawn path is the obvious first move. Until that is
 fixed, an unattended install has no PM tick, which Phase 4 depends on.
+
+
+### Forensics of the T3.1 run — what the workers actually did
+
+Not a fast path and not a stub: **18 API calls, ~16 tool calls, 74s** for develop (`claude-sonnet-5`,
+`provider=anthropic`), 32s for review. Reconstructed from `kanban/logs/t_67bb6342.log` and the profile's
+`agent.log`.
+
+```
+echo "$ZTRACK_ISSUE"                  -> LOCAL-1        # the session-env shim DELIVERED the binding
+read issue-and-evidence.md, risk-and-review.md          # followed its SOUL, unprompted
+npx ztrack issue view LOCAL-1
+which bun node npx tsx                                  # probed the runtime...
+bunx ztrack check                                       # ...because ztrack had just failed
+bun node_modules/ztrack/dist/cli.js check               # invented its own working invocation
+write scripts/greet.sh; chmod +x; run it
+ac patch LOCAL-1 dev/01 ... SHA=efc0f72f30f7...         # evidence citing a REAL commit
+check -> green;  issue edit --state in-review;  git add -A && commit
+kanban_complete -> the gate fired (once) and ALLOWED it
+```
+
+Three things this run does NOT prove, stated plainly so the ledger stays honest:
+- **The gate never REFUSED anything here.** It was invoked exactly once, on the single `kanban_complete`,
+  and passed — the worker got it right first time. This run proves the gate is *wired and invoked live*;
+  the refusal path remains proven only by the standalone gate harness (10/10).
+- **No rework occurred** — the reviewer approved first time, so the changes-requested round trip is still
+  only proven mechanically (T3.2).
+- **One card, one worker.** Nothing here exercises concurrency, leases, or the failure breaker.
+
+### NEW DEFECT — the gate and the worker use DIFFERENT `ztrack` binaries
+
+The worker's `npx ztrack` resolved to the repo-local Node build and **failed**: *"this Node was compiled
+without TypeScript support… run via Bun"*. It recovered by inventing
+`bun node_modules/ztrack/dist/cli.js`, costing ~5 tool calls — model-dependent luck, not a guarantee.
+
+The **gate**, meanwhile, resolves `shutil.which("ztrack")` → `/home/porta/.local/bin/ztrack`, a
+**hand-made bun shim in the operator's personal PATH** that this install neither creates, requires, nor
+checks. So on this box the gate genuinely verified — but on any box without that personal shim, the gate's
+`ztrack check` cannot run and, because it fails CLOSED, it would refuse **every** completion and wedge the
+whole fleet. The install-time probe currently proves the gate command *executes*; it does not prove
+`ztrack` underneath it can run.
+
+FIX (proposed, not yet done): at install time, when the profile declares a ztrack tracker, probe that
+`ztrack` resolves AND that `ztrack check` runs — fail or warn loudly naming `ZTRACK_BIN`. And give workers
+a `ztrack` that works, rather than relying on each one to rediscover the workaround.
