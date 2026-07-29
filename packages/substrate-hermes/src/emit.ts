@@ -381,6 +381,30 @@ for profile in lowering["profiles"]:
 
     (profile_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
+    # CREDENTIALS REACH THE PROFILE, or nothing this install creates can run. Found by running it: every
+    # dispatched worker and every cron job died with "RuntimeError: No LLM provider configured".
+    # \`get_env_path()\` is \`get_hermes_home() / ".env"\` with NO fallback to the root, and an active profile
+    # IS the home — so a profile dir carrying config.yaml and no .env authenticates against nothing, even
+    # though the root home right beside it holds the key. (config.yaml's provider block alone is not
+    # enough; the API key lives in .env.)
+    #
+    # SYMLINKED, never copied, and that is not a style preference: a copied credential goes stale the
+    # moment the operator re-auths, and it multiplies the number of files on disk holding a live key by the
+    # size of the roster. The link also keeps this script's promise that it "never writes a secret".
+    for secret in (".env", "auth.json"):
+        source = home / secret
+        target = profile_dir / secret
+        if not source.exists() or target.exists():
+            continue
+        try:
+            target.symlink_to(source)
+        except OSError as exc:
+            # Windows without developer mode, or a filesystem with no symlink support. Do NOT fall back to
+            # copying a secret — say what to do instead.
+            print(f"[hermes-lowering] WARNING  could not link {target} -> {source} ({exc}). Profile "
+                  f"'{role}' has no {secret}, so its workers will fail with 'No LLM provider configured'. "
+                  f"Copy or link it there by hand.", file=sys.stderr)
+
     # THE SOUL IS THE SKILL. An OA actor's \`behavior\` names a skill folder whose SKILL.md is the prose that
     # directs it; a Hermes profile's SOUL.md is the prose that directs it. Same artifact, same role — so it
     # is copied verbatim rather than paraphrased. The compile already staged it beside this script.
