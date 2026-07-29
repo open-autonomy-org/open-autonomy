@@ -504,3 +504,61 @@ cd <root>/repo && HERMES_HOME=<root>/hermes-home/profiles/pm hermes cron run <pm
 ```
 then T3.1's five proofs (merge commit on trunk, no stray worktrees, branch deleted, ztrack green with
 commit-backed evidence, no card left running/blocked).
+
+
+---
+
+## 2026-07-28 (late) — T3.1 PASSES. The full loop ran end to end for the first time.
+
+**The earlier "blocked" diagnosis was WRONG, and the operator was right to push twice.** The extra-usage 400
+is **path-specific, not credential-specific**: the same token, profile and model that `hermes cron run`
+rejects are accepted by `hermes -z` and by the **gateway dispatcher**. Evidence, same rig, minutes apart:
+
+| path | result |
+|---|---|
+| `hermes cron run <pm-job>` | `HTTP 400: Third-party apps now draw from your extra usage…` (every attempt) |
+| `hermes -z "Run one pm tick now…"` (pm profile home) | **ran a real PM tick and filed a card** |
+| gateway dispatcher (`hermes -p pm gateway run`) | **claimed the card and ran develop + review workers** |
+
+So Hermes works on this box. Only the CRON path is blocked — which is why the earlier proving runs
+succeeded: they were never driven by cron.
+
+### The run
+
+```
+PM tick        -> filed t_67bb6342 (develop, branch LOCAL-1-ms5j7hft-1)
+                  + linked review card t_3be06123 held in `todo`   # the review edge, structural
+dispatcher     -> claimed it; develop worker ran in .worktrees/t_67bb6342
+develop done   -> commits: efc0f72 "add scripts/greet.sh printing repo name"
+                           72487e0 "evidence + in-review: LOCAL-1"
+                  review card auto-released todo -> ready          # recompute_ready, live
+review done    -> verdict approved; issue -> done
+PM tick        -> merged --no-ff, removed the worktree, deleted the branch
+```
+
+**All five T3.1 conditions verified independently of the PM's own report:**
+1. `ed41a98 integrate LOCAL-1` — a real `--no-ff` merge on trunk.
+2. `git worktree list` — only the main tree remains.
+3. `git branch --list "LOCAL-1-*"` — empty; the branch is gone.
+4. `git show master:scripts/greet.sh` → runs, prints `oa-live-rig`. The work is on trunk.
+5. `ztrack check` on trunk: `issues 1 • errors 0 • warnings 0`, exit 0. Board: 2 cards, 0 unfinished.
+
+**The gate held and the envelopes are real.** ACs cite commit `efc0f72f30f711…`, which exists in git. The
+develop envelope validates against `hermes-sdlc.develop.v1` (`outcome: proposed`, two evidence entries) —
+and carries **no fabricated `pr`**, the defect fixed earlier. The reviewer completed with
+`open-autonomy.review.v1+hermes-no-code-host` (`verdict: success`, `outcome: approved`,
+`humanApprovalRequired: false`) — i.e. the forked schema that strips the unsourceable `pr` is what a live
+reviewer actually emitted.
+
+### What this closes and what it does not
+
+CLOSED: integration and teardown have now genuinely executed; the review edge, `recompute_ready`'s release,
+the done-gate, the session-env param binding, and both result envelopes are proven in one continuous run.
+
+STILL OPEN: the cron path (so `pm` does not currently self-schedule on this box — the loop must be driven
+by the gateway dispatcher plus a manual PM tick); T3.3 (worker kill), T3.4 (human-required block),
+T3.5 (gateway restart); and Phase 4's sustained multi-card soak with a forced rework.
+
+NEXT: diagnose why the cron scheduler's request is rejected when the dispatcher's is not — comparing the
+two call paths in `cron/scheduler.py` vs the gateway's spawn path is the obvious first move. Until that is
+fixed, an unattended install has no PM tick, which Phase 4 depends on.
