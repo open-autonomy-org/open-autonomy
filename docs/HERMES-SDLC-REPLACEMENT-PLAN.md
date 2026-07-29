@@ -314,6 +314,95 @@ File these as tracked issues (do not fix silently in this repo):
 
 ## Ledger (append-only; executing agent writes here)
 
+### 2026-07-28 — Phase 0, Phase 1, Phase 2 executed; Phase 3 partially
+
+**Phase 0** — baseline `eaaaf003`: `18 pass / 0 fail / 75 expects`, `tsc` clean, Hermes v0.18.2. Green.
+
+**T1.1** `632c1a0c` — renamed the emitted frontend's `RUNNING` → `LISTED`, comment rewritten to the rule the
+code implements. Proof: `18 pass`, `grep -c RUNNING … = 0`, tsc clean. No behavior change.
+
+**T1.2** `d3112d7f` — `blockGuarded` now throws when the post-block `readCard` is unreadable (it previously
+returned the kernel's exit code as a verdict about a card nothing observed, silently covering the very wedge
+the guard exists to catch); `update()` JSDoc declares both throwing paths. New `runner-update.test.ts`
+(4 tests). Mutation-verified: disabling the unreadable-state throw → 1 fail; disabling the triage throw →
+2 fails; restored → `22 pass`.
+
+**T1.3** `1ed5834f` — SUBSTRATE-FACTS' bound-reviewer row now discriminates on the environment
+(`git rev-parse --abbrev-ref HEAD`) instead of asserting the review edge. A directly-launched review card
+lowers to `dir:<repo>` = trunk, where the old unconditional "Commit your verdict HERE" instructed a commit
+onto trunk — the one act reserved for the PM. First coverage `substrateFacts` has ever had
+(`substrate-facts.test.ts`, 3 tests). Mutation-verified. Note: the IR validator requires any `review:`
+target to declare `result.schema: open-autonomy.review.v1` — the test fixture must carry it.
+
+**T1.5** `b59cc350` — ir.yml cited `scenarios/hermes-sdlc/run.ts`, which does not exist; repointed at the
+twin repo's `cookbook/hermes-sdlc/run.ts`. Proof: `grep -rn … = 0 hits`.
+
+**T1.4** `3462628c` — the spent-idempotency-key retry now has coverage in both implementations, via a
+call-order-dependent stub whose first `show` answers `done`. Asserts 3 creates (proposal, retry, review
+card), the exact key sequence `[…LOCAL-1, …LOCAL-1 (attempt 2), …review:LOCAL-1:t_stub00]`, and two
+DIFFERENT `--branch` values (extracted from the raw log — `normalize` masks branch tokens on purpose).
+Mutation-verified **four ways**: dropping the fresh branch, or the spent-key detection, in either
+implementation → fail. Restored → `26 pass`. Gotcha for a future editor: flags after `--body` land on a
+later line of the argv log than the word `create`, because the card body is multi-line — filter the raw
+log, not the create lines.
+
+**Phase 2 (T2.1)** `c0d530e0` — the attention sweep. **Both scheduling branches were investigated and the
+first held**: `hermes cron create --script <f> --no-agent` exists and is Hermes' documented watchdog (script
+IS the job, stdout delivered verbatim, empty stdout silent). Two design decisions differ from the plan text
+and are better:
+- **Delivery is the cron job's `--deliver`, not an in-script `hermes send`.** `--deliver` already uses
+  `send` underneath; a second sender would be a second mechanism to drift.
+- **The job is registered in every STANDING profile's home, not the root home.** The plan said root; that is
+  wrong here — Hermes executes cron per profile and no gateway runs in the root home, so a root job would
+  never fire (the identical silent-never-fires failure the standing-actor cron block already fixed). Safe
+  because `kanban_home()` resolves `<root>` from `<root>/profiles/<name>` deliberately, so the board is
+  shared; one shared state file under the root home keeps it to one report per card.
+
+Live proof, isolated `HERMES_HOME=/tmp/oa-sweep-home-WRfd`, real board, real installer:
+```
+[hermes-lowering] attention sweep [*/10 * * * *] in: pm audit -> the cron default target
+  22baa32ae0c2 [active]  Name: open-autonomy:attention  Schedule: */10 * * * *
+                         Script: oa-attention-sweep.py   Mode: no-agent (script stdout delivered directly)
+
+RUN 1 (newly parked)  -> "open-autonomy: 1 card(s) need a human … why: a worker is asking for a human
+                          reason: the spec does not say which auth mode to use  (recurrence 1)"
+RUN 2 (unchanged)     -> stdout=[]            # silent
+after unblock         -> stdout=[]            # silent
+after re-block        -> reported again, and the kernel's breaker had fired:
+                         "why: THE KERNEL GAVE UP (no worker is coming back; nobody was asked)"
+```
+**That live run caught a defect reading had not**: the terminal `block_loop_detected` event carries its own
+`reason`/`recurrences`, but `why()` matched only `kind == "blocked"`, so a triaged card reported the STALE
+first reason and "recurrence 1". Fixed to match the terminal kinds too; re-proven → `reason: still unclear
+after the answer  (recurrence 2)` plus the `will NOT move a triage card` warning. `notifications.test.ts`
+(6 tests) mutation-verified both ways, including re-introducing that exact defect.
+
+**Phase 3 (T3.2 only — no model workers, no spend)** — the rework path against the REAL kernel:
+```
+launch develop --ref LOCAL-1  -> t_51c7b3a0  branch LOCAL-1-ms5hbdi8-1
+  review card t_728222b6  status todo  ws .worktrees/t_51c7b3a0   # edge placed in the PREDICTED worktree
+kanban complete t_51c7b3a0    -> done;  review card auto-released todo -> ready   # recompute_ready, live
+launch develop --ref LOCAL-1  -> t_0f24d550  branch LOCAL-1-ms5hbrfo-2           # NEW card, NEW branch
+  its own review card t_b00ff165  ws .worktrees/t_0f24d550   # NOT the dead proposal's — parent-keyed
+```
+So the spent-key retry, the fresh branch, the review edge, the predicted worktree path, and
+`recompute_ready`'s release are all now proven against the real kernel rather than a stub.
+
+**Not run, and why:** T3.0/T3.1/T3.3/T3.4/T3.5 and Phase 4 spawn real Sonnet 5 workers. Ground rule 2
+requires operator confirmation before the first spend; T2.2 likewise needs a real delivery target.
+
+**Environment note (not a regression):** `bun run check:core` shows 13 failures on this box, all in
+`packages/local-runner-cli` and scheduler/provider tests that `spawnSync('node', [<a .ts file>])`. Node here
+cannot load `.ts` (`ERR_UNKNOWN_FILE_EXTENSION`), so they fail regardless of this work; none import
+substrate-hermes, and `bun test packages/core/src` is `204 pass / 0 fail`. `check:profiles` (3 pass) and
+`check:compile` (72 pass, `compile OK`) are green.
+
 | date | task | commit | evidence (trimmed real output) |
 |---|---|---|---|
-| | | | |
+| 2026-07-28 | T1.1 | `632c1a0c` | 18 pass; `grep -c RUNNING` = 0 |
+| 2026-07-28 | T1.2 | `d3112d7f` | 22 pass; mutations → 1 fail / 2 fail |
+| 2026-07-28 | T1.3 | `1ed5834f` | 25 pass; mutation → 1 fail |
+| 2026-07-28 | T1.5 | `b59cc350` | 0 dangling refs |
+| 2026-07-28 | T1.4 | `3462628c` | 26 pass; 4/4 mutations caught |
+| 2026-07-28 | T2.1 | `c0d530e0` | 32 pass; live report/silence/re-report + kernel-give-up discrimination |
+| 2026-07-28 | T3.2 | (proof only) | real kernel: new card + new branch + own review card on re-launch |
