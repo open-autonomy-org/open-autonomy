@@ -406,3 +406,53 @@ substrate-hermes, and `bun test packages/core/src` is `204 pass / 0 fail`. `chec
 | 2026-07-28 | T1.4 | `3462628c` | 26 pass; 4/4 mutations caught |
 | 2026-07-28 | T2.1 | `c0d530e0` | 32 pass; live report/silence/re-report + kernel-give-up discrimination |
 | 2026-07-28 | T3.2 | (proof only) | real kernel: new card + new branch + own review card on re-launch |
+| 2026-07-28 | T3.0 | `ccc93cb2` | rig up end to end; install-candidate flow exercised |
+| 2026-07-28 | credential fix | `ccc93cb2` | A/B: with link → HTTP 401; without → "No inference provider configured" |
+
+### 2026-07-28 (continued) — T3.0 built; T3.1+ BLOCKED on operator credentials
+
+**T3.0 — the rig exists and works** (`scenarios/hermes-sdlc/live/rig.sh`, verbs `up` / `seed` / `down`).
+It builds a throwaway git repo + an isolated `HERMES_HOME`, pins **Sonnet 5**, symlinks secrets rather than
+copying them, and drives the REAL install path. Three things it had to learn, all of which would cost the
+next person an hour:
+- Compiling into a **git worktree** does not write files — it produces a reviewable install candidate
+  (`--force` is refused: "every replacement must remain visible in the reviewed candidate commit") and
+  prints `install-candidate=<sha>`, which `open-autonomy accept <sha> --target <repo>` then lands.
+- `ztrack` must be **repo-local** (`npm i ztrack@1.4.0`), and on this box it must be invoked through the
+  `~/.local/bin/ztrack` shim, because this node build lacks TypeScript support and the preset is `.mts`.
+- The simple-sdlc AC grammar is `- [ ] <id> v<N> <text>` + an indented `- status:` line. A plain markdown
+  checkbox parses with no `version`, and every later `ztrack ac patch` refuses with "does not parse against
+  the grammar" — i.e. a casually-authored issue silently cannot receive evidence. `ztrack issue scaffold`
+  prints the canonical shape; `rig.sh seed` now writes it.
+
+**A real defect found by running it** (`ccc93cb2`): every worker and cron job died with
+`RuntimeError: No LLM provider configured`. `get_env_path()` is `get_hermes_home()/.env` with **no root
+fallback**, and an active profile IS the home — so `install.py` wrote `config.yaml` into each profile home
+and left it authenticating against nothing while the root home beside it held the credentials. The auth
+store resolves the same way. Both are now symlinked into each profile home (never copied). Proven by A/B in
+an isolated home with a dummy key: **with** the link → `HTTP 401: User not found` (provider resolved);
+**without** → `No inference provider configured`.
+
+**BLOCKER — T3.1, T3.3, T3.4, T3.5 and Phase 4 cannot run on this box.** No usable model credential exists
+here, and this is not a rig or install problem: the operator's OWN home fails identically.
+```
+$ cd /tmp && hermes -z "reply with the single word OK"
+hermes -z: agent failed: No LLM provider configured.
+```
+`~/.hermes/auth.json` has `providers: []` and one credential-pool entry for openrouter whose
+`source` is `env:OPENROUTER_API_KEY` — and that variable is set nowhere: not in the environment, not in a
+login shell (`bash -lc` confirms), and `~/.hermes/.env` is entirely commented out. So Hermes knows where the
+key should come from and it is absent.
+
+**To unblock, the operator must do one of:** export `OPENROUTER_API_KEY` (then re-run `rig.sh up`, since
+profile `.env` links only help when the key is in a file), or put the key in `~/.hermes/.env`, or re-auth
+with `hermes model`. Nothing in this repo can supply it, and no agent should go looking for it.
+
+**Resume point once credentials exist:**
+```
+scenarios/hermes-sdlc/live/rig.sh up                    # prints <root>
+scenarios/hermes-sdlc/live/rig.sh seed <root>/repo
+cd <root>/repo && HERMES_HOME=<root>/hermes-home/profiles/pm hermes cron run <pm-job-id>
+```
+then T3.1's five proofs (merge commit on trunk, no stray worktrees, branch deleted, ztrack green with
+commit-backed evidence, no card left running/blocked).
