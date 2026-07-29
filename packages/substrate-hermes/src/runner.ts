@@ -513,6 +513,19 @@ export class HermesRunner implements Runner {
     return cards.map((c) => sessionOf(c)).filter((s) => s.status === 'running' || s.status === 'paused');
   }
 
+  /** Move a card to a contract status. Returns whether the kernel accepted the move.
+   *
+   *  THROWS, in two cases, and both are deliberate — a `boolean` return would be a LIE about what happened,
+   *  which is the failure class this package exists to remove. A caller writing
+   *  `if (!(await runner.update(...)))` must therefore expect a rejection, not just a `false`:
+   *
+   *   - the block wedged the card into Hermes' `triage` column (the unblock-loop breaker fired). `false`
+   *     would read as "the block did not happen"; the truth is it happened AND took the card somewhere no
+   *     Runner verb but `cancel` can reach. See `blockGuarded`.
+   *   - the card's state after a block cannot be read at all. Reporting the `block` call's own exit status
+   *     then asserts an outcome nothing observed. See `blockGuarded`.
+   *
+   *  Every other path returns a plain boolean. */
   async update(id: string, patch: { status?: SessionStatus }): Promise<boolean> {
     if (!patch.status) return !!this.readCard(id);
     switch (patch.status) {
@@ -547,7 +560,23 @@ export class HermesRunner implements Runner {
   private blockGuarded(id: string, reason: string, kind: string): boolean {
     const before = this.readCard(id)?.status;
     const ok = this.kanban(['block', id, reason, '--kind', kind]).ok;
-    if (this.readCard(id)?.status === 'triage' && before !== 'triage') {
+    const after = this.readCard(id)?.status;
+    // AN UNREADABLE CARD IS NOT A SUCCESSFUL BLOCK. `readCard` returns `undefined` for BOTH "no such task"
+    // and a genuine read failure (a locked db, a bad `--board`) — `kanban show <missing>` exits 0, so the
+    // JSON parse is the only detector and it cannot tell the two apart (see `readCard`'s note). The triage
+    // check below is a silent no-op in that state, so returning `ok` here would report the kernel's exit
+    // code as a verdict about a card whose state nothing observed — including, possibly, the exact wedge
+    // this guard exists to catch. Refuse instead: the whole point of the guard is that a wedge is loud.
+    if (ok && after === undefined) {
+      throw new Error(
+        `open-autonomy: blocked ${id} (${kind}), but its state afterwards could not be read — ` +
+          `\`hermes kanban show ${id} --json\` returned nothing parseable. That is either a card that does ` +
+          `not exist or a board that cannot be read (the CLI exits 0 for both), so whether the block wedged ` +
+          `it into \`triage\` is unknown and cannot be reported as success. Check the card and the board by ` +
+          `hand before treating this session as parked.`,
+      );
+    }
+    if (after === 'triage' && before !== 'triage') {
       throw new Error(
         `open-autonomy: blocking ${id} (${kind}) pushed it into Hermes' \`triage\` column — the kernel's ` +
           `unblock-loop breaker fired on a repeated same-kind block. A triage card is never dispatched and ` +
