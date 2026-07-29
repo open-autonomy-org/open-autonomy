@@ -25,6 +25,17 @@ import {
   sessionEnvBlock,
 } from './session-env';
 import {
+  ATTENTION_LOG_PLACEHOLDER,
+  ATTENTION_LOG_SUBPATH,
+  ATTENTION_SCHEDULE,
+  ATTENTION_STATE_PLACEHOLDER,
+  ATTENTION_STATE_SUBPATH,
+  ATTENTION_SWEEP_INSTALLED_SUBPATH,
+  ATTENTION_SWEEP_PATH,
+  ATTENTION_SWEEP_SCRIPT,
+  declaresAttentionSweep,
+} from './notifications';
+import {
   GATE_COMMAND_PLACEHOLDER,
   ZTRACK_GATE_INSTALLED_SUBPATH,
   ZTRACK_GATE_PATH,
@@ -67,6 +78,21 @@ export interface HermesLowering {
   /** Roles whose SOUL.md gets the result-envelope contract appended (they declare a resolvable
    *  `result.schema`). Without it the declaration is decorative — see result-envelope.ts. */
   resultContractRoles?: string[];
+  /** The human seam's other half: a scheduled sweep that reports parked cards to an operator (see
+   *  notifications.ts). Without it `kanban_block(needs_input)` — the profile's ONLY human seam — waits
+   *  forever on someone who was never told. Absent ⇒ no actors, so no board to watch. */
+  attention?: {
+    /** relative to each standing profile's home; Hermes' cron refuses a script outside `$HERMES_HOME/scripts/` */
+    installedSubpath: string;
+    /** shared across every copy of the sweep, under the ROOT home — one report per card, not one per gateway */
+    stateSubpath: string;
+    logSubpath: string;
+    schedule: string;
+    /** the standing roles whose homes get the job. Hermes executes cron PER PROFILE and no gateway runs in
+     *  the root home, so a root-home job would never fire — the same silent-never-fires failure the
+     *  standing-actor cron block exists to fix. Empty ⇒ nothing is standing, and the installer says so. */
+    homes: string[];
+  };
   /** The trigger-param binding: which profiles get the session-env shim that exports a card's declared
    *  launch params into its worker's shell (see session-env.ts). Absent ⇒ no actor declares params. */
   sessionEnv?: {
@@ -111,6 +137,17 @@ export function loweringFor(ir: AutonomyIR): HermesLowering {
         }
       : {}),
     ...(contractRoles.length ? { resultContractRoles: contractRoles } : {}),
+    ...(declaresAttentionSweep(ir)
+      ? {
+          attention: {
+            installedSubpath: ATTENTION_SWEEP_INSTALLED_SUBPATH,
+            stateSubpath: ATTENTION_STATE_SUBPATH,
+            logSubpath: ATTENTION_LOG_SUBPATH,
+            schedule: ATTENTION_SCHEDULE,
+            homes: profiles.filter((p) => p.cron).map((p) => p.role),
+          },
+        }
+      : {}),
     ...(boundRoles.length
       ? {
           sessionEnv: {
@@ -413,7 +450,88 @@ for profile in lowering["profiles"]:
         print(f"[hermes-lowering] WARNING  could not create the cron job for '{role}': "
               f"{(made.stderr or made.stdout).strip()[:300]}", file=sys.stderr)
 
+# ---- the attention sweep: a parked card must REACH somebody ----
+# \`kanban_block(needs_input)\` is this profile's only human seam, and nothing ever told the human. Same for
+# the kernel's own parking (gave_up / block_loop_detected), which is worse — no worker is coming back to
+# report it. Installed as Hermes' documented \`--no-agent\` watchdog: the script IS the job, its stdout is
+# delivered verbatim, empty stdout is silent, and no LLM decides whether an operator should be told.
+#
+# PER STANDING PROFILE, deliberately: Hermes executes cron under the profile home that owns the job and no
+# gateway runs in the ROOT home, so a root-home job would never fire (the same silent-never-fires failure
+# the standing-actor block above exists to fix). The board is SHARED across profiles by design, so every
+# copy sweeps the same cards, and one shared state file means one report per card however many fire.
+attention = lowering.get("attention")
+swept = []
+if attention:
+    sweep_src = here / "hooks" / "oa-attention-sweep.py"
+    if not sweep_src.exists():
+        sys.exit(f"hermes/install.py: missing {sweep_src} — the install is incomplete; re-run the compile.")
+    if hermes_bin is None:
+        print("[hermes-lowering] WARNING  no \`hermes\` executable — the attention sweep cannot be scheduled, "
+              "so a card parked for a human will reach NOBODY.", file=sys.stderr)
+    elif not attention["homes"]:
+        print("[hermes-lowering] WARNING  no STANDING actor, so there is no profile gateway to run the "
+              "attention sweep from. A card parked for a human will reach NOBODY until you schedule "
+              f"{attention['installedSubpath']} yourself.", file=sys.stderr)
+    else:
+        state_file = home / attention["stateSubpath"]
+        log_file = home / attention["logSubpath"]
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        # repr(), not raw interpolation: these land inside Python string LITERALS in the generated sweep,
+        # where a Windows backslash would be read as an escape.
+        sweep_body = (sweep_src.read_text(encoding="utf-8")
+                      .replace('"${ATTENTION_STATE_PLACEHOLDER}"', repr(str(state_file)))
+                      .replace('"${ATTENTION_LOG_PLACEHOLDER}"', repr(str(log_file)))
+                      .replace('"${HERMES_BIN_PLACEHOLDER}"', repr(str(hermes_bin))))
+        deliver = (os.environ.get("OPEN_AUTONOMY_NOTIFY_TARGET") or "").strip()
+        job_name = "open-autonomy:attention"
+        for role in attention["homes"]:
+            role_home = home / "profiles" / role
+            sweep_dest = role_home / attention["installedSubpath"]
+            sweep_dest.parent.mkdir(parents=True, exist_ok=True)
+            sweep_dest.write_text(sweep_body, encoding="utf-8")
+            sweep_dest.chmod(0o755)
+
+            sweep_env = dict(os.environ)
+            sweep_env["HERMES_HOME"] = str(role_home)
+
+            def _sweep_cron(*args):
+                return subprocess.run([str(hermes_bin), "cron", *args], capture_output=True, text=True, env=sweep_env)
+
+            # Reconciled by name, exactly like the standing-actor jobs: \`cron create\` has no idempotency
+            # key, so a re-run would otherwise stack duplicate sweeps.
+            listed = _sweep_cron("list", "--all").stdout or ""
+            job_id = None
+            for line in listed.splitlines():
+                m = re.match(r"\\s+([0-9a-f]{6,})\\s+\\[", line)
+                if m:
+                    job_id = m.group(1)
+                elif job_id and line.strip().startswith("Name:") and line.split("Name:", 1)[1].strip() == job_name:
+                    _sweep_cron("remove", job_id)
+                    job_id = None
+            args = [attention["schedule"], "--name", job_name,
+                    "--script", Path(attention["installedSubpath"]).name, "--no-agent"]
+            if deliver:
+                args += ["--deliver", deliver]
+            made = _sweep_cron("create", *args)
+            if made.returncode == 0:
+                swept.append(role)
+            else:
+                print(f"[hermes-lowering] WARNING  could not schedule the attention sweep in '{role}': "
+                      f"{(made.stderr or made.stdout).strip()[:300]}", file=sys.stderr)
+
 print(f"[hermes-lowering] {len(written)} profile(s) into {home}: {' '.join(written)}")
+if attention:
+    if swept:
+        target = (os.environ.get("OPEN_AUTONOMY_NOTIFY_TARGET") or "").strip()
+        print(f"[hermes-lowering] attention sweep [{attention['schedule']}] in: {' '.join(swept)} "
+              f"-> {target or 'the cron default target'}")
+        if not target:
+            print("[hermes-lowering] NOTE  set OPEN_AUTONOMY_NOTIFY_TARGET (e.g. 'telegram', 'slack:C0123ABCD') "
+                  "before installing to deliver parked-card reports to a real channel; "
+                  f"they are always appended to {home / attention['logSubpath']}.")
+    print(f"[hermes-lowering]       run it by hand any time:  HERMES_HOME={home / 'profiles' / (swept[0] if swept else '<role>')} "
+          f"python3 {home / 'profiles' / (swept[0] if swept else '<role>') / attention['installedSubpath']}")
 if any(p.get("cron") for p in lowering["profiles"]):
     print(f"[hermes-lowering] cron jobs for standing actors: {' '.join(scheduled) or '(none)'}")
     # PROFILE-SCOPED, and the first version of this note was not — which made it advice that cannot work.
@@ -610,6 +728,8 @@ export function compileHermes(ir: AutonomyIR, _opts: { destDir?: string } = {}):
     generated[SESSION_ENV_PATH] = SESSION_ENV_SCRIPT;
     generated[SESSION_ENV_RESOLVER_PATH] = SESSION_ENV_RESOLVER_SCRIPT;
   }
+  // The attention sweep: the human seam's other half. A blocked card that reaches nobody is the failure.
+  if (lowering.attention) generated[ATTENTION_SWEEP_PATH] = ATTENTION_SWEEP_SCRIPT;
   generated[`${HERMES_DIR}/README.md`] = readme(ir, lowering);
   // The Runner contract's CLI frontend, at the SAME path the local substrate emits it, so the portable PM
   // doctrine (`bun scripts/runner.ts launch develop --ref <id>`) runs unchanged here. Without it a PM's only
