@@ -28,6 +28,15 @@ export function substrateFacts(ir: AutonomyIR, lowering: HermesLowering, role: s
   // contradicts it leaves the worker with no correct move: refuse to commit (the verdict never lands) or
   // abort on its own branch assertion. So the workspace line is derived from the review EDGE, not from the
   // lowered kind alone.
+  //
+  // AND THEN IT MUST NOT ASSERT THE EDGE EITHER. `boundReviewerOf` is a static property of the IR — "some
+  // proposer names this role as its reviewer" — which does NOT establish that THIS RUN came through that
+  // edge. A review card launched DIRECTLY (`runner.ts launch review --ref X`) has no parent proposal and
+  // lowers to `dir:<repo>`: the shared checkout, on trunk. The edge-derived line then told a trunk-resident
+  // worker to "commit your verdict HERE", which is a commit straight onto trunk — the one thing only the PM
+  // may do. This is the identical mistake `dualMode` fixed for `audit`, in the identical shape: prose
+  // cannot know the run, so where both are possible it must DISCRIMINATE ON THE ENVIRONMENT rather than
+  // assert the likely case. The row below does that with `git rev-parse --abbrev-ref HEAD`.
   const boundReviewerOf = Object.entries(ir.agents).find(
     ([, a]) => a.review === role && a.execution?.workspace === 'isolated',
   )?.[0];
@@ -71,7 +80,7 @@ What exists instead:
   } |
 | your workspace | ${
     inProposalWorktree
-      ? `**the \`${boundReviewerOf}\` worktree you were opened for** — its branch is checked out, its commits are here, and its worker has already finished. Commit your verdict HERE, beside the evidence.`
+      ? `normally **the \`${boundReviewerOf}\` worktree you were opened for** — but CHECK, do not assume: \`git rev-parse --abbrev-ref HEAD\`. On an ISSUE BRANCH you are in that worktree (its commits are here, its worker has finished) — commit your verdict HERE, beside the evidence. On \`main\`/\`master\` you were launched directly into the shared checkout instead, with no proposal to stand on: do NOT commit, and report the missing worktree as your finding.`
       : profile?.workspace === 'worktree'
         ? 'your own git worktree, on a branch named for your issue'
         : 'the shared repository checkout (you are on trunk — do NOT commit there unless your doctrine says you integrate)'
