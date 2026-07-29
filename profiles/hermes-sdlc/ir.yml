@@ -6,7 +6,8 @@
 # max_runtime_seconds}), and its residents are long-lived conversations engaged through the gateway.
 #
 # Three differences from simple-sdlc, and each one is a claim this profile has to survive at runtime, not a
-# preference (see scenarios/hermes-sdlc/run.ts — the dry-run that tries to break each of them):
+# preference (see the twin repo's `cookbook/hermes-sdlc/run.ts` — the sealed-world run that tries to break
+# each of them; `scenarios/hermes-sdlc/README.md` is this repo's pointer to it):
 #
 #   1. A CLAIM IS A LEASE, NOT A HANDLE. Hermes heartbeats a claim and reclaims it when the heartbeat stops.
 #      So the same work item can be legitimately launched TWICE — once by the PM, once by the kernel after a
