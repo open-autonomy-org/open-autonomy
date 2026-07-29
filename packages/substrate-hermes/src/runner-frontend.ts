@@ -174,10 +174,16 @@ function card(id) {
   }
 }
 
-// \`triage\` is NOT running: it is where the kernel's unblock-loop breaker parks a card, undispatchable and
-// unreachable by \`kanban unblock\`. Reporting it as a live session hid a wedge. (The equivalent fix landed
-// on HermesRunner first and missed this file — the one the PM actually reads.)
-const RUNNING = new Set(['todo', 'scheduled', 'ready', 'running', 'review', 'blocked', 'triage']);
+// The IN-FLIGHT set: what \`list\` shows without \`--all\`. It deliberately INCLUDES the two parked statuses,
+// because a wedge you cannot see is the failure — \`sessionOf\` then reports them as \`status: 'paused'\` via
+// PAUSED, so they are listed without masquerading as live work. (Naming this set after the RUN state was
+// the trap: the comment that lived here said "\`triage\` is NOT running" while the set contained it,
+// describing a rule the code does not implement. Listed and running are different questions; only the
+// second is a status.)
+const LISTED = new Set(['todo', 'scheduled', 'ready', 'running', 'review', 'blocked', 'triage']);
+// \`triage\` is where the kernel's unblock-loop breaker parks a card: undispatchable, and unreachable by
+// \`kanban unblock\`. Reporting it as a live session hid a wedge. (That fix landed on HermesRunner first and
+// missed this file — the one the PM actually reads.)
 const PAUSED = new Set(['blocked', 'triage']);
 // The card body carries the launch params (see encodeParams). Without surfacing them a session's only
 // identifier is its CARD id, so the PM cannot answer "does this issue already have a session?" or "which
@@ -231,7 +237,7 @@ switch (verb) {
     try {
       cards = JSON.parse(r.stdout);
     } catch { /* an unreadable board lists nothing rather than crashing a tick */ }
-    const sessions = cards.filter((t) => all || RUNNING.has(t.status)).map(sessionOf).filter((s) => !actor || s.agent === actor);
+    const sessions = cards.filter((t) => all || LISTED.has(t.status)).map(sessionOf).filter((s) => !actor || s.agent === actor);
     if (json) console.log(JSON.stringify(sessions));
     else if (!sessions.length) console.log(\`(no running sessions\${actor ? \` for \${actor}\` : ''})\`);
     else for (const s of sessions) console.log(\`\${s.id}  \${s.agent}  \${s.card}\${s.branch ? \`  \${s.branch}\` : ''}\`);
