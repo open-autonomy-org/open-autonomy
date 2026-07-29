@@ -473,12 +473,28 @@ right, cron created under the final config, LOCAL-1 seeded, `ztrack check` green
 subscription does not fund third-party apps** — Hermes draws on pay-as-you-go "extra usage", and this
 account has none.
 
-**Two ways to unblock, both the operator's call:**
-1. Add extra usage at `claude.ai/settings/usage` — then `rig.sh up` works as-is, no changes needed.
-2. Export `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` before `rig.sh up` — the rig already prefers an
-   exported key over the Claude token, so that is the only step.
+**CONFIRMED AGAINST THE OFFICIAL DOCS** (hermes-agent.nousresearch.com). This is documented, expected
+behaviour — not a bug, not a misconfiguration. The providers page on the `anthropic` provider's *OAuth via
+Claude Code* path states it plainly: it "only works if you're on a Claude Max plan **and have purchased
+extra usage credits**. The base Max allowance isn't consumed — only extra credits you've added are
+charged." This account is Max (`subscriptionType: max`, `default_claude_max_20x`) with no extra credits, so
+the 400 is the documented outcome. The docs also confirm two details the rig had to learn the hard way:
+direct-API providers take a **bare** model id while aggregator routes use `provider/model`, and the
+`anthropic` provider's aliases are `claude` / `claude-code`.
 
-Nothing in this repo can supply either, and no agent should go looking for a key.
+**Three ways to unblock, the operator's call:**
+1. **Add extra usage** at `claude.ai/settings/usage` — keeps Sonnet 5, and `rig.sh up` then works unchanged.
+2. **Export `ANTHROPIC_API_KEY`** (or `OPENROUTER_API_KEY`) before `rig.sh up` — the rig prefers an exported
+   key over the Claude token, so that is the only step. Per the docs this bills standard API pricing
+   "independent of any Claude subscription status", and needs no interactive OAuth, which makes it the
+   best fit for unattended/cron use.
+3. **`hermes setup --portal`** — free OAuth to Nous Portal, no API key and no payment, 300+ models plus the
+   Tool Gateway. Cheapest path, but it is an interactive browser/device-code flow and it moves the workers
+   OFF Sonnet 5, which conflicts with the standing "at least use sonnet 5" instruction — and worker
+   capability is not incidental here, since a weaker model may fail the done-gate on its own merits and
+   muddy what the soak is measuring.
+
+Nothing in this repo can supply a credential, and no agent should go looking for one.
 
 **Resume point once credentials exist:**
 ```
