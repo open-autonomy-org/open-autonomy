@@ -1,0 +1,319 @@
+# hermes-sdlc → full SDLC replacement: the execution plan
+
+Status: **not started**. Baseline: commit `eaaaf003`, `bun test packages/substrate-hermes` = 18 pass /
+75 expects, `bunx tsc -p tsconfig.json` clean.
+
+This document is written to be executed by an agent **without access to the design history**. Every task
+states its own context, the exact files and lines, a prescribed change (no open design decisions), and a
+**PROOF** block whose command and expected observable define done. Do the tasks in order; do not skip a
+proof; append each proof's actual output to the **Ledger** at the bottom and commit after each task
+(lowercase conventional commits, e.g. `fix(substrate-hermes): …`).
+
+## What this system is (context you must not re-derive wrong)
+
+Two planes, joined at a branch name and an exit code:
+
+- **Hermes' kanban kernel owns DISPATCH.** `packages/substrate-hermes/src/runner.ts` (`HermesRunner`)
+  drives it through the `hermes kanban` CLI only — never `kanban.db` directly. The kernel promotes,
+  claims, leases, kills overruns, re-queues dead workers, and caps concurrency. Nothing in this repo
+  re-implements any of that.
+- **ztrack owns VERIFICATION.** The done-gate (`src/ztrack-gate.ts`) is a Hermes `pre_tool_call` hook
+  that REFUSES `kanban_complete` while `ztrack check --auto-scope` is red. It fails CLOSED.
+- The profile is `profiles/hermes-sdlc/` (six actors: pm, draft, develop, review, maintainer, audit).
+  `develop` runs isolated (own worktree, branch = issue ref + per-create token from `branchFor`);
+  `review` is opened as a linked CHILD card placed in the proposal's worktree; the PM alone integrates
+  (`merge --no-ff`) and tears down the worktree+branch afterwards — nothing else ever reclaims one.
+- The emitted `scripts/runner.ts` (from `src/runner-frontend.ts`) is a second, self-contained
+  implementation of the launch rules; `src/runner-frontend.test.ts` holds the two byte-identical.
+
+## Ground rules (violating any of these is a failed task, whatever else passed)
+
+1. **Isolation.** Every live proof runs under a fresh `HERMES_HOME` (e.g.
+   `export HERMES_HOME=$(mktemp -d)/hermes-home`) and a throwaway git repo. NEVER read-write the real
+   `~/.hermes` profiles, boards, or cron jobs. Never touch the operator's live termfleet fleet, its
+   consoles, or its providers.
+2. **Money.** Phases 3 and 4 spawn real model workers. Workers use **Sonnet 5**. Before the first
+   worker-spawning run of each phase, stop and get explicit operator confirmation.
+3. **Outward messages.** `hermes send` delivers to the operator's real messaging platforms. Proofs use
+   the file-fallback path (below) except ONE confirmed end-to-end send, which requires operator OK first.
+4. **Evidence discipline.** A task is done when its PROOF block's expected observable was actually
+   observed. Paste the real output (trimmed) into the Ledger. "The test should pass" is not evidence.
+5. **Regression gate after every task:** `bun test packages/substrate-hermes && bunx tsc -p tsconfig.json`
+   both clean. Ten review cycles showed most new defects were introduced by fixes; this gate is why.
+
+---
+
+## Phase 0 — verify the baseline (no changes)
+
+Run, from the repo root:
+
+```sh
+git log --oneline -1                      # expect eaaaf003 or a descendant
+bun test packages/substrate-hermes        # expect 18 pass (or more), 0 fail
+bunx tsc -p tsconfig.json                 # expect no output, exit 0
+hermes --version                          # expect v0.18.x — the substrate was proven against 0.18.2
+```
+
+If any of these fail, stop and report; do not "fix forward" a broken baseline.
+
+---
+
+## Phase 1 — close the four known code defects (mechanical, no live runs)
+
+### T1.1 — the frontend's `RUNNING` set contradicts its own comment
+
+**Where:** `packages/substrate-hermes/src/runner-frontend.ts` (~line 177–180 of the emitted script
+template: `const RUNNING = new Set(['todo','scheduled','ready','running','review','blocked','triage'])`).
+
+**Problem:** the comment above it says "`triage` is NOT running… reporting it as a live session hid a
+wedge" — yet `triage` and `blocked` are in the set. The set is actually the **LISTED** set (everything
+in flight, including paused cards, which `sessionOf` then reports as `paused`). The behavior is correct;
+the name and comment describe a different rule and will mislead the next editor.
+
+**Change:** rename `RUNNING` → `LISTED` inside the emitted template and rewrite the comment to say: this
+is the in-flight set `list` shows without `--all`; `blocked`/`triage` are listed but reported as
+`status: 'paused'` (via `PAUSED`), which is how a wedge stays visible without masquerading as live work.
+Behavior must not change.
+
+**PROOF:** `bun test packages/substrate-hermes` green, and
+`grep -c "RUNNING" packages/substrate-hermes/src/runner-frontend.ts` prints `0`.
+
+### T1.2 — `update()` claims boolean, `blockGuarded` throws, and an unknown card state reports success
+
+**Where:** `packages/substrate-hermes/src/runner.ts`, `update` (~516) and `blockGuarded` (~547–558),
+plus the note on `readCard` (~473–477): a missing card and a real failure (locked db, bad `--board`)
+both surface as `undefined`.
+
+**Problems:** (a) `Runner.update` is documented/typed as returning `Promise<boolean>` but `blockGuarded`
+throws on the triage wedge — deliberate (a wedged card must be loud), yet undeclared, so a caller doing
+`if (!await runner.update(...))` will crash instead of branch. (b) In `blockGuarded`, if the post-block
+`readCard` returns `undefined` (state unknown), the triage check is silently false and the method
+returns `ok` — a possible wedge reported as success.
+
+**Change:** keep the throw — it is load-bearing. Add JSDoc on `update` declaring exactly when it throws.
+In `blockGuarded`, when the post-block `readCard(id)` returns `undefined` while the `block` call itself
+succeeded, throw a distinct error: the card's state after blocking could not be read, so success would be
+a guess (name the two indistinguishable causes: card missing vs. board unreadable). Mirror nothing into
+the frontend — `scripts/runner.ts` has no update verb, so this is `HermesRunner`-only.
+
+**PROOF:** a new test (reuse the stub-`hermes` harness from `runner-frontend.test.ts`, which fakes the
+CLI by putting a recording script first on `PATH`): stub `block` → exit 0 and `show` → the triage card;
+assert `update(id, {status:'paused'})` rejects with the triage message. Second case: stub `show` after
+block to print unparseable output; assert it rejects with the unknown-state message, not `resolves(true)`.
+Mutation check: comment out the new throw, the test must fail; restore.
+
+### T1.3 — SUBSTRATE-FACTS tells a directly-launched reviewer it is in a worktree it may not be in
+
+**Where:** `packages/substrate-hermes/src/substrate-facts.ts` (~31–34 computes `boundReviewerOf` /
+`inProposalWorktree` statically from the IR; ~72–78 renders the workspace row).
+
+**Problem:** the appendix declares itself authoritative over the skill, and for any actor that is some
+proposer's `review:` target it asserts "the `develop` worktree you were opened for… Commit your verdict
+HERE." That is true for the review-edge child card, but a review card can also be launched **directly**
+(`runner.ts launch review --ref X`), which lowers to `dir:<repo>` — the shared checkout, on trunk. The
+appendix then instructs a trunk-resident worker to commit "here". This is the same class of bug the
+`dualMode` branch already fixed for `audit`: prose cannot know the run, so it must discriminate on the
+**environment**, not assert one case.
+
+**Change:** rewrite the bound-reviewer workspace row to be environment-discriminated: check where you
+are with `git rev-parse --abbrev-ref HEAD` (and/or cwd under `.worktrees/`). On an issue branch ⇒ you
+are in the proposal's worktree; commit the verdict there. On trunk (`master`/`main`) ⇒ you were launched
+directly into the shared checkout; do NOT commit, and treat the missing worktree as the finding to
+report. Keep the review-edge case as the described-first, expected-normal case.
+
+**PROOF:** `substrateFacts` currently has **zero test coverage** (grep `substrateFacts`
+in `lowering.test.ts` — empty). Add a small test: build the hermes-sdlc IR fixture, render facts for
+`review`, assert the row contains both discriminated cases and no longer contains an unconditional
+"Commit your verdict HERE". Then `bun test packages/substrate-hermes` green.
+
+### T1.4 — the createCard spent-key retry loop is dead weight in the equivalence test
+
+**Where:** `packages/substrate-hermes/src/runner-frontend.test.ts` (the stub `hermes` always answers
+`status:"ready"`), vs. the retry loops in `runner.ts` `createCard` (~338–369) and the frontend template
+(~106–123).
+
+**Problem:** the loop that makes rework possible at all — a `done` idempotency hit means the key is
+SPENT ⇒ retry with ` (attempt N)` key AND a fresh `branchFor` branch — is exercised by no test in either
+implementation. This exact loop was wrong once already (branch reuse would have wedged every rework).
+
+**Change:** extend the stub so the first created card's `show` answers `status:"done"` and the second
+answers `status:"ready"` (the stub records argv to a file; give it a small state file to count calls).
+Drive `launch develop --ref LOCAL-9` through BOTH implementations. Assert, for each: exactly two
+`create` calls; the second carries `--idempotency-key … (attempt 2)`; the two `--branch` values differ;
+and the argv sequences of the two implementations are byte-identical (same normalization the existing
+test uses for timestamps/nonces — extend it if branch tokens need masking).
+
+**PROOF:** mutation check both directions: (a) delete the fresh-branch reassignment in the frontend
+template → test fails; (b) delete it in `HermesRunner` → test fails; restore both, test green.
+
+### T1.5 — dangling dry-run reference in the IR header
+
+**Where:** `profiles/hermes-sdlc/ir.yml` line ~9 cites `scenarios/hermes-sdlc/run.ts`; that file does
+not exist (`scenarios/hermes-sdlc/` holds only `README.md` + `json-schema.ts`; the README points to a
+sibling repo: `../twin/cookbook/hermes-sdlc/run.ts`).
+
+**Change:** fix the ir.yml comment to point where the dry-run actually lives (the twin cookbook path,
+as the scenario README does). Comment-only; no behavior.
+
+**PROOF:** `grep -rn "scenarios/hermes-sdlc/run.ts" profiles/ packages/` prints nothing.
+
+---
+
+## Phase 2 — the notification seam (a blocked card must reach a human)
+
+**The gap:** `kanban_block(needs_input)` is the profile's only human seam, and today it is **silent** —
+the card waits for an operator who has no reason to look at the board. For unattended operation a silent
+stall is worse than a crash. Hermes already ships the delivery mechanism: `hermes send --to
+<platform[:chat_id]>` pipes text to any configured messaging platform, **no gateway or LLM required**
+(verified against hermes v0.18.2: `hermes send --help`).
+
+### T2.1 — emit an attention notifier and wire it in
+
+**Design (decided; implement as written):**
+
+1. New file `packages/substrate-hermes/src/notifications.ts`, exporting a Python script template
+   `oa-attention-sweep.py` (same pattern as `session-env.ts` / `ztrack-gate.ts`: TypeScript exports the
+   script source + installed-path constants; `emit.ts`'s installer copies it under
+   `$HERMES_HOME/open-autonomy/` and substitutes the `@@…@@` placeholders — reuse the existing
+   placeholder machinery, add no second one).
+2. The sweep script: `hermes kanban list --json` (via `$HERMES_BIN`), select cards with
+   `status in {blocked, triage}`, diff against a state file
+   `$HERMES_HOME/open-autonomy/attention-notified.json` (map card-id → last-notified status, so each
+   card+status notifies once, and a card that un-wedges and re-wedges notifies again). For each new one,
+   compose: card id, title, assignee, status, the block reason if present in `kanban show` events, and
+   the one command an operator needs (`hermes kanban show <id> --json` / `hermes kanban unblock <id>`).
+3. Delivery: if `OPEN_AUTONOMY_NOTIFY_TARGET` is set (e.g. `telegram`, `slack:C0123`), pipe the message
+   to `hermes send --to $OPEN_AUTONOMY_NOTIFY_TARGET`. If unset, or if `send` exits non-zero, append to
+   `$HERMES_HOME/open-autonomy/attention.log` — degraded but never silent, same philosophy as
+   `OPEN_AUTONOMY_PARAMS_ERROR`. The script always exits 0.
+4. Scheduling — a discovery step with a two-branch decision, then implement the branch that holds:
+   read `~/.hermes/hermes-agent/cron/jobs.py`. **If** `hermes cron create` supports a shell/command job
+   (not only an agent-prompt job), register the sweep every 10 minutes through `emit.ts`'s existing
+   cron-reconcile-by-name machinery (root home, not a profile home — the sweep is an operator concern).
+   **Else** register it as a `post_tool_call` hook on `kanban_block` (immediate worker-block coverage)
+   AND have the installer print a documented one-line system-cron suggestion for the sweep (covers
+   kernel-initiated wedges: circuit breaker, spawn-fail auto-block — those never pass through a worker's
+   tool call). Record which branch held, and why, in the Ledger.
+
+**PROOF (no operator ping needed):** isolated `HERMES_HOME`, fresh board; `hermes kanban create` a card,
+`hermes kanban block <id> "test" --kind needs_input`; run the sweep with `OPEN_AUTONOMY_NOTIFY_TARGET`
+unset → `attention.log` gains exactly one entry naming the card; run it again → no duplicate; unblock,
+re-block → a second entry. Then unit-test the selection/diff logic if it is factored into a testable
+function; regression gate green.
+
+### T2.2 — one real delivery, end to end
+
+With operator confirmation and a target they name (`hermes send --list` shows what is configured): block
+a card on an isolated board, run the sweep with `OPEN_AUTONOMY_NOTIFY_TARGET` set, and confirm the
+message arrived on the real platform. **PROOF:** the operator's confirmation, quoted in the Ledger.
+
+---
+
+## Phase 3 — staged live proofs (isolated; Sonnet 5 workers; operator OK before first spawn)
+
+Build one reusable rig first, then five proofs against it. Keep the rig under
+`scenarios/hermes-sdlc/live/` as plain scripts (they are operator-run rigs, not CI tests — do not wire
+them into `npm`/`bun` check scripts).
+
+### T3.0 — the rig
+
+A script that, given a scratch dir: creates a git repo (initial commit, `master`), runs the
+open-autonomy compile/install for `profiles/hermes-sdlc` into it against a fresh `HERMES_HOME`, seeds
+the ztrack tracker (simple-sdlc preset) with parametrizable issues (title, ACs, `oa-approved` label),
+and starts the Hermes gateway pointed at that home. It must print every path it created and how to tear
+everything down. Workers run Sonnet 5. **PROOF:** rig up → `hermes kanban list --json` answers on the
+isolated board, all profile configs pass the install's own gate probe, teardown leaves nothing running
+(`pgrep -f` on the isolated home path is empty).
+
+### T3.1 — one card, the whole way through, including integration and teardown
+
+Seed ONE trivial-but-real issue (e.g. "add `scripts/greet.sh` printing the repo name; AC: script exists
+and is executable"). Let the loop run unattended: PM tick files develop → develop implements in its
+worktree, gate holds until ztrack is green → review card promotes, reviewer verdicts in the proposal's
+worktree → PM integrates.
+
+**PROOF, all five or it failed:** (1) trunk `git log --merges -1` shows the `--no-ff` integrate commit;
+(2) `git worktree list` shows only the main tree; (3) the issue branch is deleted; (4) `ztrack check`
+green on trunk with the AC evidence citing a commit that exists; (5) no card left in `running`/`blocked`.
+This is the first time integration + teardown will have ever executed for real — treat any deviation as
+a finding, not noise.
+
+### T3.2 — rework, deterministically
+
+The spent-idempotency-key path, proven against the REAL kernel without needing a model to misbehave:
+on the rig's board, launch develop for an issue via `scripts/runner.ts`, drive the card to `done` by
+hand (`hermes kanban complete` on a green fixture or via the worker), then launch the same actor+ref
+again. **PROOF:** a NEW card exists (different id), its key carries ` (attempt 2)`, its branch differs
+from the first card's, and the kernel dispatches it (status leaves `ready`). The model-driven variant
+(reviewer actually requesting changes) is deliberately deferred to the soak.
+
+### T3.3 — kill a worker mid-flight
+
+While a develop card is `running`, read `worker_pid` from `hermes kanban show <id> --json` runs and
+`kill -9` it. **PROOF:** the kernel reclaims the lease (card leaves `running` without human action),
+a later dispatch retries it, and the card eventually completes green — or, if the failure threshold
+trips instead, the card lands where the discriminator says (`gave_up` event, reported by
+`runner.ts get` as kernel-parked, and — with Phase 2 — a notification fires). Either outcome is a pass
+**if the surfaces report it truthfully**; a silent stall is the only failure.
+
+### T3.4 — a human-required block reaches a human
+
+Seed an issue whose path matches `policy.risk.human_required_paths`. **PROOF:** the PM refuses to file
+it (tick output says blocked-for-human) — and separately, force a worker-side `needs_input` block and
+confirm the Phase-2 notification fires with the card id and unblock command. Then `hermes kanban
+unblock` and confirm the card resumes and completes.
+
+### T3.5 — gateway restart mid-card
+
+Kill the gateway process while a develop card is `running`; restart it against the same `HERMES_HOME`.
+**PROOF:** the board state survives, the orphaned claim is reclaimed on lease expiry, the card re-runs
+to completion, and nothing is double-dispatched (exactly one live worker per card at any time —
+check runs history).
+
+---
+
+## Phase 4 — the soak (the actual replacement test; operator OK required)
+
+**Rule (from the operator's own doctrine): never drop the incumbent before the replacement is proven
+carrying, source-bound.** The work must be real work that would otherwise have gone through the existing
+process — not synthetic cards minted to pass.
+
+- **Setup:** clone open-autonomy to a dedicated soak checkout whose local `master` is a soak
+  integration branch (so the PM's merges land somewhere real but the canonical trunk stays protected;
+  the soak branch returns to the real trunk afterwards as one reviewed PR). Fresh `HERMES_HOME`.
+  The operator picks ~5 real backlog issues and labels them `oa-approved` — the allowlist fence doing
+  its job is part of the test.
+- **Run:** gateway up, unattended, for a working day. During the run, deliberately include: at least one
+  reviewer changes-requested → rework round-trip; one worker kill (T3.3's move); one human-required
+  block answered via the notification.
+- **Pass condition:** all selected issues reach merged-on-soak-trunk with ztrack green and worktrees
+  torn down, with **zero human rescues** other than the designed seams (unblock after notification).
+  Every deviation is logged as a finding with the evidence (`kanban show --json`, git state, logs) —
+  findings are the deliverable; fix and re-run until the pass condition holds on a clean run.
+- **After:** write the outcome into this file's Ledger and — per the roadmap docs — record honestly
+  whether hermes-sdlc is ready to carry a real repo, with the list of what it still cannot do.
+
+---
+
+## Phase 5 — upstream filings (tracked, not blocking)
+
+File these as tracked issues (do not fix silently in this repo):
+
+1. `open-autonomy.review.v1` requires `pr` unconditionally — wrong for any PR-free code host; the
+   substrate's `result-envelope.ts` currently forks the schema (`+hermes-no-code-host`) to strip it.
+   The standard schema should make `pr` conditional on the code host.
+2. `@open-autonomy/core` has no result-envelope validator — every substrate re-implements validation
+   or skips it. One validator in core, substrates call it.
+3. The done-gate has never been challenged by a genuinely adversarial worker (a model instructed to
+   fake done). Design a red-team proof: a scripted "worker" that tries tracker edits without commits,
+   evidence citing nonexistent SHAs, etc., asserting the gate refuses each. Good candidate for a later
+   phase; not on the replacement critical path because the gate already fails closed on every observed
+   dishonest shape.
+
+---
+
+## Ledger (append-only; executing agent writes here)
+
+| date | task | commit | evidence (trimmed real output) |
+|---|---|---|---|
+| | | | |
