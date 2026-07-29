@@ -444,13 +444,45 @@ hermes -z: agent failed: No LLM provider configured.
 login shell (`bash -lc` confirms), and `~/.hermes/.env` is entirely commented out. So Hermes knows where the
 key should come from and it is absent.
 
-**To unblock, the operator must do one of:** export `OPENROUTER_API_KEY` (then re-run `rig.sh up`, since
-profile `.env` links only help when the key is in a file), or put the key in `~/.hermes/.env`, or re-auth
-with `hermes model`. Nothing in this repo can supply it, and no agent should go looking for it.
+**CORRECTION — the openrouter reading above was the wrong diagnosis, and stopping on it was premature.**
+The operator's intent is "my default claude", and Hermes supports exactly that: its `anthropic` provider
+accepts `CLAUDE_CODE_OAUTH_TOKEN` (`PROVIDER_REGISTRY["anthropic"].api_key_env_vars` =
+`ANTHROPIC_API_KEY → ANTHROPIC_TOKEN → CLAUDE_CODE_OAUTH_TOKEN`), and `~/.claude/.credentials.json` holds a
+live Claude Max token. Wired that way (`fcd53e48`), **authentication works**:
+```
+$ HERMES_HOME=<rig>/hermes-home/profiles/pm hermes -z "reply with the single word OK"
+OK
+```
+Three more traps were found and are now handled by `rig.sh`:
+- A **direct-API provider rejects an OpenRouter-style route**: the model id must be bare (`claude-sonnet-5`,
+  not `anthropic/claude-sonnet-5`), and a `base_url` merged in from the operator's config silently
+  overrides the chosen provider. The model block is assigned, not merged.
+- **Cron jobs are pinned to the inference config they were created under.** Changing the model on a live
+  install makes every standing actor refuse to run — *"Skipped to prevent unintended spend: global
+  inference config drifted since this job was created"* — loud in the job log, invisible on the board.
+  A good guard and a real operational trap; the rig now finalizes model/provider BEFORE `install.py` runs.
+- Profile homes need their own credentials (the `ccc93cb2` fix above).
+
+**THE ACTUAL BLOCKER, precisely diagnosed.** A trivial prompt succeeds; a real agent run does not:
+```
+RuntimeError: HTTP 400: Third-party apps now draw from your extra usage, not your plan limits.
+Add more at claude.ai/settings/usage and keep going.
+```
+Reproduced on a clean `rig.sh up` where everything else is verified correct (auth resolves, provider/model
+right, cron created under the final config, LOCAL-1 seeded, `ztrack check` green). So the Claude **Max
+subscription does not fund third-party apps** — Hermes draws on pay-as-you-go "extra usage", and this
+account has none.
+
+**Two ways to unblock, both the operator's call:**
+1. Add extra usage at `claude.ai/settings/usage` — then `rig.sh up` works as-is, no changes needed.
+2. Export `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY` before `rig.sh up` — the rig already prefers an
+   exported key over the Claude token, so that is the only step.
+
+Nothing in this repo can supply either, and no agent should go looking for a key.
 
 **Resume point once credentials exist:**
 ```
-scenarios/hermes-sdlc/live/rig.sh up                    # prints <root>
+scenarios/hermes-sdlc/live/rig.sh up                    # prints <root>, resolves credentials itself
 scenarios/hermes-sdlc/live/rig.sh seed <root>/repo
 cd <root>/repo && HERMES_HOME=<root>/hermes-home/profiles/pm hermes cron run <pm-job-id>
 ```
