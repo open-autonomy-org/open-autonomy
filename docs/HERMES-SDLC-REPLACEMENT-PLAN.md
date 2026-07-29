@@ -607,3 +607,54 @@ whole fleet. The install-time probe currently proves the gate command *executes*
 FIX (proposed, not yet done): at install time, when the profile declares a ztrack tracker, probe that
 `ztrack` resolves AND that `ztrack check` runs — fail or warn loudly naming `ZTRACK_BIN`. And give workers
 a `ztrack` that works, rather than relying on each one to rediscover the workaround.
+
+
+---
+
+## 2026-07-29 — DOGFOOD: the loop fixed a real defect in open-autonomy
+
+Source-bound per Phase 4's rule: a soak clone of open-autonomy (`/tmp/oa-soak`, branch `soak`, isolated
+`HERMES_HOME`), its own 60-issue ztrack board, and the ztrack-gate defect above filed as a REAL issue
+(LOCAL-50) rather than a synthetic card.
+
+**Intake fence proven on a real backlog.** The PM tick read the tracker and filed exactly one thing:
+> LOCAL-48 (F-B) and LOCAL-49 (F-E): `ready`, no labels — fenced under `policy.dispatch.mode: allowlist`
+> (missing `oa-approved`). Not filed. … LOCAL-50: `ready`, has `oa-approved`, no deferral marker, not in a
+> human-required path. **Filed** → card `t_1330a505`. OUTCOME: filed LOCAL-50
+
+It also correctly reported the pre-existing red tracker (36 errors) without treating it as its own doing.
+
+**The worker produced a real fix, then hit the iteration ceiling.** It ran ~10 minutes, committed
+`607cdacf hermes/install.py: probe that the resolved ztrack binary can execute check` (+42 lines) and
+`3490cdb0 evidence + in-review: LOCAL-50`, moved the issue to `in-review` — and then:
+```
+timed_out -> {"error": "Iteration budget exhausted (60/60)", "failures": 1}
+```
+The kernel recorded the failure and re-queued the card to `ready`, exactly as designed. (The gateway later
+died on the intermittent extra-usage 400, so nothing re-claimed it.) **Finding: 60 iterations is not enough
+for a real code change on a real repo** — a live tuning fact no unit test would surface.
+
+**What it got right, unprompted:** it read the gate script and found *why* the existing probe is
+insufficient — the install-time probe sends a `tool_name: terminal` payload, so the hook's matcher
+short-circuits before ever touching ztrack. That was NOT in the issue text. It handled not-found, timeout,
+OSError and non-zero exit, each naming `ZTRACK_BIN`, in the repo's own comment idiom.
+
+**Two things it got wrong, both instructive:**
+1. **Its probe does not work.** It chose `ztrack check --help`, reasoning that this still runs the real CLI.
+   Measured: `--help` exits **0 on the very binary that fails**, because it never loads the `.mts`
+   validation preset. The fix would have passed on exactly the ztrack that breaks the gate. Only running it
+   catches this.
+2. **It fixed the generated copy.** It edited `hermes/install.py`, which is emitted from
+   `packages/substrate-hermes/src/emit.ts`; the next compile would erase it. Partly my issue text's fault
+   (I named install.py) — but the real cause is a repo defect: `scripts/runner.ts` carries a
+   "GENERATED … Do not edit" header and `install.py` did not.
+
+**Landed (`60c9a769`), corrected.** The right question is "can the checker RUN", not "is the tracker
+green" — a red tracker is normal and must not fail an install. `check --json` is the discriminator: a
+working ztrack emits parseable JSON even at 36 errors; a broken runtime emits an unparseable loader error.
+Proven both ways against the real red tracker: working ztrack installs, `ZTRACK_BIN=<node-based ztrack>` is
+refused. The missing GENERATED header is added.
+
+**Verdict on "can it fix?": yes, with a human in the loop.** It found something I had not, wrote it in the
+house idiom, and chose a verification that silently does not verify. That is precisely the failure class
+this whole substrate exists to eliminate — and it took a live run, not a review, to catch it.
