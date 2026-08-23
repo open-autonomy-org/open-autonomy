@@ -103,10 +103,14 @@ fast (stronger than last-gen frontier), so fix the prompt/tool, never route arou
 
 ### `services/agent-model-proxy/` — the Cloudflare Worker (repo-owned; edit directly, NOT dogfood-managed)
 
-The model proxy that **gates all agent model spend** and serves the funding storefront (open-autonomy.org).
+The **OA treasury** (`@open-autonomy/treasury`): the economy layer that **gates all agent model spend**,
+holds the funding-account tree, exposes the **generic supplier API** (registry + itemized consume +
+two-phase reserve/settle + per-supplier exposure caps — see its README "Suppliers"), and serves the funding
+storefront (open-autonomy.org).
 `src/`: `index.ts` (routes + `x-admin-token` admin), `anthropic.ts`/`openai.ts`/`pricing.ts` (provider
 routing; deepseek/* via OpenRouter settles **cheap**, ~cents), `run-budget.ts` + `limit-ledger.ts` (Durable
-Objects: per-run + global spend ledger, run slots, profiles, `recent_runs`), `github-sync.ts` (syncs a repo's
+Objects: per-run + global spend ledger, run slots, accounts/suppliers, profiles, `recent_runs`),
+`supplier.ts` (supplier vocabulary + credentials), `github-sync.ts` (syncs a repo's
 profile + roadmap rollup), `platform-html.tsx`/`project-docs.tsx`/`ui/` (server-rendered funding page).
 Deploy with `bunx wrangler deploy`. **The proxy ledger's `consumed_usd_cents` is the authoritative cost — NOT
 the CLI's `total_cost_usd`** (which mis-prices proxied models ~40×).

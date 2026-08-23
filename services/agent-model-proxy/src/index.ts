@@ -3,12 +3,13 @@ import { healthOptsFromEnv, limitsFromEnv } from './config.js';
 import { error, json, methodNotAllowed, parseJson } from './errors.js';
 import { verifyGitHubOidcToken } from './github-oidc.js';
 import { isStale, syncAllStale, syncProfile } from './github-sync.js';
-import { LimitLedger, LimitLedgerClient, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
+import { LimitLedger, LimitLedgerClient, type Moderation, type Sponsor, type SupplierAuth, type Tier, type AccountProfile } from './limit-ledger.js';
 import { handleOpenAI } from './openai.js';
 import { LOGO_SVG, renderExplore, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
 import { RunBudget, RunBudgetClient } from './run-budget.js';
 import { renderRunwaySvg } from './runway-svg.js';
 import { handleSponsorsWebhook } from './sponsors-webhook.js';
+import { hashSupplierSecret, parseSupplierToken } from './supplier.js';
 import { extractBearer, extractModelToken, signRunToken, verifyRunToken } from './token.js';
 import type { Env, MintRunRequest, RunClaims } from './types.js';
 
@@ -224,6 +225,65 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (result.ok) return json(result);
     const status = result.error === 'coupon_not_found' ? 404 : result.error === 'coupon_already_redeemed' ? 409 : 400;
     return json(result, { status });
+  }
+
+  // ---- Generic supplier API (admin registry + supplier-authenticated debit ops) ----
+  // Suppliers are admin-created external billers with scoped bearer tokens (`sup.<id>.<secret>`)
+  // and an allowed-category list. They post itemized debits (consume) or two-phase holds
+  // (reserve → settle/release) against accounts. See README "Suppliers".
+  if (path === '/admin/suppliers') {
+    if (!isAdmin(req, env)) return error('auth_failed', 401);
+    const ledger = new LimitLedgerClient(env.LIMITS);
+    if (req.method === 'GET') return json(await ledger.supplierList());
+    if (req.method !== 'POST') return methodNotAllowed();
+    const body = parseJson<{ id?: string; name?: string; url?: string; categories?: string[] }>(await req.text());
+    if (!body || typeof body.name !== 'string' || !Array.isArray(body.categories)) return error('invalid_request');
+    const result = await ledger.supplierCreate({ id: body.id, name: body.name, url: body.url, categories: body.categories });
+    return json(result, { status: result.ok ? 200 : result.error === 'supplier_exists' ? 409 : 400 });
+  }
+  const supAdmin = path.match(/^\/admin\/suppliers\/([^/]+)\/(rotate|revoke)$/);
+  if (supAdmin) {
+    if (!isAdmin(req, env)) return error('auth_failed', 401);
+    if (req.method !== 'POST') return methodNotAllowed();
+    const id = decodeURIComponent(supAdmin[1]);
+    const ledger = new LimitLedgerClient(env.LIMITS);
+    const result = supAdmin[2] === 'rotate' ? await ledger.supplierRotate(id) : await ledger.supplierRevoke(id);
+    return json(result, { status: result.ok ? 200 : 404 });
+  }
+  // Supplier-scoped exposure cap: the account's admin bounds one supplier's in-flight reserves +
+  // rolling spend against this account. Amount null/0 clears the cap.
+  const supCap = path.match(/^\/admin\/accounts\/([^/]+)\/supplier-cap$/);
+  if (supCap) {
+    if (!isAdmin(req, env)) return error('auth_failed', 401);
+    if (req.method !== 'POST') return methodNotAllowed();
+    const account = decodeURIComponent(supCap[1]);
+    const body = parseJson<{ supplier?: string; max_usd_cents?: number | null; window_days?: number }>(await req.text());
+    if (!body || typeof body.supplier !== 'string' || !body.supplier) return error('invalid_request');
+    const result = await new LimitLedgerClient(env.LIMITS).supplierCapSet(account, body.supplier, body.max_usd_cents, body.window_days);
+    return json(result, { status: result.ok ? 200 : 400 });
+  }
+  if (path === '/v1/supplier/consume' || path === '/v1/supplier/reserve' || path === '/v1/supplier/settle' || path === '/v1/supplier/release') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const auth = await supplierCreds(req);
+    if (!auth) return error('supplier_auth_failed', 401);
+    const ledger = new LimitLedgerClient(env.LIMITS);
+    const body = parseJson<Record<string, unknown>>(await req.text());
+    if (!body) return error('invalid_json');
+    const config = limitsFromEnv(env);
+    const result =
+      path === '/v1/supplier/consume' ? await ledger.supplierConsume(auth, body as never, config)
+      : path === '/v1/supplier/reserve' ? await ledger.supplierReserve(auth, body as never, config)
+      : path === '/v1/supplier/settle' ? await ledger.supplierSettle(auth, body as never)
+      : await ledger.supplierRelease(auth, String(body.reserve_id ?? ''));
+    return json(result, { status: result.ok ? 200 : supplierErrorStatus(result.error) });
+  }
+  const supReserveGet = path.match(/^\/v1\/supplier\/reserves\/([^/]+)$/);
+  if (supReserveGet) {
+    if (req.method !== 'GET') return methodNotAllowed();
+    const auth = await supplierCreds(req);
+    if (!auth) return error('supplier_auth_failed', 401);
+    const result = await new LimitLedgerClient(env.LIMITS).supplierReserveGet(auth, decodeURIComponent(supReserveGet[1]));
+    return json(result, { status: result.ok ? 200 : supplierErrorStatus(result.error) });
   }
 
   // Autonomous project→project redistribution. The OIDC repo claim must equal the source account, so
@@ -495,6 +555,27 @@ async function exchangeRunToken(req: Request, env: Env, runId: string): Promise<
 function isAdmin(req: Request, env: Env): boolean {
   const token = req.headers.get('x-admin-token');
   return Boolean(token && env.AGENT_PROXY_ADMIN_TOKEN && token === env.AGENT_PROXY_ADMIN_TOKEN);
+}
+
+// Parse a supplier bearer token (`sup.<id>.<secret>`) into the id + hashed secret the ledger
+// authenticates against. The plaintext secret never crosses into the Durable Object.
+async function supplierCreds(req: Request): Promise<SupplierAuth | null> {
+  const parsed = parseSupplierToken(extractBearer(req));
+  if (!parsed) return null;
+  return { id: parsed.id, secret_hash: await hashSupplierSecret(parsed.secret) };
+}
+
+function supplierErrorStatus(code?: string): number {
+  switch (code) {
+    case 'supplier_auth_failed': return 401;
+    case 'category_not_allowed':
+    case 'account_banned': return 403;
+    case 'account_balance_exhausted':
+    case 'supplier_cap_exceeded': return 402;
+    case 'reserve_not_found': return 404;
+    case 'reserve_closed': return 409;
+    default: return 400;
+  }
 }
 
 function html(body: string, status = 200): Response {
