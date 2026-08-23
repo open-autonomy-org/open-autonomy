@@ -586,6 +586,9 @@ export class LimitLedger implements DurableObject {
   private async reserve(requestId: string, amount: number, config: LimitConfig, runId?: string): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
+    // Expired supplier holds must release before the balance gate below reads reservedFor(), or a
+    // dead hold could keep blocking model spend until an unrelated supplier op happens to GC it.
+    this.gcSupplierReserves();
 
     // A non-finite or negative amount would slip past the `>` gates below and poison reserved/balance
     // arithmetic into NaN, permanently disabling enforcement for this Durable Object.
