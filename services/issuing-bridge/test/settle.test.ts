@@ -85,7 +85,8 @@ beforeEach(async () => {
 
 async function fireTxn(env: Env, cardId: string, txnId: string, amount = -750): Promise<Response> {
   const payload = JSON.stringify({
-    data: { object: { amount, card: { id: cardId }, id: txnId, type: 'capture' } },
+    // unexpanded, as real webhook payloads deliver it (expandable field, default string)
+    data: { object: { amount, card: cardId, id: txnId, type: 'capture' } },
     type: 'issuing_transaction.created',
   });
   return worker.fetch(new Request('https://bridge.test/webhooks/stripe/txn', { body: payload, headers: { 'stripe-signature': await stripeSign(payload) }, method: 'POST' }), env);

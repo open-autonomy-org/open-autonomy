@@ -180,7 +180,7 @@ async function txnWebhook(request: Request, env: Env): Promise<Response> {
   const payload = await request.text();
   const verified = await verifyStripeSignature(env.STRIPE_WEBHOOK_SECRET, request.headers.get('stripe-signature'), payload, Date.now());
   if (!verified) return refuse(401, 'signature_invalid');
-  let event: { type?: string; data?: { object?: { amount?: number; card?: { id?: string }; id?: string; type?: string } } };
+  let event: { type?: string; data?: { object?: { amount?: number; card?: string | { id?: string }; id?: string; type?: string } } };
   try {
     event = JSON.parse(payload) as typeof event;
   } catch {
@@ -188,7 +188,9 @@ async function txnWebhook(request: Request, env: Env): Promise<Response> {
   }
   if (event.type !== 'issuing_transaction.created') return refuse(400, 'unexpected_event_type');
   const transaction = event.data?.object;
-  const cardId = transaction?.card?.id;
+  // Transaction.card is EXPANDABLE (stripe SDK: string | Issuing.Card) and webhook payloads
+  // deliver it unexpanded — an id string. Accept the expanded object too.
+  const cardId = typeof transaction?.card === 'string' ? transaction.card : transaction?.card?.id;
   if (typeof cardId !== 'string' || typeof transaction?.id !== 'string') return refuse(400, 'invalid_request');
   if (transaction.type !== 'capture') return json({ ignored: true, reason: `non-capture transaction type ${String(transaction.type)}` });
   // Stripe issuing captures are NEGATIVE amounts (a debit); the settled figure is its magnitude.
