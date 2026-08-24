@@ -1,7 +1,7 @@
 {
   "name": "open-autonomy",
   "version": "0.4.4",
-  "description": "Compile an agent profile onto a substrate (GitHub Actions or a local termfleet loop) — the open-autonomy CLI.",
+  "description": "Compile an agent profile onto a substrate (GitHub Actions or a local termfleet loop) \u2014 the open-autonomy CLI.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -83,6 +83,12 @@
   },
   "overrides": {
     "@hono/node-server": "2.0.11",
-    "fast-uri": "4.1.1"
+    "fast-uri": "^4.1.2",
+    "ip-address": "^10.3.1",
+    "socket.io-parser": "^4.2.7",
+    "hono": "^4.12.34"
+  },
+  "dependencies": {
+    "fast-uri": "^4.1.1"
   }
 }

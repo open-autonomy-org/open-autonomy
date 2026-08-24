@@ -1,5 +1,7 @@
 {
-  "name": "@volter/agent-model-proxy",
+  "name": "@open-autonomy/treasury",
+  "version": "0.1.0",
+  "description": "The Open Autonomy treasury (a.k.a. agent-model-proxy): the economy layer \u2014 funding-account tree, generic supplier API, bounded model proxy, and the public funding storefront, as one Cloudflare Worker.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +15,9 @@
     "wrangler": "4.114.0"
   },
   "dependencies": {
-    "hono": "^4.12.27"
+    "hono": "^4.13.4"
+  },
+  "overrides": {
+    "undici": "^7.29.0"
   }
 }

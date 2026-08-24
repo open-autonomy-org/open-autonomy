@@ -1,10 +1,29 @@
-# Agent Model Proxy
+# Open Autonomy Treasury (`agent-model-proxy`)
 
-Cloudflare Worker for public issue-agent runs.
+**The economy layer of Open Autonomy**, as one Cloudflare Worker. Where the rest of the repo
+compiles and runs autonomous organizations, this package holds their **books and their money
+boundary**:
 
-It is intentionally separate from the twin packages. Twins emulate the app's
-vendor world; this service mints bounded model tokens and protects sponsor
-spend while GitHub Actions runs semi-untrusted agents.
+- **The funding-account tree** — every project and named root is an account; mint/grant/consume
+  with a hard conservation invariant (total minted = total consumed + total still held).
+- **The generic supplier API** — authorized external billers (compute hosts, labor marketplaces,
+  media renderers, …) post itemized debits and two-phase reserve/settle holds against accounts,
+  under per-supplier scoped credentials, category grants, and account-set exposure caps.
+- **The model proxy** — bounded per-run model tokens for semi-untrusted agent runs; the proxy's
+  own settlements are just supplier #0 (`model-proxy`, category `model`) on the same books.
+- **The public funding storefront** — snapshots, runway SVGs, sponsor/coupon plumbing, the
+  explore/project pages (open-autonomy.org).
+- *(Planned, not built: an issuing bridge that turns treasury reserves into bounded single-use
+  cards — the reserve/settle primitive here is its foundation.)*
+
+It is intentionally separate from the twin packages. Twins emulate an app's vendor world; this
+service is the money boundary for real spend.
+
+**Versioning.** The package version (`package.json`, currently `0.1.0`) versions the **HTTP API
+surface**, semver-style: additive endpoints/fields bump minor, breaking changes to a published
+route bump major. The worker deploy itself is versioned by `deploy-v*` tags (see `DEPLOY.md`);
+the two are independent. The package stays in-repo at `services/agent-model-proxy/` — the package
+boundary is this README + the API surface, not a repo split.
 
 ## API
 
@@ -60,6 +79,70 @@ curl -X POST https://<proxy-host>/admin/accounts/volter/mint -H "x-admin-token: 
 curl -X POST https://<proxy-host>/admin/coupons -H "x-admin-token: $TOK" \
   -d '{"amount_usd_cents":5000,"from":"volter-ai/open-autonomy","sponsor":{"login":"acme","name":"ACME Cloud","tagline":"infra for builders"}}'
 curl -X POST https://<proxy-host>/v1/coupons/redeem -d '{"code":"SPON-XXXX-XXXX-XXXX","account":"volter-ai/some-project"}'
+```
+
+## Suppliers: the generic debit API
+
+A **supplier** is any authorized external biller — a compute host charging machine-seconds, a labor
+marketplace charging per assignment, a media renderer, a landlord's rent-accrual bot. Suppliers are
+strangers to the treasury: an admin creates a registry entry with a display identity, an
+**allowed-category list**, and a scoped bearer credential; from then on the supplier can post debits
+against accounts, and nothing more. The proxy's own inline model settlements go through the same
+debit path as built-in **supplier #0** (`model-proxy`, category `model`), so the books itemize every
+spend path identically.
+
+**Cost categories:** `model | machine-seconds | labor | media | rent | procurement | other`.
+
+**Registry (admin, `X-Admin-Token`):**
+
+- `POST /admin/suppliers` — body `{ id?, name, url?, categories }`. Returns the supplier plus its
+  bearer token `sup.<id>.<secret>` **exactly once** (only a hash is stored; re-issue via rotate).
+- `GET /admin/suppliers` — list (never exposes secrets).
+- `POST /admin/suppliers/:id/rotate` — new token; the old one dies immediately.
+- `POST /admin/suppliers/:id/revoke` — terminal; create a new supplier to re-admit.
+- `POST /admin/accounts/:id/supplier-cap` — body `{ supplier, max_usd_cents, window_days? }` (null/0
+  amount clears). The **supplier-scoped exposure cap**: this supplier's in-flight held reserves plus
+  its rolling spend over the window (default 30 days) against this account may not exceed the cap.
+
+**Supplier operations (`Authorization: Bearer sup.<id>.<secret>`):**
+
+- `POST /v1/supplier/consume` — one-shot itemized debit. Body
+  `{ account, amount_usd_cents, category, item, job_ref?, receipt_ref?, key }`. Idempotent on `key`
+  (a **refused** attempt does not burn the key). Refused when the category is outside the supplier's
+  grant (403), the account is banned (403), the exposure cap would be exceeded (402), or — with
+  `ENFORCE_ACCOUNT_BALANCE=true` — when the account lacks spendable balance (402; the same rollout
+  flag semantics as the model path: enforcement off = bootstrap phase, spend is allowed through).
+- `POST /v1/supplier/reserve` — phase 1 of the two-phase debit: hold funds. Body
+  `{ account, amount_usd_cents, category, item, job_ref?, ttl_seconds?, key? }` → `{ reserve_id, … }`.
+  A held reserve **counts against spendable balance for every spend path** (supplier and model alike)
+  until settled, released, or TTL-expired (default TTL 1h, max 7d — expired holds release
+  automatically and can no longer settle). A `key` makes the reserve idempotent: a retried create
+  returns the same hold. This is the primitive for long-running machine spawns and the future
+  issuing bridge: secure the money first, bill the true cost at the end.
+- `POST /v1/supplier/settle` — phase 2. Body `{ reserve_id, amount_usd_cents, receipt_ref? }` with
+  amount ≤ the held amount; the remainder releases immediately. Idempotent: re-settling reports the
+  original settlement instead of double-debiting.
+- `POST /v1/supplier/release` — body `{ reserve_id }`; frees the full hold, consumes nothing.
+  Idempotent on closed reserves.
+- `GET /v1/supplier/reserves/:id` — the supplier's own view of a reserve (status, amounts, expiry).
+
+Every settled/consumed cent lands in the account's `consumed_by_category` breakdown and in the flow
+ledger with `{ supplier, category, item, job_ref?, receipt_ref? }` — so `GET /v1/accounts/:id` can
+answer "N% inference / M% execution / K% labor" and the activity feed shows who billed what for what.
+`GET /v1/accounts/:id` also now reports `reserved_usd_cents` (in-flight holds) and
+`spendable_usd_cents` (balance − reserved).
+
+```bash
+# admin: register a supplier and cap its exposure against one account
+curl -X POST https://<proxy-host>/admin/suppliers -H "x-admin-token: $TOK" \
+  -d '{"id":"acme-machines","name":"ACME Machines","categories":["machine-seconds"]}'   # → token sup.acme-machines.…
+curl -X POST https://<proxy-host>/admin/accounts/volter-ai%2Fsome-project/supplier-cap -H "x-admin-token: $TOK" \
+  -d '{"supplier":"acme-machines","max_usd_cents":5000,"window_days":30}'
+# supplier: hold → settle the true cost (remainder releases)
+curl -X POST https://<proxy-host>/v1/supplier/reserve -H "authorization: Bearer $SUPPLIER_TOKEN" \
+  -d '{"account":"volter-ai/some-project","amount_usd_cents":800,"category":"machine-seconds","item":"vm-large spawn","job_ref":"job-42","ttl_seconds":7200,"key":"spawn-42"}'
+curl -X POST https://<proxy-host>/v1/supplier/settle -H "authorization: Bearer $SUPPLIER_TOKEN" \
+  -d '{"reserve_id":"rsv:acme-machines:spawn-42","amount_usd_cents":512,"receipt_ref":"rcpt-9f"}'
 ```
 
 GitHub Sponsors funding needs **no GitHub token**: set `GITHUB_SPONSORS_WEBHOOK_SECRET`, add the webhook
