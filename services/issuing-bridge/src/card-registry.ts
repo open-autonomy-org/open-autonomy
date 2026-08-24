@@ -1,0 +1,160 @@
+// The CardRegistry Durable Object — single instance (the LimitLedger pattern): every card
+// binding, the float ledger, and (PR-3+) the auth log live here. The DO write happens
+// BEFORE the mint response returns, and every external call is idempotency-keyed on the
+// reserve id, so a crashed mint re-runs to the same end state instead of double-minting.
+
+export interface Binding {
+  account: string;
+  amount_cents: number;
+  approval_ref: string;
+  auth_log: Array<{ authorization_id: string; decision: 'approved' | 'declined'; reason: string; ts: string }>;
+  card_id: string;
+  cardholder_id: string;
+  expires_at_ms: number;
+  job_ref: string;
+  merchant_lock: { mcc?: string; name_pattern?: string; network_id?: string };
+  reserve_id: string;
+  settled_cents?: number;
+  settled_txn_id?: string;
+  receipt_ref?: string;
+  status: 'armed' | 'authorized' | 'settled' | 'expired' | 'canceled' | 'incident';
+}
+
+interface RegistryState {
+  bindings: Record<string, Binding>; // by card_id
+  by_job_ref: Record<string, string>; // job_ref -> card_id (the mint idempotency spine)
+  float: { armed_total_cents: number };
+  incidents: Array<{ at: string; card_id?: string; reason: string; txn_id?: string }>;
+  last_reconciled_txn_created: number;
+  // The minting fuse: an orphan real-money movement halts ALL minting until a human resets.
+  minting_fuse: string | null;
+}
+
+const EMPTY: RegistryState = { bindings: {}, by_job_ref: {}, float: { armed_total_cents: 0 }, incidents: [], last_reconciled_txn_created: 0, minting_fuse: null };
+
+export class CardRegistry {
+  private loaded = false;
+  private registry: RegistryState = structuredClone(EMPTY);
+
+  constructor(private readonly state: DurableObjectState) {}
+
+  private async load(): Promise<void> {
+    if (this.loaded) return;
+    const stored = await this.state.storage.get<RegistryState>('registry');
+    this.registry = stored === undefined ? structuredClone(EMPTY) : { ...structuredClone(EMPTY), ...stored };
+    this.loaded = true;
+  }
+
+  private async persist(): Promise<void> {
+    await this.state.storage.put('registry', this.registry);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    await this.load();
+    const url = new URL(request.url);
+    const body = request.method === 'POST' ? await request.json() as Record<string, unknown> : {};
+    // Internal RPC surface (worker → DO only; the worker authenticates callers).
+    if (url.pathname === '/lookup-job-ref') {
+      const cardId = this.registry.by_job_ref[body.job_ref as string];
+      const binding = cardId === undefined ? undefined : this.registry.bindings[cardId];
+      return Response.json({ binding: binding ?? null });
+    }
+    if (url.pathname === '/float') {
+      return Response.json({ armed_total_cents: this.registry.float.armed_total_cents });
+    }
+    if (url.pathname === '/arm') {
+      if (this.registry.minting_fuse !== null) return Response.json({ halted: this.registry.minting_fuse });
+      const binding = body.binding as unknown as Binding;
+      // Re-arming the same job_ref is a replay: return the existing binding untouched.
+      const existingCardId = this.registry.by_job_ref[binding.job_ref];
+      if (existingCardId !== undefined) return Response.json({ binding: this.registry.bindings[existingCardId], replay: true });
+      this.registry.bindings[binding.card_id] = binding;
+      this.registry.by_job_ref[binding.job_ref] = binding.card_id;
+      this.registry.float.armed_total_cents += binding.amount_cents;
+      await this.persist();
+      return Response.json({ binding, replay: false });
+    }
+    if (url.pathname === '/lookup-card') {
+      const binding = this.registry.bindings[body.card_id as string];
+      return Response.json({ binding: binding ?? null });
+    }
+    if (url.pathname === '/latch-auth') {
+      // The atomic single-use latch: only an 'armed' binding transitions; a concurrent
+      // second auth loses here regardless of what its snapshot showed.
+      const binding = this.registry.bindings[body.card_id as string];
+      if (binding === undefined) return Response.json({ latched: false, reason: 'unknown-card' });
+      const entry = { authorization_id: body.authorization_id as string, decision: body.decision as 'approved' | 'declined', reason: body.reason as string, ts: body.ts as string };
+      binding.auth_log.push(entry);
+      if (body.decision !== 'approved') { await this.persist(); return Response.json({ latched: false, reason: entry.reason }); }
+      if (binding.status !== 'armed') { entry.decision = 'declined'; entry.reason = `latch-race:${binding.status}`; await this.persist(); return Response.json({ latched: false, reason: entry.reason }); }
+      binding.status = 'authorized';
+      await this.persist();
+      return Response.json({ latched: true });
+    }
+    if (url.pathname === '/settle') {
+      // Idempotent by txn id: a replayed settlement webhook returns the recorded outcome.
+      const binding = this.registry.bindings[body.card_id as string];
+      if (binding === undefined) return Response.json({ orphan: true });
+      if (binding.settled_txn_id !== undefined) {
+        return Response.json({ replay: true, settled: binding.settled_txn_id === body.txn_id });
+      }
+      // Only a live binding settles: an expired/canceled one released its hold already —
+      // settling it would double-decrement the float and re-spend a closed reserve. A
+      // capture landing here is reconciler/incident territory (PR-5), not bookkeeping.
+      if (binding.status !== 'armed' && binding.status !== 'authorized') {
+        return Response.json({ closed: true, status: binding.status });
+      }
+      binding.settled_txn_id = body.txn_id as string;
+      binding.settled_cents = body.amount_cents as number;
+      binding.receipt_ref = body.txn_id as string;
+      binding.status = 'settled';
+      this.registry.float.armed_total_cents = Math.max(0, this.registry.float.armed_total_cents - binding.amount_cents);
+      await this.persist();
+      return Response.json({ binding, replay: false, settled: true });
+    }
+    if (url.pathname === '/sweep-expired') {
+      // The janitor's atomic read-and-mark: expired armed bindings leave the float NOW;
+      // the worker then cancels cards + releases holds best-effort (both idempotent).
+      const now = body.now_ms as number;
+      const expired: Binding[] = [];
+      for (const binding of Object.values(this.registry.bindings)) {
+        if (binding.status === 'armed' && now >= binding.expires_at_ms) {
+          binding.status = 'expired';
+          this.registry.float.armed_total_cents = Math.max(0, this.registry.float.armed_total_cents - binding.amount_cents);
+          expired.push(binding);
+        }
+      }
+      if (expired.length > 0) await this.persist();
+      return Response.json({ expired });
+    }
+    if (url.pathname === '/incident') {
+      const entry = { at: body.at as string, ...(typeof body.card_id === 'string' ? { card_id: body.card_id } : {}), reason: body.reason as string, ...(typeof body.txn_id === 'string' ? { txn_id: body.txn_id } : {}) };
+      this.registry.incidents.push(entry);
+      this.registry.minting_fuse = entry.reason;
+      const binding = typeof body.card_id === 'string' ? this.registry.bindings[body.card_id] : undefined;
+      if (binding !== undefined && binding.status !== 'settled') binding.status = 'incident';
+      await this.persist();
+      return Response.json({ fuse: this.registry.minting_fuse, incidents: this.registry.incidents.length });
+    }
+    if (url.pathname === '/fuse-reset') {
+      // Human-only in routing (the worker gates this behind the admin token).
+      this.registry.minting_fuse = null;
+      await this.persist();
+      return Response.json({ fuse: null });
+    }
+    if (url.pathname === '/reconcile-watermark') {
+      if (typeof body.advance_to === 'number') {
+        this.registry.last_reconciled_txn_created = Math.max(this.registry.last_reconciled_txn_created, body.advance_to);
+        await this.persist();
+      }
+      return Response.json({ last_reconciled_txn_created: this.registry.last_reconciled_txn_created });
+    }
+    if (url.pathname === '/status') {
+      return Response.json({ armed_total_cents: this.registry.float.armed_total_cents, incidents: this.registry.incidents, minting_fuse: this.registry.minting_fuse });
+    }
+    if (url.pathname === '/list') {
+      return Response.json({ bindings: Object.values(this.registry.bindings) });
+    }
+    return Response.json({ error: 'not_found' }, { status: 404 });
+  }
+}

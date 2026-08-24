@@ -1,0 +1,30 @@
+name = "volter-issuing-bridge"
+main = "src/index.ts"
+compatibility_date = "2026-06-15"
+workers_dev = true
+
+[vars]
+# The treasury the bridge is a supplier OF (supplier id `issuing-bridge`, category
+# `procurement`). The supplier token is a secret (wrangler secret put TREASURY_SUPPLIER_TOKEN).
+TREASURY_URL = "https://volter-agent-model-proxy.workers.dev"
+# Stripe Issuing. STRIPE_KEY is a secret; the base URL is a var so a rehearsal world can
+# point the bridge at the stripe TWIN without code changes.
+STRIPE_API_BASE = "https://api.stripe.com"
+# Stripe webhook signing secret is a secret (wrangler secret put STRIPE_WEBHOOK_SECRET).
+# Ed25519 public key (base64url raw) that signs procurement approval artifacts (RH2-side).
+APPROVAL_PUBKEY = ""
+# Global float watermark: total armed (minted, unsettled) cents may never exceed this.
+FLOAT_WATERMARK_CENTS = "50000"
+# Card expiry safety margin below the treasury reserve TTL.
+CARD_EXPIRY_MARGIN_SECONDS = "300"
+
+[[durable_objects.bindings]]
+name = "CARDS"
+class_name = "CardRegistry"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CardRegistry"]
+
+[triggers]
+crons = ["*/5 * * * *"]
