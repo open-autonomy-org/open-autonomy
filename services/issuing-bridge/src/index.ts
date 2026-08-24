@@ -11,7 +11,7 @@ import { verifyApprovalArtifact } from './approval.ts';
 import { decideAuthorization, verifyStripeSignature } from './webhooks.ts';
 import { cancelCard, ensureCardholder, StripeError } from './stripe.ts';
 import { createCard } from './stripe.ts';
-import { reserveIdForJobRef, treasuryRelease, treasuryReserve } from './treasury.ts';
+import { reserveIdForJobRef, treasuryRelease, treasuryReserve, treasurySettle } from './treasury.ts';
 import type { Binding } from './card-registry.ts';
 
 export { CardRegistry } from './card-registry.ts';
@@ -165,17 +165,65 @@ async function authWebhook(request: Request, env: Env): Promise<Response> {
   return json({ approved: latch.latched === true });
 }
 
+// PR-4 — settlement: capture transaction → idempotent treasury settle with the Stripe txn
+// as the receipt → binding 'settled' → card canceled → float decremented. An orphan
+// transaction (no binding) is acknowledged 200 but flagged — the PR-5 reconciler turns it
+// into an incident; swallowing it silently would hide a real-money leak.
+async function txnWebhook(request: Request, env: Env): Promise<Response> {
+  const payload = await request.text();
+  const verified = await verifyStripeSignature(env.STRIPE_WEBHOOK_SECRET, request.headers.get('stripe-signature'), payload, Date.now());
+  if (!verified) return refuse(401, 'signature_invalid');
+  let event: { type?: string; data?: { object?: { amount?: number; card?: { id?: string }; id?: string; type?: string } } };
+  try {
+    event = JSON.parse(payload) as typeof event;
+  } catch {
+    return refuse(400, 'invalid_json');
+  }
+  if (event.type !== 'issuing_transaction.created') return refuse(400, 'unexpected_event_type');
+  const transaction = event.data?.object;
+  const cardId = transaction?.card?.id;
+  if (typeof cardId !== 'string' || typeof transaction?.id !== 'string') return refuse(400, 'invalid_request');
+  if (transaction.type !== 'capture') return json({ ignored: true, reason: `non-capture transaction type ${String(transaction.type)}` });
+  // Stripe issuing captures are NEGATIVE amounts (a debit); the settled figure is its magnitude.
+  const settledCents = Math.abs(transaction.amount ?? 0);
+  const outcome = await registryCall(env, '/settle', { amount_cents: settledCents, card_id: cardId, txn_id: transaction.id });
+  if (outcome.orphan === true) return json({ orphan: true, txn_id: transaction.id }, 202);
+  if (outcome.closed === true) return json({ closed: true, status: outcome.status, txn_id: transaction.id }, 202);
+  if (outcome.replay === true) return json({ replay: true, settled: outcome.settled });
+  const binding = outcome.binding as Binding;
+  const settle = await treasurySettle(env, { amountCents: settledCents, receiptRef: transaction.id, reserveId: binding.reserve_id });
+  await cancelCard(env, cardId).catch(() => undefined);
+  return json({ settled: settle.ok === true, treasury: settle.ok === true ? 'settled' : String(settle.error) });
+}
+
+// The janitor (cron): expired armed cards leave the float, their Stripe cards cancel, and
+// their treasury holds release — every leg idempotent, so a crashed sweep re-runs whole.
+async function janitorSweep(env: Env): Promise<{ expired: number }> {
+  const sweep = await registryCall(env, '/sweep-expired', { now_ms: Date.now() });
+  const expired = sweep.expired as Binding[];
+  for (const binding of expired) {
+    await cancelCard(env, binding.card_id).catch(() => undefined);
+    await treasuryRelease(env, binding.reserve_id).catch(() => undefined);
+  }
+  return { expired: expired.length };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') return json({ ok: true, service: 'issuing-bridge' });
     if (url.pathname === '/v1/cards' && request.method === 'POST') return mintCard(request, env);
     if (url.pathname === '/webhooks/stripe/auth' && request.method === 'POST') return authWebhook(request, env);
+    if (url.pathname === '/webhooks/stripe/txn' && request.method === 'POST') return txnWebhook(request, env);
     if (url.pathname === '/v1/cards' && request.method === 'GET') {
       // Operator visibility (read-only); real auth rides PR-3's shared secret decision.
       const list = await registryCall(env, '/list');
       return json({ bindings: (list.bindings as Binding[]).map(({ auth_log, ...rest }) => ({ ...rest, auth_entries: auth_log.length })) });
     }
+    if (url.pathname === '/janitor/sweep' && request.method === 'POST') return json(await janitorSweep(env));
     return refuse(404, 'not_found');
+  },
+  async scheduled(_controller: unknown, env: Env): Promise<void> {
+    await janitorSweep(env);
   },
 };

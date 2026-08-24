@@ -85,6 +85,42 @@ export class CardRegistry {
       await this.persist();
       return Response.json({ latched: true });
     }
+    if (url.pathname === '/settle') {
+      // Idempotent by txn id: a replayed settlement webhook returns the recorded outcome.
+      const binding = this.registry.bindings[body.card_id as string];
+      if (binding === undefined) return Response.json({ orphan: true });
+      if (binding.settled_txn_id !== undefined) {
+        return Response.json({ replay: true, settled: binding.settled_txn_id === body.txn_id });
+      }
+      // Only a live binding settles: an expired/canceled one released its hold already —
+      // settling it would double-decrement the float and re-spend a closed reserve. A
+      // capture landing here is reconciler/incident territory (PR-5), not bookkeeping.
+      if (binding.status !== 'armed' && binding.status !== 'authorized') {
+        return Response.json({ closed: true, status: binding.status });
+      }
+      binding.settled_txn_id = body.txn_id as string;
+      binding.settled_cents = body.amount_cents as number;
+      binding.receipt_ref = body.txn_id as string;
+      binding.status = 'settled';
+      this.registry.float.armed_total_cents = Math.max(0, this.registry.float.armed_total_cents - binding.amount_cents);
+      await this.persist();
+      return Response.json({ binding, replay: false, settled: true });
+    }
+    if (url.pathname === '/sweep-expired') {
+      // The janitor's atomic read-and-mark: expired armed bindings leave the float NOW;
+      // the worker then cancels cards + releases holds best-effort (both idempotent).
+      const now = body.now_ms as number;
+      const expired: Binding[] = [];
+      for (const binding of Object.values(this.registry.bindings)) {
+        if (binding.status === 'armed' && now >= binding.expires_at_ms) {
+          binding.status = 'expired';
+          this.registry.float.armed_total_cents = Math.max(0, this.registry.float.armed_total_cents - binding.amount_cents);
+          expired.push(binding);
+        }
+      }
+      if (expired.length > 0) await this.persist();
+      return Response.json({ expired });
+    }
     if (url.pathname === '/list') {
       return Response.json({ bindings: Object.values(this.registry.bindings) });
     }

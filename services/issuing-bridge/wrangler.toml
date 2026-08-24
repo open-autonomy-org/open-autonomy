@@ -25,3 +25,6 @@ class_name = "CardRegistry"
 [[migrations]]
 tag = "v1"
 new_classes = ["CardRegistry"]
+
+[triggers]
+crons = ["*/5 * * * *"]
