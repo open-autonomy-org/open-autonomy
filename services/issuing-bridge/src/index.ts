@@ -17,6 +17,7 @@ import type { Binding } from './card-registry.ts';
 export { CardRegistry } from './card-registry.ts';
 
 export interface Env {
+  ADMIN_TOKEN: string;
   APPROVAL_PUBKEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   CARDS: DurableObjectNamespace;
@@ -117,6 +118,12 @@ async function mintCard(request: Request, env: Env): Promise<Response> {
     status: 'armed',
   };
   const armed = await registryCall(env, '/arm', { binding });
+  if (typeof armed.halted === 'string') {
+    // The minting fuse is blown (an orphan incident): no new exposure until a human resets.
+    await cancelCard(env, cardId).catch(() => undefined);
+    await treasuryRelease(env, reserveId).catch(() => undefined);
+    return refuse(503, 'minting_halted', armed.halted);
+  }
   if (armed.replay === true) {
     // A concurrent mint won the race: cancel our duplicate card; the hold is shared (same key).
     await cancelCard(env, cardId).catch(() => undefined);
@@ -187,7 +194,11 @@ async function txnWebhook(request: Request, env: Env): Promise<Response> {
   // Stripe issuing captures are NEGATIVE amounts (a debit); the settled figure is its magnitude.
   const settledCents = Math.abs(transaction.amount ?? 0);
   const outcome = await registryCall(env, '/settle', { amount_cents: settledCents, card_id: cardId, txn_id: transaction.id });
-  if (outcome.orphan === true) return json({ orphan: true, txn_id: transaction.id }, 202);
+  if (outcome.orphan === true) {
+    // Real money moved on a card the bridge never minted: THE incident. Blow the fuse.
+    await registryCall(env, '/incident', { at: new Date().toISOString(), card_id: cardId, reason: `orphan transaction ${transaction.id} on unminted card ${cardId}`, txn_id: transaction.id });
+    return json({ incident: true, orphan: true, txn_id: transaction.id }, 202);
+  }
   if (outcome.closed === true) return json({ closed: true, status: outcome.status, txn_id: transaction.id }, 202);
   if (outcome.replay === true) return json({ replay: true, settled: outcome.settled });
   const binding = outcome.binding as Binding;
@@ -221,6 +232,13 @@ export default {
       return json({ bindings: (list.bindings as Binding[]).map(({ auth_log, ...rest }) => ({ ...rest, auth_entries: auth_log.length })) });
     }
     if (url.pathname === '/janitor/sweep' && request.method === 'POST') return json(await janitorSweep(env));
+    if (url.pathname === '/v1/status' && request.method === 'GET') return json(await registryCall(env, '/status'));
+    if (url.pathname === '/v1/fuse-reset' && request.method === 'POST') {
+      // The human-only reset: an incident investigation ends with a person turning minting
+      // back on — money movement never self-heals its own kill switch.
+      if (request.headers.get('x-admin-token') !== env.ADMIN_TOKEN || env.ADMIN_TOKEN === '') return refuse(401, 'auth_failed');
+      return json(await registryCall(env, '/fuse-reset'));
+    }
     return refuse(404, 'not_found');
   },
   async scheduled(_controller: unknown, env: Env): Promise<void> {

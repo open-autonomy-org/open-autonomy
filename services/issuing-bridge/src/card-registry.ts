@@ -24,9 +24,12 @@ interface RegistryState {
   bindings: Record<string, Binding>; // by card_id
   by_job_ref: Record<string, string>; // job_ref -> card_id (the mint idempotency spine)
   float: { armed_total_cents: number };
+  incidents: Array<{ at: string; card_id?: string; reason: string; txn_id?: string }>;
+  // The minting fuse: an orphan real-money movement halts ALL minting until a human resets.
+  minting_fuse: string | null;
 }
 
-const EMPTY: RegistryState = { bindings: {}, by_job_ref: {}, float: { armed_total_cents: 0 } };
+const EMPTY: RegistryState = { bindings: {}, by_job_ref: {}, float: { armed_total_cents: 0 }, incidents: [], minting_fuse: null };
 
 export class CardRegistry {
   private loaded = false;
@@ -36,7 +39,8 @@ export class CardRegistry {
 
   private async load(): Promise<void> {
     if (this.loaded) return;
-    this.registry = await this.state.storage.get<RegistryState>('registry') ?? structuredClone(EMPTY);
+    const stored = await this.state.storage.get<RegistryState>('registry');
+    this.registry = stored === undefined ? structuredClone(EMPTY) : { ...structuredClone(EMPTY), ...stored };
     this.loaded = true;
   }
 
@@ -58,6 +62,7 @@ export class CardRegistry {
       return Response.json({ armed_total_cents: this.registry.float.armed_total_cents });
     }
     if (url.pathname === '/arm') {
+      if (this.registry.minting_fuse !== null) return Response.json({ halted: this.registry.minting_fuse });
       const binding = body.binding as unknown as Binding;
       // Re-arming the same job_ref is a replay: return the existing binding untouched.
       const existingCardId = this.registry.by_job_ref[binding.job_ref];
@@ -120,6 +125,24 @@ export class CardRegistry {
       }
       if (expired.length > 0) await this.persist();
       return Response.json({ expired });
+    }
+    if (url.pathname === '/incident') {
+      const entry = { at: body.at as string, ...(typeof body.card_id === 'string' ? { card_id: body.card_id } : {}), reason: body.reason as string, ...(typeof body.txn_id === 'string' ? { txn_id: body.txn_id } : {}) };
+      this.registry.incidents.push(entry);
+      this.registry.minting_fuse = entry.reason;
+      const binding = typeof body.card_id === 'string' ? this.registry.bindings[body.card_id] : undefined;
+      if (binding !== undefined && binding.status !== 'settled') binding.status = 'incident';
+      await this.persist();
+      return Response.json({ fuse: this.registry.minting_fuse, incidents: this.registry.incidents.length });
+    }
+    if (url.pathname === '/fuse-reset') {
+      // Human-only in routing (the worker gates this behind the admin token).
+      this.registry.minting_fuse = null;
+      await this.persist();
+      return Response.json({ fuse: null });
+    }
+    if (url.pathname === '/status') {
+      return Response.json({ armed_total_cents: this.registry.float.armed_total_cents, incidents: this.registry.incidents, minting_fuse: this.registry.minting_fuse });
     }
     if (url.pathname === '/list') {
       return Response.json({ bindings: Object.values(this.registry.bindings) });

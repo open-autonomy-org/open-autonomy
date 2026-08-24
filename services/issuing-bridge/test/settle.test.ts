@@ -33,6 +33,7 @@ let cardCounter = 0;
 function makeEnv(ttlSeconds = 3_600): { env: Env; mint: (jobRef: string) => Promise<string> } {
   const registryInstance = new CardRegistry(new MemoryState() as never);
   const env: Env = {
+    ADMIN_TOKEN: 'admin_test',
     APPROVAL_PUBKEY: pubkeyB64url,
     CARDS: {
       idFromName: () => 'singleton',

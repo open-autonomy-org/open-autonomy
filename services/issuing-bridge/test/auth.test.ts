@@ -40,6 +40,7 @@ let treasuryDown: boolean;
 function makeEnv(): Env {
   const registryInstance = new CardRegistry(new MemoryState() as never);
   return {
+    ADMIN_TOKEN: 'admin_test',
     APPROVAL_PUBKEY: pubkeyB64url,
     CARDS: {
       idFromName: () => 'singleton',
