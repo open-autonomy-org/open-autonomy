@@ -69,3 +69,23 @@ export async function createCard(env: StripeEnvLike, input: { cardholderId: stri
 export async function cancelCard(env: StripeEnvLike, cardId: string): Promise<void> {
   await call(env, `/v1/issuing/cards/${encodeURIComponent(cardId)}`, { status: 'canceled' }, `cancel:${cardId}`);
 }
+
+
+/** The reconciler's sweep source: issuing transactions since a watermark (Stripe list API,
+ * ascending replay via created[gt]). */
+export async function listTransactionsSince(env: StripeEnvLike, createdAfterEpoch: number): Promise<Array<{ amount: number; card: string; created: number; id: string; type: string }>> {
+  const query = new URLSearchParams({ 'created[gt]': String(createdAfterEpoch), limit: '100' });
+  const response = await fetch(`${env.STRIPE_API_BASE.replace(/\/$/, '')}/v1/issuing/transactions?${query.toString()}`, {
+    headers: { authorization: `Bearer ${env.STRIPE_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  const parsed = await response.json() as { data?: Array<{ amount: number; card: string | { id: string }; created: number; id: string; type: string }> };
+  if (!response.ok) throw new StripeError(response.status, `stripe transactions list failed`);
+  return (parsed.data ?? []).map((transaction) => ({
+    amount: transaction.amount,
+    card: typeof transaction.card === 'string' ? transaction.card : transaction.card.id,
+    created: transaction.created,
+    id: transaction.id,
+    type: transaction.type,
+  }));
+}

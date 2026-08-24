@@ -9,7 +9,7 @@
 
 import { verifyApprovalArtifact } from './approval.ts';
 import { decideAuthorization, verifyStripeSignature } from './webhooks.ts';
-import { cancelCard, ensureCardholder, StripeError } from './stripe.ts';
+import { cancelCard, ensureCardholder, listTransactionsSince, StripeError } from './stripe.ts';
 import { createCard } from './stripe.ts';
 import { reserveIdForJobRef, treasuryRelease, treasuryReserve, treasurySettle } from './treasury.ts';
 import type { Binding } from './card-registry.ts';
@@ -207,6 +207,42 @@ async function txnWebhook(request: Request, env: Env): Promise<Response> {
   return json({ settled: settle.ok === true, treasury: settle.ok === true ? 'settled' : String(settle.error) });
 }
 
+// The reconciler: replay Stripe's own transaction log against the Bindings — a dropped
+// settlement webhook back-fills; a transaction the bridge cannot account for is the
+// orphan incident. This is the independent check that the webhook path cannot lie to.
+async function reconcileSweep(env: Env): Promise<{ backfilled: number; incidents: number; scanned: number }> {
+  const watermark = await registryCall(env, '/reconcile-watermark');
+  const since = watermark.last_reconciled_txn_created as number;
+  const transactions = await listTransactionsSince(env, since);
+  let backfilled = 0;
+  let incidents = 0;
+  let advanceTo = since;
+  for (const transaction of transactions.sort((left, right) => left.created - right.created)) {
+    advanceTo = Math.max(advanceTo, transaction.created);
+    if (transaction.type !== 'capture') continue;
+    const outcome = await registryCall(env, '/settle', { amount_cents: Math.abs(transaction.amount), card_id: transaction.card, txn_id: transaction.id });
+    if (outcome.orphan === true || outcome.closed === true) {
+      incidents += 1;
+      await registryCall(env, '/incident', {
+        at: new Date().toISOString(),
+        card_id: transaction.card,
+        reason: outcome.orphan === true
+          ? `reconciler: orphan transaction ${transaction.id} on unminted card ${transaction.card}`
+          : `reconciler: capture ${transaction.id} on a ${String(outcome.status)} binding`,
+        txn_id: transaction.id,
+      });
+      continue;
+    }
+    if (outcome.replay === true) continue; // webhook already settled it — the normal case
+    const binding = outcome.binding as Binding;
+    await treasurySettle(env, { amountCents: Math.abs(transaction.amount), receiptRef: transaction.id, reserveId: binding.reserve_id });
+    await cancelCard(env, transaction.card).catch(() => undefined);
+    backfilled += 1;
+  }
+  await registryCall(env, '/reconcile-watermark', { advance_to: advanceTo });
+  return { backfilled, incidents, scanned: transactions.length };
+}
+
 // The janitor (cron): expired armed cards leave the float, their Stripe cards cancel, and
 // their treasury holds release — every leg idempotent, so a crashed sweep re-runs whole.
 async function janitorSweep(env: Env): Promise<{ expired: number }> {
@@ -232,6 +268,7 @@ export default {
       return json({ bindings: (list.bindings as Binding[]).map(({ auth_log, ...rest }) => ({ ...rest, auth_entries: auth_log.length })) });
     }
     if (url.pathname === '/janitor/sweep' && request.method === 'POST') return json(await janitorSweep(env));
+    if (url.pathname === '/janitor/reconcile' && request.method === 'POST') return json(await reconcileSweep(env));
     if (url.pathname === '/v1/status' && request.method === 'GET') return json(await registryCall(env, '/status'));
     if (url.pathname === '/v1/fuse-reset' && request.method === 'POST') {
       // The human-only reset: an incident investigation ends with a person turning minting
@@ -243,5 +280,6 @@ export default {
   },
   async scheduled(_controller: unknown, env: Env): Promise<void> {
     await janitorSweep(env);
+    await reconcileSweep(env).catch(() => undefined);
   },
 };

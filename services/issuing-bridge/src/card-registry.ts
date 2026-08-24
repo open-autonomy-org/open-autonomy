@@ -25,11 +25,12 @@ interface RegistryState {
   by_job_ref: Record<string, string>; // job_ref -> card_id (the mint idempotency spine)
   float: { armed_total_cents: number };
   incidents: Array<{ at: string; card_id?: string; reason: string; txn_id?: string }>;
+  last_reconciled_txn_created: number;
   // The minting fuse: an orphan real-money movement halts ALL minting until a human resets.
   minting_fuse: string | null;
 }
 
-const EMPTY: RegistryState = { bindings: {}, by_job_ref: {}, float: { armed_total_cents: 0 }, incidents: [], minting_fuse: null };
+const EMPTY: RegistryState = { bindings: {}, by_job_ref: {}, float: { armed_total_cents: 0 }, incidents: [], last_reconciled_txn_created: 0, minting_fuse: null };
 
 export class CardRegistry {
   private loaded = false;
@@ -140,6 +141,13 @@ export class CardRegistry {
       this.registry.minting_fuse = null;
       await this.persist();
       return Response.json({ fuse: null });
+    }
+    if (url.pathname === '/reconcile-watermark') {
+      if (typeof body.advance_to === 'number') {
+        this.registry.last_reconciled_txn_created = Math.max(this.registry.last_reconciled_txn_created, body.advance_to);
+        await this.persist();
+      }
+      return Response.json({ last_reconciled_txn_created: this.registry.last_reconciled_txn_created });
     }
     if (url.pathname === '/status') {
       return Response.json({ armed_total_cents: this.registry.float.armed_total_cents, incidents: this.registry.incidents, minting_fuse: this.registry.minting_fuse });
