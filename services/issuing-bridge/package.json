@@ -1,7 +1,7 @@
 {
   "name": "@open-autonomy/issuing-bridge",
   "version": "0.1.0",
-  "description": "The issuing bridge: reserve-gated Stripe Issuing cards for the unpartnered procurement tail. The treasury is causally upstream of every dollar — no reserve, no card; no live reserve, no auth approval; no matched settle, incident.",
+  "description": "The issuing bridge: reserve-gated Stripe Issuing cards for the unpartnered procurement tail. The treasury is causally upstream of every dollar \u2014 no reserve, no card; no live reserve, no auth approval; no matched settle, incident.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,5 +13,8 @@
   "devDependencies": {
     "typescript": "^5.9.0",
     "wrangler": "4.114.0"
+  },
+  "overrides": {
+    "undici": "^7.29.0"
   }
 }
