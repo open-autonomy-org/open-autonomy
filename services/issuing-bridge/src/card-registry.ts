@@ -68,6 +68,23 @@ export class CardRegistry {
       await this.persist();
       return Response.json({ binding, replay: false });
     }
+    if (url.pathname === '/lookup-card') {
+      const binding = this.registry.bindings[body.card_id as string];
+      return Response.json({ binding: binding ?? null });
+    }
+    if (url.pathname === '/latch-auth') {
+      // The atomic single-use latch: only an 'armed' binding transitions; a concurrent
+      // second auth loses here regardless of what its snapshot showed.
+      const binding = this.registry.bindings[body.card_id as string];
+      if (binding === undefined) return Response.json({ latched: false, reason: 'unknown-card' });
+      const entry = { authorization_id: body.authorization_id as string, decision: body.decision as 'approved' | 'declined', reason: body.reason as string, ts: body.ts as string };
+      binding.auth_log.push(entry);
+      if (body.decision !== 'approved') { await this.persist(); return Response.json({ latched: false, reason: entry.reason }); }
+      if (binding.status !== 'armed') { entry.decision = 'declined'; entry.reason = `latch-race:${binding.status}`; await this.persist(); return Response.json({ latched: false, reason: entry.reason }); }
+      binding.status = 'authorized';
+      await this.persist();
+      return Response.json({ latched: true });
+    }
     if (url.pathname === '/list') {
       return Response.json({ bindings: Object.values(this.registry.bindings) });
     }

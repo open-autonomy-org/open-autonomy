@@ -8,6 +8,7 @@
 // that could be mistaken for enforcement.
 
 import { verifyApprovalArtifact } from './approval.ts';
+import { decideAuthorization, verifyStripeSignature } from './webhooks.ts';
 import { cancelCard, ensureCardholder, StripeError } from './stripe.ts';
 import { createCard } from './stripe.ts';
 import { reserveIdForJobRef, treasuryRelease, treasuryReserve } from './treasury.ts';
@@ -17,6 +18,7 @@ export { CardRegistry } from './card-registry.ts';
 
 export interface Env {
   APPROVAL_PUBKEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
   CARDS: DurableObjectNamespace;
   CARD_EXPIRY_MARGIN_SECONDS: string;
   FLOAT_WATERMARK_CENTS: string;
@@ -124,11 +126,51 @@ async function mintCard(request: Request, env: Env): Promise<Response> {
   return json({ card_id: cardId, replay: false, reserve_id: reserveId, status: 'armed' }, 201);
 }
 
+// PR-3 — the real-time authorization webhook. Response contract (Stripe's synchronous
+// issuing_authorization.request): 200 with {approved: boolean} inside the 2s window.
+async function authWebhook(request: Request, env: Env): Promise<Response> {
+  const payload = await request.text();
+  const verified = await verifyStripeSignature(env.STRIPE_WEBHOOK_SECRET, request.headers.get('stripe-signature'), payload, Date.now());
+  if (!verified) return refuse(401, 'signature_invalid');
+  let event: { type?: string; data?: { object?: { id?: string; card?: { id?: string }; merchant_data?: { category_code?: string; name?: string; network_id?: string }; pending_request?: { amount?: number } } } };
+  try {
+    event = JSON.parse(payload) as typeof event;
+  } catch {
+    return refuse(400, 'invalid_json');
+  }
+  if (event.type !== 'issuing_authorization.request') return refuse(400, 'unexpected_event_type');
+  const authorization = event.data?.object;
+  const cardId = authorization?.card?.id;
+  if (typeof cardId !== 'string' || typeof authorization?.id !== 'string') return refuse(400, 'invalid_request');
+  const lookup = await registryCall(env, '/lookup-card', { card_id: cardId });
+  const binding = lookup.binding as Binding | null;
+  const decision = await decideAuthorization(env, binding, {
+    amountCents: authorization.pending_request?.amount ?? 0,
+    merchant: {
+      ...(authorization.merchant_data?.category_code === undefined ? {} : { mcc: authorization.merchant_data.category_code }),
+      ...(authorization.merchant_data?.name === undefined ? {} : { name: authorization.merchant_data.name }),
+      ...(authorization.merchant_data?.network_id === undefined ? {} : { network_id: authorization.merchant_data.network_id }),
+    },
+    nowMs: Date.now(),
+  });
+  // The DO latch is the atomic word: it records EVERY decision and resolves auth races to
+  // a single approval.
+  const latch = await registryCall(env, '/latch-auth', {
+    authorization_id: authorization.id,
+    card_id: cardId,
+    decision: decision.approved ? 'approved' : 'declined',
+    reason: decision.reason,
+    ts: new Date().toISOString(),
+  });
+  return json({ approved: latch.latched === true });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') return json({ ok: true, service: 'issuing-bridge' });
     if (url.pathname === '/v1/cards' && request.method === 'POST') return mintCard(request, env);
+    if (url.pathname === '/webhooks/stripe/auth' && request.method === 'POST') return authWebhook(request, env);
     if (url.pathname === '/v1/cards' && request.method === 'GET') {
       // Operator visibility (read-only); real auth rides PR-3's shared secret decision.
       const list = await registryCall(env, '/list');

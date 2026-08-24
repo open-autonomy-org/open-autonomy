@@ -10,6 +10,7 @@ TREASURY_URL = "https://volter-agent-model-proxy.workers.dev"
 # Stripe Issuing. STRIPE_KEY is a secret; the base URL is a var so a rehearsal world can
 # point the bridge at the stripe TWIN without code changes.
 STRIPE_API_BASE = "https://api.stripe.com"
+# Stripe webhook signing secret is a secret (wrangler secret put STRIPE_WEBHOOK_SECRET).
 # Ed25519 public key (base64url raw) that signs procurement approval artifacts (RH2-side).
 APPROVAL_PUBKEY = ""
 # Global float watermark: total armed (minted, unsettled) cents may never exceed this.

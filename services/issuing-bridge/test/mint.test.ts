@@ -60,6 +60,7 @@ function makeEnv(): Env {
     CARD_EXPIRY_MARGIN_SECONDS: '300',
     FLOAT_WATERMARK_CENTS: '1000',
     STRIPE_API_BASE: 'https://stripe.test',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test',
     STRIPE_KEY: 'sk_test_x',
     TREASURY_SUPPLIER_TOKEN: 'sup.issuing-bridge.secret',
     TREASURY_URL: 'https://treasury.test',
