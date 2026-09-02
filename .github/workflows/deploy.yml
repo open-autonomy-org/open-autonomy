@@ -1,12 +1,12 @@
 name: Deploy proxy
-# Production deploy of the agent model proxy (services/agent-model-proxy).
+# Production deploy of the agent model proxy (platform).
 #
 # Security model (see the deploy-security design):
 #  - Fires ONLY on a human-cut `deploy-v*` tag. Agents cannot push tags, and the `production`
 #    environment's deployment policy admits only `deploy-v*` tags — so nothing deploys without an
 #    affirmative human promotion (the allowlist wall).
 #  - `production` also carries a required-reviewer gate: a maintainer approves each deployment.
-#  - The code is human-promoted AND human-reviewed (services/** is a human_required_path), so the
+#  - The code is human-promoted AND human-reviewed (platform/** is a CODEOWNERS path), so the
 #    build here runs trusted code — no build/publish split needed.
 #  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot be exfiltrated to any
 #    other host. The token itself is scoped to Workers-edit on this one worker (set as the
@@ -41,10 +41,10 @@ jobs:
           bun-version: 1.3.10
           no-cache: true # no restored cache can poison a privileged tag-publish deploy
       - name: Install proxy deps (frozen)
-        working-directory: services/agent-model-proxy
+        working-directory: platform
         run: bun install --frozen-lockfile
       - name: Deploy (wrangler — pinned in the lockfile, integrity-verified by check:security)
-        working-directory: services/agent-model-proxy
+        working-directory: platform
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

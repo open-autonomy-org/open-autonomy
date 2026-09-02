@@ -1,41 +1,6 @@
 node_modules/
-.agent-run/
-# .volter/ is local runtime state (termfleet workdir + ztrack runtime), except the
-# committed ztrack tracker config + validation preset (see the ztrack block below)
-/.volter/*
 *.log
-.dev.vars
-services/agent-model-proxy/.dev.vars
-.wrangler/
-
-# local secrets
 .env
-.playwright-mcp/
-
-# agent run transcripts/artifacts (promote curated evidence explicitly)
-agent-sessions/
-
-# built CLI bundle (produced by prepublishOnly)
-dist/
-
-# ztrack (added by ztrack init)
-.volter/tracker/tracker.sqlite
-.volter/tracker/tracker.sqlite-*
-.volter/tracker/tracker.sqlite.lock
-.volter/tracker/local-store.json
-.volter/agent-dispatch/
-.volter/github/
-.volter/sync/
-.volter/.ztrack-loop.json
-.volter/.ztrack-loop-iter-*
-.volter/.ztrack-loop-exempt-*
-.volter/.ztrack-loop-capped.json
-
-# ztrack tracker: config + validation preset are committed; runtime state stays local
-!/.volter/tracker-config.json
-!/.volter/tracker/
-/.volter/tracker/*
-!/.volter/tracker/validation/
-/.volter/tracker/validation/.preset.base.mts
-# adoption-fixes backlog: the markdown issue store is committed on this branch
-!/.volter/tracker/markdown/
+.dev.vars
+platform/.dev.vars
+.wrangler/

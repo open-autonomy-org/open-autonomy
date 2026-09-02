@@ -1,21 +1,9 @@
-# Open Autonomy Project
+# Open Autonomy
 
-Open Autonomy is the system and spec for autonomous software organizations: a
-substrate-neutral standard for declaring an org — its participants, their
-authority, when they act, and the policy they run under — and compiling it onto a
-substrate where it runs the software-development lifecycle itself. The standard is
-the thing (see `docs/SPEC.md`); a substrate (github, local, …) is one
-implementation; a profile (`self-driving`) is one declared org. The generality is
-across substrates, not domains — the work is always software.
+Open Autonomy funds a project's agents in the open. Sponsors pay for token usage and nothing else.
+Every model call is metered against the project's account, so a sponsor can audit that their money
+went to that project's work, and everyone can watch the balance, the burn, the roadmap, and what the
+agent is doing right now.
 
-Open Autonomy dogfoods itself. The canonical repository is one installation — the
-`self-driving` profile compiled onto the **github** substrate — running and
-maintaining this very repo, with a live testbed that proves agent behavior on
-disposable issues before expanding autonomy. The self-driving-repo-on-github is
-the proof, not the definition.
-
-See `docs/VISION.md` for the category and direction, `docs/CONSTITUTION.md` for the
-north star and merit criteria, and `docs/SPEC.md#the-ir` for the spec.
-
-Agent PRs are submitted for review automatically by the proposer (deterministic agent
-routing), not by the PM.
+The project's own agent is a Hermes setup checked into this repository. The platform reads that
+setup and its live sessions and shows them; it never drives them.

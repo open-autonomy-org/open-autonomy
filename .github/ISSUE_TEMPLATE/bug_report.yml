@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a reproducible bug in the public-agent workflow or model proxy.
+description: Report a reproducible bug in the platform (token metering, funding books, site, README widget).
 title: "[bug]: "
 labels: ["bug"]
 body:
