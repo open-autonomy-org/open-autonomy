@@ -104,7 +104,15 @@ export class TermfleetRunner {
     // lose the terminalId — the join key the post-session effect marker + the reaper depend on.
     const createTimeoutMs = Number(process.env.TERMFLEET_CREATE_TIMEOUT_MS || RUNNER_DEFAULTS.createTimeoutMs);
     const ack = await client.createAgentWindow(
-      { agent: this.harness, name: agent, cwd: process.cwd(), prompt, setupCommand, createTimeoutMs },
+      {
+        agent: this.harness,
+        name: agent,
+        cwd: process.cwd(),
+        prompt,
+        setupCommand,
+        createTimeoutMs,
+        ...(process.env.AUTONOMY_MODEL ? { model: process.env.AUTONOMY_MODEL } : {}),
+      },
       { timeoutMs: createTimeoutMs },
     );
     const terminalId = ack.result?.terminalId;

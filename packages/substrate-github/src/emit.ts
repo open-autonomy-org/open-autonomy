@@ -362,6 +362,7 @@ function wrapperYml(
   humanApprovalWorkflow = false,
 ): string {
   const caps = agent.capabilities ?? [];
+  const model = agent.model ?? gh.model;
   if (finalizesMergeReview && agent.result?.schema !== REVIEW_RESULT_SCHEMA_ID) {
     throw new Error(`merge reviewer '${name}' must declare result.schema: ${REVIEW_RESULT_SCHEMA_ID}`);
   }
@@ -511,7 +512,7 @@ function wrapperYml(
     // model calls, so it would hit the cap mid-sweep, the proxy would reject the next call, and the CLI would
     // exit non-zero — the run reported "failure" even though its work (triage, routing, reaping) succeeded.
     // Raise to 250 so the $ cap is what actually bounds a run; a runaway is still stopped by --max-usd-cents.
-    `        run: bun scripts/model-proxy-mint.ts --run-id "${RID}" --models "${varOr('PUBLIC_AGENT_MODEL', gh.model)}" --max-usd-cents "\${{ vars.PUBLIC_AGENT_MAX_USD_CENTS || '200' }}" --max-requests "\${{ vars.PUBLIC_AGENT_MAX_REQUESTS || '250' }}" --issue .agent-run/issue.json`,
+    `        run: bun scripts/model-proxy-mint.ts --run-id "${RID}" --models "${varOr('PUBLIC_AGENT_MODEL', model)}" --max-usd-cents "\${{ vars.PUBLIC_AGENT_MAX_USD_CENTS || '200' }}" --max-requests "\${{ vars.PUBLIC_AGENT_MAX_REQUESTS || '250' }}" --issue .agent-run/issue.json`,
     // The agent job's token is scoped to its capabilities (docs/SPEC.md#capabilities). A merge reviewer is
     // further narrowed to read-only because the trusted effect owns status/comment publication.
     `  ${name}:`,
@@ -522,7 +523,7 @@ function wrapperYml(
     `    env:`,
     `      MODEL_PROXY_URL: \${{ vars.MODEL_PROXY_URL }}`,
     `      MODEL_PROXY_OIDC_AUDIENCE: ${varOr('MODEL_PROXY_OIDC_AUDIENCE', gh.oidc_audience)}`,
-    `      PUBLIC_AGENT_MODEL: ${varOr('PUBLIC_AGENT_MODEL', gh.model)}`,
+    `      PUBLIC_AGENT_MODEL: ${varOr('PUBLIC_AGENT_MODEL', model)}`,
     `      PUBLIC_AGENT_CITED_VERSION: \${{ vars.PUBLIC_AGENT_CLAUDE_CODE_VERSION }}`,
     `      GH_TOKEN: \${{ github.token }}`,
     // Who the org engages for the human seam — so a skill (e.g. the PM, Step 2c) can assign/@mention the

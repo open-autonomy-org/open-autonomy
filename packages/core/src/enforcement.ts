@@ -45,6 +45,18 @@ function agentControls(target: string, name: string, agent: IRAgent): Enforcemen
       ? 'workflow token permissions map known capability bases; scoped suffixes remain advisory'
       : 'local sessions inherit operator credentials; capability declarations do not scope authority',
   });
+  if (agent.model) {
+    controls.push({
+      control: `agent.${name}.model`,
+      owner: 'runner',
+      status: target === 'local' || target === 'gh-actions' ? 'enforced' : 'unsupported',
+      realization: target === 'local'
+        ? 'actor model is passed to Termfleet createAgentWindow'
+        : target === 'gh-actions'
+          ? 'actor model scopes the bounded token and Claude Code model environment'
+          : `unknown target ${target}`,
+    });
+  }
   if (agent.execution) {
     const isolated = agent.execution.workspace === 'isolated';
     controls.push({

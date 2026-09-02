@@ -66,6 +66,14 @@ describe('emitAutonomy — execution workspace', () => {
   });
 });
 
+describe('emitAutonomy — agent model', () => {
+  test('carries each actor model directly on its manifest entry', () => {
+    const source = irWithBox({});
+    source.agents.pm!.model = 'claude-opus-4-8';
+    expect(emitAutonomy(source).agents?.pm?.model).toBe('claude-opus-4-8');
+  });
+});
+
 describe('emitAutonomy — declared typed results', () => {
   test('carries a named result schema in the substrate-neutral actor manifest', () => {
     const source = irWithBox({});

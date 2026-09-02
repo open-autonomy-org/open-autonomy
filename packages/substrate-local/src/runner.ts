@@ -74,7 +74,14 @@ export class TermfleetRunner implements Runner {
     // createAgentWindow takes the prompt as a string — read the per-harness launch prompt file if present,
     // else use the agent name (which activates the skill of that name in the harness).
     const prompt = promptFile && existsSync(promptFile) ? readFileSync(promptFile, 'utf8') : agent;
-    const ack = await client.createAgentWindow({ agent: this.harness, name: agent, cwd: process.cwd(), prompt, setupCommand });
+    const ack = await client.createAgentWindow({
+      agent: this.harness,
+      name: agent,
+      cwd: process.cwd(),
+      prompt,
+      setupCommand,
+      ...(process.env.AUTONOMY_MODEL ? { model: process.env.AUTONOMY_MODEL } : {}),
+    });
     const terminalId = ack.result?.terminalId;
     if (!terminalId) {
       throw new Error(`termfleet createAgentWindow returned no terminalId for agent "${agent}": ${ack.error ?? '(no error)'}`);

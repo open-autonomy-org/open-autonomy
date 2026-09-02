@@ -77,6 +77,9 @@ export function resolveResultSchema(schema: ResultSchema): Record<string, unknow
 // realization, not IR fields. (The map key is still `agents` while the rename to `actors` is mid-migration.)
 export interface IRAgent {
   behavior: string; // what it does — a SKILL folder (prose), relative to the profile root
+  // Portable model selection for this actor. Substrates pass the opaque identifier to their native model
+  // launch seam; omission preserves the substrate/profile default.
+  model?: string;
   capabilities: string[]; // its authority (docs/SPEC.md#capabilities); pure authority, no trust
   triggers: Trigger[]; // when it fires + the params it forwards (≥1; only cron is interpreted)
   kind?: ActorKind; // the role; default `agent`. `human` → realized by routing to a person (or a simulator in test).
@@ -227,6 +230,8 @@ export function validateIR(ir: AutonomyIR): string[] {
   }
   for (const [name, a] of Object.entries(ir.agents ?? {})) {
     if (!a.behavior) errors.push(`agent ${name}: missing behavior`);
+    if (a.model !== undefined && (typeof a.model !== 'string' || a.model.trim().length === 0))
+      errors.push(`agent ${name}: model must be a non-empty model identifier`);
     if (!Array.isArray(a.capabilities)) errors.push(`agent ${name}: capabilities must be an array`);
     // code:merge is gate-only: merge is the one irreversible, default-branch act, never granted to an
     // agent (docs/SPEC.md#capabilities — the merge boundary). The base (before any @scope) must not be code:merge.

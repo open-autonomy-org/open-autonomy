@@ -26,6 +26,7 @@ export interface OAManifest {
     {
       kind?: 'agent' | 'human'; // `human` → a person: no workflowFile (no launchable job), engaged via the substrate's human realization
       skill?: string;
+      model?: string;
       workflowFile?: string;
       params?: Record<string, string>;
       // `schedule` is the cron; `dispatch: true` is on-demand via the Runner; any other key is an event trigger carried verbatim.
@@ -73,6 +74,7 @@ export function emitAutonomy(ir: AutonomyIR): OAManifest {
     agents[role] = {
       ...(human ? { kind: 'human' as const } : {}),
       skill: agent.behavior,
+      ...(agent.model ? { model: agent.model } : {}),
       // The launchable unit the runner targets for agent:launch — named for the agent (substrate-derived). A
       // human has no job to launch (the substrate emits none), so it carries no workflowFile.
       ...(human ? {} : { workflowFile: `${role}.yml` }),

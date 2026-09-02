@@ -18,6 +18,7 @@ export function ingestAutonomy(m: OAManifest): AutonomyIR {
     agents[name] = {
       ...(a.kind === 'human' ? { kind: 'human' as const } : {}),
       behavior: skillRef.split('/').pop() ?? skillRef,
+      ...(a.model ? { model: a.model } : {}),
       capabilities: a.capabilities ?? [],
       triggers,
       ...(typeof a.timeout === 'number' ? { timeout: a.timeout } : {}),

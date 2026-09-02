@@ -71,6 +71,13 @@ describe('validateIR — actor kind', () => {
   });
 });
 
+describe('validateIR — actor model', () => {
+  test('accepts a declared model identifier and rejects empty values', () => {
+    expect(validateIR(ir({ a: agent({ model: 'claude-opus-4-8' }) }))).toEqual([]);
+    expect(validateIR(ir({ a: agent({ model: '   ' }) })).some((e) => e.includes('model must be a non-empty'))).toBe(true);
+  });
+});
+
 describe('validateIR — portable execution workspace', () => {
   test('accepts both closed workspace modes and omission', () => {
     expect(validateIR(ir({ a: agent() }))).toEqual([]);

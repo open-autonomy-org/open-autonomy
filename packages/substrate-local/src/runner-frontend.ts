@@ -91,6 +91,7 @@ export class SkillMissingError extends Error {
 interface ManifestAgent {
   kind?: 'agent' | 'human'; // `human` -> a person; the runner PARKS a session instead of executing one
   skill?: string;
+  model?: string;
   params?: Record<string, string>;
   capabilities?: string[];
   review?: string; // the reviewer agent that judges this proposer's PRs (the merge-boundary review edge)
@@ -615,7 +616,7 @@ async function defaultHarness(): Promise<string> {
 /** Launch an agent with forwarded params (agent:launch). Resolves to the launch's exit code; the pre-check
  *  refusal (and the pause gate, OA-07) throw instead — see runCli, which maps both to a nonzero exit. */
 export async function launch(agent: string, params: LaunchParams = {}): Promise<number> {
-  const { kind, skill: behavior = '', params: declared = {}, review = '', prelaunch = '', execution } = manifestAgent(agent);
+  const { kind, skill: behavior = '', model = '', params: declared = {}, review = '', prelaunch = '', execution } = manifestAgent(agent);
 
   if (kind === 'human') {
     // The THIRD route: a person cannot be executed — park the ask instead (see the human route above).
@@ -714,6 +715,7 @@ export async function launch(agent: string, params: LaunchParams = {}): Promise<
     ...(process.env as Record<string, string>),
     AUTONOMY_CONTROL_ROOT: installRoot(),
     AUTONOMY_AGENT: agent,
+    ...(model.trim() ? { AUTONOMY_MODEL: model.trim() } : {}),
     AUTONOMY_FORWARD: [process.env.AUTONOMY_FORWARD, ...names].filter(Boolean).join(','),
     ...Object.fromEntries(names.map((k) => [k, String(params[k])])),
   };

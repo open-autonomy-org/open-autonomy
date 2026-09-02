@@ -77,6 +77,15 @@ describe('emitAutonomy → ingestAutonomy — execution workspace round-trip', (
   });
 });
 
+describe('emitAutonomy → ingestAutonomy — actor model round-trip', () => {
+  test('preserves an actor-specific model identifier', () => {
+    const source = irWith();
+    source.agents.pm!.model = 'claude-opus-4-8';
+    const ingested = ingestAutonomy(emitAutonomy(source));
+    expect(ingested.agents.pm?.model).toBe('claude-opus-4-8');
+  });
+});
+
 describe('emitAutonomy → ingestAutonomy — typed policy round-trip', () => {
   test('preserves maxConcurrent without leaking it into the opaque policy box', () => {
     const ir = irWith();

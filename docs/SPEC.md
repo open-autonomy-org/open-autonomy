@@ -27,7 +27,7 @@
 > `policy.box` conventions). This section stays the source of truth on conflict.
 
 > **Status:** finalized model; the codebase is being aligned to it. The terms `workflow`,
-> `launch`, `run`, `raw`, `steps`, `box.model`, `skill|script`, `commit|propose` are **retired** — see
+> `launch`, `run`, `raw`, `steps`, `skill|script`, `commit|propose` are **retired** — see
 > "What this replaces" at the end. If the code still shows them, the code is mid-migration, not the spec.
 >
 > **Actor model (current):** the one unit is the **actor** (`kind: agent | human`). Triggers are
@@ -81,6 +81,7 @@ agents:
     behavior: developer               # what it does — a SKILL (prose); run as a credentialed job. Bare
                                        # name: both compilers resolve it under `skills/<name>/SKILL.md`
                                        # themselves — do NOT write `skills/developer` here (ENOENT).
+    model: claude-opus-4-8            # optional actor-specific model; otherwise use the substrate default
     capabilities: [code:propose, tasks:converse]   # its authority (the standard's capability catalog)
     triggers:                          # when it fires; three forms — cron | event | dispatch
       - { dispatch: true, params: { ISSUE: subject.ref } }  # portable: launched on demand by the orchestrator
@@ -152,6 +153,7 @@ are added to a catalog first, then implemented by substrates — purely additive
 
    | field | meaning | github | local |
    |---|---|---|---|
+   | `model` | optional opaque model identifier for this actor; omission preserves the substrate/profile default | bounded token + Claude Code model | Termfleet `createAgentWindow({ model })` |
    | `timeout` | minutes before kill | job `timeout-minutes` | runner kill-after |
    | `execution.workspace` | `shared` or a fresh `isolated` workspace; never an implied proposal | fresh job checkout | fresh unique git worktree |
    | `prelaunch` | an opaque shell command the runner runs in the session's own cwd, BEFORE it spawns (best-effort: a nonzero exit is logged, never fatal) | *(no realization yet — local-only for v1)* | `spawnSync(prelaunch, { shell: true, cwd })` before the session spawns |
@@ -165,9 +167,10 @@ are added to a catalog first, then implemented by substrates — purely additive
    full contract.
 
    There is **no** `config` box. Everything the box once carried is now either a capability (authority),
-   substrate-DERIVED (the workflow filename = `<agent>.yml`; the model endpoint is provisioned for every
+   substrate-DERIVED (the workflow filename = `<agent>.yml`; a model endpoint is provisioned for every
    skill agent), or simply gone (the trust/credential knobs — trust is the capability/permission split,
-   below). The model budget is the bounded mint (a substrate concern, not an IR field). Substrate-specific
+   below). `model` selects which endpoint model fills an actor role; the model budget remains the bounded
+   mint (a substrate concern, not an actor field). Substrate-specific
    github knobs (`workflowFile`/`persistCredentials`/`permissions`/`env`/`concurrency`) were leaks and are
    removed: a github permission set is *computed* from capabilities, never written in the IR.
 
@@ -219,9 +222,10 @@ On **local** the two are separate (the loop fires; termfleet runs). On **gh-acti
 there is only the runner and the box.
 
 **Substrate config lives in the box, not the engine.** A substrate reads its installation config from
-`policy.box.<substrate>` (e.g. `policy.box.gh-actions`: the model-proxy host, OIDC audience, model, bot git
+`policy.box.<substrate>` (e.g. `policy.box.gh-actions`: the model-proxy host, OIDC audience, default model, bot git
 identity — keyed by the runner name, not the github code host). The engine bakes in **no** org identity — a profile supplies these and the compiler emits them as
-the install's `vars.*` defaults. Likewise `policy.box.risk.human_required_paths` is materialized **verbatim**
+the install's `vars.*` defaults. An actor's `model` overrides that profile-wide default for its own runs.
+Likewise `policy.box.risk.human_required_paths` is materialized **verbatim**
 for the human-approval gate to enforce: the substrate *carries* policy, it never authors or augments it.
 
 **Runner vs code host.** The substrate is the agent *runner* — where the fleet executes — and it is
@@ -374,8 +378,9 @@ work resolved purely from `subject.ref`, no implicit event reach-in.
 | `workflow` as a separate noun | the **agent** (carries its own triggers) | "the system's entire knowledge is agents" |
 | `launch` vs `run` | one agent; execution is the substrate's choice | the split manufactured leaks (issue-driven, always-publisher) |
 | `raw` | agent, or a repo-owned resource | the IR is a standard; non-agents are files, not escape hatches |
-| `steps` / an "ABI" of work/change/model | nothing — that logic lives in the agent's behavior | the IR must not know issues, PRs, or models |
-| `box.model` / `skill` vs `script` | nothing — the box always has a model; execution is the substrate's | those leaked the box's execution model into the IR |
+| `steps` / an "ABI" of work/change/model | nothing — that logic lives in the agent's behavior | the IR must not know issues, PRs, or execution steps |
+| `box.model` as the only fleet-wide selection | optional typed `agent.model`, with the box value retained as the default | different roles can deliberately use different models without teaching the runner role names |
+| `skill` vs `script` | nothing — the box always has a model; execution is the substrate's | that leaked the box's execution strategy into the IR |
 | `commit` / `propose` on capabilities | trust = substrate security (derived); review = policy | capabilities are pure authority |
 | `agent` as the sole unit | the **actor** (kinds: `agent`, `human`) | a person is a first-class participant, not negative space |
 

@@ -76,6 +76,15 @@ describe('compileGithub — derived security data vs code-host resources', () =>
     expect(wf).toContain("${{ vars.PUBLIC_AGENT_MODEL || 'x/y' }}");
   });
 
+  test('an actor model overrides the profile-wide model fallback for that actor', () => {
+    const source = irWith([{ cron: '0 0 * * *' }]);
+    source.agents.maintainer!.model = 'claude-fable-5';
+    source.policy = { box: { 'gh-actions': { model: 'profile/default' } } };
+    const wf = compileGithub(source).generated['.github/workflows/maintainer.yml'];
+    expect(wf).toContain("${{ vars.PUBLIC_AGENT_MODEL || 'claude-fable-5' }}");
+    expect(wf).not.toContain("${{ vars.PUBLIC_AGENT_MODEL || 'profile/default' }}");
+  });
+
   test('a human-only install emits an empty zizmor baseline (no agent workflow to whitelist)', () => {
     const out = compileGithub(irWith([{ dispatch: true }], 'human'));
     expect(out.generated['.github/zizmor.yml']).toBeDefined();
