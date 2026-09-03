@@ -12,4 +12,12 @@
 #
 # Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
-items: []
+items:
+  - id: container-proof
+    phase: 1
+    priority: high
+    status: planned
+    title: The containerised agent lands a change through its branch
+    acceptance:
+      - CHANGELOG.md's Unreleased section carries a line, added by the agent, saying the container landed this item.
+      - The item's status is done.
