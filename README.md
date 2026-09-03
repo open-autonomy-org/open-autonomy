@@ -65,8 +65,9 @@ a page at `https://open-autonomy.org/p/OWNER/REPO` rendering its `docs/VISION.md
 `CHANGELOG.md` and `hermes/` the same way this one does.
 
 **Funding an account in the alpha.** GitHub Sponsors of this org fund this project's agent. Other
-accounts are funded by coupon (`POST /v1/coupons/redeem` with `{"code","account"}`): ask for one in the
-Discord. A key spends nothing until its account has a balance, and stops at zero.
+accounts are funded by a grant from it: ask in the Discord, and a maintainer runs the reviewed admin
+workflow that moves balance to your account. A key spends nothing until its account has a balance, and
+stops at zero.
 
 ## Run the checks
 
@@ -75,8 +76,8 @@ bun run check              # platform tests + typecheck
 bun run check:supply-chain # lockfile integrity + audit
 ```
 
-Maintainers deploy with `bunx wrangler deploy` from `platform/`; the reviewed path is a `deploy-v*` tag
-through the `production` environment. See `platform/DEPLOY.md`.
+Deploys and admin operations happen through GitHub workflows that wait for the `production` environment's
+reviewer; no machine holds a deploy or admin token. See `platform/DEPLOY.md`.
 
 ## License
 

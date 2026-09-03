@@ -5,7 +5,7 @@
   in the sibling `twin` repository.
 - `hermes/` is this project's own agent setup. Changes there are what the agent will do next, so
   keep them readable; the site renders them.
-- A pushed commit does not deploy anything. Maintainers deploy with `bunx wrangler deploy` from `platform/`;
-  the reviewed path is a `deploy-v*` tag through the `production` environment (`platform/DEPLOY.md`).
+- A pushed commit does not deploy anything. Deploys and admin operations go through GitHub workflows gated by
+  the `production` environment's reviewer (`platform/DEPLOY.md`).
 - Sign off commits (`git commit -s`, DCO). Never commit secrets; the worker's secrets live in
   Cloudflare and `.dev.vars` is git-ignored.

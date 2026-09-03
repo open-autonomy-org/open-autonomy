@@ -16,6 +16,7 @@ name: Deploy proxy
 on:
   push:
     tags: ['deploy-v*']
+  workflow_dispatch: # deploy main now: still waits on the production reviewer
 permissions:
   contents: read
 jobs:

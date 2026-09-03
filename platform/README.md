@@ -73,32 +73,27 @@ Endpoints:
 **Enforcement / rollout.** Spend is hard-stopped on the account balance only when
 `ENFORCE_ACCOUNT_BALANCE=true`. Default is `false` so the model can be deployed and the tree
 bootstrapped (mint root, grant to active repos) BEFORE the gate turns on — otherwise every unfunded
-repo would stop the instant this ships. Bootstrap with `bun platform/scripts/fund-bootstrap.ts`, verify balances,
-then flip the var.
+repo would stop the instant this ships. Bootstrap with the admin workflow's `mint` and `grant` ops
+(`DEPLOY.md`), verify balances, then flip the var.
 
 **Coupons** decouple granting funding from paying: issue a coupon for a sponsor's committed amount (with
 their logo/tagline), hand them the code; redemption mints (or, with `from`, grants from an issuer
 account) into the recipient and puts them on the README. Money is settled out-of-band.
 
 ```bash
-# fund the tree (root + grants down), idempotent
-MODEL_PROXY_URL=... MODEL_PROXY_ADMIN_TOKEN=... bun platform/scripts/fund-bootstrap.ts
-# issue + redeem a coupon
-curl -X POST https://<proxy-host>/admin/accounts/volter/mint -H "x-admin-token: $TOK" -d '{"amount_usd_cents":50000}'
-curl -X POST https://<proxy-host>/admin/coupons -H "x-admin-token: $TOK" \
-  -d '{"amount_usd_cents":5000,"from":"open-autonomy-org/open-autonomy","sponsor":{"login":"acme","name":"ACME Cloud","tagline":"infra for builders"}}'
+# fund an account: the reviewed admin workflow (DEPLOY.md), never a token on a machine
+gh workflow run admin.yml -f op=mint -f account=open-autonomy-org/open-autonomy -f amount_usd_cents=50000 -f key=seed-2026-09
+gh workflow run admin.yml -f op=grant -f account=open-autonomy-org/open-autonomy -f to=someone/some-project -f amount_usd_cents=5000 -f key=grant-someone-2026-09
+# redeem a coupon (issued by the sponsors path, not from CI)
 curl -X POST https://<proxy-host>/v1/coupons/redeem -d '{"code":"SPON-XXXX-XXXX-XXXX","account":"someone/some-project"}'
 ```
 
 
 ## Secrets
 
-```bash
-bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN
-bunx wrangler secret put AGENT_PROXY_HMAC_SECRET
-bunx wrangler secret put MODEL_GATEWAY_API_KEY        # the ONLY provider key — all model spend routes here
-bunx wrangler secret put GITHUB_SPONSORS_WEBHOOK_SECRET
-```
+Worker secrets: `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`, `MODEL_GATEWAY_API_KEY` (the ONLY
+provider key — all model spend routes here), `GITHUB_SPONSORS_WEBHOOK_SECRET`. They are set and rotated
+through the reviewed workflows in `DEPLOY.md`; no machine keeps a copy.
 
 **Single provider.** Every model settles through the model gateway — it speaks **both**
 wires, so the proxy shares its native routes on each side: the Anthropic
@@ -166,8 +161,7 @@ provider.
 Admin operators can inspect the current ledger without exposing run tokens:
 
 ```bash
-curl -H "x-admin-token: $AGENT_PROXY_ADMIN_TOKEN" \
-  "$MODEL_PROXY_URL/admin/limits/status"
+gh workflow run admin.yml -f op=status     # waits for the production reviewer; see DEPLOY.md
 ```
 
 The response includes the UTC `day_key`, active run counters, daily run counters

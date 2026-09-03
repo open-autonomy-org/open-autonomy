@@ -738,6 +738,32 @@ describe('agent jobs (the reporter narrates a run on the standing key, as CloudE
   const post = (env: Env, token: string, body: unknown) => request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
   const KEY = 'cron_abc_20260903_152011';
 
+  test('published turns are redacted at intake: a .env read aloud, a bearer, a private key never reach the books', async () => {
+    const env = testEnv();
+    const key = await standing(env);
+    expect((await post(env, key.token, ce('started', 'cron_abc_20260903_170000', { job_name: 'build-roadmap' }))).status).toBe(200);
+    // Assembled at runtime so the repository never contains a secret-shaped literal (push protection reads files).
+    const bearer = ['eyJhbGciOiJIUzI1NiJ9', 'a'.repeat(42)].join('.');
+    const discord = ['M' + 'x'.repeat(25), 'GaBcDe', 'y'.repeat(30)].join('.');
+    const pem = ['-----BEGIN ', 'OPENSSH PRIVATE KEY-----', '\nb3BlbnNzaC1rZXktdjEAAAAA\n', '-----END ', 'OPENSSH PRIVATE KEY-----'].join('');
+    const leak = `OPEN_AUTONOMY_KEY=${bearer}\nDISCORD_BOT_TOKEN="${discord}"\nhello=world`;
+    const turns = [
+      { role: 'tool', tool: 'terminal', result: leak },
+      { role: 'assistant', tool: 'terminal', args: `curl -H "authorization: Bearer ${bearer}" https://x` },
+      { role: 'assistant', text: `the bot token is ${discord}\n${pem}` },
+    ];
+    expect((await post(env, key.token, ce('turns', 'cron_abc_20260903_170000', { seq: 0, turns }))).status).toBe(200);
+    const job = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs/cron_abc_20260903_170000');
+    const text = JSON.stringify(job);
+    expect(text).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    expect(text).not.toContain(discord);
+    expect(text).not.toContain('b3BlbnNzaC1rZXktdjEAAAAA');
+    expect(text).toContain('OPEN_AUTONOMY_KEY=[redacted]');
+    expect(text).toContain('Bearer [redacted]');
+    expect(text).toContain('[redacted private key]');
+    expect(text).toContain('hello=world'); // ordinary output survives
+  });
+
   test('started → turns (offsets) → finished becomes one durable receipt; replayed offsets are ignored', async () => {
     const env = testEnv();
     const key = await standing(env);

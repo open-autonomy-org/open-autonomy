@@ -2,6 +2,7 @@ import { handleAnthropic } from './anthropic.js';
 import { healthOptsFromEnv, limitsFromEnv } from './config.js';
 import { error, json, methodNotAllowed, parseJson } from './errors.js';
 import { isStale, syncAllStale, syncProfile } from './github-sync.js';
+import { redactSecrets } from './session-capture.js';
 import { handleKeyChallenge, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LimitLedger, LimitLedgerClient, type JobEvent, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
 import { handleOpenAI } from './openai.js';
@@ -400,6 +401,12 @@ const JOB_EVENT_TYPES: Record<string, 'started' | 'turns' | 'finished'> = {
   'org.open-autonomy.job.turns': 'turns',
   'org.open-autonomy.job.finished': 'finished',
 };
+function redactDeep(v: unknown): unknown {
+  if (typeof v === 'string') return redactSecrets(v);
+  if (Array.isArray(v)) return v.map(redactDeep);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, redactDeep(x)]));
+  return v;
+}
 async function agentEvent(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
@@ -416,7 +423,8 @@ async function agentEvent(req: Request, env: Env): Promise<Response> {
     }
     const kind = JOB_EVENT_TYPES[e.type];
     if (!kind) return error('unknown_event_type', 400);
-    const data = (e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
+    // Published turns are public: strip anything secret-shaped at intake, before the books keep it.
+    const data = redactDeep(e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
     const ev = { ...data, kind, key: e.subject } as JobEvent;
     if (kind === 'started' && typeof e.time === 'string' && !(ev as { started_at?: string }).started_at) (ev as { started_at?: string }).started_at = e.time;
     const result = await ledger.jobEvent(claims.repo, ev);

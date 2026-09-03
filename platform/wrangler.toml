@@ -26,8 +26,8 @@ MAX_RUNS_PER_REPO_PER_DAY = "5000"
 MAX_RUNS_PER_ACTOR_PER_DAY = "5000"
 MAX_RUNS_PER_ISSUE_PER_DAY = "200"
 MAX_GLOBAL_DAILY_USD_CENTS = "5000"
-# Account-balance hard-stop. The funding tree is bootstrapped (platform/scripts/fund-bootstrap.ts: volter root
-# funds open-autonomy, which funds its testbeds), so enforcement is ON — a project's agent spend is
+# Account-balance hard-stop. Accounts are funded through the admin workflow (mint / grant, see DEPLOY.md),
+# so enforcement is ON — a project's agent spend is
 # hard-stopped on its own balance, and a run won't start for an unfunded project.
 ENFORCE_ACCOUNT_BALANCE = "true"
 DEFAULT_FUNDING_ACCOUNT = "open-autonomy-org/open-autonomy"

@@ -6,9 +6,9 @@ Fund a project's agents in the open. **The only thing funded is token usage.** T
 
 - `platform/` — the Cloudflare Worker: meters every model call against a project's account
   (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors webhook, coupons), serves
-  the funding page and the README widgets. Maintainers deploy with `bunx wrangler deploy` from `platform/`; the
-  tag-gated workflow (`deploy-v*` → `production` environment) is the reviewed path. See `platform/DEPLOY.md`.
-  Admin scripts in `platform/scripts/`.
+  the funding page and the README widgets. Deploys and admin ops go through GitHub only (`deploy.yml`,
+  `admin.yml`, both gated by the `production` environment's reviewer); no machine holds a deploy or admin
+  token. See `platform/DEPLOY.md`.
 - `hermes/` — this project's own agent, checked in: a Hermes home (SOUL, skills, the cron schedule, Discord
   delivery) that runs on this Mac off the project's funded account on a standing key. Runtime state is
   git-ignored. `platform/scripts/agent-reporter.ts` (launchd) narrates its runs to the platform as
@@ -24,6 +24,7 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 
 - Develop directly on `main`; push and merge without waiting. Report what you did.
 - Live proof is the proof: the deployed worker and the rendered site/README, not local tests alone.
+- Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
 - Security-critical paths (admin token, HMAC, spend caps, the account tree) get the higher bar:
   fail a review you cannot confidently verify.

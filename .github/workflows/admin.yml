@@ -1,0 +1,97 @@
+name: Admin
+# The platform's privileged operations, done through GitHub and nowhere else: every run waits on the
+# `production` environment's required reviewer before the admin token is used. The token lives only in
+# that environment's secrets (and in Cloudflare, as the worker's own secret). No machine holds it.
+#
+# Money ops move balance between accounts on the books (mint from the platform's own funding, grant
+# from one account to another). Coupons are not issued here: a coupon code is a bearer for money and a
+# public repo's run logs and inputs are public — fund an adopter by grant instead.
+on:
+  workflow_dispatch:
+    inputs:
+      op:
+        description: what to do
+        type: choice
+        required: true
+        options: [status, mint, grant, sync, sync-admin-token]
+      account:
+        description: account (owner/repo) the op applies to
+        type: string
+        default: open-autonomy-org/open-autonomy
+      amount_usd_cents:
+        description: amount in USD cents (mint, grant)
+        type: string
+        default: "0"
+      to:
+        description: receiving account (grant)
+        type: string
+        default: ""
+      key:
+        description: idempotency key (mint, grant) — the same key never applies twice
+        type: string
+        default: ""
+permissions:
+  contents: read
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Lock down egress (the admin token must not leave to a non-platform host)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            registry.npmjs.org:443
+            api.cloudflare.com:443
+            open-autonomy.org:443
+      - name: ${{ inputs.op }} ${{ inputs.account }}
+        if: inputs.op != 'sync-admin-token'
+        env:
+          ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
+          OP: ${{ inputs.op }}
+          ACCOUNT: ${{ inputs.account }}
+          AMOUNT: ${{ inputs.amount_usd_cents }}
+          TO: ${{ inputs.to }}
+          KEY: ${{ inputs.key }}
+        run: |
+          set -euo pipefail
+          base=https://open-autonomy.org
+          enc=$(printf '%s' "$ACCOUNT" | sed 's#/#%2F#g')
+          case "$OP" in
+            status) curl -sS --fail-with-body -H "x-admin-token: $ADMIN" "$base/admin/limits/status" ;;
+            mint)   curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' \
+                      -d "{\"amount_usd_cents\":$AMOUNT,\"key\":\"$KEY\"}" "$base/admin/accounts/$enc/mint" ;;
+            grant)  curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' \
+                      -d "{\"to\":\"$TO\",\"amount_usd_cents\":$AMOUNT,\"key\":\"$KEY\"}" "$base/admin/accounts/$enc/grant" ;;
+            sync)   curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/sync" ;;
+          esac
+          echo
+      # Rotation: a maintainer generates a new value and sets it as the production environment secret
+      # (`gh secret set AGENT_PROXY_ADMIN_TOKEN --env production`), then dispatches this op, which installs
+      # the same value as the worker's secret. The two homes never drift and no machine keeps a copy.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: inputs.op == 'sync-admin-token'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: inputs.op == 'sync-admin-token'
+        with:
+          bun-version: 1.3.10
+          no-cache: true
+      - name: Install the worker's pinned wrangler
+        if: inputs.op == 'sync-admin-token'
+        working-directory: platform
+        run: bun install --frozen-lockfile
+      - name: Install the environment's admin token as the worker's secret
+        if: inputs.op == 'sync-admin-token'
+        working-directory: platform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
+        run: printf '%s' "$ADMIN" | bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN

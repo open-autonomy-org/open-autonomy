@@ -18,6 +18,12 @@ export interface SessionTurn {
 // agent shouldn't be sending these, but the proxy must never persist one if it does).
 export function redactSecrets(s: string): string {
   return s
+    // Anything that names itself a secret in KEY=value form (an .env file read aloud), whatever the value.
+    .replace(/\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)=(["']?)[^\s"']{6,}\2/g, '$1=[redacted]')
+    .replace(/-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g, '[redacted private key]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/g, 'Bearer [redacted]')
+    .replace(/\b[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b/g, '[redacted]') // Discord bot tokens
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}/g, '[redacted]')
     .replace(/sk_live_[A-Za-z0-9]{12,}/g, '[redacted]')
     .replace(/rk_live_[A-Za-z0-9]{12,}/g, '[redacted]')
     .replace(/ghp_[A-Za-z0-9]{30,}/g, '[redacted]')
