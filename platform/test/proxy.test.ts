@@ -988,7 +988,7 @@ describe('funding platform pages', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')?.includes('text/html')).toBe(true);
     const body = await res.text();
-    expect(body.includes('Fund a self-driving repo')).toBe(true);
+    expect(body.includes('Sustained autonomous development')).toBe(true);
     expect(body.includes('a self-coding twin')).toBe(true);
   });
 

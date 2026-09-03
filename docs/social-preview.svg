@@ -4,9 +4,9 @@
     <path fill-rule="evenodd" clip-rule="evenodd" fill="#ff424d" d="M50 0C22.3858 0 0 22.3858 0 50C0 77.6142 22.3858 100 50 100C77.6142 100 100 77.6142 100 50C100 38.0426 95.539 27.0133 88.0381 18.6863L76.9881 30.056C81.8211 36.192 84.2105 44.0927 84.2105 50C84.2105 68.9431 68.9431 84.2105 50 84.2105C31.0569 84.2105 15.7895 68.9431 15.7895 50C15.7895 31.0569 31.0569 15.7895 50 15.7895C55.9073 15.7895 62.1927 18.1789 67.2243 22.564L78.6923 11.458C70.9867 4.30074 61.0266 0 50 0Z"/>
   </g>
   <text x="420" y="268" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="88" font-weight="800" fill="#e6edf3" letter-spacing="-2">Open Autonomy</text>
-  <text x="422" y="330" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="34" fill="#8b949e">Fund a project's AI agents in the open.</text>
-  <text x="422" y="384" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="30" fill="#8b949e">Sponsors pay for tokens. Every call lands on the public books.</text>
+  <text x="422" y="330" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="34" fill="#8b949e">Tools for sustained autonomous development.</text>
+  <text x="422" y="384" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="30" fill="#8b949e">Agents that keep working, in the open, on public books.</text>
   <rect x="96" y="500" width="1088" height="1" fill="#30363d"/>
   <text x="96" y="556" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="26" fill="#3fb950">open-autonomy.org</text>
-  <text x="1184" y="556" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="24" fill="#6e7681">Apache-2.0 · self-funding since day one</text>
+  <text x="1184" y="556" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="24" fill="#6e7681">Apache-2.0 · the agent builds the tools</text>
 </svg>
