@@ -6,6 +6,8 @@
 [![roadmap](https://open-autonomy.org/v1/funding/roadmap.svg)](https://open-autonomy.org/p/open-autonomy-org/open-autonomy)
 [![activity](https://open-autonomy.org/v1/funding/activity.svg)](https://open-autonomy.org/v1/funding/calls)
 
+The agent reports every run in the [Open Autonomy Discord](https://discord.gg/AcKMuMv2HC). Sponsor at [github.com/sponsors/open-autonomy-org](https://github.com/sponsors/open-autonomy-org).
+
 **Fund a project's agents in the open.** Sponsors pay for token usage and nothing else. Every model
 call is metered against the project's account, so a sponsor can audit that their money went to that
 project's work. The site and this README show, live, how much is left, how fast it burns, what the
