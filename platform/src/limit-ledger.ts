@@ -19,6 +19,8 @@ const FEED_LIMIT = 24;
 // purposes like planner/strategist) is a trusted, self-scheduled SYSTEM agent that runs in a reserved
 // lane instead (see register()). A run with no purpose defaults to `agent`, i.e. the strict user rail.
 const USER_PURPOSES = new Set(['agent', 'review', 'triage']);
+// Active standing keys one account may hold (the current one plus rotations still in their grace period).
+const MAX_STANDING_KEYS_PER_ACCOUNT = 3;
 
 interface LedgerState {
   day_key: string;
@@ -45,7 +47,7 @@ interface LedgerState {
   // consumed/request_count) exist only to power the public "live agents" panel: they let the project
   // page show what's running right now and deep-link to each run's live GitHub Actions log. They never
   // gate spend (the RunBudget DO is the per-run source of truth); they are a denormalized read cache.
-  runs: Record<string, { repo: string; issue: number; actor: string; active: boolean; system?: boolean; expires_at_ms?: number; github_run_id?: string; purpose?: string; started_at_ms?: number; consumed_usd_cents?: number; request_count?: number }>;
+  runs: Record<string, { repo: string; issue: number; actor: string; active: boolean; system?: boolean; standing?: boolean; expires_at_ms?: number; github_run_id?: string; purpose?: string; started_at_ms?: number; consumed_usd_cents?: number; request_count?: number }>;
   // The funding tree. Every project (repo slug) and named root (e.g. "volter") is an account.
   // balance = granted_in - granted_out - consumed. mint adds money at a node (the only way credits
   // enter the system); grant transfers between nodes (conserves total); spend consumes (leaves).
@@ -178,6 +180,7 @@ export class LimitLedger implements DurableObject {
 
     if (op === 'register') return json(await this.register(body.claims as RunClaims, body.config as LimitConfig));
     if (op === 'complete') return json(await this.complete(String(body.run_id)));
+    if (op === 'set_run_expiry') return json(await this.setRunExpiry(String(body.run_id), Number(body.expires_at_ms)));
     if (op === 'reserve') return json(await this.reserve(String(body.request_id), Number(body.amount_usd_cents), body.config as LimitConfig, body.run_id ? String(body.run_id) : undefined));
     if (op === 'consume') {
       await this.consume(String(body.request_id), Number(body.actual_usd_cents), body.event as UsageEvent | undefined);
@@ -396,7 +399,13 @@ export class LimitLedger implements DurableObject {
     // never be starved by (abusable) user-triggered runs and a runaway cron still can't fork-bomb. The
     // active-run + daily-count caps are the ABUSE rail for the externally-triggerable surface only.
     const isSystem = !USER_PURPOSES.has(claims.purpose ?? 'agent');
-    if (isSystem) {
+    // A standing key is a project's long-lived key, not a run: it takes no lane slot and is bounded per
+    // account (the current key plus rotations still in their grace period).
+    const isStanding = claims.standing === true;
+    if (isStanding) {
+      const held = Object.values(this.state.runs).filter((r) => r.active && r.standing && r.repo === claims.repo).length;
+      if (held >= MAX_STANDING_KEYS_PER_ACCOUNT) return { ok: false, error: 'standing_key_limit_reached', account: claims.repo };
+    } else if (isSystem) {
       if ((this.state.active_system ?? 0) >= config.max_active_runs_system) return { ok: false, error: 'system_active_run_limit_reached' };
     } else {
       if (this.state.active_global >= config.max_active_runs_global) return { ok: false, error: 'global_active_run_limit_reached' };
@@ -419,7 +428,9 @@ export class LimitLedger implements DurableObject {
     // public page, and (once GitHub-synced) the explore listing all work without any registration step.
     this.ensureAcct(claims.repo);
 
-    if (isSystem) {
+    if (isStanding) {
+      // no lane counters
+    } else if (isSystem) {
       this.state.active_system = (this.state.active_system ?? 0) + 1;
     } else {
       this.state.active_global += 1;
@@ -435,7 +446,8 @@ export class LimitLedger implements DurableObject {
       issue: claims.issue,
       actor: claims.actor,
       active: true,
-      system: isSystem,
+      system: isSystem && !isStanding,
+      standing: isStanding || undefined,
       expires_at_ms: Date.parse(claims.expires_at) || undefined,
       github_run_id: claims.github_run_id,
       purpose: claims.purpose,
@@ -462,6 +474,16 @@ export class LimitLedger implements DurableObject {
   // down (its repo deleted): the cell's in-flight/abandoned runs would otherwise pin the active
   // counters for the full token TTL (~2h), saturating the per-actor/per-repo caps. Unlike
   // reapExpiredRuns this ignores expiry — a deleted cell's runs are abandoned by definition.
+  // Shorten a run's recorded expiry (a rotated-away standing key); reapExpiredRuns frees it on time. Never extends.
+  private async setRunExpiry(runId: string, expiresAtMs: number): Promise<Record<string, unknown>> {
+    const run = this.state.runs[runId];
+    if (!run) return { ok: false, error: 'run_not_found' };
+    if (!Number.isFinite(expiresAtMs)) return { ok: false, error: 'invalid_expires_at' };
+    if (typeof run.expires_at_ms !== 'number' || expiresAtMs < run.expires_at_ms) run.expires_at_ms = expiresAtMs;
+    await this.save();
+    return { ok: true, run_id: runId, expires_at_ms: run.expires_at_ms };
+  }
+
   private async reapRepo(repo: string): Promise<Record<string, unknown>> {
     let freed = 0;
     for (const run of Object.values(this.state.runs)) {
@@ -757,6 +779,7 @@ export class LimitLedger implements DurableObject {
       day_key: this.state.day_key,
       active_global: this.state.active_global,
       active_system: this.state.active_system ?? 0,
+      standing_active: Object.values(this.state.runs).filter((r) => r.active && r.standing).length,
       active_by_repo: this.state.active_by_repo,
       active_by_actor: this.state.active_by_actor,
       runs_by_repo_day: this.state.runs_by_repo_day,
@@ -825,7 +848,8 @@ export class LimitLedger implements DurableObject {
 
   // Free the active-run slot a run holds, in the correct lane (system vs user). Single source of truth
   // for complete() and reapExpiredRuns() so the two can never drift.
-  private releaseActive(run: { repo: string; actor: string; system?: boolean }): void {
+  private releaseActive(run: { repo: string; actor: string; system?: boolean; standing?: boolean }): void {
+    if (run.standing) return; // never held a lane slot
     if (run.system) {
       this.state.active_system = Math.max(0, (this.state.active_system ?? 0) - 1);
       return;
@@ -1072,6 +1096,10 @@ export class LimitLedgerClient {
 
   complete(runId: string) {
     return this.rpc<{ ok: true }>('complete', { run_id: runId });
+  }
+
+  setRunExpiry(runId: string, expiresAtMs: number) {
+    return this.rpc<{ ok: boolean; error?: string }>('set_run_expiry', { run_id: runId, expires_at_ms: expiresAtMs });
   }
 
   reserve(requestId: string, amountUsdCents: number, config: LimitConfig, runId?: string) {

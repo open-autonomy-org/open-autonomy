@@ -31,6 +31,7 @@ export class RunBudget implements DurableObject {
     if (op === 'init') return json(await this.init(body.claims as RunClaims));
     if (op === 'status') return json(this.snapshot());
     if (op === 'revoke') return json(await this.revoke());
+    if (op === 'expire_at') return json(await this.expireAt(String(body.expires_at)));
     if (op === 'reserve') {
       return json(await this.reserve(String(body.request_id), Number(body.amount_usd_cents), body.turns as SessionTurn[] | undefined));
     }
@@ -66,6 +67,16 @@ export class RunBudget implements DurableObject {
     this.state.created_at = new Date().toISOString();
     await this.save();
     return { ok: true, run: this.snapshot() };
+  }
+
+  // Shorten the run's life (used when a standing key is rotated away). Never extends.
+  private async expireAt(iso: string): Promise<{ ok: boolean; error?: string; expires_at?: string }> {
+    if (!this.state.claims) return { ok: false, error: 'run_not_found' };
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return { ok: false, error: 'invalid_expires_at' };
+    if (ms < Date.parse(this.state.claims.expires_at)) this.state.claims.expires_at = new Date(ms).toISOString();
+    await this.save();
+    return { ok: true, expires_at: this.state.claims.expires_at };
   }
 
   private async revoke(): Promise<{ ok: true }> {
@@ -207,6 +218,10 @@ export class RunBudgetClient {
 
   revoke() {
     return this.rpc<{ ok: true }>('revoke');
+  }
+
+  expireAt(expiresAt: string) {
+    return this.rpc<{ ok: boolean; error?: string; expires_at?: string }>('expire_at', { expires_at: expiresAt });
   }
 
   reserve(requestId: string, amountUsdCents: number, turns?: SessionTurn[]) {

@@ -18,7 +18,7 @@ function fromBase64url(value: string): Uint8Array {
   return out;
 }
 
-async function hmac(secret: string, payload: string): Promise<string> {
+export async function hmac(secret: string, payload: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),

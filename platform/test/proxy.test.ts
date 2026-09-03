@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import worker from '../src/index.js';
+import { claimCode, dayKeyUTC, ROTATE_GRACE_MS } from '../src/keys.js';
 import { LimitLedger } from '../src/limit-ledger.js';
 import { parseUsageFromSse } from '../src/openai.js';
 import { RunBudget } from '../src/run-budget.js';
@@ -549,7 +550,7 @@ describe('standing keys (long-lived project keys for always-on agents)', () => {
     expect(((await blocked!.json()) as { error: { code: string } }).error.code).toBe('account_balance_exhausted');
   });
 
-  test('a standing key registers in the system lane and its spend keeps the org alive for /health', async () => {
+  test('a standing key takes no lane slot and its spend keeps the org alive for /health', async () => {
     const env = testEnv({ HEALTH_SILENCE_MINUTES: '1' });
     const minted = await requestJson(env, '/admin/runs/mint', {
       method: 'POST',
@@ -557,7 +558,8 @@ describe('standing keys (long-lived project keys for always-on agents)', () => {
       body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['claude-sonnet-4-6'] },
     });
     const limits = await requestJson(env, '/admin/limits/status', { headers: { 'x-admin-token': 'admin' } });
-    expect(limits.active_system).toBe(1);
+    expect(limits.standing_active).toBe(1);
+    expect(limits.active_system).toBe(0);
     expect(limits.active_global).toBe(0);
     globalThis.fetch = anthropicOk;
     expect((await chat(env, minted.token)).status).toBe(200);
@@ -616,6 +618,91 @@ describe('per-call audit log', () => {
     const other = await requestJson(env, '/v1/accounts/someone%2Felse/calls');
     expect(other.calls.length).toBe(0);
     expect(other.calls_total).toBe(0);
+  });
+});
+
+describe('self-serve project keys (claim file → standing key → rotate)', () => {
+  const ACCOUNT = 'acme/app';
+  const anthropicOk = (async () => new Response(JSON.stringify({ id: 'msg', usage: { input_tokens: 10, output_tokens: 5 } }), {
+    headers: { 'content-type': 'application/json' },
+  })) as typeof fetch;
+  // raw GitHub serves the claim file; everything else is the model upstream.
+  const rawServing = (content: string | null) => (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith('https://raw.test/')) {
+      expect(url).toBe(`https://raw.test/${ACCOUNT}/HEAD/.open-autonomy-claim`);
+      return content === null ? new Response('nope', { status: 404 }) : new Response(content);
+    }
+    return anthropicOk(input);
+  }) as typeof fetch;
+  const chat = (env: Env, token: string) => worker.fetch(new Request('https://proxy.test/v1/messages', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', max_tokens: 5, messages: [] }),
+  }), env, ctx);
+  const keyEnv = () => testEnv({ GITHUB_RAW_BASE: 'https://raw.test' });
+
+  test('the challenge is stable for the day and names the file to commit', async () => {
+    const env = keyEnv();
+    const a = await requestJson(env, `/v1/keys/challenge?account=${encodeURIComponent(ACCOUNT)}`);
+    const b = await requestJson(env, `/v1/keys/challenge?account=${encodeURIComponent(ACCOUNT)}`);
+    expect(a.claim).toBe(b.claim);
+    expect(a.claim.startsWith('oa-claim-')).toBe(true);
+    expect(a.file).toBe('.open-autonomy-claim');
+    expect(a.claim).toBe(await claimCode(env, ACCOUNT, dayKeyUTC()));
+    expect((await request(env, '/v1/keys/challenge?account=nope')).status).toBe(400);
+  });
+
+  test('a repo carrying its claim mints a standing key that meters to its own account', async () => {
+    const env = keyEnv();
+    globalThis.fetch = rawServing(`${await claimCode(env, ACCOUNT, dayKeyUTC())}\n`);
+    const minted = await requestJson(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } });
+    expect(minted.run.standing).toBe(true);
+    expect(minted.run.repo).toBe(ACCOUNT);
+    expect(minted.run.models).toEqual(['deepseek/deepseek-v4-flash']);
+    expect((await chat(env, minted.token)).status).toBe(200);
+    const calls = await requestJson(env, `/v1/accounts/${encodeURIComponent(ACCOUNT)}/calls`);
+    expect(calls.calls_total).toBe(1);
+  });
+
+  test("yesterday's code still verifies; a wrong or missing file does not", async () => {
+    const env = keyEnv();
+    globalThis.fetch = rawServing(await claimCode(env, ACCOUNT, dayKeyUTC(new Date(Date.now() - 86_400_000))));
+    expect((await request(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } })).status).toBe(200);
+    globalThis.fetch = rawServing('oa-claim-somebodyelse');
+    expect((await request(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } })).status).toBe(403);
+    globalThis.fetch = rawServing(null);
+    expect((await request(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } })).status).toBe(403);
+  });
+
+  test('rotation issues a fresh key and leaves the old one a grace period', async () => {
+    const env = keyEnv();
+    globalThis.fetch = rawServing(await claimCode(env, ACCOUNT, dayKeyUTC()));
+    const first = await requestJson(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } });
+    const rotated = await requestJson(env, '/v1/keys/rotate', { method: 'POST', headers: { authorization: `Bearer ${first.token}` } });
+    expect(rotated.run.run_id).not.toBe(first.run.run_id);
+    expect(rotated.run.standing).toBe(true);
+    expect(rotated.previous.run_id).toBe(first.run.run_id);
+    const grace = Date.parse(rotated.previous.expires_at) - Date.now();
+    expect(grace).toBeGreaterThan(ROTATE_GRACE_MS - 5000);
+    expect(grace).toBeLessThanOrEqual(ROTATE_GRACE_MS);
+    // Both keys work right now; the old one's recorded expiry is the grace deadline.
+    expect((await chat(env, rotated.token)).status).toBe(200);
+    expect((await chat(env, first.token)).status).toBe(200);
+    const old = await requestJson(env, `/v1/runs/${first.run.run_id}`, { headers: { authorization: `Bearer ${first.token}` } });
+    expect(old.claims.expires_at).toBe(rotated.previous.expires_at);
+  });
+
+  test('only a standing key can rotate, and an account holds at most three', async () => {
+    const env = keyEnv();
+    const run = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 10, { repo: ACCOUNT });
+    expect((await request(env, '/v1/keys/rotate', { method: 'POST', headers: { authorization: `Bearer ${run.token}` } })).status).toBe(403);
+    expect((await request(env, '/v1/keys/rotate', { method: 'POST' })).status).toBe(401);
+    globalThis.fetch = rawServing(await claimCode(env, ACCOUNT, dayKeyUTC()));
+    for (let i = 0; i < 3; i += 1) expect((await request(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } })).status).toBe(200);
+    const fourth = await request(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } });
+    expect(fourth.status).toBe(429);
+    expect(((await fourth.json()) as { error: { code: string } }).error.code).toBe('standing_key_limit_reached');
   });
 });
 

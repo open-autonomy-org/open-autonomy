@@ -78,7 +78,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
 
 // Fetch a UTF-8 text file from the repo (default branch) via the contents API, decoded and size-capped.
 // Returns undefined when the file is absent (so the page omits that panel). Best-effort; never throws.
-async function fetchRepoText(env: Env, account: string, path: string, maxBytes = 24_000): Promise<string | undefined> {
+export async function fetchRepoText(env: Env, account: string, path: string, maxBytes = 24_000): Promise<string | undefined> {
   const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
   // raw.githubusercontent.com first: no REST rate limit, and it serves the default branch's HEAD.
   try {

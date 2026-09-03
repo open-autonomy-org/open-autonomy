@@ -40,6 +40,22 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 | README widgets: funding, roadmap, activity | live |
 | Agent live view | on `ROADMAP.yml` |
 
+## Point your own Hermes at the platform
+
+Three commands, run from your repository's checkout. The key spends nothing until your account is
+funded, so the only authority it needs is control of the repo.
+
+```bash
+curl -s "https://open-autonomy.org/v1/keys/challenge?account=OWNER/REPO"     # → {"claim":"oa-claim-…","file":".open-autonomy-claim"}
+printf '%s\n' oa-claim-… > .open-autonomy-claim && git add .open-autonomy-claim && git commit -m "claim" && git push
+curl -s -X POST https://open-autonomy.org/v1/keys/mint -d '{"account":"OWNER/REPO"}' # → {"token":"…"}
+```
+
+Put the token in your Hermes home's `.env` as `OPEN_AUTONOMY_KEY` with
+`OPEN_AUTONOMY_BASE_URL=https://open-autonomy.org/v1`, and use this repo's `hermes/config.yaml` as the
+model block. Rotate any time with `POST /v1/keys/rotate` (bearer: the current key); the old key works
+for one more day. Every call then lands on your account's books and audit trail.
+
 ## Run the checks
 
 ```bash
