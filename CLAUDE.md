@@ -15,7 +15,7 @@ Fund a project's agents in the open. **The only thing funded is token usage.** T
   **Visualization only.** It never drives the agent.
 
 The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
-`open-autonomy-org/open-autonomy-compiler`. Do not re-import it here.
+`volter-ai/open-autonomy-compiler`. Do not re-import it here.
 
 ## Working agreement
 

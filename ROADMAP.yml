@@ -73,7 +73,7 @@ items:
   - id: hermes-live-view
     phase: 3
     priority: medium
-    status: planned
+    status: done
     title: Show what the agent is doing now
     acceptance:
       - The site renders the agent's current session, its schedule, and its setup from hermes/ and the proxy.

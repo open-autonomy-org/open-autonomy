@@ -8,8 +8,7 @@
 //   dormant : age > dead             — long idle / retired; not an outage
 //
 // This is purely the detect-and-surface signal (read by GET /health). It does NOT notify: reaching a human
-// is the substrate runner's `engage` avenue (the HumanRunner realization — assign/@mention on github), an
-// implementation detail of the runner, not of this watcher.
+// is the agent's own job (its delivery channel), not this watcher's.
 
 export interface OrgActivity {
   account: string;

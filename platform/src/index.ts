@@ -49,7 +49,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/healthz') return new Response('ok'); // the WORKER's own liveness
   // Org-fleet health (detect + surface, #66): aggregate counts only (no per-repo detail), so anyone — an
   // operator, the status page, or an external uptime check — can SEE when a loop has gone dark. `ok:false`
-  // when any monitored org is in the down band. Notifying a human is the substrate runner's job, not this.
+  // when any monitored org is in the down band. Notifying a human is the agent's own job, not this.
   if (path === '/health') {
     if (req.method !== 'GET') return methodNotAllowed();
     const res = await new LimitLedgerClient(env.LIMITS).health(healthOptsFromEnv(env, Date.now()));

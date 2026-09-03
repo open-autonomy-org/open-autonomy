@@ -55,11 +55,14 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     const cover = repo ? (await firstReadmeImage(env, account)) ?? '' : undefined;
     // The project's identity docs, read from its own repo. A repo that ships none simply has empty
     // panels — the page degrades cleanly. Size-capped so the cached profile record stays small.
-    const [charter, roadmap, changelog, schedule] = await Promise.all([
+    const [charter, roadmap, changelog, schedule, setup, soul, agentConfig] = await Promise.all([
       fetchRepoText(env, account, 'docs/VISION.md'),
       fetchRepoText(env, account, 'ROADMAP.yml'),
       fetchRepoText(env, account, 'CHANGELOG.md'),
       fetchRepoText(env, account, 'hermes/cron/jobs.seed.json'),
+      fetchRepoText(env, account, 'hermes/README.md'),
+      fetchRepoText(env, account, 'hermes/SOUL.md'),
+      fetchRepoText(env, account, 'hermes/config.yaml', 8_000),
     ]);
     await new LimitLedgerClient(env.LIMITS).setProfile(account, {
       tagline: repo?.description ?? undefined,
@@ -71,6 +74,9 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       roadmap_yml: roadmap ?? '',
       schedule_json: schedule ?? '',
       changelog_md: changelog ?? '',
+      setup_md: setup ?? '',
+      soul_md: soul ?? '',
+      agent_config_yaml: agentConfig ?? '',
     });
     return true;
   } catch {

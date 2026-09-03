@@ -115,6 +115,11 @@ export interface AccountProfile {
   // The committed schedule (hermes/cron/jobs.seed.json), read from the repo like the roadmap.
   schedule_json?: string;
   changelog_md?: string;
+  // The agent's setup, read from its checked-in Hermes home: hermes/README.md (how it runs), hermes/SOUL.md
+  // (who it is) and hermes/config.yaml (which model, through the platform). Rendered as the page's Setup pane.
+  setup_md?: string;
+  soul_md?: string;
+  agent_config_yaml?: string;
   // Generated rollup of each roadmap item's child issues (id → {total, done}), computed at sync time from
 }
 
@@ -751,7 +756,7 @@ export class LimitLedger implements DurableObject {
     if (!account) return { ok: false, error: 'invalid_account' };
     const a = this.ensureAcct(account);
     const p = (a.profile ??= {});
-    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'schedule_json', 'changelog_md'] as const) {
+    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'schedule_json', 'changelog_md', 'setup_md', 'soul_md', 'agent_config_yaml'] as const) {
       if (profile[k] !== undefined) p[k] = profile[k];
     }
     if (typeof goalDays === 'number' && goalDays > 0) a.goal_days = Math.floor(goalDays);
@@ -859,7 +864,7 @@ export class LimitLedger implements DurableObject {
 
   // Health monitor (detect + surface, #66): classify every org that has ever run by how long it's been
   // silent. Read-only — the decision core is src/health.ts; GET /health surfaces it. Notifying a human is
-  // NOT done here: that is the substrate runner's engage avenue (the human seam), not the watcher's job.
+  // NOT done here: that is the agent's own delivery channel, not the watcher's job.
   private health(opts: HealthOpts): { ok: true } & HealthResult {
     const orgs = Object.entries(this.state.accounts)
       // Only listed projects are monitored: a hidden (retired) or banned account is not an org that can be down.
@@ -1095,6 +1100,9 @@ function displayProfile(a: Account | undefined): AccountProfile {
     roadmap_yml: p.roadmap_yml,
     schedule_json: p.schedule_json,
     changelog_md: p.changelog_md,
+    setup_md: p.setup_md,
+    soul_md: p.soul_md,
+    agent_config_yaml: p.agent_config_yaml,
   };
 }
 

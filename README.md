@@ -27,7 +27,7 @@ This repository is two things:
    readable by anyone.
 
 The compiler that turns a substrate-neutral org description into GitHub Actions or a local runner
-lives in [`open-autonomy-org/open-autonomy-compiler`](https://github.com/open-autonomy-org/open-autonomy-compiler).
+lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-autonomy-compiler).
 
 ## Status
 

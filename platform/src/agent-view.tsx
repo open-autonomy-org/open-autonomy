@@ -8,7 +8,7 @@ import { mdToSafeHtml, parseRoadmap, roadmapItemState, type RoadmapItem, type Ro
 import { Icon } from './ui/Icon.js';
 import { render } from './ui/render.js';
 
-export interface ScheduleJob { name?: string; schedule?: string; deliver?: string; prompt?: string }
+export interface ScheduleJob { name?: string; schedule?: string; deliver?: string; prompt?: string; skills?: string[] }
 export function parseSchedule(json: string | undefined): ScheduleJob[] {
   if (!json) return [];
   try {
@@ -250,4 +250,64 @@ export function renderNowSvg(jobs: JobSummary[], current: string | undefined, sc
   <text x="${W - 16}" y="26" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#8b949e">⏱ now</text>
   <text x="16" y="54" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#8b949e">${esc(sub.length > 66 ? `${sub.slice(0, 65)}…` : sub)}</text>
 </svg>`;
+}
+
+// ---- Setup: who the agent is and how it runs, read from its checked-in Hermes home -----------------------
+// Visualization only: the pane reads hermes/ (README, SOUL, config, schedule) and nothing on it drives the agent.
+
+export interface AgentSetup { model?: string; provider?: string }
+// The two facts the page states from hermes/config.yaml: the `model:` block's `default` and `provider`.
+// A tolerant line parser (no YAML dependency in the worker): keys directly under `model:`.
+export function parseAgentConfig(yaml: string | undefined): AgentSetup {
+  if (!yaml) return {};
+  const out: AgentSetup = {};
+  let inModel = false;
+  for (const raw of yaml.split('\n')) {
+    if (/^\S/.test(raw)) inModel = /^model:\s*$/.test(raw);
+    else if (inModel) {
+      const m = /^\s+(default|provider):\s*(.+?)\s*$/.exec(raw);
+      if (m) out[m[1] as 'default' | 'provider' === 'default' ? 'model' : 'provider'] = m[2].replace(/^["']|["']$/g, '');
+    }
+  }
+  return out;
+}
+// The opening paragraphs of a markdown doc (headings skipped), bounded, for a pane excerpt.
+export function leadParagraphs(md: string | undefined, max = 2): string {
+  if (!md) return '';
+  const body = md.split('\n').filter((l) => !/^#/.test(l)).join('\n').trim();
+  return body.split(/\n{2,}/).slice(0, max).join('\n\n').trim();
+}
+
+export function SetupPanel({ setupMd, soulMd, configYaml, scheduleJson, repoUrl }: { setupMd?: string; soulMd?: string; configYaml?: string; scheduleJson?: string; repoUrl?: string }) {
+  const soul = leadParagraphs(soulMd, 2);
+  const setup = leadParagraphs(setupMd, 2);
+  const cfg = parseAgentConfig(configYaml);
+  const jobs = parseSchedule(scheduleJson);
+  const skills = [...new Set(jobs.flatMap((j) => j.skills ?? []))];
+  if (!soul && !setup && !cfg.model) return null;
+  const file = (path: string) => (repoUrl ? `${repoUrl}/blob/HEAD/hermes/${path}` : undefined);
+  return (
+    <div class="panel" id="setup">
+      <h3>Setup</h3>
+      <p class="note">Everything the agent is lives in the repository's <a href={repoUrl ? `${repoUrl}/tree/HEAD/hermes` : '#'}>hermes/</a> home, checked in. This page reads it; nothing here drives the agent.</p>
+      <div class="facts">
+        {cfg.model ? <div class="fact"><span class="k">model</span><span class="v">{cfg.model}</span></div> : null}
+        <div class="fact"><span class="k">calls</span><span class="v">through the platform on a standing key, every one metered</span></div>
+        {jobs.length ? <div class="fact"><span class="k">schedule</span><span class="v">{jobs.map((j) => `${j.name ?? 'job'} · ${j.schedule ?? '?'}`).join(' · ')}</span></div> : null}
+        {skills.length ? <div class="fact"><span class="k">skills</span><span class="v">{skills.map((sk, i) => <>{i ? ', ' : ''}<a href={file(`skills`)}>{sk}</a></>)}</span></div> : null}
+      </div>
+      {soul ? <>
+        <h4>Who it is <a class="filelink" href={file('SOUL.md')}>SOUL.md</a></h4>
+        <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(soul) }} />
+      </> : null}
+      {setup ? <>
+        <h4>How it runs <a class="filelink" href={file('README.md')}>hermes/README.md</a></h4>
+        <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(setup) }} />
+      </> : null}
+      {repoUrl ? <a class="docmore" href={file('config.yaml')}>The model config →</a> : null}
+    </div>
+  );
+}
+export function renderSetupPanel(props: { setupMd?: string; soulMd?: string; configYaml?: string; scheduleJson?: string; repoUrl?: string }): string {
+  return render(<SetupPanel {...props} />);
 }

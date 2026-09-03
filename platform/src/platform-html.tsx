@@ -1,7 +1,7 @@
 import { raw } from 'hono/html';
 import type { DirectoryEntry, Flow, LiveRun, Patron, ProjectView } from './limit-ledger.js';
 import { CharterPanel, ChangelogPanel } from './project-docs.js';
-import { Spine, JobPage, LIVE_SCRIPT } from './agent-view.js';
+import { Spine, JobPage, LIVE_SCRIPT, SetupPanel } from './agent-view.js';
 import type { JobRecord, JobSummary } from './limit-ledger.js';
 import { icon } from './icons.js';
 import { Icon } from './ui/Icon.js';
@@ -220,6 +220,12 @@ export const STYLES = `
   .livebox{border-color:${C.accent};background:#fffafa;}
   .lb-head{display:flex;align-items:center;gap:8px;}
   .sched{margin:2px 0;}
+  .facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:8px 0 12px;font-size:13px;}
+  .facts .k{color:${C.faint};text-transform:uppercase;letter-spacing:.04em;font-size:11px;padding-top:2px;}
+  .facts .v{color:${C.body};}
+  .fact{display:contents;}
+  #setup h4{font-size:13px;margin:14px 0 4px;color:${C.body};}
+  #setup h4 .filelink{margin-left:8px;font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:${C.muted};}
   .sched.last{color:${C.muted};font-size:13px;margin-top:6px;}
   .crumb{margin:18px 0 8px;font-size:13px;}
   .crumb a{color:${C.muted};}
@@ -709,6 +715,7 @@ function Project({ v, page, jobs, current }: { v: ProjectView; page: number; job
           <div>
             <CharterPanel md={v.profile.charter_md} repoUrl={repoUrl} />
             <Spine account={v.account} yml={v.profile.roadmap_yml ?? ''} scheduleJson={v.profile.schedule_json} jobs={jobs} current={current} repoUrl={repoUrl} now={now} />
+            <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} configYaml={v.profile.agent_config_yaml} scheduleJson={v.profile.schedule_json} repoUrl={repoUrl} />
             <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
             <div class="panel">
               <h3>Goal</h3>
