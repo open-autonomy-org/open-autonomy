@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `container-proof`: the containerised agent, running off the project's standing key, landed this item through its own branch and pushed it to main on merge.
 
 - The roadmap is reset to empty for the alpha; everything built so far is recorded below and shown as receipts on the site. The build-roadmap skill stops with "nothing queued" when no item is planned.
 - `hermes-live-view`: the project page carries the agent's spine — NEXT (the schedule and the top open item), NOW (the running job, streaming its turns over SSE) and DONE (one receipt per finished run: item, duration, report, commit) — with a run page per job and a `now.svg` widget. Runs arrive as CloudEvents on the standing key from `agent-reporter.ts`, which reads the Hermes home through supercode's `sessions.index.subscribe` + `sessions.follow` (added to supercode for Hermes in volter-ai/supercode#692). A Setup pane states the model, schedule and skills and excerpts `hermes/SOUL.md` and `hermes/README.md`, synced from the repo like the vision. Visualization only: nothing on the page drives the agent.
