@@ -23,7 +23,7 @@ HERMES_HOME=$PWD/hermes hermes cron run build-roadmap
 # keep it running: the gateway daemon fires the cron jobs and serves the Discord channel
 HERMES_HOME=$PWD/hermes hermes gateway install
 
-# narrate runs to the platform (the site's NOW / DONE bands): needs a supercode build that knows Hermes
+# narrate runs to the platform (the site's NOW / DONE bands) through supercode's harness protocol
 SUPERCODE_BIN=/path/to/supercode bun platform/scripts/agent-reporter.ts --home hermes --install
 ```
 

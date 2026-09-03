@@ -9,10 +9,12 @@ Fund a project's agents in the open. **The only thing funded is token usage.** T
   the funding page and the README widgets. Maintainers deploy with `bunx wrangler deploy` from `platform/`; the
   tag-gated workflow (`deploy-v*` → `production` environment) is the reviewed path. See `platform/DEPLOY.md`.
   Admin scripts in `platform/scripts/`.
-- `hermes/` — this project's own agent, checked in: a Hermes setup (skills, crons, Discord channel)
-  that runs off this project's funded account. Not built yet.
-- the Hermes adapter (inside `platform/`) — reads `hermes/` and the live sessions and renders the
-  roadmap (what will happen), the running session (what it is doing now) and the setup (how it works).
+- `hermes/` — this project's own agent, checked in: a Hermes home (SOUL, skills, the cron schedule, Discord
+  delivery) that runs on this Mac off the project's funded account on a standing key. Runtime state is
+  git-ignored. `platform/scripts/agent-reporter.ts` (launchd) narrates its runs to the platform as
+  CloudEvents, reading the home through supercode's `sessions.index.subscribe` + `sessions.follow`.
+- the live view (inside `platform/`) — the project page's spine (NEXT from the roadmap, NOW streaming the
+  running job, DONE as receipts), the run page, the Setup pane read from `hermes/`, and the `now.svg` widget.
   **Visualization only.** It never drives the agent.
 
 The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
@@ -35,5 +37,6 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 
 - Worker: `https://open-autonomy.org` (`/v1/funding`, `/health`, `/`; the workers.dev URL is the same worker).
 - README widget: `/v1/funding/runway.svg` (Camo-safe SVG: no scripts, no external refs).
-- The project page reads `docs/VISION.md`, `ROADMAP.yml` and `CHANGELOG.md` from this repo. The agent
-  updates `status` in `ROADMAP.yml` as it finishes items.
+- The project page reads `docs/VISION.md`, `ROADMAP.yml`, `CHANGELOG.md`, `hermes/cron/jobs.seed.json`,
+  `hermes/README.md`, `hermes/SOUL.md` and `hermes/config.yaml` from this repo, re-synced every ten minutes
+  (`POST /admin/accounts/:id/sync` forces it). The agent updates `status` in `ROADMAP.yml` as it finishes items.
