@@ -31,3 +31,11 @@ hermes/.skills_prompt_snapshot.json
 hermes/state/
 hermes/cron/usage_audit.jsonl
 hermes/lsp/
+hermes/gateway_state.json
+hermes/install_id
+hermes/kanban.db
+hermes/kanban/
+hermes/skills/.bundled_manifest
+hermes/skills/.usage.json*
+hermes/skills/autonomous-ai-agents/
+hermes/verification_evidence.db
