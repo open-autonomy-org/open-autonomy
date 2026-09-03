@@ -2,7 +2,7 @@
 
 ![open-autonomy](docs/banner.png)
 
-[![funding](https://volter-agent-model-proxy.aaron-0ed.workers.dev/v1/funding/runway.svg)](https://github.com/sponsors/volter-ai)
+[![funding](https://open-autonomy.org/v1/funding/runway.svg)](https://github.com/sponsors/volter-ai)
 
 **Fund a project's agents in the open.** Sponsors pay for token usage and nothing else. Every model
 call is metered against the project's account, so a sponsor can audit that their money went to that

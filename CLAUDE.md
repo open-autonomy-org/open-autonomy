@@ -28,7 +28,7 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 
 ## Live surfaces
 
-- Worker: `https://volter-agent-model-proxy.aaron-0ed.workers.dev` (`/v1/funding`, `/health`, `/`).
+- Worker: `https://open-autonomy.org` (`/v1/funding`, `/health`, `/`; the workers.dev URL is the same worker).
 - README widget: `/v1/funding/runway.svg` (Camo-safe SVG: no scripts, no external refs).
 - The project page reads `docs/VISION.md`, `ROADMAP.yml` and `CHANGELOG.md` from this repo. The agent
   updates `status` in `ROADMAP.yml` as it finishes items.

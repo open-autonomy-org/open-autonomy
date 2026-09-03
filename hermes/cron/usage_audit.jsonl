@@ -1,0 +1,1 @@
+{"ts": "2026-09-03T00:14:13.771Z", "job_id": "9de0f20c1509", "fire_id": "41b21e61d5d842b6b2f6bf9122dfc341", "prompt_tokens": 555918, "completion_tokens": 8731, "total_tokens": 564649, "response_silent": false, "deliver_target": "local", "model": "deepseek/deepseek-v4-flash", "duration_ms": 135665, "error": null}

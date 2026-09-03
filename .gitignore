@@ -25,3 +25,7 @@ hermes/.update_check
 hermes/channel_directory.json
 hermes/gateway.pid
 hermes/cron/ticker_*
+hermes/cron/executions.db
+hermes/cron/notepad.db
+hermes/.skills_prompt_snapshot.json
+hermes/state/
