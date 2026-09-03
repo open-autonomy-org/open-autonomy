@@ -1,6 +1,8 @@
 import { raw } from 'hono/html';
 import type { DirectoryEntry, Flow, LiveRun, Patron, ProjectView } from './limit-ledger.js';
-import { CharterPanel, RoadmapPanel, ChangelogPanel } from './project-docs.js';
+import { CharterPanel, ChangelogPanel } from './project-docs.js';
+import { Spine, JobPage } from './agent-view.js';
+import type { JobRecord, JobSummary } from './limit-ledger.js';
 import { icon } from './icons.js';
 import { Icon } from './ui/Icon.js';
 import { render } from './ui/render.js';
@@ -198,6 +200,44 @@ export const STYLES = `
   .prose code{background:${C.wash};border-radius:5px;padding:1px 5px;font:13px ui-monospace,Menlo,monospace;}
   .docmore{display:inline-block;margin-top:14px;color:${C.accent};font-weight:600;font-size:14px;}
   .docmore:hover{color:${C.accentDark};text-decoration:underline;}
+  .spine h3{margin-top:22px;}
+  .spine h3:first-child{margin-top:0;}
+  .spine .empty{list-style:none;color:${C.faint};font-size:13px;padding-left:28px;}
+  .accept{margin:8px 0 4px 12px;padding:0 0 0 14px;color:${C.body};font-size:13px;line-height:1.5;}
+  .accept li{margin:2px 0;}
+  .receipt{margin:10px 0 4px 12px;padding:10px 12px;border:1px solid ${C.line};border-radius:10px;background:${C.bg};font-size:13px;}
+  .receipt.running{border-color:${C.accent};}
+  .receipt.failed{border-color:#f85149;}
+  .rc-head{display:flex;gap:12px;align-items:baseline;color:${C.muted};font-variant-numeric:tabular-nums;}
+  .rc-when{font-weight:700;color:${C.ink};}
+  .rc-fail{color:#f85149;font-weight:700;}
+  .rc-report{margin:6px 0;color:${C.body};white-space:pre-wrap;}
+  .rc-proofs{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;font-weight:600;}
+  .rc-proofs a{color:${C.accent};}
+  .rc-proofs .missing,.proofs .missing{color:${C.faint};font-weight:500;}
+  .rc-none{margin:6px 0 2px 12px;color:${C.faint};font-size:12px;}
+  .livebox,.schedbox{border:1px solid ${C.line};border-radius:12px;padding:12px 14px;font-size:14px;color:${C.body};}
+  .livebox{border-color:${C.accent};background:#fffafa;}
+  .lb-head{display:flex;align-items:center;gap:8px;}
+  .sched{margin:2px 0;}
+  .sched.last{color:${C.muted};font-size:13px;margin-top:6px;}
+  .crumb{margin:18px 0 8px;font-size:13px;}
+  .crumb a{color:${C.muted};}
+  .jobhead h1{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px;}
+  .jobhead .item{color:${C.accent};font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;}
+  .jobhead .meta{margin:0;color:${C.muted};font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .report{white-space:pre-wrap;font-family:inherit;font-size:14px;color:${C.body};margin:0;line-height:1.5;}
+  .proofs{margin:0;padding-left:18px;font-size:14px;color:${C.body};line-height:1.7;}
+  .turns{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;}
+  .turn{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid ${C.wash};align-items:baseline;}
+  .turn .ts{flex:none;color:${C.faint};width:64px;}
+  .turn .tn{flex:none;color:${C.accentDark};font-weight:700;min-width:96px;}
+  .turn .ta{flex:1;min-width:0;color:${C.body};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .turn.say .tx{flex:1;white-space:pre-wrap;color:${C.ink};font-family:inherit;font-size:13px;}
+  details.turn{display:block;}
+  details.turn summary{display:flex;gap:10px;cursor:pointer;list-style:none;align-items:baseline;}
+  details.turn summary::-webkit-details-marker{display:none;}
+  details.turn pre{margin:6px 0 6px 74px;padding:8px 10px;background:${C.wash};border-radius:8px;white-space:pre-wrap;max-height:320px;overflow:auto;font-size:11px;}
   .rm-momentum{margin-bottom:24px;}
   .rm-stats{display:flex;gap:16px;font-size:14px;color:${C.muted};margin-bottom:8px;}
   .rm-stats span{display:flex;align-items:baseline;gap:5px;}
@@ -637,7 +677,7 @@ function TierCard({ t, feat, owner }: { t: ProjectView['tiers'][number]; feat: b
   );
 }
 
-function Project({ v, page }: { v: ProjectView; page: number }) {
+function Project({ v, page, jobs, current }: { v: ProjectView; page: number; jobs: JobSummary[]; current?: string }) {
   const owner = ownerOf(v.account);
   const color = STATUS[v.status].color;
   const g = goalLine(v);
@@ -668,7 +708,7 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
         <div class="cols">
           <div>
             <CharterPanel md={v.profile.charter_md} repoUrl={repoUrl} />
-            <RoadmapPanel yml={v.profile.roadmap_yml} repoUrl={repoUrl} />
+            <Spine account={v.account} yml={v.profile.roadmap_yml ?? ''} scheduleJson={v.profile.schedule_json} jobs={jobs} current={current} repoUrl={repoUrl} now={now} />
             <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
             <div class="panel">
               <h3>Goal</h3>
@@ -676,7 +716,7 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
               <Progress frac={g.frac} color={color} />
               <p class="note">{`Keep ${v.goal_days} days of agent runway funded. Days remaining is a Bayesian estimate of daily spend.`}</p>
             </div>
-            <Activity runs={v.recent_runs} feed={v.feed} page={page} now={now} />
+            <Activity runs={[]} feed={v.feed} page={page} now={now} />
             <div class="panel">
               <h3>Funding</h3>
               <img src={`/v1/accounts/${enc}/runway.svg`} width="460" height="116" style={`max-width:100%;border-radius:12px;border:1px solid ${C.line}`} alt="funding runway" />
@@ -706,15 +746,19 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
           </div>
         </div>
       </div>
-      {v.recent_runs.some((r) => r.active) ? <Drawer /> : null}
     </>
   );
 }
 
 // No page-level auto-refresh: the live surface is the drawer (polls session.json; a meta-refresh would close
 // an open drawer). The panel refreshes on navigation.
-export function renderProject(v: ProjectView, page = 0): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} page={page} /></Shell>);
+export function renderProject(v: ProjectView, page = 0, jobs: JobSummary[] = [], current?: string): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`} refreshSeconds={current ? 15 : undefined}><Project v={v} page={page} jobs={jobs} current={current} /></Shell>);
+}
+
+export function renderJobPage(account: string, job: JobRecord, nowMs: number): string {
+  const repoUrl = account.includes('/') ? `https://github.com/${account}` : undefined;
+  return render(<Shell title={`${job.job_name ?? 'run'} · ${nameOf(account)} · open-autonomy`} refreshSeconds={job.status === 'running' ? 10 : undefined}><Nav /><JobPage account={account} job={job} repoUrl={repoUrl} now={nowMs} /></Shell>);
 }
 
 export function renderRedeemResult(account: string, ok: boolean, message: string): string {

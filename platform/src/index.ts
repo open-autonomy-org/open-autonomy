@@ -5,7 +5,8 @@ import { isStale, syncAllStale, syncProfile } from './github-sync.js';
 import { handleKeyChallenge, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LimitLedger, LimitLedgerClient, type JobEvent, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
 import { handleOpenAI } from './openai.js';
-import { LOGO_SVG, renderExplore, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
+import { LOGO_SVG, renderExplore, renderJobPage, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
+import { renderNowSvg } from './agent-view.js';
 import { RunBudget, RunBudgetClient } from './run-budget.js';
 import { renderRunwaySvg } from './runway-svg.js';
 import { renderActivitySvg, renderRoadmapSvg } from './widgets-svg.js';
@@ -82,6 +83,15 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   // Live session as JSON — what the slide-in drawer polls for live updates (public, same scope as the HTML
   // page below: the run's repo must equal the path account). No token: a public project's run is public.
+  // The run page: one agent job's receipt, proofs and transcript (refreshes while running).
+  const jobPage = path.match(/^\/p\/(.+)\/jobs\/([^/]+)$/);
+  if (jobPage) {
+    if (req.method !== 'GET') return methodNotAllowed();
+    const account = decodeURIComponent(jobPage[1]);
+    const got = await new LimitLedgerClient(env.LIMITS).job(account, decodeURIComponent(jobPage[2]));
+    if (!got.ok || !got.job) return html(renderRedeemResult(account, false, 'No such run.'), 404);
+    return html(renderJobPage(account, got.job, Date.now()));
+  }
   const runSessionJson = path.match(/^\/p\/(.+)\/runs\/([^/]+)\/session\.json$/);
   if (runSessionJson) {
     if (req.method !== 'GET') return methodNotAllowed();
@@ -132,7 +142,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!view.found) return html(renderRedeemResult(account, false, `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
     const page = Math.max(0, Math.floor(Number(url.searchParams.get('p')) || 0));
-    return html(renderProject(view, page));
+    const jobsPage = await new LimitLedgerClient(env.LIMITS).jobs(account, 50);
+    return html(renderProject(view, page, jobsPage.jobs, jobsPage.current));
   }
 
   if (path === '/admin/runs/mint') return mintRun(req, env);
@@ -255,6 +266,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const acctWidget = path.match(/^\/v1\/accounts\/([^/]+)\/(roadmap|activity)\.svg$/);
   if (acctWidget) return widgetSvg(env, decodeURIComponent(acctWidget[1]), acctWidget[2] as 'roadmap' | 'activity', req);
   if (path === '/v1/funding/roadmap.svg') return widgetSvg(env, fundingAccount(env), 'roadmap', req);
+  const acctNow = path.match(/^\/v1\/accounts\/([^/]+)\/now\.svg$/);
+  if (acctNow) return nowSvg(env, decodeURIComponent(acctNow[1]), req);
+  if (path === '/v1/funding/now.svg') return nowSvg(env, fundingAccount(env), req);
   if (path === '/v1/funding/activity.svg') return widgetSvg(env, fundingAccount(env), 'activity', req);
   const acctRunway = path.match(/^\/v1\/accounts\/([^/]+)\/runway\.svg$/);
   if (acctRunway) return runwaySvg(env, decodeURIComponent(acctRunway[1]), req);
@@ -403,6 +417,13 @@ const SVG_HEADERS = {
   // Short cache so the README widgets update within minutes (GitHub's Camo proxy caches too).
   'cache-control': 'max-age=300, s-maxage=300',
 };
+
+async function nowSvg(env: Env, account: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const ledger = new LimitLedgerClient(env.LIMITS);
+  const [jobs, view] = await Promise.all([ledger.jobs(account, 20), ledger.project(account)]);
+  return new Response(renderNowSvg(jobs.jobs, jobs.current, view.profile.schedule_json), { headers: { ...SVG_HEADERS, 'cache-control': 'max-age=60, s-maxage=60' } });
+}
 
 async function widgetSvg(env: Env, account: string, kind: 'roadmap' | 'activity', req: Request): Promise<Response> {
   if (req.method !== 'GET') return methodNotAllowed();

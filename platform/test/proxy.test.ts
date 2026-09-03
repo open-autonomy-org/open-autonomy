@@ -758,6 +758,27 @@ describe('agent jobs (the reporter narrates a run on the standing key)', () => {
   });
 });
 
+describe('the run page and now widget routes', () => {
+  test('a receipt renders as a page; an unknown run is a 404 page; now.svg serves', async () => {
+    const env = testEnv();
+    const key = await requestJson(env, '/admin/runs/mint', { method: 'POST', headers: { 'x-admin-token': 'admin' }, body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['m'] } });
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: { kind: 'started', key: 'cron_x_20260903_120000', job_name: 'build-roadmap' } });
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: { kind: 'turns', key: 'cron_x_20260903_120000', turns: [{ role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' }] } });
+    const page = await request(env, '/p/volter%2Ftwin/jobs/cron_x_20260903_120000');
+    expect(page.status).toBe(200);
+    const body = await page.text();
+    expect(body.includes('read_file')).toBe(true);
+    expect(body.includes('refreshes every 10 seconds')).toBe(true);
+    expect((await request(env, '/p/volter%2Ftwin/jobs/nope')).status).toBe(404);
+    const svg = await request(env, '/v1/accounts/volter%2Ftwin/now.svg');
+    expect(svg.status).toBe(200);
+    expect((await svg.text()).includes('build-roadmap · running')).toBe(true);
+    const project = await request(env, '/p/volter%2Ftwin');
+    expect(project.status).toBe(200);
+    expect((await project.text()).includes('Follow the run')).toBe(true);
+  });
+});
+
 describe('account funding (mint / grant / spend)', () => {
   const acct = (id: string) => `/v1/accounts/${encodeURIComponent(id)}`;
   const mintAcct = (env: Env, id: string, body: unknown) => requestJson(env, `/admin/accounts/${encodeURIComponent(id)}/mint`, {

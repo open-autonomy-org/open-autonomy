@@ -134,3 +134,101 @@ describe('README widgets (Camo-safe SVG)', () => {
     expect(svg.includes('no calls yet')).toBe(true);
   });
 });
+
+import { spineHtml, jobPageHtml, renderNowSvg, parseSchedule } from '../src/agent-view.js';
+import type { JobRecord, JobSummary } from '../src/limit-ledger.js';
+
+const ROADMAP = `schema: open-autonomy.roadmap.v3
+items:
+  - id: fund-and-show
+    phase: 1
+    priority: high
+    status: done
+    title: Fund the project and show its vision and roadmap
+    acceptance:
+      - The site renders docs/VISION.md and ROADMAP.yml.
+  - id: prune-actions-era
+    phase: 3
+    priority: medium
+    status: active
+    title: Nothing in the worker exists only for the retired fleet
+    acceptance:
+      - Run purposes and github_run_id fields are gone.
+      - The activity feed presents a standing key as a key.
+  - id: hermes-live-view
+    phase: 3
+    priority: medium
+    status: proposed
+    title: Show what the agent is doing now
+    acceptance:
+      - Visualization only; nothing on the site drives the agent.
+  - id: second-project
+    phase: 4
+    priority: high
+    status: planned
+    title: A second funded project
+    acceptance:
+      - Another repository mints a key and runs its own agent.
+`;
+const SCHEDULE = JSON.stringify({ jobs: [{ name: 'build-roadmap', schedule: 'every 360m', deliver: 'discord' }] });
+const doneJob: JobSummary = { key: 'cron_j_20260903_085658', account: 'o/r', status: 'done', job_name: 'build-roadmap', item_id: 'fund-and-show', started_at: '2026-09-03T08:56:58Z', ended_at: '2026-09-03T09:20:57Z', report: 'Done. fund-and-show — committed 0d71f31.', commit_sha: '0d71f31352271ed4dbbd818e4d252b742c087549', turn_count: 40, tool_calls: 11, updated_at: '2026-09-03T09:20:57Z' };
+const liveJob: JobSummary = { key: 'cron_j_20260903_152011', account: 'o/r', status: 'running', job_name: 'build-roadmap', item_id: 'prune-actions-era', started_at: new Date(Date.now() - 14 * 60_000).toISOString(), turn_count: 38, tool_calls: 12, updated_at: new Date().toISOString() };
+
+describe('the spine: NEXT / NOW / DONE from the roadmap, the schedule, and the receipts', () => {
+  test('bands, acceptance lines verbatim, receipts under the item they shipped, proofs linked', () => {
+    const html = spineHtml({ account: 'o/r', yml: ROADMAP, scheduleJson: SCHEDULE, jobs: [doneJob], repoUrl: 'https://github.com/o/r', now: Date.now() });
+    expect(html.indexOf('>Next<')).toBeLessThan(html.indexOf('>Now<'));
+    expect(html.indexOf('>Now<')).toBeLessThan(html.indexOf('>Done<'));
+    expect(html.includes('Show what the agent is doing now')).toBe(true); // proposed, in NEXT
+    expect(html.includes('proposed · awaits owner')).toBe(true);
+    expect(html.includes('Another repository mints a key and runs its own agent.')).toBe(true); // acceptance verbatim
+    expect(html.includes('fires every 360m')).toBe(true); // the schedule, since nothing is live
+    expect(html.includes('reports to discord')).toBe(true);
+    expect(html.includes('class="rm-now"')).toBe(true); // the active item wears now
+    expect(html.includes('commit 0d71f31 ↗')).toBe(true);
+    expect(html.includes('https://github.com/o/r/commit/0d71f31352271ed4dbbd818e4d252b742c087549')).toBe(true);
+    expect(html.includes('/p/o%2Fr/jobs/cron_j_20260903_085658')).toBe(true);
+    expect(html.includes('40 turns · 11 tools')).toBe(true);
+    expect(html.includes('last run')).toBe(true);
+  });
+  test('a live job replaces the schedule with the live box', () => {
+    const html = spineHtml({ account: 'o/r', yml: ROADMAP, scheduleJson: SCHEDULE, jobs: [liveJob, doneJob], current: liveJob.key, now: Date.now() });
+    expect(html.includes('livebox')).toBe(true);
+    expect(html.includes('Follow the run')).toBe(true);
+    expect(html.includes('fires every 360m')).toBe(false);
+    expect(html.includes('running 14m')).toBe(true);
+  });
+  test('a shipped item with no receipt says so instead of inventing one', () => {
+    const html = spineHtml({ account: 'o/r', yml: ROADMAP, jobs: [], now: Date.now() });
+    expect(html.includes('shipped by the maintainer · no agent run')).toBe(true);
+    expect(html.includes('No schedule committed.')).toBe(true);
+  });
+});
+
+describe('the run page and the now widget', () => {
+  const job: JobRecord = { ...doneJob, turns: [
+    { ts: '2026-09-03T08:57:00Z', role: 'user', text: 'Work the top open item…' },
+    { ts: '2026-09-03T08:57:04Z', role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' },
+    { ts: '2026-09-03T08:57:05Z', role: 'tool', tool: 'read_file', result: '1|# The roadmap…' },
+    { ts: '2026-09-03T08:58:00Z', role: 'assistant', text: 'Done.' },
+  ] };
+  test('run page: report first, then proofs, then the transcript with tool rows', () => {
+    const html = jobPageHtml('o/r', job, 'https://github.com/o/r', Date.now());
+    expect(html.indexOf('Report (the agent')).toBeLessThan(html.indexOf('>Proofs<'));
+    expect(html.indexOf('>Proofs<')).toBeLessThan(html.indexOf('>Transcript<'));
+    expect(html.includes('ROADMAP.yml')).toBe(true);
+    expect(html.includes('class="tn">read_file<')).toBe(true);
+    expect(html.includes('↳ read_file')).toBe(true);
+    expect(html.includes('4 of 40 turns kept')).toBe(true);
+    expect(html.includes('✓ done · 24m')).toBe(true);
+  });
+  test('now.svg: the schedule and last run when idle; the live run when running', () => {
+    const idle = renderNowSvg([doneJob], undefined, SCHEDULE, Date.now());
+    expect(idle.includes('build-roadmap · fires every 360m')).toBe(true);
+    expect(idle.includes('last run 09-03 08:56 UTC · done · fund-and-show · 0d71f31')).toBe(true);
+    const live = renderNowSvg([liveJob, doneJob], liveJob.key, SCHEDULE, Date.now());
+    expect(live.includes('running 14m · prune-actions-era')).toBe(true);
+    expect(live.includes('38 turns · 12 tool calls so far')).toBe(true);
+    expect(parseSchedule('garbage').length).toBe(0);
+  });
+});

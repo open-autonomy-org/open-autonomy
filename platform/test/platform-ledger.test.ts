@@ -222,18 +222,16 @@ describe('platform: recent activity (runs + funding)', () => {
     expect(run.request_count).toBe(1);
     expect(run.github_run_id).toBe('99887766');
 
+    // The page no longer presents a key's run as "activity": a key is a key. What the agent is doing comes
+    // from its job receipts (the spine); the activity panel carries the money feed only.
     const html = renderProject(v);
     expect(html.includes('Recent activity')).toBe(true);
-    expect(html.includes('1 running')).toBe(true);
-    // "Watch live" opens the slide-in drawer (data-run hook), falling back to the full-page session view.
-    expect(html.includes('/p/acme%2Fwidget/runs/run_1')).toBe(true);
-    expect(html.includes('data-run="run_1"')).toBe(true);
-    expect(html.includes('id="run-drawer"')).toBe(true);
-    // Pops into GitHub: the issue links to the issue. (The per-row GitHub Actions icon was removed — the
-    // Actions log lives in the session view, not cluttering each activity line.)
-    expect(html.includes('https://github.com/acme/widget/issues/7')).toBe(true);
-    expect(html.includes('/actions/runs/99887766')).toBe(false);
-    expect(html.includes('$0.90')).toBe(true);
+    expect(html.includes('1 running')).toBe(false);
+    expect(html.includes('/p/acme%2Fwidget/runs/run_1')).toBe(false);
+    expect(html.includes('data-run="run_1"')).toBe(false);
+    expect(html.includes('id="run-drawer"')).toBe(false);
+    expect(html.includes('>Next<')).toBe(true);
+    expect(html.includes('>Done<')).toBe(true);
   });
 
   test('a finished run stays in recent activity (with "ended" status), no live drawer', async () => {
@@ -249,7 +247,7 @@ describe('platform: recent activity (runs + funding)', () => {
     const html = renderProject(v);
     expect(html.includes('Recent activity')).toBe(true);
     expect(html.includes('1 running')).toBe(false); // nothing actively running
-    expect(html.includes('View session ›')).toBe(true); // finished run → view, not "watch live"
+    expect(html.includes('View session ›')).toBe(false); // key runs are not activity rows any more
     expect(html.includes('id="run-drawer"')).toBe(false); // no active run → no drawer
   });
 
