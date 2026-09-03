@@ -393,11 +393,11 @@ export function renderExplore(entries: DirectoryEntry[]): string {
   const totalSpent = listed.reduce((s, e) => s + e.consumed_usd_cents, 0);
   const patrons = listed.reduce((s, e) => s + e.patron_count, 0);
   return render(
-    <Shell title="Fund a self-driving repo · open-autonomy">
+    <Shell title="Sustained autonomous development · open-autonomy">
       <Nav />
       <div class="wrap">
-        <h1 class="display">Fund a self-driving repo.</h1>
-        <p class="lede">Self-coding projects that pay their own way. Back one monthly — the agents do the work, and you watch every dollar burn down in the open.</p>
+        <h1 class="display">Sustained autonomous development, in the open.</h1>
+        <p class="lede">Agents that keep working a project's roadmap for months, with a readable setup and public books. Back one monthly — the agent does the work, and you can see every call it made and what it shipped.</p>
         <div class="stripe">
           <div><span class="n">{usd0(totalIn)}</span><span class="k">funded</span></div>
           <div><span class="n">{usd0(totalSpent)}</span><span class="k">spent by agents</span></div>
