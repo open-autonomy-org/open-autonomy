@@ -15,7 +15,7 @@ items:
   - id: hermes-self-builder
     phase: 1
     priority: high
-    status: active
+    status: done
     title: The project's own Hermes agent builds the roadmap
     acceptance:
       - hermes/ is a complete Hermes home (config, SOUL.md, skills, cron) checked into the repository.

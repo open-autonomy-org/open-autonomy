@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `hermes-self-builder`: the project's own checked-in Hermes home (config, SOUL, skills, cron) drives the roadmap — its standing-key calls are metered to the account and appear in the books, and the `build-roadmap` cron works the top open item, runs the checks, and pushes to main.
 - The project moved to the dedicated `open-autonomy-org` GitHub org, and the agent now reports into the "Open Autonomy" Discord server (bot + home channel); the build-roadmap job delivers there.
 - `project-keys`: any repository owner can mint a standing key for their account by committing a per-day claim file (`/v1/keys/challenge` → `.open-autonomy-claim` → `/v1/keys/mint`), and rotate it with `/v1/keys/rotate` (the old key lives one more day). Standing keys take no lane slot and are capped at three per account. `hermes-key.ts --rotate`.
 - `readme-widgets`: two more Camo-safe SVGs beside the runway bar — `roadmap.svg` (the roadmap's stations, phase-ordered, with the now marker) and `activity.svg` (metered calls, spend per day for two weeks, the last call) — rendered from the same data as the site.
