@@ -238,6 +238,13 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/v1/agent/events') return agentEvent(req, env);
   const acctJobs = path.match(/^\/v1\/accounts\/([^/]+)\/jobs$/);
   if (acctJobs) return jobsJson(env, decodeURIComponent(acctJobs[1]), req);
+  const acctJobAdmin = path.match(/^\/admin\/accounts\/([^/]+)\/jobs\/([^/]+)$/);
+  if (acctJobAdmin) {
+    if (!isAdmin(req, env)) return error('auth_failed', 401);
+    if (req.method !== 'DELETE') return methodNotAllowed();
+    const result = await new LimitLedgerClient(env.LIMITS).jobDelete(decodeURIComponent(acctJobAdmin[1]), decodeURIComponent(acctJobAdmin[2]));
+    return json(result, { status: result.ok ? 200 : 404 });
+  }
   const acctJob = path.match(/^\/v1\/accounts\/([^/]+)\/jobs\/([^/]+)$/);
   if (acctJob) return jobJson(env, decodeURIComponent(acctJob[1]), decodeURIComponent(acctJob[2]), req);
   if (path === '/v1/funding/jobs') return jobsJson(env, fundingAccount(env), req);

@@ -750,6 +750,11 @@ describe('agent jobs (the reporter narrates a run on the standing key)', () => {
     expect((await post(env, plain.token, { kind: 'started', key: 'k2' })).status).toBe(403);
     expect((await request(env, '/v1/agent/events', { method: 'POST', body: { kind: 'started', key: 'k3' } })).status).toBe(401);
     expect((await request(env, '/v1/accounts/acme%2Fapp/jobs/nope')).status).toBe(404);
+    // Operator repair: an admin can drop a receipt; the list no longer carries it.
+    expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE' })).status).toBe(401);
+    expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE', headers: { 'x-admin-token': 'admin' } })).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/jobs')).jobs.length).toBe(0);
+    expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE', headers: { 'x-admin-token': 'admin' } })).status).toBe(404);
   });
 });
 

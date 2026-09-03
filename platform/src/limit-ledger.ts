@@ -211,6 +211,7 @@ export class LimitLedger implements DurableObject {
     if (op === 'job_event') return json(await this.jobEvent(String(body.account), body.event as JobEvent));
     if (op === 'jobs') return json(await this.listJobs(String(body.account), Number(body.limit)));
     if (op === 'job') return json(await this.getJob(String(body.account), String(body.key)));
+    if (op === 'job_delete') return json(await this.deleteJob(String(body.account), String(body.key)));
     if (op === 'set_profile') return json(await this.setProfile(String(body.account), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
     if (op === 'moderate') return json(await this.moderate(String(body.account), String(body.status) as Moderation, body.reason ? String(body.reason) : undefined, body as Partial<AccountProfile>));
     if (op === 'directory') return json({ ok: true, entries: this.directory() });
@@ -652,6 +653,18 @@ export class LimitLedger implements DurableObject {
     const jobs = [...page.values()].map(jobSummary);
     const current = this.acct(account)?.current_job_key;
     return { ok: true, account, ...(current ? { current } : {}), jobs };
+  }
+
+  // Operator repair: drop one receipt (a reporter that narrated the wrong transcript). The meter is untouched.
+  private async deleteJob(account: string, key: string): Promise<{ ok: boolean; error?: string }> {
+    const idxKey = `jobidx:${account}:${key}`;
+    const storageKey = await this.ctx.storage.get<string>(idxKey);
+    if (!storageKey) return { ok: false, error: 'job_not_found' };
+    await this.ctx.storage.delete(storageKey);
+    await this.ctx.storage.delete(idxKey);
+    const a = this.acct(account);
+    if (a?.current_job_key === key) { delete a.current_job_key; await this.save(); }
+    return { ok: true };
   }
 
   private async getJob(account: string, key: string): Promise<{ ok: boolean; error?: string; job?: JobRecord }> {
@@ -1193,6 +1206,10 @@ export class LimitLedgerClient {
 
   jobs(account: string, limit?: number) {
     return this.rpc<{ ok: true; account: string; current?: string; jobs: JobSummary[] }>('jobs', { account, limit });
+  }
+
+  jobDelete(account: string, key: string) {
+    return this.rpc<{ ok: boolean; error?: string }>('job_delete', { account, key });
   }
 
   job(account: string, key: string) {
