@@ -28,8 +28,7 @@ The only GitHub secret the system needs is the Cloudflare deploy token. Everythi
 
 ## What is already built + live
 
-- `.github/workflows/deploy.yml` — tag-triggered, egress-locked, pinned wrangler, `environment: production`
-  (a code-host resource carried by the profile — see `docs/CODE_HOST_RESOURCES.md`).
+- `.github/workflows/deploy.yml` — tag-triggered, egress-locked, pinned wrangler, `environment: production`.
 - **The gate IS the workflow; provisioning is reproducible, not hand-set.** `deploy.yml` already declares its
   own gate — `environment: production` (the job runs in the gated environment) and `on: push: tags: deploy-v*`
   (only the promotion tag fires). It is NOT in the opaque `policy.box`. `bun scripts/provision-deploy.ts` reads

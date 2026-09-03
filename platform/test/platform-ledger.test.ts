@@ -262,3 +262,17 @@ describe('platform: recent activity (runs + funding)', () => {
     expect(html.includes('Granted from acme/widget')).toBe(true);
   });
 });
+
+describe('health monitor: hidden accounts are not orgs that can be down', () => {
+  test('a hidden (retired) account drops out of the monitored set', async () => {
+    const l = ledger();
+    await l.register(claims({ run_id: 'live1', repo: 'acme/live', actor: 'a' }), CONFIG);
+    await l.register(claims({ run_id: 'old1', repo: 'acme/retired', actor: 'b' }), CONFIG);
+    const before = await l.health({ silenceMs: 180 * 60_000, deadMs: 7 * 24 * 60 * 60_000, nowMs: Date.now() });
+    expect(before.monitored).toBe(2);
+    await l.moderate('acme/retired', 'hidden', 'retired testbed');
+    const after = await l.health({ silenceMs: 180 * 60_000, deadMs: 7 * 24 * 60 * 60_000, nowMs: Date.now() });
+    expect(after.monitored).toBe(1);
+    expect(after.down).toBe(0);
+  });
+});

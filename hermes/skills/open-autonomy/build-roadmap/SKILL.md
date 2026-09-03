@@ -31,7 +31,7 @@ You are in the Open Autonomy repository (the cron job sets the working directory
 
 ## Land it
 
-8. Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit directly on `main` and push. No branches, no pull requests.
+8. Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit as the agent, signed off, so the history shows what the agent did: `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>"`. Commit directly on `main` and push. No branches, no pull requests.
 9. When every acceptance line is true and verified, set the item's `status: done` in `ROADMAP.yml` in the same push. Add a one-line entry under `## Unreleased` in `CHANGELOG.md`.
 
 ## Report

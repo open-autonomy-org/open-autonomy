@@ -1,4 +1,4 @@
-# Open Autonomy Treasury (`agent-model-proxy`)
+# The Open Autonomy platform (`agent-model-proxy`)
 
 **The books of Open Autonomy**, as one Cloudflare Worker. This package holds a funded project's
 **books and its money
@@ -6,7 +6,7 @@ boundary**:
 
 - **The funding-account tree** — every project and named root is an account; mint/grant/consume
   with a hard conservation invariant (total minted = total consumed + total still held).
-- **The model proxy** — bounded per-run model tokens for semi-untrusted agent runs; the proxy's
+- **The model proxy** — every model call an agent makes goes through here on a project key; the proxy's
   settlements are the only debits on the books.
 - **The public funding storefront** — snapshots, runway SVGs, sponsor/coupon plumbing, the
   explore/project pages (open-autonomy.org).

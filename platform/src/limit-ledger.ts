@@ -746,7 +746,8 @@ export class LimitLedger implements DurableObject {
   // NOT done here: that is the substrate runner's engage avenue (the human seam), not the watcher's job.
   private health(opts: HealthOpts): { ok: true } & HealthResult {
     const orgs = Object.entries(this.state.accounts)
-      .filter(([, a]) => typeof a.last_activity_ms === 'number')
+      // Only listed projects are monitored: a hidden (retired) or banned account is not an org that can be down.
+      .filter(([, a]) => typeof a.last_activity_ms === 'number' && (a.moderation ?? 'listed') === 'listed')
       .map(([account, a]) => ({ account, last_activity_ms: a.last_activity_ms as number }));
     return { ok: true, ...classifyHealth(orgs, opts) };
   }
