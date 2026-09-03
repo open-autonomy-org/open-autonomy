@@ -29,3 +29,5 @@ hermes/cron/executions.db
 hermes/cron/notepad.db
 hermes/.skills_prompt_snapshot.json
 hermes/state/
+hermes/cron/usage_audit.jsonl
+hermes/lsp/
