@@ -113,12 +113,18 @@ function executionFor(jobId: string, startedAt: Date): { status: string; finishe
     return best;
   } finally { d.close(); }
 }
-function commitSince(workdir: string | undefined, since: Date, until?: string | null): string | undefined {
+function commitSince(workdir: string | undefined, since: Date, until?: string | null, itemId?: string): string | undefined {
   if (!workdir || !existsSync(workdir)) return undefined;
   const window = [`--since=${since.toISOString()}`, ...(until ? [`--until=${new Date(Date.parse(until) + 60_000).toISOString()}`] : [])];
   const r = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window], stdout: 'pipe', stderr: 'ignore' });
   const sha = r.stdout.toString().trim();
-  return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
+  if (/^[0-9a-f]{40}$/.test(sha)) return sha;
+  // A run that committed under another identity (before the agent had its own): the commit in the run's window
+  // whose message names the item it worked.
+  if (!itemId) return undefined;
+  const r2 = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window], stdout: 'pipe', stderr: 'ignore' });
+  const sha2 = r2.stdout.toString().trim();
+  return /^[0-9a-f]{40}$/.test(sha2) ? sha2 : undefined;
 }
 function roadmapIds(workdir: string | undefined): string[] {
   const p = workdir ? join(workdir, 'ROADMAP.yml') : ''; if (!p || !existsSync(p)) return [];
@@ -181,7 +187,7 @@ async function tick(h: Harness): Promise<void> {
     const exec = executionFor(start.jobId, start.startedAt);
     if (exec && (exec.status === 'completed' || exec.status === 'failed')) {
       const lastText = [...messages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim());
-      const ok = await post({ kind: 'finished', key, status: exec.status === 'failed' ? 'failed' : 'done', report: lastText?.content, commit_sha: commitSince(workdir, start.startedAt, exec.finished_at), item_id: st.item_id });
+      const ok = await post({ kind: 'finished', key, status: exec.status === 'failed' ? 'failed' : 'done', report: lastText?.content, commit_sha: commitSince(workdir, start.startedAt, exec.finished_at, st.item_id), item_id: st.item_id });
       if (ok) { st.finished = true; save(); console.log(`${key}: finished (${exec.status}), ${st.sent} messages`); }
     }
   }
