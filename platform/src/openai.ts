@@ -1,11 +1,10 @@
 import { gatewayBase, limitsFromEnv } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './errors.js';
-import { estimateInputTokensFromBody, gatewayReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
+import { estimateInputTokensFromBody, gatewayReservePrice, MAX_OUTPUT_TOKENS, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
 import { reserveBudget } from './spend.js';
 import type { Env, Provider, RunClaims, UsageEvent } from './types.js';
 
 // Single upstream: every model settles through the model gateway (it speaks the OpenAI chat/completions wire).
-const MAX_OUTPUT_TOKENS = 4096;
 
 export async function handleOpenAI(
   req: Request,

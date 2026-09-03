@@ -165,7 +165,7 @@ async function post(events: unknown[]): Promise<boolean> {
 type RunState = { started: boolean; sent_msgs: number; sent_turns: number; finished: boolean; item_id?: string; last_text?: string };
 const state: Record<string, RunState> = existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, 'utf8')) : {};
 const save = () => writeFileSync(STATE_PATH, JSON.stringify(state, null, 1));
-const following = new Map<string, string>(); // session id → subscription id
+const following = new Map<string, string>(); // session id → follow subscription id
 const jobs = jobsFile();
 const workdirOf = (jobId: string) => jobs.jobs.find((j) => j.id === jobId)?.workdir ?? jobs.jobs[0]?.workdir;
 
@@ -181,11 +181,13 @@ async function ensureStarted(key: string, title: string | undefined): Promise<Ru
   }
   return st;
 }
-async function narrate(key: string, messages: any[]): Promise<void> {
-  // `messages` is the run's full message list (a snapshot) or the appended tail; either way we send turns for
-  // messages beyond what was sent, with the turn offset the platform de-duplicates on.
+async function narrate(key: string, messages: any[], offset = 0): Promise<void> {
+  // `messages` is the run's message list from index `offset` on: a snapshot (offset 0) or an appended tail
+  // (offset = total − tail). We send turns for messages beyond what was sent, at the turn offset the platform
+  // de-duplicates on, so a re-snapshot or a reconnect never double-narrates.
   const st = state[key]; if (!st || st.finished) return;
-  const fresh = messages.length > st.sent_msgs ? messages.slice(st.sent_msgs) : [];
+  const total = offset + messages.length;
+  const fresh = total > st.sent_msgs ? messages.slice(Math.max(0, st.sent_msgs - offset)) : [];
   if (!fresh.length) return;
   const turns = toTurns(fresh);
   const start = sessionStart(key)!;
@@ -194,16 +196,18 @@ async function narrate(key: string, messages: any[]): Promise<void> {
   const batch: unknown[] = [];
   for (let i = 0; i < turns.length; i += 100) batch.push(cloudEvent('turns', key, { seq: st.sent_turns + i, turns: turns.slice(i, i + 100), item_id: st.item_id }));
   if (!(await post(batch))) return;
-  st.sent_msgs = messages.length; st.sent_turns += turns.length; save();
+  st.sent_msgs = total; st.sent_turns += turns.length; save();
 }
 async function finishIfDone(h: Harness, key: string): Promise<void> {
   const st = state[key]; if (!st || !st.started || st.finished) return;
   const start = sessionStart(key)!;
   const exec = executionFor(start.jobId, start.startedAt);
-  if (!exec || (exec.status !== 'completed' && exec.status !== 'failed')) return;
+  // Hermes's terminal statuses: completed | failed | unknown (the scheduler restarted before the run's owner
+  // recorded an outcome; whether side effects ran is unknown). Only `completed` is done.
+  if (!exec || !['completed', 'failed', 'unknown'].includes(exec.status)) return;
   const workdir = workdirOf(start.jobId);
   const ok = await post([cloudEvent('finished', key, {
-    status: exec.status === 'failed' ? 'failed' : 'done', report: st.last_text, item_id: st.item_id,
+    status: exec.status === 'completed' ? 'done' : 'failed', report: st.last_text, item_id: st.item_id,
     commit_sha: commitInWindow(workdir, start.startedAt, exec.finished_at, st.item_id),
     ended_at: exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined,
   })]);
@@ -223,7 +227,10 @@ async function adopt(h: Harness, descriptor: any): Promise<void> {
     return;
   }
   if (following.has(key)) return;
-  const res = await h.call('harness.v1.sessions.follow', { locator: descriptor.locator });
+  // Follow: supercode pushes the run's appended messages as they land in the store. A failed follow is logged
+  // and retried on the run's next index update (it stays out of `following`).
+  const res = await h.call('harness.v1.sessions.follow', { locator: descriptor.locator }).catch((e) => { console.error(`follow ${key}: ${(e as Error).message.slice(0, 120)}`); return null; });
+  if (!res?.subscription) return;
   following.set(key, res.subscription);
   const snapshot = res.initial?.session?.messages ?? res.initial?.messages;
   if (Array.isArray(snapshot)) await narrate(key, snapshot);
@@ -233,21 +240,30 @@ const harness: Harness = new Harness((n) => {
   if (n.method === 'harness.v1.sessions.event') {
     const ev = n.params?.event; const key = [...following.entries()].find(([, sub]) => sub === n.params?.subscription)?.[0];
     if (!key || !ev) return;
-    if (ev.type === 'messages_appended') void narrate(key, [...new Array(state[key]?.sent_msgs ?? 0), ...ev.messages]); // appended tail at its offset
+    if (ev.type === 'messages_appended') void narrate(key, ev.messages ?? [], (ev.total_message_count ?? 0) - (ev.messages?.length ?? 0));
     else if (ev.type === 'session_snapshot') void narrate(key, ev.session?.messages ?? []);
   } else if (n.method === 'harness.v1.sessions.index_event') {
+    if (n.params?.error) console.error(`index: ${n.params.error.message}`);
     for (const c of n.params?.changes ?? []) if ((c.kind === 'added' || c.kind === 'updated') && c.descriptor) void adopt(harness, c.descriptor);
   }
 });
 
 try {
   const query = { harnesses: ['hermes'], homes: { hermes: STORE } };
-  const disc = await harness.call('harness.v1.sessions.discover', query);
-  for (const s of disc.sessions ?? []) await adopt(harness, s);
-  if (!ONCE) await harness.call('harness.v1.sessions.index.subscribe', query).catch((e) => console.error(`index.subscribe: ${(e as Error).message}`));
-  for (;;) {
+  if (ONCE) {
+    // One pass over what exists: discover + load each run (backfill / a check), no subscriptions.
+    const disc = await harness.call('harness.v1.sessions.discover', query);
+    for (const s of disc.sessions ?? []) await adopt(harness, s);
     for (const key of Object.keys(state)) await finishIfDone(harness, key);
-    if (ONCE) break;
-    await Bun.sleep(5000);
+  } else {
+    // New runs arrive as index events (supercode watches the store); the initial page covers what already
+    // exists. Each run is then followed. Run outcomes come from Hermes's executions table, checked every 5s
+    // for runs we have started narrating (supercode has no subscription for that table).
+    const sub = await harness.call('harness.v1.sessions.index.subscribe', query);
+    for (const s of sub.initial ?? []) await adopt(harness, s);
+    for (;;) {
+      for (const key of Object.keys(state)) await finishIfDone(harness, key);
+      await Bun.sleep(5000);
+    }
   }
 } finally { harness.close(); }

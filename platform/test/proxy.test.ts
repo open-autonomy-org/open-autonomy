@@ -250,6 +250,28 @@ describe('agent model proxy', () => {
     expect(status.consumed_usd_cents).toBe(9); // ceil($0.09 * 100), straight from the reported cost
   });
 
+  test('forwards a large output cap unchanged and injects the ceiling when the client sends none', async () => {
+    // The agent's reasoning turns need room: a 4k cap returned finish_reason=length with no visible text.
+    const env = testEnv();
+    const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 5);
+    const forwarded: number[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      forwarded.push((JSON.parse(String(init?.body)) as { max_tokens: number }).max_tokens);
+      return new Response(JSON.stringify({ id: 'cmpl', usage: { prompt_tokens: 10, completion_tokens: 10, cost: 0.001 } }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    for (const body of [{ max_tokens: 32_000 }, {}, { max_tokens: 1_000_000 }]) {
+      const res = await worker.fetch(new Request('https://proxy.test/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${minted.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', messages: [], ...body }),
+      }), env, ctx);
+      expect(res.status).toBe(200);
+    }
+    expect(forwarded).toEqual([32_000, 65_536, 65_536]);
+  });
+
   test('rejects requests after request limit is reached', async () => {
     const env = testEnv();
     const minted = await mint(env, ['gpt-5-mini'], 100, 1);

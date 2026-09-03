@@ -1,6 +1,13 @@
 import type { Provider } from './types.js';
 import { MODEL_PRICES } from './model-prices.js';
 
+// The output-token ceiling the proxy reserves against. It is a RESERVATION bound, not a product limit: the
+// agent's model (DeepSeek V4 Flash on the gateway) allows 384k output tokens, and a reasoning turn spends its
+// budget on reasoning before any visible text — at the old 4 096 ceiling the agent's long turns came back
+// finish_reason=length with no text, and a run died after Hermes's four continuation attempts. Worst case at
+// this ceiling on flash is ~10¢ per call, reserved then settled to the actual usage.
+export const MAX_OUTPUT_TOKENS = 65_536;
+
 export interface ModelPrice {
   provider: Provider;
   input_usd_per_mtok: number;

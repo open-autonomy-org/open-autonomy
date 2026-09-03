@@ -1,13 +1,12 @@
 import { gatewayBase, limitsFromEnv } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './errors.js';
-import { estimateInputTokensFromBody, gatewayReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
+import { estimateInputTokensFromBody, gatewayReservePrice, MAX_OUTPUT_TOKENS, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
 import { sessionTurnsFromBody } from './session-capture.js';
 import { reserveBudget } from './spend.js';
 import type { Env, Provider, RunClaims, UsageEvent } from './types.js';
 
 // Single upstream: every model on the Anthropic Messages wire settles through the model gateway (it speaks it).
 const DEFAULT_VERSION = '2023-06-01';
-const MAX_OUTPUT_TOKENS = 4096;
 
 export async function handleAnthropic(req: Request, env: Env, claims: RunClaims, ctx: ExecutionContext): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
