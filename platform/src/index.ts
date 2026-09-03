@@ -7,6 +7,8 @@ import { handleOpenAI } from './openai.js';
 import { LOGO_SVG, renderExplore, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
 import { RunBudget, RunBudgetClient } from './run-budget.js';
 import { renderRunwaySvg } from './runway-svg.js';
+import { renderActivitySvg, renderRoadmapSvg } from './widgets-svg.js';
+import { parseRoadmap } from './project-docs.js';
 import { handleSponsorsWebhook } from './sponsors-webhook.js';
 import { extractBearer, extractModelToken, signRunToken, verifyRunToken } from './token.js';
 import type { Env, MintRunRequest, RunClaims } from './types.js';
@@ -229,6 +231,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const acctCalls = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/);
   if (acctCalls) return callsJson(env, decodeURIComponent(acctCalls[1]), req);
   if (path === '/v1/funding/calls') return callsJson(env, fundingAccount(env), req);
+  const acctWidget = path.match(/^\/v1\/accounts\/([^/]+)\/(roadmap|activity)\.svg$/);
+  if (acctWidget) return widgetSvg(env, decodeURIComponent(acctWidget[1]), acctWidget[2] as 'roadmap' | 'activity', req);
+  if (path === '/v1/funding/roadmap.svg') return widgetSvg(env, fundingAccount(env), 'roadmap', req);
+  if (path === '/v1/funding/activity.svg') return widgetSvg(env, fundingAccount(env), 'activity', req);
   const acctRunway = path.match(/^\/v1\/accounts\/([^/]+)\/runway\.svg$/);
   if (acctRunway) return runwaySvg(env, decodeURIComponent(acctRunway[1]), req);
   const acctStatus = path.match(/^\/v1\/accounts\/([^/]+)$/);
@@ -429,6 +435,22 @@ async function callsJson(env: Env, account: string, req: Request): Promise<Respo
   const before = url.searchParams.get('before') ?? undefined;
   const page = await new LimitLedgerClient(env.LIMITS).calls(account, limit, before);
   return json(page, { headers: { 'cache-control': 'no-store' } });
+}
+
+const SVG_HEADERS = {
+  'content-type': 'image/svg+xml; charset=utf-8',
+  // Short cache so the README widgets update within minutes (GitHub's Camo proxy caches too).
+  'cache-control': 'max-age=300, s-maxage=300',
+};
+
+async function widgetSvg(env: Env, account: string, kind: 'roadmap' | 'activity', req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const ledger = new LimitLedgerClient(env.LIMITS);
+  if (kind === 'roadmap') {
+    const view = await ledger.project(account);
+    return new Response(renderRoadmapSvg(parseRoadmap(view.profile.roadmap_yml ?? '')), { headers: SVG_HEADERS });
+  }
+  return new Response(renderActivitySvg(await ledger.funding(account)), { headers: SVG_HEADERS });
 }
 
 async function runwaySvg(env: Env, account: string, req: Request): Promise<Response> {

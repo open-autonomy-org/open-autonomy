@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { renderRoadmapPanel, parseRoadmap, roadmapItemState } from '../src/project-docs.js';
+import { renderActivitySvg, renderRoadmapSvg } from '../src/widgets-svg.js';
+import type { FundingSnapshot } from '../src/limit-ledger.js';
 
 // One YAML item from a flat spec object.
 function item(o: Record<string, unknown>): string {
@@ -77,5 +79,58 @@ describe('renderRoadmapPanel: journey timeline (phase spine of stations)', () =>
   test('an empty or absent roadmap renders no panel', () => {
     expect(renderRoadmapPanel('', undefined)).toBe('');
     expect(renderRoadmapPanel(undefined, undefined)).toBe('');
+  });
+});
+
+describe('README widgets (Camo-safe SVG)', () => {
+  const camoSafe = (svg: string) => {
+    expect(svg.startsWith('<?xml')).toBe(true);
+    expect(svg.includes('<script')).toBe(false);
+    expect(/href=|url\(|<image/.test(svg)).toBe(false); // no external references
+    expect(svg.includes('<animate')).toBe(false);
+  };
+
+  test('roadmap.svg lists committed items in phase order with a now marker and folds proposals', () => {
+    const items = parseRoadmap(yml([
+      { id: 'b', title: 'Queued B', phase: '2', status: 'planned' },
+      { id: 'a', title: 'Active A <with & chars>', phase: '1', status: 'active' },
+      { id: 'c', title: 'Shipped C', phase: '1', status: 'done' },
+      { id: 'p', title: 'Proposed P', phase: '3', status: 'proposed' },
+    ]));
+    const svg = renderRoadmapSvg(items);
+    camoSafe(svg);
+    expect(svg.includes('1 shipped · 1 in progress · 1 queued')).toBe(true);
+    expect(svg.includes('Active A &lt;with &amp; chars&gt;')).toBe(true);
+    expect(svg.includes('in progress · now')).toBe(true);
+    expect(svg.includes('1 proposed')).toBe(true);
+    expect(svg.indexOf('Shipped C')).toBeLessThan(svg.indexOf('Queued B')); // phase order
+    expect(svg.includes('Proposed P')).toBe(false); // folded, not listed
+  });
+
+  test('roadmap.svg with no items still renders a frame', () => {
+    const svg = renderRoadmapSvg([]);
+    camoSafe(svg);
+    expect(svg.includes('No roadmap yet')).toBe(true);
+  });
+
+  test('activity.svg shows the call count, the week spend, bars per day and the last call', () => {
+    const now = Date.parse('2026-09-03T00:10:00Z');
+    const f = {
+      calls_total: 1234, last_call_at: '2026-09-03T00:03:00Z', burn_per_day_usd_cents: 9,
+      daily_spend_usd_cents: [0, 5, 12, 0, 3, 40, 1],
+    } as unknown as FundingSnapshot;
+    const svg = renderActivitySvg(f, now);
+    camoSafe(svg);
+    expect(svg.includes('1,234 metered calls · $0.61 this week')).toBe(true);
+    expect(svg.includes('last call 7m ago · ~$0.09/day')).toBe(true);
+    expect((svg.match(/<rect x="\d+" y="\d+" width="\d+" height="\d+" rx="2"/g) ?? []).length).toBe(14);
+  });
+
+  test('activity.svg before any call', () => {
+    const f = { calls_total: 0, last_call_at: null, burn_per_day_usd_cents: 0, daily_spend_usd_cents: [] } as unknown as FundingSnapshot;
+    const svg = renderActivitySvg(f);
+    camoSafe(svg);
+    expect(svg.includes('0 metered calls · $0.00 this week')).toBe(true);
+    expect(svg.includes('no calls yet')).toBe(true);
   });
 });

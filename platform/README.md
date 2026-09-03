@@ -47,11 +47,12 @@ Endpoints:
 - `POST /admin/accounts/:id/grant` — transfer from `:id`. Body `{ to, amount_usd_cents, key? }`. Refused if `:id` lacks the balance.
 - `POST /admin/accounts/:id/accrue` — mint `:id` with its active recurring sponsors' monthly total. Body `{ key }`. Also fired by the monthly cron.
 - `GET /v1/accounts/:id` — public funding snapshot (balance, granted in/out, consumed, burn, runway, sponsors).
-- `GET /v1/accounts/:id/runway.svg` — public, Camo-safe runway SVG for that account's README.
+- `GET /v1/accounts/:id/runway.svg`, `.../roadmap.svg`, `.../activity.svg` — public, Camo-safe SVG widgets for
+  that account's README: balance and runway; the roadmap's stations; calls, spend per day and the last call.
 - `GET /v1/accounts/:id/calls?limit=50&before=<cursor>` — public, the account's **audit trail**: every metered
   model call (time, run, actor, model, tokens, cost), newest first, durable and never evicted. `next` is the
   cursor for the following page.
-- `GET /v1/funding`, `GET /v1/funding/runway.svg`, `GET /v1/funding/calls` — aliases for `DEFAULT_FUNDING_ACCOUNT`.
+- `GET /v1/funding`, `/v1/funding/{runway,roadmap,activity}.svg`, `/v1/funding/calls` — aliases for `DEFAULT_FUNDING_ACCOUNT`.
 - `POST /webhooks/github-sponsors` — GitHub Sponsors webhook (HMAC-verified, no token); maintains the
   `DEFAULT_SPONSOR_ACCOUNT`'s recurring-sponsor list and mints one-time gifts.
 - `POST /admin/coupons` / `GET /admin/coupons` — issue/list **coupons** (bearer/deferred grants).

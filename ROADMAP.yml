@@ -40,7 +40,7 @@ items:
   - id: readme-widgets
     phase: 2
     priority: medium
-    status: planned
+    status: done
     title: README widget family
     acceptance:
       - Camo-safe SVGs for funding, roadmap progress, and recent activity, embedded in the README.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `readme-widgets`: two more Camo-safe SVGs beside the runway bar — `roadmap.svg` (the roadmap's stations, phase-ordered, with the now marker) and `activity.svg` (metered calls, spend per day for two weeks, the last call) — rendered from the same data as the site.
 - `per-call-audit`: every metered model call is appended durably to the account's audit trail and served publicly at `/v1/accounts/:id/calls` (newest first, cursor-paginated); the project page links to it.
 - `token-only-books`: the platform meters model calls and nothing else — the supplier debit API, the GitHub OIDC mint/exchange paths, project-to-project redistribution and the planner-label roadmap rollup are gone; a roadmap item's state is the `status` written in `ROADMAP.yml`.
 - `fund-and-show`: the funding site renders the project's vision and roadmap from the repo, sponsor money lands in the account and every model call is metered against it, and the README runway widget shows the live balance and runway.

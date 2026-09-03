@@ -3,6 +3,8 @@
 ![open-autonomy](docs/banner.png)
 
 [![funding](https://open-autonomy.org/v1/funding/runway.svg)](https://github.com/sponsors/volter-ai)
+[![roadmap](https://open-autonomy.org/v1/funding/roadmap.svg)](https://open-autonomy.org/p/volter-ai/open-autonomy)
+[![activity](https://open-autonomy.org/v1/funding/activity.svg)](https://open-autonomy.org/v1/funding/calls)
 
 **Fund a project's agents in the open.** Sponsors pay for token usage and nothing else. Every model
 call is metered against the project's account, so a sponsor can audit that their money went to that
@@ -35,7 +37,8 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 | The build-roadmap cron job | live on the owner's machine |
 | Only token usage on the books | live |
 | Per-call audit trail, public at `/v1/accounts/:id/calls` | live |
-| README widget family, agent live view | on `ROADMAP.yml` |
+| README widgets: funding, roadmap, activity | live |
+| Agent live view | on `ROADMAP.yml` |
 
 ## Run the checks
 
