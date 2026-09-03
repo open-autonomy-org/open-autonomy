@@ -40,3 +40,4 @@ hermes/skills/.usage.json*
 hermes/skills/autonomous-ai-agents/
 hermes/verification_evidence.db
 hermes/verification_evidence.db
+hermes/.restart_pending.json

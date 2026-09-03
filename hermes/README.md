@@ -20,9 +20,13 @@ HERMES_HOME=$PWD/hermes hermes
 # run the roadmap job now
 HERMES_HOME=$PWD/hermes hermes cron run build-roadmap
 
-# keep it running: the gateway daemon fires the cron jobs (and serves Discord if DISCORD_BOT_TOKEN is set)
+# keep it running: the gateway daemon fires the cron jobs and serves the Discord channel
 HERMES_HOME=$PWD/hermes hermes gateway install
 ```
+
+Discord: the bot "Open Autonomy" lives in the "Open Autonomy" server; `hermes/.env` carries
+`DISCORD_BOT_TOKEN`, `DISCORD_ALLOWED_USERS` (who may talk to it) and `DISCORD_HOME_CHANNEL` (where the
+build-roadmap job delivers its reports).
 
 `cron/jobs.json` pins the job's working directory to this repository's absolute path; re-create the
 job with `hermes cron create` if the checkout lives elsewhere.
