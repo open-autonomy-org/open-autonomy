@@ -155,6 +155,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   // Bulk recovery: free the active-run slots of every run whose token has already expired (leaked
   // runs from workflows that died before their release step) and report what remains active. The
   // ledger also reaps lazily on each register, so this is the operator escape hatch, not the only path.
+  // Operator door: re-read a project's docs and metadata from its repo now, without waiting for staleness.
+  const adminSync = path.match(/^\/admin\/accounts\/([^/]+)\/sync$/);
+  if (adminSync) {
+    if (!isAdmin(req, env)) return error('auth_failed', 401);
+    if (req.method !== 'POST') return methodNotAllowed();
+    const account = decodeURIComponent(adminSync[1]);
+    return json({ ok: await syncProfile(env, account), account });
+  }
   if (path === '/admin/limits/reap') {
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (req.method !== 'POST') return methodNotAllowed();

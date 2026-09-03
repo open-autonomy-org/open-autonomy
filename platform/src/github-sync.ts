@@ -6,7 +6,10 @@ import type { Env } from './types.js';
 // description updates the funding page. Unauthenticated read → only public repos sync, which is
 // exactly the gate for appearing on the public storefront. Best-effort: failures are swallowed.
 
-const STALE_MS = 24 * 60 * 60 * 1000;
+// The page is the repo's mirror: the agent flips a roadmap status or lands a changelog line and the site
+// should show it on the next look, not tomorrow. Docs come from raw.githubusercontent (no rate limit); only
+// the repo metadata call touches the REST API, so ten minutes is cheap even unauthenticated.
+const STALE_MS = 10 * 60 * 1000;
 
 interface GitHubRepo {
   description?: string | null;
