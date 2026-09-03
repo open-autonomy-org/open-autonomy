@@ -34,6 +34,9 @@ export interface Env {
   GITHUB_OIDC_OPENID_CONFIGURATION_URL?: string;
   GITHUB_OIDC_JWKS_URL?: string;
   GITHUB_API_BASE?: string;
+  // Optional: raises the GitHub REST rate limit for profile sync (metadata, readme image, roadmap issues).
+  GITHUB_TOKEN?: string;
+  GITHUB_RAW_BASE?: string;
   // Lifetime of a STANDING key (a long-lived project key for an always-on agent such as a Hermes daemon;
   // default 90 days). Standing keys skip the per-run caps and are bounded by the account balance + the
   // global daily cap only.

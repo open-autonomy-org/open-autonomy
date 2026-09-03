@@ -20,3 +20,8 @@ hermes/hooks/
 hermes/cron/output/
 hermes/cron/*.lock
 hermes/__pycache__/
+hermes/bin/
+hermes/.update_check
+hermes/channel_directory.json
+hermes/gateway.pid
+hermes/cron/ticker_*
