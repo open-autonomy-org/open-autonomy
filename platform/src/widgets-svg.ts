@@ -57,9 +57,11 @@ export function renderRoadmapSvg(items: RoadmapItem[]): string {
   for (const r of shown) {
     const phase = r.item.phase ? `P${esc(r.item.phase)}` : '';
     const now = frontier && r.item.id === frontier.item.id;
-    lines.push(`  <circle cx="22" cy="${y - 4}" r="4" fill="${STATE_COLOR[r.state]}"/>`);
-    lines.push(`  <text x="34" y="${y}" font-family="${FONT}" font-size="12" fill="${C.text}">${esc(clip(r.item.title, 50))}</text>`);
     const right = `${phase ? `${phase} · ` : ''}${STATE_WORD[r.state]}${now ? ' · now' : ''}`;
+    // The title yields to its label: ~6.6px per 12px sans char, ~6.2px per 10px mono char, 12px gap.
+    const titleChars = Math.max(12, Math.floor((W - 34 - 16 - right.length * 6.2 - 12) / 6.6));
+    lines.push(`  <circle cx="22" cy="${y - 4}" r="4" fill="${STATE_COLOR[r.state]}"/>`);
+    lines.push(`  <text x="34" y="${y}" font-family="${FONT}" font-size="12" fill="${C.text}">${esc(clip(r.item.title, titleChars))}</text>`);
     lines.push(`  <text x="${W - 16}" y="${y}" text-anchor="end" font-family="${MONO}" font-size="10" fill="${now ? C.blue : C.muted}">${esc(right)}</text>`);
     y += 20;
   }
