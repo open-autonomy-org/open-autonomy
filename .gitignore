@@ -16,10 +16,14 @@ hermes/cache/
 hermes/*_cache/
 hermes/memories/
 hermes/pairing/
-hermes/hooks/
+hermes/hooks/*
+!hermes/hooks/schedule-seed/
+!hermes/hooks/schedule-seed/HOOK.yaml
+!hermes/hooks/schedule-seed/handler.py
 hermes/cron/output/
 hermes/cron/*.lock
 hermes/__pycache__/
+__pycache__/
 hermes/bin/
 hermes/.update_check
 hermes/channel_directory.json
@@ -28,6 +32,9 @@ hermes/cron/ticker_*
 hermes/cron/executions.db
 hermes/cron/notepad.db
 hermes/.skills_prompt_snapshot.json
+# Runtime cron store — rewritten every tick by the scheduler. The committed
+# schedule lives in hermes/cron/jobs.seed.json (seeded by the schedule-seed hook).
+hermes/cron/jobs.json
 hermes/state/
 hermes/cron/usage_audit.jsonl
 hermes/lsp/

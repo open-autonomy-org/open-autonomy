@@ -57,7 +57,7 @@ items:
   - id: schedule-runtime-split
     phase: 3
     priority: medium
-    status: planned
+    status: done
     title: The committed schedule never churns with runtime state
     acceptance:
       - hermes/cron/jobs.json stays byte-identical across cron runs, or the schedule is seeded from a committed file and the runtime copy is ignored.

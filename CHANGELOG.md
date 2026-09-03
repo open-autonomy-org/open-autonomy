@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `schedule-runtime-split`: the committed schedule is now `hermes/cron/jobs.seed.json` (byte-stable); a `schedule-seed` gateway hook reconciles it into the runtime `jobs.json` on boot, which is git-ignored so scheduler run-state never churns a commit.
 - `hermes-self-builder`: the project's own checked-in Hermes home (config, SOUL, skills, cron) drives the roadmap — its standing-key calls are metered to the account and appear in the books, and the `build-roadmap` cron works the top open item, runs the checks, and pushes to main.
 - The project moved to the dedicated `open-autonomy-org` GitHub org, and the agent now reports into the "Open Autonomy" Discord server (bot + home channel); the build-roadmap job delivers there.
 - `project-keys`: any repository owner can mint a standing key for their account by committing a per-day claim file (`/v1/keys/challenge` → `.open-autonomy-claim` → `/v1/keys/mint`), and rotate it with `/v1/keys/rotate` (the old key lives one more day). Standing keys take no lane slot and are capped at three per account. `hermes-key.ts --rotate`.
