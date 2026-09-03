@@ -4,7 +4,7 @@
 // element links to its source. Structure borrowed from GitHub Projects (NEXT), the Actions log (NOW/run page)
 // and the Vercel deployment card (DONE receipts); nothing is styled in a new vocabulary.
 import type { JobRecord, JobSummary, JobTurn } from './limit-ledger.js';
-import { parseRoadmap, roadmapItemState, type RoadmapItem, type RoadmapState } from './project-docs.js';
+import { mdToSafeHtml, parseRoadmap, roadmapItemState, type RoadmapItem, type RoadmapState } from './project-docs.js';
 import { Icon } from './ui/Icon.js';
 import { render } from './ui/render.js';
 
@@ -50,7 +50,7 @@ function Receipt({ job, enc, repoUrl, now }: { job: JobSummary; enc: string; rep
         <span class="rc-stat">{job.turn_count} turns · {job.tool_calls} tools</span>
         {job.status === 'failed' ? <span class="rc-fail">failed</span> : null}
       </div>
-      {job.report ? <p class="rc-report">{job.report.length > 240 ? `${job.report.slice(0, 239)}…` : job.report}</p> : null}
+      {job.report ? <div class="rc-report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(job.report.length > 280 ? `${job.report.slice(0, 279)}…` : job.report) }} /> : null}
       <div class="rc-proofs">
         {job.commit_sha && repoUrl ? <a href={`${repoUrl}/commit/${job.commit_sha}`}>commit {short(job.commit_sha)} ↗</a> : <span class="missing">no commit</span>}
         <a href={`/p/${enc}/jobs/${encodeURIComponent(job.key)}`}>transcript ↗</a>
@@ -158,7 +158,7 @@ export function JobPage({ account, job, repoUrl, now }: { account: string; job: 
         <h1>{job.job_name ?? 'agent'}{job.item_id ? <> · <span class="item">{job.item_id}</span></> : null}</h1>
         <p class="meta">{running ? <><span class="live"><span class="pulse" /></span> running · {fmtDur(job.started_at, undefined, now)}</> : <>{job.status === 'failed' ? '✕ failed' : '✓ done'} · {fmtDur(job.started_at, job.ended_at, now)}</>} · started {fmtWhen(job.started_at)} · {job.turn_count} turns · {tools} tool calls</p>
       </div>
-      {job.report ? <div class="panel"><h3>Report (the agent's own words)</h3><pre class="report">{job.report}</pre></div> : null}
+      {job.report ? <div class="panel"><h3>Report (the agent's own words)</h3><div class="report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(job.report) }} /></div> : null}
       <div class="panel">
         <h3>Proofs</h3>
         <ul class="proofs">
