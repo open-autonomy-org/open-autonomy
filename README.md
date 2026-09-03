@@ -8,10 +8,11 @@
 
 The agent reports every run in the [Open Autonomy Discord](https://discord.gg/AcKMuMv2HC). Sponsor at [github.com/sponsors/open-autonomy-org](https://github.com/sponsors/open-autonomy-org).
 
-**Fund a project's agents in the open.** Sponsors pay for token usage and nothing else. Every model
-call is metered against the project's account, so a sponsor can audit that their money went to that
-project's work. The site and this README show, live, how much is left, how fast it burns, what the
-agents are doing right now, and what is on the roadmap.
+**Tools for sustained autonomous development.** An agent that keeps working a project's roadmap for
+months, not one session: its setup is checked in and readable, its roadmap is a file, and what keeps it
+running is metered in the open. Sponsors pay for token usage and nothing else, every model call lands
+on public books, and the site and this README show what the agent is doing, what it will do next, and
+what it cost.
 
 This repository is two things:
 

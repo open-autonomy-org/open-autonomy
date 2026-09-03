@@ -1,12 +1,12 @@
 # Vision
 
-Open Autonomy funds a project's agents in the open. Sponsors pay for token usage and nothing else. Every model call is metered against the project's account, so a sponsor can see that their money became that project's work, and everyone can watch the balance, the burn, the roadmap, and what the agent is building next.
+Open Autonomy builds the tools for sustained autonomous development: agents that keep working on a project for months, in the open. The agent's setup is checked into the repository and readable by anyone. The roadmap it works is a file. What keeps it running is metered in public, so the people who pay for it can see exactly what they paid for.
 
 ## Why
 
-Autonomous agents can now carry a real share of a software project's work. What they cannot do is pay for themselves. Open-source projects have no clean way to say "here is what the agent will do, here is what it costs, fund it" and then prove that the money went where it was promised.
+Agents can now carry a real share of a software project's work, but only in bursts: a session, a pull request, a demo. Sustained work is a different problem. It needs a schedule, a roadmap the agent can read and update, an identity and doctrine that survive restarts, a place to report, and a way to keep paying for model calls that does not depend on one person's API key.
 
-Open Autonomy is that mechanism. The books are public. The roadmap is a file in the repository. The agent that works the roadmap is a checked-in Hermes setup anyone can read. The only thing between a sponsor's dollar and a model call is a meter.
+Open Autonomy is that missing layer. The agent is stock Hermes, checked in. The roadmap is a file it works top to bottom. The platform meters every model call to the project's account, takes sponsorship in, and shows the books, the roadmap, and the audit trail so a stranger can see the work continuing and where the money went. The only thing between a sponsor's dollar and a model call is a meter.
 
 ## What we hold to
 
