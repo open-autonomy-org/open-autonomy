@@ -1,80 +1,15 @@
 # The roadmap the agent works, top to bottom, in phase order. `status` is one of
 # proposed | planned | active | done, and the agent updates it as it finishes an item.
-# The site renders this file as-is.
+# The site renders this file as-is. An item looks like:
+#
+#   - id: short-slug
+#     phase: 1
+#     priority: high | medium | low
+#     status: planned
+#     title: One line saying what will be true when it is done
+#     acceptance:
+#       - A line the agent can verify on the running system.
+#
+# Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
-items:
-  - id: fund-and-show
-    phase: 1
-    priority: high
-    status: done
-    title: Fund the project and show its vision and roadmap
-    acceptance:
-      - The site's project page renders docs/VISION.md and ROADMAP.yml from this repository.
-      - Sponsor money enters the project's account and every model call is metered against it.
-      - The README funding widget shows the live balance and runway.
-  - id: hermes-self-builder
-    phase: 1
-    priority: high
-    status: done
-    title: The project's own Hermes agent builds the roadmap
-    acceptance:
-      - hermes/ is a complete Hermes home (config, SOUL.md, skills, cron) checked into the repository.
-      - The agent's model calls go through the platform on a standing project key and appear in the books.
-      - A cron job works the top open roadmap item, runs the checks, and pushes to main.
-  - id: token-only-books
-    phase: 2
-    priority: high
-    status: done
-    title: Only token usage on the books
-    acceptance:
-      - The platform meters model calls and nothing else; the generic supplier debit API is removed.
-      - The public account snapshot reconciles to model spend alone.
-  - id: per-call-audit
-    phase: 2
-    priority: high
-    status: done
-    title: Durable per-call audit log per account
-    acceptance:
-      - Every metered call is appended to a durable log keyed by account (model, tokens, cost, time, run).
-      - A public read route serves the log so a sponsor can audit where funding went.
-  - id: readme-widgets
-    phase: 2
-    priority: medium
-    status: done
-    title: README widget family
-    acceptance:
-      - Camo-safe SVGs for funding, roadmap progress, and recent activity, embedded in the README.
-      - Each widget renders from the same data the site shows.
-  - id: project-keys
-    phase: 3
-    priority: high
-    status: done
-    title: Any funded project can point its Hermes at the platform
-    acceptance:
-      - A repository owner proves control of the repo (a claim file at HEAD) and mints a standing key for its account without the admin token.
-      - A standing key can be rotated by its holder; the old key keeps working for a grace period so a running gateway is never cut off.
-      - The README documents the three commands an adopter runs.
-  - id: schedule-runtime-split
-    phase: 3
-    priority: medium
-    status: done
-    title: The committed schedule never churns with runtime state
-    acceptance:
-      - hermes/cron/jobs.json stays byte-identical across cron runs, or the schedule is seeded from a committed file and the runtime copy is ignored.
-      - An agent commit never includes scheduler run-state changes.
-  - id: prune-actions-era
-    phase: 3
-    priority: medium
-    status: planned
-    title: Nothing in the worker exists only for the retired GitHub Actions fleet
-    acceptance:
-      - Run purposes, per-repo and per-actor daily caps, github_run_id fields and the /gateway route labels are gone or renamed for what they now are, with tests updated.
-      - The project page's activity feed presents a standing key as a key, not as a run that has been running for hours.
-  - id: hermes-live-view
-    phase: 3
-    priority: medium
-    status: done
-    title: Show what the agent is doing now
-    acceptance:
-      - The site renders the agent's current session, its schedule, and its setup from hermes/ and the proxy.
-      - Visualization only; nothing on the site drives the agent.
+items: []

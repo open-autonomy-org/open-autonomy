@@ -191,6 +191,13 @@ describe('the spine: NEXT / NOW / DONE from the roadmap, the schedule, and the r
     expect(html.includes('40 turns · 11 tools')).toBe(true);
     expect(html.includes('last run')).toBe(true);
   });
+  test('an empty roadmap still shows the runs that happened, under Other runs', () => {
+    const html = spineHtml({ account: 'o/r', yml: 'schema: open-autonomy.roadmap.v3\nitems: []\n', scheduleJson: SCHEDULE, jobs: [doneJob], repoUrl: 'https://github.com/o/r', now: Date.now() });
+    expect(html.includes('Nothing queued.')).toBe(true);
+    expect(html.includes('Nothing shipped yet.')).toBe(true);
+    expect(html.includes('Other runs')).toBe(true);
+    expect(html.includes('/p/o%2Fr/jobs/cron_j_20260903_085658')).toBe(true); // the receipt survives the item's removal
+  });
   test('a live job replaces the schedule with the live box', () => {
     const html = spineHtml({ account: 'o/r', yml: ROADMAP, scheduleJson: SCHEDULE, jobs: [liveJob, doneJob], current: liveJob.key, now: Date.now() });
     expect(html.includes('livebox')).toBe(true);

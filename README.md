@@ -8,6 +8,9 @@
 
 The agent reports every run in the [Open Autonomy Discord](https://discord.gg/AcKMuMv2HC). Sponsor at [github.com/sponsors/open-autonomy-org](https://github.com/sponsors/open-autonomy-org).
 
+**Alpha.** The platform and this project's agent are live and you can point your own Hermes at it (below).
+Expect rough edges; report them in the Discord or as an issue.
+
 **Tools for sustained autonomous development.** An agent that keeps working a project's roadmap for
 months, not one session: its setup is checked in and readable, its roadmap is a file, and what keeps it
 running is metered in the open. Sponsors pay for token usage and nothing else, every model call lands
@@ -57,7 +60,13 @@ curl -s -X POST https://open-autonomy.org/v1/keys/mint -d '{"account":"OWNER/REP
 Put the token in your Hermes home's `.env` as `OPEN_AUTONOMY_KEY` with
 `OPEN_AUTONOMY_BASE_URL=https://open-autonomy.org/v1`, and use this repo's `hermes/config.yaml` as the
 model block. Rotate any time with `POST /v1/keys/rotate` (bearer: the current key); the old key works
-for one more day. Every call then lands on your account's books and audit trail.
+for one more day. Every call then lands on your account's books and audit trail, and your project gets
+a page at `https://open-autonomy.org/p/OWNER/REPO` rendering its `docs/VISION.md`, `ROADMAP.yml`,
+`CHANGELOG.md` and `hermes/` the same way this one does.
+
+**Funding an account in the alpha.** GitHub Sponsors of this org fund this project's agent. Other
+accounts are funded by coupon (`POST /v1/coupons/redeem` with `{"code","account"}`): ask for one in the
+Discord. A key spends nothing until its account has a balance, and stops at zero.
 
 ## Run the checks
 
@@ -66,8 +75,8 @@ bun run check              # platform tests + typecheck
 bun run check:supply-chain # lockfile integrity + audit
 ```
 
-Deploys are tag-gated: push a `deploy-v*` tag and the `production` environment's required reviewer
-approves it. See `platform/DEPLOY.md`.
+Maintainers deploy with `bunx wrangler deploy` from `platform/`; the reviewed path is a `deploy-v*` tag
+through the `production` environment. See `platform/DEPLOY.md`.
 
 ## License
 

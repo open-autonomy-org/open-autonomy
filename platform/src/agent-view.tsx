@@ -104,8 +104,10 @@ export function Spine({ account, yml, scheduleJson, jobs, current, repoUrl, now 
   const phaseNum = (i: RoadmapItem): number => { const n = parseInt(i.phase ?? '', 10); return isNaN(n) ? Number.MAX_SAFE_INTEGER : n; };
   const rows = items.map((item) => ({ item, state: roadmapItemState(item) })).sort((a, b) => phaseNum(a.item) - phaseNum(b.item));
   const byItem = new Map<string, JobSummary[]>();
-  for (const j of jobs) if (j.item_id) byItem.set(j.item_id, [...(byItem.get(j.item_id) ?? []), j]);
-  const orphan = jobs.filter((j) => !j.item_id);
+  const known = new Set(items.map((i) => i.id));
+  for (const j of jobs) if (j.item_id && known.has(j.item_id)) byItem.set(j.item_id, [...(byItem.get(j.item_id) ?? []), j]);
+  // A run with no item, or whose item has since left the roadmap file, still happened: it shows under Other runs.
+  const orphan = jobs.filter((j) => !j.item_id || !known.has(j.item_id));
   const live = current ? jobs.find((j) => j.key === current) : undefined;
   const last = jobs.find((j) => j.status !== 'running');
   const schedule = parseSchedule(scheduleJson);

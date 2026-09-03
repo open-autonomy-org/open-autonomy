@@ -15,7 +15,7 @@ You are in the Open Autonomy repository (the cron job sets the working directory
 
 ## Pick the item
 
-1. Read `ROADMAP.yml`. Items are ordered by `phase`, then by position. Pick the first item whose `status` is `active`; if none is `active`, pick the first `planned` item and set it to `active`. Never pick a `proposed` item: those await the owner.
+1. Read `ROADMAP.yml`. Items are ordered by `phase`, then by position. Pick the first item whose `status` is `active`; if none is `active`, pick the first `planned` item and set it to `active`. Never pick a `proposed` item: those await the owner. If there is no `active` or `planned` item, there is nothing to build: report "nothing queued" in one line and stop. Never add an item yourself.
 2. Read the item's `acceptance` lines. They are the whole definition of done.
 
 ## Build it
