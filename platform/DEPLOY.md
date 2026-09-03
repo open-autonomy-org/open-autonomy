@@ -89,7 +89,7 @@ De-risked ahead of the first deploy so it isn't a guess:
    Workers" template, narrowed to this account (`0ed031cc83dad4ad191efba7076074d0`) and ideally just the
    `volter-agent-model-proxy` worker. Nothing else.
 4. **Set it as the environment secret** (write-only; never stored locally):
-   `gh secret set CLOUDFLARE_API_TOKEN --env production -R volter-ai/open-autonomy`
+   `gh secret set CLOUDFLARE_API_TOKEN --env production -R open-autonomy-org/open-autonomy`
 5. **Cut the first tag (admin only)** and watch it:
    `git tag deploy-v0.1.x && git push origin deploy-v0.1.x`
    → the run pauses on the `production` gate → approve (GitHub UI → Actions → run → Review deployments) →

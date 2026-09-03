@@ -22,7 +22,7 @@ const envPath = join(home, '.env');
 const rotate = process.argv.includes('--rotate');
 
 let res: Response;
-let account = arg('--account') ?? 'volter-ai/open-autonomy';
+let account = arg('--account') ?? 'open-autonomy-org/open-autonomy';
 let models = (arg('--models') ?? 'deepseek/deepseek-v4-flash').split(',').map((m) => m.trim()).filter(Boolean);
 if (rotate) {
   const current = existsSync(envPath) ? readFileSync(envPath, 'utf8').match(/^OPEN_AUTONOMY_KEY=(.+)$/m)?.[1] : undefined;

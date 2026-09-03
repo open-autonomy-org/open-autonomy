@@ -2,8 +2,8 @@
 
 ![open-autonomy](docs/banner.png)
 
-[![funding](https://open-autonomy.org/v1/funding/runway.svg)](https://github.com/sponsors/volter-ai)
-[![roadmap](https://open-autonomy.org/v1/funding/roadmap.svg)](https://open-autonomy.org/p/volter-ai/open-autonomy)
+[![funding](https://open-autonomy.org/v1/funding/runway.svg)](https://github.com/sponsors/open-autonomy-org)
+[![roadmap](https://open-autonomy.org/v1/funding/roadmap.svg)](https://open-autonomy.org/p/open-autonomy-org/open-autonomy)
 [![activity](https://open-autonomy.org/v1/funding/activity.svg)](https://open-autonomy.org/v1/funding/calls)
 
 **Fund a project's agents in the open.** Sponsors pay for token usage and nothing else. Every model
@@ -24,7 +24,7 @@ This repository is two things:
    readable by anyone.
 
 The compiler that turns a substrate-neutral org description into GitHub Actions or a local runner
-lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-autonomy-compiler).
+lives in [`open-autonomy-org/open-autonomy-compiler`](https://github.com/open-autonomy-org/open-autonomy-compiler).
 
 ## Status
 

@@ -78,7 +78,7 @@ MODEL_PROXY_URL=... MODEL_PROXY_ADMIN_TOKEN=... bun platform/scripts/fund-bootst
 # issue + redeem a coupon
 curl -X POST https://<proxy-host>/admin/accounts/volter/mint -H "x-admin-token: $TOK" -d '{"amount_usd_cents":50000}'
 curl -X POST https://<proxy-host>/admin/coupons -H "x-admin-token: $TOK" \
-  -d '{"amount_usd_cents":5000,"from":"volter-ai/open-autonomy","sponsor":{"login":"acme","name":"ACME Cloud","tagline":"infra for builders"}}'
+  -d '{"amount_usd_cents":5000,"from":"open-autonomy-org/open-autonomy","sponsor":{"login":"acme","name":"ACME Cloud","tagline":"infra for builders"}}'
 curl -X POST https://<proxy-host>/v1/coupons/redeem -d '{"code":"SPON-XXXX-XXXX-XXXX","account":"volter-ai/some-project"}'
 ```
 

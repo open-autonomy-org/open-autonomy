@@ -21,9 +21,9 @@ const PLAN: Plan = {
   root: 'volter',
   root_mint_usd_cents: 50000, // $500
   grants: [
-    { from: 'volter', to: 'volter-ai/open-autonomy', amount_usd_cents: 50000 },
-    { from: 'volter-ai/open-autonomy', to: 'volter-ai/open-autonomy-testbed', amount_usd_cents: 5000 },
-    { from: 'volter-ai/open-autonomy', to: 'volter-ai/open-autonomy-self-driving-testbed', amount_usd_cents: 5000 },
+    { from: 'volter', to: 'open-autonomy-org/open-autonomy', amount_usd_cents: 50000 },
+    { from: 'open-autonomy-org/open-autonomy', to: 'open-autonomy-org/open-autonomy-testbed', amount_usd_cents: 5000 },
+    { from: 'open-autonomy-org/open-autonomy', to: 'open-autonomy-org/open-autonomy-self-driving-testbed', amount_usd_cents: 5000 },
   ],
 };
 

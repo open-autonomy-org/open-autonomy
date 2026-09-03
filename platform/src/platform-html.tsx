@@ -359,7 +359,7 @@ function Nav() {
       <a href="/" class="brand">{raw(LOGO_SVG)}<span>open-autonomy</span></a>
       <span class="links"><a href="/">Explore</a></span>
       <span class="spacer"></span>
-      <a class="btn" href="https://github.com/sponsors/volter-ai">Become a patron</a>
+      <a class="btn" href="https://github.com/sponsors/open-autonomy-org">Become a patron</a>
     </div></div>
   );
 }

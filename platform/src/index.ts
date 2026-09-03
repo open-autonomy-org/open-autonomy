@@ -343,7 +343,7 @@ function redeemMessage(code?: string): string {
 
 // The account whose runway the default README badge (/v1/funding*) shows.
 function fundingAccount(env: Env): string {
-  return env.DEFAULT_FUNDING_ACCOUNT || 'volter-ai/open-autonomy';
+  return env.DEFAULT_FUNDING_ACCOUNT || 'open-autonomy-org/open-autonomy';
 }
 
 // The account that org-level GitHub Sponsors funding lands on (the org's own project).
