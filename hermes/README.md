@@ -22,6 +22,9 @@ HERMES_HOME=$PWD/hermes hermes cron run build-roadmap
 
 # keep it running: the gateway daemon fires the cron jobs and serves the Discord channel
 HERMES_HOME=$PWD/hermes hermes gateway install
+
+# narrate runs to the platform (the site's NOW / DONE bands): needs a supercode build that knows Hermes
+SUPERCODE_BIN=/path/to/supercode bun platform/scripts/agent-reporter.ts --home hermes --install
 ```
 
 Discord: the bot "Open Autonomy" lives in the "Open Autonomy" server (invite: https://discord.gg/AcKMuMv2HC); `hermes/.env` carries

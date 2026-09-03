@@ -40,8 +40,8 @@ lives in [`open-autonomy-org/open-autonomy-compiler`](https://github.com/open-au
 | The build-roadmap cron job | live on the owner's machine |
 | Only token usage on the books | live |
 | Per-call audit trail, public at `/v1/accounts/:id/calls` | live |
-| README widgets: funding, roadmap, activity | live |
-| Agent live view | on `ROADMAP.yml` |
+| README widgets: funding, now, roadmap, activity | live |
+| The spine: what the agent will do, is doing, and did, with receipts and transcripts | live |
 
 ## Point your own Hermes at the platform
 
