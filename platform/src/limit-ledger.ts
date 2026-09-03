@@ -631,7 +631,10 @@ export class LimitLedger implements DurableObject {
       job.updated_at = new Date(now).toISOString();
     } else if (ev.kind === 'finished') {
       job.status = ev.status === 'failed' ? 'failed' : 'done';
-      job.ended_at = new Date(now).toISOString();
+      // The harness's own end time when the reporter has it (a run narrated after the fact), else now.
+      const endedMs = Date.parse(ev.ended_at ?? '');
+      const startedMs = Date.parse(job.started_at);
+      job.ended_at = new Date(Number.isFinite(endedMs) && endedMs >= startedMs && endedMs <= now + 60_000 ? endedMs : now).toISOString();
       job.report = clipText(ev.report, 4000);
       if (ev.commit_sha && /^[0-9a-f]{7,40}$/.test(ev.commit_sha)) job.commit_sha = ev.commit_sha;
       if (ev.item_id) job.item_id = clipText(ev.item_id, 80);
@@ -1334,7 +1337,7 @@ export interface FundingSnapshot {
 export type JobEvent =
   | { kind: 'started'; key: string; title?: string; item_id?: string; job_name?: string; started_at?: string }
   | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string }
-  | { kind: 'finished'; key: string; status?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string };
+  | { kind: 'finished'; key: string; status?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string; ended_at?: string };
 export interface JobTurn {
   ts?: string;
   role: 'user' | 'assistant' | 'tool' | 'system';

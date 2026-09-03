@@ -187,7 +187,7 @@ async function tick(h: Harness): Promise<void> {
     const exec = executionFor(start.jobId, start.startedAt);
     if (exec && (exec.status === 'completed' || exec.status === 'failed')) {
       const lastText = [...messages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim());
-      const ok = await post({ kind: 'finished', key, status: exec.status === 'failed' ? 'failed' : 'done', report: lastText?.content, commit_sha: commitSince(workdir, start.startedAt, exec.finished_at, st.item_id), item_id: st.item_id });
+      const ok = await post({ kind: 'finished', key, status: exec.status === 'failed' ? 'failed' : 'done', report: lastText?.content, commit_sha: commitSince(workdir, start.startedAt, exec.finished_at, st.item_id), item_id: st.item_id, ended_at: exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined });
       if (ok) { st.finished = true; save(); console.log(`${key}: finished (${exec.status}), ${st.sent} messages`); }
     }
   }

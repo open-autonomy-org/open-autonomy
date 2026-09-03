@@ -726,7 +726,7 @@ describe('agent jobs (the reporter narrates a run on the standing key)', () => {
       { ts: '2026-09-03T15:20:15Z', role: 'tool', tool: 'read_file', result: '1|# The roadmap…' },
       { role: 'nonsense' }, // dropped, never fails the event
     ] })).status).toBe(200);
-    expect((await post(env, key.token, { kind: 'finished', key: 'cron_abc_20260903_152011', status: 'done', report: 'Done. prune-actions-era — committed 7d30729.', commit_sha: '7d30729' })).status).toBe(200);
+    expect((await post(env, key.token, { kind: 'finished', key: 'cron_abc_20260903_152011', status: 'done', report: 'Done. prune-actions-era — committed 7d30729.', commit_sha: '7d30729', ended_at: '2026-09-03T15:44:11Z' })).status).toBe(200);
     const list = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs');
     expect(list.current).toBeUndefined();
     expect(list.jobs.length).toBe(1);
@@ -736,7 +736,7 @@ describe('agent jobs (the reporter narrates a run on the standing key)', () => {
     expect(one.job.turns.length).toBe(3);
     expect(one.job.turns[1].tool).toBe('read_file');
     expect(one.job.report).toContain('7d30729');
-    expect(one.job.ended_at).toBeDefined();
+    expect(one.job.ended_at).toBe('2026-09-03T15:44:11.000Z'); // the harness's own end time, not the narration time
   });
 
   test('the account is the key\'s own; a plain run token or an unknown job is refused', async () => {
