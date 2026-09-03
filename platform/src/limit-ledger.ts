@@ -1,16 +1,6 @@
 import { estimateRunway } from './burn-estimate.js';
 import { json } from './errors.js';
 import { classifyHealth, type HealthOpts, type HealthResult } from './health.js';
-import {
-  generateSupplierSecret,
-  hashSupplierSecret,
-  isCostCategory,
-  MODEL_PROXY_SUPPLIER,
-  SUPPLIER_ID_RE,
-  formatSupplierToken,
-  type CostCategory,
-} from './supplier.js';
-import { constantTimeEqual } from './token.js';
 import type { RunClaims } from './types.js';
 
 // How many days of runway a project aims to keep funded (the goal bar) unless it overrides it.
@@ -23,15 +13,6 @@ const FLEET_TIERS: Tier[] = [
 ];
 const MAX_FLOWS = 200;
 const FEED_LIMIT = 24;
-const MAX_GRANTS_PER_FROM_PER_DAY = 50;
-// Supplier-reserve lifecycle bounds. Closed (settled/released/expired) reserves are retained as a
-// bounded audit trail so settle stays idempotent across retries, then pruned oldest-first.
-const MAX_CLOSED_SUPPLIER_RESERVES = 200;
-const SUPPLIER_RESERVE_DEFAULT_TTL_SECONDS = 3600;
-const SUPPLIER_RESERVE_MAX_TTL_SECONDS = 7 * 24 * 3600;
-// Per-account/per-supplier rolling-spend history window (days retained; caps may look back ≤ this).
-const SUPPLIER_SPEND_MAX_DAYS = 90;
-const SUPPLIER_CAP_DEFAULT_WINDOW_DAYS = 30;
 
 // User/event-triggered purposes — the externally-triggerable, abusable surface that the active-run
 // and daily-count caps exist to throttle. Anything NOT in this set (e.g. `pm`, and future cron
@@ -77,19 +58,6 @@ interface LedgerState {
   // the funding graph; a `grant` flow whose `from` is an account is how a project shows up as another
   // project's patron.
   flows: Flow[];
-  // Per-source grant count for the day (resets at rollover) — a runaway backstop on autonomous
-  // project→project redistribution.
-  grants_by_from_day: Record<string, number>;
-  // Admin-created supplier registry: external billers (compute hosts, labor marketplaces, media
-  // renderers, …) authorized to post itemized debits against accounts with a scoped credential.
-  suppliers: Record<string, Supplier>;
-  // Two-phase supplier holds. A `held` reserve counts against its account's spendable balance
-  // (see reservedFor) until it settles (≤ the held amount; remainder releases), is released, or its
-  // TTL expires. Closed reserves are retained (bounded) so settle/release retries stay idempotent.
-  // Deliberately SEPARATE from `reservations` (the per-model-request holds): those are 10-minute,
-  // day-scoped, and cleared at the daily rollover — supplier holds may span days (a long machine
-  // spawn) and must survive it.
-  supplier_reserves: Record<string, SupplierReserve>;
 }
 
 export interface Account {
@@ -117,60 +85,6 @@ export interface Account {
   // banned = abuse hard-stop (register/reserve refuse, so the repo can't spend through the proxy).
   moderation?: Moderation;
   moderation_reason?: string;
-  // Cumulative consumed spend itemized by cost category (model / machine-seconds / labor / …).
-  // Every debit path attributes here — the proxy's own model settlements as category `model`
-  // (supplier #0), supplier consumes/settles as their declared category — so the public snapshot
-  // can show the account's spending mix.
-  consumed_by_category?: Record<string, number>;
-  // Per-supplier daily spend (trailing window) — the rolling-spend half of the supplier-scoped
-  // exposure cap. supplier id → dayKey → cents.
-  supplier_spend?: Record<string, Record<string, number>>;
-  // Supplier-scoped exposure caps set by the account's admin: supplier id → cap. Exposure =
-  // in-flight held reserves + rolling spend over the cap's window; a debit or hold that would
-  // push past `max_usd_cents` is refused.
-  supplier_caps?: Record<string, SupplierCap>;
-}
-
-export interface SupplierCap {
-  max_usd_cents: number;
-  window_days: number;
-}
-
-// An authorized external biller. Only the SHA-256 hash of its bearer-token secret is stored.
-export interface Supplier {
-  id: string;
-  name: string;
-  url?: string;
-  categories: CostCategory[];
-  secret_hash: string;
-  created_at: string;
-  revoked?: boolean;
-}
-
-export interface SupplierPublic {
-  id: string;
-  name: string;
-  url?: string;
-  categories: CostCategory[];
-  created_at: string;
-  revoked: boolean;
-}
-
-export type SupplierReserveStatus = 'held' | 'settled' | 'released' | 'expired';
-
-export interface SupplierReserve {
-  supplier: string;
-  account: string;
-  amount_usd_cents: number;
-  category: CostCategory;
-  item: string;
-  job_ref?: string;
-  receipt_ref?: string;
-  status: SupplierReserveStatus;
-  created_at: string;
-  expires_at_ms: number;
-  settled_usd_cents?: number;
-  closed_at_ms?: number;
 }
 
 export type Moderation = 'listed' | 'hidden' | 'banned';
@@ -189,9 +103,6 @@ export interface AccountProfile {
   roadmap_yml?: string;
   changelog_md?: string;
   // Generated rollup of each roadmap item's child issues (id → {total, done}), computed at sync time from
-  // the repo's `roadmap:<id>`-labelled issues. Lets the page derive execution status (in progress / done)
-  // without storing it in roadmap.yml — the two-layer model. JSON string to keep the ledger format-agnostic.
-  roadmap_status_json?: string;
 }
 
 export interface Tier {
@@ -209,13 +120,6 @@ export interface Flow {
   coupon?: boolean;
   issue?: number;
   actor?: string;
-  // Itemization carried by consume flows: which supplier debited, under which cost category, for
-  // what line item, with optional external references (job/receipt) for reconciliation.
-  category?: string;
-  supplier?: string;
-  item?: string;
-  job_ref?: string;
-  receipt_ref?: string;
   ts: string;
 }
 
@@ -293,18 +197,7 @@ export class LimitLedger implements DurableObject {
     if (op === 'moderate') return json(await this.moderate(String(body.account), String(body.status) as Moderation, body.reason ? String(body.reason) : undefined, body as Partial<AccountProfile>));
     if (op === 'directory') return json({ ok: true, entries: this.directory() });
     if (op === 'project') return json(this.projectView(String(body.account)));
-    if (op === 'grant_surplus') return json(await this.grantSurplus(String(body.from), String(body.to), Number(body.amount_usd_cents)));
     if (op === 'health') return json(this.health(body.opts as HealthOpts));
-    if (op === 'supplier_create') return json(await this.supplierCreate(body));
-    if (op === 'supplier_list') return json({ ok: true, suppliers: this.supplierList() });
-    if (op === 'supplier_rotate') return json(await this.supplierRotate(String(body.id)));
-    if (op === 'supplier_revoke') return json(await this.supplierRevoke(String(body.id)));
-    if (op === 'supplier_cap_set') return json(await this.supplierCapSet(String(body.account), String(body.supplier), body.max_usd_cents as number | null | undefined, body.window_days as number | undefined));
-    if (op === 'supplier_consume') return json(await this.supplierConsume(body.supplier_id, body.secret_hash, body, body.config as LimitConfig));
-    if (op === 'supplier_reserve') return json(await this.supplierReserve(body.supplier_id, body.secret_hash, body, body.config as LimitConfig));
-    if (op === 'supplier_settle') return json(await this.supplierSettle(body.supplier_id, body.secret_hash, body));
-    if (op === 'supplier_release') return json(await this.supplierRelease(body.supplier_id, body.secret_hash, String(body.reserve_id)));
-    if (op === 'supplier_reserve_get') return json(this.supplierReserveView(body.supplier_id, body.secret_hash, String(body.reserve_id)));
     if (op === 'status') return json(this.snapshot());
     if (op === 'reap') return json(await this.reapAdmin());
     if (op === 'reap_repo') return json(await this.reapRepo(String(body.repo)));
@@ -319,7 +212,6 @@ export class LimitLedger implements DurableObject {
     this.normalizeState();
     this.rolloverIfNeeded();
     this.gcReservations();
-    this.gcSupplierReserves();
     this.loaded = true;
   }
 
@@ -342,15 +234,11 @@ export class LimitLedger implements DurableObject {
     return a ? a.granted_in_usd_cents - a.granted_out_usd_cents - a.consumed_usd_cents : 0;
   }
 
-  // In-flight holds charged to an account (not yet consumed), so concurrent requests can't
-  // over-reserve past the balance. Sums BOTH per-model-request reservations and held supplier
-  // reserves — reserved funds count against spendable balance for every spend path.
+  // In-flight per-request model reservations charged to an account (not yet consumed), so concurrent
+  // requests can't over-reserve past the balance.
   private reservedFor(id: string): number {
     let total = 0;
     for (const r of Object.values(this.state.reservations)) if (r.account === id) total += r.amount;
-    for (const r of Object.values(this.state.supplier_reserves)) {
-      if (r.status === 'held' && r.account === id) total += r.amount_usd_cents;
-    }
     return total;
   }
 
@@ -586,9 +474,6 @@ export class LimitLedger implements DurableObject {
   private async reserve(requestId: string, amount: number, config: LimitConfig, runId?: string): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
-    // Expired supplier holds must release before the balance gate below reads reservedFor(), or a
-    // dead hold could keep blocking model spend until an unrelated supplier op happens to GC it.
-    this.gcSupplierReserves();
 
     // A non-finite or negative amount would slip past the `>` gates below and poison reserved/balance
     // arithmetic into NaN, permanently disabling enforcement for this Durable Object.
@@ -636,16 +521,13 @@ export class LimitLedger implements DurableObject {
     const spent = Number.isFinite(actual) ? Math.max(0, actual) : 0;
     if (reservation) {
       this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
-      // The proxy's own inline model settlement is supplier #0 (`model-proxy`): it debits through the
-      // same applyDebit path as external suppliers, so the category breakdown and flow itemization
-      // are complete for every spend path.
+      // The only thing that leaves the books is a settled model call: charge the project's account and
+      // itemize it in the flow feed.
       if (reservation.account) {
-        this.applyDebit(reservation.account, spent, {
-          category: 'model',
-          supplier: MODEL_PROXY_SUPPLIER,
-          issue: reservation.issue,
-          actor: reservation.actor,
-        });
+        const a = this.ensureAcct(reservation.account);
+        a.consumed_usd_cents += spent;
+        recordDailySpend(a, spent);
+        if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, issue: reservation.issue, actor: reservation.actor });
       }
       // Attribute the settled spend to the run so the live-agents panel can show per-run burn. A consume
       // always follows a successful reserve (one provider round-trip), so count the request here too.
@@ -671,356 +553,9 @@ export class LimitLedger implements DurableObject {
     await this.save();
   }
 
-  // ---- suppliers (the generic supplier API) ---------------------------------
-
-  // The ONE debit path: every consume — the proxy's own model settlements (supplier #0) and external
-  // suppliers' itemized consumes/settles — leaves the system through here, so category attribution,
-  // per-supplier rolling spend, and the flow itemization can never drift apart. Mutates state; the
-  // caller saves. Conservation: this only moves balance → consumed (minted totals are untouched).
-  private applyDebit(
-    account: string,
-    amount: number,
-    meta: { category: CostCategory; supplier: string; item?: string; issue?: number; actor?: string; job_ref?: string; receipt_ref?: string },
-  ): void {
-    const a = this.ensureAcct(account);
-    const spent = Number.isFinite(amount) ? Math.max(0, amount) : 0;
-    a.consumed_usd_cents += spent;
-    recordDailySpend(a, spent);
-    if (spent > 0) {
-      const cats = (a.consumed_by_category ??= {});
-      cats[meta.category] = (cats[meta.category] ?? 0) + spent;
-      recordSupplierSpend(a, meta.supplier, spent);
-      this.recordFlow({
-        kind: 'consume',
-        to: account,
-        amount_usd_cents: spent,
-        category: meta.category,
-        supplier: meta.supplier,
-        item: meta.item,
-        issue: meta.issue,
-        actor: meta.actor,
-        job_ref: meta.job_ref,
-        receipt_ref: meta.receipt_ref,
-      });
-    }
-  }
-
-  // Resolve + authenticate a supplier credential (id + SHA-256 of the token secret, hashed by the
-  // worker). Revoked suppliers fail closed; comparison is constant-time.
-  private supplierFromAuth(id: unknown, secretHash: unknown): Supplier | null {
-    if (typeof id !== 'string' || typeof secretHash !== 'string' || !secretHash) return null;
-    const s = this.state.suppliers[id];
-    if (!s || s.revoked) return null;
-    if (!constantTimeEqual(s.secret_hash, secretHash)) return null;
-    return s;
-  }
-
-  private async supplierCreate(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const url = typeof body.url === 'string' && body.url ? body.url : undefined;
-    const categories = Array.isArray(body.categories) ? body.categories.filter(isCostCategory) : [];
-    if (!name || !categories.length || (Array.isArray(body.categories) && body.categories.length !== categories.length)) {
-      return { ok: false, error: 'invalid_supplier' };
-    }
-    let id: string;
-    if (body.id !== undefined) {
-      if (typeof body.id !== 'string' || !SUPPLIER_ID_RE.test(body.id) || body.id === MODEL_PROXY_SUPPLIER) {
-        return { ok: false, error: 'invalid_supplier_id' };
-      }
-      id = body.id;
-    } else {
-      id = generateSupplierId();
-    }
-    if (this.state.suppliers[id]) return { ok: false, error: 'supplier_exists', id };
-    const secret = generateSupplierSecret();
-    const supplier: Supplier = {
-      id,
-      name,
-      url,
-      categories: [...new Set(categories)],
-      secret_hash: await hashSupplierSecret(secret),
-      created_at: new Date().toISOString(),
-    };
-    this.state.suppliers[id] = supplier;
-    await this.save();
-    // The plaintext token is returned exactly once, at creation (and on rotate) — never stored.
-    return { ok: true, supplier: publicSupplier(supplier), token: formatSupplierToken(id, secret) };
-  }
-
-  private supplierList(): SupplierPublic[] {
-    return Object.values(this.state.suppliers).map(publicSupplier);
-  }
-
-  private async supplierRotate(id: string): Promise<Record<string, unknown>> {
-    const s = this.state.suppliers[id];
-    if (!s) return { ok: false, error: 'supplier_not_found' };
-    const secret = generateSupplierSecret();
-    s.secret_hash = await hashSupplierSecret(secret);
-    await this.save();
-    return { ok: true, supplier: publicSupplier(s), token: formatSupplierToken(id, secret) };
-  }
-
-  private async supplierRevoke(id: string): Promise<Record<string, unknown>> {
-    const s = this.state.suppliers[id];
-    if (!s) return { ok: false, error: 'supplier_not_found' };
-    s.revoked = true;
-    await this.save();
-    return { ok: true, supplier: publicSupplier(s) };
-  }
-
-  // Set (or clear, with a null/0 amount) an account's exposure cap for one supplier. Exposure =
-  // in-flight held reserves + rolling spend over the window; supplier ops that would push past the
-  // cap are refused. The cap may pre-exist the supplier (it keys on the supplier id).
-  private async supplierCapSet(account: string, supplierId: string, maxUsdCents?: number | null, windowDays?: number): Promise<Record<string, unknown>> {
-    if (!account || !supplierId) return { ok: false, error: 'invalid_request' };
-    const a = this.ensureAcct(account);
-    const caps = (a.supplier_caps ??= {});
-    if (maxUsdCents === null || maxUsdCents === 0) {
-      delete caps[supplierId];
-      await this.save();
-      return { ok: true, account, supplier: supplierId, cap: null };
-    }
-    if (typeof maxUsdCents !== 'number' || !Number.isInteger(maxUsdCents) || maxUsdCents <= 0) {
-      return { ok: false, error: 'invalid_cap' };
-    }
-    const window = typeof windowDays === 'number' && Number.isInteger(windowDays) && windowDays >= 1
-      ? Math.min(windowDays, SUPPLIER_SPEND_MAX_DAYS)
-      : SUPPLIER_CAP_DEFAULT_WINDOW_DAYS;
-    caps[supplierId] = { max_usd_cents: maxUsdCents, window_days: window };
-    await this.save();
-    return { ok: true, account, supplier: supplierId, cap: caps[supplierId] };
-  }
-
-  private supplierInFlight(account: string, supplierId: string): number {
-    let total = 0;
-    for (const r of Object.values(this.state.supplier_reserves)) {
-      if (r.status === 'held' && r.account === account && r.supplier === supplierId) total += r.amount_usd_cents;
-    }
-    return total;
-  }
-
-  private supplierRollingSpend(account: string, supplierId: string, windowDays: number): number {
-    const bySupplier = this.acct(account)?.supplier_spend?.[supplierId];
-    if (!bySupplier) return 0;
-    const cutoff = new Date(Date.now() - (windowDays - 1) * 86_400_000).toISOString().slice(0, 10);
-    let total = 0;
-    for (const [day, cents] of Object.entries(bySupplier)) if (day >= cutoff) total += cents;
-    return total;
-  }
-
-  // The supplier-scoped exposure gate: refuse when in-flight + rolling spend + the new amount would
-  // exceed the account's cap for this supplier. No cap set = no supplier-scoped limit (the account
-  // balance and moderation gates still apply).
-  private supplierCapRefusal(account: string, supplierId: string, addAmount: number): Record<string, unknown> | null {
-    const cap = this.acct(account)?.supplier_caps?.[supplierId];
-    if (!cap) return null;
-    const inFlight = this.supplierInFlight(account, supplierId);
-    const rolling = this.supplierRollingSpend(account, supplierId, cap.window_days);
-    if (inFlight + rolling + addAmount > cap.max_usd_cents) {
-      return {
-        ok: false,
-        error: 'supplier_cap_exceeded',
-        account,
-        supplier: supplierId,
-        max_usd_cents: cap.max_usd_cents,
-        window_days: cap.window_days,
-        in_flight_usd_cents: inFlight,
-        rolling_spend_usd_cents: rolling,
-      };
-    }
-    return null;
-  }
-
-  // One-shot itemized debit. Idempotent on the supplier's `key`; refused when the account lacks
-  // spendable balance (behind the enforce_account_balance rollout flag, same semantics as the model
-  // path), when the category is outside the supplier's grant, when the account is banned, or when
-  // the account's supplier-scoped exposure cap would be exceeded.
-  private async supplierConsume(supplierId: unknown, secretHash: unknown, body: Record<string, unknown>, config: LimitConfig): Promise<Record<string, unknown>> {
-    this.rolloverIfNeeded();
-    this.gcSupplierReserves();
-    const supplier = this.supplierFromAuth(supplierId, secretHash);
-    if (!supplier) return { ok: false, error: 'supplier_auth_failed' };
-    const account = typeof body.account === 'string' ? body.account : '';
-    const amount = normalizedCents(body.amount_usd_cents);
-    const item = typeof body.item === 'string' ? body.item.trim().slice(0, 300) : '';
-    const key = typeof body.key === 'string' ? body.key.trim() : '';
-    if (!account || amount === null || !item || !key || key.length > 128 || !isCostCategory(body.category)) return { ok: false, error: 'invalid_request' };
-    if (!supplier.categories.includes(body.category)) {
-      return { ok: false, error: 'category_not_allowed', category: body.category, allowed: supplier.categories };
-    }
-    const nsKey = `supplier:${supplier.id}:consume:${key}`;
-    if (this.keyApplied(nsKey)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
-    if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
-    const capRefusal = this.supplierCapRefusal(account, supplier.id, amount);
-    if (capRefusal) return capRefusal;
-    if (config.enforce_account_balance) {
-      const available = this.balanceOf(account) - this.reservedFor(account);
-      if (amount > available) {
-        return { ok: false, error: 'account_balance_exhausted', account, balance_usd_cents: this.balanceOf(account), reserved_usd_cents: this.reservedFor(account) };
-      }
-    }
-    this.recordKey(nsKey);
-    this.applyDebit(account, amount, {
-      category: body.category,
-      supplier: supplier.id,
-      item,
-      job_ref: optionalRef(body.job_ref),
-      receipt_ref: optionalRef(body.receipt_ref),
-    });
-    await this.save();
-    return { ok: true, account, amount_usd_cents: amount, category: body.category, balance_usd_cents: this.balanceOf(account) };
-  }
-
-  // Phase 1 of the two-phase debit: hold funds against the account. The hold counts against
-  // spendable balance (all spend paths see it) until settled, released, or TTL-expired. This is the
-  // primitive an issuing bridge or a long-running machine spawn needs: secure the money first, bill
-  // the true cost at the end.
-  private async supplierReserve(supplierId: unknown, secretHash: unknown, body: Record<string, unknown>, config: LimitConfig): Promise<Record<string, unknown>> {
-    this.rolloverIfNeeded();
-    this.gcSupplierReserves();
-    const supplier = this.supplierFromAuth(supplierId, secretHash);
-    if (!supplier) return { ok: false, error: 'supplier_auth_failed' };
-    const account = typeof body.account === 'string' ? body.account : '';
-    const amount = normalizedCents(body.amount_usd_cents);
-    const item = typeof body.item === 'string' ? body.item.trim().slice(0, 300) : '';
-    const key = typeof body.key === 'string' && body.key.trim() ? body.key.trim() : undefined;
-    if (!account || amount === null || !item || (key && key.length > 128) || !isCostCategory(body.category)) return { ok: false, error: 'invalid_request' };
-    if (!supplier.categories.includes(body.category)) {
-      return { ok: false, error: 'category_not_allowed', category: body.category, allowed: supplier.categories };
-    }
-    // Keyed reserves get a deterministic id so a retried create returns the SAME hold instead of
-    // double-holding. A replayed key whose reserve has already closed (and possibly been pruned)
-    // refuses rather than silently re-holding.
-    const reserveId = key ? `rsv:${supplier.id}:${key}` : `rsv_${crypto.randomUUID()}`;
-    const existing = this.state.supplier_reserves[reserveId];
-    if (existing) {
-      if (existing.status === 'held') return { ok: true, idempotent: true, ...reserveView(reserveId, existing) };
-      return { ok: false, error: 'reserve_closed', reserve_id: reserveId, status: existing.status };
-    }
-    if (key && this.keyApplied(`supplier:${supplier.id}:reserve:${key}`)) {
-      return { ok: false, error: 'reserve_closed', reserve_id: reserveId };
-    }
-    if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
-    const capRefusal = this.supplierCapRefusal(account, supplier.id, amount);
-    if (capRefusal) return capRefusal;
-    if (config.enforce_account_balance) {
-      const available = this.balanceOf(account) - this.reservedFor(account);
-      if (amount > available) {
-        return { ok: false, error: 'account_balance_exhausted', account, balance_usd_cents: this.balanceOf(account), reserved_usd_cents: this.reservedFor(account) };
-      }
-    }
-    const ttlSeconds = clampTtlSeconds(body.ttl_seconds);
-    if (ttlSeconds === null) return { ok: false, error: 'invalid_ttl' };
-    const reserve: SupplierReserve = {
-      supplier: supplier.id,
-      account,
-      amount_usd_cents: amount,
-      category: body.category,
-      item,
-      job_ref: optionalRef(body.job_ref),
-      status: 'held',
-      created_at: new Date().toISOString(),
-      expires_at_ms: Date.now() + ttlSeconds * 1000,
-    };
-    this.state.supplier_reserves[reserveId] = reserve;
-    if (key) this.recordKey(`supplier:${supplier.id}:reserve:${key}`);
-    this.ensureAcct(account);
-    await this.save();
-    return { ok: true, ...reserveView(reserveId, reserve), spendable_usd_cents: this.balanceOf(account) - this.reservedFor(account) };
-  }
-
-  // Phase 2: settle ≤ the held amount (the remainder releases immediately). Idempotent: settling an
-  // already-settled reserve reports the original settlement instead of double-debiting.
-  private async supplierSettle(supplierId: unknown, secretHash: unknown, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    this.gcSupplierReserves();
-    const supplier = this.supplierFromAuth(supplierId, secretHash);
-    if (!supplier) return { ok: false, error: 'supplier_auth_failed' };
-    const reserveId = typeof body.reserve_id === 'string' ? body.reserve_id : '';
-    const r = this.state.supplier_reserves[reserveId];
-    if (!r || r.supplier !== supplier.id) return { ok: false, error: 'reserve_not_found' };
-    if (r.status === 'settled') {
-      return { ok: true, idempotent: true, reserve_id: reserveId, settled_usd_cents: r.settled_usd_cents ?? 0, account: r.account };
-    }
-    // An expired (or released) hold no longer secures funds — settling it would bypass the balance
-    // gate the reserve existed to provide. Pick the TTL generously; a late settle must re-consume.
-    if (r.status !== 'held') return { ok: false, error: 'reserve_closed', reserve_id: reserveId, status: r.status };
-    const amount = normalizedCents(body.amount_usd_cents, { allowZero: true });
-    if (amount === null) return { ok: false, error: 'invalid_request' };
-    if (amount > r.amount_usd_cents) {
-      return { ok: false, error: 'settle_exceeds_reserve', reserve_id: reserveId, amount_usd_cents: amount, reserved_usd_cents: r.amount_usd_cents };
-    }
-    const receiptRef = optionalRef(body.receipt_ref);
-    r.status = 'settled';
-    r.settled_usd_cents = amount;
-    r.closed_at_ms = Date.now();
-    if (receiptRef) r.receipt_ref = receiptRef;
-    if (amount > 0) {
-      this.applyDebit(r.account, amount, {
-        category: r.category,
-        supplier: supplier.id,
-        item: r.item,
-        job_ref: r.job_ref,
-        receipt_ref: receiptRef,
-      });
-    }
-    await this.save();
-    return {
-      ok: true,
-      reserve_id: reserveId,
-      account: r.account,
-      settled_usd_cents: amount,
-      released_usd_cents: r.amount_usd_cents - amount,
-      balance_usd_cents: this.balanceOf(r.account),
-    };
-  }
-
-  // Release a hold in full (nothing consumed). Idempotent on already-closed reserves.
-  private async supplierRelease(supplierId: unknown, secretHash: unknown, reserveId: string): Promise<Record<string, unknown>> {
-    this.gcSupplierReserves();
-    const supplier = this.supplierFromAuth(supplierId, secretHash);
-    if (!supplier) return { ok: false, error: 'supplier_auth_failed' };
-    const r = this.state.supplier_reserves[reserveId];
-    if (!r || r.supplier !== supplier.id) return { ok: false, error: 'reserve_not_found' };
-    if (r.status !== 'held') return { ok: true, idempotent: true, reserve_id: reserveId, status: r.status };
-    r.status = 'released';
-    r.closed_at_ms = Date.now();
-    await this.save();
-    return { ok: true, reserve_id: reserveId, status: 'released', released_usd_cents: r.amount_usd_cents };
-  }
-
-  private supplierReserveView(supplierId: unknown, secretHash: unknown, reserveId: string): Record<string, unknown> {
-    this.gcSupplierReserves();
-    const supplier = this.supplierFromAuth(supplierId, secretHash);
-    if (!supplier) return { ok: false, error: 'supplier_auth_failed' };
-    const r = this.state.supplier_reserves[reserveId];
-    if (!r || r.supplier !== supplier.id) return { ok: false, error: 'reserve_not_found' };
-    return { ok: true, ...reserveView(reserveId, r) };
-  }
-
-  // Expire overdue holds (their funds return to spendable) and prune the closed-reserve audit
-  // trail beyond retention. Mutates state without saving — persisted by the next saving op, and
-  // recomputed from expiry timestamps until then, so an unsaved GC can never resurrect a hold.
-  private gcSupplierReserves(): void {
-    const now = Date.now();
-    for (const r of Object.values(this.state.supplier_reserves)) {
-      if (r.status === 'held' && r.expires_at_ms <= now) {
-        r.status = 'expired';
-        r.closed_at_ms = now;
-      }
-    }
-    const closed = Object.entries(this.state.supplier_reserves).filter(([, r]) => r.status !== 'held');
-    if (closed.length > MAX_CLOSED_SUPPLIER_RESERVES) {
-      closed.sort((a, b) => (a[1].closed_at_ms ?? 0) - (b[1].closed_at_ms ?? 0));
-      for (const [id] of closed.slice(0, closed.length - MAX_CLOSED_SUPPLIER_RESERVES)) {
-        delete this.state.supplier_reserves[id];
-      }
-    }
-  }
-
   // ---- read models ----------------------------------------------------------
 
   fundingSnapshot(account: string): FundingSnapshot {
-    this.gcSupplierReserves();
     const a = this.acct(account);
     const grantedIn = a?.granted_in_usd_cents ?? 0;
     const grantedOut = a?.granted_out_usd_cents ?? 0;
@@ -1037,11 +572,9 @@ export class LimitLedger implements DurableObject {
       granted_in_usd_cents: grantedIn,
       granted_out_usd_cents: grantedOut,
       consumed_usd_cents: consumed,
-      // In-flight holds (supplier reserves + per-request model reservations) and what is left to
-      // spend after them; the category mix of everything consumed so far.
+      // In-flight per-request reservations and what is left to spend after them.
       reserved_usd_cents: reserved,
       spendable_usd_cents: balance - reserved,
-      consumed_by_category: { ...(a?.consumed_by_category ?? {}) },
       burn_per_day_usd_cents: est.burn_per_day_usd_cents,
       runway_days: funded ? est.runway_days : null,
       runway_lo_days: funded ? est.runway_lo_days : null,
@@ -1052,7 +585,7 @@ export class LimitLedger implements DurableObject {
     };
   }
 
-  // ---- platform: profile, moderation, directory, project view, redistribution ---------------
+  // ---- platform: profile, moderation, directory, project view ---------------
 
   // Cache the project's GitHub-synced display metadata (+ operator-set goal/tiers). Synced fields are
   // only written when present, so a periodic sync never clobbers an operator override with a blank.
@@ -1060,7 +593,7 @@ export class LimitLedger implements DurableObject {
     if (!account) return { ok: false, error: 'invalid_account' };
     const a = this.ensureAcct(account);
     const p = (a.profile ??= {});
-    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'roadmap_status_json', 'changelog_md'] as const) {
+    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'changelog_md'] as const) {
       if (profile[k] !== undefined) p[k] = profile[k];
     }
     if (typeof goalDays === 'number' && goalDays > 0) a.goal_days = Math.floor(goalDays);
@@ -1176,29 +709,6 @@ export class LimitLedger implements DurableObject {
     return { ok: true, ...classifyHealth(orgs, opts) };
   }
 
-  // Autonomous project→project redistribution. A project may grant only the SURPLUS above its own
-  // funding goal (floor = goal_days × burn), so it can never strand its own runway; a per-day count
-  // caps runaway loops. Identity (that `from` is the caller's own repo) is enforced upstream by OIDC.
-  private async grantSurplus(from: string, to: string, amount: number): Promise<Record<string, unknown>> {
-    if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
-    if ((this.state.grants_by_from_day[from] ?? 0) >= MAX_GRANTS_PER_FROM_PER_DAY) {
-      return { ok: false, error: 'grant_rate_limited' };
-    }
-    const f = this.fundingSnapshot(from);
-    const goalDays = this.acct(from)?.goal_days ?? FLEET_GOAL_DAYS;
-    const floor = Math.ceil(goalDays * Math.max(0, f.burn_per_day_usd_cents));
-    const surplus = f.balance_usd_cents - floor;
-    if (amount > surplus) {
-      return { ok: false, error: 'insufficient_surplus', surplus_usd_cents: Math.max(0, surplus), floor_usd_cents: floor, balance_usd_cents: f.balance_usd_cents };
-    }
-    const result = await this.grant(from, to, amount);
-    if (result.ok) {
-      this.state.grants_by_from_day[from] = (this.state.grants_by_from_day[from] ?? 0) + 1;
-      await this.save();
-    }
-    return { ...result, floor_usd_cents: floor, surplus_usd_cents: surplus };
-  }
-
   private snapshot() {
     return {
       day_key: this.state.day_key,
@@ -1215,8 +725,6 @@ export class LimitLedger implements DurableObject {
       accounts: Object.fromEntries(
         Object.keys(this.state.accounts).map((id) => [id, { ...this.state.accounts[id], balance_usd_cents: this.balanceOf(id) }]),
       ),
-      suppliers: Object.fromEntries(Object.values(this.state.suppliers).map((s) => [s.id, publicSupplier(s)])),
-      supplier_reserves: this.state.supplier_reserves,
     };
   }
 
@@ -1227,7 +735,6 @@ export class LimitLedger implements DurableObject {
     this.state.runs_by_repo_day = {};
     this.state.runs_by_actor_day = {};
     this.state.runs_by_issue_day = {};
-    this.state.grants_by_from_day = {};
     this.state.consumed_usd_cents = 0;
     this.state.reserved_usd_cents = 0;
     this.state.reservations = {};
@@ -1243,9 +750,6 @@ export class LimitLedger implements DurableObject {
     this.state.applied_keys ??= [];
     this.state.coupons ??= {};
     this.state.flows ??= [];
-    this.state.grants_by_from_day ??= {};
-    this.state.suppliers ??= {};
-    this.state.supplier_reserves ??= {};
   }
 
   private gcReservations(): void {
@@ -1391,63 +895,6 @@ function recordDailySpend(a: Account, amount: number): void {
   while (days.length > 14) delete a.daily_spend[days.shift() as string];
 }
 
-// Per-supplier daily spend (trailing SUPPLIER_SPEND_MAX_DAYS window) — the rolling-spend evidence
-// the supplier-scoped exposure cap sums over its own (≤ max) window.
-function recordSupplierSpend(a: Account, supplierId: string, amount: number): void {
-  const spend = (a.supplier_spend ??= {});
-  const bySupplier = (spend[supplierId] ??= {});
-  const today = dayKey();
-  bySupplier[today] = (bySupplier[today] ?? 0) + amount;
-  const days = Object.keys(bySupplier).sort();
-  while (days.length > SUPPLIER_SPEND_MAX_DAYS) delete bySupplier[days.shift() as string];
-}
-
-function publicSupplier(s: Supplier): SupplierPublic {
-  return { id: s.id, name: s.name, url: s.url, categories: s.categories, created_at: s.created_at, revoked: Boolean(s.revoked) };
-}
-
-function generateSupplierId(): string {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  return `sup-${[...bytes].map((b) => alphabet[b % alphabet.length]).join('')}`;
-}
-
-// Positive-integer cents or null. Guards the NaN/negative/float poisoning path the model ledger
-// guards the same way: a bad amount must refuse, never slip past a `>` gate.
-function normalizedCents(value: unknown, opts: { allowZero?: boolean } = {}): number | null {
-  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
-  if (value < 0) return null;
-  if (value === 0 && !opts.allowZero) return null;
-  return value;
-}
-
-function clampTtlSeconds(value: unknown): number | null {
-  if (value === undefined) return SUPPLIER_RESERVE_DEFAULT_TTL_SECONDS;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return null;
-  return Math.min(value, SUPPLIER_RESERVE_MAX_TTL_SECONDS);
-}
-
-function optionalRef(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 300) : undefined;
-}
-
-function reserveView(reserveId: string, r: SupplierReserve): Record<string, unknown> {
-  return {
-    reserve_id: reserveId,
-    supplier: r.supplier,
-    account: r.account,
-    amount_usd_cents: r.amount_usd_cents,
-    category: r.category,
-    item: r.item,
-    job_ref: r.job_ref,
-    receipt_ref: r.receipt_ref,
-    status: r.status,
-    created_at: r.created_at,
-    expires_at: new Date(r.expires_at_ms).toISOString(),
-    settled_usd_cents: r.settled_usd_cents,
-  };
-}
-
 // Daily spend series (idle days as 0), including today's spend so far, over the recorded window
 // capped to the trailing 14 days — the evidence fed to the Bayesian runway estimate. With no spend
 // the series is empty and the estimate falls back to the prior (a posterior is never empty).
@@ -1485,7 +932,6 @@ function displayProfile(a: Account | undefined): AccountProfile {
     synced_at: p.synced_at,
     charter_md: p.charter_md,
     roadmap_yml: p.roadmap_yml,
-    roadmap_status_json: p.roadmap_status_json,
     changelog_md: p.changelog_md,
   };
 }
@@ -1543,9 +989,6 @@ function emptyState(): LedgerState {
     applied_keys: [],
     coupons: {},
     flows: [],
-    grants_by_from_day: {},
-    suppliers: {},
-    supplier_reserves: {},
   };
 }
 
@@ -1664,13 +1107,6 @@ export class LimitLedgerClient {
     return this.rpc<ProjectView>('project', { account });
   }
 
-  grantSurplus(from: string, to: string, amountUsdCents: number) {
-    return this.rpc<{ ok: boolean; from?: string; to?: string; amount_usd_cents?: number; from_balance_usd_cents?: number; to_balance_usd_cents?: number; surplus_usd_cents?: number; floor_usd_cents?: number; error?: string }>(
-      'grant_surplus',
-      { from, to, amount_usd_cents: amountUsdCents },
-    );
-  }
-
   status() {
     return this.rpc<unknown>('status');
   }
@@ -1691,91 +1127,6 @@ export class LimitLedgerClient {
     return this.rpc<{ ok: true; repo: string; freed: number; active_global: number }>('reap_repo', { repo });
   }
 
-  // ---- suppliers ----
-  supplierCreate(input: { id?: string; name: string; url?: string; categories: string[] }) {
-    return this.rpc<{ ok: boolean; supplier?: SupplierPublic; token?: string; error?: string }>('supplier_create', input);
-  }
-
-  supplierList() {
-    return this.rpc<{ ok: boolean; suppliers: SupplierPublic[] }>('supplier_list');
-  }
-
-  supplierRotate(id: string) {
-    return this.rpc<{ ok: boolean; supplier?: SupplierPublic; token?: string; error?: string }>('supplier_rotate', { id });
-  }
-
-  supplierRevoke(id: string) {
-    return this.rpc<{ ok: boolean; supplier?: SupplierPublic; error?: string }>('supplier_revoke', { id });
-  }
-
-  supplierCapSet(account: string, supplier: string, maxUsdCents?: number | null, windowDays?: number) {
-    return this.rpc<{ ok: boolean; cap?: SupplierCap | null; error?: string }>(
-      'supplier_cap_set',
-      { account, supplier, max_usd_cents: maxUsdCents, window_days: windowDays },
-    );
-  }
-
-  supplierConsume(auth: SupplierAuth, body: SupplierConsumeBody, config: LimitConfig) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; account?: string; amount_usd_cents?: number; category?: string; balance_usd_cents?: number; error?: string; [key: string]: unknown }>(
-      'supplier_consume',
-      { supplier_id: auth.id, secret_hash: auth.secret_hash, ...body, config },
-    );
-  }
-
-  supplierReserve(auth: SupplierAuth, body: SupplierReserveBody, config: LimitConfig) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; reserve_id?: string; status?: string; expires_at?: string; error?: string; [key: string]: unknown }>(
-      'supplier_reserve',
-      { supplier_id: auth.id, secret_hash: auth.secret_hash, ...body, config },
-    );
-  }
-
-  supplierSettle(auth: SupplierAuth, body: { reserve_id: string; amount_usd_cents: number; receipt_ref?: string }) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; reserve_id?: string; settled_usd_cents?: number; released_usd_cents?: number; balance_usd_cents?: number; error?: string; [key: string]: unknown }>(
-      'supplier_settle',
-      { supplier_id: auth.id, secret_hash: auth.secret_hash, ...body },
-    );
-  }
-
-  supplierRelease(auth: SupplierAuth, reserveId: string) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; reserve_id?: string; status?: string; released_usd_cents?: number; error?: string }>(
-      'supplier_release',
-      { supplier_id: auth.id, secret_hash: auth.secret_hash, reserve_id: reserveId },
-    );
-  }
-
-  supplierReserveGet(auth: SupplierAuth, reserveId: string) {
-    return this.rpc<{ ok: boolean; reserve_id?: string; status?: string; error?: string; [key: string]: unknown }>(
-      'supplier_reserve_get',
-      { supplier_id: auth.id, secret_hash: auth.secret_hash, reserve_id: reserveId },
-    );
-  }
-}
-
-// A parsed + hashed supplier credential as the worker hands it to the ledger: the token's id part
-// plus the SHA-256 hash of its secret part (the DO stores only hashes).
-export interface SupplierAuth {
-  id: string;
-  secret_hash: string;
-}
-
-export interface SupplierConsumeBody {
-  account: string;
-  amount_usd_cents: number;
-  category: string;
-  item: string;
-  job_ref?: string;
-  receipt_ref?: string;
-  key: string;
-}
-
-export interface SupplierReserveBody {
-  account: string;
-  amount_usd_cents: number;
-  category: string;
-  item: string;
-  job_ref?: string;
-  ttl_seconds?: number;
-  key?: string;
 }
 
 export interface FundingSnapshot {
@@ -1788,7 +1139,6 @@ export interface FundingSnapshot {
   consumed_usd_cents: number;
   reserved_usd_cents: number;
   spendable_usd_cents: number;
-  consumed_by_category: Record<string, number>;
   burn_per_day_usd_cents: number;
   runway_days: number | null;
   runway_lo_days: number | null;

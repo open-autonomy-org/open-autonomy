@@ -668,7 +668,7 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
         <div class="cols">
           <div>
             <CharterPanel md={v.profile.charter_md} repoUrl={repoUrl} />
-            <RoadmapPanel yml={v.profile.roadmap_yml} repoUrl={repoUrl} statusJson={v.profile.roadmap_status_json} />
+            <RoadmapPanel yml={v.profile.roadmap_yml} repoUrl={repoUrl} />
             <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
             <div class="panel">
               <h3>Goal</h3>

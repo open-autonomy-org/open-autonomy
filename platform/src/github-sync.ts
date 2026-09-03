@@ -55,11 +55,10 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     const cover = repo ? (await firstReadmeImage(env, account)) ?? '' : undefined;
     // The project's identity docs, read from its own repo. A repo that ships none simply has empty
     // panels — the page degrades cleanly. Size-capped so the cached profile record stays small.
-    const [charter, roadmap, changelog, roadmapStatus] = await Promise.all([
+    const [charter, roadmap, changelog] = await Promise.all([
       fetchRepoText(env, account, 'docs/VISION.md'),
       fetchRepoText(env, account, 'ROADMAP.yml'),
       fetchRepoText(env, account, 'CHANGELOG.md'),
-      fetchRoadmapStatus(env, account),
     ]);
     await new LimitLedgerClient(env.LIMITS).setProfile(account, {
       tagline: repo?.description ?? undefined,
@@ -70,7 +69,6 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       charter_md: charter ?? '',
       roadmap_yml: roadmap ?? '',
       changelog_md: changelog ?? '',
-      roadmap_status_json: roadmapStatus ?? '',
     });
     return true;
   } catch {
@@ -115,70 +113,6 @@ async function fetchRepoText(env: Env, account: string, path: string, maxBytes =
 // We keep a bounded slice of issues per item (open first, so the actionable work shows); `total`/`done` still
 // reflect the FULL count, and the panel links to GitHub for the rest. Best-effort: undefined on any failure.
 const ROADMAP_ISSUES_PER_ITEM = 8;
-
-// GitHub paginates the issues endpoint at 100/page; follow the `Link: <…>; rel="next"` header so the rollup's
-// total/done counts stay correct past 100 tracking issues (without it the roadmap silently truncated). Bounded
-// to MAX_ROADMAP_PAGES so a pathological repo can't make the funding page hang.
-const MAX_ROADMAP_PAGES = 10;
-function nextPageUrl(linkHeader: string | null): string | undefined {
-  if (!linkHeader) return undefined;
-  const m = linkHeader.match(/<([^>]+)>\s*;\s*rel="next"/);
-  return m ? m[1] : undefined;
-}
-
-// A raw GitHub issue as returned by the issues endpoint — only the fields the rollup reads.
-export type RawRoadmapIssue = { number?: number; title?: string; state?: string; pull_request?: unknown; labels?: Array<{ name?: string }> };
-
-// Bucket planner tracking issues into per-item {total, done, issues[]} keyed by their `roadmap:<id>` label.
-// PURE (no network) so it's unit-testable; fetchRoadmapStatus just feeds it the fetched pages.
-export function rollupRoadmapStatus(issues: RawRoadmapIssue[]): string {
-  type Ref = { n: number; t: string; c: boolean }; // number, title, closed — short keys to keep the payload small
-  const items: Record<string, { total: number; done: number; issues: Ref[] }> = {};
-  for (const issue of issues) {
-    if (issue.pull_request) continue; // the issues endpoint also returns PRs — skip them
-    const closed = issue.state === 'closed';
-    const ref: Ref = { n: issue.number ?? 0, t: (issue.title ?? '').slice(0, 140), c: closed };
-    for (const l of issue.labels ?? []) {
-      const name = l.name ?? '';
-      if (!name.startsWith('roadmap:')) continue;
-      const id = name.slice('roadmap:'.length);
-      // `roadmap:<id>` links an issue to its roadmap item. Legacy phase labels were `roadmap:phase-N`
-      // (the prefix is now `phase:`), which collide with this rollup namespace — an issue carrying only
-      // `roadmap:phase-1` would otherwise strand its count in a phantom `phase-1` bucket that matches no
-      // item, leaving the real item showing zero issues. Skip phase labels: they are not item ids.
-      if (/^phase-\d+$/.test(id)) continue;
-      const row = items[id] ?? (items[id] = { total: 0, done: 0, issues: [] });
-      row.total += 1;
-      if (closed) row.done += 1;
-      row.issues.push(ref);
-    }
-  }
-  // Open issues first (the actionable work), then closed; within each, lowest number first. Keep a bounded slice.
-  for (const row of Object.values(items)) {
-    row.issues.sort((a, b) => (Number(a.c) - Number(b.c)) || (a.n - b.n));
-    row.issues = row.issues.slice(0, ROADMAP_ISSUES_PER_ITEM);
-  }
-  return JSON.stringify({ items });
-}
-
-async function fetchRoadmapStatus(env: Env, account: string): Promise<string | undefined> {
-  const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
-  try {
-    const issues: RawRoadmapIssue[] = [];
-    let url: string | undefined = `${base}/repos/${account}/issues?labels=origin:roadmap-planner&state=all&per_page=100`;
-    for (let page = 0; url && page < MAX_ROADMAP_PAGES; page++) {
-      const res: Response = await fetch(url, {
-        headers: ghHeaders(env),
-      });
-      if (!res.ok) { if (page === 0) return undefined; break; } // first page fails → nothing; later page → use partial
-      issues.push(...(await res.json() as RawRoadmapIssue[]));
-      url = nextPageUrl(res.headers.get('link'));
-    }
-    return rollupRoadmapStatus(issues);
-  } catch {
-    return undefined;
-  }
-}
 
 // Find the first non-badge image referenced in the repo's README and resolve it to an absolute URL.
 async function firstReadmeImage(env: Env, account: string): Promise<string | undefined> {

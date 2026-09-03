@@ -9,76 +9,21 @@ import { render } from './ui/render.js';
 export interface RoadmapItem {
   id: string;
   title: string;
-  // v2 (two-layer model): the roadmap is a parking lot of intents at any granularity. `proposed` marks an
-  // item still awaiting the strategy gate; `planned` marks one the planner has fully decomposed into issues.
-  // Execution status (in progress / done) is NOT stored here — it is DERIVED from the item's child issues
-  // (see roadmapItemState). `status` is the legacy single-layer field, kept only for back-compat rendering.
-  proposed?: boolean;
-  planned?: boolean;
+  // Written in ROADMAP.yml by the agent as it works: proposed (awaits the owner) | planned (queued) |
+  // active (being built now) | done (every acceptance line true and verified).
   status?: string;
   phase?: string;
   priority?: string;
 }
 
-// One child issue of a roadmap item (number, title, closed) — the layer-2 execution unit beneath the intent.
-export interface IssueRef {
-  n: number;
-  t: string;
-  c: boolean;
-}
-
-// Child-issue rollup for one roadmap item (issues labelled `roadmap:<id>`), used to derive execution status
-// and to expand the item into its actual issues. `issues` is a bounded slice (the full tally lives in total/done).
-export interface RoadmapCounts {
-  total: number;
-  done: number;
-  issues?: IssueRef[];
-}
-
 export type RoadmapState = 'proposed' | 'parked' | 'in_progress' | 'done';
 
-// The two-layer truth: a roadmap item's execution state is a function of its planning flag and its child
-// issues — never hand-stored. parked = ratified but not yet decomposed; in_progress = decomposed with open
-// issues; done = decomposed and every child issue closed. Adding an issue to a "done" item flips it back to
-// in_progress automatically (the state is derived), so nothing is ever frozen.
-export function roadmapItemState(item: RoadmapItem, counts?: RoadmapCounts): RoadmapState {
-  const total = counts?.total ?? 0;
-  const done = counts?.done ?? 0;
-  // Execution status is DERIVED: once an item has child issues, the issues are the truth — open work means
-  // in progress, all-closed means done — regardless of any hand-written `status`/`planned` flag. This is the
-  // whole two-layer point, and it also self-heals (reopen/add an issue and the item flips back automatically).
-  if (total > 0) return done >= total ? 'done' : 'in_progress';
-  // No child issues yet → fall back to the planning signal. A proposal is still at the strategy gate; a
-  // `planned: true` item is decomposition-in-progress (issues imminent); everything else is parked/queued.
-  if (item.proposed) return 'proposed';
-  if (item.planned) return 'in_progress';
-  // Legacy single-layer items (stored status, no v2 flags) keep their old meaning when they have no issues.
-  if (item.proposed === undefined && item.planned === undefined && item.status) {
-    if (item.status === 'proposed') return 'proposed';
-    if (item.status === 'done') return 'done';
-    if (item.status === 'active') return 'in_progress';
-    return 'parked'; // legacy 'planned' → parked
-  }
+// The rendered state of an item is exactly its written status; anything unrecognized is queued.
+export function roadmapItemState(item: RoadmapItem): RoadmapState {
+  if (item.status === 'proposed') return 'proposed';
+  if (item.status === 'done') return 'done';
+  if (item.status === 'active') return 'in_progress';
   return 'parked';
-}
-
-// Parse the synced `roadmap-status.json` (id → {total, done}) into a lookup. Tolerant: returns an empty map
-// for absent/garbage input so the panel still renders (every item simply falls back to parked/derived-empty).
-export function parseRoadmapStatus(json: string | undefined): Map<string, RoadmapCounts> {
-  const map = new Map<string, RoadmapCounts>();
-  if (!json) return map;
-  try {
-    const parsed = JSON.parse(json) as { items?: Record<string, { total?: number; done?: number; issues?: Array<{ n?: number; t?: string; c?: boolean }> }> };
-    for (const [id, c] of Object.entries(parsed.items ?? {})) {
-      const issues = Array.isArray(c.issues)
-        ? c.issues.map((i) => ({ n: Number(i.n) || 0, t: String(i.t ?? ''), c: Boolean(i.c) })).filter((i) => i.n > 0)
-        : undefined;
-      map.set(id, { total: Math.max(0, Number(c.total) || 0), done: Math.max(0, Number(c.done) || 0), issues });
-    }
-  } catch {
-    /* malformed cache — degrade to empty */
-  }
-  return map;
 }
 
 export interface ChangelogEntry {
@@ -148,15 +93,13 @@ export function parseRoadmap(yml: string): RoadmapItem[] {
       continue;
     }
     if (!cur) continue;
-    const fm = line.match(/^\s+(phase|priority|status|title|proposed|planned):\s*(.+?)\s*$/);
+    const fm = line.match(/^\s+(phase|priority|status|title):\s*(.+?)\s*$/);
     if (fm) {
       const [, key, val] = fm;
       if (key === 'phase') cur.phase = unquote(val);
       else if (key === 'priority') cur.priority = unquote(val);
       else if (key === 'status') cur.status = unquote(val);
       else if (key === 'title') cur.title = unquote(val);
-      else if (key === 'proposed') cur.proposed = unquote(val) === 'true';
-      else if (key === 'planned') cur.planned = unquote(val) === 'true';
     }
   }
   if (cur) items.push(cur);
@@ -210,79 +153,31 @@ const STATE_CLASS: Record<RoadmapState, string> = {
   done: 'done',
 };
 
-type Row = { item: RoadmapItem; state: RoadmapState; c: RoadmapCounts };
+type Row = { item: RoadmapItem; state: RoadmapState };
 
-// How many child issues we list inside an expanded item before linking out to GitHub for the rest.
-const ISSUE_PREVIEW = 6;
-
-// The status word shown on an item's right edge: in-flight items get their issue tally, others a plain label.
-function stateLabel(state: RoadmapState, c: RoadmapCounts): string {
-  // The x/y tally only carries meaning with MORE THAN ONE issue (real partial progress). A single in-flight
-  // issue reading "0/1" is just noise — it reads cleaner as a plain "in progress".
-  if (state === 'in_progress') return c.total > 1 ? `${c.done}/${c.total}` : 'in progress';
-  if (state === 'done') return c.total > 1 ? `${c.total} done` : 'shipped';
+function stateLabel(state: RoadmapState): string {
+  if (state === 'in_progress') return 'in progress';
+  if (state === 'done') return 'shipped';
   if (state === 'proposed') return 'proposed';
   return 'queued';
 }
 
-// The planner names tracking issues `[roadmap:<id>] <title>`; strip that machine prefix so the issue reads
-// as the work, not the label that wires it. (Defensive — a hand-filed issue without the prefix is untouched.)
-const cleanTitle = (t: string): string => t.replace(/^\s*\[roadmap:[^\]]*\]\s*/i, '').trim() || t;
-
-// An item whose single child issue just restates its own title is a self-referential umbrella. Don't let it
-// expand into a pointless echo of itself — detect and collapse the redundancy into a single clear state.
-function isRedundant(itemTitle: string, issueTitle: string): boolean {
-  // Compare titles after stripping machine prefixes and normalizing noise (case, punctuation).
-  const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return norm(itemTitle) === norm(cleanTitle(issueTitle));
-}
-
-// The child-issue list revealed when an item is expanded — layer 2 beneath the intent. Each issue links to
-// itself on GitHub (open ○ / closed ✓); the bounded slice ends in a "+N more on GitHub →" link to the rest.
-function IssueList({ row, repoUrl }: { row: Row; repoUrl?: string }) {
-  const issues = row.c.issues ?? [];
-  const shown = issues.slice(0, ISSUE_PREVIEW);
-  const moreHref = repoUrl ? `${repoUrl}/issues?q=${encodeURIComponent(`label:roadmap:${row.item.id}`)}` : undefined;
-  const remaining = row.c.total - shown.length;
-  return (
-    <div class="rm-issues">
-      <ul>
-        {shown.map((is) => {
-          const label = <><span class={`rm-ic ${is.c ? 'closed' : 'open'}`}>{is.c ? '✓' : '○'}</span><span class="rm-inum">{`#${is.n}`}</span><span class="rm-it">{cleanTitle(is.t)}</span></>;
-          return <li>{repoUrl ? <a href={`${repoUrl}/issues/${is.n}`}>{label}</a> : <span>{label}</span>}</li>;
-        })}
-      </ul>
-      {remaining > 0 && moreHref ? <a class="rm-more" href={moreHref}>{`+${remaining} more on GitHub →`}</a> : null}
-      {shown.length === 0 && moreHref ? <a class="rm-more" href={moreHref}>{`View ${row.c.total} issue${row.c.total === 1 ? '' : 's'} on GitHub →`}</a> : null}
-    </div>
-  );
-}
-
-// One station on the journey timeline — a roadmap item sitting on the phase spine. Its node colour is the
-// derived state (✓ shipped / ● in flight / ○ queued / ◌ proposed); the frontier in-flight item wears a "now"
-// marker. A decomposed item expands (native <details>) into its child issues; the spine connects them in
-// phase order so the panel reads as a path, not a list.
-function RoadmapStation({ row, repoUrl, now }: { row: Row; repoUrl?: string; now?: boolean }) {
-  const { item: it, state, c } = row;
+// One station on the journey timeline — a roadmap item sitting on the phase spine. Its node colour is its
+// state (✓ shipped / ● in flight / ○ queued / ◌ proposed); the frontier in-flight item wears a "now" marker.
+function RoadmapStation({ row, now }: { row: Row; now?: boolean }) {
+  const { item: it, state } = row;
   const phase = it.phase ? (isNaN(parseInt(it.phase, 10)) ? it.phase : `P${it.phase}`) : '';
-  const frac = c.total > 0 ? Math.min(1, c.done / c.total) : 0;
-  const isSingleRedundantIssue = c.total === 1 && !!c.issues?.length && isRedundant(it.title, c.issues[0].t);
-  const expandable = c.total > 0 && !isSingleRedundantIssue;
-  const head = (
-    <div class="rm-shead">
-      <span class="rm-stitle">{it.title}</span>
-      {now ? <span class="rm-now">now</span> : null}
-      {phase ? <span class="rm-sphase">{phase}</span> : null}
-      <span class="rm-sstatus">{stateLabel(state, c)}</span>
-    </div>
-  );
-  const bar = expandable && state === 'in_progress' ? <div class="rm-ebar"><div class="rm-efill" style={`width:${Math.round(frac * 100)}%`} /></div> : null;
   return (
-    <li class={`rm-stn ${STATE_CLASS[state]}${now ? ' is-now' : ''}${isSingleRedundantIssue ? ' is-single' : ''}`}>
+    <li class={`rm-stn ${STATE_CLASS[state]}${now ? ' is-now' : ''}`}>
       <span class="rm-node" aria-hidden="true" />
-      {expandable
-        ? <details><summary>{head}{bar}</summary><IssueList row={row} repoUrl={repoUrl} /></details>
-        : <div class="rm-stnbody">{head}</div>}
+      <div class="rm-stnbody">
+        <div class="rm-shead">
+          <span class="rm-stitle">{it.title}</span>
+          {now ? <span class="rm-now">now</span> : null}
+          {phase ? <span class="rm-sphase">{phase}</span> : null}
+          <span class="rm-sstatus">{stateLabel(state)}</span>
+        </div>
+      </div>
     </li>
   );
 }
@@ -302,15 +197,12 @@ function RoadmapFuture({ rows }: { rows: Row[] }) {
   );
 }
 
-// A Roadmap-above-Issues JOURNEY TIMELINE. Items are stations on a phase-ordered spine — shipped behind us,
-// the in-flight frontier marked "now", the ratified queue ahead, proposed candidates folded at the foot.
-// Each decomposed station expands into its actual child issues (layer 2). Reads as a path; bounded because
-// every station is collapsed until clicked.
-export function RoadmapPanel({ yml, repoUrl, statusJson }: { yml?: string; repoUrl?: string; statusJson?: string }) {
+// A JOURNEY TIMELINE. Items are stations on a phase-ordered spine — shipped behind us, the in-flight
+// frontier marked "now", the queue ahead, proposed candidates folded at the foot. Reads as a path.
+export function RoadmapPanel({ yml, repoUrl }: { yml?: string; repoUrl?: string }) {
   const items = parseRoadmap(yml ?? '');
   if (!items.length) return null;
-  const counts = parseRoadmapStatus(statusJson);
-  const rows: Row[] = items.map((item) => ({ item, state: roadmapItemState(item, counts.get(item.id)), c: counts.get(item.id) ?? { total: 0, done: 0 } }));
+  const rows: Row[] = items.map((item) => ({ item, state: roadmapItemState(item) }));
   const phaseNum = (i: RoadmapItem): number => { const n = parseInt(i.phase ?? '', 10); return isNaN(n) ? Number.MAX_SAFE_INTEGER : n; };
   const byPhase = (a: Row, b: Row): number => phaseNum(a.item) - phaseNum(b.item);
   const of = (s: RoadmapState): Row[] => rows.filter((r) => r.state === s).sort(byPhase);
@@ -343,7 +235,7 @@ export function RoadmapPanel({ yml, repoUrl, statusJson }: { yml?: string; repoU
         <div class="rm-track"><div class="rm-fill" style={`width:${pct}%`} /></div>
       </div>
       <ol class="rm-spine">
-        {spine.map((r) => <RoadmapStation row={r} repoUrl={repoUrl} now={frontier && r.item.id === frontier.item.id} />)}
+        {spine.map((r) => <RoadmapStation row={r} now={frontier && r.item.id === frontier.item.id} />)}
         {proposed.length ? <RoadmapFuture rows={proposed} /> : null}
       </ol>
       {roadmapUrl ? <a class="docmore" href={roadmapUrl}>Full roadmap →</a> : null}
@@ -351,8 +243,8 @@ export function RoadmapPanel({ yml, repoUrl, statusJson }: { yml?: string; repoU
   );
 }
 
-export function renderRoadmapPanel(yml: string | undefined, repoUrl: string | undefined, statusJson?: string): string {
-  return render(<RoadmapPanel yml={yml} repoUrl={repoUrl} statusJson={statusJson} />);
+export function renderRoadmapPanel(yml: string | undefined, repoUrl: string | undefined): string {
+  return render(<RoadmapPanel yml={yml} repoUrl={repoUrl} />);
 }
 
 export function ChangelogPanel({ md, repoUrl }: { md?: string; repoUrl?: string }) {

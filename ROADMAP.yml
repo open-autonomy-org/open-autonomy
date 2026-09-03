@@ -24,7 +24,7 @@ items:
   - id: token-only-books
     phase: 2
     priority: high
-    status: planned
+    status: done
     title: Only token usage on the books
     acceptance:
       - The platform meters model calls and nothing else; the generic supplier debit API is removed.

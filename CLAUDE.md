@@ -22,7 +22,7 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 - Develop directly on `main`; push and merge without waiting. Report what you did.
 - Live proof is the proof: the deployed worker and the rendered site/README, not local tests alone.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
-- Security-critical paths (admin token, HMAC, OIDC, spend caps, the account tree) get the higher bar:
+- Security-critical paths (admin token, HMAC, spend caps, the account tree) get the higher bar:
   fail a review you cannot confidently verify.
 - `bun run check` = platform tests + typecheck. `bun run check:supply-chain` = lockfile integrity + audit.
 

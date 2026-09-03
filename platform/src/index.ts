@@ -1,15 +1,13 @@
 import { handleAnthropic } from './anthropic.js';
 import { healthOptsFromEnv, limitsFromEnv } from './config.js';
 import { error, json, methodNotAllowed, parseJson } from './errors.js';
-import { verifyGitHubOidcToken } from './github-oidc.js';
 import { isStale, syncAllStale, syncProfile } from './github-sync.js';
-import { LimitLedger, LimitLedgerClient, type Moderation, type Sponsor, type SupplierAuth, type Tier, type AccountProfile } from './limit-ledger.js';
+import { LimitLedger, LimitLedgerClient, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
 import { handleOpenAI } from './openai.js';
 import { LOGO_SVG, renderExplore, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
 import { RunBudget, RunBudgetClient } from './run-budget.js';
 import { renderRunwaySvg } from './runway-svg.js';
 import { handleSponsorsWebhook } from './sponsors-webhook.js';
-import { hashSupplierSecret, parseSupplierToken } from './supplier.js';
 import { extractBearer, extractModelToken, signRunToken, verifyRunToken } from './token.js';
 import type { Env, MintRunRequest, RunClaims } from './types.js';
 
@@ -134,7 +132,6 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
 
   if (path === '/admin/runs/mint') return mintRun(req, env);
-  if (path === '/v1/runs/mint') return mintRunOidc(req, env);
   if (path === '/admin/limits/status') {
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (req.method !== 'GET') return methodNotAllowed();
@@ -227,80 +224,6 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     return json(result, { status });
   }
 
-  // ---- Generic supplier API (admin registry + supplier-authenticated debit ops) ----
-  // Suppliers are admin-created external billers with scoped bearer tokens (`sup.<id>.<secret>`)
-  // and an allowed-category list. They post itemized debits (consume) or two-phase holds
-  // (reserve → settle/release) against accounts. See README "Suppliers".
-  if (path === '/admin/suppliers') {
-    if (!isAdmin(req, env)) return error('auth_failed', 401);
-    const ledger = new LimitLedgerClient(env.LIMITS);
-    if (req.method === 'GET') return json(await ledger.supplierList());
-    if (req.method !== 'POST') return methodNotAllowed();
-    const body = parseJson<{ id?: string; name?: string; url?: string; categories?: string[] }>(await req.text());
-    if (!body || typeof body.name !== 'string' || !Array.isArray(body.categories)) return error('invalid_request');
-    const result = await ledger.supplierCreate({ id: body.id, name: body.name, url: body.url, categories: body.categories });
-    return json(result, { status: result.ok ? 200 : result.error === 'supplier_exists' ? 409 : 400 });
-  }
-  const supAdmin = path.match(/^\/admin\/suppliers\/([^/]+)\/(rotate|revoke)$/);
-  if (supAdmin) {
-    if (!isAdmin(req, env)) return error('auth_failed', 401);
-    if (req.method !== 'POST') return methodNotAllowed();
-    const id = decodeURIComponent(supAdmin[1]);
-    const ledger = new LimitLedgerClient(env.LIMITS);
-    const result = supAdmin[2] === 'rotate' ? await ledger.supplierRotate(id) : await ledger.supplierRevoke(id);
-    return json(result, { status: result.ok ? 200 : 404 });
-  }
-  // Supplier-scoped exposure cap: the account's admin bounds one supplier's in-flight reserves +
-  // rolling spend against this account. Amount null/0 clears the cap.
-  const supCap = path.match(/^\/admin\/accounts\/([^/]+)\/supplier-cap$/);
-  if (supCap) {
-    if (!isAdmin(req, env)) return error('auth_failed', 401);
-    if (req.method !== 'POST') return methodNotAllowed();
-    const account = decodeURIComponent(supCap[1]);
-    const body = parseJson<{ supplier?: string; max_usd_cents?: number | null; window_days?: number }>(await req.text());
-    if (!body || typeof body.supplier !== 'string' || !body.supplier) return error('invalid_request');
-    const result = await new LimitLedgerClient(env.LIMITS).supplierCapSet(account, body.supplier, body.max_usd_cents, body.window_days);
-    return json(result, { status: result.ok ? 200 : 400 });
-  }
-  if (path === '/v1/supplier/consume' || path === '/v1/supplier/reserve' || path === '/v1/supplier/settle' || path === '/v1/supplier/release') {
-    if (req.method !== 'POST') return methodNotAllowed();
-    const auth = await supplierCreds(req);
-    if (!auth) return error('supplier_auth_failed', 401);
-    const ledger = new LimitLedgerClient(env.LIMITS);
-    const body = parseJson<Record<string, unknown>>(await req.text());
-    if (!body) return error('invalid_json');
-    const config = limitsFromEnv(env);
-    const result =
-      path === '/v1/supplier/consume' ? await ledger.supplierConsume(auth, body as never, config)
-      : path === '/v1/supplier/reserve' ? await ledger.supplierReserve(auth, body as never, config)
-      : path === '/v1/supplier/settle' ? await ledger.supplierSettle(auth, body as never)
-      : await ledger.supplierRelease(auth, String(body.reserve_id ?? ''));
-    return json(result, { status: result.ok ? 200 : supplierErrorStatus(result.error) });
-  }
-  const supReserveGet = path.match(/^\/v1\/supplier\/reserves\/([^/]+)$/);
-  if (supReserveGet) {
-    if (req.method !== 'GET') return methodNotAllowed();
-    const auth = await supplierCreds(req);
-    if (!auth) return error('supplier_auth_failed', 401);
-    const result = await new LimitLedgerClient(env.LIMITS).supplierReserveGet(auth, decodeURIComponent(supReserveGet[1]));
-    return json(result, { status: result.ok ? 200 : supplierErrorStatus(result.error) });
-  }
-
-  // Autonomous project→project redistribution. The OIDC repo claim must equal the source account, so
-  // a project can only spend its OWN balance; the ledger enforces the surplus-above-goal floor.
-  const acctGrant = path.match(/^\/v1\/accounts\/(.+)\/grant$/);
-  if (acctGrant) {
-    if (req.method !== 'POST') return methodNotAllowed();
-    const from = decodeURIComponent(acctGrant[1]);
-    const oidc = await verifyGitHubOidcToken(env, extractBearer(req));
-    if (!oidc) return error('auth_failed', 401);
-    if (oidc.repository !== from) return error('forbidden_account', 403);
-    const body = parseJson<{ to?: string; amount_usd_cents?: number }>(await req.text());
-    if (!body?.to || typeof body.amount_usd_cents !== 'number') return error('invalid_request');
-    const result = await new LimitLedgerClient(env.LIMITS).grantSurplus(from, body.to, body.amount_usd_cents);
-    return json(result, { status: result.ok ? 200 : 402 });
-  }
-
   // Public per-account funding status + runway badge.
   const acctRunway = path.match(/^\/v1\/accounts\/([^/]+)\/runway\.svg$/);
   if (acctRunway) return runwaySvg(env, decodeURIComponent(acctRunway[1]), req);
@@ -363,27 +286,6 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     });
   }
 
-  const exchangeRun = path.match(/^\/v1\/runs\/([^/]+)\/exchange$/);
-  if (exchangeRun) {
-    if (req.method !== 'POST') return methodNotAllowed();
-    return exchangeRunToken(req, env, decodeURIComponent(exchangeRun[1]));
-  }
-
-  // OIDC-gated revoke: the owning repo (proven via OIDC) may revoke its own run, so fleet repos
-  // need no admin token for run cleanup. (Bounded tokens also expire on their own.)
-  const revokeRun = path.match(/^\/v1\/runs\/([^/]+)\/revoke$/);
-  if (revokeRun) {
-    if (req.method !== 'POST') return methodNotAllowed();
-    const oidc = await verifyGitHubOidcToken(env, extractBearer(req));
-    if (!oidc) return error('auth_failed', 401);
-    const runId = decodeURIComponent(revokeRun[1]);
-    const status = await new RunBudgetClient(env.RUNS, runId).status() as { claims?: RunClaims | null };
-    if (!status.claims || status.claims.repo !== oidc.repository) return error('forbidden_run', 403);
-    await new RunBudgetClient(env.RUNS, runId).revoke();
-    await new LimitLedgerClient(env.LIMITS).complete(runId);
-    return json({ ok: true, run_id: runId });
-  }
-
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
 
@@ -402,55 +304,6 @@ async function mintRun(req: Request, env: Env): Promise<Response> {
   const body = parseJson<MintRunRequest>(await req.text());
   if (!body) return error('invalid_json');
   return mintFromRequest(env, body);
-}
-
-// Repos in the OIDC allowlist may mint via OIDC instead of the admin token, so a fleet repo needs
-// no stored admin secret. Identity (repo/actor/run) comes from the verified OIDC token, never the
-// client body; caps are still clamped to the proxy's ceilings. Trust is at repo granularity for
-// mint: any workflow in a repo whose entry is in GITHUB_OIDC_ALLOWED_WORKFLOW may mint.
-async function mintRunOidc(req: Request, env: Env): Promise<Response> {
-  if (req.method !== 'POST') return methodNotAllowed();
-  const oidc = await verifyGitHubOidcToken(env, extractBearer(req));
-  if (!oidc) return error('auth_failed', 401);
-  const workflowRef = oidc.job_workflow_ref ?? oidc.workflow_ref ?? '';
-  if (!oidc.repository || !isTrustedRepoWorkflow(env, oidc.repository, workflowRef)) {
-    return error('forbidden_workflow', 403);
-  }
-  const body = parseJson<MintRunRequest>(await req.text()) ?? ({} as MintRunRequest);
-  // An OIDC minter (any allowlisted repo workflow, including owner-wildcard fleet repos) must NOT
-  // self-elect into the trusted SYSTEM lane: a non-user `purpose` makes limit-ledger skip the
-  // per-repo / per-actor / per-day abuse caps (the rail for the externally-triggerable surface). Clamp
-  // OIDC mints to a user purpose; the system lane (e.g. cron heartbeats) is reachable only via the
-  // admin-token mint path. Default 'agent' for any unknown/system value.
-  const OIDC_USER_PURPOSES = new Set(['agent', 'review', 'triage']);
-  const merged: MintRunRequest = {
-    ...body,
-    repo: oidc.repository,
-    actor: oidc.actor ?? body.actor ?? 'unknown',
-    issue: Number.isInteger(body.issue) && (body.issue as number) >= 0 ? body.issue : 0,
-    purpose: OIDC_USER_PURPOSES.has(body.purpose ?? 'agent') ? body.purpose ?? 'agent' : 'agent',
-    standing: undefined, // a standing (uncapped, long-lived) key is admin-minted only
-    github_run_id: oidc.run_id ?? body.github_run_id,
-    github_run_attempt: oidc.run_attempt ?? body.github_run_attempt,
-    github_workflow_ref: workflowRef || body.github_workflow_ref,
-  };
-  return mintFromRequest(env, merged);
-}
-
-export function isTrustedRepoWorkflow(env: Env, repo: string, workflowRef: string): boolean {
-  // Each GITHUB_OIDC_ALLOWED_WORKFLOW entry names a trusted scope (the part before /.github/): either an
-  // exact repo (owner/name) or an OWNER WILDCARD (owner/*) that trusts any repo under that owner. The
-  // wildcard exists for disposable fleets (e.g. the bench/fixtures org), where repos are created and torn
-  // down constantly and can't each be enumerated here. Spend is still bounded by the per-run caps and the
-  // account balance. Either way the minting workflow must live under the repo's own .github/workflows/.
-  const scopes = (env.GITHUB_OIDC_ALLOWED_WORKFLOW ?? '')
-    .split(',')
-    .map((value) => value.trim().split('/.github/')[0])
-    .filter(Boolean);
-  const owner = repo.split('/')[0];
-  const trusted = scopes.some((scope) => scope === repo || (scope.endsWith('/*') && scope.slice(0, -2) === owner));
-  if (!trusted) return false;
-  return workflowRef.startsWith(`${repo}/.github/workflows/`);
 }
 
 async function mintFromRequest(env: Env, body: MintRunRequest): Promise<Response> {
@@ -536,56 +389,9 @@ async function authedClaims(req: Request, env: Env): Promise<RunClaims | null> {
   return status.claims;
 }
 
-async function exchangeRunToken(req: Request, env: Env, runId: string): Promise<Response> {
-  const oidc = await verifyGitHubOidcToken(env, extractBearer(req));
-  if (!oidc) return error('auth_failed', 401);
-
-  const status = await new RunBudgetClient(env.RUNS, runId).status() as { revoked?: boolean; claims?: RunClaims | null };
-  const claims = status.claims;
-  if (status.revoked || !claims) return error('run_not_found', 404);
-  if (claims.purpose !== 'agent') return error('forbidden_run', 403);
-  if (Date.parse(claims.expires_at) <= Date.now()) return error('run_expired', 401);
-  if (oidc.repository !== claims.repo || oidc.actor !== claims.actor) return error('forbidden_run', 403);
-  if (claims.github_run_id && oidc.run_id !== claims.github_run_id) return error('forbidden_run', 403);
-  if (claims.github_run_attempt && oidc.run_attempt !== claims.github_run_attempt) return error('forbidden_run', 403);
-
-  const workflowRef = oidc.job_workflow_ref ?? oidc.workflow_ref ?? '';
-  if (claims.github_workflow_ref && workflowRef !== claims.github_workflow_ref) return error('forbidden_workflow', 403);
-  // Same trust rule as mint (exact repo or owner wildcard) when an allowlist is configured. With none set,
-  // fall back to the run's own repo — safe here because the run was already minted (the grant happened at
-  // mint, where trust is strict and undefaulted); exchange only re-validates that same run's workflow.
-  const workflowTrusted = env.GITHUB_OIDC_ALLOWED_WORKFLOW
-    ? isTrustedRepoWorkflow(env, claims.repo, workflowRef)
-    : workflowRef.startsWith(`${claims.repo}/.github/workflows/`);
-  if (!workflowTrusted) return error('forbidden_workflow', 403);
-
-  return json({ ok: true, run: claims, token: await signRunToken(env, claims) });
-}
-
 function isAdmin(req: Request, env: Env): boolean {
   const token = req.headers.get('x-admin-token');
   return Boolean(token && env.AGENT_PROXY_ADMIN_TOKEN && token === env.AGENT_PROXY_ADMIN_TOKEN);
-}
-
-// Parse a supplier bearer token (`sup.<id>.<secret>`) into the id + hashed secret the ledger
-// authenticates against. The plaintext secret never crosses into the Durable Object.
-async function supplierCreds(req: Request): Promise<SupplierAuth | null> {
-  const parsed = parseSupplierToken(extractBearer(req));
-  if (!parsed) return null;
-  return { id: parsed.id, secret_hash: await hashSupplierSecret(parsed.secret) };
-}
-
-function supplierErrorStatus(code?: string): number {
-  switch (code) {
-    case 'supplier_auth_failed': return 401;
-    case 'category_not_allowed':
-    case 'account_banned': return 403;
-    case 'account_balance_exhausted':
-    case 'supplier_cap_exceeded': return 402;
-    case 'reserve_not_found': return 404;
-    case 'reserve_closed': return 409;
-    default: return 400;
-  }
 }
 
 function html(body: string, status = 200): Response {

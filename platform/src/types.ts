@@ -29,10 +29,6 @@ export interface Env {
   DEFAULT_FUNDING_ACCOUNT?: string;
   DEFAULT_SPONSOR_ACCOUNT?: string;
   GITHUB_SPONSORS_WEBHOOK_SECRET?: string;
-  GITHUB_OIDC_AUDIENCE?: string;
-  GITHUB_OIDC_ALLOWED_WORKFLOW?: string;
-  GITHUB_OIDC_OPENID_CONFIGURATION_URL?: string;
-  GITHUB_OIDC_JWKS_URL?: string;
   GITHUB_API_BASE?: string;
   // Optional: raises the GitHub REST rate limit for profile sync (metadata, readme image, roadmap issues).
   GITHUB_TOKEN?: string;
@@ -60,7 +56,7 @@ export interface RunClaims {
   expires_at: string;
   purpose?: 'triage' | 'agent' | 'review' | 'pm' | 'hermes';
   // A standing key: no per-run spend/request cap (the account balance and the global daily cap still bind).
-  // Admin-minted only — never reachable through the OIDC mint path.
+  // Admin-minted only.
   standing?: boolean;
   github_run_id?: string;
   github_run_attempt?: string;

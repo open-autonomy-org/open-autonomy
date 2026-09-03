@@ -61,7 +61,7 @@ export function extractBearer(req: Request): string | null {
 
 // The model token as a stock SDK presents it: OpenAI sends `Authorization: Bearer`, Anthropic sends
 // `x-api-key`. The proxy is universal — it accepts a real provider SDK on either, with no dialect.
-// (OIDC/admin paths still use extractBearer; only the model call reads x-api-key.)
+// (Admin paths still use extractBearer; only the model call reads x-api-key.)
 export function extractModelToken(req: Request): string | null {
   return extractBearer(req) ?? req.headers.get('x-api-key');
 }

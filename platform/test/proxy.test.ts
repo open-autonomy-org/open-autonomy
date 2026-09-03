@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import worker, { isTrustedRepoWorkflow } from '../src/index.js';
+import worker from '../src/index.js';
 import { LimitLedger } from '../src/limit-ledger.js';
 import { parseUsageFromSse } from '../src/openai.js';
 import { RunBudget } from '../src/run-budget.js';
@@ -22,49 +22,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-});
-
-describe('oidc mint trust (repo granularity)', () => {
-  const env = {
-    GITHUB_OIDC_ALLOWED_WORKFLOW:
-      'volter-ai/open-autonomy/.github/workflows/developer.yml@,volter-ai/open-autonomy-self-driving-testbed/.github/workflows/developer.yml@',
-  } as unknown as Env;
-
-  test('trusts any workflow in an allowlisted repo', () => {
-    expect(isTrustedRepoWorkflow(env, 'volter-ai/open-autonomy-self-driving-testbed',
-      'volter-ai/open-autonomy-self-driving-testbed/.github/workflows/strategist.yml@refs/heads/main')).toBe(true);
-  });
-
-  test('rejects a repo not in the allowlist', () => {
-    expect(isTrustedRepoWorkflow(env, 'evil/repo', 'evil/repo/.github/workflows/developer.yml@x')).toBe(false);
-  });
-
-  test('rejects a workflow ref whose repo prefix does not match the claimed repo', () => {
-    expect(isTrustedRepoWorkflow(env, 'volter-ai/open-autonomy', 'other/repo/.github/workflows/x.yml@y')).toBe(false);
-  });
-
-  test('a plain repo scope (no workflow suffix — the deployed wrangler.toml form) trusts the repo', () => {
-    const plain = { GITHUB_OIDC_ALLOWED_WORKFLOW: 'volter-ai/open-autonomy,volter-ai/soc2-w12-auto' } as unknown as Env;
-    expect(isTrustedRepoWorkflow(plain, 'volter-ai/open-autonomy',
-      'volter-ai/open-autonomy/.github/workflows/developer.yml@refs/heads/main')).toBe(true);
-    expect(isTrustedRepoWorkflow(plain, 'volter-ai/open-autonomy-testbed',
-      'volter-ai/open-autonomy-testbed/.github/workflows/developer.yml@refs/heads/main')).toBe(false);
-  });
-
-  describe('owner wildcard (disposable fleets)', () => {
-    const wild = { GITHUB_OIDC_ALLOWED_WORKFLOW: 'volter-test-fixtures/*' } as unknown as Env;
-    test('trusts any repo under a wildcarded owner', () => {
-      expect(isTrustedRepoWorkflow(wild, 'volter-test-fixtures/bench-xyz',
-        'volter-test-fixtures/bench-xyz/.github/workflows/pm.yml@refs/heads/main')).toBe(true);
-    });
-    test('still requires the workflow to live under the repo itself', () => {
-      expect(isTrustedRepoWorkflow(wild, 'volter-test-fixtures/bench-xyz',
-        'other/repo/.github/workflows/pm.yml@refs/heads/main')).toBe(false);
-    });
-    test('does not trust a different owner', () => {
-      expect(isTrustedRepoWorkflow(wild, 'evil/repo', 'evil/repo/.github/workflows/x.yml@y')).toBe(false);
-    });
-  });
 });
 
 describe('agent model proxy', () => {
@@ -528,108 +485,6 @@ describe('agent model proxy', () => {
     expect(res.status).toBe(401);
   });
 
-  test('exchanges GitHub OIDC for a bounded run token', async () => {
-    const oidc = await githubOidcSigner();
-    const env = testEnv({ GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys' });
-    globalThis.fetch = oidc.fetch;
-    const minted = await mint(env, ['gpt-5-mini'], 100, 3);
-    const jwt = await oidc.sign({
-      repository: 'volter/twin',
-      actor: 'octocat',
-      job_workflow_ref: 'volter/twin/.github/workflows/developer.yml@refs/heads/main',
-    });
-
-    const exchanged = await requestJson(env, `/v1/runs/${minted.run.run_id}/exchange`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${jwt}` },
-    });
-
-    expect(exchanged.ok).toBe(true);
-    expect(exchanged.run.run_id).toBe(minted.run.run_id);
-    const status = await requestJson(env, `/v1/runs/${minted.run.run_id}`, {
-      headers: { authorization: `Bearer ${exchanged.token}` },
-    });
-    expect(status.claims.repo).toBe('volter/twin');
-  });
-
-  test('rejects GitHub OIDC exchange whose workflow is outside the run repo', async () => {
-    // Workflow trust is repo-based (any workflow under the run repo's .github/workflows/, matching mint);
-    // a workflow ref from a DIFFERENT repo is rejected. (Same-repo per-agent workflow names are allowed.)
-    const oidc = await githubOidcSigner();
-    const env = testEnv({ GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys' });
-    globalThis.fetch = oidc.fetch;
-    const minted = await mint(env, ['gpt-5-mini'], 100, 3);
-    const jwt = await oidc.sign({
-      repository: 'volter/twin',
-      actor: 'octocat',
-      job_workflow_ref: 'volter/evil/.github/workflows/other.yml@refs/heads/main',
-    });
-
-    const blocked = await request(env, `/v1/runs/${minted.run.run_id}/exchange`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${jwt}` },
-    });
-
-    expect(blocked.status).toBe(403);
-    expect(await blocked.json()).toEqual({ error: { code: 'forbidden_workflow' } });
-  });
-
-  test('allows GitHub OIDC exchange from any configured workflow prefix', async () => {
-    const oidc = await githubOidcSigner();
-    const env = testEnv({
-      GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys',
-      GITHUB_OIDC_ALLOWED_WORKFLOW: 'volter-ai/open-autonomy/.github/workflows/developer.yml@,volter-ai/open-autonomy-testbed/.github/workflows/developer.yml@',
-    });
-    globalThis.fetch = oidc.fetch;
-    const minted = await mint(env, ['gpt-5-mini'], 100, 3, { repo: 'volter-ai/open-autonomy' });
-    const jwt = await oidc.sign({
-      repository: 'volter-ai/open-autonomy',
-      actor: 'octocat',
-      job_workflow_ref: 'volter-ai/open-autonomy/.github/workflows/developer.yml@refs/heads/main',
-    });
-
-    const exchanged = await requestJson(env, `/v1/runs/${minted.run.run_id}/exchange`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${jwt}` },
-    });
-
-    expect(exchanged.ok).toBe(true);
-  });
-
-  test('rejects GitHub OIDC exchange from a different run id', async () => {
-    const oidc = await githubOidcSigner();
-    const env = testEnv({ GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys' });
-    globalThis.fetch = oidc.fetch;
-    const minted = await requestJson(env, '/admin/runs/mint', {
-      method: 'POST',
-      headers: { 'x-admin-token': 'admin' },
-      body: {
-        repo: 'volter/twin',
-        issue: 1,
-        actor: 'octocat',
-        models: ['gpt-5-mini'],
-        max_usd_cents: 100,
-        max_requests: 3,
-        github_run_id: '123',
-        github_run_attempt: '1',
-      },
-    });
-    const jwt = await oidc.sign({
-      repository: 'volter/twin',
-      actor: 'octocat',
-      run_id: '456',
-      run_attempt: '1',
-      job_workflow_ref: 'volter/twin/.github/workflows/developer.yml@refs/heads/main',
-    });
-
-    const blocked = await request(env, `/v1/runs/${minted.run.run_id}/exchange`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${jwt}` },
-    });
-
-    expect(blocked.status).toBe(403);
-    expect(await blocked.json()).toEqual({ error: { code: 'forbidden_run' } });
-  });
 });
 
 describe('standing keys (long-lived project keys for always-on agents)', () => {
@@ -1046,43 +901,6 @@ describe('funding platform pages', () => {
   });
 });
 
-describe('oidc project→project redistribution', () => {
-  test('a project grants its surplus to another; recipient is credited', async () => {
-    const oidc = await githubOidcSigner();
-    const env = testEnv({ GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys' });
-    globalThis.fetch = oidc.fetch;
-    await requestJson(env, `/admin/accounts/${encodeURIComponent('volter/twin')}/mint`, {
-      method: 'POST', headers: { 'x-admin-token': 'admin' }, body: { amount_usd_cents: 50000 },
-    });
-    const jwt = await oidc.sign({
-      repository: 'volter/twin',
-      actor: 'octocat',
-      job_workflow_ref: 'volter/twin/.github/workflows/developer.yml@refs/heads/main',
-    });
-    const granted = await requestJson(env, `/v1/accounts/${encodeURIComponent('volter/twin')}/grant`, {
-      method: 'POST', headers: { authorization: `Bearer ${jwt}` }, body: { to: 'beta/helper', amount_usd_cents: 1000 },
-    });
-    expect(granted.ok).toBe(true);
-    expect(granted.to_balance_usd_cents).toBe(1000);
-  });
-
-  test('a project cannot grant from an account that is not its own repo', async () => {
-    const oidc = await githubOidcSigner();
-    const env = testEnv({ GITHUB_OIDC_JWKS_URL: 'https://jwks.test/keys' });
-    globalThis.fetch = oidc.fetch;
-    const jwt = await oidc.sign({
-      repository: 'volter/twin',
-      actor: 'octocat',
-      job_workflow_ref: 'volter/twin/.github/workflows/developer.yml@refs/heads/main',
-    });
-    const blocked = await request(env, `/v1/accounts/${encodeURIComponent('someone/else')}/grant`, {
-      method: 'POST', headers: { authorization: `Bearer ${jwt}` }, body: { to: 'beta/helper', amount_usd_cents: 1000 },
-    });
-    expect(blocked.status).toBe(403);
-    expect((await blocked.json() as { error?: { code?: string } }).error?.code).toBe('forbidden_account');
-  });
-});
-
 async function mint(
   env: Env,
   models: string[],
@@ -1147,52 +965,6 @@ function testEnv(overrides: Partial<Env> = {}): Env {
     RUNS: new MemoryDurableObjectNamespace((state) => new RunBudget(state)),
     LIMITS: new MemoryDurableObjectNamespace((state) => new LimitLedger(state)),
     ...overrides,
-  };
-}
-
-async function githubOidcSigner() {
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: 'SHA-256',
-    },
-    true,
-    ['sign', 'verify'],
-  ) as CryptoKeyPair;
-  const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey) as JsonWebKey & {
-    kid?: string;
-    alg?: string;
-    use?: string;
-  };
-  publicJwk.kid = 'test-key';
-  publicJwk.alg = 'RS256';
-  publicJwk.use = 'sig';
-
-  return {
-    fetch: (async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe('https://jwks.test/keys');
-      return new Response(JSON.stringify({ keys: [publicJwk] }), { headers: { 'content-type': 'application/json' } });
-    }) as typeof fetch,
-    sign: async (claims: { repository: string; actor: string; job_workflow_ref: string; run_id?: string; run_attempt?: string }) => {
-      const now = Math.floor(Date.now() / 1000);
-      const header = base64urlJson({ alg: 'RS256', kid: 'test-key', typ: 'JWT' });
-      const payload = base64urlJson({
-        iss: 'https://token.actions.githubusercontent.com',
-        aud: 'volter-agent-model-proxy',
-        exp: now + 300,
-        nbf: now - 10,
-        iat: now,
-        ...claims,
-      });
-      const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        keyPair.privateKey,
-        new TextEncoder().encode(`${header}.${payload}`),
-      );
-      return `${header}.${payload}.${base64url(new Uint8Array(signature))}`;
-    },
   };
 }
 

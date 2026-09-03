@@ -150,44 +150,13 @@ describe('platform: moderation', () => {
   });
 });
 
-describe('platform: surplus-above-goal redistribution', () => {
-  test('a project may grant only the surplus above its own goal-days runway', async () => {
-    const l = ledger();
-    // fund a project with $100 and no spend history → burn falls back to the prior (~$0.50/day)
-    await l.mint('acme/widget', 10000);
-    const view = await l.project('acme/widget');
-    const floor = view.goal_days * view.burn_per_day_usd_cents; // 30 * 50 = 1500
-    const surplus = 10000 - floor;
-
-    const tooMuch = await l.grantSurplus('acme/widget', 'beta/helper', surplus + 100);
-    expect(tooMuch.ok).toBe(false);
-    expect(tooMuch.error).toBe('insufficient_surplus');
-
-    const ok = await l.grantSurplus('acme/widget', 'beta/helper', surplus);
-    expect(ok.ok).toBe(true);
-    expect(ok.to_balance_usd_cents).toBe(surplus);
-  });
-
-  test('the recipient shows the funder as a project-patron', async () => {
-    const l = ledger();
-    await l.mint('acme/widget', 10000);
-    await l.grantSurplus('acme/widget', 'beta/helper', 2000);
-    const view = await l.project('beta/helper');
-    const patron = view.patrons.find((p) => p.kind === 'project');
-    expect(patron?.login).toBe('acme/widget');
-    expect((patron?.amount_label ?? '').includes('granted')).toBe(true);
-    // the funding project also counts toward the recipient's patron total on its card
-    expect(view.patron_count).toBe(1);
-  });
-});
-
 describe('platform: money reconciles (grants-out are not hidden or double-counted)', () => {
   const now = () => new Date().toISOString();
 
   test("a funder's page shows funded-onward so in − onward − spent = balance", async () => {
     const l = ledger();
     await l.mint('acme/widget', 10000);
-    await l.grantSurplus('acme/widget', 'beta/helper', 2000);
+    await l.grant('acme/widget', 'beta/helper', 2000);
     const v = await l.project('acme/widget');
     expect(v.granted_out_usd_cents).toBe(2000);
     expect(v.granted_in_usd_cents - v.granted_out_usd_cents - v.consumed_usd_cents).toBe(v.balance_usd_cents);
@@ -200,7 +169,7 @@ describe('platform: money reconciles (grants-out are not hidden or double-counte
     const l = ledger();
     await l.mint('acme/widget', 10000);
     await l.setProfile('acme/widget', { synced_at: now() });
-    await l.grantSurplus('acme/widget', 'beta/helper', 2000);
+    await l.grant('acme/widget', 'beta/helper', 2000);
     await l.setProfile('beta/helper', { synced_at: now() });
     const { entries } = await l.directory();
     const html = renderExplore(entries);
