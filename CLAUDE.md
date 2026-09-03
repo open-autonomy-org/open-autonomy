@@ -25,6 +25,10 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 - Security-critical paths (admin token, HMAC, spend caps, the account tree) get the higher bar:
   fail a review you cannot confidently verify.
 - `bun run check` = platform tests + typecheck. `bun run check:supply-chain` = lockfile integrity + audit.
+- **Test the whole stack without tokens or cloud:** the sibling twins repo has `cookbook/open-autonomy-world`
+  (real `hermes` one-shot → this worker under `wrangler dev` → the openai twin as the model gateway → the GitHub
+  twin). `cd ../twin && OPEN_AUTONOMY_ROOT=$PWD/../open-autonomy bun test cookbook/open-autonomy-world/`.
+  Run it before deploying anything that touches metering, keys, or the docs sync.
 
 ## Live surfaces
 
