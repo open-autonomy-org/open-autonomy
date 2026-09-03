@@ -48,7 +48,7 @@ items:
   - id: project-keys
     phase: 3
     priority: high
-    status: active
+    status: done
     title: Any funded project can point its Hermes at the platform
     acceptance:
       - A repository owner proves control of the repo (a claim file at HEAD) and mints a standing key for its account without the admin token.

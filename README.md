@@ -32,7 +32,7 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 |---|---|
 | Metering, account tree, sponsors webhook, coupons, hard-stop | live |
 | Funding page, project page (vision + roadmap from the repo), runway widget | live |
-| Standing project keys for an always-on agent | live |
+| Standing project keys: self-serve by claim file, rotation with a grace period | live |
 | Hermes home in `hermes/`, calls metered through the platform | live |
 | The build-roadmap cron job | live on the owner's machine |
 | Only token usage on the books | live |
