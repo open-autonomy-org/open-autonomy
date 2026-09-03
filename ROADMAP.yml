@@ -16,7 +16,7 @@ items:
   - id: container-proof
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: The containerised agent lands a change through its branch
     acceptance:
       - CHANGELOG.md's Unreleased section carries a line, added by the agent, saying the container landed this item.
