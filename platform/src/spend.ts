@@ -46,7 +46,7 @@ export async function reserveBudget(
     async consume(actualUsdCents: number, event: UsageEvent): Promise<void> {
       await Promise.all([
         runBudget.consume(requestId, actualUsdCents, event),
-        ledger.consume(requestId, actualUsdCents),
+        ledger.consume(requestId, actualUsdCents, event),
       ]);
     },
     async release(reached: boolean): Promise<void> {

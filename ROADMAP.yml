@@ -32,7 +32,7 @@ items:
   - id: per-call-audit
     phase: 2
     priority: high
-    status: planned
+    status: done
     title: Durable per-call audit log per account
     acceptance:
       - Every metered call is appended to a durable log keyed by account (model, tokens, cost, time, run).

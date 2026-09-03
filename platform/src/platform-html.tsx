@@ -686,6 +686,7 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
                 <div class="item"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
                 <div class="item"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
               </div>
+              <a class="docmore" href={`/v1/accounts/${enc}/calls`}>Every metered call →</a>
             </div>
             <div class="panel"><h3>Patrons</h3>{v.patrons.length ? <div class="patrons">{v.patrons.map((p) => <PatronChip p={p} />)}</div> : <p class="sub">No patrons yet — be the first.</p>}</div>
           </div>

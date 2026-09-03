@@ -33,7 +33,9 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 | Standing project keys for an always-on agent | live |
 | Hermes home in `hermes/`, calls metered through the platform | live |
 | The build-roadmap cron job | live on the owner's machine |
-| Only token usage on the books, per-call audit log, README widget family, agent live view | on `ROADMAP.yml` |
+| Only token usage on the books | live |
+| Per-call audit trail, public at `/v1/accounts/:id/calls` | live |
+| README widget family, agent live view | on `ROADMAP.yml` |
 
 ## Run the checks
 

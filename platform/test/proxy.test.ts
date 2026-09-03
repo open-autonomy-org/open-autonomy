@@ -566,6 +566,59 @@ describe('standing keys (long-lived project keys for always-on agents)', () => {
   });
 });
 
+describe('per-call audit log', () => {
+  const anthropicOk = (async () => new Response(JSON.stringify({ id: 'msg', usage: { input_tokens: 1000, output_tokens: 500 } }), {
+    headers: { 'content-type': 'application/json' },
+  })) as typeof fetch;
+  const chat = (env: Env, token: string) => worker.fetch(new Request('https://proxy.test/v1/messages', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 500, messages: [] }),
+  }), env, ctx);
+
+  test('every settled call is appended under the account, newest first, with model, tokens and cost', async () => {
+    const env = testEnv();
+    const minted = await mint(env, ['claude-sonnet-4-6'], 100, 10);
+    globalThis.fetch = anthropicOk;
+    expect((await chat(env, minted.token)).status).toBe(200);
+    expect((await chat(env, minted.token)).status).toBe(200);
+    const page = await requestJson(env, '/v1/accounts/volter%2Ftwin/calls');
+    expect(page.calls_total).toBe(2);
+    expect(page.calls.length).toBe(2);
+    const c = page.calls[0];
+    expect(c.model).toBe('claude-sonnet-4-6');
+    expect(c.input_tokens).toBe(1000);
+    expect(c.output_tokens).toBe(500);
+    expect(c.usd_cents).toBeGreaterThan(0);
+    expect(c.run_id).toBe(minted.run.run_id);
+    expect(c.actor).toBe('octocat');
+    expect(c.outcome).toBe('ok');
+    expect(Date.parse(c.ts)).toBeGreaterThan(0);
+    // And the funding snapshot carries the running count.
+    const funding = await requestJson(env, '/v1/accounts/volter%2Ftwin');
+    expect(funding.calls_total).toBe(2);
+    expect(funding.last_call_at).toBe(c.ts);
+  });
+
+  test('pages by cursor and is scoped to the account', async () => {
+    const env = testEnv();
+    const minted = await mint(env, ['claude-sonnet-4-6'], 100, 10);
+    globalThis.fetch = anthropicOk;
+    for (let i = 0; i < 3; i += 1) expect((await chat(env, minted.token)).status).toBe(200);
+    const first = await requestJson(env, '/v1/accounts/volter%2Ftwin/calls?limit=2');
+    expect(first.calls.length).toBe(2);
+    expect(typeof first.next).toBe('string');
+    const second = await requestJson(env, `/v1/accounts/volter%2Ftwin/calls?limit=2&before=${encodeURIComponent(first.next)}`);
+    expect(second.calls.length).toBe(1);
+    expect(second.next).toBeUndefined();
+    const ids = [...first.calls, ...second.calls].map((c: { request_id: string }) => c.request_id);
+    expect(new Set(ids).size).toBe(3);
+    const other = await requestJson(env, '/v1/accounts/someone%2Felse/calls');
+    expect(other.calls.length).toBe(0);
+    expect(other.calls_total).toBe(0);
+  });
+});
+
 describe('account funding (mint / grant / spend)', () => {
   const acct = (id: string) => `/v1/accounts/${encodeURIComponent(id)}`;
   const mintAcct = (env: Env, id: string, body: unknown) => requestJson(env, `/admin/accounts/${encodeURIComponent(id)}/mint`, {

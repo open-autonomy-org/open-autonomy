@@ -1,7 +1,7 @@
 import { estimateRunway } from './burn-estimate.js';
 import { json } from './errors.js';
 import { classifyHealth, type HealthOpts, type HealthResult } from './health.js';
-import type { RunClaims } from './types.js';
+import type { RunClaims, UsageEvent } from './types.js';
 
 // How many days of runway a project aims to keep funded (the goal bar) unless it overrides it.
 const FLEET_GOAL_DAYS = 30;
@@ -67,6 +67,9 @@ export interface Account {
   // When this org last registered a run — the health monitor's silence signal. Set on register(), so it
   // survives the bounded `runs` cache being reaped (see src/health.ts).
   last_activity_ms?: number;
+  // The audit trail's running count and last entry (the entries themselves live in DO storage, see appendCall).
+  calls_total?: number;
+  last_call_ms?: number;
   // Per-account daily spend (capped trailing window) used to derive a burn rate and runway.
   daily_spend: Record<string, number>;
   // Sponsors attributed to this account for display (set by mint/grant/coupon with a sponsor).
@@ -177,7 +180,7 @@ export class LimitLedger implements DurableObject {
     if (op === 'complete') return json(await this.complete(String(body.run_id)));
     if (op === 'reserve') return json(await this.reserve(String(body.request_id), Number(body.amount_usd_cents), body.config as LimitConfig, body.run_id ? String(body.run_id) : undefined));
     if (op === 'consume') {
-      await this.consume(String(body.request_id), Number(body.actual_usd_cents));
+      await this.consume(String(body.request_id), Number(body.actual_usd_cents), body.event as UsageEvent | undefined);
       return json({ ok: true });
     }
     if (op === 'release') {
@@ -193,6 +196,7 @@ export class LimitLedger implements DurableObject {
     if (op === 'coupon_list') return json({ ok: true, coupons: Object.values(this.state.coupons) });
     if (op === 'coupon_redeem') return json(await this.couponRedeem(String(body.code), String(body.account)));
     if (op === 'funding') return json(this.fundingSnapshot(String(body.account)));
+    if (op === 'calls') return json(await this.listCalls(String(body.account), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
     if (op === 'set_profile') return json(await this.setProfile(String(body.account), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
     if (op === 'moderate') return json(await this.moderate(String(body.account), String(body.status) as Moderation, body.reason ? String(body.reason) : undefined, body as Partial<AccountProfile>));
     if (op === 'directory') return json({ ok: true, entries: this.directory() });
@@ -516,7 +520,7 @@ export class LimitLedger implements DurableObject {
     return { ok: true, remaining_global_usd_cents: available - amount };
   }
 
-  private async consume(requestId: string, actual: number): Promise<void> {
+  private async consume(requestId: string, actual: number, event?: UsageEvent): Promise<void> {
     const reservation = this.state.reservations[requestId];
     const spent = Number.isFinite(actual) ? Math.max(0, actual) : 0;
     if (reservation) {
@@ -528,6 +532,22 @@ export class LimitLedger implements DurableObject {
         a.consumed_usd_cents += spent;
         recordDailySpend(a, spent);
         if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, issue: reservation.issue, actor: reservation.actor });
+        // The audit trail: every metered call, appended durably under the account. This is what a sponsor
+        // reads to see where their money went; it is never evicted.
+        a.calls_total = (a.calls_total ?? 0) + 1;
+        a.last_call_ms = Date.now();
+        await this.appendCall(reservation.account, {
+          ts: new Date().toISOString(),
+          request_id: requestId,
+          run_id: reservation.run_id,
+          actor: reservation.actor,
+          model: event?.model,
+          route: event?.route,
+          input_tokens: event?.input_tokens,
+          output_tokens: event?.output_tokens,
+          usd_cents: spent,
+          outcome: event?.outcome,
+        });
       }
       // Attribute the settled spend to the run so the live-agents panel can show per-run burn. A consume
       // always follows a successful reserve (one provider round-trip), so count the request here too.
@@ -543,6 +563,25 @@ export class LimitLedger implements DurableObject {
     }
     this.state.consumed_usd_cents += spent;
     await this.save();
+  }
+
+  // Storage key: `call:<account>:<ms, zero-padded>:<request id>` — lexicographic order is time order, so a
+  // reverse prefix list is "newest first" and a key doubles as the pagination cursor.
+  private async appendCall(account: string, call: CallRecord): Promise<void> {
+    const key = `call:${account}:${String(Date.now()).padStart(13, '0')}:${call.request_id}`;
+    await this.ctx.storage.put(key, call);
+  }
+
+  private async listCalls(account: string, limit: number, before?: string): Promise<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }> {
+    const n = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
+    const prefix = `call:${account}:`;
+    const opts: { prefix: string; reverse: boolean; limit: number; end?: string } = { prefix, reverse: true, limit: n };
+    if (before && before.startsWith(prefix)) opts.end = before;
+    const page = await this.ctx.storage.list<CallRecord>(opts);
+    const keys = [...page.keys()];
+    const calls = keys.map((k) => page.get(k) as CallRecord);
+    const next = keys.length === n ? keys[keys.length - 1] : undefined;
+    return { ok: true, account, calls_total: this.acct(account)?.calls_total ?? 0, calls, ...(next ? { next } : {}) };
   }
 
   private async release(requestId: string): Promise<void> {
@@ -582,6 +621,9 @@ export class LimitLedger implements DurableObject {
       days_observed: est.days_observed,
       runway_confident: funded && est.confident,
       sponsors: a ? activeSponsors(a) : [],
+      calls_total: a?.calls_total ?? 0,
+      last_call_at: a?.last_call_ms ? new Date(a.last_call_ms).toISOString() : null,
+      daily_spend_usd_cents: a ? dailySpendSeries(a.daily_spend) : [],
     };
   }
 
@@ -1038,8 +1080,12 @@ export class LimitLedgerClient {
     );
   }
 
-  consume(requestId: string, actualUsdCents: number) {
-    return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents });
+  consume(requestId: string, actualUsdCents: number, event?: UsageEvent) {
+    return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event });
+  }
+
+  calls(account: string, limit?: number, before?: string) {
+    return this.rpc<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before });
   }
 
   release(requestId: string) {
@@ -1146,4 +1192,22 @@ export interface FundingSnapshot {
   days_observed: number;
   runway_confident: boolean;
   sponsors: Sponsor[];
+  calls_total: number;
+  last_call_at: string | null;
+  // Settled spend per day, oldest → today, over the recorded window (≤ 14 days).
+  daily_spend_usd_cents: number[];
+}
+
+// One metered model call, as appended to the account's audit trail.
+export interface CallRecord {
+  ts: string;
+  request_id: string;
+  run_id?: string;
+  actor?: string;
+  model?: string;
+  route?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  usd_cents: number;
+  outcome?: string;
 }

@@ -225,6 +225,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
 
   // Public per-account funding status + runway badge.
+  // The public audit trail: every metered call charged to this account, newest first, paginated by cursor.
+  const acctCalls = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/);
+  if (acctCalls) return callsJson(env, decodeURIComponent(acctCalls[1]), req);
+  if (path === '/v1/funding/calls') return callsJson(env, fundingAccount(env), req);
   const acctRunway = path.match(/^\/v1\/accounts\/([^/]+)\/runway\.svg$/);
   if (acctRunway) return runwaySvg(env, decodeURIComponent(acctRunway[1]), req);
   const acctStatus = path.match(/^\/v1\/accounts\/([^/]+)$/);
@@ -416,6 +420,15 @@ function fundingAccount(env: Env): string {
 // The account that org-level GitHub Sponsors funding lands on (the org's own project).
 function sponsorAccount(env: Env): string {
   return env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
+}
+
+async function callsJson(env: Env, account: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const url = new URL(req.url);
+  const limit = Number(url.searchParams.get('limit') ?? 50);
+  const before = url.searchParams.get('before') ?? undefined;
+  const page = await new LimitLedgerClient(env.LIMITS).calls(account, limit, before);
+  return json(page, { headers: { 'cache-control': 'no-store' } });
 }
 
 async function runwaySvg(env: Env, account: string, req: Request): Promise<Response> {

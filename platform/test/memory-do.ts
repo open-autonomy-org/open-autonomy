@@ -36,6 +36,16 @@ class MemoryStorage {
     return this.values.delete(key);
   }
 
+  // The subset of DurableObjectStorage.list the ledger uses: prefix, reverse, limit, and an exclusive
+  // `end` bound (in reverse mode, keys strictly below `end`).
+  async list<T = unknown>(options: { prefix?: string; reverse?: boolean; limit?: number; end?: string } = {}): Promise<Map<string, T>> {
+    let keys = [...this.values.keys()].filter((k) => !options.prefix || k.startsWith(options.prefix)).sort();
+    if (options.end !== undefined) keys = keys.filter((k) => k < (options.end as string));
+    if (options.reverse) keys.reverse();
+    if (options.limit !== undefined) keys = keys.slice(0, options.limit);
+    return new Map(keys.map((k) => [k, this.values.get(k) as T]));
+  }
+
   async getAlarm(): Promise<number | null> {
     return this.alarm;
   }
