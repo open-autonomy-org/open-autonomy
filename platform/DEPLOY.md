@@ -1,100 +1,56 @@
-# Deploying the agent model proxy — security model + go-live runbook
+# Deploying the platform worker
 
-The proxy holds the crown jewels (admin token, HMAC secret, provider keys, the funding ledger). This
-document is the safe path to automated deploys. **It is parked until deliberately armed** — see "Flip to
-safe" below. Nothing here deploys anything on its own.
+The worker holds the crown jewels: the admin token, the HMAC secret, the model gateway key, and the
+books (Durable Objects). This is how it gets deployed and why that is safe.
 
-## Security model (why this is safe)
+## Two paths
 
-A funnel where each layer fails differently, plus a containment backstop outside the trust loop:
+**Maintainer, direct.** From a machine logged into the Cloudflare account:
 
-- **Allowlist wall:** deploy fires only on a human-cut `deploy-v*` tag. A repo ruleset
-  (`deploy-tags-admin-only`) restricts create/update/delete of `deploy-v*` tags to **admins**, so the
-  fleet's CI agents (write role, GITHUB_TOKEN) cannot create one — and a GITHUB_TOKEN-pushed tag wouldn't
-  trigger the workflow anyway (Actions anti-recursion).
-- **Human gate:** the `production` environment admits only `deploy-v*` tags and requires a maintainer to
-  approve each deployment; `can_admins_bypass=false` so the approval can't be skipped.
-- **Trusted build:** the deployed commit is human-promoted (the tag) and human-reviewed (`services/**` is a
-  `human_required_path`), so no build/publish split is needed. wrangler is pinned in the lockfile and
-  integrity-verified by `check:security`; egress is locked to npm + Cloudflare so the deploy token can't be
-  exfiltrated. The token is scoped to Workers-edit on this one worker, so a leak can only redeploy it.
-- **Containment backstop (the only control outside the loop — agents are funded *by* the proxy they edit):**
-  the proxy routes 100% through the model gateway, which is **prepaid** — the loaded credit balance is a hard
-  ceiling the proxy can't raise (it lives at the model gateway, not the worker). Worst-case loss from *any*
-  compromise (leaked key, malicious deploy, rogue session, forged sponsorship) is the loaded credits, plus
-  instant Cloudflare rollback. `MODEL_GATEWAY_API_KEY` is the only provider secret.
+```bash
+cd platform && bunx wrangler deploy      # bun run check (tests + typecheck) before, live proof after
+cd platform && bunx wrangler rollback    # the previous version, instantly
+```
 
-The only GitHub secret the system needs is the Cloudflare deploy token. Everything else is keyless.
+This is how the worker is deployed today. Live proof is the proof: the deployed worker and the rendered
+site, not local tests alone. Anything touching metering, keys or the docs sync also runs the whole-stack
+twin world first (see the repo's working notes).
 
-## What is already built + live
+**Tag-gated, reviewed.** `.github/workflows/deploy.yml` fires only on a human-cut `deploy-v*` tag and runs
+in the `production` environment:
 
-- `.github/workflows/deploy.yml` — tag-triggered, egress-locked, pinned wrangler, `environment: production`.
-- **The gate IS the workflow; provisioning is reproducible, not hand-set.** `deploy.yml` already declares its
-  own gate — `environment: production` (the job runs in the gated environment) and `on: push: tags: deploy-v*`
-  (only the promotion tag fires). It is NOT in the opaque `policy.box`. `bun scripts/provision-deploy.ts` reads
-  the workflow, extracts the environment + promotion tag, and idempotently reconciles the two things GitHub
-  can't express in a repo file: the `production` environment's required REVIEWER (from
-  `PUBLIC_AGENT_MAINTAINERS`, `can_admins_bypass=false`) and the admin-only `deploy-tags-admin-only` ruleset —
-  plus the `deploy-v*` tag deployment policy. It refuses to provision if the workflow declares no environment
-  or no tag (no agent deploys an ungated workflow). Re-run any time. The Cloudflare **secret** is never touched
-  (set by a human; the script reports which `secrets.*`/`vars.*` the workflow references and whether they're set).
-- GitHub secret-scanning + push-protection — enabled.
-- Supply-chain + workflow gates in CI (`check:security`, zizmor, CodeQL, Dependabot).
+```bash
+git tag deploy-v0.1.x && git push origin deploy-v0.1.x
+# → the run pauses on the production gate → a maintainer approves → wrangler deploys with the scoped token
+```
 
-## ⚠️ Load-bearing precondition (decide before arming)
+What that gate consists of, all provisioned on `open-autonomy-org/open-autonomy`:
 
-The environment approver is `yueranyuan`, and **`yueranyuan`'s full-scope `gh` token (`repo`+`workflow`+
-`admin:org`) lives in this machine's keyring**, used by every local Claude/termfleet session. So a local
-session can both push a `deploy-v*` tag (admin → bypasses the ruleset) and approve the deployment. The
-GitHub gates defend against CI-side agents and external actors, **not** against a rogue/injected *local*
-session holding that token.
+- the `production` environment: a required reviewer, and a deployment policy admitting only `deploy-v*` tags;
+- the `deploy-tags-admin-only` ruleset: only admins can create, move or delete a `deploy-v*` tag;
+- the environment secret `CLOUDFLARE_API_TOKEN` (scoped to Workers edit on this account) and the repository
+  variable `CLOUDFLARE_ACCOUNT_ID`;
+- egress locked to GitHub, npm and `api.cloudflare.com`, so the deploy token cannot leave to another host.
 
-To make the human gate robust against that, the approver credential must live **off this machine** — e.g.
-approve only from GitHub mobile / a separate device, or use a second maintainer / a dedicated approver
-account whose token never touches the fleet machine.
+## Security model
 
-**But note the consequence is bounded.** Even if a rogue local session self-deploys a malicious worker, its
-worst case is capped by the same gateway ceiling that bounds everything else: the worker can only spend up
-to the `claude-code-deepseek` key's **$500/month** limit + the loaded prepaid balance, and the deploy is
-instantly Cloudflare-rollback-able. So this is **optional hardening, not a go-live blocker** — the money is
-bounded regardless of who approves. Off-machine approval is the clean upgrade if/when you want it.
+- **Allowlist wall.** Nothing deploys from CI without a tag only an admin can push, and a `GITHUB_TOKEN`
+  pushed tag would not trigger the workflow anyway.
+- **Human gate.** The environment's required reviewer approves each tagged deployment.
+- **Containment backstop, outside the trust loop.** The proxy routes every model call through the model
+  gateway, which is prepaid: the loaded balance is a hard ceiling the worker cannot raise. Worst case from any
+  compromise (a leaked key, a bad deploy, a forged sponsorship) is that balance, plus an instant rollback.
+  `MODEL_GATEWAY_API_KEY` is the only provider secret.
+- **Local machine caveat.** A maintainer's machine that holds a full-scope GitHub token can both push the tag
+  and approve the deployment, and can deploy directly. The gate defends against CI-side agents and outsiders,
+  not against a compromised maintainer session. If that matters, approve from a second device or account.
 
-## Endpoints + token scope (pre-verified — no key needed)
+## Secrets
 
-De-risked ahead of the first deploy so it isn't a guess:
+Worker secrets (`bunx wrangler secret put <NAME>` from `platform/`; `bunx wrangler secret list` shows which
+are set): `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`, `MODEL_GATEWAY_API_KEY`,
+`GITHUB_SPONSORS_WEBHOOK_SECRET`. Rotate the admin token with `platform/scripts/rotate-admin-token.ts`.
 
-- **Egress is correct as written.** For this worker (plain Worker + a Durable Object SQLite migration +
-  a cron trigger; no R2/KV/containers/assets/tunnel), `wrangler deploy` only needs
-  `api.cloudflare.com/client/v4` — already on the allowlist. Verified against the hostnames wrangler
-  embeds; the rest (r2/dash/registry/blog/try/devtools) are for features this deploy doesn't use.
-  `sparrow.cloudflare.com` is telemetry — disabled via `WRANGLER_SEND_METRICS=false` and non-fatal if
-  blocked. Do **not** widen the allowlist; if the first deploy logs a blocked host, it's almost certainly
-  telemetry and the deploy still succeeds.
-- **Token scope:** the deploy does script-upload + DO migration + cron trigger + the `workers.dev`
-  subdomain — all under **Account › Workers Scripts : Edit** (plus **Account Settings : Read** for account
-  resolution). Use the dashboard's **"Edit Cloudflare Workers"** template (it's the correct superset) rather
-  than hand-picking a single permission and risking a missing one. Scope it to this account and, if offered,
-  the `volter-agent-model-proxy` worker only.
-
-## Flip to safe (the go-live checklist — only when ready)
-
-1. **Money bound — DECIDED.** The proxy routes 100% through the model gateway (prepaid). The worker's key
-   `claude-code-deepseek` carries a **$500/month** per-key limit (accepted as the blast-radius bound), and
-   the loaded prepaid balance is the master ceiling. Optional later: lower the per-key limit toward real burn
-   (~$50–100/mo) for a tighter external cap; delete the now-unused `OPENAI_API_KEY` Cloudflare secret.
-2. **(Optional hardening) Off-machine approver** — see the precondition above. Not a blocker: a rogue local
-   self-deploy is already capped by the $500/mo + prepaid ceiling and is rollback-able. Do it when you want
-   the human gate robust against a local session, not before first deploy.
-3. **Mint a scoped Cloudflare API token:** dashboard → My Profile → API Tokens → Create → "Edit Cloudflare
-   Workers" template, narrowed to this account (`0ed031cc83dad4ad191efba7076074d0`) and ideally just the
-   `volter-agent-model-proxy` worker. Nothing else.
-4. **Set it as the environment secret** (write-only; never stored locally):
-   `gh secret set CLOUDFLARE_API_TOKEN --env production -R open-autonomy-org/open-autonomy`
-5. **Cut the first tag (admin only)** and watch it:
-   `git tag deploy-v0.1.x && git push origin deploy-v0.1.x`
-   → the run pauses on the `production` gate → approve (GitHub UI → Actions → run → Review deployments) →
-   confirm the deploy succeeds.
-6. **Test rollback:** `cd platform && bunx wrangler rollback` (or dashboard → Workers →
-   Deployments → Rollback). Confirm the worker serves the prior version.
-
-Until step 4 sets `CLOUDFLARE_API_TOKEN`, `deploy.yml` cannot deploy — it is inert by construction.
+The worker is named `volter-agent-model-proxy` in `wrangler.toml`. Its Durable Objects hold the books, so
+the name stays; `open-autonomy.org` is attached to it as a custom domain in the Cloudflare dashboard, and the
+`workers.dev` address is the same worker.

@@ -6,7 +6,8 @@ Fund a project's agents in the open. **The only thing funded is token usage.** T
 
 - `platform/` — the Cloudflare Worker: meters every model call against a project's account
   (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors webhook, coupons), serves
-  the funding page and the README widgets. Deploy is tag-gated (`deploy-v*`, `production` environment).
+  the funding page and the README widgets. Maintainers deploy with `bunx wrangler deploy` from `platform/`; the
+  tag-gated workflow (`deploy-v*` → `production` environment) is the reviewed path. See `platform/DEPLOY.md`.
   Admin scripts in `platform/scripts/`.
 - `hermes/` — this project's own agent, checked in: a Hermes setup (skills, crons, Discord channel)
   that runs off this project's funded account. Not built yet.

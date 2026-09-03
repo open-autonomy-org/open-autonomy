@@ -87,7 +87,7 @@ MODEL_PROXY_URL=... MODEL_PROXY_ADMIN_TOKEN=... bun platform/scripts/fund-bootst
 curl -X POST https://<proxy-host>/admin/accounts/volter/mint -H "x-admin-token: $TOK" -d '{"amount_usd_cents":50000}'
 curl -X POST https://<proxy-host>/admin/coupons -H "x-admin-token: $TOK" \
   -d '{"amount_usd_cents":5000,"from":"open-autonomy-org/open-autonomy","sponsor":{"login":"acme","name":"ACME Cloud","tagline":"infra for builders"}}'
-curl -X POST https://<proxy-host>/v1/coupons/redeem -d '{"code":"SPON-XXXX-XXXX-XXXX","account":"volter-ai/some-project"}'
+curl -X POST https://<proxy-host>/v1/coupons/redeem -d '{"code":"SPON-XXXX-XXXX-XXXX","account":"someone/some-project"}'
 ```
 
 
@@ -176,5 +176,5 @@ by actor and issue, and global consumed/reserved cents.
 ## Local Check
 
 ```bash
-bun run check:agent-proxy
+bun run check            # from the repo root: platform tests + typecheck
 ```
