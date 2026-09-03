@@ -8,7 +8,7 @@
       ],
       "schedule": "every 360m",
       "deliver": "discord",
-      "workdir": "/Users/yueranyuan/volter/open-autonomy"
+      "workdir": "/work/open-autonomy"
     }
   ]
 }

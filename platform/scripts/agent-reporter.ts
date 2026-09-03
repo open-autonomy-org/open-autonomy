@@ -7,9 +7,14 @@
 // org.open-autonomy.job.{started,turns,finished}, subject = the run's session id, turns carrying their
 // offset so a retry or a reconnect is idempotent. The platform's meter stays the independent check.
 //
-//   bun platform/scripts/agent-reporter.ts [--home hermes] [--supercode /path/to/supercode] [--once]
-//   bun platform/scripts/agent-reporter.ts --install      # a launchd agent that runs beside the gateway
+//   bun platform/scripts/agent-reporter.ts [--home <HERMES_HOME>] [--repo <the agent's checkout>] [--env <key file>] [--supercode /path/to/supercode] [--once]
+//   bun platform/scripts/agent-reporter.ts --install …    # a launchd agent with the same flags
 //
+// It runs on the host, outside the agent's container: it reads the container's Hermes home (a bind mount)
+// and posts on the project's standing key from --env (default ~/.config/open-autonomy/agent.env, the file
+// the key sidecar reads; the agent never sees it). --repo is the host path of the agent's checkout, used to
+// find the commit a run landed: the agent pushes a branch and the landing workflow merges it, so the
+// commit reaches main after the run; finished receipts are backfilled with it for a day.
 // State (turn offsets already sent per run) lives in <home>/reporter-state.json, git-ignored.
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -18,6 +23,8 @@ import { join, resolve } from 'node:path';
 
 const arg = (name: string, dflt?: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : dflt; };
 const HOME = resolve(arg('--home', 'hermes') as string);
+const REPO = arg('--repo') ? resolve(arg('--repo') as string) : undefined;
+const ENV_FILE = arg('--env') ?? (existsSync(join(homedir(), '.config', 'open-autonomy', 'agent.env')) ? join(homedir(), '.config', 'open-autonomy', 'agent.env') : join(HOME, '.env'));
 const SUPERCODE = arg('--supercode', process.env.SUPERCODE_BIN ?? 'supercode') as string;
 const ONCE = process.argv.includes('--once');
 const STATE_PATH = join(HOME, 'reporter-state.json');
@@ -26,8 +33,8 @@ const SOURCE = `hermes://${HOME}/state.db`;
 
 function readEnvFile(): Record<string, string> {
   const out: Record<string, string> = {};
-  if (!existsSync(join(HOME, '.env'))) return out;
-  for (const line of readFileSync(join(HOME, '.env'), 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
+  if (!existsSync(ENV_FILE)) return out;
+  for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
   return out;
 }
 const env = readEnvFile();
@@ -42,7 +49,7 @@ if (process.argv.includes('--install')) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>org.open-autonomy.reporter</string>
-  <key>ProgramArguments</key><array><string>${bun}</string><string>${resolve(import.meta.path)}</string><string>--home</string><string>${HOME}</string><string>--supercode</string><string>${resolve(Bun.which(SUPERCODE) ?? SUPERCODE)}</string></array>
+  <key>ProgramArguments</key><array><string>${bun}</string><string>${resolve(import.meta.path)}</string><string>--home</string><string>${HOME}</string><string>--env</string><string>${ENV_FILE}</string>${REPO ? `<string>--repo</string><string>${REPO}</string>` : ''}<string>--supercode</string><string>${resolve(Bun.which(SUPERCODE) ?? SUPERCODE)}</string></array>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${join(HOME, 'logs', 'reporter.log')}</string>
   <key>StandardErrorPath</key><string>${join(HOME, 'logs', 'reporter.log')}</string>
@@ -53,7 +60,7 @@ if (process.argv.includes('--install')) {
   console.log(r.exitCode === 0 ? `installed ${plist}` : `launchctl bootstrap failed: ${r.stderr.toString()}`);
   process.exit(r.exitCode === 0 ? 0 : 1);
 }
-if (!BASE || !KEY) { console.error(`no OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY in ${join(HOME, '.env')}`); process.exit(2); }
+if (!BASE || !KEY) { console.error(`no OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY in ${ENV_FILE}`); process.exit(2); }
 
 // ---- supercode harness.v1 over stdio: requests with ids, notifications by method -------------------------
 type Notification = { method: string; params: any };
@@ -116,13 +123,17 @@ function executionFor(jobId: string, startedAt: Date): { status: string; finishe
     return best;
   } finally { d.close(); }
 }
+// The commit a run landed ON MAIN: the agent's own author, made during the run (author date), or failing
+// that a commit naming the item. Reads origin/main after a fetch, since the agent lands through a branch
+// and the landing workflow's merge, minutes after the run.
 function commitInWindow(workdir: string | undefined, since: Date, until: string | null | undefined, itemId?: string): string | undefined {
   if (!workdir || !existsSync(workdir)) return undefined;
-  const window = [`--since=${since.toISOString()}`, ...(until ? [`--until=${new Date(Date.parse(until) + 60_000).toISOString()}`] : [])];
-  const byAuthor = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  Bun.spawnSync({ cmd: ['git', '-C', workdir, 'fetch', '-q', 'origin', 'main'], stdout: 'ignore', stderr: 'ignore' });
+  const window = ['--no-merges', `--since=${since.toISOString()}`, ...(until ? [`--until=${new Date(Date.parse(until) + 60_000).toISOString()}`] : [])];
+  const byAuthor = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window, 'origin/main'], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
   if (/^[0-9a-f]{40}$/.test(byAuthor)) return byAuthor;
   if (!itemId) return undefined; // a run that committed under another identity: the commit naming its item
-  const byItem = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  const byItem = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window, 'origin/main'], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
   return /^[0-9a-f]{40}$/.test(byItem) ? byItem : undefined;
 }
 function roadmapIds(workdir: string | undefined): string[] {
@@ -162,12 +173,13 @@ async function post(events: unknown[]): Promise<boolean> {
 }
 
 // ---- the runs we narrate -----------------------------------------------------------------------------------
-type RunState = { started: boolean; sent_msgs: number; sent_turns: number; finished: boolean; item_id?: string; last_text?: string };
+type RunState = { started: boolean; sent_msgs: number; sent_turns: number; finished: boolean; item_id?: string; last_text?: string; commit_sha?: string; ended_at?: string; status?: string };
 const state: Record<string, RunState> = existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, 'utf8')) : {};
 const save = () => writeFileSync(STATE_PATH, JSON.stringify(state, null, 1));
 const following = new Map<string, string>(); // session id → follow subscription id
 const jobs = jobsFile();
-const workdirOf = (jobId: string) => jobs.jobs.find((j) => j.id === jobId)?.workdir ?? jobs.jobs[0]?.workdir;
+// The checkout on THIS host: --repo when given (the job's workdir is a container path), else the job's workdir.
+const workdirOf = (jobId: string) => REPO ?? jobs.jobs.find((j) => j.id === jobId)?.workdir ?? jobs.jobs[0]?.workdir;
 
 async function ensureStarted(key: string, title: string | undefined): Promise<RunState | null> {
   const start = sessionStart(key); if (!start) return null;
@@ -206,16 +218,27 @@ async function finishIfDone(h: Harness, key: string): Promise<void> {
   // recorded an outcome; whether side effects ran is unknown). Only `completed` is done.
   if (!exec || !['completed', 'failed', 'unknown'].includes(exec.status)) return;
   const workdir = workdirOf(start.jobId);
-  const ok = await post([cloudEvent('finished', key, {
-    status: exec.status === 'completed' ? 'done' : 'failed', report: st.last_text, item_id: st.item_id,
-    commit_sha: commitInWindow(workdir, start.startedAt, exec.finished_at, st.item_id),
-    ended_at: exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined,
-  })]);
+  st.status = exec.status === 'completed' ? 'done' : 'failed';
+  st.ended_at = exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined;
+  st.commit_sha = commitInWindow(workdir, start.startedAt, exec.finished_at, st.item_id);
+  const ok = await post([cloudEvent('finished', key, { status: st.status, report: st.last_text, item_id: st.item_id, commit_sha: st.commit_sha, ended_at: st.ended_at })]);
   if (!ok) return;
   st.finished = true; save();
   const sub = following.get(key);
   if (sub) { following.delete(key); await h.call('harness.v1.sessions.unfollow', { subscription: sub }).catch(() => {}); }
   console.log(`${key}: finished (${exec.status}), ${st.sent_turns} turns`);
+}
+// A run's commit lands on main after the run (branch → landing workflow → auto-merge on green checks):
+// keep looking for a day and re-post the receipt with the commit once it is there.
+async function backfillCommit(key: string): Promise<void> {
+  const st = state[key]; if (!st || !st.finished || st.commit_sha || st.status !== 'done') return;
+  const start = sessionStart(key)!;
+  if (Date.now() - start.startedAt.getTime() > 24 * 3600_000) return;
+  const sha = commitInWindow(workdirOf(start.jobId), start.startedAt, new Date(start.startedAt.getTime() + 24 * 3600_000).toISOString(), st.item_id);
+  if (!sha) return;
+  if (!(await post([cloudEvent('finished', key, { status: st.status, report: st.last_text, item_id: st.item_id, commit_sha: sha, ended_at: st.ended_at })]))) return;
+  st.commit_sha = sha; save();
+  console.log(`${key}: landed ${sha.slice(0, 7)}`);
 }
 async function adopt(h: Harness, descriptor: any): Promise<void> {
   const key: string = descriptor?.locator?.session_id ?? '';
@@ -261,8 +284,10 @@ try {
     // for runs we have started narrating (supercode has no subscription for that table).
     const sub = await harness.call('harness.v1.sessions.index.subscribe', query);
     for (const s of sub.initial ?? []) await adopt(harness, s);
+    let tick = 0;
     for (;;) {
       for (const key of Object.keys(state)) await finishIfDone(harness, key);
+      if (tick++ % 12 === 0) for (const key of Object.keys(state)) await backfillCommit(key); // once a minute
       await Bun.sleep(5000);
     }
   }

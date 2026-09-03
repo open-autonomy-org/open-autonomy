@@ -1,0 +1,36 @@
+# The Open Autonomy agent, as it runs: one Hermes container (gateway = the Discord channel + the cron
+# schedule) and one sidecar that holds the project's standing key. Nothing the agent can read is a
+# secret that matters; see hermes/README.md for the host layout this expects.
+#
+#   AGENT_ROOT=~/volter/open-autonomy-agent docker compose -f container/compose.yml up -d --build
+services:
+  sidecar:
+    image: oven/bun:1.3.10
+    container_name: oa-sidecar
+    restart: unless-stopped
+    command: ["bun", "/sidecar/agent-sidecar.ts"]
+    environment:
+      - AGENT_ENV_FILE=/secrets/agent.env
+    volumes:
+      - ../platform/scripts/agent-sidecar.ts:/sidecar/agent-sidecar.ts:ro
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}/agent.env:/secrets/agent.env:ro
+    networks: [agent]
+  agent:
+    build: .
+    image: open-autonomy-agent:local
+    container_name: oa-agent
+    restart: unless-stopped
+    depends_on: [sidecar]
+    command: ["gateway", "run"]
+    environment:
+      - HERMES_UID=10000
+      - HERMES_GID=10000
+      - SSH_AUTH_SOCK=/ssh-agent
+      - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
+    volumes:
+      - ${AGENT_ROOT:-~/volter/open-autonomy-agent}/home:/opt/data
+      - ${AGENT_ROOT:-~/volter/open-autonomy-agent}/repo:/work/open-autonomy
+      - /run/host-services/ssh-auth.sock:/ssh-agent
+    networks: [agent]
+networks:
+  agent: {}

@@ -59,8 +59,10 @@ run logs and inputs are public. Adopters are funded by grant.
 - **Containment backstop, outside the trust loop.** The proxy routes every model call through the model
   gateway, which is prepaid: the loaded balance is a hard ceiling the worker cannot raise. Worst case from
   any compromise is that balance, plus a rollback. `MODEL_GATEWAY_API_KEY` is the only provider secret.
-- **The agent cannot reach any of this.** It pushes with a repository-scoped credential that cannot dispatch
-  workflows or cut a `deploy-v*` tag, and its model key stays outside its container (see `hermes/README.md`).
+- **The agent cannot reach any of this.** It pushes `agent/*` branches with a repository-scoped deploy key that
+  cannot dispatch workflows, open pull requests, or cut a `deploy-v*` tag; `land.yml` opens its pull request and
+  auto-merge lands it only when `ci` and `security` pass. Its model key stays outside its container
+  (`hermes/README.md`).
 - **Maintainer caveat.** A maintainer whose machine holds a full-scope GitHub token can both dispatch and
   approve. If that matters, approve from a second device or account.
 

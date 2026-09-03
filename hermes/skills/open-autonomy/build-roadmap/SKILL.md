@@ -31,9 +31,10 @@ You are in the Open Autonomy repository (the cron job sets the working directory
 
 ## Land it
 
-8. Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit as the agent, signed off, so the history shows what the agent did: `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>"`. Commit directly on `main` and push. No branches, no pull requests.
-9. When every acceptance line is true and verified, set the item's `status: done` in `ROADMAP.yml` in the same push. Add a one-line entry under `## Unreleased` in `CHANGELOG.md`.
+8. Start from a fresh `main`: `git fetch origin && git checkout -B agent/<item-id> origin/main` before you change anything (if you already changed files, do this first and carry the changes over). Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit as the agent, signed off, so the history shows what the agent did: `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>"`.
+9. When every acceptance line is true and verified, set the item's `status: done` in `ROADMAP.yml` in the same branch. Add a one-line entry under `## Unreleased` in `CHANGELOG.md`.
+10. Push the branch: `git push -u origin agent/<item-id>`. You cannot open pull requests or push to `main`, and you do not need to: the landing workflow opens the pull request and it merges on its own when the required checks pass. Do not wait for it. If the push is rejected because the branch exists from an earlier run, push to `agent/<item-id>-<YYYYMMDD-HHMM>` instead.
 
 ## Report
 
-10. Report in five lines or fewer: the item id, what changed, what you verified and how, what is left. Nothing else.
+11. Report in five lines or fewer: the item id, what changed, the branch you pushed, what you verified and how, what is left. Nothing else.
