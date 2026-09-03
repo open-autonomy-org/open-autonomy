@@ -1,14 +1,16 @@
 #!/usr/bin/env bun
 // The agent-side reporter: narrates the agent's cron runs to the platform so the site can show what the agent
-// is doing, did, and (from the schedule) will do. It never touches Hermes; it reads the HERMES home through
-// supercode's harness protocol (the normalized session shape, so any harness supercode reads would work) and
-// Hermes's own executions table for run outcomes, and pushes `started → turns → finished` events on the
-// project's standing key. The platform's meter stays the independent check on every number.
+// is doing, did, and (from the schedule) will do. It never touches Hermes. It reads the HERMES home through
+// supercode's harness protocol — a subscription to the session index for new runs and a follow on each run
+// for appended messages (the normalized session shape, so any harness supercode reads would work) — and
+// Hermes's own executions table for run outcomes. It pushes CloudEvents 1.0 on the project's standing key:
+// org.open-autonomy.job.{started,turns,finished}, subject = the run's session id, turns carrying their
+// offset so a retry or a reconnect is idempotent. The platform's meter stays the independent check.
 //
-//   bun platform/scripts/agent-reporter.ts [--home hermes] [--supercode /path/to/supercode] [--interval 5] [--once]
-//   bun platform/scripts/agent-reporter.ts --install      # a launchd agent that runs the loop beside the gateway
+//   bun platform/scripts/agent-reporter.ts [--home hermes] [--supercode /path/to/supercode] [--once]
+//   bun platform/scripts/agent-reporter.ts --install      # a launchd agent that runs beside the gateway
 //
-// State (which turns were already sent) lives in <home>/reporter-state.json, git-ignored.
+// State (turn offsets already sent per run) lives in <home>/reporter-state.json, git-ignored.
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -17,16 +19,15 @@ import { join, resolve } from 'node:path';
 const arg = (name: string, dflt?: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : dflt; };
 const HOME = resolve(arg('--home', 'hermes') as string);
 const SUPERCODE = arg('--supercode', process.env.SUPERCODE_BIN ?? 'supercode') as string;
-const INTERVAL_MS = Number(arg('--interval', '5')) * 1000;
 const ONCE = process.argv.includes('--once');
 const STATE_PATH = join(HOME, 'reporter-state.json');
+const STORE = join(HOME, 'state.db');
+const SOURCE = `hermes://${HOME}/state.db`;
 
 function readEnvFile(): Record<string, string> {
   const out: Record<string, string> = {};
   if (!existsSync(join(HOME, '.env'))) return out;
-  for (const line of readFileSync(join(HOME, '.env'), 'utf8').split('\n')) {
-    const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2];
-  }
+  for (const line of readFileSync(join(HOME, '.env'), 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
   return out;
 }
 const env = readEnvFile();
@@ -36,13 +37,12 @@ const KEY = env.OPEN_AUTONOMY_KEY;
 if (process.argv.includes('--install')) {
   const plist = join(homedir(), 'Library', 'LaunchAgents', 'org.open-autonomy.reporter.plist');
   const bun = Bun.which('bun') ?? '/usr/local/bin/bun';
-  const script = resolve(import.meta.path);
   mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true });
   writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>org.open-autonomy.reporter</string>
-  <key>ProgramArguments</key><array><string>${bun}</string><string>${script}</string><string>--home</string><string>${HOME}</string><string>--supercode</string><string>${resolve(Bun.which(SUPERCODE) ?? SUPERCODE)}</string></array>
+  <key>ProgramArguments</key><array><string>${bun}</string><string>${resolve(import.meta.path)}</string><string>--home</string><string>${HOME}</string><string>--supercode</string><string>${resolve(Bun.which(SUPERCODE) ?? SUPERCODE)}</string></array>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${join(HOME, 'logs', 'reporter.log')}</string>
   <key>StandardErrorPath</key><string>${join(HOME, 'logs', 'reporter.log')}</string>
@@ -55,12 +55,13 @@ if (process.argv.includes('--install')) {
 }
 if (!BASE || !KEY) { console.error(`no OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY in ${join(HOME, '.env')}`); process.exit(2); }
 
-// ---- supercode harness.v1 over stdio ----------------------------------------------------------------
+// ---- supercode harness.v1 over stdio: requests with ids, notifications by method -------------------------
+type Notification = { method: string; params: any };
 class Harness {
   private proc = Bun.spawn({ cmd: [SUPERCODE, 'harness', 'serve'], stdin: 'pipe', stdout: 'pipe', stderr: 'ignore' });
   private next = 1;
   private pending = new Map<number, (v: any) => void>();
-  constructor() {
+  constructor(private onNotify: (n: Notification) => void) {
     (async () => {
       const reader = this.proc.stdout.getReader(); const dec = new TextDecoder(); let buf = '';
       for (;;) {
@@ -70,7 +71,9 @@ class Harness {
         while ((nl = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
           if (!line) continue;
-          try { const msg = JSON.parse(line); const cb = this.pending.get(msg.id); if (cb) { this.pending.delete(msg.id); cb(msg); } } catch { /* not ours */ }
+          let msg: any; try { msg = JSON.parse(line); } catch { continue; }
+          if (msg.id !== undefined && this.pending.has(msg.id)) { const cb = this.pending.get(msg.id)!; this.pending.delete(msg.id); cb(msg); }
+          else if (typeof msg.method === 'string') { try { this.onNotify({ method: msg.method, params: msg.params }); } catch (e) { console.error(`notify: ${(e as Error).message}`); } }
         }
       }
     })();
@@ -87,7 +90,7 @@ class Harness {
   close() { this.proc.kill(); }
 }
 
-// ---- Hermes-side facts: which job a session belongs to, and how its execution ended --------------------
+// ---- Hermes-side facts: which job a session belongs to, how its execution ended, what it committed ---------
 type JobsFile = { jobs: Array<{ id?: string; name?: string; workdir?: string }> };
 function jobsFile(): JobsFile {
   for (const f of ['jobs.json', 'jobs.seed.json']) { const p = join(HOME, 'cron', f); if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf8')); }
@@ -113,30 +116,26 @@ function executionFor(jobId: string, startedAt: Date): { status: string; finishe
     return best;
   } finally { d.close(); }
 }
-function commitSince(workdir: string | undefined, since: Date, until?: string | null, itemId?: string): string | undefined {
+function commitInWindow(workdir: string | undefined, since: Date, until: string | null | undefined, itemId?: string): string | undefined {
   if (!workdir || !existsSync(workdir)) return undefined;
   const window = [`--since=${since.toISOString()}`, ...(until ? [`--until=${new Date(Date.parse(until) + 60_000).toISOString()}`] : [])];
-  const r = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window], stdout: 'pipe', stderr: 'ignore' });
-  const sha = r.stdout.toString().trim();
-  if (/^[0-9a-f]{40}$/.test(sha)) return sha;
-  // A run that committed under another identity (before the agent had its own): the commit in the run's window
-  // whose message names the item it worked.
-  if (!itemId) return undefined;
-  const r2 = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window], stdout: 'pipe', stderr: 'ignore' });
-  const sha2 = r2.stdout.toString().trim();
-  return /^[0-9a-f]{40}$/.test(sha2) ? sha2 : undefined;
+  const byAuthor = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  if (/^[0-9a-f]{40}$/.test(byAuthor)) return byAuthor;
+  if (!itemId) return undefined; // a run that committed under another identity: the commit naming its item
+  const byItem = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  return /^[0-9a-f]{40}$/.test(byItem) ? byItem : undefined;
 }
 function roadmapIds(workdir: string | undefined): string[] {
   const p = workdir ? join(workdir, 'ROADMAP.yml') : ''; if (!p || !existsSync(p)) return [];
   return [...readFileSync(p, 'utf8').matchAll(/^\s+- id:\s*(\S+)/gm)].map((m) => m[1]);
 }
 
-// ---- supercode's normalized messages → the platform's turns ---------------------------------------------
+// ---- supercode's normalized messages → the platform's turns ------------------------------------------------
 type Turn = { ts?: string; role: 'user' | 'assistant' | 'tool' | 'system'; text?: string; tool?: string; args?: string; result?: string };
-function toTurns(messages: any[], from: number): Turn[] {
+function toTurns(messages: any[]): Turn[] {
   const out: Turn[] = [];
   const ts = new Date().toISOString();
-  for (const m of messages.slice(from)) {
+  for (const m of messages) {
     const text = typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map((c: any) => c.text ?? '').join('\n') : '';
     if (m.role === 'assistant') {
       for (const tc of m.tool_calls ?? []) out.push({ ts, role: 'assistant', tool: tc.function?.name ?? tc.name, args: tc.function?.arguments ?? '' });
@@ -151,52 +150,104 @@ function detectItem(turns: Turn[], ids: string[]): string | undefined {
   return undefined;
 }
 
-// ---- the loop ----------------------------------------------------------------------------------------------
-type State = Record<string, { started: boolean; sent: number; finished: boolean; item_id?: string }>;
-const state: State = existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, 'utf8')) : {};
-const save = () => writeFileSync(STATE_PATH, JSON.stringify(state, null, 1));
-async function post(event: unknown): Promise<boolean> {
-  const res = await fetch(`${BASE}/v1/agent/events`, { method: 'POST', headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' }, body: JSON.stringify(event) });
-  if (!res.ok) console.error(`event ${JSON.stringify(event).slice(0, 80)} → ${res.status} ${await res.text()}`);
+// ---- CloudEvents on the standing key ---------------------------------------------------------------------
+function cloudEvent(type: 'started' | 'turns' | 'finished', subject: string, data: Record<string, unknown>, time?: string) {
+  return { specversion: '1.0', id: crypto.randomUUID(), source: SOURCE, type: `org.open-autonomy.job.${type}`, subject, time: time ?? new Date().toISOString(), datacontenttype: 'application/json', data };
+}
+async function post(events: unknown[]): Promise<boolean> {
+  if (!events.length) return true;
+  const res = await fetch(`${BASE}/v1/agent/events`, { method: 'POST', headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/cloudevents-batch+json' }, body: JSON.stringify(events) });
+  if (!res.ok) console.error(`events → ${res.status} ${(await res.text()).slice(0, 200)}`);
   return res.ok;
 }
-async function tick(h: Harness): Promise<void> {
-  const disc = await h.call('harness.v1.sessions.discover', { harnesses: ['hermes'], homes: { hermes: join(HOME, 'state.db') } });
-  const jobs = jobsFile();
-  for (const s of disc.sessions ?? []) {
-    const key: string = s.locator?.session_id ?? ''; const start = sessionStart(key);
-    if (!start) continue;
-    const st = (state[key] ??= { started: false, sent: 0, finished: false });
-    if (st.finished) continue;
+
+// ---- the runs we narrate -----------------------------------------------------------------------------------
+type RunState = { started: boolean; sent_msgs: number; sent_turns: number; finished: boolean; item_id?: string; last_text?: string };
+const state: Record<string, RunState> = existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, 'utf8')) : {};
+const save = () => writeFileSync(STATE_PATH, JSON.stringify(state, null, 1));
+const following = new Map<string, string>(); // session id → subscription id
+const jobs = jobsFile();
+const workdirOf = (jobId: string) => jobs.jobs.find((j) => j.id === jobId)?.workdir ?? jobs.jobs[0]?.workdir;
+
+async function ensureStarted(key: string, title: string | undefined): Promise<RunState | null> {
+  const start = sessionStart(key); if (!start) return null;
+  const st = (state[key] ??= { started: false, sent_msgs: 0, sent_turns: 0, finished: false });
+  if (st.finished) return st;
+  if (!st.started) {
     const job = jobs.jobs.find((j) => j.id === start.jobId);
-    const workdir = job?.workdir ?? jobs.jobs[0]?.workdir;
-    if (!st.started) {
-      if (!(await post({ kind: 'started', key, title: s.title, job_name: job?.name ?? start.jobId, started_at: start.startedAt.toISOString() }))) continue;
-      st.started = true; save();
-    }
-    const loaded = await h.call('harness.v1.sessions.load', { locator: s.locator });
-    const messages: any[] = loaded?.session?.messages ?? loaded?.messages ?? [];
-    if (messages.length > st.sent) {
-      const turns = toTurns(messages, st.sent);
-      st.item_id ??= detectItem(turns, roadmapIds(workdir));
-      for (let i = 0; i < turns.length; i += 100) {
-        if (!(await post({ kind: 'turns', key, turns: turns.slice(i, i + 100), item_id: st.item_id }))) return;
-      }
-      st.sent = messages.length; save();
-    }
-    const exec = executionFor(start.jobId, start.startedAt);
-    if (exec && (exec.status === 'completed' || exec.status === 'failed')) {
-      const lastText = [...messages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.trim());
-      const ok = await post({ kind: 'finished', key, status: exec.status === 'failed' ? 'failed' : 'done', report: lastText?.content, commit_sha: commitSince(workdir, start.startedAt, exec.finished_at, st.item_id), item_id: st.item_id, ended_at: exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined });
-      if (ok) { st.finished = true; save(); console.log(`${key}: finished (${exec.status}), ${st.sent} messages`); }
-    }
+    if (!(await post([cloudEvent('started', key, { title, job_name: job?.name ?? start.jobId }, start.startedAt.toISOString())]))) return null;
+    st.started = true; save();
+    console.log(`${key}: started`);
   }
+  return st;
 }
-const h = new Harness();
-try {
-  for (;;) {
-    try { await tick(h); } catch (e) { console.error(`tick: ${(e as Error).message}`); }
-    if (ONCE) break;
-    await Bun.sleep(INTERVAL_MS);
+async function narrate(key: string, messages: any[]): Promise<void> {
+  // `messages` is the run's full message list (a snapshot) or the appended tail; either way we send turns for
+  // messages beyond what was sent, with the turn offset the platform de-duplicates on.
+  const st = state[key]; if (!st || st.finished) return;
+  const fresh = messages.length > st.sent_msgs ? messages.slice(st.sent_msgs) : [];
+  if (!fresh.length) return;
+  const turns = toTurns(fresh);
+  const start = sessionStart(key)!;
+  st.item_id ??= detectItem(turns, roadmapIds(workdirOf(start.jobId)));
+  const lastSay = [...turns].reverse().find((t) => t.role === 'assistant' && t.text); if (lastSay) st.last_text = lastSay.text;
+  const batch: unknown[] = [];
+  for (let i = 0; i < turns.length; i += 100) batch.push(cloudEvent('turns', key, { seq: st.sent_turns + i, turns: turns.slice(i, i + 100), item_id: st.item_id }));
+  if (!(await post(batch))) return;
+  st.sent_msgs = messages.length; st.sent_turns += turns.length; save();
+}
+async function finishIfDone(h: Harness, key: string): Promise<void> {
+  const st = state[key]; if (!st || !st.started || st.finished) return;
+  const start = sessionStart(key)!;
+  const exec = executionFor(start.jobId, start.startedAt);
+  if (!exec || (exec.status !== 'completed' && exec.status !== 'failed')) return;
+  const workdir = workdirOf(start.jobId);
+  const ok = await post([cloudEvent('finished', key, {
+    status: exec.status === 'failed' ? 'failed' : 'done', report: st.last_text, item_id: st.item_id,
+    commit_sha: commitInWindow(workdir, start.startedAt, exec.finished_at, st.item_id),
+    ended_at: exec.finished_at ? new Date(Date.parse(exec.finished_at)).toISOString() : undefined,
+  })]);
+  if (!ok) return;
+  st.finished = true; save();
+  const sub = following.get(key);
+  if (sub) { following.delete(key); await h.call('harness.v1.sessions.unfollow', { subscription: sub }).catch(() => {}); }
+  console.log(`${key}: finished (${exec.status}), ${st.sent_turns} turns`);
+}
+async function adopt(h: Harness, descriptor: any): Promise<void> {
+  const key: string = descriptor?.locator?.session_id ?? '';
+  if (!sessionStart(key)) return;
+  const st = await ensureStarted(key, descriptor.title); if (!st || st.finished) return;
+  if (ONCE) {
+    const loaded = await h.call('harness.v1.sessions.load', { locator: descriptor.locator });
+    await narrate(key, loaded?.session?.messages ?? loaded?.messages ?? []);
+    return;
   }
-} finally { h.close(); }
+  if (following.has(key)) return;
+  const res = await h.call('harness.v1.sessions.follow', { locator: descriptor.locator });
+  following.set(key, res.subscription);
+  const snapshot = res.initial?.session?.messages ?? res.initial?.messages;
+  if (Array.isArray(snapshot)) await narrate(key, snapshot);
+}
+
+const harness: Harness = new Harness((n) => {
+  if (n.method === 'harness.v1.sessions.event') {
+    const ev = n.params?.event; const key = [...following.entries()].find(([, sub]) => sub === n.params?.subscription)?.[0];
+    if (!key || !ev) return;
+    if (ev.type === 'messages_appended') void narrate(key, [...new Array(state[key]?.sent_msgs ?? 0), ...ev.messages]); // appended tail at its offset
+    else if (ev.type === 'session_snapshot') void narrate(key, ev.session?.messages ?? []);
+  } else if (n.method === 'harness.v1.sessions.index_event') {
+    for (const c of n.params?.changes ?? []) if ((c.kind === 'added' || c.kind === 'updated') && c.descriptor) void adopt(harness, c.descriptor);
+  }
+});
+
+try {
+  const query = { harnesses: ['hermes'], homes: { hermes: STORE } };
+  const disc = await harness.call('harness.v1.sessions.discover', query);
+  for (const s of disc.sessions ?? []) await adopt(harness, s);
+  if (!ONCE) await harness.call('harness.v1.sessions.index.subscribe', query).catch((e) => console.error(`index.subscribe: ${(e as Error).message}`));
+  for (;;) {
+    for (const key of Object.keys(state)) await finishIfDone(harness, key);
+    if (ONCE) break;
+    await Bun.sleep(5000);
+  }
+} finally { harness.close(); }
