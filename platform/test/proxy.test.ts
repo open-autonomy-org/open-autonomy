@@ -706,55 +706,81 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
   });
 });
 
-describe('agent jobs (the reporter narrates a run on the standing key)', () => {
+describe('agent jobs (the reporter narrates a run on the standing key, as CloudEvents)', () => {
   const standing = (env: Env, repo = 'volter/twin') => requestJson(env, '/admin/runs/mint', {
     method: 'POST', headers: { 'x-admin-token': 'admin' },
     body: { repo, issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['deepseek/deepseek-v4-flash'] },
   });
+  let n = 0;
+  const ce = (type: string, subject: string, data: unknown, time?: string) => ({ specversion: '1.0', id: `evt-${++n}`, source: 'hermes://home/state.db', type: `org.open-autonomy.job.${type}`, subject, time, data });
   const post = (env: Env, token: string, body: unknown) => request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
+  const KEY = 'cron_abc_20260903_152011';
 
-  test('started → turns → finished becomes one durable receipt with a bounded transcript', async () => {
+  test('started → turns (offsets) → finished becomes one durable receipt; replayed offsets are ignored', async () => {
     const env = testEnv();
     const key = await standing(env);
-    expect((await post(env, key.token, { kind: 'started', key: 'cron_abc_20260903_152011', title: 'build-roadmap · Sep 03 15:20', job_name: 'build-roadmap', started_at: '2026-09-03T15:20:11Z' })).status).toBe(200);
+    expect((await post(env, key.token, ce('started', KEY, { title: 'build-roadmap · Sep 03 15:20', job_name: 'build-roadmap' }, '2026-09-03T15:20:11Z'))).status).toBe(200);
     const listWhileRunning = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs');
-    expect(listWhileRunning.current).toBe('cron_abc_20260903_152011');
+    expect(listWhileRunning.current).toBe(KEY);
     expect(listWhileRunning.jobs[0].status).toBe('running');
-    expect((await post(env, key.token, { kind: 'turns', key: 'cron_abc_20260903_152011', item_id: 'prune-actions-era', turns: [
+    const turns = [
       { ts: '2026-09-03T15:20:12Z', role: 'user', text: 'Work the top open item…' },
       { ts: '2026-09-03T15:20:14Z', role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' },
       { ts: '2026-09-03T15:20:15Z', role: 'tool', tool: 'read_file', result: '1|# The roadmap…' },
       { role: 'nonsense' }, // dropped, never fails the event
-    ] })).status).toBe(200);
-    expect((await post(env, key.token, { kind: 'finished', key: 'cron_abc_20260903_152011', status: 'done', report: 'Done. prune-actions-era — committed 7d30729.', commit_sha: '7d30729', ended_at: '2026-09-03T15:44:11Z' })).status).toBe(200);
+    ];
+    // A batch: the turns, then the same turns replayed (a retry) — the replay is idempotent by offset.
+    const batch = await post(env, key.token, [ce('turns', KEY, { seq: 0, item_id: 'prune-actions-era', turns }), ce('turns', KEY, { seq: 0, turns })]);
+    expect(batch.status).toBe(200);
+    const results = ((await batch.json()) as { results: Array<{ idempotent?: boolean }> }).results;
+    expect(results[1].idempotent).toBe(true);
+    expect((await post(env, key.token, ce('finished', KEY, { status: 'done', report: 'Done. prune-actions-era — committed 7d30729.', commit_sha: '7d30729', ended_at: '2026-09-03T15:44:11Z' }))).status).toBe(200);
     const list = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs');
     expect(list.current).toBeUndefined();
     expect(list.jobs.length).toBe(1);
-    expect(list.jobs[0]).toMatchObject({ key: 'cron_abc_20260903_152011', status: 'done', item_id: 'prune-actions-era', commit_sha: '7d30729', turn_count: 3, tool_calls: 1 });
-    expect(list.jobs[0].turns).toBeUndefined();
-    const one = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs/cron_abc_20260903_152011');
+    expect(list.jobs[0]).toMatchObject({ key: KEY, status: 'done', item_id: 'prune-actions-era', commit_sha: '7d30729', turn_count: 3, tool_calls: 1, next_seq: 3 });
+    const one = await requestJson(env, `/v1/accounts/volter%2Ftwin/jobs/${KEY}`);
     expect(one.job.turns.length).toBe(3);
-    expect(one.job.turns[1].tool).toBe('read_file');
-    expect(one.job.report).toContain('7d30729');
+    expect(one.job.turns.map((t: { seq: number }) => t.seq)).toEqual([0, 1, 2]);
+    expect(one.job.started_at).toBe('2026-09-03T15:20:11.000Z'); // the CloudEvent's time
     expect(one.job.ended_at).toBe('2026-09-03T15:44:11.000Z'); // the harness's own end time, not the narration time
   });
 
-  test('the account is the key\'s own; a plain run token or an unknown job is refused', async () => {
+  test("the account is the key's own; a plain run token, a non-CloudEvent, or an unknown job is refused", async () => {
     const env = testEnv();
     const key = await standing(env, 'acme/app');
-    expect((await post(env, key.token, { kind: 'started', key: 'k1', title: 't' })).status).toBe(200);
+    expect((await post(env, key.token, ce('started', 'k1', { title: 't' }))).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/jobs')).jobs.length).toBe(1);
     expect((await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs')).jobs.length).toBe(0);
-    expect((await post(env, key.token, { kind: 'turns', key: 'never-started', turns: [] })).status).toBe(404);
+    expect((await post(env, key.token, ce('turns', 'never-started', { seq: 0, turns: [] }))).status).toBe(404);
+    expect((await post(env, key.token, { kind: 'started', key: 'k9' })).status).toBe(400); // not a CloudEvent
+    expect((await post(env, key.token, ce('exploded', 'k1', {}))).status).toBe(400);
     const plain = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 10, { repo: 'acme/app' });
-    expect((await post(env, plain.token, { kind: 'started', key: 'k2' })).status).toBe(403);
-    expect((await request(env, '/v1/agent/events', { method: 'POST', body: { kind: 'started', key: 'k3' } })).status).toBe(401);
+    expect((await post(env, plain.token, ce('started', 'k2', {}))).status).toBe(403);
+    expect((await request(env, '/v1/agent/events', { method: 'POST', body: ce('started', 'k3', {}) })).status).toBe(401);
     expect((await request(env, '/v1/accounts/acme%2Fapp/jobs/nope')).status).toBe(404);
-    // Operator repair: an admin can drop a receipt; the list no longer carries it.
     expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE' })).status).toBe(401);
     expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE', headers: { 'x-admin-token': 'admin' } })).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/jobs')).jobs.length).toBe(0);
     expect((await request(env, '/admin/accounts/acme%2Fapp/jobs/k1', { method: 'DELETE', headers: { 'x-admin-token': 'admin' } })).status).toBe(404);
+  });
+
+  test('the live channel: SSE replays turns after an offset, reports status, and closes when the job finishes', async () => {
+    const env = testEnv();
+    const key = await standing(env);
+    await post(env, key.token, ce('started', 'k-sse', { job_name: 'build-roadmap' }));
+    await post(env, key.token, ce('turns', 'k-sse', { seq: 0, turns: [{ role: 'assistant', tool: 'read_file', args: '{}' }, { role: 'tool', tool: 'read_file', result: 'x' }, { role: 'assistant', text: 'ok' }] }));
+    await post(env, key.token, ce('finished', 'k-sse', { status: 'done', report: 'fine' }));
+    const res = await worker.fetch(new Request('https://proxy.test/v1/accounts/volter%2Ftwin/jobs/k-sse/events', { headers: { 'last-event-id': '0' } }), env, ctx);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const text = await res.text(); // the job is finished, so the stream ends on its own
+    expect(text.startsWith('retry: 3000')).toBe(true);
+    expect(text.includes('id: 0\n')).toBe(false); // resumed after offset 0
+    expect(text.includes('id: 1\nevent: turn\n')).toBe(true);
+    expect(text.includes('id: 2\nevent: turn\n')).toBe(true);
+    expect(text.includes('event: status\ndata: {"status":"done"')).toBe(true);
+    expect((await worker.fetch(new Request('https://proxy.test/v1/accounts/volter%2Ftwin/jobs/nope/events'), env, ctx)).status).toBe(404);
   });
 });
 
@@ -762,13 +788,15 @@ describe('the run page and now widget routes', () => {
   test('a receipt renders as a page; an unknown run is a 404 page; now.svg serves', async () => {
     const env = testEnv();
     const key = await requestJson(env, '/admin/runs/mint', { method: 'POST', headers: { 'x-admin-token': 'admin' }, body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['m'] } });
-    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: { kind: 'started', key: 'cron_x_20260903_120000', job_name: 'build-roadmap' } });
-    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: { kind: 'turns', key: 'cron_x_20260903_120000', turns: [{ role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' }] } });
+    const ce = (type: string, data: unknown) => ({ specversion: '1.0', id: `e-${type}`, source: 'hermes://home', type: `org.open-autonomy.job.${type}`, subject: 'cron_x_20260903_120000', data });
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: ce('started', { job_name: 'build-roadmap' }) });
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${key.token}` }, body: ce('turns', { seq: 0, turns: [{ role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' }] }) });
     const page = await request(env, '/p/volter%2Ftwin/jobs/cron_x_20260903_120000');
     expect(page.status).toBe(200);
     const body = await page.text();
     expect(body.includes('read_file')).toBe(true);
-    expect(body.includes('refreshes every 10 seconds')).toBe(true);
+    expect(body.includes('new EventSource(')).toBe(true); // the live channel, not a page reload
+    expect(body.includes('data-last-seq="0"')).toBe(true);
     expect((await request(env, '/p/volter%2Ftwin/jobs/nope')).status).toBe(404);
     const svg = await request(env, '/v1/accounts/volter%2Ftwin/now.svg');
     expect(svg.status).toBe(200);

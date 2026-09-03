@@ -616,7 +616,7 @@ export class LimitLedger implements DurableObject {
       job = {
         key: ev.key, account, status: 'running',
         title: clipText(ev.title, 200), item_id: clipText(ev.item_id, 80), job_name: clipText(ev.job_name, 80),
-        started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, updated_at: new Date(now).toISOString(),
+        started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, next_seq: 0, updated_at: new Date(now).toISOString(),
       };
       storageKey = `job:${account}:${String(startedMs).padStart(13, '0')}:${ev.key}`;
       await this.ctx.storage.put(idxKey, storageKey);
@@ -624,9 +624,14 @@ export class LimitLedger implements DurableObject {
     } else if (!job || !storageKey) {
       return { ok: false, error: 'job_not_started' };
     } else if (ev.kind === 'turns') {
+      // Offset idempotency: `seq` is the index of the first turn in the run's own order. A retry or a
+      // reconnect replays offsets already applied and is ignored; a gap is accepted (the tail is kept).
+      const seq = Number.isInteger(ev.seq) && (ev.seq as number) >= 0 ? (ev.seq as number) : job.next_seq;
+      if (seq < job.next_seq) return { ok: true, job: jobSummary(job), idempotent: true };
       const incoming = Array.isArray(ev.turns) ? ev.turns.slice(0, MAX_JOB_TURNS_PER_EVENT).map(normalizeTurn).filter((t): t is JobTurn => t !== null) : [];
-      job.turns = [...job.turns, ...incoming].slice(-MAX_JOB_TURNS);
+      job.turns = [...job.turns, ...incoming.map((t, i) => ({ ...t, seq: seq + i }))].slice(-MAX_JOB_TURNS);
       job.turn_count += incoming.length;
+      job.next_seq = seq + incoming.length;
       if (ev.item_id && !job.item_id) job.item_id = clipText(ev.item_id, 80);
       job.updated_at = new Date(now).toISOString();
     } else if (ev.kind === 'finished') {
@@ -1336,9 +1341,10 @@ export interface FundingSnapshot {
 // An agent job (one Hermes cron fire) as the agent-side reporter narrates it, and as the page renders it.
 export type JobEvent =
   | { kind: 'started'; key: string; title?: string; item_id?: string; job_name?: string; started_at?: string }
-  | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string }
+  | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string; seq?: number }
   | { kind: 'finished'; key: string; status?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string; ended_at?: string };
 export interface JobTurn {
+  seq?: number;
   ts?: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
   text?: string;
@@ -1359,6 +1365,8 @@ export interface JobRecord {
   commit_sha?: string;
   turns: JobTurn[];
   turn_count: number;
+  // The next turn offset the run expects (turns below it were already applied).
+  next_seq: number;
   updated_at: string;
 }
 export type JobSummary = Omit<JobRecord, 'turns'> & { tool_calls: number };

@@ -30,6 +30,17 @@ const fmtDur = (a: string | undefined, b: string | undefined, now: number): stri
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 };
 const short = (sha: string | undefined): string => (sha ? sha.slice(0, 7) : '');
+// Relative time the way GitHub's relative-time renders it: "3 minutes ago", "2 hours ago", "yesterday", else the date.
+export const fmtAgo = (iso: string | undefined, now: number): string => {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return '';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60); if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.round(m / 60); if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24); if (d === 1) return 'yesterday'; if (d < 14) return `${d} days ago`;
+  return fmtWhen(iso);
+};
 const toolLine = (t: JobTurn): string => {
   if (!t.tool) return '';
   try {
@@ -46,7 +57,7 @@ function Receipt({ job, enc, repoUrl, now }: { job: JobSummary; enc: string; rep
   return (
     <div class={`receipt ${cls}`}>
       <div class="rc-head">
-        <span class="rc-when">{running ? `running ${fmtDur(job.started_at, undefined, now)}` : `${fmtWhen(job.started_at)} · ${fmtDur(job.started_at, job.ended_at, now)}`}</span>
+        <span class="rc-when">{running ? `in progress · ${fmtDur(job.started_at, undefined, now)}` : `${fmtAgo(job.ended_at ?? job.started_at, now)} · ${fmtDur(job.started_at, job.ended_at, now)}`}</span>
         <span class="rc-stat">{job.turn_count} turns · {job.tool_calls} tools</span>
         {job.status === 'failed' ? <span class="rc-fail">failed</span> : null}
       </div>
@@ -113,7 +124,7 @@ export function Spine({ account, yml, scheduleJson, jobs, current, repoUrl, now 
       <h3>Now</h3>
       {live ? (
         <div class="livebox">
-          <div class="lb-head"><span class="live"><span class="pulse" /></span><b>{live.job_name ?? 'agent'}</b> · {live.item_id ?? live.title ?? ''} · running {fmtDur(live.started_at, undefined, now)} · {live.turn_count} turns · {live.tool_calls} tools</div>
+          <div class="lb-head" data-live-job={live.key} data-account={account}><span class="live"><span class="pulse" /></span><b>{live.job_name ?? 'agent'}</b> · {live.item_id ?? live.title ?? ''} · in progress · {fmtDur(live.started_at, undefined, now)} · <span data-live-turns>{live.turn_count}</span> turns · <span data-live-tools>{live.tool_calls}</span> tools</div>
           <a class="docmore" href={`/p/${enc}/jobs/${encodeURIComponent(live.key)}`}>Follow the run →</a>
         </div>
       ) : (
@@ -156,7 +167,7 @@ export function JobPage({ account, job, repoUrl, now }: { account: string; job: 
       <p class="crumb"><a href={`/p/${enc}`}>← {account}</a></p>
       <div class="panel jobhead">
         <h1>{job.job_name ?? 'agent'}{job.item_id ? <> · <span class="item">{job.item_id}</span></> : null}</h1>
-        <p class="meta">{running ? <><span class="live"><span class="pulse" /></span> running · {fmtDur(job.started_at, undefined, now)}</> : <>{job.status === 'failed' ? '✕ failed' : '✓ done'} · {fmtDur(job.started_at, job.ended_at, now)}</>} · started {fmtWhen(job.started_at)} · {job.turn_count} turns · {tools} tool calls</p>
+        <p class="meta" data-job-meta>{running ? <><span class="live"><span class="pulse" /></span> in progress · {fmtDur(job.started_at, undefined, now)}</> : <>{job.status === 'failed' ? '✕ failed' : '✓ completed'} · {fmtDur(job.started_at, job.ended_at, now)}</>} · started {fmtAgo(job.started_at, now)} · <span data-turns>{job.turn_count}</span> turns · <span data-tools>{tools}</span> tool calls</p>
       </div>
       {job.report ? <div class="panel"><h3>Report (the agent's own words)</h3><div class="report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(job.report) }} /></div> : null}
       <div class="panel">
@@ -169,8 +180,8 @@ export function JobPage({ account, job, repoUrl, now }: { account: string; job: 
       </div>
       <div class="panel">
         <h3>Transcript</h3>
-        <div class="turns">{job.turns.map((t) => <Turn t={t} />)}</div>
-        {running ? <p class="note">Live: this page refreshes every 10 seconds while the run is in progress.</p> : null}
+        <div class="turns" data-turns-list data-last-seq={String(job.turns.length ? job.turns[job.turns.length - 1].seq ?? -1 : -1)}>{job.turns.map((t) => <Turn t={t} />)}</div>
+        {running ? <p class="note" data-live-note>Live: new turns append as the agent works; the page stays where you scrolled unless you are at the bottom.</p> : null}
       </div>
     </div>
   );
@@ -179,6 +190,40 @@ export function JobPage({ account, job, repoUrl, now }: { account: string; job: 
 export function jobPageHtml(account: string, job: JobRecord, repoUrl: string | undefined, now: number): string {
   return render(<JobPage account={account} job={job} repoUrl={repoUrl} now={now} />);
 }
+
+// The page-side half of the live channel: EventSource over the job's SSE route. Turns append as rows (same
+// markup as the server renders), status updates the header, and a finished job reloads once so the receipt
+// renders server-side. Follows the log unless the reader has scrolled up (the Actions log-viewer rule).
+export const LIVE_SCRIPT = `(() => {
+  const list = document.querySelector('[data-turns-list]');
+  const box = document.querySelector('[data-live-job]');
+  const path = location.pathname.match(/^\\/p\\/(.+?)\\/jobs\\/([^/]+)$/);
+  const account = box ? box.getAttribute('data-account') : path && decodeURIComponent(path[1]);
+  const key = box ? box.getAttribute('data-live-job') : path && decodeURIComponent(path[2]);
+  if (!account || !key || !('EventSource' in window)) return;
+  const enc = encodeURIComponent;
+  const after = list ? list.getAttribute('data-last-seq') : '-1';
+  const es = new EventSource('/v1/accounts/' + enc(account) + '/jobs/' + enc(key) + '/events?after=' + after);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const atBottom = () => (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 80);
+  es.addEventListener('turn', (e) => {
+    if (!list) return;
+    const t = JSON.parse(e.data); const ts = t.ts ? new Date(t.ts).toISOString().slice(11, 19) : '';
+    const follow = atBottom();
+    let html = '';
+    if (t.role === 'assistant' && t.tool) { let a = t.args || ''; try { const o = JSON.parse(a); const v = o.path ?? o.command ?? o.pattern ?? o.query ?? Object.values(o)[0]; a = typeof v === 'string' ? v : a; } catch {} html = '<div class="turn tool"><span class="ts">' + ts + '</span><span class="tn">' + esc(t.tool) + '</span><span class="ta">' + esc(a.slice(0, 140)) + '</span></div>'; }
+    else if (t.role === 'tool') html = '<details class="turn result"><summary><span class="ts">' + ts + '</span><span class="tn">↳ ' + esc(t.tool || 'result') + '</span><span class="ta">' + esc((t.result || '').slice(0, 90)) + '</span></summary><pre>' + esc(t.result || '') + '</pre></details>';
+    else if (t.role === 'assistant') html = '<div class="turn say"><span class="ts">' + ts + '</span><div class="tx">' + esc(t.text || '') + '</div></div>';
+    else if (t.role === 'user') html = '<details class="turn user"><summary><span class="ts">' + ts + '</span><span class="tn">prompt</span><span class="ta">' + esc((t.text || '').slice(0, 90)) + '</span></summary><pre>' + esc(t.text || '') + '</pre></details>';
+    if (html) { list.insertAdjacentHTML('beforeend', html); if (follow) window.scrollTo(0, document.body.scrollHeight); }
+  });
+  es.addEventListener('status', (e) => {
+    const s = JSON.parse(e.data);
+    for (const el of document.querySelectorAll('[data-turns],[data-live-turns]')) el.textContent = String(s.turn_count);
+    if (s.status !== 'running') { es.close(); setTimeout(() => location.reload(), 800); }
+  });
+  es.onerror = () => { /* EventSource reconnects with Last-Event-ID on its own */ };
+})();`;
 export function spineHtml(props: Parameters<typeof Spine>[0]): string {
   return render(<Spine {...props} />);
 }

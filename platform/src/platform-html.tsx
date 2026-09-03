@@ -1,7 +1,7 @@
 import { raw } from 'hono/html';
 import type { DirectoryEntry, Flow, LiveRun, Patron, ProjectView } from './limit-ledger.js';
 import { CharterPanel, ChangelogPanel } from './project-docs.js';
-import { Spine, JobPage } from './agent-view.js';
+import { Spine, JobPage, LIVE_SCRIPT } from './agent-view.js';
 import type { JobRecord, JobSummary } from './limit-ledger.js';
 import { icon } from './icons.js';
 import { Icon } from './ui/Icon.js';
@@ -753,12 +753,12 @@ function Project({ v, page, jobs, current }: { v: ProjectView; page: number; job
 // No page-level auto-refresh: the live surface is the drawer (polls session.json; a meta-refresh would close
 // an open drawer). The panel refreshes on navigation.
 export function renderProject(v: ProjectView, page = 0, jobs: JobSummary[] = [], current?: string): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`} refreshSeconds={current ? 15 : undefined}><Project v={v} page={page} jobs={jobs} current={current} /></Shell>);
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} page={page} jobs={jobs} current={current} />{current ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderJobPage(account: string, job: JobRecord, nowMs: number): string {
   const repoUrl = account.includes('/') ? `https://github.com/${account}` : undefined;
-  return render(<Shell title={`${job.job_name ?? 'run'} · ${nameOf(account)} · open-autonomy`} refreshSeconds={job.status === 'running' ? 10 : undefined}><Nav /><JobPage account={account} job={job} repoUrl={repoUrl} now={nowMs} /></Shell>);
+  return render(<Shell title={`${job.job_name ?? 'run'} · ${nameOf(account)} · open-autonomy`}><Nav /><JobPage account={account} job={job} repoUrl={repoUrl} now={nowMs} />{job.status === 'running' ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderRedeemResult(account: string, ok: boolean, message: string): string {

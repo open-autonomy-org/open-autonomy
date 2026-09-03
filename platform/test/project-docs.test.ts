@@ -171,8 +171,8 @@ items:
       - Another repository mints a key and runs its own agent.
 `;
 const SCHEDULE = JSON.stringify({ jobs: [{ name: 'build-roadmap', schedule: 'every 360m', deliver: 'discord' }] });
-const doneJob: JobSummary = { key: 'cron_j_20260903_085658', account: 'o/r', status: 'done', job_name: 'build-roadmap', item_id: 'fund-and-show', started_at: '2026-09-03T08:56:58Z', ended_at: '2026-09-03T09:20:57Z', report: 'Done. fund-and-show — committed 0d71f31.', commit_sha: '0d71f31352271ed4dbbd818e4d252b742c087549', turn_count: 40, tool_calls: 11, updated_at: '2026-09-03T09:20:57Z' };
-const liveJob: JobSummary = { key: 'cron_j_20260903_152011', account: 'o/r', status: 'running', job_name: 'build-roadmap', item_id: 'prune-actions-era', started_at: new Date(Date.now() - 14 * 60_000).toISOString(), turn_count: 38, tool_calls: 12, updated_at: new Date().toISOString() };
+const doneJob: JobSummary = { key: 'cron_j_20260903_085658', account: 'o/r', status: 'done', job_name: 'build-roadmap', item_id: 'fund-and-show', started_at: '2026-09-03T08:56:58Z', ended_at: '2026-09-03T09:20:57Z', report: 'Done. fund-and-show — committed 0d71f31.', commit_sha: '0d71f31352271ed4dbbd818e4d252b742c087549', turn_count: 40, tool_calls: 11, next_seq: 40, updated_at: '2026-09-03T09:20:57Z' };
+const liveJob: JobSummary = { key: 'cron_j_20260903_152011', account: 'o/r', status: 'running', job_name: 'build-roadmap', item_id: 'prune-actions-era', started_at: new Date(Date.now() - 14 * 60_000).toISOString(), turn_count: 38, tool_calls: 12, next_seq: 38, updated_at: new Date().toISOString() };
 
 describe('the spine: NEXT / NOW / DONE from the roadmap, the schedule, and the receipts', () => {
   test('bands, acceptance lines verbatim, receipts under the item they shipped, proofs linked', () => {
@@ -196,7 +196,8 @@ describe('the spine: NEXT / NOW / DONE from the roadmap, the schedule, and the r
     expect(html.includes('livebox')).toBe(true);
     expect(html.includes('Follow the run')).toBe(true);
     expect(html.includes('fires every 360m')).toBe(false);
-    expect(html.includes('running 14m')).toBe(true);
+    expect(html.includes('in progress · 14m')).toBe(true);
+    expect(html.includes('data-live-job="cron_j_20260903_152011"')).toBe(true);
   });
   test('a shipped item with no receipt says so instead of inventing one', () => {
     const html = spineHtml({ account: 'o/r', yml: ROADMAP, jobs: [], now: Date.now() });
@@ -220,7 +221,7 @@ describe('the run page and the now widget', () => {
     expect(html.includes('class="tn">read_file<')).toBe(true);
     expect(html.includes('↳ read_file')).toBe(true);
     expect(html.includes('4 of 40 turns kept')).toBe(true);
-    expect(html.includes('✓ done · 24m')).toBe(true);
+    expect(html.includes('✓ completed · 24m')).toBe(true);
   });
   test('now.svg: the schedule and last run when idle; the live run when running', () => {
     const idle = renderNowSvg([doneJob], undefined, SCHEDULE, Date.now());

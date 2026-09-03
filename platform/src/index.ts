@@ -256,6 +256,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const result = await new LimitLedgerClient(env.LIMITS).jobDelete(decodeURIComponent(acctJobAdmin[1]), decodeURIComponent(acctJobAdmin[2]));
     return json(result, { status: result.ok ? 200 : 404 });
   }
+  // The live channel: Server-Sent Events over a job (turns as `turn` events with the offset as the event id,
+  // `status` on change; Last-Event-ID or ?after= resumes). Closes once the job has finished.
+  const acctJobEvents = path.match(/^\/v1\/accounts\/([^/]+)\/jobs\/([^/]+)\/events$/);
+  if (acctJobEvents) return jobEvents(env, decodeURIComponent(acctJobEvents[1]), decodeURIComponent(acctJobEvents[2]), req);
   const acctJob = path.match(/^\/v1\/accounts\/([^/]+)\/jobs\/([^/]+)$/);
   if (acctJob) return jobJson(env, decodeURIComponent(acctJob[1]), decodeURIComponent(acctJob[2]), req);
   if (path === '/v1/funding/jobs') return jobsJson(env, fundingAccount(env), req);
@@ -380,15 +384,76 @@ function sponsorAccount(env: Env): string {
   return env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
 }
 
+// The reporter speaks CloudEvents 1.0 (single event or a batch array): `type` is
+// org.open-autonomy.job.{started,turns,finished}, `subject` is the job key, `data` the payload. The account is
+// the standing key's own, never the event's. Applied in order; each result carries the event id.
+const JOB_EVENT_TYPES: Record<string, 'started' | 'turns' | 'finished'> = {
+  'org.open-autonomy.job.started': 'started',
+  'org.open-autonomy.job.turns': 'turns',
+  'org.open-autonomy.job.finished': 'finished',
+};
 async function agentEvent(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
   if (!claims.standing) return error('not_a_standing_key', 403);
-  const body = parseJson<JobEvent>(await req.text());
-  if (!body || typeof body !== 'object') return error('invalid_json');
-  const result = await new LimitLedgerClient(env.LIMITS).jobEvent(claims.repo, body);
-  return json(result, { status: result.ok ? 200 : result.error === 'job_not_started' ? 404 : 400 });
+  const raw = parseJson<unknown>(await req.text());
+  const events = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  if (!events.length) return error('invalid_json');
+  const ledger = new LimitLedgerClient(env.LIMITS);
+  const results: Array<Record<string, unknown>> = [];
+  for (const e of events as Array<Record<string, unknown>>) {
+    if (!e || typeof e !== 'object' || e.specversion !== '1.0' || typeof e.type !== 'string' || typeof e.subject !== 'string' || !e.subject) {
+      return error('invalid_cloudevent', 400);
+    }
+    const kind = JOB_EVENT_TYPES[e.type];
+    if (!kind) return error('unknown_event_type', 400);
+    const data = (e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
+    const ev = { ...data, kind, key: e.subject } as JobEvent;
+    if (kind === 'started' && typeof e.time === 'string' && !(ev as { started_at?: string }).started_at) (ev as { started_at?: string }).started_at = e.time;
+    const result = await ledger.jobEvent(claims.repo, ev);
+    results.push({ id: e.id, ...result });
+    if (!result.ok) return json({ ok: false, results }, { status: result.error === 'job_not_started' ? 404 : 400 });
+  }
+  return json({ ok: true, results });
+}
+
+async function jobEvents(env: Env, account: string, key: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const ledger = new LimitLedgerClient(env.LIMITS);
+  const first = await ledger.job(account, key);
+  if (!first.ok || !first.job) return error('job_not_found', 404);
+  const url = new URL(req.url);
+  const resumeFrom = Number(req.headers.get('last-event-id') ?? url.searchParams.get('after') ?? -1);
+  let after = Number.isFinite(resumeFrom) ? resumeFrom : -1;
+  let lastStatus = '';
+  const enc = new TextEncoder();
+  const NL = '\n';
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (s: string) => controller.enqueue(enc.encode(s));
+      send(`retry: 3000${NL}${NL}`);
+      let idle = 0;
+      for (let i = 0; i < 1800; i += 1) { // ≤ ~1h per connection; EventSource reconnects with Last-Event-ID
+        const got = i === 0 ? first : await ledger.job(account, key);
+        const job = got.job;
+        if (!job) break;
+        const fresh = job.turns.filter((t) => typeof t.seq === 'number' && t.seq > after);
+        for (const t of fresh) { send(`id: ${t.seq}${NL}event: turn${NL}data: ${JSON.stringify(t)}${NL}${NL}`); after = t.seq as number; }
+        const status = `${job.status}:${job.turn_count}:${job.ended_at ?? ''}`;
+        if (status !== lastStatus) {
+          lastStatus = status;
+          const body = { status: job.status, turn_count: job.turn_count, started_at: job.started_at, ended_at: job.ended_at, report: job.report, commit_sha: job.commit_sha, item_id: job.item_id };
+          send(`event: status${NL}data: ${JSON.stringify(body)}${NL}${NL}`);
+        }
+        if (job.status !== 'running') break;
+        if (++idle % 8 === 0) send(`: keepalive${NL}${NL}`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive' } });
 }
 
 async function jobsJson(env: Env, account: string, req: Request): Promise<Response> {
