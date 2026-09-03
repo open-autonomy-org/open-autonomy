@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { actualCents, settleCents, openrouterReservePrice, type ModelPrice } from '../src/pricing.js';
+import { actualCents, settleCents, gatewayReservePrice, type ModelPrice } from '../src/pricing.js';
 
 // Regression for the billing over-count: settlement must keep sub-cent precision, NOT floor every request
 // to a whole cent. A deepseek-v4-flash request really costs a fraction of a cent; agents fire thousands of
 // requests, so a 1¢-per-request floor inflated the proxy's accounting ~3× over real spend — draining account
 // balances and tripping the global daily cap at a third of true spend (which took the whole fleet down).
 describe('settlement keeps sub-cent precision (no 1¢-per-request floor)', () => {
-  const RESERVE = openrouterReservePrice(30);
+  const RESERVE = gatewayReservePrice(30);
 
   test('a sub-cent provider cost settles to sub-cent, not 1¢', () => {
     // Measured live: a tiny deepseek request reported cost $0.0000119 → 0.00119¢, must not become 1¢.
@@ -30,14 +30,14 @@ describe('settlement keeps sub-cent precision (no 1¢-per-request floor)', () =>
   });
 
   test('token-metered fallback (no reported cost) is also sub-cent, not floored to 1¢', () => {
-    const price: ModelPrice = { provider: 'openrouter', input_usd_per_mtok: 0.27, output_usd_per_mtok: 1.1 };
+    const price: ModelPrice = { provider: 'gateway', input_usd_per_mtok: 0.27, output_usd_per_mtok: 1.1 };
     const c = actualCents(price, { input_tokens: 7, output_tokens: 39 }, 5);
     expect(c).toBeGreaterThan(0);
     expect(c).toBeLessThan(1); // sub-cent; the old code floored this to 1
   });
 
   test('missing usage still falls back to the conservative reserve', () => {
-    const price: ModelPrice = { provider: 'openrouter', input_usd_per_mtok: 0.27, output_usd_per_mtok: 1.1 };
+    const price: ModelPrice = { provider: 'gateway', input_usd_per_mtok: 0.27, output_usd_per_mtok: 1.1 };
     expect(actualCents(price, {}, 42)).toBe(42);
   });
 });

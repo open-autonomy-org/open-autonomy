@@ -1,4 +1,4 @@
-// A project's identity documents — its constitution (north star), roadmap, and changelog — fetched
+// A project's identity documents — its vision (docs/VISION.md), roadmap (ROADMAP.yml), and changelog — fetched
 // from its own repo and rendered into the funding page. These are PURE functions (no network, no DOM)
 // so they are testable in isolation: parse the raw doc text the repo ships, then render it into the
 // page's existing panel styles. The repo is the source of truth; the page is just a faithful window
@@ -118,8 +118,8 @@ export function mdToSafeHtml(md: string): string {
   return out.join('\n');
 }
 
-// Pull the constitution's lead section (the North Star — the project's reason to exist) as the charter
-// excerpt. Falls back to the first prose paragraph after the H1 so any constitution shape yields something.
+// Pull the vision's lead: a `## North Star` section if present, else the first prose paragraph after the H1,
+// so any document shape yields something.
 export function constitutionExcerpt(md: string): string {
   if (!md) return '';
   const lines = md.split('\n');
@@ -134,7 +134,7 @@ export function constitutionExcerpt(md: string): string {
   return body.split(/\n{2,}/)[0]?.trim() ?? '';
 }
 
-// Tolerant line parser for `.open-autonomy/roadmap.yml` — we only read the handful of fields we render
+// Tolerant line parser for `ROADMAP.yml` — we only read the handful of fields we render
 // (no need for a YAML dependency in the worker). An item starts at `- id:`; its scalar fields follow
 // until the next item. Nested `acceptance:` bullets never start with `id:`, so they are ignored.
 export function parseRoadmap(yml: string): RoadmapItem[] {
@@ -191,9 +191,9 @@ export function CharterPanel({ md, repoUrl }: { md?: string; repoUrl?: string })
   if (!excerpt) return null;
   return (
     <div class="panel">
-      <h3>Charter</h3>
+      <h3>Vision</h3>
       <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(excerpt) }} />
-      {repoUrl ? <a class="docmore" href={`${repoUrl}/blob/HEAD/docs/CONSTITUTION.md`}>Read the full charter →</a> : null}
+      {repoUrl ? <a class="docmore" href={`${repoUrl}/blob/HEAD/docs/VISION.md`}>Read the full vision →</a> : null}
     </div>
   );
 }
@@ -326,7 +326,7 @@ export function RoadmapPanel({ yml, repoUrl, statusJson }: { yml?: string; repoU
   const curPhase = frontier && phaseNum(frontier.item) < Number.MAX_SAFE_INTEGER ? phaseNum(frontier.item) : (done.length ? maxPhase : 0);
   const committedTotal = inProgress.length + parked.length + done.length;
   const pct = committedTotal > 0 ? Math.round((done.length / committedTotal) * 100) : 0;
-  const roadmapUrl = repoUrl ? `${repoUrl}/blob/HEAD/.open-autonomy/roadmap.yml` : undefined;
+  const roadmapUrl = repoUrl ? `${repoUrl}/blob/HEAD/ROADMAP.yml` : undefined;
 
   return (
     <div class="panel roadmap-panel">

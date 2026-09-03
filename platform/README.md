@@ -170,23 +170,23 @@ Authorization: Bearer $MODEL_PROXY_TOKEN
 ```bash
 bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN
 bunx wrangler secret put AGENT_PROXY_HMAC_SECRET
-bunx wrangler secret put OPENROUTER_API_KEY        # the ONLY provider key — all model spend routes here
+bunx wrangler secret put MODEL_GATEWAY_API_KEY        # the ONLY provider key — all model spend routes here
 bunx wrangler secret put GITHUB_SPONSORS_WEBHOOK_SECRET
 ```
 
-**Single provider.** Every model settles through OpenRouter — it speaks **both**
+**Single provider.** Every model settles through the model gateway — it speaks **both**
 wires, so the proxy shares its native routes on each side: the Anthropic
-`/v1/messages` (→ OpenRouter `/api/v1/messages`) and the OpenAI
-`/v1/chat/completions` (→ OpenRouter `/api/v1/chat/completions`). A `vendor/slug`
+`/v1/messages` (→ the gateway's `/v1/messages`) and the OpenAI
+`/v1/chat/completions` (→ the gateway's `/v1/chat/completions`). A `vendor/slug`
 id (e.g. `deepseek/deepseek-v4-flash`) passes through; a bare id is mapped to its
 vendor slug (`gpt-4o` → `openai/gpt-4o`, `claude-sonnet-4-6` →
-`anthropic/claude-sonnet-4-6`). OpenRouter reports the real cost and the proxy
-settles against it, reserving `OPENROUTER_RESERVE_USD_PER_MTOK` (default 30) up
+`anthropic/claude-sonnet-4-6`). The gateway reports the real cost and the proxy
+settles against it, reserving `MODEL_GATEWAY_RESERVE_USD_PER_MTOK` (default 30) up
 front and truing it down; a price-table entry only tightens the reservation.
 
 Routing everything through one **prepaid** provider is deliberate: the loaded
-OpenRouter credit balance is the hard ceiling on all model spend — the one limit a
-compromised proxy can't raise (it lives at OpenRouter, not in the worker). There is
+the model gateway credit balance is the hard ceiling on all model spend — the one limit a
+compromised proxy can't raise (it lives at the model gateway, not in the worker). There is
 no first-party `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` anymore; delete them from the
 Cloudflare secrets if previously set.
 

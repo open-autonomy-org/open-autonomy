@@ -48,13 +48,13 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
     cache_write_multiplier: 1.25,
     cache_read_multiplier: 0.1,
   },
-  // OpenRouter "vendor/slug" models settle on OpenRouter's reported real cost, so a table entry is not
+  // the model gateway "vendor/slug" models settle on the model gateway's reported real cost, so a table entry is not
   // needed for billing. The entry below exists to right-size the UP-FRONT reservation: the generic
-  // OPENROUTER_RESERVE_USD_PER_MTOK ceiling ($30/Mtok) over-reserves Claude Code's large (~200KB) request
+  // MODEL_GATEWAY_RESERVE_USD_PER_MTOK ceiling ($30/Mtok) over-reserves Claude Code's large (~200KB) request
   // bodies past a typical per-run cap, rejecting the call before a cent is spent and starving the agent.
   // This is the standardized self-driving model, so price it realistically (settle still uses real cost).
   'deepseek/deepseek-v4-flash': {
-    provider: 'openrouter',
+    provider: 'gateway',
     input_usd_per_mtok: 0.5,
     output_usd_per_mtok: 1.5,
   },

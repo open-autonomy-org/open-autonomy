@@ -653,6 +653,9 @@ export class LimitLedger implements DurableObject {
       if (run) {
         run.consumed_usd_cents = (run.consumed_usd_cents ?? 0) + spent;
         run.request_count = (run.request_count ?? 0) + 1;
+        // A standing key registers once and then lives for months, so its spend — not its registration — is
+        // the org's liveness signal for the health monitor.
+        this.ensureAcct(run.repo).last_activity_ms = Date.now();
       }
       delete this.state.reservations[requestId];
     }

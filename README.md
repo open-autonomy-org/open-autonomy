@@ -9,18 +9,17 @@ call is metered against the project's account, so a sponsor can audit that their
 project's work. The site and this README show, live, how much is left, how fast it burns, what the
 agents are doing right now, and what is on the roadmap.
 
-This repository is three things:
+This repository is two things:
 
 1. **`platform/`** — the books. One Cloudflare Worker that meters every model call against a
    project's account (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors,
-   coupons), and serves the public funding page and the README widgets.
-2. **`hermes/`** — this project's own agent, checked in. A [Hermes](https://github.com/NousResearch/hermes-agent)
-   setup (skills, crons, Discord channel) that runs off this project's funded account. It is the thing
-   sponsors are paying for, and it is readable by anyone.
-3. **The Hermes adapter** — the part of the platform that reads the Hermes setup and its live
-   sessions and turns them into what you see: the roadmap (what will happen), the running session
-   (what it is doing now), and how the agent is set up (how it works). Visualization only. The
-   adapter never drives the agent.
+   coupons), forwards the call to the model gateway, and serves the public funding page and the
+   README widget. The site renders this project's `docs/VISION.md` and `ROADMAP.yml` straight from
+   the repository.
+2. **`hermes/`** — this project's own agent, checked in. A stock [Hermes](https://github.com/NousResearch/hermes-agent)
+   home (identity, skills, schedule) that works `ROADMAP.yml` top to bottom, running off this
+   project's funded account on a standing key. It is the thing sponsors are paying for, and it is
+   readable by anyone.
 
 The compiler that turns a substrate-neutral org description into GitHub Actions or a local runner
 lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-autonomy-compiler).
@@ -30,11 +29,11 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 | Piece | State |
 |---|---|
 | Metering, account tree, sponsors webhook, coupons, hard-stop | live |
-| Funding page, project page, runway widget | live |
-| Hermes setup in `hermes/` | not yet built |
-| Hermes adapter: roadmap, live session, setup view, velocity | not yet built |
-| Durable per-message audit log per account | not yet built |
-| README widget family (funding, roadmap, activity, velocity) | not yet built |
+| Funding page, project page (vision + roadmap from the repo), runway widget | live |
+| Standing project keys for an always-on agent | live |
+| Hermes home in `hermes/`, calls metered through the platform | live |
+| The build-roadmap cron job | live on the owner's machine |
+| Only token usage on the books, per-call audit log, README widget family, agent live view | on `ROADMAP.yml` |
 
 ## Run the checks
 

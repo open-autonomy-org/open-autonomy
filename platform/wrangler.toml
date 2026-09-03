@@ -7,6 +7,7 @@ compatibility_date = "2026-06-15"
 workers_dev = true
 
 [vars]
+MODEL_GATEWAY_URL = "https://api-gateway.merge.dev"
 DEFAULT_MAX_USD_CENTS = "500"
 DEFAULT_MAX_REQUESTS = "200"
 DEFAULT_EXPIRES_SECONDS = "7200"

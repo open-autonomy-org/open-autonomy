@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "manifest": {
+    "open-autonomy/build-roadmap/SKILL.md": [
+      1788393417823724468,
+      2137
+    ]
+  },
+  "skills": [
+    {
+      "skill_name": "build-roadmap",
+      "category": "open-autonomy",
+      "frontmatter_name": "build-roadmap",
+      "description": "Work the top open item of ROADMAP.yml in the Open Autonom...",
+      "platforms": [],
+      "conditions": {
+        "fallback_for_toolsets": [],
+        "requires_toolsets": [
+          "terminal",
+          "file"
+        ],
+        "fallback_for_tools": [],
+        "requires_tools": [],
+        "session_platforms": []
+      }
+    }
+  ],
+  "category_descriptions": {}
+}

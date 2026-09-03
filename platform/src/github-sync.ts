@@ -39,8 +39,8 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     // The project's identity docs, read from its own repo. A repo that ships none simply has empty
     // panels — the page degrades cleanly. Size-capped so the cached profile record stays small.
     const [charter, roadmap, changelog, roadmapStatus] = await Promise.all([
-      fetchRepoText(env, account, 'docs/CONSTITUTION.md'),
-      fetchRepoText(env, account, '.open-autonomy/roadmap.yml'),
+      fetchRepoText(env, account, 'docs/VISION.md'),
+      fetchRepoText(env, account, 'ROADMAP.yml'),
       fetchRepoText(env, account, 'CHANGELOG.md'),
       fetchRoadmapStatus(env, account),
     ]);

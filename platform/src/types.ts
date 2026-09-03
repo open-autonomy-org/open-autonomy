@@ -1,19 +1,20 @@
-// `openrouter` reaches non-first-party models (e.g. DeepSeek) over OpenRouter's Anthropic-compatible
+// `gateway` reaches non-first-party models (e.g. DeepSeek) over the model gateway's Anthropic-compatible
 // wire, so it shares the `/v1/messages` handler with `anthropic` — only the upstream URL + auth differ.
-export type Provider = 'anthropic' | 'openai' | 'openrouter';
+export type Provider = 'anthropic' | 'openai' | 'gateway';
 
 export interface Env {
   AGENT_PROXY_ADMIN_TOKEN: string;
   AGENT_PROXY_HMAC_SECRET: string;
-  OPENROUTER_API_KEY?: string;
+  MODEL_GATEWAY_URL?: string;
+  MODEL_GATEWAY_API_KEY?: string;
   DEFAULT_MAX_USD_CENTS?: string;
   DEFAULT_MAX_REQUESTS?: string;
   DEFAULT_EXPIRES_SECONDS?: string;
   MAX_BODY_BYTES?: string;
   MODEL_PRICES_JSON?: string;
-  // Worst-case USD/Mtok used only to RESERVE budget for an OpenRouter model with no price-table entry;
-  // the charge is trued down to OpenRouter's reported cost. Conservative default covers frontier models.
-  OPENROUTER_RESERVE_USD_PER_MTOK?: string;
+  // Worst-case USD/Mtok used only to RESERVE budget for an the model gateway model with no price-table entry;
+  // the charge is trued down to the model gateway's reported cost. Conservative default covers frontier models.
+  MODEL_GATEWAY_RESERVE_USD_PER_MTOK?: string;
   MAX_RUN_USD_CENTS?: string;
   MAX_RUN_REQUESTS?: string;
   MAX_ACTIVE_RUNS_GLOBAL?: string;
@@ -33,6 +34,10 @@ export interface Env {
   GITHUB_OIDC_OPENID_CONFIGURATION_URL?: string;
   GITHUB_OIDC_JWKS_URL?: string;
   GITHUB_API_BASE?: string;
+  // Lifetime of a STANDING key (a long-lived project key for an always-on agent such as a Hermes daemon;
+  // default 90 days). Standing keys skip the per-run caps and are bounded by the account balance + the
+  // global daily cap only.
+  STANDING_EXPIRES_SECONDS?: string;
   // Health monitor (detect + surface): how long an org may be silent before it's "down" vs (much longer)
   // "dormant" — the thresholds GET /health classifies by.
   HEALTH_SILENCE_MINUTES?: string;
@@ -50,7 +55,10 @@ export interface RunClaims {
   max_requests: number;
   models: string[];
   expires_at: string;
-  purpose?: 'triage' | 'agent' | 'review' | 'pm';
+  purpose?: 'triage' | 'agent' | 'review' | 'pm' | 'hermes';
+  // A standing key: no per-run spend/request cap (the account balance and the global daily cap still bind).
+  // Admin-minted only — never reachable through the OIDC mint path.
+  standing?: boolean;
   github_run_id?: string;
   github_run_attempt?: string;
   github_workflow_ref?: string;
@@ -66,7 +74,8 @@ export interface MintRunRequest {
   max_requests?: number;
   models: string[];
   expires_in_seconds?: number;
-  purpose?: 'triage' | 'agent' | 'review' | 'pm';
+  purpose?: 'triage' | 'agent' | 'review' | 'pm' | 'hermes';
+  standing?: boolean;
   github_run_id?: string;
   github_run_attempt?: string;
   github_workflow_ref?: string;

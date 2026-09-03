@@ -14,7 +14,7 @@ export interface TokenUsage {
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
-  // Some upstreams (e.g. OpenRouter) report the actual USD cost of the call. When present it is the
+  // Some upstreams (e.g. the model gateway) report the actual USD cost of the call. When present it is the
   // authoritative settle amount — no per-model price table needed.
   cost_usd?: number;
 }
@@ -43,11 +43,11 @@ export function estimateInputTokensFromBody(bodyText: string): number {
   return Math.max(2000, new TextEncoder().encode(bodyText).byteLength);
 }
 
-// Generic worst-case price used to RESERVE budget for an OpenRouter model we hold no table entry for.
-// The reservation is later trued down to the exact cost OpenRouter reports, so this only needs to be a
+// Generic worst-case price used to RESERVE budget for an the model gateway model we hold no table entry for.
+// The reservation is later trued down to the exact cost the model gateway reports, so this only needs to be a
 // safe ceiling, not accurate. One env-tunable rate, not a per-model table.
-export function openrouterReservePrice(reserveUsdPerMtok: number): ModelPrice {
-  return { provider: 'openrouter', input_usd_per_mtok: reserveUsdPerMtok, output_usd_per_mtok: reserveUsdPerMtok };
+export function gatewayReservePrice(reserveUsdPerMtok: number): ModelPrice {
+  return { provider: 'gateway', input_usd_per_mtok: reserveUsdPerMtok, output_usd_per_mtok: reserveUsdPerMtok };
 }
 
 // The amount to actually charge a run, in US cents (fractional — sub-cent precision is kept). If the

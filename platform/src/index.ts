@@ -429,6 +429,7 @@ async function mintRunOidc(req: Request, env: Env): Promise<Response> {
     actor: oidc.actor ?? body.actor ?? 'unknown',
     issue: Number.isInteger(body.issue) && (body.issue as number) >= 0 ? body.issue : 0,
     purpose: OIDC_USER_PURPOSES.has(body.purpose ?? 'agent') ? body.purpose ?? 'agent' : 'agent',
+    standing: undefined, // a standing (uncapped, long-lived) key is admin-minted only
     github_run_id: oidc.run_id ?? body.github_run_id,
     github_run_attempt: oidc.run_attempt ?? body.github_run_attempt,
     github_workflow_ref: workflowRef || body.github_workflow_ref,
@@ -460,10 +461,17 @@ async function mintFromRequest(env: Env, body: MintRunRequest): Promise<Response
     ?? (typeof body.max_usd === 'number' ? Math.round(body.max_usd * 100) : undefined)
     ?? Number(env.DEFAULT_MAX_USD_CENTS ?? 500);
   const maxRequests = body.max_requests ?? Number(env.DEFAULT_MAX_REQUESTS ?? 200);
-  const expiresSeconds = body.expires_in_seconds ?? Number(env.DEFAULT_EXPIRES_SECONDS ?? 7200);
+  // A standing key is a long-lived project key for an always-on agent (e.g. a Hermes daemon): it skips the
+  // per-run caps (the budget object ignores max_usd_cents/max_requests for it) and lives ~90 days by
+  // default. Spend is still hard-stopped by the account balance and the global daily cap.
+  const standing = body.standing === true;
+  const expiresSeconds = body.expires_in_seconds
+    ?? Number(standing ? env.STANDING_EXPIRES_SECONDS ?? 90 * 24 * 3600 : env.DEFAULT_EXPIRES_SECONDS ?? 7200);
   const limitConfig = limitsFromEnv(env);
-  if (maxUsdCents > Number(env.MAX_RUN_USD_CENTS ?? 500)) return error('run_spend_cap_too_high', 400);
-  if (maxRequests > Number(env.MAX_RUN_REQUESTS ?? 200)) return error('run_request_cap_too_high', 400);
+  if (!standing) {
+    if (maxUsdCents > Number(env.MAX_RUN_USD_CENTS ?? 500)) return error('run_spend_cap_too_high', 400);
+    if (maxRequests > Number(env.MAX_RUN_REQUESTS ?? 200)) return error('run_request_cap_too_high', 400);
+  }
 
   const runId = body.run_id ?? `run_${crypto.randomUUID()}`;
   const claims: RunClaims = {
@@ -476,6 +484,7 @@ async function mintFromRequest(env: Env, body: MintRunRequest): Promise<Response
     models: body.models,
     expires_at: new Date(Date.now() + expiresSeconds * 1000).toISOString(),
     purpose: body.purpose ?? 'agent',
+    standing: standing || undefined,
     github_run_id: body.github_run_id,
     github_run_attempt: body.github_run_attempt,
     github_workflow_ref: body.github_workflow_ref,
@@ -511,6 +520,7 @@ function validateMint(body: MintRunRequest): Response | null {
   if (body.expires_in_seconds !== undefined && (!Number.isInteger(body.expires_in_seconds) || body.expires_in_seconds <= 0)) {
     return error('invalid_expires_in_seconds');
   }
+  if (body.standing !== undefined && typeof body.standing !== 'boolean') return error('invalid_standing');
   if (body.github_run_id !== undefined && typeof body.github_run_id !== 'string') return error('invalid_github_run_id');
   if (body.github_run_attempt !== undefined && typeof body.github_run_attempt !== 'string') return error('invalid_github_run_attempt');
   if (body.github_workflow_ref !== undefined && typeof body.github_workflow_ref !== 'string') return error('invalid_github_workflow_ref');

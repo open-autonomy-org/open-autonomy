@@ -644,7 +644,7 @@ function Project({ v, page }: { v: ProjectView; page: number }) {
   const monthly = v.monthly_usd_cents ? `${usd0(v.monthly_usd_cents)}/mo` : '$0/mo';
   const enc = encodeURIComponent(v.account);
   const now = Date.now();
-  // The project's own identity, read from its repo (charter / roadmap / changelog). Each is '' when absent.
+  // The project's own identity, read from its repo (vision / roadmap / changelog). Each is '' when absent.
   // These panels are still string builders (in project-docs) — embedded via raw() until they migrate too.
   const repoUrl = v.account.includes('/') ? `https://github.com/${v.account}` : undefined;
   return (

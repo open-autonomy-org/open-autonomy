@@ -25,3 +25,9 @@ export function limitsFromEnv(env: Env): LimitConfig {
     enforce_account_balance: (env.ENFORCE_ACCOUNT_BALANCE ?? 'false') === 'true',
   };
 }
+
+// The upstream model gateway every proxied call is forwarded to (OpenAI-compatible `/v1/chat/completions`
+// + `/v1/responses` and Anthropic-compatible `/v1/messages` under one base). Default: Merge Gateway.
+export function gatewayBase(env: Env): string {
+  return (env.MODEL_GATEWAY_URL ?? 'https://api-gateway.merge.dev').replace(/\/$/, '');
+}

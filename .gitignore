@@ -4,3 +4,19 @@ node_modules/
 .dev.vars
 platform/.dev.vars
 .wrangler/
+
+# Hermes home (hermes/): the agent's identity, skills, and schedule are committed; its runtime state is not.
+hermes/.env
+hermes/auth.json
+hermes/*.lock
+hermes/state.db*
+hermes/sessions/
+hermes/logs/
+hermes/cache/
+hermes/*_cache/
+hermes/memories/
+hermes/pairing/
+hermes/hooks/
+hermes/cron/output/
+hermes/cron/*.lock
+hermes/__pycache__/

@@ -30,5 +30,5 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 
 - Worker: `https://volter-agent-model-proxy.aaron-0ed.workers.dev` (`/v1/funding`, `/health`, `/`).
 - README widget: `/v1/funding/runway.svg` (Camo-safe SVG: no scripts, no external refs).
-- The project page reads `docs/PROJECT.md`, `CHANGELOG.md` and `.open-autonomy/roadmap.yml` from this
-  repo; the roadmap file moves under `hermes/` when the adapter lands.
+- The project page reads `docs/VISION.md`, `ROADMAP.yml` and `CHANGELOG.md` from this repo. The agent
+  updates `status` in `ROADMAP.yml` as it finishes items.

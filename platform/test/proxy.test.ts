@@ -149,7 +149,7 @@ describe('agent model proxy', () => {
     const minted = await mint(env, ['claude-sonnet-4-6'], 25, 5);
 
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe('https://openrouter.ai/api/v1/messages');
+      expect(String(input)).toBe('https://api-gateway.merge.dev/v1/messages');
       return new Response(JSON.stringify({
         id: 'msg_1',
         usage: { input_tokens: 1000, output_tokens: 1000 },
@@ -171,7 +171,7 @@ describe('agent model proxy', () => {
     });
     expect(status.request_count).toBe(1);
     expect(status.consumed_usd_cents).toBeGreaterThan(0);
-    expect(status.recent_events[0].provider).toBe('openrouter');
+    expect(status.recent_events[0].provider).toBe('gateway');
   });
 
   test('is universal: a stock SDK hits native /v1/messages with x-api-key', async () => {
@@ -179,7 +179,7 @@ describe('agent model proxy', () => {
     const minted = await mint(env, ['claude-sonnet-4-6'], 25, 5);
 
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe('https://openrouter.ai/api/v1/messages');
+      expect(String(input)).toBe('https://api-gateway.merge.dev/v1/messages');
       return new Response(JSON.stringify({ id: 'msg_1', usage: { input_tokens: 1000, output_tokens: 1000 } }), {
         headers: { 'content-type': 'application/json' },
       });
@@ -198,16 +198,16 @@ describe('agent model proxy', () => {
     expect(status.request_count).toBe(1);
   });
 
-  test('routes a vendor/slug model over /v1/messages to OpenRouter (no table entry) and settles on reported cost', async () => {
+  test('routes a vendor/slug model over /v1/messages to the model gateway (no table entry) and settles on reported cost', async () => {
     const env = testEnv();
     // deepseek/deepseek-v4-flash is NOT in the price table — it routes by the "vendor/slug" convention.
     const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
 
     let sawAuth: string | null = null;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toBe('https://openrouter.ai/api/v1/messages');
+      expect(String(input)).toBe('https://api-gateway.merge.dev/v1/messages');
       sawAuth = new Headers(init?.headers).get('authorization');
-      // OpenRouter reports the real USD cost; $0.07 -> 7 cents, not metered from a hardcoded table.
+      // the model gateway reports the real USD cost; $0.07 -> 7 cents, not metered from a hardcoded table.
       return new Response(JSON.stringify({ id: 'msg_or', usage: { input_tokens: 1000, output_tokens: 1000, cost: 0.07 } }), {
         headers: { 'content-type': 'application/json' },
       });
@@ -220,17 +220,17 @@ describe('agent model proxy', () => {
     }), env, ctx);
 
     expect(proxied.status).toBe(200);
-    expect(sawAuth).toBe('Bearer openrouter-key');
+    expect(sawAuth).toBe('Bearer gateway-key');
     const status = await requestJson(env, `/v1/runs/${minted.run.run_id}`, {
       headers: { authorization: `Bearer ${minted.token}` },
     });
     expect(status.request_count).toBe(1);
-    expect(status.recent_events[0].provider).toBe('openrouter');
+    expect(status.recent_events[0].provider).toBe('gateway');
     expect(status.consumed_usd_cents).toBe(7); // ceil($0.07 * 100), straight from the reported cost
   });
 
-  test('a /v1/messages call for an openrouter model with no OPENROUTER_API_KEY is provider_not_configured', async () => {
-    const env = testEnv({ OPENROUTER_API_KEY: undefined });
+  test('a /v1/messages call for an gateway model with no MODEL_GATEWAY_API_KEY is provider_not_configured', async () => {
+    const env = testEnv({ MODEL_GATEWAY_API_KEY: undefined });
     const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
 
     const proxied = await worker.fetch(new Request('https://proxy.test/v1/messages', {
@@ -247,7 +247,7 @@ describe('agent model proxy', () => {
     const minted = await mint(env, ['gpt-4o-mini'], 25, 5);
 
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(String(input)).toBe('https://api-gateway.merge.dev/v1/chat/completions');
       return new Response(JSON.stringify({ id: 'cmpl_1', usage: { prompt_tokens: 1000, completion_tokens: 1000 } }), {
         headers: { 'content-type': 'application/json' },
       });
@@ -262,14 +262,14 @@ describe('agent model proxy', () => {
     expect(proxied.status).toBe(200);
   });
 
-  test('routes a vendor/slug model on /v1/chat/completions to OpenRouter (no table entry) and settles on reported cost', async () => {
+  test('routes a vendor/slug model on /v1/chat/completions to the model gateway (no table entry) and settles on reported cost', async () => {
     const env = testEnv();
     // deepseek/deepseek-v4-flash is NOT in the price table — the agent loop's proxyTurn hits this wire.
     const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
 
     let sawAuth: string | null = null;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(String(input)).toBe('https://api-gateway.merge.dev/v1/chat/completions');
       sawAuth = new Headers(init?.headers).get('authorization');
       return new Response(JSON.stringify({ id: 'cmpl_or', usage: { prompt_tokens: 1000, completion_tokens: 1000, cost: 0.09 } }), {
         headers: { 'content-type': 'application/json' },
@@ -283,12 +283,12 @@ describe('agent model proxy', () => {
     }), env, ctx);
 
     expect(proxied.status).toBe(200);
-    expect(sawAuth).toBe('Bearer openrouter-key');
+    expect(sawAuth).toBe('Bearer gateway-key');
     const status = await requestJson(env, `/v1/runs/${minted.run.run_id}`, {
       headers: { authorization: `Bearer ${minted.token}` },
     });
     expect(status.request_count).toBe(1);
-    expect(status.recent_events[0].provider).toBe('openrouter');
+    expect(status.recent_events[0].provider).toBe('gateway');
     expect(status.consumed_usd_cents).toBe(9); // ceil($0.09 * 100), straight from the reported cost
   });
 
@@ -629,6 +629,85 @@ describe('agent model proxy', () => {
 
     expect(blocked.status).toBe(403);
     expect(await blocked.json()).toEqual({ error: { code: 'forbidden_run' } });
+  });
+});
+
+describe('standing keys (long-lived project keys for always-on agents)', () => {
+  const anthropicOk = (async () => new Response(JSON.stringify({ id: 'msg', usage: { input_tokens: 1000, output_tokens: 1000 } }), {
+    headers: { 'content-type': 'application/json' },
+  })) as typeof fetch;
+  const chat = (env: Env, token: string) => worker.fetch(new Request('https://proxy.test/v1/messages', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [] }),
+  }), env, ctx);
+
+  test('admin mints a standing key above the per-run ceilings with a ~90 day life', async () => {
+    const env = testEnv({ MAX_RUN_USD_CENTS: '500', MAX_RUN_REQUESTS: '200' });
+    const minted = await requestJson(env, '/admin/runs/mint', {
+      method: 'POST',
+      headers: { 'x-admin-token': 'admin' },
+      body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['claude-sonnet-4-6'], max_usd_cents: 100000, max_requests: 100000 },
+    });
+    expect(minted.ok).toBe(true);
+    expect(minted.run.standing).toBe(true);
+    const days = (Date.parse(minted.run.expires_at) - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(89);
+    expect(days).toBeLessThan(91);
+  });
+
+  test('a non-standing mint above the ceilings is still refused', async () => {
+    const env = testEnv({ MAX_RUN_USD_CENTS: '500', MAX_RUN_REQUESTS: '200' });
+    const res = await request(env, '/admin/runs/mint', {
+      method: 'POST',
+      headers: { 'x-admin-token': 'admin' },
+      body: { repo: 'volter/twin', issue: 0, actor: 'hermes', models: ['claude-sonnet-4-6'], max_usd_cents: 100000 },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('a standing key ignores its per-run request cap but the account balance still hard-stops it', async () => {
+    const env = testEnv({ ENFORCE_ACCOUNT_BALANCE: 'true' });
+    // Fund the project with a tiny balance: enough for one settled call, not two.
+    await requestJson(env, '/admin/accounts/volter%2Ftwin/mint', {
+      method: 'POST', headers: { 'x-admin-token': 'admin' }, body: { amount_usd_cents: 3 },
+    });
+    const minted = await requestJson(env, '/admin/runs/mint', {
+      method: 'POST',
+      headers: { 'x-admin-token': 'admin' },
+      body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['claude-sonnet-4-6'], max_requests: 1, max_usd_cents: 1 },
+    });
+    globalThis.fetch = anthropicOk;
+    // max_requests: 1 and max_usd_cents: 1 would block a normal run at the first/second call; a standing key
+    // is only bounded by the account, so calls succeed until the balance is exhausted.
+    const first = await chat(env, minted.token);
+    expect(first.status).toBe(200);
+    const status = await requestJson(env, `/v1/runs/${minted.run.run_id}`, { headers: { authorization: `Bearer ${minted.token}` } });
+    expect(status.request_count).toBe(1);
+    expect(status.consumed_usd_cents).toBeGreaterThan(1);
+    let blocked: Response | null = null;
+    for (let i = 0; i < 20 && !blocked; i += 1) {
+      const res = await chat(env, minted.token);
+      if (res.status === 402) blocked = res;
+    }
+    expect(blocked?.status).toBe(402);
+    expect(((await blocked!.json()) as { error: { code: string } }).error.code).toBe('account_balance_exhausted');
+  });
+
+  test('a standing key registers in the system lane and its spend keeps the org alive for /health', async () => {
+    const env = testEnv({ HEALTH_SILENCE_MINUTES: '1' });
+    const minted = await requestJson(env, '/admin/runs/mint', {
+      method: 'POST',
+      headers: { 'x-admin-token': 'admin' },
+      body: { repo: 'volter/twin', issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['claude-sonnet-4-6'] },
+    });
+    const limits = await requestJson(env, '/admin/limits/status', { headers: { 'x-admin-token': 'admin' } });
+    expect(limits.active_system).toBe(1);
+    expect(limits.active_global).toBe(0);
+    globalThis.fetch = anthropicOk;
+    expect((await chat(env, minted.token)).status).toBe(200);
+    const health = await requestJson(env, '/health');
+    expect(health.down).toBe(0);
   });
 });
 
@@ -1059,7 +1138,7 @@ function testEnv(overrides: Partial<Env> = {}): Env {
     GITHUB_SPONSORS_WEBHOOK_SECRET: 'whsecret',
     DEFAULT_FUNDING_ACCOUNT: 'volter/twin',
     DEFAULT_SPONSOR_ACCOUNT: 'volter/twin',
-    OPENROUTER_API_KEY: 'openrouter-key',
+    MODEL_GATEWAY_API_KEY: 'gateway-key',
     DEFAULT_MAX_USD_CENTS: '500',
     DEFAULT_MAX_REQUESTS: '200',
     DEFAULT_EXPIRES_SECONDS: '7200',

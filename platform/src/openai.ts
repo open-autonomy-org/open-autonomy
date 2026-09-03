@@ -1,11 +1,10 @@
-import { limitsFromEnv } from './config.js';
+import { gatewayBase, limitsFromEnv } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './errors.js';
-import { estimateInputTokensFromBody, openrouterReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
+import { estimateInputTokensFromBody, gatewayReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
 import { reserveBudget } from './spend.js';
 import type { Env, Provider, RunClaims, UsageEvent } from './types.js';
 
-// Single upstream: every model settles through OpenRouter (it speaks the OpenAI chat/completions wire).
-const OPENROUTER_BASE = 'https://openrouter.ai/api';
+// Single upstream: every model settles through the model gateway (it speaks the OpenAI chat/completions wire).
 const MAX_OUTPUT_TOKENS = 4096;
 
 export async function handleOpenAI(
@@ -25,15 +24,15 @@ export async function handleOpenAI(
   const model = typeof body.model === 'string' ? body.model : '';
   if (!claims.models.includes(model)) return error('model_not_allowed', 403);
 
-  // Single provider: every model settles through OpenRouter — prepaid, so the loaded credit balance is the
+  // Single provider: every model settles through the model gateway — prepaid, so the loaded credit balance is the
   // hard ceiling on all spend (the one limit a compromised proxy can't raise). A bare OpenAI id is mapped to
-  // its OpenRouter "vendor/slug"; an id that already carries a slug passes through. OpenRouter reports the
+  // its the model gateway "vendor/slug"; an id that already carries a slug passes through. the model gateway reports the
   // real cost, so an unpriced model reserves at a conservative ceiling and settles on the reported amount.
   const priced = priceTable(env.MODEL_PRICES_JSON)[model];
   if (priced && priced.provider === 'anthropic') return error('model_price_not_configured', 403);
-  const provider = 'openrouter' as const;
-  const price: ModelPrice = priced ?? openrouterReservePrice(Number(env.OPENROUTER_RESERVE_USD_PER_MTOK ?? 30));
-  const apiKey = env.OPENROUTER_API_KEY;
+  const provider = 'gateway' as const;
+  const price: ModelPrice = priced ?? gatewayReservePrice(Number(env.MODEL_GATEWAY_RESERVE_USD_PER_MTOK ?? 30));
+  const apiKey = env.MODEL_GATEWAY_API_KEY;
   if (!apiKey) return error('provider_not_configured', 503);
   if (!model.includes('/')) body.model = `openai/${model}`;
 
@@ -50,7 +49,7 @@ export async function handleOpenAI(
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${OPENROUTER_BASE}${route}`, {
+    upstream = await fetch(`${gatewayBase(env)}${route}`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -129,7 +128,7 @@ export function parseUsage(text: string): TokenUsage | null {
   return {
     input_tokens: typeof input === 'number' ? input : undefined,
     output_tokens: typeof output === 'number' ? output : undefined,
-    // OpenRouter reports the real USD cost here on the chat/completions wire too; authoritative when set.
+    // the model gateway reports the real USD cost here on the chat/completions wire too; authoritative when set.
     cost_usd: typeof usage.cost === 'number' ? usage.cost : undefined,
   };
 }

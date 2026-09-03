@@ -19,10 +19,10 @@ A funnel where each layer fails differently, plus a containment backstop outside
   integrity-verified by `check:security`; egress is locked to npm + Cloudflare so the deploy token can't be
   exfiltrated. The token is scoped to Workers-edit on this one worker, so a leak can only redeploy it.
 - **Containment backstop (the only control outside the loop — agents are funded *by* the proxy they edit):**
-  the proxy routes 100% through OpenRouter, which is **prepaid** — the loaded credit balance is a hard
-  ceiling the proxy can't raise (it lives at OpenRouter, not the worker). Worst-case loss from *any*
+  the proxy routes 100% through the model gateway, which is **prepaid** — the loaded credit balance is a hard
+  ceiling the proxy can't raise (it lives at the model gateway, not the worker). Worst-case loss from *any*
   compromise (leaked key, malicious deploy, rogue session, forged sponsorship) is the loaded credits, plus
-  instant Cloudflare rollback. `OPENROUTER_API_KEY` is the only provider secret.
+  instant Cloudflare rollback. `MODEL_GATEWAY_API_KEY` is the only provider secret.
 
 The only GitHub secret the system needs is the Cloudflare deploy token. Everything else is keyless.
 
@@ -55,7 +55,7 @@ approve only from GitHub mobile / a separate device, or use a second maintainer 
 account whose token never touches the fleet machine.
 
 **But note the consequence is bounded.** Even if a rogue local session self-deploys a malicious worker, its
-worst case is capped by the same OpenRouter ceiling that bounds everything else: the worker can only spend up
+worst case is capped by the same gateway ceiling that bounds everything else: the worker can only spend up
 to the `claude-code-deepseek` key's **$500/month** limit + the loaded prepaid balance, and the deploy is
 instantly Cloudflare-rollback-able. So this is **optional hardening, not a go-live blocker** — the money is
 bounded regardless of who approves. Off-machine approval is the clean upgrade if/when you want it.
@@ -79,7 +79,7 @@ De-risked ahead of the first deploy so it isn't a guess:
 
 ## Flip to safe (the go-live checklist — only when ready)
 
-1. **Money bound — DECIDED.** The proxy routes 100% through OpenRouter (prepaid). The worker's key
+1. **Money bound — DECIDED.** The proxy routes 100% through the model gateway (prepaid). The worker's key
    `claude-code-deepseek` carries a **$500/month** per-key limit (accepted as the blast-radius bound), and
    the loaded prepaid balance is the master ceiling. Optional later: lower the per-key limit toward real burn
    (~$50–100/mo) for a tighter external cap; delete the now-unused `OPENAI_API_KEY` Cloudflare secret.

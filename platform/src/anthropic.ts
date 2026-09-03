@@ -1,12 +1,11 @@
-import { limitsFromEnv } from './config.js';
+import { gatewayBase, limitsFromEnv } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './errors.js';
-import { estimateInputTokensFromBody, openrouterReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
+import { estimateInputTokensFromBody, gatewayReservePrice, priceTable, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
 import { sessionTurnsFromBody } from './session-capture.js';
 import { reserveBudget } from './spend.js';
 import type { Env, Provider, RunClaims, UsageEvent } from './types.js';
 
-// Single upstream: every model on the Anthropic Messages wire settles through OpenRouter (it speaks it).
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/messages';
+// Single upstream: every model on the Anthropic Messages wire settles through the model gateway (it speaks it).
 const DEFAULT_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 4096;
 
@@ -21,14 +20,14 @@ export async function handleAnthropic(req: Request, env: Env, claims: RunClaims,
   const model = typeof body.model === 'string' ? body.model : '';
   if (!claims.models.includes(model)) return error('model_not_allowed', 403);
 
-  // Single provider: every model settles through OpenRouter — prepaid, so the loaded credit balance is the
-  // hard ceiling on all spend. A bare Anthropic id is mapped to its OpenRouter "vendor/slug"; a slug id
-  // passes through. OpenRouter reports the real cost, so an unpriced model reserves at a conservative ceiling.
+  // Single provider: every model settles through the model gateway — prepaid, so the loaded credit balance is the
+  // hard ceiling on all spend. A bare Anthropic id is mapped to its the model gateway "vendor/slug"; a slug id
+  // passes through. the model gateway reports the real cost, so an unpriced model reserves at a conservative ceiling.
   const priced = priceTable(env.MODEL_PRICES_JSON)[model];
   if (priced && priced.provider === 'openai') return error('model_price_not_configured', 403);
-  const provider = 'openrouter' as const;
-  const price: ModelPrice = priced ?? openrouterReservePrice(Number(env.OPENROUTER_RESERVE_USD_PER_MTOK ?? 30));
-  const apiKey = env.OPENROUTER_API_KEY;
+  const provider = 'gateway' as const;
+  const price: ModelPrice = priced ?? gatewayReservePrice(Number(env.MODEL_GATEWAY_RESERVE_USD_PER_MTOK ?? 30));
+  const apiKey = env.MODEL_GATEWAY_API_KEY;
   if (!apiKey) return error('provider_not_configured', 503);
   if (!model.includes('/')) body.model = `anthropic/${model}`;
 
@@ -43,7 +42,7 @@ export async function handleAnthropic(req: Request, env: Env, claims: RunClaims,
 
   let upstream: Response;
   try {
-    upstream = await fetch(OPENROUTER_URL, {
+    upstream = await fetch(`${gatewayBase(env)}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -143,7 +142,7 @@ function usageFromRecord(record: Record<string, unknown>): TokenUsage {
     output_tokens: typeof record.output_tokens === 'number' ? record.output_tokens : undefined,
     cache_creation_input_tokens: typeof record.cache_creation_input_tokens === 'number' ? record.cache_creation_input_tokens : undefined,
     cache_read_input_tokens: typeof record.cache_read_input_tokens === 'number' ? record.cache_read_input_tokens : undefined,
-    // OpenRouter reports the real USD cost of the call here; when present it is the authoritative charge.
+    // the model gateway reports the real USD cost of the call here; when present it is the authoritative charge.
     cost_usd: typeof record.cost === 'number' ? record.cost : undefined,
   };
 }

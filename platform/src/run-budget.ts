@@ -84,6 +84,14 @@ export class RunBudget implements DurableObject {
     if (!claims) return { ok: false, error: 'run_not_found' };
     if (this.state.revoked) return { ok: false, error: 'run_revoked' };
     if (Date.parse(claims.expires_at) <= Date.now()) return { ok: false, error: 'run_expired' };
+    // A standing key has no per-run cap: the account balance + global daily cap (the ledger) bound it.
+    if (claims.standing) {
+      this.state.request_count += 1;
+      this.state.reserved_usd_cents += amount;
+      this.state.reservations[requestId] = { amount, expires_at_ms: Date.now() + 10 * 60_000 };
+      await this.save();
+      return { ok: true, remaining_usd_cents: Number.MAX_SAFE_INTEGER, request_count: this.state.request_count };
+    }
     if (this.state.request_count >= claims.max_requests) {
       return { ok: false, error: 'request_limit_reached', request_count: this.state.request_count, max_requests: claims.max_requests };
     }
