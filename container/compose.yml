@@ -1,8 +1,12 @@
-# The Open Autonomy agent, as it runs: one Hermes container (gateway = the Discord channel + the cron
-# schedule) and one sidecar that holds the project's standing key. Nothing the agent can read is a
-# secret that matters; see hermes/README.md for the host layout this expects.
+# The Open Autonomy agent, as it runs: three containers in one VM-native world.
+#   agent    stock Hermes (gateway = the Discord channel + the cron schedule) with the checkout it works
+#   sidecar  holds the project's standing key and forwards the model routes (and the reporter's events)
+#   reporter narrates runs to the platform through supercode's harness protocol, reading the agent's home
+# Nothing the agent can read is a secret that matters (hermes/README.md). The home and the checkout live
+# in Docker volumes: SQLite over a host bind mount is a bus error waiting to happen, and nothing on the
+# host needs them — inspect with `docker exec`.
 #
-#   AGENT_ROOT=~/volter/open-autonomy-agent docker compose -f container/compose.yml up -d --build
+#   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
 services:
   sidecar:
     image: oven/bun:1.3.10
@@ -23,14 +27,39 @@ services:
     depends_on: [sidecar]
     command: ["gateway", "run"]
     environment:
-      - HERMES_UID=10000
-      - HERMES_GID=10000
+      # The host user's ids: the forwarded ssh-agent socket is theirs.
+      - HERMES_UID=${AGENT_UID:-501}
+      - HERMES_GID=${AGENT_GID:-20}
       - SSH_AUTH_SOCK=/ssh-agent
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
     volumes:
-      - ${AGENT_ROOT:-~/volter/open-autonomy-agent}/home:/opt/data
-      - ${AGENT_ROOT:-~/volter/open-autonomy-agent}/repo:/work/open-autonomy
+      - oa-home:/opt/data
+      - oa-repo:/work/open-autonomy
       - /run/host-services/ssh-auth.sock:/ssh-agent
     networks: [agent]
+  reporter:
+    build:
+      context: .
+      dockerfile: Dockerfile.reporter
+    image: open-autonomy-reporter:local
+    container_name: oa-reporter
+    restart: unless-stopped
+    depends_on: [sidecar, agent]
+    user: "${AGENT_UID:-501}:${AGENT_GID:-20}"
+    command: ["bun", "/reporter/agent-reporter.ts", "--home", "/opt/data", "--repo", "/work/open-autonomy", "--supercode", "/usr/local/bin/supercode"]
+    environment:
+      - OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1
+      - OPEN_AUTONOMY_KEY=sidecar
+      - HOME=/tmp
+    volumes:
+      - ../platform/scripts/agent-reporter.ts:/reporter/agent-reporter.ts:ro
+      - oa-home:/opt/data
+      - oa-repo:/work/open-autonomy
+    networks: [agent]
+volumes:
+  oa-home:
+    name: oa-home
+  oa-repo:
+    name: oa-repo
 networks:
   agent: {}

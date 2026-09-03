@@ -8,4 +8,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 ARG BUN_VERSION=1.3.10
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
     && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
-RUN mkdir -p /work && chown 10000:10000 /work
+RUN mkdir -p /work

@@ -32,8 +32,10 @@ const STORE = join(HOME, 'state.db');
 const SOURCE = `hermes://${HOME}/state.db`;
 
 function readEnvFile(): Record<string, string> {
+  // The environment wins (the reporter container is told to post through the sidecar); else the key file.
   const out: Record<string, string> = {};
-  if (!existsSync(ENV_FILE)) return out;
+  for (const k of ['OPEN_AUTONOMY_BASE_URL', 'OPEN_AUTONOMY_KEY']) if (process.env[k]) out[k] = process.env[k] as string;
+  if (out.OPEN_AUTONOMY_KEY || !existsSync(ENV_FILE)) return out;
   for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
   return out;
 }

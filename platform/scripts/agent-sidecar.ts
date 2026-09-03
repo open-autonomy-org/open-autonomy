@@ -21,10 +21,12 @@ if (envFile && existsSync(envFile)) {
 }
 const KEY = process.env.OPEN_AUTONOMY_KEY;
 const BASE = (process.env.OPEN_AUTONOMY_BASE_URL ?? 'https://open-autonomy.org/v1').replace(/\/$/, '');
-const port = Number(process.argv[process.argv.indexOf('--port') + 1] || process.env.PORT || 8787);
+const portArg = process.argv.indexOf('--port');
+const port = Number((portArg >= 0 ? process.argv[portArg + 1] : undefined) || process.env.PORT || 8787);
 if (!KEY) { console.error('agent-sidecar: OPEN_AUTONOMY_KEY is required (env or AGENT_ENV_FILE)'); process.exit(2); }
 
-const ALLOWED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models']);
+// The model routes, plus the reporter's event intake (it runs beside the agent and is keyless too).
+const ALLOWED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/agent/events']);
 
 Bun.serve({
   hostname: '0.0.0.0',
@@ -36,18 +38,14 @@ Bun.serve({
     if (!ALLOWED.has(url.pathname) && !url.pathname.startsWith('/v1/models/')) {
       return Response.json({ error: { code: 'not_forwarded', message: 'the sidecar forwards model routes only' } }, { status: 403 });
     }
-    const headers = new Headers(req.headers);
-    headers.delete('authorization');
-    headers.delete('x-api-key');
-    headers.delete('host');
+    // A clean request: the body buffered (one honest Content-Length), only the headers that carry meaning.
+    // Copying a client's transport headers through a proxy is how Cloudflare's edge ends up blocking it.
+    const headers = new Headers();
+    for (const h of ['content-type', 'accept']) { const v = req.headers.get(h); if (v) headers.set(h, v); }
     headers.set('authorization', `Bearer ${KEY}`);
-    const upstream = await fetch(`${BASE}${url.pathname.replace(/^\/v1/, '')}${url.search}`, {
-      method: req.method,
-      headers,
-      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
-      // @ts-expect-error bun: needed to stream a request body
-      duplex: 'half',
-    });
+    headers.set('user-agent', 'open-autonomy-agent-sidecar');
+    const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
+    const upstream = await fetch(`${BASE}${url.pathname.replace(/^\/v1/, '')}${url.search}`, { method: req.method, headers, body });
     const out = new Headers(upstream.headers);
     out.delete('content-encoding');
     out.delete('content-length');
