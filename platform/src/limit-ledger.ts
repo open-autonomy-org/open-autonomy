@@ -21,6 +21,10 @@ const FEED_LIMIT = 24;
 const USER_PURPOSES = new Set(['agent', 'review', 'triage']);
 // Active standing keys one account may hold (the current one plus rotations still in their grace period).
 const MAX_STANDING_KEYS_PER_ACCOUNT = 3;
+// Transcript bounds per agent job record (DO storage values are capped; the run page shows the tail).
+const MAX_JOB_TURNS = 400;
+const MAX_JOB_TURNS_PER_EVENT = 100;
+const MAX_TURN_TEXT = 2000;
 
 interface LedgerState {
   day_key: string;
@@ -72,6 +76,8 @@ export interface Account {
   // The audit trail's running count and last entry (the entries themselves live in DO storage, see appendCall).
   calls_total?: number;
   last_call_ms?: number;
+  // The agent job in flight right now, if the reporter said one started and has not said it finished.
+  current_job_key?: string;
   // Per-account daily spend (capped trailing window) used to derive a burn rate and runway.
   daily_spend: Record<string, number>;
   // Sponsors attributed to this account for display (set by mint/grant/coupon with a sponsor).
@@ -106,6 +112,8 @@ export interface AccountProfile {
   // parses + renders these; storing the raw doc keeps the ledger ignorant of presentation.
   charter_md?: string;
   roadmap_yml?: string;
+  // The committed schedule (hermes/cron/jobs.seed.json), read from the repo like the roadmap.
+  schedule_json?: string;
   changelog_md?: string;
   // Generated rollup of each roadmap item's child issues (id → {total, done}), computed at sync time from
 }
@@ -200,6 +208,9 @@ export class LimitLedger implements DurableObject {
     if (op === 'coupon_redeem') return json(await this.couponRedeem(String(body.code), String(body.account)));
     if (op === 'funding') return json(this.fundingSnapshot(String(body.account)));
     if (op === 'calls') return json(await this.listCalls(String(body.account), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
+    if (op === 'job_event') return json(await this.jobEvent(String(body.account), body.event as JobEvent));
+    if (op === 'jobs') return json(await this.listJobs(String(body.account), Number(body.limit)));
+    if (op === 'job') return json(await this.getJob(String(body.account), String(body.key)));
     if (op === 'set_profile') return json(await this.setProfile(String(body.account), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
     if (op === 'moderate') return json(await this.moderate(String(body.account), String(body.status) as Moderation, body.reason ? String(body.reason) : undefined, body as Partial<AccountProfile>));
     if (op === 'directory') return json({ ok: true, entries: this.directory() });
@@ -587,6 +598,68 @@ export class LimitLedger implements DurableObject {
     await this.save();
   }
 
+  // ---- agent jobs: the receipts behind "what the agent did / is doing" ----------------------------
+  // One record per agent run (a Hermes cron fire), pushed by the agent-side reporter on the standing key:
+  // started → turns (the normalized transcript, appended) → finished (report, commit). Durable in DO storage
+  // under `job:<account>:<start ms>:<key>`; `jobidx:<account>:<key>` maps a key to its record. The page's
+  // DONE receipts and the run page render from these; the meter's call counts stay the independent check.
+  private async jobEvent(account: string, ev: JobEvent): Promise<Record<string, unknown>> {
+    if (!ev || typeof ev !== 'object' || typeof ev.key !== 'string' || !ev.key || ev.key.length > 200) return { ok: false, error: 'invalid_event' };
+    const idxKey = `jobidx:${account}:${ev.key}`;
+    let storageKey = await this.ctx.storage.get<string>(idxKey);
+    let job = storageKey ? await this.ctx.storage.get<JobRecord>(storageKey) : undefined;
+    const now = Date.now();
+    if (ev.kind === 'started') {
+      if (job) return { ok: true, job, idempotent: true };
+      const startedMs = Number.isFinite(Date.parse(ev.started_at ?? '')) ? Date.parse(ev.started_at as string) : now;
+      job = {
+        key: ev.key, account, status: 'running',
+        title: clipText(ev.title, 200), item_id: clipText(ev.item_id, 80), job_name: clipText(ev.job_name, 80),
+        started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, updated_at: new Date(now).toISOString(),
+      };
+      storageKey = `job:${account}:${String(startedMs).padStart(13, '0')}:${ev.key}`;
+      await this.ctx.storage.put(idxKey, storageKey);
+      this.ensureAcct(account).current_job_key = ev.key;
+    } else if (!job || !storageKey) {
+      return { ok: false, error: 'job_not_started' };
+    } else if (ev.kind === 'turns') {
+      const incoming = Array.isArray(ev.turns) ? ev.turns.slice(0, MAX_JOB_TURNS_PER_EVENT).map(normalizeTurn).filter((t): t is JobTurn => t !== null) : [];
+      job.turns = [...job.turns, ...incoming].slice(-MAX_JOB_TURNS);
+      job.turn_count += incoming.length;
+      if (ev.item_id && !job.item_id) job.item_id = clipText(ev.item_id, 80);
+      job.updated_at = new Date(now).toISOString();
+    } else if (ev.kind === 'finished') {
+      job.status = ev.status === 'failed' ? 'failed' : 'done';
+      job.ended_at = new Date(now).toISOString();
+      job.report = clipText(ev.report, 4000);
+      if (ev.commit_sha && /^[0-9a-f]{7,40}$/.test(ev.commit_sha)) job.commit_sha = ev.commit_sha;
+      if (ev.item_id) job.item_id = clipText(ev.item_id, 80);
+      job.updated_at = new Date(now).toISOString();
+      const a = this.ensureAcct(account);
+      if (a.current_job_key === ev.key) delete a.current_job_key;
+    } else {
+      return { ok: false, error: 'invalid_event_kind' };
+    }
+    await this.ctx.storage.put(storageKey, job);
+    this.ensureAcct(account).last_activity_ms = now;
+    await this.save();
+    return { ok: true, job: jobSummary(job) };
+  }
+
+  private async listJobs(account: string, limit: number): Promise<{ ok: true; account: string; current?: string; jobs: JobSummary[] }> {
+    const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 30;
+    const page = await this.ctx.storage.list<JobRecord>({ prefix: `job:${account}:`, reverse: true, limit: n });
+    const jobs = [...page.values()].map(jobSummary);
+    const current = this.acct(account)?.current_job_key;
+    return { ok: true, account, ...(current ? { current } : {}), jobs };
+  }
+
+  private async getJob(account: string, key: string): Promise<{ ok: boolean; error?: string; job?: JobRecord }> {
+    const storageKey = await this.ctx.storage.get<string>(`jobidx:${account}:${key}`);
+    const job = storageKey ? await this.ctx.storage.get<JobRecord>(storageKey) : undefined;
+    return job ? { ok: true, job } : { ok: false, error: 'job_not_found' };
+  }
+
   // Storage key: `call:<account>:<ms, zero-padded>:<request id>` — lexicographic order is time order, so a
   // reverse prefix list is "newest first" and a key doubles as the pagination cursor.
   private async appendCall(account: string, call: CallRecord): Promise<void> {
@@ -657,7 +730,7 @@ export class LimitLedger implements DurableObject {
     if (!account) return { ok: false, error: 'invalid_account' };
     const a = this.ensureAcct(account);
     const p = (a.profile ??= {});
-    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'changelog_md'] as const) {
+    for (const k of ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'charter_md', 'roadmap_yml', 'schedule_json', 'changelog_md'] as const) {
       if (profile[k] !== undefined) p[k] = profile[k];
     }
     if (typeof goalDays === 'number' && goalDays > 0) a.goal_days = Math.floor(goalDays);
@@ -999,6 +1072,7 @@ function displayProfile(a: Account | undefined): AccountProfile {
     synced_at: p.synced_at,
     charter_md: p.charter_md,
     roadmap_yml: p.roadmap_yml,
+    schedule_json: p.schedule_json,
     changelog_md: p.changelog_md,
   };
 }
@@ -1113,6 +1187,18 @@ export class LimitLedgerClient {
     return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event });
   }
 
+  jobEvent(account: string, event: JobEvent) {
+    return this.rpc<{ ok: boolean; error?: string; job?: JobSummary; idempotent?: boolean }>('job_event', { account, event });
+  }
+
+  jobs(account: string, limit?: number) {
+    return this.rpc<{ ok: true; account: string; current?: string; jobs: JobSummary[] }>('jobs', { account, limit });
+  }
+
+  job(account: string, key: string) {
+    return this.rpc<{ ok: boolean; error?: string; job?: JobRecord }>('job', { account, key });
+  }
+
   calls(account: string, limit?: number, before?: string) {
     return this.rpc<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before });
   }
@@ -1225,6 +1311,57 @@ export interface FundingSnapshot {
   last_call_at: string | null;
   // Settled spend per day, oldest → today, over the recorded window (≤ 14 days).
   daily_spend_usd_cents: number[];
+}
+
+// An agent job (one Hermes cron fire) as the agent-side reporter narrates it, and as the page renders it.
+export type JobEvent =
+  | { kind: 'started'; key: string; title?: string; item_id?: string; job_name?: string; started_at?: string }
+  | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string }
+  | { kind: 'finished'; key: string; status?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string };
+export interface JobTurn {
+  ts?: string;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  text?: string;
+  tool?: string;
+  args?: string;
+  result?: string;
+}
+export interface JobRecord {
+  key: string;
+  account: string;
+  status: 'running' | 'done' | 'failed';
+  title?: string;
+  item_id?: string;
+  job_name?: string;
+  started_at: string;
+  ended_at?: string;
+  report?: string;
+  commit_sha?: string;
+  turns: JobTurn[];
+  turn_count: number;
+  updated_at: string;
+}
+export type JobSummary = Omit<JobRecord, 'turns'> & { tool_calls: number };
+function jobSummary(j: JobRecord): JobSummary {
+  const { turns, ...rest } = j;
+  return { ...rest, tool_calls: turns.filter((t) => t.role === 'assistant' && t.tool).length };
+}
+function clipText(v: unknown, max: number): string | undefined {
+  if (typeof v !== 'string' || !v) return undefined;
+  return v.length > max ? `${v.slice(0, max - 1)}…` : v;
+}
+function normalizeTurn(v: unknown): JobTurn | null {
+  if (!v || typeof v !== 'object') return null;
+  const t = v as Record<string, unknown>;
+  const role = t.role;
+  if (role !== 'user' && role !== 'assistant' && role !== 'tool' && role !== 'system') return null;
+  const out: JobTurn = { role };
+  if (typeof t.ts === 'string' && Number.isFinite(Date.parse(t.ts))) out.ts = t.ts;
+  const text = clipText(t.text, MAX_TURN_TEXT); if (text) out.text = text;
+  const tool = clipText(t.tool, 80); if (tool) out.tool = tool;
+  const args = clipText(t.args, 600); if (args) out.args = args;
+  const result = clipText(t.result, 600); if (result) out.result = result;
+  return out;
 }
 
 // One metered model call, as appended to the account's audit trail.

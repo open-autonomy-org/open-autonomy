@@ -3,7 +3,7 @@ import { healthOptsFromEnv, limitsFromEnv } from './config.js';
 import { error, json, methodNotAllowed, parseJson } from './errors.js';
 import { isStale, syncAllStale, syncProfile } from './github-sync.js';
 import { handleKeyChallenge, handleKeyMint, handleKeyRotate } from './keys.js';
-import { LimitLedger, LimitLedgerClient, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
+import { LimitLedger, LimitLedgerClient, type JobEvent, type Moderation, type Sponsor, type Tier, type AccountProfile } from './limit-ledger.js';
 import { handleOpenAI } from './openai.js';
 import { LOGO_SVG, renderExplore, renderProject, renderRedeemResult, renderRunSession } from './platform-html.js';
 import { RunBudget, RunBudgetClient } from './run-budget.js';
@@ -233,6 +233,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const acctCalls = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/);
   if (acctCalls) return callsJson(env, decodeURIComponent(acctCalls[1]), req);
   if (path === '/v1/funding/calls') return callsJson(env, fundingAccount(env), req);
+  // The agent-side reporter narrates its jobs on the standing key (started → turns → finished); the account is
+  // the key's own, never the body's. Public reads: the receipts (list) and one job with its transcript.
+  if (path === '/v1/agent/events') return agentEvent(req, env);
+  const acctJobs = path.match(/^\/v1\/accounts\/([^/]+)\/jobs$/);
+  if (acctJobs) return jobsJson(env, decodeURIComponent(acctJobs[1]), req);
+  const acctJob = path.match(/^\/v1\/accounts\/([^/]+)\/jobs\/([^/]+)$/);
+  if (acctJob) return jobJson(env, decodeURIComponent(acctJob[1]), decodeURIComponent(acctJob[2]), req);
+  if (path === '/v1/funding/jobs') return jobsJson(env, fundingAccount(env), req);
   // Self-serve project keys: prove control of the repo (a claim file at HEAD), mint a standing key, rotate it.
   if (path === '/v1/keys/challenge') return handleKeyChallenge(req, env);
   if (path === '/v1/keys/mint') return handleKeyMint(req, env);
@@ -349,6 +357,29 @@ function fundingAccount(env: Env): string {
 // The account that org-level GitHub Sponsors funding lands on (the org's own project).
 function sponsorAccount(env: Env): string {
   return env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
+}
+
+async function agentEvent(req: Request, env: Env): Promise<Response> {
+  if (req.method !== 'POST') return methodNotAllowed();
+  const claims = await authedClaims(req, env);
+  if (!claims) return error('auth_failed', 401);
+  if (!claims.standing) return error('not_a_standing_key', 403);
+  const body = parseJson<JobEvent>(await req.text());
+  if (!body || typeof body !== 'object') return error('invalid_json');
+  const result = await new LimitLedgerClient(env.LIMITS).jobEvent(claims.repo, body);
+  return json(result, { status: result.ok ? 200 : result.error === 'job_not_started' ? 404 : 400 });
+}
+
+async function jobsJson(env: Env, account: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const limit = Number(new URL(req.url).searchParams.get('limit') ?? 30);
+  return json(await new LimitLedgerClient(env.LIMITS).jobs(account, limit), { headers: { 'cache-control': 'no-store' } });
+}
+
+async function jobJson(env: Env, account: string, key: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const result = await new LimitLedgerClient(env.LIMITS).job(account, key);
+  return json(result, { status: result.ok ? 200 : 404, headers: { 'cache-control': 'no-store' } });
 }
 
 async function callsJson(env: Env, account: string, req: Request): Promise<Response> {

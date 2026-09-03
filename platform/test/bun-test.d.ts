@@ -9,6 +9,8 @@ declare module 'bun:test' {
     toContain(expected: unknown): void;
     toBeString(): void;
     toBeUndefined(): void;
+    toBeDefined(): void;
+    toMatchObject(expected: Record<string, unknown>): void;
     toBeNull(): void;
     toBeGreaterThan(expected: number): void;
     toBeLessThan(expected: number): void;

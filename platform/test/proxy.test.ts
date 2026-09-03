@@ -706,6 +706,53 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
   });
 });
 
+describe('agent jobs (the reporter narrates a run on the standing key)', () => {
+  const standing = (env: Env, repo = 'volter/twin') => requestJson(env, '/admin/runs/mint', {
+    method: 'POST', headers: { 'x-admin-token': 'admin' },
+    body: { repo, issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['deepseek/deepseek-v4-flash'] },
+  });
+  const post = (env: Env, token: string, body: unknown) => request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
+
+  test('started → turns → finished becomes one durable receipt with a bounded transcript', async () => {
+    const env = testEnv();
+    const key = await standing(env);
+    expect((await post(env, key.token, { kind: 'started', key: 'cron_abc_20260903_152011', title: 'build-roadmap · Sep 03 15:20', job_name: 'build-roadmap', started_at: '2026-09-03T15:20:11Z' })).status).toBe(200);
+    const listWhileRunning = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs');
+    expect(listWhileRunning.current).toBe('cron_abc_20260903_152011');
+    expect(listWhileRunning.jobs[0].status).toBe('running');
+    expect((await post(env, key.token, { kind: 'turns', key: 'cron_abc_20260903_152011', item_id: 'prune-actions-era', turns: [
+      { ts: '2026-09-03T15:20:12Z', role: 'user', text: 'Work the top open item…' },
+      { ts: '2026-09-03T15:20:14Z', role: 'assistant', tool: 'read_file', args: '{"path":"ROADMAP.yml"}' },
+      { ts: '2026-09-03T15:20:15Z', role: 'tool', tool: 'read_file', result: '1|# The roadmap…' },
+      { role: 'nonsense' }, // dropped, never fails the event
+    ] })).status).toBe(200);
+    expect((await post(env, key.token, { kind: 'finished', key: 'cron_abc_20260903_152011', status: 'done', report: 'Done. prune-actions-era — committed 7d30729.', commit_sha: '7d30729' })).status).toBe(200);
+    const list = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs');
+    expect(list.current).toBeUndefined();
+    expect(list.jobs.length).toBe(1);
+    expect(list.jobs[0]).toMatchObject({ key: 'cron_abc_20260903_152011', status: 'done', item_id: 'prune-actions-era', commit_sha: '7d30729', turn_count: 3, tool_calls: 1 });
+    expect(list.jobs[0].turns).toBeUndefined();
+    const one = await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs/cron_abc_20260903_152011');
+    expect(one.job.turns.length).toBe(3);
+    expect(one.job.turns[1].tool).toBe('read_file');
+    expect(one.job.report).toContain('7d30729');
+    expect(one.job.ended_at).toBeDefined();
+  });
+
+  test('the account is the key\'s own; a plain run token or an unknown job is refused', async () => {
+    const env = testEnv();
+    const key = await standing(env, 'acme/app');
+    expect((await post(env, key.token, { kind: 'started', key: 'k1', title: 't' })).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/jobs')).jobs.length).toBe(1);
+    expect((await requestJson(env, '/v1/accounts/volter%2Ftwin/jobs')).jobs.length).toBe(0);
+    expect((await post(env, key.token, { kind: 'turns', key: 'never-started', turns: [] })).status).toBe(404);
+    const plain = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 10, { repo: 'acme/app' });
+    expect((await post(env, plain.token, { kind: 'started', key: 'k2' })).status).toBe(403);
+    expect((await request(env, '/v1/agent/events', { method: 'POST', body: { kind: 'started', key: 'k3' } })).status).toBe(401);
+    expect((await request(env, '/v1/accounts/acme%2Fapp/jobs/nope')).status).toBe(404);
+  });
+});
+
 describe('account funding (mint / grant / spend)', () => {
   const acct = (id: string) => `/v1/accounts/${encodeURIComponent(id)}`;
   const mintAcct = (env: Env, id: string, body: unknown) => requestJson(env, `/admin/accounts/${encodeURIComponent(id)}/mint`, {
