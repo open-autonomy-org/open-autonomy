@@ -6,7 +6,7 @@ items:
   - id: fund-and-show
     phase: 1
     priority: high
-    status: active
+    status: done
     title: Fund the project and show its vision and roadmap
     acceptance:
       - The site's project page renders docs/VISION.md and ROADMAP.yml from this repository.
