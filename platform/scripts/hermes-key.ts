@@ -5,13 +5,14 @@
 // running it already has. The key spends the project's balance and nothing else, and stops at zero.
 //
 //   bun platform/scripts/hermes-key.ts [--account owner/repo] [--models a,b] [--home hermes]
-//   bun platform/scripts/hermes-key.ts --rotate [--home hermes]   # with the current key; no commit needed
+//   bun platform/scripts/hermes-key.ts --rotate [--out ~/.config/open-autonomy/agent.env]   # with the current key; no commit needed
 //
 // The key is written to <home>/.env (git-ignored) as OPEN_AUTONOMY_KEY with OPEN_AUTONOMY_BASE_URL. Under
 // the container setup the host's key sidecar reads that file; the agent itself never sees the key.
 // --rotate asks the platform for a fresh key using the current one; the old key keeps working for a day.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const arg = (name: string): string | undefined => {
@@ -20,7 +21,9 @@ const arg = (name: string): string | undefined => {
 };
 const proxyUrl = (process.env.OPEN_AUTONOMY_URL || 'https://open-autonomy.org').replace(/\/$/, '');
 const home = arg('--home') ?? 'hermes';
-const envPath = join(home, '.env');
+// The key's home: the host-only file the sidecar reads (see hermes/README.md), else the Hermes home's .env.
+const hostKeyDir = join(homedir(), '.config', 'open-autonomy');
+const envPath = arg('--out') ?? (existsSync(hostKeyDir) ? join(hostKeyDir, 'agent.env') : join(home, '.env'));
 const rotate = process.argv.includes('--rotate');
 const account = arg('--account') ?? 'open-autonomy-org/open-autonomy';
 const models = (arg('--models') ?? 'deepseek/deepseek-v4-flash').split(',').map((m) => m.trim()).filter(Boolean);
