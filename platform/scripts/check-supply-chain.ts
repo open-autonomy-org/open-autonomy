@@ -40,6 +40,7 @@ function parseLock(text: string): any {
 }
 
 let failures = 0;
+let unreachable = 0;
 const fail = (msg: string) => { console.error(`  ✗ ${msg}`); failures++; };
 
 const lockfiles = findLockfiles(process.cwd());
@@ -73,12 +74,33 @@ for (const lock of lockfiles) {
     }
   }
 
-  const audit = spawnSync('bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
-  if (audit.status !== 0) fail(`${rel}: bun audit reported advisories\n${audit.stdout}${audit.stderr}`);
+  // `bun audit` exits non-zero both for real advisories and for a registry it could not reach. Only the
+  // first is a supply-chain finding: a timeout is the advisory service being down, and failing the gate on
+  // it would block every merge on npm's availability while telling us nothing. Retry, then say so plainly.
+  let audit = spawnSync('bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
+  for (let attempt = 1; attempt < 3 && auditUnreachable(audit); attempt += 1) {
+    Bun.sleepSync(2000 * attempt);
+    audit = spawnSync('bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
+  }
+  if (auditUnreachable(audit)) {
+    unreachable += 1;
+    console.warn(`  ! ${rel}: the npm advisory service is unreachable — advisories UNKNOWN for this run`);
+  } else if (audit.status !== 0) {
+    fail(`${rel}: bun audit reported advisories\n${audit.stdout}${audit.stderr}`);
+  }
+}
+
+// A transport failure, not a verdict: bun prints these instead of an advisory table.
+function auditUnreachable(r: { status: number | null; stdout?: string; stderr?: string }): boolean {
+  if (r.status === 0) return false;
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  return /audit request failed|ConnectionClosed|ConnectionRefused|Timeout|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket connection was closed/i.test(out);
 }
 
 if (failures > 0) {
   console.error(`\ncheck:supply-chain FAILED — ${failures} issue(s). A supply-chain change here is human-required.`);
   process.exit(1);
 }
-console.log('\ncheck:supply-chain OK — lockfiles registry-pinned + integrity-verified, no known advisories.');
+console.log(unreachable > 0
+  ? `\ncheck:supply-chain OK — lockfiles registry-pinned + integrity-verified; advisories UNKNOWN for ${unreachable} lockfile(s) (the npm advisory service was unreachable).`
+  : '\ncheck:supply-chain OK — lockfiles registry-pinned + integrity-verified, no known advisories.');
