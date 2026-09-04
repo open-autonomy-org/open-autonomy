@@ -1,8 +1,10 @@
 # The world: Open Autonomy with no keys anywhere
 
-`world/` is a [volter-world](https://github.com/volter-ai/twin) world: the whole product running on your
-machine against local twins of GitHub and the model gateway. No account, no credential, no cloud, no
-spend. The agent develops here; the deployed worker is the last mile a maintainer reviews.
+`world/` is a [volter-world](https://github.com/volter-ai/twin): the platform built from this tree, against
+local twins of GitHub and the model gateway, with the scenarios that drive a run. No account, no credential,
+no cloud, no spend. The projects under test are the cookbooks: `check` applies the template to
+`cookbook/hello-roadmap`, pushes it to the GitHub twin, funds and keys it on the world's platform, runs the
+agent once, and audits the twin and the books. Our own `hermes/` keeps running in production regardless.
 
 ```bash
 export TWINS_ROOT=/path/to/twin        # until the twin packages are published
@@ -16,16 +18,15 @@ bun world/run.ts check                 # the gate: up → seed → agent → ver
 
 ## Two uses, one world
 
-- **The agent verifying its change.** The agent is the world's *operator*: `up` gives it the twins and a
-  worker built from its working tree, and it exercises acceptance lines against `$PLATFORM_URL`. It never
-  starts a second agent inside its own run.
-- **A maintainer or CI checking the product.** The app under test is the platform *and* the agent stack, so
-  the stack attaches: `volter-world attach -- docker compose -f container/compose.yml up`, and it just
-  works — the twins reachable from the containers, Discord through the reflect front. Whatever attach needs
-  in order to reach containers is developed in volter-world, once, not here. That is the
-  `stack-attaches-to-world` item. Until it lands, `agent.ts` is an interim leg: the real `hermes` binary
-  run one-shot on the host with the world's env, which proves the meter, the key and the landing convention
-  but is not how the agent runs.
+- **Testing the platform.** `up` is twins plus the worker from this tree, seeded. Our own agent is this
+  world's *operator* when it verifies a platform change: it exercises acceptance lines against
+  `$PLATFORM_URL` with curl. It never starts a second agent inside its own run.
+- **Testing the template, through a cookbook.** `agent` applies the template's home from the cookbook and
+  runs it once against the world; `verify` audits. Today that leg is the real `hermes` binary run one-shot on
+  the host, which proves the meter, the key, narration and the landing convention but is not how the
+  template runs. The `stack-attaches-to-world` item replaces it with the cookbook's real container stack:
+  `volter-world attach -- docker compose up`, and it just works — whatever attach needs to reach containers
+  is developed in volter-world, once, not here.
 
 ## What is real and what is a twin
 

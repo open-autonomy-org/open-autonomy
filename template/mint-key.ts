@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
-// Mint (or rotate) the STANDING platform key for this project's Hermes agent, the adopter way: prove
+// Mint (or rotate) a project's STANDING platform key for its agent, the adopter way: prove
 // control of the repository by committing the platform's claim file, then mint. No admin token exists on
 // any machine; the only authority this needs is the ability to push to the repo, which the maintainer
 // running it already has. The key spends the project's balance and nothing else, and stops at zero.
 //
-//   bun platform/scripts/hermes-key.ts [--account owner/repo] [--models a,b] [--home hermes]
-//   bun platform/scripts/hermes-key.ts --rotate [--out ~/.config/open-autonomy/agent.env]   # with the current key; no commit needed
+//   bun template/mint-key.ts [--account owner/repo] [--models a,b] [--home hermes]
+//   bun template/mint-key.ts --rotate [--out ~/.config/open-autonomy/agent.env]   # with the current key; no commit needed
 //
 // The key is written to <home>/.env (git-ignored) as OPEN_AUTONOMY_KEY with OPEN_AUTONOMY_BASE_URL. Under
-// the container setup the host's key sidecar reads that file; the agent itself never sees the key.
+// the container setup the key sidecar reads that file; the agent itself never sees the key.
 // --rotate asks the platform for a fresh key using the current one; the old key keeps working for a day.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,7 +25,7 @@ const home = arg('--home') ?? 'hermes';
 const hostKeyDir = join(homedir(), '.config', 'open-autonomy');
 const envPath = arg('--out') ?? (existsSync(hostKeyDir) ? join(hostKeyDir, 'agent.env') : join(home, '.env'));
 const rotate = process.argv.includes('--rotate');
-const account = arg('--account') ?? 'open-autonomy-org/open-autonomy';
+const account = arg('--account') ?? (() => { const r = spawnSync('git', ['remote', 'get-url', 'origin'], { stdio: ['ignore', 'pipe', 'ignore'] }).stdout?.toString().trim() ?? ''; return /github\.com[:/]([^/]+\/[^/.]+)/.exec(r)?.[1] ?? 'open-autonomy-org/open-autonomy'; })();
 const models = (arg('--models') ?? 'deepseek/deepseek-v4-flash').split(',').map((m) => m.trim()).filter(Boolean);
 const git = (...args: string[]) => {
   const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'inherit'] });

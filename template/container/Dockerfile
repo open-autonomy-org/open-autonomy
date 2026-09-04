@@ -1,6 +1,6 @@
-# The Open Autonomy agent's container: stock Hermes at the pinned tag (container/hermes.pin, built by
-# container/build-hermes.sh) plus what the build-roadmap skill runs — git over ssh to push, and bun for
-# `bun run check` and the world. It holds no secret: the model key lives in the sidecar, the push key in an
+# A project agent's container: stock Hermes at the pinned tag (template/container/hermes.pin, built by
+# template/container/build-hermes.sh) plus what the build-roadmap skill runs — git over ssh to push, and
+# bun for a project's checks and its world. It holds no secret: the model key lives in the sidecar, the push key in an
 # ssh-agent forwarded from the host, and the only thing in its environment is the Discord token.
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
 FROM ${HERMES_IMAGE}

@@ -2,22 +2,22 @@
 
 ## What this repo is
 
-Fund a project's agents in the open. **The only thing funded is token usage.** Three parts:
+A product and a use of it. **The only thing funded is token usage.**
 
-- `platform/` — the Cloudflare Worker: meters every model call against a project's account
-  (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors webhook, coupons), serves
-  the funding page and the README widgets. Deploys and admin ops go through GitHub only (`deploy.yml`,
-  `admin.yml`, both gated by the `production` environment's reviewer); no machine holds a deploy or admin
-  token. See `platform/DEPLOY.md`.
-- `hermes/` — this project's own agent, checked in: a Hermes home (SOUL, skills, the cron schedule, Discord
-  delivery). It runs in containers (`container/compose.yml`, see `hermes/README.md`) holding nothing whose
-  leak matters: the standing key lives in a sidecar, pushes sign through a forwarded ssh-agent with one
-  repository-scoped deploy key, and it lands work on `agent/*` branches that `land.yml` merges when `ci`
-  and `security` pass. Runs become receipts through Hermes's own outbound
-  webhooks, translated by the sidecar (`platform/scripts/agent-sidecar.ts`).
-- the live view (inside `platform/`) — the project page's spine (NEXT from the roadmap, NOW streaming the
-  running job, DONE as receipts), the run page, the Setup pane read from `hermes/`, and the `now.svg` widget.
-  **Visualization only.** It never drives the agent.
+- `template/` — the product: a Hermes home any project applies as `hermes/`, the container stack that runs it
+  without holding a secret (agent + key sidecar), the key tool. `template/apply.ts` applies it; `--check`
+  fails on drift. An applied home is never edited in place.
+- `platform/` — the product's other half: the Cloudflare Worker that meters every model call against a
+  project's account, takes money in, serves the funding page, each project's page (spine, receipts, live
+  turns, Setup pane) and the README widgets. Deploys and admin ops go through GitHub only (`deploy.yml`,
+  `admin.yml`, gated by the `production` environment's reviewer); no machine holds a deploy or admin token.
+- `cookbook/` — worked examples of adopting the template. `hello-roadmap` is the one the world runs.
+- `world/` — the volter-world: twins + the platform from this tree + the scenarios. Cookbooks are the
+  projects under test. `bun world/run.ts check` is the gate.
+- `hermes/` — our own use: the template applied to this repository, running in containers on this Mac. It
+  develops the template and the platform, and it is not special. Its runtime state is git-ignored.
+- **The roadmap is the product's** (`template/`, `platform/`). `hermes/` and `world/` change only when a
+  product change reaches into them.
 
 The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 `volter-ai/open-autonomy-compiler`. Do not re-import it here.
@@ -33,10 +33,12 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 - Security-critical paths (admin token, HMAC, spend caps, the account tree) get the higher bar:
   fail a review you cannot confidently verify.
 - `bun run check` = platform tests + typecheck. `bun run check:supply-chain` = lockfile integrity + audit.
-- **The world is where this runs without keys:** `world/` is a volter-world (see `world/README.md`).
-  `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the gate — up, seed, one real Hermes run against the
-  real worker and local twins, audit, down. Run it before deploying anything that touches metering, keys or
-  the docs sync, and `bun world/run.ts up` to have the product running in front of you.
+- **The world is where this runs without keys:** `world/` (see `world/README.md`).
+  `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the gate — up, seed, the template on a cookbook, one
+  real Hermes run, audit, down. Run it before deploying anything that touches metering, keys, the docs sync,
+  or the template; `bun world/run.ts up` to have the product running in front of you.
+- Our own agent is that world's operator when it verifies a platform change (`up`, then curl). It never runs
+  the agent leg: that would be an agent inside an agent, and the leg exists to test the template, not it.
 
 ## Live surfaces
 

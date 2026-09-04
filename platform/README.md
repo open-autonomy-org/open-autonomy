@@ -60,7 +60,7 @@ Endpoints:
   `{kind:'finished', key, status:'done'|'failed', report?, commit_sha?}`. `GET /v1/accounts/:id/jobs` lists the
   receipts (and `current`, the job in flight); `GET .../jobs/:key` is one job with its transcript.
   `DELETE /admin/accounts/:id/jobs/:key` drops a mis-narrated receipt (through the reviewed admin workflow).
-  The agent's side is `platform/scripts/agent-sidecar.ts`: it holds the standing key and translates Hermes's
+  The agent's side is `template/sidecar/agent-sidecar.ts`: it holds the standing key and translates Hermes's
   own outbound webhooks into these events.
 - `GET /v1/accounts/:id/calls?limit=50&before=<cursor>` — public, the account's **audit trail**: every metered
   model call (time, run, actor, model, tokens, cost), newest first, durable and never evicted. `next` is the

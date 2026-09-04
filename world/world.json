@@ -1,11 +1,11 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy with no keys anywhere: the real platform worker under wrangler dev, metering against the openai twin as the model gateway, syncing docs and minting keys against the GitHub twin. The agent (real Hermes) narrates its run through the same key sidecar production uses, and runs against it with `bun world/run.ts env -- \u2026`. ${TWINS_ROOT} and ${WORLD_DIR} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform worker built from this tree, against the openai twin as the model gateway and the GitHub twin. Cookbooks are the projects under test: the template applied to cookbook/<name>, pushed to the twin, funded and keyed on the world's platform, run once, and audited from twin state and the books. ${TWINS_ROOT} and ${WORLD_DIR} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
     "MODEL_GATEWAY_API_KEY": "world-gateway-key",
-    "OPEN_AUTONOMY_ACCOUNT": "open-autonomy-org/open-autonomy",
+    "OPEN_AUTONOMY_ACCOUNT": "cookbook/hello-roadmap",
     "OPEN_AUTONOMY_MODEL": "deepseek/deepseek-v4-flash"
   },
   "services": [
@@ -56,7 +56,7 @@
       "type": "process",
       "command": "bun",
       "args": [
-        "platform/scripts/agent-sidecar.ts"
+        "template/sidecar/agent-sidecar.ts"
       ],
       "port": "auto",
       "portArg": "--port",

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the pinned Hermes image the agent runs on (container/hermes.pin). Clones the tag into a
+# Build the pinned Hermes image the agent runs on (template/container/hermes.pin). Clones the tag into a
 # temporary directory — this repository never vendors Hermes — verifies the commit, and builds
 # `hermes-agent:<tag>` in the current Docker context. Takes ~10 minutes the first time.
 set -eu

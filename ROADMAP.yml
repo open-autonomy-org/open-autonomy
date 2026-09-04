@@ -1,6 +1,9 @@
 # The roadmap the agent works, top to bottom, in phase order. `status` is one of
 # proposed | planned | active | done, and the agent updates it as it finishes an item.
-# The site renders this file as-is. An item looks like:
+# The site renders this file as-is.
+#
+# Items are about the PRODUCT: template/ and platform/. hermes/ (our own applied template) and world/ (the
+# scenarios) are touched only when a product change reaches into them. An item looks like:
 #
 #   - id: short-slug
 #     phase: 1
@@ -19,7 +22,7 @@ items:
     status: proposed
     title: volter-world attach -- docker compose up just works for the agent's containers
     acceptance:
-      - "`volter-world attach -- docker compose -f container/compose.yml up` brings the real stack (gateway + sidecar) up attached to the world: the twins and the platform are reachable from inside the containers, and discord.com reaches the Discord twin. Nothing in this repository exists for the world's sake beyond the compose file; what attach needs to reach containers is developed in volter-world."
+      - "`volter-world attach -- docker compose -f template/container/compose.yml up` brings a cookbook's real stack (gateway + sidecar) up attached to the world: the twins and the platform are reachable from inside the containers, and discord.com reaches the Discord twin. Nothing in this repository exists for the world's sake beyond the compose file; what attach needs to reach containers is developed in volter-world."
       - A run in the attached stack narrates through the production sidecar and delivers its report to the Discord twin, and verify reads both from twin state and the local books.
       - The one-shot agent leg (world/agent.ts) and the world's own sidecar service are gone.
   - id: narration-proof
