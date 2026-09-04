@@ -19,10 +19,10 @@ items:
   - id: stack-attaches-to-world
     phase: 1
     priority: medium
-    status: proposed
+    status: done
     title: The agent's containers attach to a world by name
     acceptance:
-      - "`volter-world attach <world> -- docker compose -f template/container/compose.yml up` is the whole recipe: the resolver, the session CA and the host redirects that world/stack.ts composes on the world's Docker host today are attach's, developed in volter-world, and the world's stack step shrinks to the adopter's own steps."
+      - "`volter-world attach <world> --via reflect -- docker compose -f template/container/compose.yml up` is the whole recipe: the resolver, the session CA and the container composition are attach's, developed in volter-world, and the world's stack step is the adopter's own steps plus what is image-specific (the clock, Python's certifi bundle)."
       - "`bun world/run.ts check` still passes: the run lands, the report reaches the Discord twin, egress stays sealed."
   - id: narration-proof
     phase: 1
