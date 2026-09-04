@@ -13,10 +13,18 @@
 # Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
 items:
+  - id: nested-world-run
+    phase: 1
+    priority: medium
+    status: planned
+    title: The agent can run the world's own gate from inside its container
+    acceptance:
+      - bun world/run.ts check passes when run inside the agent's container, not only on a maintainer's machine.
+      - The world's agent leg finds its working directory when Hermes runs nested inside a Hermes gateway container.
   - id: narration-proof
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: A run narrated by the agent's own webhooks appears as a receipt with its turns
     acceptance:
       - The world's gate passes with the receipt path exercised end to end (bun world/run.ts check).
