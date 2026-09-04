@@ -13,6 +13,16 @@ publish:
 
 # Where sessions come from: the Hermes home the reporter reads through supercode, and where it keeps its
 # own cursor. Inside the container stack these are the mounted volume and the checkout.
+# The rails this cookbook's agent may spend through beyond model calls, bounded: a card of at most $5 at
+# software merchants, and the browserless partner at most $1 a charge. The world proves both.
+rails:
+  card:
+    max_usd_cents: 500
+    categories: [computer_software_stores]
+  partner:
+    max_usd_cents: 100
+    partners: [browserless]
+
 hermes_home: /opt/data
 state_file: /work/project/.open-autonomy/reporter-state.json
 

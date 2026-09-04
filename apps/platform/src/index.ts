@@ -3,6 +3,7 @@ import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
 import { handleModelCall } from './proxy.js';
+import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { renderExplore, renderItemPage, renderMessage, renderProject, renderSessionPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { agentEvents, itemEvents, sessionEvents } from './stream.js';
@@ -121,6 +122,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
 
   if (path === '/webhooks/github-sponsors') return handleSponsorsWebhook(req, env, sponsorAccount(env));
+  if (path === '/webhooks/stripe') return stripeWebhook(req, env);
+  // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
+  if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'spend')) return error('scope_required', 403, { scope: 'spend' });
+    return path === '/v1/rails/card' ? mintCard(req, env, claims) : settlePartner(req, env, claims);
+  }
   if (path === '/v1/coupons/redeem') {
     if (req.method !== 'POST') return methodNotAllowed();
     const body = parseJson<{ code?: string; account?: string }>(await req.text());

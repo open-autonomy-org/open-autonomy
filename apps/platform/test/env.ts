@@ -65,6 +65,9 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
     DEFAULT_FUNDING_ACCOUNT: 'acme/app',
     GITHUB_API_BASE: 'https://github.test',
     GITHUB_RAW_BASE: 'https://raw.test',
+    STRIPE_API_BASE: 'https://stripe.test',
+    STRIPE_SECRET_KEY: 'sk_test_fake',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test',
     LIMITS: ns,
     ns,
     gateway: gw,
@@ -74,8 +77,9 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
 // Every fetch the worker makes goes through here: the gateway answers model calls, GitHub is a tiny fake
 // serving the claim file and the docs, and everything else is refused (the tests reach no network).
 export const github: { files: Record<string, string>; repos: Record<string, Record<string, unknown>>; milestones: Record<string, unknown[]> } = { files: {}, repos: {}, milestones: {} };
+export const stripe: { requests: Array<{ method: string; path: string; body: Record<string, string> }>; cards: Record<string, Record<string, any>>; decisions: string[] } = { requests: [], cards: {}, decisions: [] };
 let current: ReturnType<typeof testEnv> | undefined;
-export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; return env; }
+export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; stripe.requests = []; stripe.cards = {}; stripe.decisions = []; return env; }
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const req = new Request(input, init);
   const url = new URL(req.url);
@@ -88,6 +92,20 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const m = url.pathname.match(/^\/([^/]+\/[^/]+)\/HEAD\/(.+)$/);
     const text = m ? github.files[`${m[1]}:${m[2]}`] : undefined;
     return text === undefined ? new Response('', { status: 404 }) : new Response(text);
+  }
+  // A tiny Stripe Issuing: cardholders, cards, cards retrieved with their number, cards canceled,
+  // authorizations approved or declined by the API. Everything it stores is inspectable by the test.
+  if (url.origin === 'https://stripe.test') {
+    const body = Object.fromEntries(new URLSearchParams(await req.text()));
+    stripe.requests.push({ method: req.method, path: url.pathname, body });
+    if (req.method === 'POST' && url.pathname === '/v1/issuing/cardholders') return Response.json({ id: `ich_${stripe.requests.length}`, object: 'issuing.cardholder' });
+    if (req.method === 'POST' && url.pathname === '/v1/issuing/cards') { const id = `ic_${stripe.requests.length}`; stripe.cards[id] = { id, status: 'active', last4: '4242', exp_month: 12, exp_year: 2030, spending: body }; return Response.json(stripe.cards[id]); }
+    const card = url.pathname.match(/^\/v1\/issuing\/cards\/(ic_\d+)$/);
+    if (card && req.method === 'GET') return stripe.cards[card[1]] ? Response.json({ ...stripe.cards[card[1]], number: '4000000000004242', cvc: '123' }) : new Response('{}', { status: 404 });
+    if (card && req.method === 'POST') { if (stripe.cards[card[1]]) stripe.cards[card[1]].status = body.status; return Response.json(stripe.cards[card[1]] ?? {}); }
+    const decision = url.pathname.match(/^\/v1\/issuing\/authorizations\/(\w+)\/(approve|decline)$/);
+    if (decision) { stripe.decisions.push(`${decision[1]}:${decision[2]}`); return Response.json({ id: decision[1], approved: decision[2] === 'approve' }); }
+    return new Response('{}', { status: 404 });
   }
   if (url.origin === 'https://github.test') {
     const repo = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)$/);

@@ -16,6 +16,16 @@ publish:
 hermes_home: /opt/data
 state_file: /work/project/.open-autonomy/reporter-state.json
 
+# The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
+# bound is set. Every rail leaves a record on the public audit trail naming itself.
+rails:
+  card:                       # a single-use virtual card minted against the balance (Stripe Issuing)
+    max_usd_cents: 0          # the most one card may be minted for
+    categories: []            # Stripe merchant categories a card may pay at, e.g. [computer_software_stores]
+  partner:                    # a partner service settling a metered charge against the balance
+    max_usd_cents: 0          # the most one charge may be
+    partners: []              # the partner ids allowed to settle
+
 # Where the roadmap lives. `file` (the default): ROADMAP.yml in git, pulled by the platform on sync.
 # `github-milestones`: this repository's milestones, pulled by the platform with no credential; `bun
 # .open-autonomy/roadmap.ts pull` mirrors them into ROADMAP.yml for the agent, `reconcile` closes the

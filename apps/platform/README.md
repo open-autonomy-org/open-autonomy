@@ -28,8 +28,17 @@ src/runway.ts     the Bayesian runway estimate
   reaches the model gateway through a reservation held against the balance (the hard-stop) and the global
   daily rail (`MAX_GLOBAL_DAILY_USD_CENTS`, runaway safety), then settles to the gateway's reported cost in
   fractional cents. Every settled call is appended to the account's public audit trail
-  (`/v1/accounts/:account/calls`). Minted cards and partner services are planned rails; each will name
-  itself on the audit record.
+  (`/v1/accounts/:account/calls`).
+- **The card rail.** `POST /v1/rails/card` mints a single-use virtual card (Stripe Issuing) against the
+  balance, bounded to the amount and the owner's merchant categories from `.open-autonomy/config.yaml`,
+  holding a reservation. The issuer's real-time `issuing_authorization.request` is decided at
+  `/webhooks/stripe` (a card this platform minted, unused, within amount and category); a capture settles the
+  reservation as a `card` audit record naming the merchant, the category and the card's last4, and retires
+  the card. A decline, by the platform or by the issuer's own controls, releases the reservation and
+  retires the card. `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and (for a twin) `STRIPE_API_BASE`.
+- **The partner rail.** `POST /v1/rails/partner` settles a partner service's metered charge now, for a
+  partner the owner listed and within the amount the owner set, as a `partner` audit record naming the
+  partner, the unit and the quantity.
 - **Sponsors.** The GitHub Sponsors webhook keeps the recurring list; a monthly cron credits it. Coupons
   are bearer grants redeemed on the page or at `/v1/coupons/redeem`.
 

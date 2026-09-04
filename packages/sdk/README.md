@@ -46,6 +46,17 @@ agent is tracker-blind: whatever the source, it works ROADMAP.yml and narrates t
 | `GET /v1/accounts/:account/roadmap/revisions?limit=` | the history, newest first |
 | `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push; needs the `steer` scope; an unchanged roadmap is not a revision |
 
+## Rails
+
+Money leaves an account only through a metered rail, and every rail leaves a record on the audit trail
+naming itself. The model rail is a stock OpenAI or Anthropic SDK pointed at the platform. The two others
+are bounded by the owner in `.open-autonomy/config.yaml` (`parseRailsConfig`) and off until a bound is set:
+
+| Route | What |
+|---|---|
+| `POST /v1/rails/card` `{ usd_cents, purpose? }` | a single-use virtual card minted against the balance (Stripe Issuing), bounded to the amount and the owner's merchant categories; returns the card's `id`, `last4`, expiry, and `number`/`cvc` where the issuer exposes them. A merchant's authorization is decided in real time, its capture settles as a `card` record (merchant, category, last4), and the card is retired |
+| `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
+
 Key scopes: `spend` (the rails), `narrate` (the stream), `steer` (a roadmap push). A key minted without
 `scopes` carries spend and narrate; `POST /v1/keys/mint {account, scopes: ["steer"]}` mints a driver's key
 that spends nothing.

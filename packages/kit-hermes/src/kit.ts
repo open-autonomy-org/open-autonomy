@@ -38,7 +38,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK is vendored into the generated repository under .open-autonomy/sdk, kit-owned, so
 // the reporter and the key tool run from a bare clone with no package to publish or install.
 const SDK_SRC = resolve(dirname(Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir)), 'src');
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts'];
 
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
 // the account as a URL path segment); binary-looking files pass through untouched.
