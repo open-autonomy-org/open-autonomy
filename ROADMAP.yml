@@ -13,7 +13,7 @@
 # platform cuts, durable keys, the rails seam, the development stream, the SDK, the monorepo, the
 # kit generator, the docs — entirely against the world; this repo's own production install keeps
 # running as it is and is not touched. Part two (phase 10) applies the finished product to this
-# repo as its own autonomy setup. Phase 11 holds proposed items awaiting the owner. Every item
+# repo as its own autonomy setup. Every item
 # lands through the landing convention with `bun run check` and the world's gate green; an item
 # needing a maintainer deploy is left `active` with a report, per AGENTS.md.
 schema: open-autonomy.roadmap.v3
@@ -149,6 +149,15 @@ items:
       - The platform accepts short progress updates attached to a work item, on the standing key, redacted at intake like turns.
       - A roadmap item's view on the project page shows every session, update and settled cent that touched it, live while a session runs; verified against the world's platform.
 
+  - id: roadmap-schema-codec
+    phase: 5
+    priority: high
+    status: planned
+    title: The roadmap model is a published shape in the SDK
+    acceptance:
+      - The SDK exports the roadmap model as a typed shape with a parser and serializer (YAML in, model out, byte-stable back); the platform's page parses through it.
+      - No write API exists; the file in git stays the only roadmap surface, and the SDK README says adapters are what the shape is for.
+
   - id: sdk-package
     phase: 5
     priority: high
@@ -158,6 +167,16 @@ items:
       - packages/sdk holds the schema (sessions, turns, updates, work-item association) and a client - open a session, append turns with offset idempotency and resume, close with an optional outcome, post an update, plus the key mint and rotate helpers; the schema exists in exactly one place in the repo.
       - The kit's adapter reads the full session stream from the Hermes home through supercode's session index and follow doors (the transcript source; Hermes's outbound webhooks at most a trigger), publishes it through the SDK, and attaches each session to the roadmap item it serves, read from ROADMAP.yml.
       - Work sessions publish by default with the kit's config naming the private exceptions; the world's gate passes with the receipt path flowing through the SDK, and the SDK README shows the raw wire form of each call so any language can integrate without the package.
+
+  - id: roadmap-drivers
+    phase: 5
+    priority: high
+    status: planned
+    title: Roadmaps come from drivers over one normalized model
+    acceptance:
+      - The platform stores a revisioned, normalized roadmap per project (who, when, diff, public); the yml pull becomes the default driver behind a driver interface that declares conformance for what a tracker cannot express.
+      - A second driver (GitHub milestones, credential-free, platform-pulled) proves the interface; a Jira driver runs owner-side and pushes through the SDK on a steer-scoped key, and key scopes split steer from spend before that driver exists.
+      - The agent stays tracker-blind - it narrates the item and outcome, and drivers reconcile the native side.
 
   - id: workspaces-root
     phase: 6
@@ -271,22 +290,3 @@ items:
     acceptance:
       - Our install's adapter reads the full session stream from our Hermes home through supercode and publishes it through the SDK on the production key, work sessions by default with config naming the private exceptions.
       - The project page at open-autonomy.org shows our sessions and updates attached to the roadmap items they serve, live while a session runs.
-
-  - id: roadmap-schema-codec
-    phase: 11
-    priority: medium
-    status: proposed
-    title: The roadmap model is a published shape in the SDK
-    acceptance:
-      - The SDK exports the roadmap model as a typed shape with a parser and serializer (YAML in, model out, byte-stable back); the platform's page parses through it.
-      - No write API exists; the file in git stays the only roadmap surface, and the SDK README says adapters are what the shape is for.
-
-  - id: roadmap-drivers
-    phase: 11
-    priority: medium
-    status: proposed
-    title: Roadmaps come from drivers over one normalized model
-    acceptance:
-      - The platform stores a revisioned, normalized roadmap per project (who, when, diff, public); the yml pull becomes the default driver behind a driver interface that declares conformance for what a tracker cannot express.
-      - A second driver (GitHub milestones, credential-free, platform-pulled) proves the interface; a Jira driver runs owner-side and pushes through the SDK on a steer-scoped key, and key scopes split steer from spend before that driver exists.
-      - The agent stays tracker-blind - it narrates the item and outcome, and drivers reconcile the native side.
