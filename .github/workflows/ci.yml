@@ -11,7 +11,10 @@ permissions:
 jobs:
   ci:
     # A branch in this repository is checked on its push; the pull_request run would be a duplicate of the
-    # same commit. A fork's pull request has no push here, so that is the run that checks it.
+    # same commit. A fork's pull request has no push here, so that is the run that checks it. The org's
+    # approval policy for pull-request workflows is "first-time contributors who are new to GitHub": the
+    # landing workflow's bot opens our pull requests, and any stricter setting parks its runs on an approval
+    # nobody gives, which expires as a red run beside the green one that counted.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
