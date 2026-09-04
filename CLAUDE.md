@@ -2,7 +2,8 @@
 
 ## What this repo is
 
-A product and a use of it. **The only thing funded is token usage.**
+Open Autonomy in four pieces — the platform, the starter kits, the cookbooks, and this install's own
+boilerplate — and itself an Open Autonomy project. **Every spend is metered on public books.**
 
 - `template/` — the product: a Hermes home any project applies as `hermes/`, the container stack that runs it
   without holding a secret (agent + key sidecar), the key tool. `template/apply.ts` applies it; `--check`
@@ -11,7 +12,7 @@ A product and a use of it. **The only thing funded is token usage.**
   project's account, takes money in, serves the funding page, each project's page (spine, receipts, live
   turns, Setup pane) and the README widgets. Deploys and admin ops go through GitHub only (`deploy.yml`,
   `admin.yml`, gated by the `production` environment's reviewer); no machine holds a deploy or admin token.
-- `cookbook/` — worked examples of adopting the template. `hello-roadmap` is the one the world runs.
+- `cookbook/` — complete projects ready to run autonomously. `todo-cli` is the one the world runs.
 - `world/` — the volter-world: twins + the platform from this tree + the scenarios. Cookbooks are the
   projects under test. `bun world/run.ts check` is the gate.
 - `hermes/` — our own use: the template applied to this repository, running in containers on this Mac. It

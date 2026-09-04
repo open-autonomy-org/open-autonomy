@@ -12,7 +12,7 @@
 //   bun world/run.ts check [--cookbook <name>]   # the gate: up → clock → wait → verify → down --purge
 //   bun world/run.ts down [--purge]    # tear down (--purge: forget the books, the twin and the stack's volumes)
 //
-// --cookbook picks the project under test (default hello-roadmap; also WORLD_COOKBOOK). Its scenario is
+// --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
 // world/handlers/<cookbook>/gateway.json, or gateway.ts printing that JSON, and it is the whole model: nothing
 // in the world calls a real API, ever. Each clock advance fires the schedule once; the roadmap walks down
 // one item per fire.
@@ -33,7 +33,7 @@ const cli = resolve(twins, 'packages/twin/world-runtime/src/cli.ts');
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-const cookbook = flag('--cookbook') ?? process.env.WORLD_COOKBOOK ?? 'hello-roadmap';
+const cookbook = flag('--cookbook') ?? process.env.WORLD_COOKBOOK ?? 'todo-cli';
 if (!existsSync(resolve(REPO, 'cookbook', cookbook, 'ROADMAP.yml'))) { console.error(`no cookbook/${cookbook}/ROADMAP.yml`); process.exit(2); }
 process.env.WORLD_COOKBOOK = cookbook;
 

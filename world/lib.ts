@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 export const NAME = 'open-autonomy';
 export const REPO = resolve(import.meta.dir, '..');
 export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(REPO, '.volter', 'worlds', NAME, 'data');
-export const COOKBOOK_NAME = process.env.WORLD_COOKBOOK ?? 'hello-roadmap';
+export const COOKBOOK_NAME = process.env.WORLD_COOKBOOK ?? 'todo-cli';
 export const COOKBOOK = resolve(REPO, 'cookbook', COOKBOOK_NAME);
 export const ACCOUNT = `cookbook/${COOKBOOK_NAME}`;
 export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'zai/glm-5.3-flash';

@@ -23,7 +23,7 @@ items:
   - id: four-pieces-framing
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: The docs state what Open Autonomy is, in four pieces
     acceptance:
       - README.md and docs/VISION.md lead with the four pieces (platform, starter kits, cookbooks, this install's boilerplate) and describe the platform as a Patreon-style app with spend rails (agent endpoints live; minted cards and partners planned) and an SDK for progress.
@@ -33,7 +33,7 @@ items:
   - id: drop-hello-roadmap
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: hello-roadmap is gone; todo-cli is the cookbook
     acceptance:
       - cookbook/hello-roadmap and world/handlers/hello-roadmap do not exist; no file in the repo references hello-roadmap.

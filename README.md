@@ -11,28 +11,23 @@ The agent reports every run in the [Open Autonomy Discord](https://discord.gg/Ac
 **Alpha.** The platform and this project's agent are live and you can point your own Hermes at it (below).
 Expect rough edges; report them in the Discord or as an issue.
 
-**Tools for sustained autonomous development.** An agent that keeps working a project's roadmap for
-months, not one session: its setup is checked in and readable, its roadmap is a file, and what keeps it
-running is metered in the open. Sponsors pay for token usage and nothing else, every model call lands
-on public books, and the site and this README show what the agent is doing, what it will do next, and
-what it cost.
+**A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,
+in the open: the setup is checked in, the roadmap is a file, and what the agent spends is funded by
+people who want the project to exist and metered on public books. Open Autonomy is four pieces:
 
-This repository is a product and a use of it:
-
-1. **`template/`** — the product. A Hermes home any project drops into its repository as `hermes/`, the
-   container stack that runs it without holding a secret, and the tool that mints its key. Applied to a
-   repository, it gives that project an agent that works its `ROADMAP.yml` top to bottom, funded by the
-   project's sponsors, readable by anyone.
-2. **`platform/`** — the books. One Cloudflare Worker that meters every model call against a project's
-   account (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors, coupons), forwards
-   the call to the model gateway, and serves the public funding page, each project's page and the README
-   widgets.
-3. **`cookbook/`** — worked examples: `hello-roadmap` is the smallest repository the template applies to,
-   and what the world runs to prove the template builds something.
-4. **`world/`** — the volter-world: twins of GitHub and the model gateway, the platform built from this
-   tree, and the scenarios. `check` applies the template to a cookbook and runs it end to end with no keys.
-5. **`hermes/`** — our own use of the product: the template applied to this repository. It is the agent
-   that develops the template and the platform, and it is not special.
+1. **The platform** (`platform/`) — a Patreon-style app where people fund projects with agentic funds.
+   Agents spend through rails that each leave a public audit trail: agent endpoints (model usage, live
+   today), minted cards through Stripe and partner services (planned). An SDK lets a project report its own
+   development — the roadmap it works, the sessions and updates behind each item — so the funding page
+   shows the work, not just the bill.
+2. **Starter kits** — a complete repository that runs itself out of the box, with the SDK wired in. The
+   Hermes kit is the default (`template/` today: the Hermes home, the container stack that runs it without
+   holding a secret, the key tool; a cookiecutter generator next).
+3. **Cookbooks** (`cookbook/`) — complete projects ready to run autonomously, worth copying. All of them are
+   Hermes for now; `todo-cli` is the one the world runs.
+4. **This install's own boilerplate** — the world (`world/`: the platform from this tree and the kit on a
+   cookbook, against twins, no keys), our own `hermes/`, and the files around them. Open Autonomy is
+   itself an Open Autonomy project; this repository is not special.
 
 The compiler that turns a substrate-neutral org description into GitHub Actions or a local runner
 lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-autonomy-compiler).
@@ -46,7 +41,7 @@ lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-
 | Standing project keys: self-serve by claim file, rotation with a grace period | live |
 | Hermes home in `hermes/`, calls metered through the platform | live |
 | The build-roadmap cron job | live on the owner's machine |
-| Only token usage on the books | live |
+| Model usage on the books; minted cards and partner rails | live / planned |
 | Per-call audit trail, public at `/v1/accounts/:id/calls` | live |
 | README widgets: funding, now, roadmap, activity | live |
 | The spine: what the agent will do, is doing, and did, with receipts and transcripts | live |
@@ -76,15 +71,15 @@ stops at zero.
 
 ## Run the whole thing with no keys
 
-`world/` is a [volter-world](https://github.com/volter-ai/twin): the platform built from this tree, the real
-agent applied to a cookbook, and local twins of GitHub and the model gateway. No account, no credential, no
-spend. See `world/README.md`.
+`world/` is a [volter-world](https://github.com/volter-ai/twin): the platform built from this tree, the kit
+applied to a cookbook, and local twins of GitHub, Discord and the model gateway. No account, no credential,
+no spend. See `world/README.md`.
 
 ```bash
 export TWINS_ROOT=/path/to/twin
-bun world/run.ts up          # twins + the platform, seeded: the product, running on your machine
-bun world/run.ts agent       # the template on cookbook/hello-roadmap, one run
-bun world/run.ts check       # the gate: up → seed → agent → verify → down
+bun world/run.ts up                  # twins + the platform + the kit on cookbook/todo-cli, seeded, running here
+bun world/run.ts clock advance 360m  # the schedule fires: one run, one roadmap item
+bun world/run.ts check               # the gate: up → clock → wait → verify → down
 ```
 
 ## Give your project an agent
