@@ -13,6 +13,14 @@
 # Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
 items:
+  - id: world-runs-the-gateway
+    phase: 1
+    priority: medium
+    status: planned
+    title: The world runs the agent's gateway lane, delivery included
+    acceptance:
+      - The world starts the Hermes gateway (not a one-shot) so a scheduled run fires and delivers inside it.
+      - Hermes reaches the Discord twin through the world's reflect front, and verify asserts the report landed in the twin's channel.
   - id: nested-world-run
     phase: 1
     priority: medium

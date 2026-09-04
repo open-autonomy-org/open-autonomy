@@ -57,6 +57,13 @@ page's health line — is under the world too. `verify.ts` reads the receipt and
 ## What it does not cover yet
 
 The agent's own containers (`container/`), the landing workflow and auto-merge (the twin has no Actions,
-so the agent lands on its branch and `verify` asserts `main` is untouched), Discord delivery (no twin),
-and the cron scheduler firing on its own (Hermes reads the host clock, which the world clock does not
-reach). Those are proven live, or not yet.
+so the agent lands on its branch and `verify` asserts `main` is untouched), and the cron scheduler firing
+on its own (Hermes reads the host clock, which the world clock does not reach). Those are proven live,
+or not yet.
+
+Discord delivery has a twin now (`@volter/twin-discord`: the REST v10 surface and the gateway websocket
+a real bot connects through), but this world does not run it yet, for two reasons worth stating. The
+world runs Hermes one-shot, and delivery happens in the gateway's cron lane, which the world does not
+start. And `discord.py` hardcodes its base URL and builds its own HTTP session, so it ignores the
+world's proxy: reaching the twin from an unmodified Hermes needs the reflect front (DNS plus the
+session CA). Both are the same piece of work, tracked as a roadmap item.
