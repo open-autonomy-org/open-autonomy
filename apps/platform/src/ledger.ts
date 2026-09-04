@@ -1,3 +1,5 @@
+import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
+import { ROADMAP_SCHEMA, ROADMAP_STATUSES, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';
 import { estimateRunway } from './runway.js';
 import type { KeyClaims, UsageEvent } from './types.js';
@@ -53,6 +55,8 @@ export interface Account {
   last_call_ms?: number;
   // The sessions live right now: the reporter said they started and has not said they ended.
   live_sessions?: string[];
+  // The roadmap's current revision number (the records live in storage, see roadmapSet).
+  roadmap_revision?: number;
   daily_spend: Record<string, number>;
   sponsors: Sponsor[];
   sponsors_active: Record<string, Sponsor>;
@@ -239,6 +243,9 @@ export class LimitLedger implements DurableObject {
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
+      case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
+      case 'roadmap': return json(await this.roadmapCurrent(s('account')));
+      case 'roadmap_revisions': return json(await this.roadmapRevisions(s('account'), Number(body.limit)));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
       case 'directory': return json({ ok: true, entries: this.directory() });
@@ -619,6 +626,39 @@ export class LimitLedger implements DurableObject {
     return live[0];
   }
 
+  // ---- the roadmap: one normalized model, revisioned ---------------------------------------------------
+  // Every driver lands here: the file driver on sync, the milestones driver on sync, an owner-side driver
+  // through the steer-scoped push. A revision records who, when, from which source, and what changed; an
+  // unchanged roadmap is not a revision. `roadmap:<account>:<revision, zero-padded>`.
+  private async roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string): Promise<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }> {
+    const model = normalizeRoadmap(roadmap);
+    if (!model) return { ok: false, error: 'invalid_roadmap' };
+    if (!(['file', 'github-milestones', 'jira'] as string[]).includes(source)) return { ok: false, error: 'invalid_source' };
+    const a = this.ensureAcct(account);
+    const current = a.roadmap_revision ? await this.ctx.storage.get<RoadmapRevision>(`roadmap:${account}:${String(a.roadmap_revision).padStart(9, '0')}`) : undefined;
+    if (current && sameRoadmap(current.roadmap, model) && current.source === source) return { ok: true, unchanged: true, revision: current };
+    const revision: RoadmapRevision = {
+      revision: (a.roadmap_revision ?? 0) + 1, ts: new Date().toISOString(), source, by: clipText(by, 80), roadmap: model,
+      changes: diffRoadmaps(current?.roadmap, model), conformance: CONFORMANCE[source as RoadmapSource] ?? [],
+    };
+    await this.ctx.storage.put(`roadmap:${account}:${String(revision.revision).padStart(9, '0')}`, revision);
+    a.roadmap_revision = revision.revision;
+    await this.save();
+    return { ok: true, revision };
+  }
+
+  private async roadmapCurrent(account: string): Promise<{ ok: boolean; error?: string; revision?: RoadmapRevision }> {
+    const n = this.acct(account)?.roadmap_revision;
+    const revision = n ? await this.ctx.storage.get<RoadmapRevision>(`roadmap:${account}:${String(n).padStart(9, '0')}`) : undefined;
+    return revision ? { ok: true, revision } : { ok: false, error: 'no_roadmap' };
+  }
+
+  private async roadmapRevisions(account: string, limit: number): Promise<{ ok: true; account: string; revisions: RoadmapRevision[] }> {
+    const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
+    const page = await this.ctx.storage.list<RoadmapRevision>({ prefix: `roadmap:${account}:`, reverse: true, limit: n });
+    return { ok: true, account, revisions: [...page.values()] };
+  }
+
   // ---- read models -----------------------------------------------------------------------------------
 
   fundingSnapshot(account: string): FundingSnapshot {
@@ -755,6 +795,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.calls_total === 'number') acct.calls_total = a.calls_total;
     if (typeof a.last_call_ms === 'number') acct.last_call_ms = a.last_call_ms;
     if (Array.isArray(a.live_sessions) && a.live_sessions.length) acct.live_sessions = a.live_sessions.filter((k) => typeof k === 'string');
+    if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     acct.daily_spend = a.daily_spend && typeof a.daily_spend === 'object' ? a.daily_spend : {};
     acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
     acct.sponsors_active = a.sponsors_active && typeof a.sponsors_active === 'object' ? a.sponsors_active : {};
@@ -865,6 +906,33 @@ function normalizeTurn(v: unknown): Turn | null {
   return out;
 }
 
+// One revision of a project's roadmap: the normalized model, its source, who pushed it and what changed.
+export interface RoadmapRevision {
+  revision: number;
+  ts: string;
+  source: string;
+  by?: string;
+  roadmap: Roadmap;
+  changes: RoadmapChange[];
+  conformance: string[];
+}
+// A roadmap as pushed or pulled, checked to the model's shape: short ids, known statuses, bounded text.
+function normalizeRoadmap(r: unknown): Roadmap | undefined {
+  if (!r || typeof r !== 'object' || !Array.isArray((r as Roadmap).items)) return undefined;
+  const items: RoadmapItem[] = [];
+  const seen = new Set<string>();
+  for (const it of (r as Roadmap).items.slice(0, 500)) {
+    if (!it || typeof it !== 'object' || typeof it.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(it.id) || seen.has(it.id) || typeof it.title !== 'string') return undefined;
+    seen.add(it.id);
+    items.push({
+      id: it.id, title: it.title.slice(0, 200), status: (ROADMAP_STATUSES as readonly string[]).includes(it.status) ? it.status : 'planned',
+      ...(typeof it.phase === 'string' ? { phase: it.phase.slice(0, 20) } : {}), ...(typeof it.priority === 'string' ? { priority: it.priority.slice(0, 20) } : {}),
+      acceptance: Array.isArray(it.acceptance) ? it.acceptance.filter((l): l is string => typeof l === 'string').slice(0, 40).map((l) => l.slice(0, 1000)) : [],
+    });
+  }
+  return { schema: typeof (r as Roadmap).schema === 'string' ? (r as Roadmap).schema : ROADMAP_SCHEMA, items };
+}
+
 export interface FundingSnapshot {
   account: string;
   funded: boolean;
@@ -962,6 +1030,9 @@ export class LedgerClient {
   sessionDelete(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.rpc<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
   item(account: string, itemId: string) { return this.rpc<ItemView>('item', { account, item_id: itemId }); }
+  roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.rpc<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
+  roadmap(account: string) { return this.rpc<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
+  roadmapRevisions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; revisions: RoadmapRevision[] }>('roadmap_revisions', { account, limit }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
   directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }

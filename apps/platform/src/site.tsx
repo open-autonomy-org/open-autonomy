@@ -1,5 +1,6 @@
 import { raw } from 'hono/html';
-import type { DirectoryEntry, Flow, ItemView, Patron, ProjectView, SessionRecord, SessionSummary } from './ledger.js';
+import type { Roadmap } from '@open-autonomy/sdk/roadmap';
+import type { DirectoryEntry, Flow, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
@@ -325,7 +326,7 @@ function TierCard({ t, feat, owner, burn }: { t: ProjectView['tiers'][number]; f
   );
 }
 
-function Project({ v, sessions, live, now }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; now: number }) {
+function Project({ v, sessions, live, roadmap, revision, now }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
   const enc = encodeURIComponent(v.account);
@@ -351,7 +352,8 @@ function Project({ v, sessions, live, now }: { v: ProjectView; sessions: Session
         <div class="cols">
           <div>
             <VisionPanel md={v.profile.vision_md} repoUrl={repoUrl} />
-            <Spine account={v.account} yml={v.profile.roadmap_yml ?? ''} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} />
+            <Spine account={v.account} roadmap={roadmap} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} />
+            {revision ? <p class="note">Roadmap from <b>{revision.source}</b>, revision {revision.revision}, {fmtAgo(revision.ts, now)}{revision.by ? ` by ${revision.by}` : ''}{revision.conformance.length ? <> · this source cannot say: {revision.conformance.join('; ')}</> : null} · <a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision</a></p> : null}
             <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} configYaml={v.profile.agent_config_yaml} scheduleJson={v.profile.schedule_json} repoUrl={repoUrl} />
             <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
             <div class="panel">
@@ -394,16 +396,16 @@ function Project({ v, sessions, live, now }: { v: ProjectView; sessions: Session
   );
 }
 
-export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = []): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} now={Date.now()} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderSessionPage(account: string, s: SessionRecord, nowMs: number): string {
   return render(<Shell title={`${s.source ?? s.kind} · ${nameOf(account)} · open-autonomy`}><Nav /><SessionPage account={account} s={s} repoUrl={repoUrlOf(account)} now={nowMs} />{s.status === 'live' ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
-export function renderItemPage(v: ProjectView, view: ItemView, nowMs: number): string {
-  return render(<Shell title={`${view.item_id} · ${nameOf(v.account)} · open-autonomy`}><Nav /><ItemPage account={v.account} yml={v.profile.roadmap_yml ?? ''} view={view} repoUrl={repoUrlOf(v.account)} now={nowMs} />{view.live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+export function renderItemPage(v: ProjectView, view: ItemView, roadmap: Roadmap, nowMs: number): string {
+  return render(<Shell title={`${view.item_id} · ${nameOf(v.account)} · open-autonomy`}><Nav /><ItemPage account={v.account} roadmap={roadmap} view={view} repoUrl={repoUrlOf(v.account)} now={nowMs} />{view.live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderMessage(account: string, ok: boolean, title: string, message: string): string {

@@ -1,3 +1,5 @@
+import { fromMilestones, parseRoadmapConfig, type Milestone } from '@open-autonomy/sdk/drivers';
+import { parseRoadmap } from '@open-autonomy/sdk/roadmap';
 import { LedgerClient } from './ledger.js';
 import type { Env } from './types.js';
 
@@ -53,7 +55,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       console.warn(`sync: ${account} metadata ${res.status}; syncing docs only`);
     }
     const cover = repo ? (await firstReadmeImage(env, account)) ?? '' : undefined;
-    const docs = await Promise.all(Object.values(DOC_PATHS).map((p) => fetchRepoText(env, account, p, p.endsWith('.yaml') ? 8_000 : 24_000)));
+    const [config, ...docs] = await Promise.all([fetchRepoText(env, account, '.open-autonomy/config.yaml', 8_000), ...Object.values(DOC_PATHS).map((p) => fetchRepoText(env, account, p, p.endsWith('.yaml') ? 8_000 : 24_000))]);
     const profile: Record<string, string | undefined> = {
       tagline: repo?.description ?? undefined,
       avatar_url: repo?.owner?.avatar_url ?? undefined,
@@ -62,10 +64,34 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       synced_at: new Date().toISOString(),
     };
     Object.keys(DOC_PATHS).forEach((k, i) => { profile[k] = docs[i] ?? ''; });
-    await new LedgerClient(env.LIMITS).setProfile(account, profile);
+    const ledger = new LedgerClient(env.LIMITS);
+    await ledger.setProfile(account, profile);
+    // The roadmap, through the driver the project's config names. The platform-pulled drivers land here;
+    // an owner-side driver (jira) pushes its own revisions and the sync leaves them alone.
+    const roadmapCfg = parseRoadmapConfig(config ?? '');
+    if (roadmapCfg.source === 'file') {
+      const text = roadmapCfg.path === 'ROADMAP.yml' ? docs[Object.keys(DOC_PATHS).indexOf('roadmap_yml')] : await fetchRepoText(env, account, roadmapCfg.path);
+      if (text) await ledger.roadmapSet(account, parseRoadmap(text), 'file', 'sync');
+    } else if (roadmapCfg.source === 'github-milestones') {
+      const milestones = await fetchMilestones(env, roadmapCfg.github?.repo ?? account);
+      if (milestones) await ledger.roadmapSet(account, fromMilestones(milestones), 'github-milestones', 'sync');
+    }
     return true;
   } catch {
     return false;
+  }
+}
+
+// The milestones driver's pull: the repository's milestones, open and closed, through the public API.
+export async function fetchMilestones(env: Env, repo: string): Promise<Milestone[] | undefined> {
+  const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
+  try {
+    const res = await fetch(`${base}/repos/${repo}/milestones?state=all&per_page=100`, { headers: ghHeaders(env) });
+    if (!res.ok) return undefined;
+    const raw = await res.json() as Array<Record<string, unknown>>;
+    return raw.filter((m) => typeof m.number === 'number' && typeof m.title === 'string').map((m) => ({ number: m.number as number, title: m.title as string, description: (m.description as string | null) ?? null, state: m.state === 'closed' ? 'closed' : 'open', due_on: (m.due_on as string | null) ?? null, created_at: typeof m.created_at === 'string' ? m.created_at : undefined }));
+  } catch {
+    return undefined;
   }
 }
 

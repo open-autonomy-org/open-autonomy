@@ -16,7 +16,18 @@ publish:
 hermes_home: /opt/data
 state_file: /work/project/.open-autonomy/reporter-state.json
 
-# The roadmap this project reports against. `file` is the default driver: ROADMAP.yml in git.
+# Where the roadmap lives. `file` (the default): ROADMAP.yml in git, pulled by the platform on sync.
+# `github-milestones`: this repository's milestones, pulled by the platform with no credential; `bun
+# .open-autonomy/roadmap.ts pull` mirrors them into ROADMAP.yml for the agent, `reconcile` closes the
+# milestones the agent finished. `jira`: the project's epics, read and pushed owner-side by the same tool
+# (`push` on a steer-scoped key; JIRA_EMAIL and JIRA_TOKEN from the environment). The agent never sees a
+# tracker: it works ROADMAP.yml whatever the source.
 roadmap:
   source: file
   path: ROADMAP.yml
+  # github:
+  #   repo: owner/repo          # another repository's milestones (default: this one)
+  # jira:
+  #   base_url: https://your-site.atlassian.net
+  #   project: KEY
+  #   done_transition: Done     # the transition name that closes an epic (default: any to the done category)

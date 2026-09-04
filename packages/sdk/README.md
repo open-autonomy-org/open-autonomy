@@ -30,6 +30,26 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
 Spend is attributed by the platform: a metered call settles on the one session live at that moment, so
 an item's page shows every session, update and settled cent that touched it.
 
+## Drivers
+
+The platform holds one normalized roadmap per project, revisioned: who, when, from which source, what
+changed. Drivers feed it. `file` (the default) is ROADMAP.yml pulled on sync. `github-milestones` is the
+repository's milestones, pulled on sync with no credential (`fromMilestones`). `jira` is the project's
+epics, read owner-side where the credential is and pushed with `pushRoadmap` on a `steer`-scoped key
+(`fromJira`). Each driver declares its conformance, what its tracker cannot express (`CONFORMANCE`), and a
+reconcile plan carries a finished item back to the native side (`milestoneChanges`, `jiraChanges`). The
+agent is tracker-blind: whatever the source, it works ROADMAP.yml and narrates the item and its outcome.
+
+| Route | What |
+|---|---|
+| `GET /v1/accounts/:account/roadmap` | the current revision: `revision`, `ts`, `source`, `by`, `roadmap`, `changes`, `conformance` |
+| `GET /v1/accounts/:account/roadmap/revisions?limit=` | the history, newest first |
+| `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push; needs the `steer` scope; an unchanged roadmap is not a revision |
+
+Key scopes: `spend` (the rails), `narrate` (the stream), `steer` (a roadmap push). A key minted without
+`scopes` carries spend and narrate; `POST /v1/keys/mint {account, scopes: ["steer"]}` mints a driver's key
+that spends nothing.
+
 ## The wire
 
 All narration is `POST /v1/agent/events` with the project's key as `Authorization: Bearer <key>`, a body

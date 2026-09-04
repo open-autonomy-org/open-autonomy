@@ -73,9 +73,9 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
 
 // Every fetch the worker makes goes through here: the gateway answers model calls, GitHub is a tiny fake
 // serving the claim file and the docs, and everything else is refused (the tests reach no network).
-export const github: { files: Record<string, string>; repos: Record<string, Record<string, unknown>> } = { files: {}, repos: {} };
+export const github: { files: Record<string, string>; repos: Record<string, Record<string, unknown>>; milestones: Record<string, unknown[]> } = { files: {}, repos: {}, milestones: {} };
 let current: ReturnType<typeof testEnv> | undefined;
-export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; return env; }
+export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; return env; }
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const req = new Request(input, init);
   const url = new URL(req.url);
@@ -92,6 +92,8 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.origin === 'https://github.test') {
     const repo = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)$/);
     if (repo) return github.repos[repo[1]] ? Response.json(github.repos[repo[1]]) : new Response('', { status: 404 });
+    const ms = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/milestones$/);
+    if (ms) return github.milestones[ms[1]] ? Response.json(github.milestones[ms[1]]) : new Response('', { status: 404 });
     return new Response('', { status: 404 });
   }
   throw new Error(`test: unexpected fetch ${req.url}`);

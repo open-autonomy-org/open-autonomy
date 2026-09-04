@@ -28,9 +28,15 @@ export interface KeyClaims {
   kid: string;
   account: string;
   models: string[];
+  // What the key may do. `spend`: the rails; `narrate`: the development stream; `steer`: push a roadmap
+  // revision (an owner-side driver's key, which spends nothing). Absent means spend + narrate.
+  scopes?: KeyScope[];
   iat: string;
   exp: string;
 }
+export type KeyScope = 'spend' | 'narrate' | 'steer';
+export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
+export const hasScope = (claims: KeyClaims, scope: KeyScope): boolean => (claims.scopes ?? DEFAULT_SCOPES).includes(scope);
 
 // One settled model call, as the proxy reports it to the books.
 export interface UsageEvent {
