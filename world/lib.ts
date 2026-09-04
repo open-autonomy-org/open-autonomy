@@ -31,9 +31,13 @@ export function api(base: string, headers: Record<string, string> = {}) {
   return { get: (p: string) => call('GET', p), post: (p: string, b?: unknown) => call('POST', p, b), put: (p: string, b?: unknown) => call('PUT', p, b), patch: (p: string, b?: unknown) => call('PATCH', p, b), del: (p: string) => call('DELETE', p) };
 }
 
+// A git call that hangs (a twin that stopped answering) fails loudly after ten minutes instead of holding
+// the gate open forever.
 export async function git(cwd: string, ...args: string[]): Promise<string> {
   const p = Bun.spawn({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+  const killer = setTimeout(() => p.kill(), 600_000);
   const [code, out, err] = await Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  clearTimeout(killer);
   if (code !== 0) throw new Error(`git ${args.join(' ')} failed (${code}) in ${cwd}\n${err}`);
   return out.trim();
 }
