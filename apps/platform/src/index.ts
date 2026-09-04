@@ -1,4 +1,4 @@
-import { parseRoadmap } from '@open-autonomy/sdk/roadmap';
+import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
@@ -7,7 +7,7 @@ import { renderExplore, renderItemPage, renderMessage, renderProject, renderSess
 import { handleSponsorsWebhook } from './sponsors.js';
 import { agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
-import type { Env } from './types.js';
+import { hasScope, type Env } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg } from './widgets.js';
 
@@ -38,6 +38,7 @@ const fundingAccount = (env: Env): string => env.DEFAULT_FUNDING_ACCOUNT || 'ope
 const sponsorAccount = (env: Env): string => env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
 const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
+const EMPTY_ROADMAP: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] };
 
 async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
@@ -74,9 +75,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   if ((m = path.match(/^\/p\/(.+)\/items\/([^/]+)$/))) {
     if (get()) return get()!;
-    const [view, item] = await Promise.all([ledger.project(dec(m[1])), ledger.item(dec(m[1]), dec(m[2]))]);
+    const [view, item, road] = await Promise.all([ledger.project(dec(m[1])), ledger.item(dec(m[1]), dec(m[2])), ledger.roadmap(dec(m[1]))]);
     if (!view.found) return html(renderMessage(dec(m[1]), false, 'No such project', `No project found for ${dec(m[1])}.`), 404);
-    return html(renderItemPage(view, item, Date.now()));
+    return html(renderItemPage(view, item, road.revision?.roadmap ?? EMPTY_ROADMAP, Date.now()));
   }
   if ((m = path.match(/^\/p\/(.+)$/))) {
     if (get()) return get()!;
@@ -84,8 +85,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const view = await ledger.project(account);
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
-    const stream = await ledger.sessions(account, 50);
-    return html(renderProject(view, stream.sessions, stream.live));
+    const [stream, road] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account)]);
+    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision));
   }
 
   // ---- admin: through the reviewed workflow only ----
@@ -136,6 +137,19 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   // ---- the development stream ----
   if (path === '/v1/agent/events') return agentEvents(req, env);
+  // An owner-side driver's push: the normalized roadmap, on a steer-scoped key. The account is the key's.
+  if (path === '/v1/agent/roadmap') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    const body = parseJson<{ source?: string; roadmap?: Roadmap; by?: string }>(await req.text());
+    if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
+    const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);
+    return json(r, { status: r.ok ? 200 : 400 });
+  }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { if (get()) return get()!; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { if (get()) return get()!; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { if (get()) return get()!; return json(await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) return sessionEvents(env, dec(m[1]), dec(m[2]), req);
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { if (get()) return get()!; const r = await ledger.session(dec(m[1]), dec(m[2])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
@@ -150,7 +164,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const widget = async (account: string, kind: string): Promise<Response> => {
     if (kind === 'runway') return new Response(renderRunwaySvg(await ledger.funding(account)), { headers: SVG });
     if (kind === 'activity') return new Response(renderActivitySvg(await ledger.funding(account)), { headers: SVG });
-    if (kind === 'roadmap') { const view = await ledger.project(account); return new Response(renderRoadmapSvg(parseRoadmap(view.profile.roadmap_yml ?? '').items), { headers: SVG }); }
+    if (kind === 'roadmap') { const road = await ledger.roadmap(account); return new Response(renderRoadmapSvg(road.revision?.roadmap.items ?? []), { headers: SVG }); }
     const [stream, view] = await Promise.all([ledger.sessions(account, 20), ledger.project(account)]);
     return new Response(renderNowSvg(stream.sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
   };
@@ -163,6 +177,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/v1/messages' || path === '/v1/chat/completions' || path === '/v1/responses') {
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'spend')) return error('scope_required', 403, { scope: 'spend' });
     return handleModelCall(req, env, claims, ctx, path);
   }
   if (path === '/v1/models') {

@@ -13,7 +13,7 @@ describe('the Hermes kit', () => {
     const out = create(dir, params);
     for (const f of ['README.md', 'ROADMAP.yml', 'docs/VISION.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', '.gitignore', 'package.json',
       'hermes/config.yaml', 'hermes/SOUL.md', 'hermes/cron/jobs.seed.json', 'hermes/skills/open-autonomy/build-roadmap/SKILL.md', 'hermes/hooks/schedule-seed/handler.py',
-      '.open-autonomy/config.yaml', '.open-autonomy/reporter.ts', '.open-autonomy/mint-key.ts', '.open-autonomy/sdk/client.ts', '.open-autonomy/sdk/roadmap.ts', '.open-autonomy/kit.json',
+      '.open-autonomy/config.yaml', '.open-autonomy/reporter.ts', '.open-autonomy/mint-key.ts', '.open-autonomy/roadmap.ts', '.open-autonomy/sdk/client.ts', '.open-autonomy/sdk/roadmap.ts', '.open-autonomy/sdk/drivers.ts', '.open-autonomy/kit.json',
       'container/compose.yml', 'container/Dockerfile', 'container/Dockerfile.valve', 'container/Dockerfile.reporter', 'container/key-valve.ts', 'container/hermes.pin', 'container/build-hermes.sh',
       '.github/workflows/ci.yml', '.github/workflows/land.yml']) {
       expect(existsSync(join(dir, f))).toBe(true);

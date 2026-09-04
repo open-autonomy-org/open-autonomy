@@ -31,7 +31,7 @@ items:
   - id: roadmap-drivers
     phase: 2
     priority: high
-    status: planned
+    status: done
     title: Roadmaps come from drivers over one normalized model
     acceptance:
       - The platform stores a revisioned, normalized roadmap per project (who, when, diff, public); the yml pull becomes the default driver behind a driver interface that declares conformance for what a tracker cannot express.
@@ -58,7 +58,7 @@ items:
   - id: docs-from-code
     phase: 4
     priority: medium
-    status: planned
+    status: done
     title: Every doc names only what exists
     acceptance:
       - A test walks README.md, CLAUDE.md, AGENTS.md and every package README for backticked paths, routes and world verbs and fails on any that the tree, the router or the runner does not have.

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- `roadmap-drivers`: the platform holds one normalized, revisioned roadmap per project (who, when, source, diff, conformance). The file driver and the credential-free GitHub milestones driver are pulled on sync; the Jira driver runs owner-side and pushes through the SDK on a steer-scoped key. Key scopes split steer from spend and narrate. The kit's `roadmap.ts` pulls a tracker into ROADMAP.yml, pushes it, and reconciles finished items back; the agent stays tracker-blind.
+- `docs-from-code`: `bun scripts/check-docs.ts` fails the check on any doc naming a path, route or world verb that does not exist.
 - **The redesign.** The repository is Open Autonomy in four pieces, greenfield: the platform (`apps/platform`), the SDK (`packages/sdk`), the Hermes kit (`packages/kit-hermes`), the cookbooks, and this install's own boilerplate. The compiler lineage lives in `volter-ai/open-autonomy-compiler`.
 - The platform's books carry over; its keys now verify by signature and expiry alone, so a redeploy loses no key, and a registry on the books lists, revokes and holds a rotated key's grace. Spend leaves through rails that name themselves on the audit trail (`model` live; cards and partners planned). The per-run token model, the run lanes, the proxy session capture and the fleet health monitor are gone.
 - The development stream: sessions with a kind, an optional roadmap item and an optional outcome, several live at once; updates on items; spend attributed to the one live session at settle time; a session page and an item page on the site, live over Server-Sent Events.

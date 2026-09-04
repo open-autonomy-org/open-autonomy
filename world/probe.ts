@@ -68,6 +68,35 @@ for (const w of ['runway', 'roadmap', 'activity', 'now']) if ((await pub.get(`/v
 if ((await admin.get('/admin/status')).status !== 200) fail('admin status did not serve');
 ok.push('refusals and widgets as specified');
 
+// 6. The roadmap drivers against the twin. The cookbook's roadmap came through the file driver on sync; a
+//    second project whose config names github-milestones is created on the twin with two milestones, and
+//    the platform pulls them, credential-free, into a revision with the driver's conformance.
+const road = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body;
+if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not come through the file driver: ${JSON.stringify(road).slice(0, 200)}`);
+const gh = api(need('GITHUB_TWIN_URL'));
+const created = await gh.post('/orgs/cookbook/repos', { name: 'milestones-demo' });
+if (![201, 422].includes(created.status)) fail(`github twin: create milestones-demo → ${created.status}`);
+const put = async (path: string, content: string) => gh.put(`/repos/cookbook/milestones-demo/contents/${path}`, { message: `add ${path}`, content: Buffer.from(content).toString('base64') });
+if ((await put('.open-autonomy/config.yaml', 'account: cookbook/milestones-demo\nroadmap:\n  source: github-milestones\n')).status >= 300) fail('github twin: cannot write the demo config');
+await put('README.md', '# milestones-demo\n');
+for (const m of [{ title: 'Add & list', description: '- add appends\n- list prints', due_on: '2026-10-01T00:00:00Z', state: 'closed' }, { title: 'Search', description: 'Find things.', due_on: '2026-11-01T00:00:00Z' }]) {
+  const r = await gh.post('/repos/cookbook/milestones-demo/milestones', { title: m.title, description: m.description, due_on: m.due_on });
+  if (r.status !== 201) fail(`github twin: create milestone → ${r.status} ${r.text.slice(0, 120)}`);
+  if (m.state === 'closed' && (await gh.patch(`/repos/cookbook/milestones-demo/milestones/${r.body.number}`, { state: 'closed' })).status !== 200) fail('github twin: cannot close a milestone');
+}
+const demoEnc = encodeURIComponent('cookbook/milestones-demo');
+if ((await admin.post(`/admin/accounts/${demoEnc}/mint`, { amount_usd_cents: 1, key: 'probe-demo' })).status !== 200) fail('cannot materialize the demo account');
+const synced = await admin.post(`/admin/accounts/${demoEnc}/sync`);
+if (synced.body?.ok !== true) fail(`the demo project did not sync: ${synced.text.slice(0, 200)}`);
+const demo = (await pub.get(`/v1/accounts/${demoEnc}/roadmap`)).body?.revision;
+if (demo?.source !== 'github-milestones') fail(`the milestones driver did not pull: ${JSON.stringify(demo).slice(0, 200)}`);
+const ids = demo.roadmap.items.map((i: { id: string; status: string }) => `${i.id}:${i.status}`);
+if (!(ids.includes('add-list:done') && ids.includes('search:planned'))) fail(`the milestones mapped wrong: ${ids.join(' ')}`);
+if (!demo.conformance.length) fail('the milestones driver declared no conformance');
+const demoPage = await pub.get(`/p/${demoEnc}`);
+if (demoPage.status !== 200 || !demoPage.text.includes('Roadmap from <b>github-milestones</b>')) fail('the demo page does not render the milestones roadmap');
+ok.push('the file driver and the milestones driver both landed revisions from the twin');
+
 // Leave the books as the seed left them for what follows: the probe's session is dropped.
 await admin.del(`/admin/accounts/${ENC}/sessions/probe-1`);
 console.log(`probe: OK — ${ACCOUNT}\n  ${ok.join('\n  ')}`);

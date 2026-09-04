@@ -24,8 +24,10 @@ package.json, test/  the project's own check (`bun run check`), starting with on
 hermes/              the agent: SOUL.md, the build-roadmap skill, the schedule seed, config.yaml (the model:
                      the project's own choice), the schedule-seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
-                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), the vendored
-                     SDK, kit.json (which kit, version and parameters made this repository)
+                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), roadmap.ts
+                     (the owner-side roadmap driver: pull a tracker into ROADMAP.yml, push it to the platform,
+                     reconcile finished items back), the vendored SDK, kit.json (which kit, version and
+                     parameters made this repository)
 container/           the stack: the agent, the key valve, the reporter; the pinned Hermes image
 .github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
 ```

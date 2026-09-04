@@ -2,7 +2,7 @@ import { error, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims } from './keys.js';
 import { LedgerClient, type SessionEvent } from './ledger.js';
 import { redactDeep } from './redact.js';
-import type { Env } from './types.js';
+import { hasScope, type Env } from './types.js';
 
 // The development stream's intake and live channels. The reporter speaks CloudEvents 1.0 (one event or a
 // batch): sessions are org.open-autonomy.session.{started,turns,ended} with the session key as `subject`;
@@ -20,6 +20,7 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
+  if (!hasScope(claims, 'narrate')) return error('scope_required', 403, { scope: 'narrate' });
   const raw = parseJson<unknown>(await req.text());
   const events = Array.isArray(raw) ? raw : raw ? [raw] : [];
   if (!events.length) return error('invalid_json');

@@ -1,7 +1,7 @@
 import { base64url, constantTimeEqual, error, fromBase64url, hmac, json, methodNotAllowed, modelKey, parseJson } from './http.js';
 import { fetchRepoText } from './sync.js';
 import { LedgerClient } from './ledger.js';
-import type { Env, KeyClaims } from './types.js';
+import { DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope } from './types.js';
 
 // A project's key. The owner proves control of the repository by committing a claim code (derived from
 // the account and the UTC day, so the platform keeps no challenge state) to a well-known file at HEAD; the
@@ -17,6 +17,7 @@ export const CLAIM_FILE = '.open-autonomy-claim';
 export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 // A rotated-away key keeps working this long so a running stack can pick up the new one on its own time.
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
+const SCOPES: KeyScope[] = ['spend', 'narrate', 'steer'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
 
 export function dayKeyUTC(d = new Date()): string {
@@ -44,6 +45,7 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   try { claims = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as KeyClaims; } catch { return null; }
   if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !ACCOUNT_RE.test(claims.account)) return null;
   if (!Array.isArray(claims.models) || !claims.models.length || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
+  if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
 }
@@ -57,10 +59,10 @@ export async function authedClaims(req: Request, env: Env): Promise<KeyClaims | 
   return check.ok ? claims : null;
 }
 
-export async function mintKey(env: Env, account: string, models: string[]): Promise<Response> {
+export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES): Promise<Response> {
   const ttl = Number(env.KEY_EXPIRES_SECONDS ?? 90 * 24 * 3600);
   const now = Date.now();
-  const claims: KeyClaims = { kid: `key_${crypto.randomUUID()}`, account, models, iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
+  const claims: KeyClaims = { kid: `key_${crypto.randomUUID()}`, account, models, scopes, iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
   const registered = await new LedgerClient(env.LIMITS).keyRegister(claims);
   if (!registered.ok) return error(registered.error ?? 'key_limit_reached', 429, { account });
   return json({ ok: true, key: claims, token: await signKey(env, claims) });
@@ -83,18 +85,21 @@ export async function handleKeyChallenge(req: Request, env: Env): Promise<Respon
   });
 }
 
-// POST /v1/keys/mint {account, models?} → a key, if HEAD's claim file carries today's or yesterday's code.
+// POST /v1/keys/mint {account, models?, scopes?} → a key, if HEAD's claim file carries today's or yesterday's
+// code. `scopes: ["steer"]` mints an owner-side driver's key, which can push a roadmap and nothing else.
 export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
-  const body = parseJson<{ account?: string; models?: string[] }>(await req.text());
+  const body = parseJson<{ account?: string; models?: string[]; scopes?: KeyScope[] }>(await req.text());
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);
   const models = Array.isArray(body.models) && body.models.length ? body.models : DEFAULT_MODELS;
   if (models.some((m) => typeof m !== 'string' || !m)) return error('invalid_models', 400);
+  const scopes = body.scopes === undefined ? DEFAULT_SCOPES : body.scopes;
+  if (!Array.isArray(scopes) || !scopes.length || scopes.some((x) => !SCOPES.includes(x))) return error('invalid_scopes', 400);
   const found = (await fetchRepoText(env, body.account, CLAIM_FILE, 256))?.trim();
   if (!found) return error('claim_file_missing', 403);
   const accepted = [await claimCode(env, body.account, dayKeyUTC()), await claimCode(env, body.account, dayKeyUTC(new Date(Date.now() - 86_400_000)))];
   if (!accepted.includes(found)) return error('claim_mismatch', 403);
-  return mintKey(env, body.account, models);
+  return mintKey(env, body.account, models, scopes);
 }
 
 // POST /v1/keys/rotate (Authorization: Bearer <current key>) → a fresh key for the same account and
@@ -103,7 +108,7 @@ export async function handleKeyRotate(req: Request, env: Env): Promise<Response>
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
-  const minted = await mintKey(env, claims.account, claims.models);
+  const minted = await mintKey(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES);
   if (!minted.ok) return minted;
   const graceUntil = new Date(Date.now() + ROTATE_GRACE_MS).toISOString();
   await new LedgerClient(env.LIMITS).keyExpire(claims.kid, graceUntil);

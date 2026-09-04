@@ -7,6 +7,8 @@
 // a reconnect is idempotent; a session ends with an optional outcome. Updates are short progress notes on
 // an item. All of it goes to POST /v1/agent/events as CloudEvents 1.0, one or a batch.
 
+import type { Roadmap } from './roadmap.ts';
+
 export interface ClientOptions {
   baseUrl: string; // e.g. https://open-autonomy.org/v1 (the key valve's forwarded address inside a stack)
   key: string;
@@ -117,6 +119,36 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/items/${encodeURIComponent(itemId)}`);
     return await res.json() as ItemView;
   }
+
+  // The roadmap as the platform holds it: the current normalized revision, and its history.
+  //   GET /v1/accounts/:account/roadmap            GET /v1/accounts/:account/roadmap/revisions?limit=
+  async roadmap(account: string): Promise<RoadmapRevision | undefined> {
+    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap`);
+    if (!res.ok) return undefined;
+    return ((await res.json()) as { revision?: RoadmapRevision }).revision;
+  }
+  async roadmapRevisions(account: string, limit = 20): Promise<RoadmapRevision[]> {
+    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}`);
+    return ((await res.json()) as { revisions?: RoadmapRevision[] }).revisions ?? [];
+  }
+  // An owner-side driver pushes the normalized roadmap it pulled from its tracker. Needs the `steer` scope,
+  // which a spending key does not carry.
+  //   POST /v1/agent/roadmap  (Authorization: Bearer <steer key>)  { source, roadmap, by? }
+  async pushRoadmap(roadmap: Roadmap, source: string, by?: string): Promise<{ ok: boolean; status: number; revision?: RoadmapRevision; unchanged?: boolean; error?: string }> {
+    const res = await this.fetchImpl(`${this.base}/agent/roadmap`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ source, roadmap, by }) });
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; revision?: RoadmapRevision; unchanged?: boolean; error?: { code?: string } };
+    return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, unchanged: body.unchanged, error: body.error?.code };
+  }
+}
+
+export interface RoadmapRevision {
+  revision: number;
+  ts: string;
+  source: string;
+  by?: string;
+  roadmap: Roadmap;
+  changes: Array<{ id: string; kind: 'added' | 'removed' | 'status' | 'edited'; from?: string; to?: string }>;
+  conformance: string[];
 }
 
 export class Session {

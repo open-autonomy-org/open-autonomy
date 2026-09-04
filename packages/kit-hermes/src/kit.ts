@@ -17,7 +17,7 @@ export interface KitParams { project: string; account: string }
 export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
 
 // What the kit keeps current. Everything else in the template is seeded once.
-const OWNED = [/^hermes\/(?!config\.yaml$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|roadmap\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -38,7 +38,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK is vendored into the generated repository under .open-autonomy/sdk, kit-owned, so
 // the reporter and the key tool run from a bare clone with no package to publish or install.
 const SDK_SRC = resolve(dirname(Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir)), 'src');
-const SDK_FILES = ['client.ts', 'roadmap.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts'];
 
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
 // the account as a URL path segment); binary-looking files pass through untouched.

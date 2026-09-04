@@ -1,4 +1,4 @@
-import { itemState, parseRoadmap, phaseNumber, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
+import { itemState, phaseNumber, type Roadmap, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
 import type { ItemView, SessionRecord, SessionSummary, Turn, UpdateRecord } from './ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from './ui.js';
 import { parseSchedule } from './widgets.js';
@@ -55,9 +55,9 @@ function Station({ item, state, enc, now, children }: { item: RoadmapItem; state
 
 const Acceptance = ({ item }: { item: RoadmapItem }) => (item.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null);
 
-export function Spine({ account, yml, scheduleJson, sessions, live, repoUrl, now }: { account: string; yml: string; scheduleJson?: string; sessions: SessionSummary[]; live: string[]; repoUrl?: string; now: number }) {
+export function Spine({ account, roadmap, scheduleJson, sessions, live, repoUrl, now }: { account: string; roadmap: Roadmap; scheduleJson?: string; sessions: SessionSummary[]; live: string[]; repoUrl?: string; now: number }) {
   const enc = encodeURIComponent(account);
-  const items = parseRoadmap(yml).items;
+  const items = roadmap.items;
   const rows = items.map((item) => ({ item, state: itemState(item) })).sort((a, b) => phaseNumber(a.item) - phaseNumber(b.item));
   const byItem = new Map<string, SessionSummary[]>();
   const known = new Set(items.map((i) => i.id));
@@ -143,9 +143,9 @@ export function SessionPage({ account, s, repoUrl, now }: { account: string; s: 
 }
 
 // ---- one item -------------------------------------------------------------------------------------------
-export function ItemPage({ account, yml, view, repoUrl, now }: { account: string; yml: string; view: ItemView; repoUrl?: string; now: number }) {
+export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: string; roadmap: Roadmap; view: ItemView; repoUrl?: string; now: number }) {
   const enc = encodeURIComponent(account);
-  const item = parseRoadmap(yml).items.find((i) => i.id === view.item_id);
+  const item = roadmap.items.find((i) => i.id === view.item_id);
   const state = item ? itemState(item) : undefined;
   const word = state === 'active' ? 'in progress' : state === 'done' ? 'shipped' : state === 'proposed' ? 'proposed · awaits owner' : state ? 'queued' : 'not on the roadmap file';
   const turns = view.sessions.reduce((n, s) => n + s.turn_count, 0);

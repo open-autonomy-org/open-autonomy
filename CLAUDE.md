@@ -17,8 +17,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   world runs.
 - `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook.
   `bun world/run.ts check` is the gate.
-- `hermes/`, `.open-autonomy/` — our own use: the kit applied to this repository, running in containers on
-  this Mac. It develops the product, and it is not special. Runtime state is git-ignored.
+- `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running in
+  containers on this Mac (`container/compose.yml` plus this install's `container/compose.override.yml`, which
+  mounts the reporter's supercode build). It develops the product, and it is not special. Runtime state is
+  git-ignored.
 
 ## Working agreement
 
