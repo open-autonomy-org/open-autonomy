@@ -26,7 +26,7 @@ export function api(base: string, headers: Record<string, string> = {}) {
     let json: any = null; try { json = JSON.parse(text); } catch { /* not json */ }
     return { status: res.status, body: json, text };
   };
-  return { get: (p: string) => call('GET', p), post: (p: string, b?: unknown) => call('POST', p, b), del: (p: string) => call('DELETE', p) };
+  return { get: (p: string) => call('GET', p), post: (p: string, b?: unknown) => call('POST', p, b), put: (p: string, b?: unknown) => call('PUT', p, b), patch: (p: string, b?: unknown) => call('PATCH', p, b), del: (p: string) => call('DELETE', p) };
 }
 
 export async function git(cwd: string, ...args: string[]): Promise<string> {

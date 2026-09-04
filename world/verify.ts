@@ -30,8 +30,16 @@ const history = (await git(WORK, 'log', '--format=%an%x09%s', 'origin/main')).sp
 for (const item of done) {
   if (!history.some((c) => c.author === 'Open Autonomy agent' && c.subject.includes(item))) fail(`item ${item} is done on main but no commit by the agent names it`);
 }
+// Landed the way the convention lands: a merged pull request per item, on a main that requires the check.
+const protection = await gh.get(`/repos/${ACCOUNT}/branches/main/protection`);
+if (protection.status !== 200 || !(protection.body?.required_status_checks?.contexts ?? []).includes('ci')) fail('main on the twin does not require the ci check');
+const pulls = (await gh.get(`/repos/${ACCOUNT}/pulls?state=all&per_page=100`)).body as Array<{ number: number; merged: boolean; head: { ref: string } }>;
+for (const item of done) {
+  if (!pulls.some((p) => p.merged && p.head.ref === `agent/${item}`)) fail(`item ${item} is done on main but no merged pull request from agent/${item} exists`);
+}
 const stray = await gh.get(`/repos/${ACCOUNT}/branches`);
-const unlanded = (stray.body as Array<{ name: string }>).map((b) => b.name).filter((n) => n.startsWith('agent/'));
+// A branch whose pull request merged is landed; its deletion is the repository setting's next tick.
+const unlanded = (stray.body as Array<{ name: string }>).map((b) => b.name).filter((n) => n.startsWith('agent/') && !pulls.some((p) => p.merged && p.head.ref === n));
 await git(WORK, 'checkout', '-q', 'main'); await git(WORK, 'reset', '-q', '--hard', 'origin/main');
 const check = Bun.spawnSync({ cmd: ['bun', 'run', 'check'], cwd: WORK, stdout: 'pipe', stderr: 'pipe' });
 if (check.exitCode !== 0) fail(`the project's own check fails at main:\n${check.stderr.toString().slice(-600)}`);
@@ -49,4 +57,4 @@ const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id 
 if (!clamp) fail('the clamped-output-cap handler is not loaded — the world cannot see a clamping proxy');
 if (clamp.matches > 0) fail(`the platform clamped the agent's output cap: ${clamp.matches} request(s) came in under the ceiling`);
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main`);

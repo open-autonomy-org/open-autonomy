@@ -1,0 +1,15 @@
+# The world's one addition to the product's stack: its clock reaches the agent's container. libfaketime is
+# preloaded into every process there and reads its offset from a file the world advances
+# (`bun world/run.ts clock advance 6h`), so the schedule in cron/jobs.seed.json fires on its own inside the
+# world instead of six real hours after boot. Monotonic time stays real: sleeps and timeouts are unaffected.
+# Nothing else about the stack is changed; template/container/compose.yml runs as the adopter runs it.
+services:
+  agent:
+    environment:
+      - LD_PRELOAD=/opt/world/libfaketime.so.1
+      - FAKETIME_TIMESTAMP_FILE=/opt/world/clock
+      - FAKETIME_CACHE_DURATION=2
+      - FAKETIME_DONT_FAKE_MONOTONIC=1
+      - DONT_FAKE_MONOTONIC=1
+    volumes:
+      - ${WORLD_STACK_DIR}/faketime:/opt/world:ro

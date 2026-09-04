@@ -20,11 +20,11 @@ items:
     phase: 1
     priority: high
     status: proposed
-    title: volter-world attach -- docker compose up just works for the agent's containers
+    title: The agent's containers attach to a world by name, with nothing leaving it
     acceptance:
-      - "`volter-world attach -- docker compose -f template/container/compose.yml up` brings a cookbook's real stack (gateway + sidecar) up attached to the world: the twins and the platform are reachable from inside the containers, and discord.com reaches the Discord twin. Nothing in this repository exists for the world's sake beyond the compose file; what attach needs to reach containers is developed in volter-world."
-      - A run in the attached stack narrates through the production sidecar and delivers its report to the Discord twin, and verify reads both from twin state and the local books.
-      - The one-shot agent leg (world/agent.ts) and the world's own sidecar service are gone.
+      - "`volter-world attach <world> -- docker compose -f template/container/compose.yml up` is the whole recipe: the containers resolve github.com, the model gateway and discord.com to the world's twins through attach's reflect front (DNS plus the session CA), instead of being handed twin addresses at seed time as world/stack.ts does today. What attach needs to reach containers is developed in volter-world, not here."
+      - The containers' egress is sealed - a public probe Hermes makes at boot is refused, not served - and `bun world/run.ts check` still passes.
+      - A run in the attached stack delivers its report to the Discord twin, and verify reads it from twin state.
   - id: narration-proof
     phase: 1
     priority: high
