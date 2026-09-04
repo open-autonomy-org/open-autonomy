@@ -1,4 +1,0 @@
-name: schedule-seed
-description: Seed the cron schedule from the committed jobs.seed.json on gateway startup
-events:
-  - gateway:startup

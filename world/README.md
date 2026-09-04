@@ -10,19 +10,23 @@ no process. Our own `hermes/` keeps running in production regardless.
 
 ```bash
 export TWINS_ROOT=/path/to/twin        # until the twin packages are published
-bun world/run.ts up --cookbook todo-cli   # twins + the real worker + the Actions runner, seeded; then the
-                                          # cookbook's own stack (template/container/compose.yml) on the world's VM
+bun world/run.ts up                    # twins + the real worker + the Actions runner, seeded; then the
+                                       # cookbook's own stack (template/container/compose.yml) on the world's VM
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
 bun world/run.ts clock advance 360m    # the container's clock: the schedule's next fire is now
 bun world/run.ts wait                  # watch: the run's receipt, then its pull request merged on the twin
 bun world/run.ts verify                # the audit: the books, the twin's main, the project's check, the page
 bun world/run.ts down --purge          # forget it (the stack's volumes too)
-bun world/run.ts check --cookbook todo-cli   # the gate: up → clock → wait → verify → down
+bun world/run.ts check                 # the gate: up → clock → wait → verify → down
 ```
 
-Each `clock advance 360m` fires the schedule once; `wait` sees it through; the roadmap walks down one item
-per fire. The default cookbook is `hello-roadmap`, one item that only marks itself done. `todo-cli` has
-eight items, each one command and one test.
+The cookbook is `todo-cli` (`--cookbook <name>` or `WORLD_COOKBOOK` picks another): eight items, each one
+command and one test. Each `clock advance 360m` fires the schedule once; `wait` sees it through; the
+roadmap walks down one item per fire, and `walk --items N` fires N times in a row.
+
+**The smoke path** while iterating on the platform, the SDK or the kit is one fire: `up`, `clock advance
+360m`, `wait`, `verify`, then look at what the page and the books say. The world stays up between
+edits; a platform change is a `down`/`up`, and `check` is the full gate before landing.
 
 ## Two uses, one world
 

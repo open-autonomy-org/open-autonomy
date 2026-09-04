@@ -1,6 +1,0 @@
-{
-  "name": "hello-roadmap",
-  "private": true,
-  "type": "module",
-  "scripts": { "check": "echo 'hello-roadmap: nothing to check but the roadmap' && test -f ROADMAP.yml" }
-}

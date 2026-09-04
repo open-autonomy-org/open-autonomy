@@ -3,7 +3,7 @@
 // (world/run.ts writes it to the generated world). The scripted model works like the real one is asked to:
 // it looks at the roadmap for the top planned item, then writes that item's code and tests, runs the
 // project's check, marks the item done, commits as the agent and pushes agent/<item>. Each run walks one
-// item; repeating `bun world/run.ts agent` walks the roadmap down. Rules are stateless and key on the
+// item; each `bun world/run.ts clock advance 360m` walks the roadmap down one item. Rules are stateless and key on the
 // conversation's own text, never on call counts: the platform meters housekeeping calls too.
 //
 // stages/<item>/ holds the files the model "writes" for that item, cumulative, and each stage passes the
