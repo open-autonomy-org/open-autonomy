@@ -41,6 +41,7 @@ function sh(cmd: string[], opts: { input?: string; quiet?: boolean; check?: bool
   return { code: r.exitCode, out };
 }
 const docker = (...args: string[]) => sh(['docker', '--context', context, ...args], { quiet: true });
+const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ stack: ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
 const forContainers = (url: string) => url.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, '//host.docker.internal');
 function hostIp(): string {
   const ip = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
@@ -109,11 +110,13 @@ async function up(): Promise<void> {
   mkdirSync(stackDir, { recursive: true });
   const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
   if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
+  timed('volumes', () => {
   for (const v of ['oa-home', 'oa-repo']) { sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false }); docker('volume', 'create', v); }
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${resolve(COOKBOOK, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
     `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1\\nOPEN_AUTONOMY_KEY=valve\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine/git:2.47.2', '-c', 'safe.directory=*', 'clone', '-q', `${forContainers(github)}/${ACCOUNT}.git`, '/work'], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine:3', 'chown', '-R', `${uid}:${gid}`, '/work'], { quiet: true });
+  });
   // The key file the valve reads, with the platform's address as the container sees it.
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
@@ -132,7 +135,7 @@ async function up(): Promise<void> {
   writeFileSync(resolve(worldDir, 'clock'), '+0\n');
   const ca = readFileSync(resolve(ROOT, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
   // The agent image is built first (a build needs no world) so certifi's path can be read from it.
-  sh([...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } });
+  timed('agent image', () => sh([...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } }));
   const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', `${COOKBOOK_NAME}-agent:local`, '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
   if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', `${COOKBOOK_NAME}-agent:local`, certifiPath], { quiet: true }).out;
@@ -151,19 +154,21 @@ async function up(): Promise<void> {
   }
   writeFileSync(resolve(worldDir, 'supercode'), readFileSync(supercodeBin), { mode: 0o755 });
   const dnsIp = resolverIp();
-  reflectUp(ip, dnsIp);
+  timed('reflect', () => reflectUp(ip, dnsIp));
   // The stack, as the adopter starts it — attached: every container's DNS is the world's resolver and its
   // trust the session CA.
-  sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', ROOT, '--', ...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid } });
-  seal();
+  timed('compose up --build', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', ROOT, '--', ...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid } }));
+  timed('seal', () => seal());
   // The gateway seeds its schedule as it boots; the clock is only worth advancing once the job exists.
   const deadline = Date.now() + 300_000;
+  const booted = Date.now();
   for (;;) {
     const list = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'hermes', 'cron', 'list'], { quiet: true, check: false }).out;
     if (/build-roadmap/.test(list)) break;
     if (Date.now() > deadline) throw new Error('stack: the gateway did not seed its schedule within five minutes (docker logs oa-agent)');
-    Bun.sleepSync(5000);
+    Bun.sleepSync(2000);
   }
+  console.log(`⏱ stack: gateway boot to schedule seeded: ${((Date.now() - booted) / 1000).toFixed(1)}s`);
   console.log(`stack: up on ${context} — the gateway carries the schedule (build-roadmap seeded); \`bun world/run.ts clock advance 360m\` brings its first fire forward`);
 }
 

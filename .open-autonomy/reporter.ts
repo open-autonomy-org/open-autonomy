@@ -23,7 +23,7 @@ const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${cfg.platform}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
 const stateFile = resolve(cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
-const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 60_000);
+const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 15_000);
 const log = (m: string) => console.log(`reporter: ${m}`);
 
 interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
@@ -154,7 +154,7 @@ class Followed {
     } catch (e) { log(`${this.key}: sync failed (${(e as Error).message})`); }
     finally { this.syncing = false; }
   }
-  // A session ends when its transcript has ended: a closing assistant text followed by a minute of silence
+  // A session ends when its transcript has ended: a closing assistant text followed by fifteen seconds of silence
   // (a tool call in flight is never silence, its result is still to come), else the idle fallback.
   arm(turnEnded = false): void {
     clearTimeout(this.timer);

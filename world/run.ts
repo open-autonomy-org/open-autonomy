@@ -43,13 +43,15 @@ writeFileSync(scenario, r.stdout);
 writeFileSync(config, readFileSync(resolve(ROOT, 'world', 'world.json'), 'utf8')
   .replaceAll('${TWINS_ROOT}', twins).replaceAll('${WORLD_DIR}', resolve(ROOT, 'world')).replaceAll('${SCENARIO}', scenario).replaceAll('${COOKBOOK}', cookbook));
 
+// Every step reports how long it took, so the gate's cost stays visible: the loop itself is seconds.
+const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
 function world(args: string[], opts: { check?: boolean } = { check: true }): number {
-  const res = Bun.spawnSync({ cmd: ['bun', cli, ...args], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, TWINS_ROOT: twins } });
+  const res = timed(`volter-world ${args[0]}`, () => Bun.spawnSync({ cmd: ['bun', cli, ...args], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, TWINS_ROOT: twins } }));
   if (opts.check && res.exitCode !== 0) { console.error(`volter-world ${args[0]} failed (${res.exitCode})`); process.exit(res.exitCode || 1); }
   return res.exitCode;
 }
 const inWorld = (cmd: string[]) => world(['env', NAME, '--root', ROOT, '--', 'env', `WORLD_COOKBOOK=${cookbook}`, ...cmd]);
-const step = (name: string, ...args: string[]) => inWorld(['bun', resolve(ROOT, 'world', `${name}.ts`), ...args]);
+const step = (name: string, ...args: string[]) => timed(`${name}${args.length ? ` ${args.join(' ')}` : ''}`, () => inWorld(['bun', resolve(ROOT, 'world', `${name}.ts`), ...args]));
 const mode = process.env.WORLD_MODE ?? 'sealed';
 const verb = argv.filter((a, i) => !a.startsWith('--') && a !== cookbook && argv[i - 1] !== '--timeout' && argv[i - 1] !== '--items')[0];
 const rest = (() => { const i = argv.indexOf('--'); return i >= 0 ? argv.slice(i + 1) : []; })();
