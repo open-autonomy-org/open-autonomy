@@ -20,6 +20,18 @@ services:
     volumes:
       - ${AGENT_SECRETS:-~/.config/open-autonomy}/agent.env:/secrets/agent.env:ro
     networks: [agent]
+  # The committed home (SOUL, skills, config, the schedule seed) into the volume before the gateway starts:
+  # `hermes/` in the repository is the source of truth for what the agent IS, and the volume only holds what
+  # the agent has since done. Without this a change to config.yaml or a skill would sit in git while the
+  # container kept running the copy it was seeded with.
+  home-sync:
+    image: alpine:3
+    container_name: oa-home-sync
+    restart: "no"
+    command: ["sh", "-c", "cd /repo/hermes && find . -type f ! -name '.env' -exec cp -a --parents {} /opt/data/ \\; && chown -R ${AGENT_UID:-501}:${AGENT_GID:-20} /opt/data && echo 'home synced from the repository'"]
+    volumes:
+      - oa-home:/opt/data
+      - oa-repo:/repo:ro
   agent:
     build:
       context: ..
@@ -29,7 +41,9 @@ services:
     image: open-autonomy-agent:local
     container_name: oa-agent
     restart: unless-stopped
-    depends_on: [sidecar]
+    depends_on:
+      sidecar: { condition: service_started }
+      home-sync: { condition: service_completed_successfully }
     command: ["gateway", "run"]
     environment:
       # The host user's ids: the forwarded ssh-agent socket is theirs.
