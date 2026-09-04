@@ -24,7 +24,7 @@ items:
   - id: world-health-badge
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: The project page states whether the agent's last run succeeded
     acceptance:
       - A project page served by the worker carries a line naming the outcome of the account's most recent finished run, or says there has been no run yet.

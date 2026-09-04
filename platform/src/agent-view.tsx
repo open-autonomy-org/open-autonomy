@@ -132,7 +132,7 @@ export function Spine({ account, yml, scheduleJson, jobs, current, repoUrl, now 
       ) : (
         <div class="schedbox">
           {schedule.length ? schedule.map((j) => <div class="sched"><b>{j.name ?? 'job'}</b> · fires {j.schedule ?? '?'}{j.deliver ? ` · reports to ${j.deliver}` : ''}</div>) : <div class="sched">No schedule committed.</div>}
-          {last ? <div class="sched last">last run {fmtWhen(last.started_at)}: {last.status === 'failed' ? 'failed' : 'done'}{last.item_id ? ` · ${last.item_id}` : ''}{last.commit_sha && repoUrl ? <> · <a href={`${repoUrl}/commit/${last.commit_sha}`}>{short(last.commit_sha)} ↗</a></> : null} · <a href={`/p/${enc}/jobs/${encodeURIComponent(last.key)}`}>receipt ↗</a></div> : null}
+          {last ? <div class="sched last">last run {fmtWhen(last.started_at)}: {last.status === 'failed' ? 'failed' : 'done'}{last.item_id ? ` · ${last.item_id}` : ''}{last.commit_sha && repoUrl ? <> · <a href={`${repoUrl}/commit/${last.commit_sha}`}>{short(last.commit_sha)} ↗</a></> : null} · <a href={`/p/${enc}/jobs/${encodeURIComponent(last.key)}`}>receipt ↗</a></div> : <div class="sched last">no run yet</div>}
         </div>
       )}
       {active.length ? <ol class="rm-spine">{active.map((r) => <Station item={r.item} state={r.state} now><Acceptance yml={yml} id={r.item.id} />{(byItem.get(r.item.id) ?? []).map((j) => <Receipt job={j} enc={enc} repoUrl={repoUrl} now={now} />)}</Station>)}</ol> : null}

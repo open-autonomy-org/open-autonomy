@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `world-health-badge`: the project page's spine now states the outcome of the account's most recent finished run (done / failed / no run yet), rendered from the job receipts — no new stored field.
 - `container-proof`: the containerised agent, running off the project's standing key, landed this item through its own branch and pushed it to main on merge.
 
 - The agent runs in containers that hold no secret that matters: its standing key lives in a sidecar that forwards the model routes, its pushes sign through a host ssh-agent with one repository-scoped deploy key, and it lands work on `agent/*` branches that `land.yml` merges once `ci` and `security` pass. It cannot deploy, dispatch a workflow, push to `main`, or read a key. Turns are redacted at intake before the books keep them, since every run is published live.
