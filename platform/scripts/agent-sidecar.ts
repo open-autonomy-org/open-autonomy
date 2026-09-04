@@ -93,29 +93,60 @@ async function send(type: 'started' | 'turns' | 'finished', subject: string, dat
   return Boolean(res?.ok);
 }
 
+// What the platform already has for this run: its next turn offset, and whether the receipt is open.
+async function resume(session: string): Promise<{ seq: number; started: boolean } | undefined> {
+  const bearer = key();
+  if (!bearer) return undefined;
+  // The key is `<base64url(claims)>.<hmac>`; its account is the claims' repo. Reading our own bearer's
+  // public half is not a trust decision — the platform still verifies the signature on every call.
+  const account = (() => {
+    try {
+      const raw = bearer.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+      return (JSON.parse(atob(raw + '='.repeat((4 - (raw.length % 4)) % 4))) as { repo?: string }).repo;
+    } catch { return undefined; }
+  })();
+  if (!account) return undefined;
+  const res = await fetch(`${base()}/accounts/${encodeURIComponent(account)}/jobs/${encodeURIComponent(session)}`, { headers: { authorization: `Bearer ${bearer}` } }).catch(() => null);
+  if (!res?.ok) return undefined;
+  const job = (await res.json().catch(() => null)) as { job?: { next_seq?: number }; next_seq?: number } | null;
+  const seq = job?.job?.next_seq ?? job?.next_seq;
+  if (typeof seq !== 'number') return undefined;
+  console.log(`resuming ${session} at turn ${seq} (the receipt was already open)`);
+  return { seq, started: true };
+}
+
 async function hermesHook(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
-  const body = await req.json().catch(() => null) as { hook_event_name?: string; session_id?: string; tool_name?: string; args?: unknown; extra?: Record<string, unknown> } | null;
+  // Hermes's wire: tool arguments arrive as `tool_input` (its serializer renames `args`), everything the
+  // event carried beyond the four top-level keys is under `extra`.
+  const body = await req.json().catch(() => null) as { hook_event_name?: string; session_id?: string; tool_name?: string; tool_input?: unknown; extra?: Record<string, unknown> } | null;
   const event = body?.hook_event_name;
   const session = body?.session_id;
   // Only the scheduled runs are receipts: a chat in Discord is not a job, and its turns are not public.
   if (!event || !session || !narratable(session)) return Response.json({ ok: true, ignored: true });
   const extra = body.extra ?? {};
-  const run = runs.get(session) ?? { seq: 0, started: false };
-  runs.set(session, run);
+  let run = runs.get(session);
+  if (!run) {
+    // A run this process has not seen: either it is new, or the sidecar restarted mid-run. The platform
+    // already knows how far the receipt got, so resume from ITS offset — assuming zero would send turns at
+    // offsets the books have already accepted, and every one of them would be silently discarded.
+    const existing = await resume(session);
+    run = existing ?? { seq: 0, started: false };
+    runs.set(session, run);
+  }
 
   if (event === 'on_session_start' && !run.started) {
     run.started = await send('started', session, { job_name: 'build-roadmap', title: String(extra.title ?? 'build-roadmap') });
     return Response.json({ ok: run.started });
   }
-  if (!run.started) { // a run whose start we missed (the sidecar restarted): open the receipt now
+  if (!run.started) { // the start itself was missed: open the receipt now, at the offset we resumed to
     run.started = await send('started', session, { job_name: 'build-roadmap' });
     if (!run.started) return Response.json({ ok: false });
   }
 
   if (event === 'post_tool_call') {
     const turns: Turn[] = [
-      { role: 'assistant', tool: String(body.tool_name ?? 'tool'), args: brief(body.args ?? extra.args, 600) },
+      { role: 'assistant', tool: String(body.tool_name ?? 'tool'), args: brief(body.tool_input ?? extra.args, 600) },
       { role: 'tool', tool: String(body.tool_name ?? 'tool'), result: brief(extra.result) },
     ];
     if (await send('turns', session, { seq: run.seq, turns })) run.seq += turns.length;
