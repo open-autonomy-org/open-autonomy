@@ -35,10 +35,14 @@ services:
       - HERMES_GID=${AGENT_GID:-20}
       - SSH_AUTH_SOCK=/ssh-agent
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
+      - TWINS_ROOT=/opt/twin
     volumes:
       - oa-home:/opt/data
       - oa-repo:/work/open-autonomy
       - /run/host-services/ssh-auth.sock:/ssh-agent
+      # The twins checkout, read-only: the agent verifies its work in the world (world/README.md), which
+      # needs the runtime until the twin packages are published. Nothing in it is a credential.
+      - ${TWINS_ROOT:-~/volter/twin}:/opt/twin:ro
     networks: [agent]
   reporter:
     build:
