@@ -24,17 +24,28 @@ You are in the Open Autonomy repository (the cron job sets the working directory
 4. Make the smallest change that makes every acceptance line true. Keep code, tests, and docs in the same commit.
 5. Run `bun run check` from the repository root. If it fails, fix the cause; do not weaken a test.
 
-## Verify it live
+## Verify it in the world
 
-6. Where an acceptance line names a live surface (the deployed worker, the site, the README widget), verify it on that surface: `curl` the worker route, fetch the page, look at the result. A green test is not proof that the surface works.
-7. If a line cannot be made true from inside this repository (it needs a secret, a dashboard, or the owner), stop. Leave the item `active`, and write one paragraph in your report saying exactly what is missing.
+You cannot reach production and must not try. You have something better: `world/` is the whole product on
+your machine — the real worker, local twins of GitHub and the model gateway, no keys (`world/README.md`).
+
+6. Bring it up: `bun world/run.ts up`. It prints the platform's URL, and `bun world/run.ts env -- <cmd>`
+   runs anything with the world's environment (`$PLATFORM_URL`, `$GITHUB_TWIN_URL`, `$OPENAI_TWIN_URL`).
+7. Exercise every acceptance line that names a live surface against that world: `curl` the worker's route,
+   fetch the page and read what came back, look at the SVG. A green unit test is not proof that a surface
+   works. Where an acceptance line concerns the agent's own runs, `bun world/run.ts agent` performs one and
+   `bun world/run.ts verify` audits the books and the twin.
+8. Tear it down when you are finished: `bun world/run.ts down --purge`.
+9. If a line cannot be made true even in the world (it needs the deployed worker, a dashboard, or the
+   owner), stop. Leave the item `active`, and write one paragraph saying exactly what is missing. Deploying
+   is a maintainer's reviewed step; say so rather than claiming the live site.
 
 ## Land it
 
-8. Start from a fresh `main`: `git fetch origin && git checkout -B agent/<item-id> origin/main` before you change anything (if you already changed files, do this first and carry the changes over). Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit as the agent, signed off, so the history shows what the agent did: `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>"`.
-9. When every acceptance line is true and verified, set the item's `status: done` in `ROADMAP.yml` in the same branch. Add a one-line entry under `## Unreleased` in `CHANGELOG.md`.
-10. Push the branch: `git push -u origin agent/<item-id>`. You cannot open pull requests or push to `main`, and you do not need to: the landing workflow opens the pull request and it merges on its own when the required checks pass. Do not wait for it. If the push is rejected because the branch exists from an earlier run, push to `agent/<item-id>-<YYYYMMDD-HHMM>` instead.
+10. Start from a fresh `main`: `git fetch origin && git checkout -B agent/<item-id> origin/main` before you change anything (if you already changed files, do this first and carry the changes over). Commit with a message that names the roadmap item id in its first line, e.g. `per-call-audit: append every metered call to the account log`. Commit as the agent, signed off, so the history shows what the agent did: `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>"`.
+11. When every acceptance line is true and verified in the world, set the item's `status: done` in `ROADMAP.yml` in the same branch. Add a one-line entry under `## Unreleased` in `CHANGELOG.md`.
+12. Push the branch: `git push -u origin agent/<item-id>`. You cannot open pull requests or push to `main`, and you do not need to: the landing workflow opens the pull request and it merges on its own when the required checks pass. Do not wait for it. If the push is rejected because the branch exists from an earlier run, push to `agent/<item-id>-<YYYYMMDD-HHMM>` instead.
 
 ## Report
 
-11. Report in five lines or fewer: the item id, what changed, the branch you pushed, what you verified and how, what is left. Nothing else.
+13. Report in five lines or fewer: the item id, what changed, the branch you pushed, what you verified **in the world** and how (name the surface you exercised), what is left. Nothing else.
