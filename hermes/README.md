@@ -23,26 +23,33 @@ is a secret that matters: a container (`container/compose.yml`) holding only its
   cut a deploy tag, or dispatch a workflow.
 - **Discord** is the one token in its reach: it can only post as the bot.
 
-Host layout the compose file expects (`AGENT_ROOT`, default `~/volter/open-autonomy-agent`):
+Three containers, one VM (`container/compose.yml`): `oa-agent` (the gateway: Discord + the cron schedule),
+`oa-sidecar` (the key), `oa-reporter` (narrates runs to the platform through supercode's harness protocol).
+The Hermes home and the checkout live in Docker volumes, `oa-home` and `oa-repo`: SQLite over a host bind
+mount crashes the gateway, and nothing on the host needs them. Inspect with `docker exec`.
 
-```text
-~/volter/open-autonomy-agent/home   the Hermes home: this directory's tracked files, plus .env (Discord)
-~/volter/open-autonomy-agent/repo   the agent's checkout (git@github.com:… over the deploy key)
-~/.config/open-autonomy/agent.env   OPEN_AUTONOMY_KEY + OPEN_AUTONOMY_BASE_URL — the sidecar's, never the agent's
-```
+On the host, only two things: the key file (`~/.config/open-autonomy/agent.env`) and an ssh-agent holding
+the deploy key. `cron/jobs.seed.json` pins the job's working directory to `/work/open-autonomy`.
 
 ```bash
-# the host: a dedicated ssh-agent with only the deploy key, forwarded into the VM the containers run in
+# once: the VM, with a dedicated ssh-agent (only the deploy key) forwarded into it
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.open-autonomy.ssh-agent.plist  # ssh-agent -a ~/.config/open-autonomy/agent.sock
+SSH_AUTH_SOCK=~/.config/open-autonomy/agent.sock ssh-add ~/.config/open-autonomy/agent_deploy_key
 SSH_AUTH_SOCK=~/.config/open-autonomy/agent.sock colima start open-autonomy --ssh-agent
-# the containers: the sidecar and the gateway (Discord + the cron schedule)
-docker compose -f container/compose.yml up -d --build
-# a run now, inside the container
-docker exec oa-agent hermes cron run build-roadmap
-# narrate runs to the platform (the site's NOW / DONE bands): on the host, reading the container's home
-SUPERCODE_BIN=/path/to/supercode bun platform/scripts/agent-reporter.ts --home ~/volter/open-autonomy-agent/home --repo ~/volter/open-autonomy-agent/repo --install
-```
+export DOCKER_CONTEXT=colima-open-autonomy
 
-`cron/jobs.seed.json` pins the job's working directory to the container's checkout, `/work/open-autonomy`.
+# once: the volumes — this directory's tracked files plus a .env with the Discord token, and a clone
+docker volume create oa-home && docker volume create oa-repo
+#   seed oa-home from hermes/ (+ .env), and oa-repo from a clone made with the deploy key
+
+# once: supercode for the VM, for the reporter image
+container/build-supercode.sh
+
+# every time
+docker compose -f container/compose.yml up -d --build
+docker exec -u $UID oa-agent hermes cron run build-roadmap    # a run now
+docker logs -f oa-reporter                                     # what it is narrating
+```
 
 Discord: the bot "Open Autonomy" lives in the "Open Autonomy" server (invite: https://discord.gg/AcKMuMv2HC); the home's
 `.env` carries `DISCORD_BOT_TOKEN`, `DISCORD_ALLOWED_USERS` (who may talk to it) and `DISCORD_HOME_CHANNEL`

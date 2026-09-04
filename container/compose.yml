@@ -9,18 +9,21 @@
 #   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
 services:
   sidecar:
-    image: oven/bun:1.3.10
+    build:
+      context: ..
+      dockerfile: container/Dockerfile.sidecar
+    image: open-autonomy-sidecar:local
     container_name: oa-sidecar
     restart: unless-stopped
-    command: ["bun", "/sidecar/agent-sidecar.ts"]
     environment:
       - AGENT_ENV_FILE=/secrets/agent.env
     volumes:
-      - ../platform/scripts/agent-sidecar.ts:/sidecar/agent-sidecar.ts:ro
       - ${AGENT_SECRETS:-~/.config/open-autonomy}/agent.env:/secrets/agent.env:ro
     networks: [agent]
   agent:
-    build: .
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
     image: open-autonomy-agent:local
     container_name: oa-agent
     restart: unless-stopped
@@ -39,27 +42,29 @@ services:
     networks: [agent]
   reporter:
     build:
-      context: .
-      dockerfile: Dockerfile.reporter
+      context: ..
+      dockerfile: container/Dockerfile.reporter
     image: open-autonomy-reporter:local
     container_name: oa-reporter
     restart: unless-stopped
     depends_on: [sidecar, agent]
     user: "${AGENT_UID:-501}:${AGENT_GID:-20}"
+    working_dir: /tmp
     command: ["bun", "/reporter/agent-reporter.ts", "--home", "/opt/data", "--repo", "/work/open-autonomy", "--supercode", "/usr/local/bin/supercode"]
     environment:
       - OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1
       - OPEN_AUTONOMY_KEY=sidecar
       - HOME=/tmp
     volumes:
-      - ../platform/scripts/agent-reporter.ts:/reporter/agent-reporter.ts:ro
       - oa-home:/opt/data
       - oa-repo:/work/open-autonomy
     networks: [agent]
 volumes:
   oa-home:
     name: oa-home
+    external: true # seeded once from hermes/ (hermes/README.md)
   oa-repo:
     name: oa-repo
+    external: true # the agent's clone
 networks:
   agent: {}

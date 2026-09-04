@@ -130,12 +130,17 @@ function executionFor(jobId: string, startedAt: Date): { status: string; finishe
 // and the landing workflow's merge, minutes after the run.
 function commitInWindow(workdir: string | undefined, since: Date, until: string | null | undefined, itemId?: string): string | undefined {
   if (!workdir || !existsSync(workdir)) return undefined;
-  Bun.spawnSync({ cmd: ['git', '-C', workdir, 'fetch', '-q', 'origin', 'main'], stdout: 'ignore', stderr: 'ignore' });
+  const git = (...args: string[]) => Bun.spawnSync({ cmd: ['git', '-C', workdir, ...args], stdout: 'pipe', stderr: 'ignore' });
+  // Fetch main over https, derived from the checkout's origin: the reporter holds no push credential (that
+  // is the agent's, and a public project's main is readable by anyone), so it never depends on one.
+  const origin = git('remote', 'get-url', 'origin').stdout.toString().trim();
+  const https = origin.replace(/^git@([^:]+):/, 'https://$1/').replace(/\.git$/, '') + '.git';
+  const fetched = git('fetch', '-q', https, 'main').exitCode === 0 ? 'FETCH_HEAD' : 'origin/main';
   const window = ['--no-merges', `--since=${since.toISOString()}`, ...(until ? [`--until=${new Date(Date.parse(until) + 60_000).toISOString()}`] : [])];
-  const byAuthor = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window, 'origin/main'], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  const byAuthor = git('log', '-1', '--format=%H', '--author=Open Autonomy agent', ...window, fetched).stdout.toString().trim();
   if (/^[0-9a-f]{40}$/.test(byAuthor)) return byAuthor;
   if (!itemId) return undefined; // a run that committed under another identity: the commit naming its item
-  const byItem = Bun.spawnSync({ cmd: ['git', '-C', workdir, 'log', '-1', '--format=%H', `--grep=${itemId}`, ...window, 'origin/main'], stdout: 'pipe', stderr: 'ignore' }).stdout.toString().trim();
+  const byItem = git('log', '-1', '--format=%H', `--grep=${itemId}`, ...window, fetched).stdout.toString().trim();
   return /^[0-9a-f]{40}$/.test(byItem) ? byItem : undefined;
 }
 function roadmapIds(workdir: string | undefined): string[] {
