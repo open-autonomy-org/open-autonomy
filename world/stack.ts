@@ -12,15 +12,19 @@
 // The Docker host is the world's own (WORLD_DOCKER_CONTEXT, default colima-open-autonomy-world): the compose
 // file names its containers and volumes, so a host runs one agent — this VM is the world's, as the template
 // says "a VM of its own is best". Containers reach the host's services at host.docker.internal.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, REPO, agentEnv, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, REPO, agentEnv, need } from './lib.ts';
 
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
 const profile = context.replace(/^colima-/, '');
 const project = 'oa';
 const stackDir = resolve(DATA, 'stack');
 const compose = ['docker', '--context', context, 'compose', '-p', project, '-f', resolve(REPO, 'template/container/compose.yml'), '-f', resolve(REPO, 'world/stack.override.yml')];
+const twinsCli = resolve(process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts');
+const REFLECT_FRONT = 47700;
+const REFLECT_RESOLVER = 47701;
+const worldDir = resolve(DATA, 'stack', 'world'); // mounted at /opt/world: the clock, its library, the CA
 const uid = process.env.AGENT_UID ?? String(process.getuid?.() ?? 501);
 const gid = process.env.AGENT_GID ?? String(process.getgid?.() ?? 20);
 
@@ -40,6 +44,35 @@ function sh(cmd: string[], opts: { input?: string; quiet?: boolean; check?: bool
 const docker = (...args: string[]) => sh(['docker', '--context', context, ...args], { quiet: true });
 // A container reaches the host's services (the platform, the GitHub twin) at host.docker.internal.
 const forContainers = (url: string) => url.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, '//host.docker.internal');
+function hostIp(): string {
+  const ip = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
+  return ip;
+}
+// The world's reflect front and resolver (docs/ATTACH.md in the twins repository), for the vendor the
+// agent's own HTTP client cannot be pointed elsewhere: discord.py. Routed hosts resolve to the host, whose
+// 443 the VM redirects into the front; the front terminates TLS with the session CA and forwards to the twin.
+function reflectUp(ip: string): void {
+  reflectDown();
+  for (const host of ['discord.com', 'gateway.discord.gg']) sh(['bun', twinsCli, 'route', 'open-autonomy', 'add', host, '--root', REPO], { quiet: true, check: false });
+  const child = Bun.spawn({ cmd: ['bun', twinsCli, 'reflect', 'open-autonomy', '--target-ip', ip, '--port', String(REFLECT_FRONT), '--resolver-port', String(REFLECT_RESOLVER), '--root', REPO], cwd: REPO, stdout: Bun.file(resolve(stackDir, 'reflect.log')), stderr: Bun.file(resolve(stackDir, 'reflect.log')), env: hostEnv() });
+  child.unref();
+  writeFileSync(resolve(stackDir, 'reflect.pid'), `${child.pid}\n`);
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    if (sh(['dig', '+short', '+time=1', '+tries=1', '@127.0.0.1', '-p', String(REFLECT_RESOLVER), 'discord.com'], { quiet: true, check: false }).out.trim() === ip) break;
+    if (Date.now() > deadline) throw new Error(`stack: the reflect resolver did not answer within 15s (${resolve(stackDir, 'reflect.log')})`);
+    Bun.sleepSync(500);
+  }
+  console.log(`stack: reflect up — discord.com resolves to ${ip}, the front on :${REFLECT_FRONT} hands it to the Discord twin`);
+}
+function reflectDown(): void {
+  const pidFile = resolve(stackDir, 'reflect.pid');
+  if (!existsSync(pidFile)) return;
+  const pid = Number(readFileSync(pidFile, 'utf8').trim());
+  if (pid) { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }
+  rmSync(pidFile, { force: true });
+}
 
 async function up(): Promise<void> {
   const github = need('GITHUB_TWIN_URL');
@@ -65,12 +98,16 @@ async function up(): Promise<void> {
       sh(['sh', resolve(REPO, 'template/container/build-hermes.sh')], { env: { DOCKER_CONTEXT: context } });
     }
   }
+  const ip = hostIp();
   // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at the
-  // sidecar), the checkout cloned from the project's origin — here the GitHub twin.
+  // sidecar, and names the optional Discord bot — a fake token the twin accepts — and its home channel), the
+  // checkout cloned from the project's origin — here the GitHub twin.
   mkdirSync(stackDir, { recursive: true });
+  const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
   for (const v of ['oa-home', 'oa-repo']) { sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false }); docker('volume', 'create', v); }
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${resolve(COOKBOOK, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
-    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1\\nOPEN_AUTONOMY_KEY=sidecar\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
+    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1\\nOPEN_AUTONOMY_KEY=sidecar\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine/git:2.47.2', '-c', 'safe.directory=*', 'clone', '-q', `${forContainers(github)}/${ACCOUNT}.git`, '/work'], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine:3', 'chown', '-R', `${uid}:${gid}`, '/work'], { quiet: true });
   // The key file the sidecar reads (template/README.md: ~/.config/open-autonomy/agent.env), with the
@@ -78,9 +115,9 @@ async function up(): Promise<void> {
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
   writeFileSync(resolve(secrets, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(env.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${env.OPEN_AUTONOMY_KEY}\n`);
-  // The world's clock for the container: libfaketime (built once for the image's Debian, kept under .volter)
-  // and the offset file, starting at zero.
-  const faketime = resolve(stackDir, 'faketime');
+  // What the world mounts into the container (stack.override.yml): the clock — libfaketime, built once for
+  // the image's Debian and kept under .volter, and the offset file starting at zero — and the session CA.
+  const faketime = worldDir;
   mkdirSync(faketime, { recursive: true });
   const lib = resolve(REPO, '.volter', 'faketime', 'libfaketime.so.1');
   if (!existsSync(lib)) {
@@ -91,8 +128,17 @@ async function up(): Promise<void> {
   }
   writeFileSync(resolve(faketime, 'libfaketime.so.1'), readFileSync(lib));
   writeFileSync(resolve(faketime, 'clock'), '+0\n');
+  const ca = readFileSync(resolve(REPO, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
+  writeFileSync(resolve(faketime, 'ca-cert.pem'), ca);
+  // Python's aiohttp (discord.py's client) trusts certifi's bundle, not the system store: the image's own
+  // bundle plus the session CA, mounted over certifi's file (the path is the image's, read from it).
+  const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', 'open-autonomy-agent:local', '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
+  if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
+  const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', 'open-autonomy-agent:local', certifiPath], { quiet: true }).out;
+  writeFileSync(resolve(faketime, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
+  reflectUp(ip);
   // The stack, as the adopter starts it.
-  sh([...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
+  sh([...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_HOST_IP: ip, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
   seal();
   // The gateway seeds its schedule from cron/jobs.seed.json as it boots (the schedule-seed hook). Its first
   // fire is one interval after that, so the clock is only worth advancing once the job exists — the product's
@@ -122,18 +168,25 @@ function seal(): void {
     'iptables -F OA_WORLD_SEAL',
     `iptables -A OA_WORLD_SEAL -i ${bridge} ! -d ${host}/32 -j REJECT --reject-with icmp-port-unreachable`,
     'iptables -C DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null || iptables -I DOCKER-USER 1 -j OA_WORLD_SEAL',
+    // The attach: DNS and HTTPS toward the host go to reflect's resolver and front.
+    'iptables -t nat -N OA_WORLD_REFLECT 2>/dev/null || true',
+    'iptables -t nat -F OA_WORLD_REFLECT',
+    `iptables -t nat -A OA_WORLD_REFLECT -i ${bridge} -d ${host}/32 -p udp --dport 53 -j DNAT --to-destination ${host}:${REFLECT_RESOLVER}`,
+    `iptables -t nat -A OA_WORLD_REFLECT -i ${bridge} -d ${host}/32 -p tcp --dport 443 -j DNAT --to-destination ${host}:${REFLECT_FRONT}`,
+    'iptables -t nat -C PREROUTING -j OA_WORLD_REFLECT 2>/dev/null || iptables -t nat -I PREROUTING 1 -j OA_WORLD_REFLECT',
   ].join(' && ');
   sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', script], { quiet: true });
-  console.log(`stack: sealed — off ${bridge} only ${host} (the host's platform and twins) is reachable`);
+  console.log(`stack: sealed — off ${bridge} only ${host} (the host's platform and twins) is reachable; its 53 and 443 are reflect`);
 }
 function unseal(): void {
-  sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', 'iptables -D DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null; iptables -F OA_WORLD_SEAL 2>/dev/null; iptables -X OA_WORLD_SEAL 2>/dev/null; true'], { quiet: true, check: false });
+  sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', 'iptables -D DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null; iptables -F OA_WORLD_SEAL 2>/dev/null; iptables -X OA_WORLD_SEAL 2>/dev/null; iptables -t nat -D PREROUTING -j OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -F OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -X OA_WORLD_REFLECT 2>/dev/null; true'], { quiet: true, check: false });
 }
 
 function down(purge: boolean): void {
   if (sh(['docker', 'context', 'inspect', context], { quiet: true, check: false }).code !== 0) return;
   unseal();
-  sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir }, quiet: true, check: false });
+  reflectDown();
+  sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_HOST_IP: '127.0.0.1', WORLD_CERTIFI_PATH: '/dev/null' }, quiet: true, check: false });
   if (purge) for (const v of ['oa-home', 'oa-repo']) sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false });
   console.log(`stack: down${purge ? ', volumes removed' : ''}`);
 }
@@ -142,7 +195,7 @@ function clockAdvance(spec: string): void {
   const m = /^(\d+)(s|m|h|d)$/.exec(spec);
   if (!m) throw new Error(`clock advance: ${JSON.stringify(spec)} is not <N>(s|m|h|d)`);
   const seconds = Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's' | 'm' | 'h' | 'd'];
-  const file = resolve(stackDir, 'faketime', 'clock');
+  const file = resolve(worldDir, 'clock');
   const current = existsSync(file) ? Number(readFileSync(file, 'utf8').trim()) : 0;
   writeFileSync(file, `+${current + seconds}\n`);
   console.log(`clock: the container is now ${(current + seconds) / 3600} hours ahead`);

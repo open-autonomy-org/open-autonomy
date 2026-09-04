@@ -2,7 +2,7 @@
 // The audit after any number of runs (bun world/run.ts verify): the books, the GitHub twin, the project's own
 // check at main, the page. Never the agent's prose.
 import { existsSync } from 'node:fs';
-import { ACCOUNT, ENC, MODEL, WORK, api, git, need } from './lib.ts';
+import { ACCOUNT, ENC, HOME_CHANNEL, MODEL, WORK, api, git, need } from './lib.ts';
 
 const pub = api(need('PLATFORM_URL'));
 const gh = api(need('GITHUB_TWIN_URL'));
@@ -57,10 +57,16 @@ const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id 
 if (!clamp) fail('the clamped-output-cap handler is not loaded — the world cannot see a clamping proxy');
 if (clamp.matches > 0) fail(`the platform clamped the agent's output cap: ${clamp.matches} request(s) came in under the ceiling`);
 
+// Delivery: the run's report, posted by the bot to its home channel on the Discord twin, through reflect.
+const posted = (await api(need('DISCORD_TWIN_URL')).get(`/api/v10/channels/${HOME_CHANNEL}/messages?limit=50`)).body as Array<{ content: string }> | null;
+const reports = receipts.map((r) => (r as { report?: string | null }).report ?? '').filter(Boolean);
+const delivered = reports.filter((report) => (posted ?? []).some((m) => m.content.includes(report.slice(0, 60))));
+if (!delivered.length) fail(`no run report reached the Discord twin: ${(posted ?? []).length} message(s) in the home channel, none carrying a receipt's report`);
+
 // The seal: from the agent's own container, a public host is refused, the platform is not.
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
 const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', context, 'exec', 'oa-agent', 'curl', '-s', '-o', '/dev/null', '-m', '8', '-w', '%{http_code}', url], stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main; egress sealed`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);

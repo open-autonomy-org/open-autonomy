@@ -1,15 +1,29 @@
-# The world's one addition to the product's stack: its clock reaches the agent's container. libfaketime is
-# preloaded into every process there and reads its offset from a file the world advances
-# (`bun world/run.ts clock advance 6h`), so the schedule in cron/jobs.seed.json fires on its own inside the
-# world instead of six real hours after boot. Monotonic time stays real: sleeps and timeouts are unaffected.
-# Nothing else about the stack is changed; template/container/compose.yml runs as the adopter runs it.
+# The world's additions to the product's stack, and nothing else — template/container/compose.yml runs as
+# the adopter runs it. Two things reach into the agent's container from the world:
+#   the clock   libfaketime preloaded into every process, its offset read from a file the world advances
+#               (`bun world/run.ts clock advance 6h`), so the schedule fires inside the world instead of six
+#               real hours after boot. Monotonic time stays real: sleeps and timeouts are unaffected.
+#   the attach  the container's DNS is the world's reflect resolver and its TLS trust is the session CA, so
+#               an unmodified discord.py reaches the Discord twin at discord.com (docs/ATTACH.md in the twins
+#               repository: reflect is how a binary whose HTTP client you do not control attaches). The
+#               address is the host as the VM sees it; the host redirects 53 and 443 into reflect. Python's
+#               aiohttp trusts certifi's bundle, not the system store, so that bundle is replaced by itself
+#               plus the session CA.
 services:
   agent:
+    dns:
+      - ${WORLD_HOST_IP}
+    extra_hosts:
+      - host.docker.internal:host-gateway # a container-level DNS setting bypasses Docker's resolver, which is what served this name
     environment:
       - LD_PRELOAD=/opt/world/libfaketime.so.1
       - FAKETIME_TIMESTAMP_FILE=/opt/world/clock
       - FAKETIME_CACHE_DURATION=2
       - FAKETIME_DONT_FAKE_MONOTONIC=1
       - DONT_FAKE_MONOTONIC=1
+      - SSL_CERT_FILE=/opt/world/ca-cert.pem
+      - REQUESTS_CA_BUNDLE=/opt/world/ca-cert.pem
+      - CURL_CA_BUNDLE=/opt/world/ca-cert.pem
     volumes:
-      - ${WORLD_STACK_DIR}/faketime:/opt/world:ro
+      - ${WORLD_STACK_DIR}/world:/opt/world:ro
+      - ${WORLD_STACK_DIR}/world/ca-bundle.pem:${WORLD_CERTIFI_PATH}:ro

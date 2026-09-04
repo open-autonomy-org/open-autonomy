@@ -7,7 +7,7 @@
 // key lands in <data>/agent.env: a world artifact, worthless anywhere else.
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, ENC, MODEL, OWNER, REPO, REPO_NAME, api, git, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, REPO, REPO_NAME, api, git, need } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL');
@@ -53,6 +53,13 @@ const selfMint = await admin.post(`/admin/accounts/${encodeURIComponent(self)}/m
 if (selfMint.status !== 200) throw new Error(`platform: mint ${self} → ${selfMint.status}`);
 await protect(self);
 console.log(`seed: ${self} on the GitHub twin at ${await git(mirror, 'rev-parse', '--short', 'HEAD')} (main), funded`);
+
+// 1c. The agent's Discord home channel, on the Discord twin: the maintainer's first message creates it, the
+//     way a channel a world never seeded is created on first post.
+const discord = api(need('DISCORD_TWIN_URL'), { authorization: 'Bot maintainer' });
+const hello = await discord.post(`/api/v10/channels/${HOME_CHANNEL}/messages`, { content: `home channel of ${ACCOUNT}` });
+if (hello.status !== 200) throw new Error(`discord twin: seed channel → ${hello.status} ${hello.text.slice(0, 200)}`);
+console.log(`seed: Discord home channel ${HOME_CHANNEL} on the twin`);
 
 // 2. Fund the project on the local books (idempotent on the key).
 const minted = await admin.post(`/admin/accounts/${ENC}/mint`, { amount_usd_cents: 500, key: 'world-seed' });
