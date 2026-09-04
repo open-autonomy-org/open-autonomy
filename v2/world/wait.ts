@@ -18,9 +18,10 @@ while (initial === null) { initial = await sessions(); if (initial === null) awa
 const before = new Set(initial.map((s) => s.key));
 const mergedBefore = new Set((await pulls()).filter((p) => p.merged).map((p) => p.number));
 let seen: Sess | undefined;
+let landed: Pull | undefined;
 let noted = '';
 for (;;) {
-  if (Date.now() > deadline) { console.error(`wait: nothing ${seen ? 'landed' : 'ran'} within the deadline`); process.exit(1); }
+  if (Date.now() > deadline) { console.error(`wait: ${landed ? 'the run landed but the reporter never ended its session' : seen ? 'nothing landed' : 'nothing ran'} within the deadline`); process.exit(1); }
   const all = await sessions();
   if (all === null) { await Bun.sleep(2000); continue; }
   const current = all.filter((s) => !before.has(s.key) && s.kind === 'run')[0];
@@ -32,9 +33,12 @@ for (;;) {
       seen = current;
     }
   }
-  // This fire's landing: a pull request from an agent branch merged since the wait began. A run whose
-  // session has not yet been ended by the reporter still counts once its branch has landed.
-  const merged = (await pulls()).find((p) => p.merged && !mergedBefore.has(p.number) && p.head.ref.startsWith('agent/'));
-  if (merged) { console.log(`wait: pull request #${merged.number} (${merged.head.ref}) merged on the twin${seen || current ? '' : ' — no session was published for it'}`); process.exit(0); }
+  // This fire's landing: a pull request from an agent branch merged since the wait began. The loop is over
+  // once the reporter has ended the run's session too (a minute of silence after the agent's last word);
+  // a landing with no session at all is reported as such and counts, so the loop can be watched without
+  // a reporter.
+  const merged = landed ?? (await pulls()).find((p) => p.merged && !mergedBefore.has(p.number) && p.head.ref.startsWith('agent/'));
+  if (merged && !landed) { landed = merged; console.log(`wait: pull request #${merged.number} (${merged.head.ref}) merged on the twin${current ? '' : ' — no session was published for it'}`); }
+  if (merged && (seen || !current)) process.exit(0);
   await Bun.sleep(5000);
 }

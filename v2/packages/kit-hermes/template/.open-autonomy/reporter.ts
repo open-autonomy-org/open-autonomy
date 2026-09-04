@@ -147,8 +147,9 @@ class Followed {
           this.lastAt = Date.now();
         }
         // The shape of a turn's end: the last message is the assistant's own text with no tool call pending.
+        // The timer is (re)armed only when the transcript moved; a quiet re-read leaves it running.
         const last = msgs[msgs.length - 1];
-        if (!this.ended) this.arm(n === msgs.length && last?.role === 'assistant' && !(last.tool_calls?.length));
+        if (!this.ended && (turns.length || !this.timer)) this.arm(n === msgs.length && last?.role === 'assistant' && !(last.tool_calls?.length));
       } while (this.dirty);
     } catch (e) { log(`${this.key}: sync failed (${(e as Error).message})`); }
     finally { this.syncing = false; }
