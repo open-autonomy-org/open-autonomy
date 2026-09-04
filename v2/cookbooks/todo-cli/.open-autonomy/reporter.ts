@@ -91,37 +91,67 @@ function turnsOf(m: NormalizedMessage): Turn[] {
 const itemIn = (turns: Turn[]): string | undefined => turns.map((t) => /\bagent\/([a-z0-9][a-z0-9-]*)/.exec(`${t.args ?? ''} ${t.text ?? ''}`)?.[1]).find(Boolean);
 const shaIn = (turns: Turn[]): string | undefined => turns.map((t) => /PUSHED_BRANCH=agent\/[a-z0-9-]+ ([0-9a-f]{7,40})/.exec(t.result ?? '')?.[1]).find(Boolean);
 
+// supercode synthesizes this result for a tool call whose answer is not recorded yet; a live follow sees it
+// before the real result lands in its place. Such a turn is held back until it resolves.
+const PLACEHOLDER = '[no tool result recorded — turn interrupted]';
+const contentOf = (m: NormalizedMessage): string => (typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map((p) => (typeof p === 'string' ? p : (p as { text?: string })?.text ?? '')).join('') : '');
+const isPlaceholder = (m: NormalizedMessage): boolean => m.role === 'tool' && contentOf(m) === PLACEHOLDER;
+
 class Followed {
   session?: Session;
   seq = 0;
+  // How many of the transcript's messages have been published (the platform counts turns; a message may
+  // be several).
+  sentMessages = 0;
   item?: string;
   sha?: string;
   lastAt = Date.now();
   ended = false;
   private timer?: ReturnType<typeof setTimeout>;
+  private syncing = false;
+  private dirty = false;
   constructor(readonly d: SessionDescriptor) {}
   get key(): string { return this.d.locator.session_id; }
   async open(): Promise<void> {
     const start = { key: this.key, kind: kindOf(this.d), source: sourceOf(this.d), title: this.d.title ?? undefined, startedAt: this.d.updated_at_ms ? new Date(this.d.updated_at_ms).toISOString() : undefined };
     this.session = await oa.resume(this.key, cfg.account, start);
     this.seq = this.session.seq;
+    // Resuming at the platform's turn offset: the message index it corresponds to.
+    if (this.seq > 0) {
+      const { session } = await sc.loadWindow(this.d.locator, { message_limit: 5000 });
+      let counted = 0;
+      for (const m of session.messages) { if (counted >= this.seq) break; counted += turnsOf(m).length; this.sentMessages += 1; }
+    }
     log(`${this.key}: ${kindOf(this.d)} (${sourceOf(this.d)}) open at turn ${this.seq}`);
   }
-  async messages(all: NormalizedMessage[], fromSnapshot: boolean): Promise<void> {
-    // A snapshot carries the whole transcript: only what lies beyond the platform's offset is new. Turns
-    // are counted per message so the offset stays aligned with the transcript's own order.
-    const turns: Turn[] = [];
-    let counted = 0;
-    for (const m of all) { const t = turnsOf(m); if (!fromSnapshot || counted >= this.seq) turns.push(...t); counted += t.length; }
-    if (!turns.length) return;
-    this.item ??= itemIn(turns);
-    this.sha ??= shaIn(turns);
-    await this.session!.turns(turns, this.item);
-    this.seq = this.session!.seq;
-    this.lastAt = Date.now();
-    // The shape of a turn's end: the last message is the assistant's own text with no tool call pending.
-    const last = all[all.length - 1];
-    this.arm(last?.role === 'assistant' && !(last.tool_calls?.length));
+  // Publish what the transcript holds beyond what was sent, read through supercode's window: everything up
+  // to the first unresolved tool result, all of it once the session is ending.
+  async sync(final = false): Promise<void> {
+    if (this.syncing) { this.dirty = true; return; }
+    this.syncing = true;
+    try {
+      do {
+        this.dirty = false;
+        const { session } = await sc.loadWindow(this.d.locator, { message_offset: this.sentMessages, message_limit: 500 });
+        const msgs = session.messages;
+        let n = final ? msgs.length : msgs.findIndex(isPlaceholder);
+        if (n < 0) n = msgs.length;
+        const ready = msgs.slice(0, n);
+        const turns = ready.flatMap(turnsOf);
+        if (turns.length) {
+          this.item ??= itemIn(turns);
+          this.sha ??= shaIn(turns);
+          await this.session!.turns(turns, this.item);
+          this.seq = this.session!.seq;
+          this.sentMessages += n;
+          this.lastAt = Date.now();
+        }
+        // The shape of a turn's end: the last message is the assistant's own text with no tool call pending.
+        const last = msgs[msgs.length - 1];
+        if (!this.ended) this.arm(n === msgs.length && last?.role === 'assistant' && !(last.tool_calls?.length));
+      } while (this.dirty);
+    } catch (e) { log(`${this.key}: sync failed (${(e as Error).message})`); }
+    finally { this.syncing = false; }
   }
   // A session ends when its transcript has ended: a closing assistant text followed by a minute of silence
   // (a tool call in flight is never silence, its result is still to come), else the idle fallback.
@@ -133,6 +163,7 @@ class Followed {
     if (this.ended) return;
     this.ended = true;
     clearTimeout(this.timer);
+    await this.sync(true);
     let outcome: 'done' | 'failed' | undefined;
     let report: string | undefined;
     try {
@@ -171,17 +202,21 @@ async function consider(d: SessionDescriptor): Promise<void> {
   } catch (e) { log(`${key}: cannot open (${(e as Error).message})`); followed.delete(key); }
 }
 
+// The follow stream is the trigger: every event means the transcript moved, and the window read is the
+// truth of what it now holds. A slow tick covers a tool result landing in place without an event.
 async function follow(f: Followed): Promise<void> {
+  const tick = setInterval(() => { if (!f.ended) void f.sync(); }, 5000);
   try {
-    for await (const ev of sc.session(f.d.locator).follow({ view: { tailMessages: 1000, maxMessageChars: 4000, includeSubagents: false } })) {
+    await f.sync();
+    for await (const ev of sc.session(f.d.locator).follow({ view: { tailMessages: 50, maxMessageChars: 200, includeSubagents: false } })) {
       if (f.ended) break;
-      if (ev.type === 'session_snapshot') await f.messages(ev.session.messages, true);
-      else if (ev.type === 'messages_appended') await f.messages(ev.messages, false);
       // `runtime_state` describes a supercode-managed runtime; a Hermes session never has one, so `persisted`
       // says nothing about whether the run is over. Only a shutdown of one is an end.
-      else if (ev.type === 'runtime_state' && ev.state === 'shutting_down' && f.seq > 0) await f.end(`runtime ${ev.state}`);
+      if (ev.type === 'runtime_state' && ev.state === 'shutting_down' && f.seq > 0) await f.end(`runtime ${ev.state}`);
+      else if (ev.type === 'session_snapshot' || ev.type === 'messages_appended') await f.sync();
     }
   } catch (e) { log(`${f.key}: follow ended (${(e as Error).message})`); }
+  finally { clearInterval(tick); }
 }
 
 let seenWorking = new Set<string>();

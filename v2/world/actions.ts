@@ -53,7 +53,9 @@ async function tick(repo: string): Promise<void> {
   for (const b of branches.body as Array<{ name: string; commit: { sha: string } }>) {
     if (!landing.test(b.name)) continue;
     const forBranch = prs.filter((p) => p.head.ref === b.name);
-    if (forBranch.some((p) => p.merged)) {
+    // Landed means this very commit was merged; a re-pushed branch that shares a name with an older merged
+    // pull request is new work.
+    if (forBranch.some((p) => p.merged && p.head.sha === b.commit.sha)) {
       const del = await gh.del(`/repos/${repo}/git/refs/heads/${b.name}`);
       if (del.status < 300) log(`${repo}: ${b.name} deleted after merge`);
       continue;
