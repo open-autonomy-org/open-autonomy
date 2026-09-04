@@ -145,11 +145,15 @@ async function hermesHook(req: Request): Promise<Response> {
   }
 
   if (event === 'post_tool_call') {
+    // The item a run works: the skill lands on agent/<item-id>, so the branch name in a git command is the
+    // item, and the receipt files under the right station on the page.
+    const named = /\bagent\/([a-z0-9][a-z0-9-]*)/.exec(brief(body.tool_input, 2000))?.[1];
+    if (named && !run.item) run.item = named;
     const turns: Turn[] = [
       { role: 'assistant', tool: String(body.tool_name ?? 'tool'), args: brief(body.tool_input ?? extra.args, 600) },
       { role: 'tool', tool: String(body.tool_name ?? 'tool'), result: brief(extra.result) },
     ];
-    if (await send('turns', session, { seq: run.seq, turns })) run.seq += turns.length;
+    if (await send('turns', session, { seq: run.seq, turns, ...(run.item ? { item_id: run.item } : {}) })) run.seq += turns.length;
     return Response.json({ ok: true });
   }
   if (event === 'post_llm_call') {
@@ -161,7 +165,7 @@ async function hermesHook(req: Request): Promise<Response> {
   }
   if (event === 'on_session_end') {
     const ok = extra.completed === true && extra.interrupted !== true;
-    await send('finished', session, { status: ok ? 'done' : 'failed', report: run.lastText, ended_at: new Date().toISOString() });
+    await send('finished', session, { status: ok ? 'done' : 'failed', report: run.lastText, ended_at: new Date().toISOString(), ...(run.item ? { item_id: run.item } : {}) });
     runs.delete(session);
     return Response.json({ ok: true });
   }
