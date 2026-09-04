@@ -243,13 +243,13 @@ describe('the run page and the now widget', () => {
 });
 
 describe('the setup pane: who the agent is and how it runs, read from hermes/', () => {
-  const CONFIG = `# comment\nmodel:\n  default: deepseek/deepseek-v4-flash\n  provider: custom\n  base_url: \${OPEN_AUTONOMY_BASE_URL}\n\nterminal:\n  backend: local\n`;
+  const CONFIG = `# comment\nmodel:\n  default: z-ai/glm-5.3-flash\n  provider: custom\n  base_url: \${OPEN_AUTONOMY_BASE_URL}\n\nterminal:\n  backend: local\n`;
   const SOUL = 'You are the Open Autonomy agent: the checked-in Hermes agent that builds the project.\n\nYou work the roadmap top to bottom.\n\nBe direct.';
   const README = '# The Open Autonomy agent\n\nThis directory is a complete Hermes home. Everything the agent is lives here and is committed.\n\n## Run it\n\n```bash\nhermes\n```';
   const SCHED = JSON.stringify({ jobs: [{ name: 'build-roadmap', schedule: 'every 360m', skills: ['build-roadmap'] }] });
   test('states the model, the schedule and the skills, and excerpts SOUL and the README with file links', () => {
     const html = renderSetupPanel({ setupMd: README, soulMd: SOUL, configYaml: CONFIG, scheduleJson: SCHED, repoUrl: 'https://github.com/o/r' });
-    expect(html.includes('deepseek/deepseek-v4-flash')).toBe(true);
+    expect(html.includes('z-ai/glm-5.3-flash')).toBe(true);
     expect(html.includes('build-roadmap · every 360m')).toBe(true);
     expect(html.includes('You are the Open Autonomy agent')).toBe(true);
     expect(html.includes('Be direct.')).toBe(false); // two lead paragraphs, not the whole file
@@ -261,7 +261,7 @@ describe('the setup pane: who the agent is and how it runs, read from hermes/', 
     expect(html.includes('nothing here drives the agent')).toBe(true);
   });
   test('parses only the model block and renders nothing without a setup', () => {
-    expect(parseAgentConfig(CONFIG)).toEqual({ model: 'deepseek/deepseek-v4-flash', provider: 'custom' });
+    expect(parseAgentConfig(CONFIG)).toEqual({ model: 'z-ai/glm-5.3-flash', provider: 'custom' });
     expect(parseAgentConfig('terminal:\n  provider: x\n')).toEqual({});
     expect(renderSetupPanel({})).toBe('');
   });

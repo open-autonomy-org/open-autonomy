@@ -8,7 +8,7 @@ export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(REPO, '.volter', 'w
 export const COOKBOOK_NAME = process.env.WORLD_COOKBOOK ?? 'hello-roadmap';
 export const COOKBOOK = resolve(REPO, 'cookbook', COOKBOOK_NAME);
 export const ACCOUNT = `cookbook/${COOKBOOK_NAME}`;
-export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'deepseek/deepseek-v4-flash';
+export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'z-ai/glm-5.3-flash';
 export const WORK = resolve(DATA, 'work');
 // The cookbook agent's Discord home channel on the Discord twin: the id its .env names and the seed creates.
 export const HOME_CHANNEL = '1000000000000000001';
