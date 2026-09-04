@@ -256,3 +256,22 @@ items:
     title: The changelog names only things that shipped
     acceptance:
       - CHANGELOG.md is rewritten in the four-pieces vocabulary; every file, tool or route it names exists in history under that name, and the redesign lands as one dated entry.
+
+  - id: roadmap-schema-codec
+    phase: 10
+    priority: medium
+    status: proposed
+    title: The roadmap model is a published shape in the SDK
+    acceptance:
+      - The SDK exports the roadmap model as a typed shape with a parser and serializer (YAML in, model out, byte-stable back); the platform's page parses through it.
+      - No write API exists; the file in git stays the only roadmap surface, and the SDK README says adapters are what the shape is for.
+
+  - id: roadmap-drivers
+    phase: 10
+    priority: medium
+    status: proposed
+    title: Roadmaps come from drivers over one normalized model
+    acceptance:
+      - The platform stores a revisioned, normalized roadmap per project (who, when, diff, public); the yml pull becomes the default driver behind a driver interface that declares conformance for what a tracker cannot express.
+      - A second driver (GitHub milestones, credential-free, platform-pulled) proves the interface; a Jira driver runs owner-side and pushes through the SDK on a steer-scoped key, and key scopes split steer from spend before that driver exists.
+      - The agent stays tracker-blind - it narrates the item and outcome, and drivers reconcile the native side.
