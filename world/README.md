@@ -14,6 +14,19 @@ bun world/run.ts down --purge          # forget it
 bun world/run.ts check                 # the gate: up → seed → agent → verify → down (what CI runs)
 ```
 
+## Two uses, one world
+
+- **The agent verifying its change.** The agent is the world's *operator*: `up` gives it the twins and a
+  worker built from its working tree, and it exercises acceptance lines against `$PLATFORM_URL`. It never
+  starts a second agent inside its own run.
+- **A maintainer or CI checking the product.** The app under test is the platform *and* the agent stack, so
+  the stack attaches: `volter-world attach -- docker compose -f container/compose.yml up`, and it just
+  works — the twins reachable from the containers, Discord through the reflect front. Whatever attach needs
+  in order to reach containers is developed in volter-world, once, not here. That is the
+  `stack-attaches-to-world` item. Until it lands, `agent.ts` is an interim leg: the real `hermes` binary
+  run one-shot on the host with the world's env, which proves the meter, the key and the landing convention
+  but is not how the agent runs.
+
 ## What is real and what is a twin
 
 Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding the books), the `hermes`

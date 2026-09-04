@@ -13,22 +13,15 @@
 # Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
 items:
-  - id: world-runs-the-gateway
+  - id: stack-attaches-to-world
     phase: 1
-    priority: medium
-    status: planned
-    title: The world runs the agent's gateway lane, delivery included
+    priority: high
+    status: proposed
+    title: volter-world attach -- docker compose up just works for the agent's containers
     acceptance:
-      - The world starts the Hermes gateway (not a one-shot) so a scheduled run fires and delivers inside it.
-      - Hermes reaches the Discord twin through the world's reflect front, and verify asserts the report landed in the twin's channel.
-  - id: nested-world-run
-    phase: 1
-    priority: medium
-    status: planned
-    title: The agent can run the world's own gate from inside its container
-    acceptance:
-      - bun world/run.ts check passes when run inside the agent's container, not only on a maintainer's machine.
-      - The world's agent leg finds its working directory when Hermes runs nested inside a Hermes gateway container.
+      - "`volter-world attach -- docker compose -f container/compose.yml up` brings the real stack (gateway + sidecar) up attached to the world: the twins and the platform are reachable from inside the containers, and discord.com reaches the Discord twin. Nothing in this repository exists for the world's sake beyond the compose file; what attach needs to reach containers is developed in volter-world."
+      - A run in the attached stack narrates through the production sidecar and delivers its report to the Discord twin, and verify reads both from twin state and the local books.
+      - The one-shot agent leg (world/agent.ts) and the world's own sidecar service are gone.
   - id: narration-proof
     phase: 1
     priority: high
