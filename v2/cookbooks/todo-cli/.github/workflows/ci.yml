@@ -1,0 +1,18 @@
+name: CI
+# Every change lands from a branch (agent/** the agent's, land/** a maintainer's): the push checks the head
+# commit, which is what branch protection and auto-merge require.
+on:
+  push:
+    branches: [main, 'agent/**', 'land/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.10
+      - run: bun run check

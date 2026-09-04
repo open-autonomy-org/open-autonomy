@@ -1,0 +1,9 @@
+{
+  "kit": "hermes",
+  "version": "2.0.0",
+  "params": {
+    "project": "todo-cli",
+    "account": "cookbook/todo-cli"
+  },
+  "divergences": []
+}

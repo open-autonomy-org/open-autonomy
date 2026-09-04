@@ -48,6 +48,3 @@ hermes/.skills_prompt_snapshot.json
 
 # The reporter's own cursor (which sessions it has published how far).
 .open-autonomy/reporter-state.json
-
-# the todo store
-todo.json

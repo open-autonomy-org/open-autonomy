@@ -1,0 +1,8 @@
+{
+  "name": "__PROJECT__",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bun test"
+  }
+}

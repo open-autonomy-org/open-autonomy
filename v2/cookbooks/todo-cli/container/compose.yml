@@ -1,0 +1,82 @@
+# The project's agent, as it runs: three containers in one VM, none holding a secret that matters.
+#   agent     stock Hermes (the gateway: the schedule, and Discord when configured) with the project checkout
+#   valve     holds the project's key: forwards the model routes and the narration route, nothing else
+#   reporter  keyless; reads the agent's sessions through supercode and publishes them through the valve
+# The home and the checkout live in Docker volumes: SQLite over a host bind mount is a bus error waiting
+# to happen, and nothing on the host needs them. Inspect with `docker exec`.
+#
+#   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
+services:
+  valve:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile.valve
+    image: todo-cli-valve:local
+    container_name: oa-valve
+    restart: unless-stopped
+    environment:
+      - AGENT_ENV_FILE=/secrets/agent.env
+    volumes:
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}/agent.env:/secrets/agent.env:ro
+    networks: [agent]
+  # The committed home (SOUL, skills, config, the schedule seed) into the volume before the gateway starts:
+  # hermes/ in the repository is the source of truth for what the agent IS; the volume only holds what the
+  # agent has since done.
+  home-sync:
+    image: alpine:3
+    container_name: oa-home-sync
+    restart: "no"
+    command: ["sh", "-c", "cd /repo/hermes && find . -type f ! -name '.env' -exec cp -a --parents {} /opt/data/ \\; && chown -R ${AGENT_UID:-501}:${AGENT_GID:-20} /opt/data && echo 'home synced from the repository'"]
+    volumes:
+      - oa-home:/opt/data
+      - oa-repo:/repo:ro
+  agent:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
+      args:
+        HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31} # container/build-hermes.sh builds it
+    image: todo-cli-agent:local
+    container_name: oa-agent
+    restart: unless-stopped
+    depends_on:
+      valve: { condition: service_started }
+      home-sync: { condition: service_completed_successfully }
+    command: ["gateway", "run"]
+    environment:
+      # The host user's ids: the forwarded ssh-agent socket is theirs.
+      - HERMES_UID=${AGENT_UID:-501}
+      - HERMES_GID=${AGENT_GID:-20}
+      - SSH_AUTH_SOCK=/ssh-agent
+      - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
+    volumes:
+      - oa-home:/opt/data
+      - oa-repo:/work/project
+      - /run/host-services/ssh-auth.sock:/ssh-agent
+    networks: [agent]
+  reporter:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile.reporter
+    image: todo-cli-reporter:local
+    container_name: oa-reporter
+    restart: unless-stopped
+    depends_on:
+      valve: { condition: service_started }
+      agent: { condition: service_started }
+    environment:
+      - OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1
+      - HERMES_HOME=/opt/data
+    volumes:
+      - oa-home:/opt/data:ro
+      - oa-repo:/work/project
+    networks: [agent]
+volumes:
+  oa-home:
+    name: oa-home
+    external: true # seeded once from hermes/ (container/README.md)
+  oa-repo:
+    name: oa-repo
+    external: true # the agent's clone
+networks:
+  agent: {}

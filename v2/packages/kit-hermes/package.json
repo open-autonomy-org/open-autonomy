@@ -1,0 +1,21 @@
+{
+  "name": "@open-autonomy/kit-hermes",
+  "version": "2.0.0",
+  "description": "The default Open Autonomy starter kit: a complete repository that runs its own Hermes agent against the platform, with the SDK wired in. `bun create open-autonomy <dir>` scaffolds one.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "create-open-autonomy": "./src/cli.ts" },
+  "exports": { ".": "./src/kit.ts" },
+  "scripts": {
+    "test": "bun test test/*.test.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun test test/*.test.ts && bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-autonomy/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "typescript": "^5.9.0"
+  }
+}
