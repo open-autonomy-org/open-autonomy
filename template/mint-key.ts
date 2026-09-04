@@ -26,7 +26,7 @@ const hostKeyDir = join(homedir(), '.config', 'open-autonomy');
 const envPath = arg('--out') ?? (existsSync(hostKeyDir) ? join(hostKeyDir, 'agent.env') : join(home, '.env'));
 const rotate = process.argv.includes('--rotate');
 const account = arg('--account') ?? (() => { const r = spawnSync('git', ['remote', 'get-url', 'origin'], { stdio: ['ignore', 'pipe', 'ignore'] }).stdout?.toString().trim() ?? ''; return /github\.com[:/]([^/]+\/[^/.]+)/.exec(r)?.[1] ?? 'open-autonomy-org/open-autonomy'; })();
-const models = (arg('--models') ?? 'z-ai/glm-5.3-flash').split(',').map((m) => m.trim()).filter(Boolean);
+const models = (arg('--models') ?? 'zai/glm-5.3-flash').split(',').map((m) => m.trim()).filter(Boolean);
 const git = (...args: string[]) => {
   const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'inherit'] });
   if (r.status !== 0) { console.error(`git ${args.join(' ')} failed`); process.exit(1); }
