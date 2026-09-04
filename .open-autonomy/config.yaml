@@ -1,0 +1,22 @@
+# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and the key
+# tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the project's own.
+account: open-autonomy-org/open-autonomy
+platform: https://open-autonomy.org
+
+# What the reporter publishes. Work sessions (the scheduled runs, the funded work) publish by default; the
+# private exceptions are named here. Anything listed under `private` is never sent.
+publish:
+  runs: true        # sessions the schedule started (trigger: cron)
+  chats: false      # conversations on a channel (Discord, a terminal)
+  private:          # session ids or job names that never publish, whatever their kind
+    - []
+
+# Where sessions come from: the Hermes home the reporter reads through supercode, and where it keeps its
+# own cursor. Inside the container stack these are the mounted volume and the checkout.
+hermes_home: /opt/data
+state_file: /work/project/.open-autonomy/reporter-state.json
+
+# The roadmap this project reports against. `file` is the default driver: ROADMAP.yml in git.
+roadmap:
+  source: file
+  path: ROADMAP.yml

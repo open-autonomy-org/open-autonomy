@@ -1,6 +1,0 @@
-# Sensitive paths require maintainer review.
-.github/workflows/  @yueranyuan
-apps/platform/      @yueranyuan
-packages/sdk/       @yueranyuan
-LICENSE             @yueranyuan
-SECURITY.md         @yueranyuan

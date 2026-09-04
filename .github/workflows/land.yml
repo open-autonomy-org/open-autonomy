@@ -1,9 +1,7 @@
 name: Land a branch
 # Nothing pushes to `main`: the `main-protected` ruleset requires a pull request and the `ci` + `security`
-# checks, with no bypass actors — not the agent's deploy key, not a maintainer. (A deploy key counts as the
-# admin role, so an admin bypass would have handed the agent main.) Work lands by pushing a branch: this
-# workflow opens its pull request once and arms native auto-merge, so it merges exactly when the required
-# checks pass on its head commit — ci.yml and security.yml run on these branches for that reason.
+# checks, with no bypass actors. Work lands by pushing a branch: this workflow opens its pull request once
+# and arms native auto-merge, so it merges exactly when the required checks pass on its head commit.
 #   agent/**  the agent's own work        land/**  a maintainer's
 on:
   push:
@@ -24,9 +22,8 @@ jobs:
           set -euo pipefail
           existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$existing" ]; then
-            title=$(git -C . log -1 --format=%s 2>/dev/null || echo "$BRANCH")
-            gh pr create -R "$REPO" --base main --head "$BRANCH" --title "${title:-$BRANCH}" \
-              --body "Opened by the landing workflow for the agent's branch \`$BRANCH\`. It merges on its own when the required checks pass."
+            gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$BRANCH" \
+              --body "Opened by the landing workflow for \`$BRANCH\`. It merges on its own when the required checks pass."
             existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           fi
           gh pr merge -R "$REPO" "$existing" --auto --merge

@@ -3,10 +3,7 @@ on:
   push:
     # Every change lands from a branch (agent/** the agent's, land/** a maintainer's): the push checks the
     # head commit, which is what the main-protected ruleset and auto-merge require. There is no pull_request
-    # trigger: the pull request is opened by the landing workflow's bot, and a bot-authored pull request's
-    # runs are parked on an approval nobody gives, then expire as a red run under the same check name —
-    # which then outranks the green push run and blocks the merge. A fork's change is checked when a
-    # maintainer pushes it as a land/** branch.
+    # trigger: a bot-authored pull request's runs park on an approval nobody gives.
     branches: [main, 'agent/**', 'land/**']
   workflow_dispatch:
 

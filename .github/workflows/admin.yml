@@ -1,11 +1,11 @@
 name: Admin
 # The platform's privileged operations, done through GitHub and nowhere else: every run waits on the
-# `production` environment's required reviewer before the admin token is used. The token lives only in
-# that environment's secrets (and in Cloudflare, as the worker's own secret). No machine holds it.
+# `production` environment's required reviewer before the admin token is used. The token lives only in that
+# environment's secrets (and in Cloudflare, as the worker's own secret). No machine holds it.
 #
-# Money ops move balance between accounts on the books (mint from the platform's own funding, grant
-# from one account to another). Coupons are not issued here: a coupon code is a bearer for money and a
-# public repo's run logs and inputs are public — fund an adopter by grant instead.
+# Money ops move balance on the books (mint from the platform's own funding, grant between accounts). Coupons
+# are not issued here: a coupon code is a bearer for money and a public repo's run logs are public — fund an
+# adopter by grant instead.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +13,7 @@ on:
         description: what to do
         type: choice
         required: true
-        options: [status, mint, grant, sync, delete-job, sync-admin-token]
+        options: [status, mint, grant, sync, keys, revoke-key, delete-session, reset-daily, sync-admin-token]
       account:
         description: account (owner/repo) the op applies to
         type: string
@@ -27,7 +27,7 @@ on:
         type: string
         default: ""
       key:
-        description: idempotency key (mint, grant), or the job key (delete-job)
+        description: idempotency key (mint, grant); the key id (revoke-key); the session key (delete-session)
         type: string
         default: ""
 permissions:
@@ -64,18 +64,20 @@ jobs:
           base=https://open-autonomy.org
           enc=$(printf '%s' "$ACCOUNT" | sed 's#/#%2F#g')
           case "$OP" in
-            status) curl -sS --fail-with-body -H "x-admin-token: $ADMIN" "$base/admin/limits/status" ;;
+            status) curl -sS --fail-with-body -H "x-admin-token: $ADMIN" "$base/admin/status" ;;
             mint)   curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' \
                       -d "{\"amount_usd_cents\":$AMOUNT,\"key\":\"$KEY\"}" "$base/admin/accounts/$enc/mint" ;;
             grant)  curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' \
                       -d "{\"to\":\"$TO\",\"amount_usd_cents\":$AMOUNT,\"key\":\"$KEY\"}" "$base/admin/accounts/$enc/grant" ;;
             sync)   curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/sync" ;;
-            delete-job) curl -sS --fail-with-body -X DELETE -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/jobs/$KEY" ;;
+            keys)   curl -sS --fail-with-body -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/keys" ;;
+            revoke-key) curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/keys/$KEY/revoke" ;;
+            delete-session) curl -sS --fail-with-body -X DELETE -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/sessions/$KEY" ;;
+            reset-daily) curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/reset-daily" ;;
           esac
           echo
-      # Rotation: a maintainer generates a new value and sets it as the production environment secret
-      # (`gh secret set AGENT_PROXY_ADMIN_TOKEN --env production`), then dispatches this op, which installs
-      # the same value as the worker's secret. The two homes never drift and no machine keeps a copy.
+      # Rotation: a maintainer sets a new value as the production environment secret, then dispatches this
+      # op, which installs the same value as the worker's secret. The two homes never drift.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         if: inputs.op == 'sync-admin-token'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -85,11 +87,10 @@ jobs:
           no-cache: true
       - name: Install the worker's pinned wrangler
         if: inputs.op == 'sync-admin-token'
-        working-directory: platform
         run: bun install --frozen-lockfile
       - name: Install the environment's admin token as the worker's secret
         if: inputs.op == 'sync-admin-token'
-        working-directory: platform
+        working-directory: apps/platform
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

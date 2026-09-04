@@ -17,3 +17,10 @@ services:
     volumes:
       - ${WORLD_STACK_DIR}/world:/opt/world:ro
       - ${WORLD_STACK_DIR}/world/ca-bundle.pem:${WORLD_CERTIFI_PATH}:ro
+  # supercode with Hermes support is on its main branch and not yet in a published release: the world runs
+  # the reporter on a build from that checkout (world/stack.ts builds it once into .volter/supercode-build).
+  reporter:
+    environment:
+      - SUPERCODE_BIN=/opt/world/supercode
+    volumes:
+      - ${WORLD_STACK_DIR}/world/supercode:/opt/world/supercode:ro

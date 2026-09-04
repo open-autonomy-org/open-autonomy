@@ -1,7 +1,7 @@
 {
   "name": "open-autonomy",
   "private": true,
-  "description": "A project's agent, checked in, funded by token usage in the open: the template any repository applies, and the platform that meters it and shows the books.",
+  "description": "A way to run self-building technologies: the platform that funds and shows them, the starter kits that run themselves, the cookbooks, and this install's own boilerplate.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -12,10 +12,15 @@
   "engines": {
     "node": ">=22.18"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "undici": "^7.29.0"
+  },
   "scripts": {
-    "check": "bun template/apply.ts --check && cd platform && bun install --frozen-lockfile && bun test test/*.test.ts && bunx tsc --noEmit",
-    "check:supply-chain": "bun platform/scripts/check-supply-chain.ts",
-    "deploy": "cd platform && bun run deploy",
+    "check": "bun install --frozen-lockfile && bun run --filter '*' check && bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && cd cookbooks/todo-cli && bun run check",
     "check:world": "bun world/run.ts check"
   }
 }
