@@ -48,6 +48,12 @@ not contractual.
 | `seed.ts` `agent.ts` `verify.ts` | the post-up steps, each run with the world's env |
 | `run.ts` | the runner: `up`, `seed`, `agent`, `verify`, `check`, `down`, `env -- <cmd>` |
 
+## Receipts
+
+`agent.ts` narrates its run to the platform on the standing key the way the reporter does in production
+(started, then finished), so the receipt path — the CloudEvents intake, its redaction, and the project
+page's health line — is under the world too. `verify.ts` reads the receipt and the page, never the prose.
+
 ## What it does not cover yet
 
 The agent's own containers (`container/`), the landing workflow and auto-merge (the twin has no Actions,
