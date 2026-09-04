@@ -18,12 +18,12 @@ schema: open-autonomy.roadmap.v3
 items:
   - id: stack-attaches-to-world
     phase: 1
-    priority: high
+    priority: medium
     status: proposed
     title: The agent's containers attach to a world by name
     acceptance:
-      - "`volter-world attach <world> -- docker compose -f template/container/compose.yml up` is the whole recipe: the containers resolve github.com, the model gateway and discord.com to the world's twins through attach's reflect front (DNS plus the session CA), instead of being handed twin addresses at seed time as world/stack.ts does today. What attach needs to reach containers is developed in volter-world, not here."
-      - A run in the attached stack delivers its report to the Discord twin, and verify reads it from twin state.
+      - "`volter-world attach <world> -- docker compose -f template/container/compose.yml up` is the whole recipe: the resolver, the session CA and the host redirects that world/stack.ts composes on the world's Docker host today are attach's, developed in volter-world, and the world's stack step shrinks to the adopter's own steps."
+      - "`bun world/run.ts check` still passes: the run lands, the report reaches the Discord twin, egress stays sealed."
   - id: narration-proof
     phase: 1
     priority: high

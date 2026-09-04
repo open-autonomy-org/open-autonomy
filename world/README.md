@@ -41,8 +41,9 @@ Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding th
 containers (the agent on the pinned Hermes image, the sidecar), git, and the skill the agent runs. Twins:
 GitHub (REST plane and the git wire, holding both the cookbook and `open-autonomy-org/open-autonomy` pushed
 from this tree, so both project pages render from it; pull requests, branch protection, required checks and
-auto-merge, landing a real merge commit on its git wire) and the model gateway (the `openai` twin as the
-`gateway` service, speaking the gateway's wire). Every model call is metered on the local books exactly as in
+auto-merge, landing a real merge commit on its git wire), the model gateway (the `openai` twin as the
+`gateway` service, speaking the gateway's wire) and Discord (REST v10 and the gateway websocket, where the
+agent's bot logs in and delivers each run's report to its home channel). Every model call is metered on the local books exactly as in
 production, because it is the same worker.
 
 **Played by the world, and labelled as such:**
@@ -55,6 +56,11 @@ production, because it is the same worker.
 - **The seal.** On the world's Docker host, traffic off the stack's bridge may only reach the host (the
   platform and the twins); everything else is refused, not served. `verify` probes it from inside the
   agent's container.
+- **The attach.** `stack.override.yml` points the agent container's DNS at the world's reflect resolver
+  and puts the session CA where its clients trust it, and the world's Docker host redirects the
+  container's 53 and 443 into reflect's resolver and front. An unmodified `discord.py` then reaches the
+  Discord twin at discord.com (the twin advertises a gateway address the container can reach). This is
+  the composition the twins repository's ATTACH.md leaves to the recipe, done by the world's host.
 - **The clock.** `stack.override.yml` preloads libfaketime into the agent's container, reading its offset
   from a file `clock advance` moves; monotonic time stays real. A six-hour jump trips the gateway's own
   liveness watchdog, which restarts it; the due job fires when it is back. That is Hermes's real behaviour
@@ -68,7 +74,8 @@ lands in the world's data directory and is worthless anywhere else.
 
 - **State** is created through the vendors' own doors (`seed.ts`): the repositories are pushed to the twin's
   git wire, `main` is protected the way the `main-protected` ruleset protects it (the `ci` check required, no
-  bypass), the accounts are funded through the platform's admin route, the key through the mint route.
+  bypass), the accounts are funded through the platform's admin route, the key through the mint route, the
+  bot's home channel by a first message posted to it on the Discord twin.
 - **Behaviour** is the cookbook's scenario, `handlers/<cookbook>/gateway.json` or a `gateway.ts` that
   prints it: ordered first-match rules keyed on the conversation's own text and tools, never on call
   counts (the platform meters Hermes's housekeeping calls too, and their number is not contractual). The

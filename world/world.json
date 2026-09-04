@@ -36,6 +36,21 @@
       "injectEnv": "GITHUB_TWIN_URL"
     },
     {
+      "id": "discord",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWINS_ROOT}/packages/twin/discord/src/cli.ts",
+        "serve"
+      ],
+      "port": 47615,
+      "portReason": "the cookbook's containers reach the twin's gateway websocket at this address (TWIN_DISCORD_GATEWAY_URL) and a restart of the world must keep it",
+      "injectEnv": "DISCORD_TWIN_URL",
+      "env": {
+        "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway"
+      }
+    },
+    {
       "id": "platform",
       "type": "process",
       "command": "bun",
