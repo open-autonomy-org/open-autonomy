@@ -23,6 +23,7 @@ const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${cfg.platform}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
 const stateFile = resolve(cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
+const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 60_000);
 const log = (m: string) => console.log(`reporter: ${m}`);
 
 interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
@@ -113,12 +114,15 @@ class Followed {
     await this.session!.turns(turns, this.item);
     this.seq = this.session!.seq;
     this.lastAt = Date.now();
-    this.arm();
+    // The shape of a turn's end: the last message is the assistant's own text with no tool call pending.
+    const last = all[all.length - 1];
+    this.arm(last?.role === 'assistant' && !(last.tool_calls?.length));
   }
-  // A session that has gone quiet ends; a run's verdict is the transcript's own end-of-turn state.
-  arm(): void {
+  // A session ends when its transcript has ended: a closing assistant text followed by a minute of silence
+  // (a tool call in flight is never silence, its result is still to come), else the idle fallback.
+  arm(turnEnded = false): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.end('idle'), IDLE_END_MS);
+    this.timer = setTimeout(() => void this.end(turnEnded ? 'turn ended' : 'idle'), turnEnded ? TURN_END_MS : IDLE_END_MS);
   }
   async end(why: string): Promise<void> {
     if (this.ended) return;
