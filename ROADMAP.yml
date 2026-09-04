@@ -7,10 +7,15 @@
 # audited rails, reported through an SDK), starter kits (Hermes first: a full boilerplate repo that
 # runs itself out of the box), cookbooks (complete autonomous projects worth copying), and this
 # install's own boilerplate (our hermes/, the world, these files) — because Open Autonomy is itself
-# an Open Autonomy project. The phases below cut the legacy of older architectures and reshape the
-# repo into that. Every item lands through the landing convention with `bun run check` and the
-# world's gate green; an item needing a maintainer deploy is left `active` with a report, per
-# AGENTS.md.
+# an Open Autonomy project.
+#
+# The build runs in two parts. Part one (phases 1-9) builds and proves the core systems — the
+# platform cuts, durable keys, the rails seam, the development stream, the SDK, the monorepo, the
+# kit generator, the docs — entirely against the world; this repo's own production install keeps
+# running as it is and is not touched. Part two (phase 10) applies the finished product to this
+# repo as its own autonomy setup. Phase 11 holds proposed items awaiting the owner. Every item
+# lands through the landing convention with `bun run check` and the world's gate green; an item
+# needing a maintainer deploy is left `active` with a report, per AGENTS.md.
 schema: open-autonomy.roadmap.v3
 items:
   - id: four-pieces-framing
@@ -187,7 +192,7 @@ items:
     status: planned
     title: The Hermes kit is a cookiecutter generator
     acceptance:
-      - "`bun create open-autonomy <dir>` scaffolds a complete repo from parameters (project name, account, model, license) and writes a committed params file recording kit name and version."
+      - "`bun create open-autonomy <dir>` scaffolds a complete repo from parameters (project name, account, model, license) and writes .open-autonomy/kit.json recording kit name, version and parameters - the anchor for check and upgrade."
       - The same tool supports adopt into an existing repo (writes only what is missing), check (regenerate and diff template-owned files) and upgrade (check plus write), each covered by a test.
 
   - id: extract-boilerplate
@@ -214,14 +219,6 @@ items:
     title: todo-cli is provably an instance of the kit
     acceptance:
       - todo-cli's template-owned files are the generator's output for its params, and CI verifies that with the kit's check verb instead of a byte compare against one directory.
-
-  - id: self-via-kit
-    phase: 7
-    priority: low
-    status: planned
-    title: This install's boilerplate passes the kit's check
-    acceptance:
-      - Our hermes home and landing workflows pass the kit's check for the files the kit owns, with any deliberate divergence listed in the params file, not silently different.
 
   - id: generated-repo-proof
     phase: 7
@@ -257,8 +254,26 @@ items:
     acceptance:
       - CHANGELOG.md is rewritten in the four-pieces vocabulary; every file, tool or route it names exists in history under that name, and the redesign lands as one dated entry.
 
-  - id: roadmap-schema-codec
+  - id: apply-kit-to-self
     phase: 10
+    priority: high
+    status: planned
+    title: This repo runs its own autonomy setup from the finished kit
+    acceptance:
+      - Our hermes home, landing workflows and ignore rules are the kit's adopt output, with .open-autonomy/kit.json recording the parameters and every deliberate divergence; the kit's check passes on this repo in CI.
+      - The production agent keeps landing roadmap items through the regenerated setup, shown by the next item it finishes after the switch.
+
+  - id: self-development-stream
+    phase: 10
+    priority: high
+    status: planned
+    title: This repo's own development streams to its page
+    acceptance:
+      - Our install's adapter reads the full session stream from our Hermes home through supercode and publishes it through the SDK on the production key, work sessions by default with config naming the private exceptions.
+      - The project page at open-autonomy.org shows our sessions and updates attached to the roadmap items they serve, live while a session runs.
+
+  - id: roadmap-schema-codec
+    phase: 11
     priority: medium
     status: proposed
     title: The roadmap model is a published shape in the SDK
@@ -267,7 +282,7 @@ items:
       - No write API exists; the file in git stays the only roadmap surface, and the SDK README says adapters are what the shape is for.
 
   - id: roadmap-drivers
-    phase: 10
+    phase: 11
     priority: medium
     status: proposed
     title: Roadmaps come from drivers over one normalized model
