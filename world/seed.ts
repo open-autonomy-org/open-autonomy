@@ -31,6 +31,13 @@ await git(work, 'add', '-A');
 await git(work, 'commit', '-q', '-m', `${REPO_NAME}: the template applied`);
 await git(work, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/main');
 console.log(`seed: ${ACCOUNT} on the GitHub twin at ${await git(work, 'rev-parse', '--short', 'HEAD')} (main), from ${COOKBOOK}`);
+// The maintainer's rule on main, as on GitHub (the main-protected ruleset): a pull request whose `ci` check
+// is green, nobody bypasses. The twin refuses a merge without it; the world's Actions runner supplies the check.
+const protect = async (repo: string) => {
+  const r = await gh.put(`/repos/${repo}/branches/main/protection`, { required_status_checks: { strict: false, contexts: ['ci'] }, enforce_admins: true, required_pull_request_reviews: null, restrictions: null });
+  if (r.status !== 200) throw new Error(`github twin: protect ${repo} main → ${r.status} ${r.text.slice(0, 200)}`);
+};
+await protect(ACCOUNT);
 
 // 1b. Open Autonomy itself is on the same twin: this tree pushed as open-autonomy-org/open-autonomy, so the
 //     local platform's own project page renders from the twin too, and both projects share one GitHub.
@@ -44,6 +51,7 @@ await git(mirror, 'remote', 'set-url', 'origin', `${github}/${self}.git`);
 await git(mirror, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/main');
 const selfMint = await admin.post(`/admin/accounts/${encodeURIComponent(self)}/mint`, { amount_usd_cents: 500, key: 'world-seed-self' });
 if (selfMint.status !== 200) throw new Error(`platform: mint ${self} → ${selfMint.status}`);
+await protect(self);
 console.log(`seed: ${self} on the GitHub twin at ${await git(mirror, 'rev-parse', '--short', 'HEAD')} (main), funded`);
 
 // 2. Fund the project on the local books (idempotent on the key).

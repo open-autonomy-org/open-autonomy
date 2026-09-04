@@ -45,6 +45,8 @@ Every run's turns are published live, so the agent's environment holds nothing w
 - **Receipts** are Hermes's own outbound webhooks (`hooks.outbound` in `config.yaml`), pushed to the sidecar,
   which translates them into the platform's receipts. A scheduled run is narrated; a chat is not.
 - **Delivery** uses the one token in the agent's reach, a Discord bot token, which can only post as the bot.
+  Without one, the schedule seed delivers each run locally instead of blocking it, and the receipts on the
+  project page are the report.
 
 ## The host
 

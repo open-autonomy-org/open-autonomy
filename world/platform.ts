@@ -26,12 +26,21 @@ const vars: Record<string, string> = {
 const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () => new Response('') }); const p = s.port; s.stop(true); return p; })();
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
-const child = spawn('bunx', args, {
-  cwd: resolve('platform'),
-  stdio: 'inherit',
-  env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' }, // workerd is not a Node app; the injector has nothing to intercept here
-});
-const stop = () => child.kill('SIGTERM');
+// `wrangler dev` is supervised here the way a deployment supervises its worker: its dev proxy is known to
+// drop ("Network connection lost") under a long session, and the books live on disk (--persist-to), so a
+// restart on the same port loses nothing but the request in flight.
+let stopping = false;
+let child: ReturnType<typeof spawn> | undefined;
+const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' }; // workerd is not a Node app; the injector has nothing to intercept here
+const start = () => {
+  child = spawn('bunx', args, { cwd: resolve('platform'), stdio: 'inherit', env });
+  child.on('exit', (code) => {
+    if (stopping) process.exit(code ?? 0);
+    console.error(`world/platform.ts: wrangler dev exited (${code}); restarting on :${port}`);
+    setTimeout(start, 2000);
+  });
+};
+const stop = () => { stopping = true; child?.kill('SIGTERM'); };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-child.on('exit', (code) => process.exit(code ?? 1));
+start();

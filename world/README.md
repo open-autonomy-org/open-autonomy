@@ -4,44 +4,58 @@
 local twins of GitHub and the model gateway, with the scenarios that drive a run. No account, no credential,
 no cloud, no spend. Nothing in the world calls a real API, ever: the platform under test forwards its
 model calls to the gateway twin, whose answers are the cookbook's scenario. The projects under test are the
-cookbooks. `check` applies the template to a cookbook, pushes it and this tree to the GitHub twin, funds and
-keys the cookbook on the world's platform, runs its agent once, lands what it pushed, and audits the twin
-and the books. Our own `hermes/` keeps running in production regardless.
+cookbooks, run exactly as the template runs them: their own container stack, whose gateway carries the
+schedule and fires the run itself. The world seeds, moves the clock, waits and audits. It alters no code and
+no process. Our own `hermes/` keeps running in production regardless.
 
 ```bash
 export TWINS_ROOT=/path/to/twin        # until the twin packages are published
-bun world/run.ts up --cookbook todo-cli   # twins + the real worker, then seed (repos, funding, the agent's key)
+bun world/run.ts up --cookbook todo-cli   # twins + the real worker + the Actions runner, seeded; then the
+                                          # cookbook's own stack (template/container/compose.yml) on the world's VM
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
-bun world/run.ts agent                 # one build-roadmap run of the real Hermes against it: one roadmap item
-bun world/run.ts land                  # our landing rule by hand: check each agent/* branch, merge the green ones
+bun world/run.ts clock advance 360m    # the container's clock: the schedule's next fire is now
+bun world/run.ts wait                  # watch: the run's receipt, then its pull request merged on the twin
 bun world/run.ts verify                # the audit: the books, the twin's main, the project's check, the page
-bun world/run.ts down --purge          # forget it
-bun world/run.ts check --cookbook todo-cli   # the gate: up → seed → agent → land → verify → down
+bun world/run.ts down --purge          # forget it (the stack's volumes too)
+bun world/run.ts check --cookbook todo-cli   # the gate: up → clock → wait → verify → down
 ```
 
-`agent` then `land`, repeated, walks the cookbook's roadmap down one item per run; the project page shows
-each run as it happens. The default cookbook is `hello-roadmap`, one item that only marks itself done.
-`todo-cli` has eight items, each one command and one test.
+Each `clock advance 360m` fires the schedule once; `wait` sees it through; the roadmap walks down one item
+per fire. The default cookbook is `hello-roadmap`, one item that only marks itself done. `todo-cli` has
+eight items, each one command and one test.
 
 ## Two uses, one world
 
 - **Testing the platform.** `up` is twins plus the worker from this tree, seeded. Our own agent is this
   world's *operator* when it verifies a platform change: it exercises acceptance lines against
   `$PLATFORM_URL` with curl. It never starts a second agent inside its own run.
-- **Testing the template, through a cookbook.** `agent` applies the template's home from the cookbook and
-  runs it once against the world; `land` performs the landing rule; `verify` audits. Today that leg is
-  the real `hermes` binary run one-shot on the host, which proves the meter, the key, narration and the
-  landing convention but is not how the template runs. The `stack-attaches-to-world` item replaces it with
-  the cookbook's real container stack: `volter-world attach -- docker compose up`, and it just works —
-  whatever attach needs to reach containers is developed in volter-world, once, not here.
+- **Testing the template, through a cookbook.** The cookbook's stack runs as an adopter runs it: the home
+  volume seeded from its `hermes/`, the checkout cloned from its origin (the twin), the key file the sidecar
+  reads, `docker compose up`. From there the product is on its own: the gateway seeds its schedule from
+  `cron/jobs.seed.json`, the cron fires, the agent works the top item, pushes `agent/<item>`, narrates through
+  its webhooks and the sidecar; the twin lands the pull request when its check is green.
 
 ## What is real and what is a twin
 
-Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding the books), the sidecar,
-the `hermes` binary, git, and the skill the agent runs. Twins: GitHub (REST plane and the git wire, holding
-both the cookbook and `open-autonomy-org/open-autonomy` pushed from this tree, so both project pages render
-from it) and the model gateway (the `openai` twin as the `gateway` service, speaking the gateway's wire).
-Every model call is metered on the local books exactly as in production, because it is the same worker.
+Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding the books), the cookbook's
+containers (the agent on the pinned Hermes image, the sidecar), git, and the skill the agent runs. Twins:
+GitHub (REST plane and the git wire, holding both the cookbook and `open-autonomy-org/open-autonomy` pushed
+from this tree, so both project pages render from it; pull requests, branch protection, required checks and
+auto-merge, landing a real merge commit on its git wire) and the model gateway (the `openai` twin as the
+`gateway` service, speaking the gateway's wire). Every model call is metered on the local books exactly as in
+production, because it is the same worker.
+
+**Played by the world, and labelled as such:**
+
+- **GitHub Actions.** The twin runs no workflows. `actions.ts` is a world service playing the runner for the
+  landing convention the template prescribes (our `land.yml` + `ci.yml`): a pushed `agent/**` branch gets
+  its pull request opened once and auto-merge armed; each pull request head gets the project's own
+  `bun run check` reported as the `ci` check run; a merged head branch is deleted. It merges nothing: the
+  twin does, exactly when GitHub would.
+- **The clock.** `stack.override.yml` preloads libfaketime into the agent's container, reading its offset
+  from a file `clock advance` moves; monotonic time stays real. A six-hour jump trips the gateway's own
+  liveness watchdog, which restarts it; the due job fires when it is back. That is Hermes's real behaviour
+  under a clock jump, and the only addition the world makes to the stack.
 
 The agent's key is minted **the adopter way**, inside the world: the platform issues a challenge, the
 seed commits the claim file to the repository on the twin, the platform reads it back and mints. The key
@@ -50,7 +64,8 @@ lands in the world's data directory and is worthless anywhere else.
 ## The two moves
 
 - **State** is created through the vendors' own doors (`seed.ts`): the repositories are pushed to the twin's
-  git wire, the accounts are funded through the platform's admin route, the key through the mint route.
+  git wire, `main` is protected the way the `main-protected` ruleset protects it (the `ci` check required, no
+  bypass), the accounts are funded through the platform's admin route, the key through the mint route.
 - **Behaviour** is the cookbook's scenario, `handlers/<cookbook>/gateway.json` or a `gateway.ts` that
   prints it: ordered first-match rules keyed on the conversation's own text and tools, never on call
   counts (the platform meters Hermes's housekeeping calls too, and their number is not contractual). The
@@ -67,11 +82,13 @@ that handler matched at all.
 
 | File | What it is |
 |---|---|
-| `world.json` | the logical world: two twins, the platform and the sidecar. `${TWINS_ROOT}`, `${WORLD_DIR}` and `${SCENARIO}` are substituted into an ignored generated copy under `.volter/`, so no developer's paths are committed |
-| `platform.ts` | the real worker as a world service: `wrangler dev` with its upstreams pointed at the twins the world injected |
+| `world.json` | the logical world: two twins, the platform, the Actions runner, on pinned ports. `${TWINS_ROOT}`, `${WORLD_DIR}`, `${SCENARIO}`, `${COOKBOOK}` are substituted into an ignored generated copy under `.volter/`, so no developer's paths are committed |
+| `platform.ts` | the real worker as a world service: `wrangler dev` with its upstreams pointed at the twins the world injected, supervised |
+| `actions.ts` | GitHub Actions for the twin, played by the world |
+| `stack.ts` `stack.override.yml` | the cookbook's stack as the adopter starts it, on the world's own Docker host (`WORLD_DOCKER_CONTEXT`, a colima VM the world creates once), plus the clock |
 | `handlers/<cookbook>/` | the model's side of that cookbook's runs |
-| `seed.ts` `agent.ts` `land.ts` `verify.ts` | the post-up steps, each run with the world's env |
-| `run.ts` | the runner: `up`, `seed`, `agent`, `land`, `verify`, `check`, `down`, `env -- <cmd>`, `--cookbook <name>` |
+| `seed.ts` `wait.ts` `verify.ts` | the post-up steps, each run with the world's env |
+| `run.ts` | the runner: `up`, `stack`, `clock`, `wait`, `verify`, `check`, `down`, `env -- <cmd>`, `--cookbook <name>` |
 
 ## Receipts
 
@@ -82,13 +99,8 @@ the page, never the prose.
 
 ## What it does not cover yet
 
-The agent's own containers (`container/`), GitHub's side of landing (the twin has no Actions, so `land.ts`
-performs the same rule by hand and says so), and the cron scheduler firing on its own (Hermes reads the
-host clock, which the world clock does not reach). Those are proven live, or not yet.
-
-Discord delivery has a twin now (`@volter/twin-discord`: the REST v10 surface and the gateway websocket
-a real bot connects through), but this world does not run it yet, for two reasons worth stating. The
-world runs Hermes one-shot, and delivery happens in the gateway's cron lane, which the world does not
-start. And `discord.py` hardcodes its base URL and builds its own HTTP session, so it ignores the
-world's proxy: reaching the twin from an unmodified Hermes needs the reflect front (DNS plus the
-session CA). Both are the same piece of work, tracked as a roadmap item.
+The agent's pushes go to the twin over its git wire, not through the deploy key in a forwarded ssh-agent
+(the twin speaks no ssh). The containers' egress is not sealed: a public probe Hermes makes at boot leaves
+the VM. Discord delivery has a twin (`@volter/twin-discord`) but this world does not run it: `discord.py`
+hardcodes its base URL and builds its own HTTP session, so reaching the twin from an unmodified Hermes needs
+the reflect front (DNS plus the session CA), tracked as a roadmap item.

@@ -26,6 +26,44 @@ def _hermes_home() -> Path:
     return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 
 
+# A seed may name a delivery platform the project has not configured (the template says `discord`; Discord is
+# optional). Hermes blocks such a job before any model call, so the job is created delivering `local` instead —
+# the run still happens and the platform's receipts remain the record — and the fallback is logged. Platforms
+# are matched by the credential their gateway needs; anything else passes through untouched.
+_PLATFORM_CREDENTIALS = {
+    "discord": ("DISCORD_BOT_TOKEN",),
+    "telegram": ("TELEGRAM_BOT_TOKEN",),
+    "slack": ("SLACK_BOT_TOKEN",),
+}
+
+
+def _configured(var: str) -> bool:
+    import os
+    if os.environ.get(var):
+        return True
+    env_file = _hermes_home() / ".env"
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.strip().partition("=")
+            if key == var and value.strip().strip("'\""):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def _deliver_target(name: str, deliver) -> object:
+    platform = str(deliver).strip().lower() if isinstance(deliver, str) else ""
+    needs = _PLATFORM_CREDENTIALS.get(platform)
+    if not needs or any(_configured(v) for v in needs):
+        return deliver
+    logger.warning(
+        "schedule-seed: job '%s' delivers to %s but no %s is configured; delivering locally instead",
+        name, platform, " / ".join(needs),
+    )
+    return "local"
+
+
 def _seed_jobs() -> list:
     seed_file = _hermes_home() / "cron" / "jobs.seed.json"
     if not seed_file.exists():
@@ -68,7 +106,7 @@ async def handle(event_type: str, context: dict) -> None:
                 prompt=spec.get("prompt"),
                 schedule=spec.get("schedule"),
                 name=name,
-                deliver=spec.get("deliver"),
+                deliver=_deliver_target(name, spec.get("deliver")),
                 skills=spec.get("skills") or None,
                 skill=spec.get("skill"),
                 workdir=spec.get("workdir"),

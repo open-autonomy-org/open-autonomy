@@ -18,20 +18,29 @@ const items = [...roadmap.matchAll(/- id: ([a-z0-9-]+)\n(?:(?!- id:)[\s\S])*?tit
 function files(dir: string, base = dir): string[] {
   return readdirSync(dir).flatMap((name) => { const p = join(dir, name); return statSync(p).isDirectory() ? files(p, base) : [relative(base, p)]; }).sort();
 }
-// The command the model runs to implement one item: fetch main, write the stage's files, check, mark done,
-// commit, push. It always ends with a marker so the next turn knows the outcome from the tool result.
+// The roadmap as the model rewrites it for one item: every item up to and including this one is done.
+function roadmapAfter(itemId: string): string {
+  let out = roadmap;
+  for (const it of items) {
+    out = out.replace(new RegExp(`(- id: ${it.id}\\n(?:(?!- id:)[\\s\\S])*?status: )planned`), `$1done`);
+    if (it.id === itemId) break;
+  }
+  return out;
+}
+// The command the model runs to implement one item: fetch main, write the stage's files and the roadmap,
+// check, commit, push. Plain shell a scheduled run may execute unattended (no script-via-flag, nothing
+// destructive); its outcome markers are assembled at run time so a command echoed back in a tool error can
+// never read as the outcome itself.
 function implement(item: { id: string; title: string }): string {
   const stage = resolve(here, 'stages', item.id);
-  const writes = files(stage).map((f) => `cat > '${f}' <<'__OA_FILE__'\n${readFileSync(join(stage, f), 'utf8')}__OA_FILE__`).join('\n');
+  const heredoc = (path: string, text: string) => `cat > '${path}' <<'__OA_FILE__'\n${text}${text.endsWith('\n') ? '' : '\n'}__OA_FILE__`;
+  const writes = [...files(stage).map((f) => heredoc(f, readFileSync(join(stage, f), 'utf8'))), heredoc('ROADMAP.yml', roadmapAfter(item.id))].join('\n');
   return [
-    `set -e`,
-    `trap 'echo "IMPLEMENTATION_RAN status=$?"' EXIT`,
-    `git fetch -q origin main && git checkout -q -B agent/${item.id} origin/main`,
+    `git fetch -q origin main && git checkout -q -B agent/${item.id} origin/main || { echo "IMPLEMENTATION_""RAN cannot start"; exit 1; }`,
     writes,
-    `perl -0pi -e 's/(id: ${item.id}\\n(?:.*\\n)*?\\s+status: )planned/\${1}done/' ROADMAP.yml`,
-    `bun run check >/dev/null 2>&1 || { echo 'the check failed:'; bun run check 2>&1 | tail -20; exit 1; }`,
-    `git add -A && git -c user.name='Open Autonomy agent' -c user.email='agent@open-autonomy.org' commit -q -s -m '${item.id}: ${item.title.replace(/'/g, "'\\''")}' && git push -q -u origin agent/${item.id}`,
-    `echo "PUSHED_BRANCH=agent/${item.id} $(git rev-parse --short HEAD)"`,
+    `bun run check >/dev/null 2>&1 || { echo "IMPLEMENTATION_""RAN the check failed:"; bun run check 2>&1 | tail -20; exit 1; }`,
+    `git add -A && git -c user.name='Open Autonomy agent' -c user.email='agent@open-autonomy.org' commit -q -s -m '${item.id}: ${item.title.replace(/'/g, "'\\''")}' && git push -q -u origin agent/${item.id} || { echo "IMPLEMENTATION_""RAN push failed"; exit 1; }`,
+    `echo "IMPLEMENTATION_""RAN PUSHED_BRANCH""=agent/${item.id} $(git rev-parse --short HEAD)"`,
   ].join('\n');
 }
 
