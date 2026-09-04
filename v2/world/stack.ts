@@ -101,6 +101,8 @@ async function up(): Promise<void> {
     }
   }
   const ip = hostIp();
+  // A previous stack's containers would keep the volumes pinned; take them down first.
+  down(false);
   // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at
   // the valve and names the Discord bot — a fake token the twin accepts — and its home channel), the
   // checkout cloned from the project's origin, here the GitHub twin.
@@ -135,6 +137,18 @@ async function up(): Promise<void> {
   if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', `${COOKBOOK_NAME}-agent:local`, certifiPath], { quiet: true }).out;
   writeFileSync(resolve(worldDir, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
+  // supercode with Hermes support is on its main branch, not yet released: the reporter runs a build from
+  // the checkout beside the twins (SUPERCODE_ROOT, default ../../supercode), made once on the world's
+  // Docker host for the image's Linux and kept under .volter.
+  const supercodeBin = resolve(ROOT, '.volter', 'supercode-build', 'supercode');
+  if (!existsSync(supercodeBin)) {
+    const src = resolve(process.env.SUPERCODE_ROOT ?? resolve(ROOT, '..', '..', 'supercode'));
+    if (!existsSync(resolve(src, 'crates', 'cli', 'Cargo.toml'))) throw new Error(`stack: no supercode checkout at ${src} (SUPERCODE_ROOT) to build the reporter's supercode from`);
+    console.log('stack: building supercode from the checkout for the reporter (one-time, ~15 minutes)');
+    mkdirSync(resolve(ROOT, '.volter', 'supercode-build'), { recursive: true });
+    sh(['docker', '--context', context, 'run', '--rm', '-v', `${src}:/src:ro`, '-v', `${resolve(ROOT, '.volter', 'supercode-build')}:/out`, 'rust:1-bookworm', 'sh', '-c', 'cp -r /src /build && cd /build && cargo build --release --bin supercode && cp target/release/supercode /out/supercode']);
+  }
+  writeFileSync(resolve(worldDir, 'supercode'), readFileSync(supercodeBin), { mode: 0o755 });
   const dnsIp = resolverIp();
   reflectUp(ip, dnsIp);
   // The stack, as the adopter starts it — attached: every container's DNS is the world's resolver and its

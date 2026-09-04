@@ -49,6 +49,11 @@ with the Open Autonomy SDK, attaching it to the roadmap item it serves. Schedule
 `.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
 and settled cent per item, live while a session runs.
 
+**Environmental dependency.** The reporter reads Hermes through supercode's `hermes` harness, which is on
+supercode's main branch and not yet in a published release (`@volter-ai-dev/supercode` 0.4.13 lists no
+Hermes harness). Until the release that carries it, the reporter needs a build from that branch, named by
+`SUPERCODE_BIN`; this repository's world builds one from the checkout beside it.
+
 ## Nothing in the agent's reach is a secret that matters
 
 The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent forwarded from the host
