@@ -158,8 +158,8 @@ describe('agent model proxy', () => {
 
   test('routes a vendor/slug model over /v1/messages to the model gateway (no table entry) and settles on reported cost', async () => {
     const env = testEnv();
-    // deepseek/deepseek-v4-flash is NOT in the price table — it routes by the "vendor/slug" convention.
-    const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
+    // z-ai/glm-5.3-flash is NOT in the price table — it routes by the "vendor/slug" convention.
+    const minted = await mint(env, ['z-ai/glm-5.3-flash'], 25, 5);
 
     let sawAuth: string | null = null;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -174,7 +174,7 @@ describe('agent model proxy', () => {
     const proxied = await worker.fetch(new Request('https://proxy.test/v1/messages', {
       method: 'POST',
       headers: { authorization: `Bearer ${minted.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', max_tokens: 1000, messages: [] }),
+      body: JSON.stringify({ model: 'z-ai/glm-5.3-flash', max_tokens: 1000, messages: [] }),
     }), env, ctx);
 
     expect(proxied.status).toBe(200);
@@ -189,12 +189,12 @@ describe('agent model proxy', () => {
 
   test('a /v1/messages call for an gateway model with no MODEL_GATEWAY_API_KEY is provider_not_configured', async () => {
     const env = testEnv({ MODEL_GATEWAY_API_KEY: undefined });
-    const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
+    const minted = await mint(env, ['z-ai/glm-5.3-flash'], 25, 5);
 
     const proxied = await worker.fetch(new Request('https://proxy.test/v1/messages', {
       method: 'POST',
       headers: { authorization: `Bearer ${minted.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', max_tokens: 100, messages: [] }),
+      body: JSON.stringify({ model: 'z-ai/glm-5.3-flash', max_tokens: 100, messages: [] }),
     }), env, ctx);
 
     expect(proxied.status).toBe(503);
@@ -222,8 +222,8 @@ describe('agent model proxy', () => {
 
   test('routes a vendor/slug model on /v1/chat/completions to the model gateway (no table entry) and settles on reported cost', async () => {
     const env = testEnv();
-    // deepseek/deepseek-v4-flash is NOT in the price table — the agent loop's proxyTurn hits this wire.
-    const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 25, 5);
+    // z-ai/glm-5.3-flash is NOT in the price table — the agent loop's proxyTurn hits this wire.
+    const minted = await mint(env, ['z-ai/glm-5.3-flash'], 25, 5);
 
     let sawAuth: string | null = null;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -237,7 +237,7 @@ describe('agent model proxy', () => {
     const proxied = await worker.fetch(new Request('https://proxy.test/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: `Bearer ${minted.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', max_tokens: 1000, messages: [] }),
+      body: JSON.stringify({ model: 'z-ai/glm-5.3-flash', max_tokens: 1000, messages: [] }),
     }), env, ctx);
 
     expect(proxied.status).toBe(200);
@@ -253,7 +253,7 @@ describe('agent model proxy', () => {
   test('forwards a large output cap unchanged and injects the ceiling when the client sends none', async () => {
     // The agent's reasoning turns need room: a 4k cap returned finish_reason=length with no visible text.
     const env = testEnv();
-    const minted = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 5);
+    const minted = await mint(env, ['z-ai/glm-5.3-flash'], 100, 5);
     const forwarded: number[] = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       forwarded.push((JSON.parse(String(init?.body)) as { max_tokens: number }).max_tokens);
@@ -265,7 +265,7 @@ describe('agent model proxy', () => {
       const res = await worker.fetch(new Request('https://proxy.test/v1/chat/completions', {
         method: 'POST',
         headers: { authorization: `Bearer ${minted.token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', messages: [], ...body }),
+        body: JSON.stringify({ model: 'z-ai/glm-5.3-flash', messages: [], ...body }),
       }), env, ctx);
       expect(res.status).toBe(200);
     }
@@ -660,7 +660,7 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
   const chat = (env: Env, token: string) => worker.fetch(new Request('https://proxy.test/v1/messages', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'deepseek/deepseek-v4-flash', max_tokens: 5, messages: [] }),
+    body: JSON.stringify({ model: 'z-ai/glm-5.3-flash', max_tokens: 5, messages: [] }),
   }), env, ctx);
   const keyEnv = () => testEnv({ GITHUB_RAW_BASE: 'https://raw.test' });
 
@@ -681,7 +681,7 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
     const minted = await requestJson(env, '/v1/keys/mint', { method: 'POST', body: { account: ACCOUNT } });
     expect(minted.run.standing).toBe(true);
     expect(minted.run.repo).toBe(ACCOUNT);
-    expect(minted.run.models).toEqual(['deepseek/deepseek-v4-flash']);
+    expect(minted.run.models).toEqual(['z-ai/glm-5.3-flash']);
     expect((await chat(env, minted.token)).status).toBe(200);
     const calls = await requestJson(env, `/v1/accounts/${encodeURIComponent(ACCOUNT)}/calls`);
     expect(calls.calls_total).toBe(1);
@@ -717,7 +717,7 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
 
   test('only a standing key can rotate, and an account holds at most three', async () => {
     const env = keyEnv();
-    const run = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 10, { repo: ACCOUNT });
+    const run = await mint(env, ['z-ai/glm-5.3-flash'], 100, 10, { repo: ACCOUNT });
     expect((await request(env, '/v1/keys/rotate', { method: 'POST', headers: { authorization: `Bearer ${run.token}` } })).status).toBe(403);
     expect((await request(env, '/v1/keys/rotate', { method: 'POST' })).status).toBe(401);
     globalThis.fetch = rawServing(await claimCode(env, ACCOUNT, dayKeyUTC()));
@@ -731,7 +731,7 @@ describe('self-serve project keys (claim file → standing key → rotate)', () 
 describe('agent jobs (the reporter narrates a run on the standing key, as CloudEvents)', () => {
   const standing = (env: Env, repo = 'volter/twin') => requestJson(env, '/admin/runs/mint', {
     method: 'POST', headers: { 'x-admin-token': 'admin' },
-    body: { repo, issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['deepseek/deepseek-v4-flash'] },
+    body: { repo, issue: 0, actor: 'hermes', purpose: 'hermes', standing: true, models: ['z-ai/glm-5.3-flash'] },
   });
   let n = 0;
   const ce = (type: string, subject: string, data: unknown, time?: string) => ({ specversion: '1.0', id: `evt-${++n}`, source: 'hermes://home/state.db', type: `org.open-autonomy.job.${type}`, subject, time, data });
@@ -803,7 +803,7 @@ describe('agent jobs (the reporter narrates a run on the standing key, as CloudE
     expect((await post(env, key.token, ce('turns', 'never-started', { seq: 0, turns: [] }))).status).toBe(404);
     expect((await post(env, key.token, { kind: 'started', key: 'k9' })).status).toBe(400); // not a CloudEvent
     expect((await post(env, key.token, ce('exploded', 'k1', {}))).status).toBe(400);
-    const plain = await mint(env, ['deepseek/deepseek-v4-flash'], 100, 10, { repo: 'acme/app' });
+    const plain = await mint(env, ['z-ai/glm-5.3-flash'], 100, 10, { repo: 'acme/app' });
     expect((await post(env, plain.token, ce('started', 'k2', {}))).status).toBe(403);
     expect((await request(env, '/v1/agent/events', { method: 'POST', body: ce('started', 'k3', {}) })).status).toBe(401);
     expect((await request(env, '/v1/accounts/acme%2Fapp/jobs/nope')).status).toBe(404);

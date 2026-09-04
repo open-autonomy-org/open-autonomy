@@ -2,7 +2,7 @@
 #   OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY  — the standing project key (template/mint-key.ts)
 #   DISCORD_BOT_TOKEN / DISCORD_ALLOWED_USERS    — optional Discord gateway
 model:
-  default: deepseek/deepseek-v4-flash
+  default: z-ai/glm-5.3-flash
   provider: custom
   base_url: ${OPEN_AUTONOMY_BASE_URL}
   api_key: ${OPEN_AUTONOMY_KEY}

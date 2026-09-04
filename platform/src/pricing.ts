@@ -2,7 +2,7 @@ import type { Provider } from './types.js';
 import { MODEL_PRICES } from './model-prices.js';
 
 // The output-token ceiling the proxy reserves against. It is a RESERVATION bound, not a product limit: the
-// agent's model (DeepSeek V4 Flash on the gateway) allows 384k output tokens, and a reasoning turn spends its
+// agent's flash-class model on the gateway allows a large output window, and a reasoning turn spends its
 // budget on reasoning before any visible text — at the old 4 096 ceiling the agent's long turns came back
 // finish_reason=length with no text, and a run died after Hermes's four continuation attempts. Worst case at
 // this ceiling on flash is ~10¢ per call, reserved then settled to the actual usage.
@@ -59,7 +59,7 @@ export function gatewayReservePrice(reserveUsdPerMtok: number): ModelPrice {
 
 // The amount to actually charge a run, in US cents (fractional — sub-cent precision is kept). If the
 // upstream reported a real cost, that is authoritative; otherwise fall back to metering token counts
-// against the price table. We must NOT floor/ceil each request to a whole cent: a deepseek request costs
+// against the price table. We must NOT floor/ceil each request to a whole cent: a flash-class request costs
 // a small fraction of a cent, and agents fire thousands of requests, so a 1¢-per-request floor over-counts
 // real spend ~3× — inflating account balances and tripping the global daily cap at a third of true spend.
 // Cents are carried as real numbers throughout the ledger; rounding happens only at display.

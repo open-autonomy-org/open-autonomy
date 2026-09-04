@@ -100,7 +100,7 @@ through the reviewed workflows in `DEPLOY.md`; no machine keeps a copy.
 wires, so the proxy shares its native routes on each side: the Anthropic
 `/v1/messages` (→ the gateway's `/v1/messages`) and the OpenAI
 `/v1/chat/completions` (→ the gateway's `/v1/chat/completions`). A `vendor/slug`
-id (e.g. `deepseek/deepseek-v4-flash`) passes through; a bare id is mapped to its
+id (e.g. `z-ai/glm-5.3-flash`) passes through; a bare id is mapped to its
 vendor slug (`gpt-4o` → `openai/gpt-4o`, `claude-sonnet-4-6` →
 `anthropic/claude-sonnet-4-6`). The gateway reports the real cost and the proxy
 settles against it, reserving `MODEL_GATEWAY_RESERVE_USD_PER_MTOK` (default 30) up

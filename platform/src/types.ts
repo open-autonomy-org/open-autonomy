@@ -1,4 +1,4 @@
-// `gateway` reaches non-first-party models (e.g. DeepSeek) over the model gateway's Anthropic-compatible
+// `gateway` reaches non-first-party models (e.g. GLM) over the model gateway's Anthropic-compatible
 // wire, so it shares the `/v1/messages` handler with `anthropic` — only the upstream URL + auth differ.
 export type Provider = 'anthropic' | 'openai' | 'gateway';
 
