@@ -134,14 +134,25 @@ items:
       - platform src carries cards and partners rail modules that compile against the seam and serve nothing, each with a README stating what the rail will be (Stripe-minted cards; partner integrations) and what bounds it.
       - The roadmap gains one proposed item per rail with real acceptance lines, awaiting the owner.
 
+  - id: development-stream
+    phase: 5
+    priority: high
+    status: planned
+    title: The platform carries the whole development stream, grouped by work item
+    acceptance:
+      - The receipts model generalizes to sessions - any agent conversation, with a kind, an optional work item, and an optional outcome - so several can be live at once and a conversation without a verdict can simply end; existing scheduled-run receipts are one kind.
+      - The platform accepts short progress updates attached to a work item, on the standing key, redacted at intake like turns.
+      - A roadmap item's view on the project page shows every session, update and settled cent that touched it, live while a session runs; verified against the world's platform.
+
   - id: sdk-package
     phase: 5
     priority: high
     status: planned
-    title: The SDK is a package and the sidecar is its first consumer
+    title: The SDK publishes the development stream; the sidecar is its first consumer
     acceptance:
-      - packages/sdk holds the narration event schema and a client (narrate started/turns/finished, key mint and rotate helpers); the sidecar imports it and re-types nothing.
-      - The schema exists in exactly one place in the repo; the world's receipt path is unchanged.
+      - packages/sdk holds the schema (sessions, turns, updates, work-item association) and a client - open a session, append turns with offset idempotency and resume, close with an optional outcome, post an update, plus the key mint and rotate helpers; the schema exists in exactly one place in the repo.
+      - The sidecar becomes the Hermes adapter built on the SDK, publishing work sessions by default with the kit's config naming the private exceptions, and tagging the work item it detects.
+      - The world's gate passes with the receipt path flowing through the SDK, and the SDK README shows the raw wire form of each call so any language can integrate without the package.
 
   - id: workspaces-root
     phase: 6
