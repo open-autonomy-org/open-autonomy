@@ -22,8 +22,8 @@ const project = 'oa';
 const stackDir = resolve(DATA, 'stack');
 const compose = ['docker', '--context', context, 'compose', '-p', project, '-f', resolve(REPO, 'template/container/compose.yml'), '-f', resolve(REPO, 'world/stack.override.yml')];
 const twinsCli = resolve(process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts');
-const REFLECT_FRONT = 47700;
-const REFLECT_RESOLVER = 47701;
+const REFLECT_FRONT = 443; // what a container reaches https on
+const REFLECT_RESOLVER = 53; // a container takes a DNS address, not a port
 const worldDir = resolve(DATA, 'stack', 'world'); // mounted at /opt/world: the clock, its library, the CA
 const uid = process.env.AGENT_UID ?? String(process.getuid?.() ?? 501);
 const gid = process.env.AGENT_GID ?? String(process.getgid?.() ?? 20);
@@ -50,12 +50,21 @@ function hostIp(): string {
   return ip;
 }
 // The world's reflect front and resolver (docs/ATTACH.md in the twins repository), for the vendor the
-// agent's own HTTP client cannot be pointed elsewhere: discord.py. Routed hosts resolve to the host, whose
-// 443 the VM redirects into the front; the front terminates TLS with the session CA and forwards to the twin.
-function reflectUp(ip: string): void {
+// agent's own HTTP client cannot be pointed elsewhere: discord.py. Routed hosts resolve to the host, on
+// whose :443 the front terminates TLS with the session CA and forwards to the twin. The verb runs in the
+// foreground and supervises nothing, so the recipe keeps it alive for the stack's life.
+// The resolver's address for containers: on colima the VM's gateway address answers DNS itself, so the
+// resolver is reached at the host's own LAN address (the default route's interface).
+function resolverIp(): string {
+  const iface = sh(['sh', '-c', "route -n get default 2>/dev/null | awk '/interface:/{print $2}'"], { quiet: true, check: false }).out.trim();
+  const ip = iface ? sh(['ipconfig', 'getifaddr', iface], { quiet: true, check: false }).out.trim() : '';
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error('stack: the host has no LAN address for the containers\' DNS (route -n get default / ipconfig getifaddr)');
+  return ip;
+}
+function reflectUp(ip: string, dnsIp: string): void {
   reflectDown();
   for (const host of ['discord.com', 'gateway.discord.gg']) sh(['bun', twinsCli, 'route', 'open-autonomy', 'add', host, '--root', REPO], { quiet: true, check: false });
-  const child = Bun.spawn({ cmd: ['bun', twinsCli, 'reflect', 'open-autonomy', '--target-ip', ip, '--port', String(REFLECT_FRONT), '--resolver-port', String(REFLECT_RESOLVER), '--root', REPO], cwd: REPO, stdout: Bun.file(resolve(stackDir, 'reflect.log')), stderr: Bun.file(resolve(stackDir, 'reflect.log')), env: hostEnv() });
+  const child = Bun.spawn({ cmd: ['bun', twinsCli, 'reflect', 'open-autonomy', '--target-ip', ip, '--resolver-ip', dnsIp, '--port', String(REFLECT_FRONT), '--resolver-port', String(REFLECT_RESOLVER), '--root', REPO], cwd: REPO, stdout: Bun.file(resolve(stackDir, 'reflect.log')), stderr: Bun.file(resolve(stackDir, 'reflect.log')), env: hostEnv() });
   child.unref();
   writeFileSync(resolve(stackDir, 'reflect.pid'), `${child.pid}\n`);
   const deadline = Date.now() + 15_000;
@@ -64,7 +73,7 @@ function reflectUp(ip: string): void {
     if (Date.now() > deadline) throw new Error(`stack: the reflect resolver did not answer within 15s (${resolve(stackDir, 'reflect.log')})`);
     Bun.sleepSync(500);
   }
-  console.log(`stack: reflect up — discord.com resolves to ${ip}, the front on :${REFLECT_FRONT} hands it to the Discord twin`);
+  console.log(`stack: reflect up — the resolver at ${dnsIp}:${REFLECT_RESOLVER} answers discord.com with ${ip}, whose :${REFLECT_FRONT} hands it to the Discord twin`);
 }
 function reflectDown(): void {
   const pidFile = resolve(stackDir, 'reflect.pid');
@@ -129,16 +138,17 @@ async function up(): Promise<void> {
   writeFileSync(resolve(faketime, 'libfaketime.so.1'), readFileSync(lib));
   writeFileSync(resolve(faketime, 'clock'), '+0\n');
   const ca = readFileSync(resolve(REPO, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
-  writeFileSync(resolve(faketime, 'ca-cert.pem'), ca);
   // Python's aiohttp (discord.py's client) trusts certifi's bundle, not the system store: the image's own
   // bundle plus the session CA, mounted over certifi's file (the path is the image's, read from it).
   const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', 'open-autonomy-agent:local', '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
   if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', 'open-autonomy-agent:local', certifiPath], { quiet: true }).out;
   writeFileSync(resolve(faketime, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
-  reflectUp(ip);
-  // The stack, as the adopter starts it.
-  sh([...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_HOST_IP: ip, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
+  const dnsIp = resolverIp();
+  reflectUp(ip, dnsIp);
+  // The stack, as the adopter starts it — attached: every container's DNS is the world's resolver and its
+  // trust the session CA, composed by volter-world from the compose files themselves.
+  sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', REPO, '--', ...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
   seal();
   // The gateway seeds its schedule from cron/jobs.seed.json as it boots (the schedule-seed hook). Its first
   // fire is one interval after that, so the clock is only worth advancing once the job exists — the product's
@@ -161,22 +171,19 @@ async function up(): Promise<void> {
 function seal(): void {
   const netId = docker('network', 'inspect', `${project}_agent`, '--format', '{{.Id}}').out.trim();
   const bridge = `br-${netId.slice(0, 12)}`;
+  const dnsIp = resolverIp();
   const host = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(host ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
   const script = [
     'iptables -N OA_WORLD_SEAL 2>/dev/null || true',
     'iptables -F OA_WORLD_SEAL',
-    `iptables -A OA_WORLD_SEAL -i ${bridge} ! -d ${host}/32 -j REJECT --reject-with icmp-port-unreachable`,
+    `iptables -A OA_WORLD_SEAL -i ${bridge} -d ${host}/32 -j RETURN`,
+    `iptables -A OA_WORLD_SEAL -i ${bridge} -d ${dnsIp}/32 -j RETURN`,
+    `iptables -A OA_WORLD_SEAL -i ${bridge} -j REJECT --reject-with icmp-port-unreachable`,
     'iptables -C DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null || iptables -I DOCKER-USER 1 -j OA_WORLD_SEAL',
-    // The attach: DNS and HTTPS toward the host go to reflect's resolver and front.
-    'iptables -t nat -N OA_WORLD_REFLECT 2>/dev/null || true',
-    'iptables -t nat -F OA_WORLD_REFLECT',
-    `iptables -t nat -A OA_WORLD_REFLECT -i ${bridge} -d ${host}/32 -p udp --dport 53 -j DNAT --to-destination ${host}:${REFLECT_RESOLVER}`,
-    `iptables -t nat -A OA_WORLD_REFLECT -i ${bridge} -d ${host}/32 -p tcp --dport 443 -j DNAT --to-destination ${host}:${REFLECT_FRONT}`,
-    'iptables -t nat -C PREROUTING -j OA_WORLD_REFLECT 2>/dev/null || iptables -t nat -I PREROUTING 1 -j OA_WORLD_REFLECT',
   ].join(' && ');
   sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', script], { quiet: true });
-  console.log(`stack: sealed — off ${bridge} only ${host} (the host's platform and twins) is reachable; its 53 and 443 are reflect`);
+  console.log(`stack: sealed — off ${bridge} only the host (${host}: the platform, the twins, the front; ${dnsIp}: the resolver) is reachable`);
 }
 function unseal(): void {
   sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', 'iptables -D DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null; iptables -F OA_WORLD_SEAL 2>/dev/null; iptables -X OA_WORLD_SEAL 2>/dev/null; iptables -t nat -D PREROUTING -j OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -F OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -X OA_WORLD_REFLECT 2>/dev/null; true'], { quiet: true, check: false });
@@ -186,7 +193,7 @@ function down(purge: boolean): void {
   if (sh(['docker', 'context', 'inspect', context], { quiet: true, check: false }).code !== 0) return;
   unseal();
   reflectDown();
-  sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_HOST_IP: '127.0.0.1', WORLD_CERTIFI_PATH: '/dev/null' }, quiet: true, check: false });
+  sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null' }, quiet: true, check: false });
   if (purge) for (const v of ['oa-home', 'oa-repo']) sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false });
   console.log(`stack: down${purge ? ', volumes removed' : ''}`);
 }

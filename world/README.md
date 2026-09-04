@@ -56,11 +56,12 @@ production, because it is the same worker.
 - **The seal.** On the world's Docker host, traffic off the stack's bridge may only reach the host (the
   platform and the twins); everything else is refused, not served. `verify` probes it from inside the
   agent's container.
-- **The attach.** `stack.override.yml` points the agent container's DNS at the world's reflect resolver
-  and puts the session CA where its clients trust it, and the world's Docker host redirects the
-  container's 53 and 443 into reflect's resolver and front. An unmodified `discord.py` then reaches the
-  Discord twin at discord.com (the twin advertises a gateway address the container can reach). This is
-  the composition the twins repository's ATTACH.md leaves to the recipe, done by the world's host.
+- **The attach.** The stack comes up through `volter-world attach open-autonomy --via reflect -- docker
+  compose … up`: every container's DNS is the world's reflect resolver (on the host's :53) and its TLS
+  trust the session CA (mounted, named by the trust variables), composed by volter-world from the compose
+  files themselves. An unmodified `discord.py` then logs into the Discord twin at its real hostnames
+  through the front on the host's :443. What stays image-specific is in `stack.override.yml`: Python's
+  certifi bundle, which aiohttp trusts instead of the system store.
 - **The clock.** `stack.override.yml` preloads libfaketime into the agent's container, reading its offset
   from a file `clock advance` moves; monotonic time stays real. A six-hour jump trips the gateway's own
   liveness watchdog, which restarts it; the due job fires when it is back. That is Hermes's real behaviour
@@ -95,7 +96,7 @@ that handler matched at all.
 | `world.json` | the logical world: two twins, the platform, the Actions runner, on pinned ports. `${TWINS_ROOT}`, `${WORLD_DIR}`, `${SCENARIO}`, `${COOKBOOK}` are substituted into an ignored generated copy under `.volter/`, so no developer's paths are committed |
 | `platform.ts` | the real worker as a world service: `wrangler dev` with its upstreams pointed at the twins the world injected, supervised |
 | `actions.ts` | GitHub Actions for the twin, played by the world |
-| `stack.ts` `stack.override.yml` | the cookbook's stack as the adopter starts it, on the world's own Docker host (`WORLD_DOCKER_CONTEXT`, a colima VM the world creates once), plus the clock |
+| `stack.ts` `stack.override.yml` | the cookbook's stack as the adopter starts it, attached (`volter-world attach --via reflect`), on the world's own Docker host (`WORLD_DOCKER_CONTEXT`, a colima VM the world creates once), plus the clock and the image's certifi bundle |
 | `handlers/<cookbook>/` | the model's side of that cookbook's runs |
 | `seed.ts` `wait.ts` `verify.ts` | the post-up steps, each run with the world's env |
 | `run.ts` | the runner: `up`, `stack`, `clock`, `wait`, `verify`, `check`, `down`, `env -- <cmd>`, `--cookbook <name>` |
