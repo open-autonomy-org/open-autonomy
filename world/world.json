@@ -1,16 +1,15 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy's world: the platform worker built from this tree, against the openai twin as the model gateway and the GitHub twin. Cookbooks are the projects under test: the template applied to cookbook/<name>, pushed to the twin, funded and keyed on the world's platform, run once, and audited from twin state and the books. ${TWINS_ROOT} and ${WORLD_DIR} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform worker built from this tree, metering against the model gateway (the openai twin playing the gateway's OpenAI wire, scripted by the cookbook's scenario) and the GitHub twin. Cookbooks are the projects under test; nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR} and ${SCENARIO} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
     "MODEL_GATEWAY_API_KEY": "world-gateway-key",
-    "OPEN_AUTONOMY_ACCOUNT": "cookbook/hello-roadmap",
     "OPEN_AUTONOMY_MODEL": "deepseek/deepseek-v4-flash"
   },
   "services": [
     {
-      "id": "openai",
+      "id": "gateway",
       "type": "twin",
       "command": "bun",
       "args": [
@@ -18,9 +17,9 @@
         "serve"
       ],
       "port": "auto",
-      "injectEnv": "OPENAI_TWIN_URL",
+      "injectEnv": "GATEWAY_TWIN_URL",
       "env": {
-        "TWIN_OPENAI_SCENARIO": "${WORLD_DIR}/handlers/openai.json"
+        "TWIN_OPENAI_SCENARIO": "${SCENARIO}"
       }
     },
     {

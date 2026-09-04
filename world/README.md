@@ -2,19 +2,26 @@
 
 `world/` is a [volter-world](https://github.com/volter-ai/twin): the platform built from this tree, against
 local twins of GitHub and the model gateway, with the scenarios that drive a run. No account, no credential,
-no cloud, no spend. The projects under test are the cookbooks: `check` applies the template to
-`cookbook/hello-roadmap`, pushes it to the GitHub twin, funds and keys it on the world's platform, runs the
-agent once, and audits the twin and the books. Our own `hermes/` keeps running in production regardless.
+no cloud, no spend. Nothing in the world calls a real API, ever: the platform under test forwards its
+model calls to the gateway twin, whose answers are the cookbook's scenario. The projects under test are the
+cookbooks. `check` applies the template to a cookbook, pushes it and this tree to the GitHub twin, funds and
+keys the cookbook on the world's platform, runs its agent once, lands what it pushed, and audits the twin
+and the books. Our own `hermes/` keeps running in production regardless.
 
 ```bash
 export TWINS_ROOT=/path/to/twin        # until the twin packages are published
-bun world/run.ts up                    # twins + the real worker, then seed (repo, funding, the agent's key)
+bun world/run.ts up --cookbook todo-cli   # twins + the real worker, then seed (repos, funding, the agent's key)
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
-bun world/run.ts agent                 # one build-roadmap run of the real Hermes against it
-bun world/run.ts verify                # the audit: the books, then the twin — never the agent's prose
+bun world/run.ts agent                 # one build-roadmap run of the real Hermes against it: one roadmap item
+bun world/run.ts land                  # our landing rule by hand: check each agent/* branch, merge the green ones
+bun world/run.ts verify                # the audit: the books, the twin's main, the project's check, the page
 bun world/run.ts down --purge          # forget it
-bun world/run.ts check                 # the gate: up → seed → agent → verify → down (what CI runs)
+bun world/run.ts check --cookbook todo-cli   # the gate: up → seed → agent → land → verify → down
 ```
+
+`agent` then `land`, repeated, walks the cookbook's roadmap down one item per run; the project page shows
+each run as it happens. The default cookbook is `hello-roadmap`, one item that only marks itself done.
+`todo-cli` has eight items, each one command and one test.
 
 ## Two uses, one world
 
@@ -22,18 +29,19 @@ bun world/run.ts check                 # the gate: up → seed → agent → ver
   world's *operator* when it verifies a platform change: it exercises acceptance lines against
   `$PLATFORM_URL` with curl. It never starts a second agent inside its own run.
 - **Testing the template, through a cookbook.** `agent` applies the template's home from the cookbook and
-  runs it once against the world; `verify` audits. Today that leg is the real `hermes` binary run one-shot on
-  the host, which proves the meter, the key, narration and the landing convention but is not how the
-  template runs. The `stack-attaches-to-world` item replaces it with the cookbook's real container stack:
-  `volter-world attach -- docker compose up`, and it just works — whatever attach needs to reach containers
-  is developed in volter-world, once, not here.
+  runs it once against the world; `land` performs the landing rule; `verify` audits. Today that leg is
+  the real `hermes` binary run one-shot on the host, which proves the meter, the key, narration and the
+  landing convention but is not how the template runs. The `stack-attaches-to-world` item replaces it with
+  the cookbook's real container stack: `volter-world attach -- docker compose up`, and it just works —
+  whatever attach needs to reach containers is developed in volter-world, once, not here.
 
 ## What is real and what is a twin
 
-Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding the books), the `hermes`
-binary, git, and the skill the agent runs. Twins: GitHub (REST plane and the git wire) and the model
-gateway (the `openai` twin, serving `handlers/openai.json`). Every model call is metered on the local
-books exactly as in production, because it is the same worker.
+Real: `platform/`'s worker (under `wrangler dev`, its Durable Objects holding the books), the sidecar,
+the `hermes` binary, git, and the skill the agent runs. Twins: GitHub (REST plane and the git wire, holding
+both the cookbook and `open-autonomy-org/open-autonomy` pushed from this tree, so both project pages render
+from it) and the model gateway (the `openai` twin as the `gateway` service, speaking the gateway's wire).
+Every model call is metered on the local books exactly as in production, because it is the same worker.
 
 The agent's key is minted **the adopter way**, inside the world: the platform issues a challenge, the
 seed commits the claim file to the repository on the twin, the platform reads it back and mints. The key
@@ -41,39 +49,42 @@ lands in the world's data directory and is worthless anywhere else.
 
 ## The two moves
 
-- **State** is created through the vendors' own doors (`seed.ts`): the repository is pushed to the twin's
-  git wire, the account is funded through the platform's admin route, the key through the mint route.
-- **Behaviour** is `handlers/openai.json`, ordered first-match rules keyed on the request's own features.
-  Its first rule is the failure class that killed a real run: a request whose output cap is under 16384
-  gets `finish_reason: length` and no text, which Hermes retries four times and then fails. So a platform
-  that clamps the agent's output cap cannot pass `check`, and `verify` also refuses a run where that
-  handler matched at all.
+- **State** is created through the vendors' own doors (`seed.ts`): the repositories are pushed to the twin's
+  git wire, the accounts are funded through the platform's admin route, the key through the mint route.
+- **Behaviour** is the cookbook's scenario, `handlers/<cookbook>/gateway.json` or a `gateway.ts` that
+  prints it: ordered first-match rules keyed on the conversation's own text and tools, never on call
+  counts (the platform meters Hermes's housekeeping calls too, and their number is not contractual). The
+  scripted model does what the real one is asked to: find the top planned item, write its code and tests,
+  run the project's check, mark it done, commit as the agent, push `agent/<item>`. `todo-cli`'s
+  `stages/<item>/` are the files it writes, cumulative, each stage green on its own.
 
-Rules never key on call counts: the platform meters Hermes's housekeeping calls too, and their number is
-not contractual.
+Every scenario's first rule is the failure class that killed a real run: a request whose output cap is
+under 16384 gets `finish_reason: length` and no text, which Hermes retries four times and then fails. So
+a platform that clamps the agent's output cap cannot pass `check`, and `verify` also refuses a run where
+that handler matched at all.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `world.json` | the logical world: two twins and the platform service. `${TWINS_ROOT}`/`${WORLD_DIR}` are substituted into an ignored generated copy under `.volter/`, so no developer's paths are committed |
+| `world.json` | the logical world: two twins, the platform and the sidecar. `${TWINS_ROOT}`, `${WORLD_DIR}` and `${SCENARIO}` are substituted into an ignored generated copy under `.volter/`, so no developer's paths are committed |
 | `platform.ts` | the real worker as a world service: `wrangler dev` with its upstreams pointed at the twins the world injected |
-| `handlers/openai.json` | the model's side of a run |
-| `seed.ts` `agent.ts` `verify.ts` | the post-up steps, each run with the world's env |
-| `run.ts` | the runner: `up`, `seed`, `agent`, `verify`, `check`, `down`, `env -- <cmd>` |
+| `handlers/<cookbook>/` | the model's side of that cookbook's runs |
+| `seed.ts` `agent.ts` `land.ts` `verify.ts` | the post-up steps, each run with the world's env |
+| `run.ts` | the runner: `up`, `seed`, `agent`, `land`, `verify`, `check`, `down`, `env -- <cmd>`, `--cookbook <name>` |
 
 ## Receipts
 
-`agent.ts` narrates its run to the platform on the standing key the way the reporter does in production
-(started, then finished), so the receipt path — the CloudEvents intake, its redaction, and the project
-page's health line — is under the world too. `verify.ts` reads the receipt and the page, never the prose.
+Hermes narrates its run through its own outbound webhooks to the sidecar, which translates them into the
+platform's CloudEvents, exactly as in production. So the receipt path — the intake, its redaction, the
+project page's live turns and health line — is under the world too. `verify.ts` reads the receipt and
+the page, never the prose.
 
 ## What it does not cover yet
 
-The agent's own containers (`container/`), the landing workflow and auto-merge (the twin has no Actions,
-so the agent lands on its branch and `verify` asserts `main` is untouched), and the cron scheduler firing
-on its own (Hermes reads the host clock, which the world clock does not reach). Those are proven live,
-or not yet.
+The agent's own containers (`container/`), GitHub's side of landing (the twin has no Actions, so `land.ts`
+performs the same rule by hand and says so), and the cron scheduler firing on its own (Hermes reads the
+host clock, which the world clock does not reach). Those are proven live, or not yet.
 
 Discord delivery has a twin now (`@volter/twin-discord`: the REST v10 surface and the gateway websocket
 a real bot connects through), but this world does not run it yet, for two reasons worth stating. The
