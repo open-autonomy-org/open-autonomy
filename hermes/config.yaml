@@ -23,3 +23,14 @@ compression:
 
 agent:
   max_turns: 80
+
+# The agent narrates its scheduled runs to the platform by pushing Hermes's own lifecycle events to the key
+# sidecar beside it, which translates them into the platform's receipts on the standing key (the agent holds
+# no credential). The site's NOW and DONE bands are those receipts. Visualization only; nothing here drives
+# the agent. See hermes/README.md.
+hooks:
+  outbound:
+    - name: open-autonomy-receipts
+      url: ${OPEN_AUTONOMY_NARRATE_URL}
+      events: [on_session_start, post_llm_call, post_tool_call, on_session_end]
+      timeout: 10

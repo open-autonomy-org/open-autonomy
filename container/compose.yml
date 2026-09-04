@@ -1,7 +1,7 @@
-# The Open Autonomy agent, as it runs: three containers in one VM-native world.
+# The Open Autonomy agent, as it runs: two containers in one VM.
 #   agent    stock Hermes (gateway = the Discord channel + the cron schedule) with the checkout it works
-#   sidecar  holds the project's standing key and forwards the model routes (and the reporter's events)
-#   reporter narrates runs to the platform through supercode's harness protocol, reading the agent's home
+#   sidecar  holds the project's standing key: forwards the model routes, and turns Hermes's own lifecycle
+#            events into the platform's receipts
 # Nothing the agent can read is a secret that matters (hermes/README.md). The home and the checkout live
 # in Docker volumes: SQLite over a host bind mount is a bus error waiting to happen, and nothing on the
 # host needs them — inspect with `docker exec`.
@@ -24,6 +24,8 @@ services:
     build:
       context: ..
       dockerfile: container/Dockerfile
+      args:
+        HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31} # container/build-hermes.sh builds it
     image: open-autonomy-agent:local
     container_name: oa-agent
     restart: unless-stopped
@@ -36,6 +38,8 @@ services:
       - SSH_AUTH_SOCK=/ssh-agent
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
       - TWINS_ROOT=/opt/twin
+      # Hermes pushes its lifecycle events here; the sidecar turns them into the platform's receipts.
+      - OPEN_AUTONOMY_NARRATE_URL=http://sidecar:8787/hermes-hook
     volumes:
       - oa-home:/opt/data
       - oa-repo:/work/open-autonomy
@@ -43,25 +47,6 @@ services:
       # The twins checkout, read-only: the agent verifies its work in the world (world/README.md), which
       # needs the runtime until the twin packages are published. Nothing in it is a credential.
       - ${TWINS_ROOT:-~/volter/twin}:/opt/twin:ro
-    networks: [agent]
-  reporter:
-    build:
-      context: ..
-      dockerfile: container/Dockerfile.reporter
-    image: open-autonomy-reporter:local
-    container_name: oa-reporter
-    restart: unless-stopped
-    depends_on: [sidecar, agent]
-    user: "${AGENT_UID:-501}:${AGENT_GID:-20}"
-    working_dir: /tmp
-    command: ["bun", "/reporter/agent-reporter.ts", "--home", "/opt/data", "--repo", "/work/open-autonomy", "--supercode", "/usr/local/bin/supercode"]
-    environment:
-      - OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1
-      - OPEN_AUTONOMY_KEY=sidecar
-      - HOME=/tmp
-    volumes:
-      - oa-home:/opt/data
-      - oa-repo:/work/open-autonomy
     networks: [agent]
 volumes:
   oa-home:
