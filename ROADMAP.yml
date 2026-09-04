@@ -13,6 +13,14 @@
 # Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
 schema: open-autonomy.roadmap.v3
 items:
+  - id: narration-proof
+    phase: 1
+    priority: high
+    status: planned
+    title: A run narrated by the agent's own webhooks appears as a receipt with its turns
+    acceptance:
+      - The world's gate passes with the receipt path exercised end to end (bun world/run.ts check).
+      - CHANGELOG.md's Unreleased section names this item as proven by a real run.
   - id: container-proof
     phase: 1
     priority: high
