@@ -13,7 +13,7 @@ on:
         description: what to do
         type: choice
         required: true
-        options: [status, mint, grant, sync, sync-admin-token]
+        options: [status, mint, grant, sync, delete-job, sync-admin-token]
       account:
         description: account (owner/repo) the op applies to
         type: string
@@ -27,7 +27,7 @@ on:
         type: string
         default: ""
       key:
-        description: idempotency key (mint, grant) — the same key never applies twice
+        description: idempotency key (mint, grant), or the job key (delete-job)
         type: string
         default: ""
 permissions:
@@ -70,6 +70,7 @@ jobs:
             grant)  curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' \
                       -d "{\"to\":\"$TO\",\"amount_usd_cents\":$AMOUNT,\"key\":\"$KEY\"}" "$base/admin/accounts/$enc/grant" ;;
             sync)   curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/sync" ;;
+            delete-job) curl -sS --fail-with-body -X DELETE -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/jobs/$KEY" ;;
           esac
           echo
       # Rotation: a maintainer generates a new value and sets it as the production environment secret

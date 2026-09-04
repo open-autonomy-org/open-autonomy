@@ -39,6 +39,7 @@ What the gate consists of, provisioned on `open-autonomy-org/open-autonomy`:
 | `mint` | add balance to `account` from the platform's own funding (idempotent on `key`) |
 | `grant` | move balance from `account` to `to` (idempotent on `key`) — how an adopter gets funded |
 | `sync` | re-read `account`'s docs and metadata from its repo now |
+| `delete-job` | remove one run receipt (`key` = the job key) from the account's books |
 | `sync-admin-token` | install the environment's `AGENT_PROXY_ADMIN_TOKEN` as the worker's secret |
 
 ```bash
