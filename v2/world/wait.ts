@@ -35,6 +35,6 @@ for (;;) {
   // This fire's landing: a pull request from an agent branch merged since the wait began. A run whose
   // session has not yet been ended by the reporter still counts once its branch has landed.
   const merged = (await pulls()).find((p) => p.merged && !mergedBefore.has(p.number) && p.head.ref.startsWith('agent/'));
-  if (merged && (seen || current)) { console.log(`wait: pull request #${merged.number} (${merged.head.ref}) merged on the twin`); process.exit(0); }
+  if (merged) { console.log(`wait: pull request #${merged.number} (${merged.head.ref}) merged on the twin${seen || current ? '' : ' — no session was published for it'}`); process.exit(0); }
   await Bun.sleep(5000);
 }
