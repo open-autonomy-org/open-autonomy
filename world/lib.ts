@@ -1,0 +1,54 @@
+// Shared by the world's post-up steps: where the world keeps its data, the API helpers, git.
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+export const NAME = 'open-autonomy';
+export const REPO = resolve(import.meta.dir, '..');
+export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(REPO, '.volter', 'worlds', NAME, 'data');
+export const ACCOUNT = process.env.OPEN_AUTONOMY_ACCOUNT ?? 'open-autonomy-org/open-autonomy';
+export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'deepseek/deepseek-v4-flash';
+export const ENC = encodeURIComponent(ACCOUNT);
+export const [OWNER, REPO_NAME] = ACCOUNT.split('/');
+
+export const need = (name: string): string => {
+  const v = process.env[name];
+  if (!v) throw new Error(`${name} is not set — run this through \`bun world/run.ts env -- …\` so the world's env is present`);
+  return v;
+};
+
+export function api(base: string, headers: Record<string, string> = {}) {
+  const call = async (method: string, path: string, body?: unknown) => {
+    const res = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await res.text();
+    let json: any = null; try { json = JSON.parse(text); } catch { /* not json */ }
+    return { status: res.status, body: json, text };
+  };
+  return { get: (p: string) => call('GET', p), post: (p: string, b?: unknown) => call('POST', p, b), del: (p: string) => call('DELETE', p) };
+}
+
+export async function git(cwd: string, ...args: string[]): Promise<string> {
+  const p = Bun.spawn({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+  const [code, out, err] = await Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  if (code !== 0) throw new Error(`git ${args.join(' ')} failed (${code}) in ${cwd}\n${err}`);
+  return out.trim();
+}
+
+export function agentEnv(): Record<string, string> {
+  const p = resolve(DATA, 'agent.env');
+  if (!existsSync(p)) throw new Error(`${p} is missing — run \`bun world/run.ts seed\` first`);
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(p, 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
+  return out;
+}
+
+export const ROADMAP_FIXTURE = `# The world's roadmap: one planned item the agent works. The real repository's roadmap is not the world's business.
+schema: open-autonomy.roadmap.v3
+items:
+  - id: world-item
+    phase: 1
+    priority: high
+    status: planned
+    title: The one item the world's agent works
+    acceptance:
+      - The item's status is done on the agent's branch.
+`;

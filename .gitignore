@@ -49,3 +49,6 @@ hermes/verification_evidence.db
 hermes/verification_evidence.db
 hermes/.restart_pending.json
 hermes/reporter-state.json
+
+# volter-world instances (the committed world is world/)
+.volter/

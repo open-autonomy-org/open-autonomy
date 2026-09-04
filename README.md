@@ -69,6 +69,18 @@ accounts are funded by a grant from it: ask in the Discord, and a maintainer run
 workflow that moves balance to your account. A key spends nothing until its account has a balance, and
 stops at zero.
 
+## Run the whole thing with no keys
+
+`world/` is a [volter-world](https://github.com/volter-ai/twin): the real worker, the real agent, and local
+twins of GitHub and the model gateway. No account, no credential, no spend. See `world/README.md`.
+
+```bash
+export TWINS_ROOT=/path/to/twin
+bun world/run.ts up          # the product, running on your machine
+bun world/run.ts agent       # one build-roadmap run of the real agent against it
+bun world/run.ts check       # the gate: up → seed → agent → verify → down
+```
+
 ## Run the checks
 
 ```bash
