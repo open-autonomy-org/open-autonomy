@@ -148,11 +148,11 @@ items:
     phase: 5
     priority: high
     status: planned
-    title: The SDK publishes the development stream; the sidecar is its first consumer
+    title: The SDK is wired into the default kit - hermes + supercode + roadmap yml
     acceptance:
       - packages/sdk holds the schema (sessions, turns, updates, work-item association) and a client - open a session, append turns with offset idempotency and resume, close with an optional outcome, post an update, plus the key mint and rotate helpers; the schema exists in exactly one place in the repo.
-      - The sidecar becomes the Hermes adapter built on the SDK, publishing work sessions by default with the kit's config naming the private exceptions, and tagging the work item it detects.
-      - The world's gate passes with the receipt path flowing through the SDK, and the SDK README shows the raw wire form of each call so any language can integrate without the package.
+      - The kit's adapter reads the full session stream from the Hermes home through supercode's session index and follow doors (the transcript source; Hermes's outbound webhooks at most a trigger), publishes it through the SDK, and attaches each session to the roadmap item it serves, read from ROADMAP.yml.
+      - Work sessions publish by default with the kit's config naming the private exceptions; the world's gate passes with the receipt path flowing through the SDK, and the SDK README shows the raw wire form of each call so any language can integrate without the package.
 
   - id: workspaces-root
     phase: 6
