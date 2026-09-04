@@ -34,6 +34,13 @@ if (page.status !== 200) fail(`project page -> ${page.status}`);
 if (!/last run .*: done|last run .*: failed/.test(page.text)) fail(`project page has no health line naming the last run: ${page.text.slice(0, 200)}`);
 if (!page.text.includes('receipt')) fail(`project page health line is not backed by a job receipt`);
 
+// The receipt behind that line: one finished job on the account, narrated on the standing key.
+const jobs = await pub.get(`/v1/accounts/${ENC}/jobs`);
+const latest = (jobs.body?.jobs ?? [])[0];
+if (!latest) fail('the account has no job receipts — the run was never narrated to the platform');
+if (latest.status !== 'done') fail(`the latest receipt is ${latest.status}`);
+if (!page.text.includes(encodeURIComponent(latest.key))) fail('the page\'s health line does not link the latest receipt');
+
 const scenario = await api(need('OPENAI_TWIN_URL')).get('/twin/scenario');
 const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id === 'clamped-output-cap');
 if (!clamp) fail('the clamped-output-cap handler is not loaded — the world cannot see a clamping proxy');
