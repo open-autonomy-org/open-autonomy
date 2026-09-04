@@ -16,7 +16,7 @@ Include: the affected component, reproduction steps, impact, and any proof-of-co
 ## Scope
 
 **In scope**
-- The platform (`platform/`): auth bypass, minting tokens beyond their bounds, spend-cap bypass,
+- The platform (`apps/platform/`): auth bypass, minting tokens beyond their bounds, spend-cap bypass,
   account or fund manipulation, webhook-signature bypass, storefront injection, and any way a
   sponsor's money could be spent on something other than the project's metered token usage.
 
@@ -27,7 +27,7 @@ Include: the affected component, reproduction steps, impact, and any proof-of-co
 
 ## Trust model
 
-The abuse and spend model is documented in `platform/README.md`. Reports that violate those
+The abuse and spend model is documented in `apps/platform/README.md`. Reports that violate those
 boundaries are especially valuable.
 
 ## Operating it yourself

@@ -8,7 +8,7 @@
 // an item. All of it goes to POST /v1/agent/events as CloudEvents 1.0, one or a batch.
 
 export interface ClientOptions {
-  baseUrl: string; // e.g. https://open-autonomy.org/v1 (the key sidecar's forwarded address inside a stack)
+  baseUrl: string; // e.g. https://open-autonomy.org/v1 (the key valve's forwarded address inside a stack)
   key: string;
   fetch?: typeof fetch;
 }

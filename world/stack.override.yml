@@ -1,4 +1,4 @@
-# The world's additions to the product's stack, and nothing else — template/container/compose.yml runs as
+# The world's additions to the product's stack, and nothing else — the kit's container/compose.yml runs as
 # the adopter runs it, through `volter-world attach --via reflect` (which gives every container the world's
 # resolver as DNS and the session CA). Two things this file adds, both image-specific:
 #   the clock   libfaketime preloaded into every process, its offset read from a file the world advances
