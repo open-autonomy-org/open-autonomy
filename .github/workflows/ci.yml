@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   ci:
+    # A branch in this repository is checked on its push; the pull_request run would be a duplicate of the
+    # same commit. A fork's pull request has no push here, so that is the run that checks it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
