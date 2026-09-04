@@ -23,6 +23,7 @@ const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${cfg.platform}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
 const stateFile = resolve(cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
+const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 60_000);
 const log = (m: string) => console.log(`reporter: ${m}`);
 
 interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
@@ -60,7 +61,12 @@ const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 
 const saveState = () => { try { writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`); } catch (e) { log(`cannot write ${stateFile}: ${(e as Error).message}`); } };
 
 const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' ? 'run' : 'chat');
-const sourceOf = (d: SessionDescriptor): string => d.recurrence?.job_id ?? d.surface?.platform ?? kindOf(d);
+// A run's source is its job's name. supercode's job model carries the job's id, not its name; the name is
+// how its Hermes codec titles the session (`<job name> · <fired at>`), so the title's first segment is it.
+const sourceOf = (d: SessionDescriptor): string => {
+  if (d.recurrence?.job_id) return d.title?.split(' · ')[0]?.trim() || d.recurrence.job_id;
+  return d.surface?.platform ?? kindOf(d);
+};
 function publishes(d: SessionDescriptor): boolean {
   const id = d.locator.session_id;
   if (cfg.publish.private.includes(id) || (d.recurrence?.job_id && cfg.publish.private.includes(d.recurrence.job_id))) return false;
@@ -113,12 +119,15 @@ class Followed {
     await this.session!.turns(turns, this.item);
     this.seq = this.session!.seq;
     this.lastAt = Date.now();
-    this.arm();
+    // The shape of a turn's end: the last message is the assistant's own text with no tool call pending.
+    const last = all[all.length - 1];
+    this.arm(last?.role === 'assistant' && !(last.tool_calls?.length));
   }
-  // A session that has gone quiet ends; a run's verdict is the transcript's own end-of-turn state.
-  arm(): void {
+  // A session ends when its transcript has ended: a closing assistant text followed by a minute of silence
+  // (a tool call in flight is never silence, its result is still to come), else the idle fallback.
+  arm(turnEnded = false): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.end('idle'), IDLE_END_MS);
+    this.timer = setTimeout(() => void this.end(turnEnded ? 'turn ended' : 'idle'), turnEnded ? TURN_END_MS : IDLE_END_MS);
   }
   async end(why: string): Promise<void> {
     if (this.ended) return;
@@ -139,8 +148,8 @@ class Followed {
 }
 
 // supercode is the reporter's own dependency (its npm package carries the binary), so it is found beside
-// this file before anywhere on PATH.
-const supercode = [resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
+// this file before anywhere on PATH; SUPERCODE_BIN names another build outright.
+const supercode = [process.env.SUPERCODE_BIN, resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].filter((p): p is string => !!p).find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
 const sc = new SupercodeHarnessClient({ command: supercode, env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
 const homes = { hermes: resolve(cfg.hermes_home, 'state.db') };
 const followed = new Map<string, Followed>();
@@ -168,7 +177,9 @@ async function follow(f: Followed): Promise<void> {
       if (f.ended) break;
       if (ev.type === 'session_snapshot') await f.messages(ev.session.messages, true);
       else if (ev.type === 'messages_appended') await f.messages(ev.messages, false);
-      else if (ev.type === 'runtime_state' && (ev.state === 'persisted' || ev.state === 'shutting_down') && f.seq > 0) await f.end(`runtime ${ev.state}`);
+      // `runtime_state` describes a supercode-managed runtime; a Hermes session never has one, so `persisted`
+      // says nothing about whether the run is over. Only a shutdown of one is an end.
+      else if (ev.type === 'runtime_state' && ev.state === 'shutting_down' && f.seq > 0) await f.end(`runtime ${ev.state}`);
     }
   } catch (e) { log(`${f.key}: follow ended (${(e as Error).message})`); }
 }

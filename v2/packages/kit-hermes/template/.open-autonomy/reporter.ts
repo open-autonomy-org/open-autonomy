@@ -61,7 +61,12 @@ const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 
 const saveState = () => { try { writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`); } catch (e) { log(`cannot write ${stateFile}: ${(e as Error).message}`); } };
 
 const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' ? 'run' : 'chat');
-const sourceOf = (d: SessionDescriptor): string => d.recurrence?.job_id ?? d.surface?.platform ?? kindOf(d);
+// A run's source is its job's name. supercode's job model carries the job's id, not its name; the name is
+// how its Hermes codec titles the session (`<job name> · <fired at>`), so the title's first segment is it.
+const sourceOf = (d: SessionDescriptor): string => {
+  if (d.recurrence?.job_id) return d.title?.split(' · ')[0]?.trim() || d.recurrence.job_id;
+  return d.surface?.platform ?? kindOf(d);
+};
 function publishes(d: SessionDescriptor): boolean {
   const id = d.locator.session_id;
   if (cfg.publish.private.includes(id) || (d.recurrence?.job_id && cfg.publish.private.includes(d.recurrence.job_id))) return false;
@@ -172,7 +177,9 @@ async function follow(f: Followed): Promise<void> {
       if (f.ended) break;
       if (ev.type === 'session_snapshot') await f.messages(ev.session.messages, true);
       else if (ev.type === 'messages_appended') await f.messages(ev.messages, false);
-      else if (ev.type === 'runtime_state' && (ev.state === 'persisted' || ev.state === 'shutting_down') && f.seq > 0) await f.end(`runtime ${ev.state}`);
+      // `runtime_state` describes a supercode-managed runtime; a Hermes session never has one, so `persisted`
+      // says nothing about whether the run is over. Only a shutdown of one is an end.
+      else if (ev.type === 'runtime_state' && ev.state === 'shutting_down' && f.seq > 0) await f.end(`runtime ${ev.state}`);
     }
   } catch (e) { log(`${f.key}: follow ended (${(e as Error).message})`); }
 }

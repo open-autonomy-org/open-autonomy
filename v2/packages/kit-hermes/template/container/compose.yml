@@ -61,6 +61,8 @@ services:
     image: __PROJECT__-reporter:local
     container_name: oa-reporter
     restart: unless-stopped
+    # The agent's own ids: the home it reads and the checkout it keeps its cursor in are the agent's.
+    user: "${AGENT_UID:-501}:${AGENT_GID:-20}"
     depends_on:
       valve: { condition: service_started }
       agent: { condition: service_started }
