@@ -210,6 +210,7 @@ describe('the spine: NEXT / NOW / DONE from the roadmap, the schedule, and the r
     const html = spineHtml({ account: 'o/r', yml: ROADMAP, jobs: [], now: Date.now() });
     expect(html.includes('shipped by the maintainer · no agent run')).toBe(true);
     expect(html.includes('No schedule committed.')).toBe(true);
+    expect(html.includes('no run yet')).toBe(true); // the no-run health line on the project page
   });
 });
 

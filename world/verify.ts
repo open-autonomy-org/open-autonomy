@@ -27,6 +27,13 @@ if (!/status: planned/.test(Buffer.from(main.body.content, 'base64').toString('u
 
 // The clamp handler must be armed but silent: a run that tripped it never gets here, so a run that gets
 // here with the handler having matched means the platform forwarded a cap it should not have.
+// The project page's health line: after a run, the page must name the outcome of the account's most
+// recent finished run, rendered from its job receipts (world-health-badge).
+const page = await pub.get(`/p/${ENC}`);
+if (page.status !== 200) fail(`project page -> ${page.status}`);
+if (!/last run .*: done|last run .*: failed/.test(page.text)) fail(`project page has no health line naming the last run: ${page.text.slice(0, 200)}`);
+if (!page.text.includes('receipt')) fail(`project page health line is not backed by a job receipt`);
+
 const scenario = await api(need('OPENAI_TWIN_URL')).get('/twin/scenario');
 const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id === 'clamped-output-cap');
 if (!clamp) fail('the clamped-output-cap handler is not loaded — the world cannot see a clamping proxy');
