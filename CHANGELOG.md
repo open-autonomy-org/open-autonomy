@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `live-switch`: the redesigned worker is deployed; the books read the same balances and audit trail as before; this repository's key was re-minted the adopter way and its stack runs the kit's three containers on this Mac, the reporter publishing its sessions to the live page.
 - `card-rail`: an agent mints a single-use virtual card against its balance (Stripe Issuing), bounded to an amount and the owner's merchant categories in `.open-autonomy/config.yaml`; the issuer's real-time authorization is decided at the platform's webhook, a capture settles on the books as a `card` audit record naming the merchant, and any decline releases the reservation. Proven in the world against the Stripe twin.
 - `partner-rail`: a partner service settles a metered charge against the balance with the project's key, for a partner the owner listed and within the owner's bound, as a `partner` audit record naming the partner, the unit and the quantity.
 - `roadmap-drivers`: the platform holds one normalized, revisioned roadmap per project (who, when, source, diff, conformance). The file driver and the credential-free GitHub milestones driver are pulled on sync; the Jira driver runs owner-side and pushes through the SDK on a steer-scoped key. Key scopes split steer from spend and narrate. The kit's `roadmap.ts` pulls a tracker into ROADMAP.yml, pushes it, and reconciles finished items back; the agent stays tracker-blind.
