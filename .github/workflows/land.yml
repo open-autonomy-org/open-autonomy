@@ -1,12 +1,13 @@
-name: Land an agent branch
-# The agent pushes its work to `agent/<item>` with a repository-scoped deploy key: it cannot open a pull
-# request or touch main. This workflow does the GitHub part for it: open the pull request (once) and arm
-# native auto-merge, so the branch lands on main exactly when the required `ci` and `security` checks
-# pass on its head commit (ci.yml and security.yml also run on `agent/**` pushes for that reason) and
-# never otherwise. No agent can merge; no red commit lands.
+name: Land a branch
+# Nothing pushes to `main`: the `main-protected` ruleset requires a pull request and the `ci` + `security`
+# checks, with no bypass actors — not the agent's deploy key, not a maintainer. (A deploy key counts as the
+# admin role, so an admin bypass would have handed the agent main.) Work lands by pushing a branch: this
+# workflow opens its pull request once and arms native auto-merge, so it merges exactly when the required
+# checks pass on its head commit — ci.yml and security.yml run on these branches for that reason.
+#   agent/**  the agent's own work        land/**  a maintainer's
 on:
   push:
-    branches: ['agent/**']
+    branches: ['agent/**', 'land/**']
 permissions:
   contents: write
   pull-requests: write
