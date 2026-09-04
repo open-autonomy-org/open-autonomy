@@ -93,6 +93,7 @@ async function up(): Promise<void> {
   writeFileSync(resolve(faketime, 'clock'), '+0\n');
   // The stack, as the adopter starts it.
   sh([...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
+  seal();
   // The gateway seeds its schedule from cron/jobs.seed.json as it boots (the schedule-seed hook). Its first
   // fire is one interval after that, so the clock is only worth advancing once the job exists — the product's
   // own door says when: `hermes cron list` (template/README.md).
@@ -106,8 +107,32 @@ async function up(): Promise<void> {
   console.log(`stack: up on ${context} — the gateway carries the schedule (build-roadmap seeded); \`bun world/run.ts clock advance 360m\` brings its first fire forward`);
 }
 
+// The seal: nothing leaves the world. On the world's Docker host, traffic off the stack's bridge may only
+// go to the host (the platform and the twins, at host.docker.internal); every other destination is refused,
+// not served — a public probe Hermes makes at boot fails the way a sealed world fails it. Container-to-
+// container traffic never leaves the bridge and is untouched. The rule lives in a chain of its own, so
+// re-applying it is idempotent and `down` can drop it.
+function seal(): void {
+  const netId = docker('network', 'inspect', `${project}_agent`, '--format', '{{.Id}}').out.trim();
+  const bridge = `br-${netId.slice(0, 12)}`;
+  const host = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(host ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
+  const script = [
+    'iptables -N OA_WORLD_SEAL 2>/dev/null || true',
+    'iptables -F OA_WORLD_SEAL',
+    `iptables -A OA_WORLD_SEAL -i ${bridge} ! -d ${host}/32 -j REJECT --reject-with icmp-port-unreachable`,
+    'iptables -C DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null || iptables -I DOCKER-USER 1 -j OA_WORLD_SEAL',
+  ].join(' && ');
+  sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', script], { quiet: true });
+  console.log(`stack: sealed — off ${bridge} only ${host} (the host's platform and twins) is reachable`);
+}
+function unseal(): void {
+  sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', 'iptables -D DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null; iptables -F OA_WORLD_SEAL 2>/dev/null; iptables -X OA_WORLD_SEAL 2>/dev/null; true'], { quiet: true, check: false });
+}
+
 function down(purge: boolean): void {
   if (sh(['docker', 'context', 'inspect', context], { quiet: true, check: false }).code !== 0) return;
+  unseal();
   sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir }, quiet: true, check: false });
   if (purge) for (const v of ['oa-home', 'oa-repo']) sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false });
   console.log(`stack: down${purge ? ', volumes removed' : ''}`);
@@ -127,4 +152,5 @@ const [verb, ...rest] = process.argv.slice(2);
 if (verb === 'up') await up();
 else if (verb === 'down') down(rest.includes('--purge'));
 else if (verb === 'clock' && rest[0] === 'advance' && rest[1]) clockAdvance(rest[1]);
-else { console.error('usage: stack.ts up | down [--purge] | clock advance <N>(s|m|h|d)'); process.exit(2); }
+else if (verb === 'seal') seal();
+else { console.error('usage: stack.ts up | down [--purge] | seal | clock advance <N>(s|m|h|d)'); process.exit(2); }

@@ -52,6 +52,9 @@ production, because it is the same worker.
   its pull request opened once and auto-merge armed; each pull request head gets the project's own
   `bun run check` reported as the `ci` check run; a merged head branch is deleted. It merges nothing: the
   twin does, exactly when GitHub would.
+- **The seal.** On the world's Docker host, traffic off the stack's bridge may only reach the host (the
+  platform and the twins); everything else is refused, not served. `verify` probes it from inside the
+  agent's container.
 - **The clock.** `stack.override.yml` preloads libfaketime into the agent's container, reading its offset
   from a file `clock advance` moves; monotonic time stays real. A six-hour jump trips the gateway's own
   liveness watchdog, which restarts it; the due job fires when it is back. That is Hermes's real behaviour
@@ -100,7 +103,6 @@ the page, never the prose.
 ## What it does not cover yet
 
 The agent's pushes go to the twin over its git wire, not through the deploy key in a forwarded ssh-agent
-(the twin speaks no ssh). The containers' egress is not sealed: a public probe Hermes makes at boot leaves
-the VM. Discord delivery has a twin (`@volter/twin-discord`) but this world does not run it: `discord.py`
+(the twin speaks no ssh). Discord delivery has a twin (`@volter/twin-discord`) but this world does not run it: `discord.py`
 hardcodes its base URL and builds its own HTTP session, so reaching the twin from an unmodified Hermes needs
 the reflect front (DNS plus the session CA), tracked as a roadmap item.
