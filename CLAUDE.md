@@ -24,7 +24,9 @@ The compiler lineage (IR, substrates, install CLI, profiles, bench) lives in
 
 ## Working agreement
 
-- Develop directly on `main`; push and merge without waiting. Report what you did.
+- Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors (a deploy
+  key counts as the admin role, so an admin bypass would hand the agent main). Push a `land/<topic>` branch;
+  `land.yml` opens its pull request and auto-merge lands it when `ci` and `security` pass. Don't wait on it.
 - Live proof is the proof: the deployed worker and the rendered site/README, not local tests alone.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.

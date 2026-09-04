@@ -24,7 +24,7 @@ What the gate consists of, provisioned on `open-autonomy-org/open-autonomy`:
 
 - the `production` environment: a required reviewer, and a deployment policy admitting only `deploy-v*` tags;
 - the `deploy-tags-admin-only` ruleset (no bypass actors): only admins create, move or delete a `deploy-v*` tag;
-- `main` requires the `ci` and `security` checks;
+- the `main-protected` ruleset: a pull request and the `ci` + `security` checks, **no bypass actors** — a deploy key acts with the admin role, so an admin bypass would let the agent push straight to main;
 - environment secrets `CLOUDFLARE_API_TOKEN` (Workers edit, this account) and `AGENT_PROXY_ADMIN_TOKEN`; the
   repository variable `CLOUDFLARE_ACCOUNT_ID`;
 - egress locked to GitHub, npm, `api.cloudflare.com` and `open-autonomy.org`, so no secret can leave to another host.

@@ -3,7 +3,7 @@ name: Security
 # and weekly.
 on:
   push:
-    branches: [main, 'agent/**'] # agent branches get their checks on the head commit, which auto-merge requires
+    branches: [main, 'agent/**', 'land/**'] # branch pushes get their checks on the head commit, which auto-merge requires
   pull_request:
   schedule:
     - cron: "27 3 * * 1"
