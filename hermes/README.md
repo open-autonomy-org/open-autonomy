@@ -32,10 +32,12 @@ On the host, only two things: the key file (`~/.config/open-autonomy/agent.env`)
 the deploy key. `cron/jobs.seed.json` pins the job's working directory to `/work/open-autonomy`.
 
 ```bash
-# once: the VM, with a dedicated ssh-agent (only the deploy key) forwarded into it
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.open-autonomy.ssh-agent.plist  # ssh-agent -a ~/.config/open-autonomy/agent.sock
-SSH_AUTH_SOCK=~/.config/open-autonomy/agent.sock ssh-add ~/.config/open-autonomy/agent_deploy_key
-SSH_AUTH_SOCK=~/.config/open-autonomy/agent.sock colima start open-autonomy --ssh-agent
+# once: two launchd agents on the host. org.open-autonomy.ssh-agent runs ~/.config/open-autonomy/ssh-agent.sh
+# (ssh-agent on ~/.config/open-autonomy/agent.sock with only the deploy key, loaded at start, so a reboot
+# leaves the agent able to push); org.open-autonomy.vm runs `colima start open-autonomy --ssh-agent` with
+# that socket, so the VM and its containers come back at login.
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.open-autonomy.ssh-agent.plist
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/org.open-autonomy.vm.plist
 export DOCKER_CONTEXT=colima-open-autonomy
 
 # once: the volumes — this directory's tracked files plus a .env with the Discord token, and a clone
