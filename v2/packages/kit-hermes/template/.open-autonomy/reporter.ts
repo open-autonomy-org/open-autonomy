@@ -138,7 +138,10 @@ class Followed {
   }
 }
 
-const sc = new SupercodeHarnessClient({ env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
+// supercode is the reporter's own dependency (its npm package carries the binary), so it is found beside
+// this file before anywhere on PATH.
+const supercode = [resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
+const sc = new SupercodeHarnessClient({ command: supercode, env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
 const homes = { hermes: resolve(cfg.hermes_home, 'state.db') };
 const followed = new Map<string, Followed>();
 const activitySubs = new Map<string, string>();

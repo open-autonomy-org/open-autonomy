@@ -2,8 +2,9 @@
   "name": "__PROJECT__-open-autonomy",
   "private": true,
   "type": "module",
-  "description": "The project's connection to Open Autonomy: the reporter's one dependency (supercode's harness SDK, which reads the agent's sessions). The Open Autonomy SDK is vendored beside it under sdk/.",
+  "description": "The project's connection to Open Autonomy: the reporter's two dependencies — supercode (the harness it reads the agent's sessions through) and supercode's harness SDK. The Open Autonomy SDK is vendored beside it under sdk/.",
   "dependencies": {
+    "@volter-ai-dev/supercode": "^0.4.13",
     "@volter-ai-dev/supercode-harness-sdk": "^0.3.19"
   }
 }

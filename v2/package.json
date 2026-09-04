@@ -17,7 +17,7 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "bun install --frozen-lockfile && bun run --filter '*' check",
+    "check": "bun install --frozen-lockfile && bun run --filter '*' check && bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && cd cookbooks/todo-cli && bun run check",
     "check:world": "bun world/run.ts check"
   }
 }

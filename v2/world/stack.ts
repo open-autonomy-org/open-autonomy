@@ -129,8 +129,8 @@ async function up(): Promise<void> {
   writeFileSync(resolve(worldDir, 'libfaketime.so.1'), readFileSync(lib));
   writeFileSync(resolve(worldDir, 'clock'), '+0\n');
   const ca = readFileSync(resolve(ROOT, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
-  // The agent image is built first so certifi's path can be read from it.
-  sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', ROOT, '--', ...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } });
+  // The agent image is built first (a build needs no world) so certifi's path can be read from it.
+  sh([...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } });
   const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', `${COOKBOOK_NAME}-agent:local`, '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
   if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', `${COOKBOOK_NAME}-agent:local`, certifiPath], { quiet: true }).out;

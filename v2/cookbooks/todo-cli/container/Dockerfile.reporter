@@ -1,14 +1,10 @@
-# The reporter: keyless. bun for the reporter itself, supercode (the harness it reads the agent's sessions
-# through) from its prebuilt, checksum-verified release, and the reporter's one npm dependency, supercode's
-# harness SDK. The reporter's code is baked at build time; its config and its cursor live in the checkout.
+# The reporter: keyless. bun for the reporter itself and its two npm dependencies: supercode (the harness
+# it reads the agent's sessions through, a prebuilt binary per platform) and supercode's harness SDK. The
+# reporter's code is baked at build time; its config and its cursor live in the checkout.
 FROM oven/bun:1.3.10
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
-ARG SUPERCODE_VERSION=latest
-RUN curl -fsSL https://raw.githubusercontent.com/volter-ai/supercode/main/scripts/install.sh | SUPERCODE_INSTALL_DIR=/usr/local/bin SUPERCODE_VERSION=${SUPERCODE_VERSION} SUPERCODE_NO_MODIFY_PATH=1 sh \
-    && supercode --version
 COPY .open-autonomy /opt/reporter
 WORKDIR /opt/reporter
-RUN bun install --no-save && chown -R bun:bun /opt/reporter
+RUN bun install --no-save && chown -R bun:bun /opt/reporter && ./node_modules/.bin/supercode --version
+ENV PATH="/opt/reporter/node_modules/.bin:${PATH}"
 USER bun
 CMD ["bun", "/opt/reporter/reporter.ts", "--config", "/work/project/.open-autonomy/config.yaml"]
