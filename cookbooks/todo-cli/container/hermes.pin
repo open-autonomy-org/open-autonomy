@@ -1,0 +1,6 @@
+# The Hermes the agent runs, pinned so the image is reproducible from a clean machine.
+# container/build-hermes.sh clones this exact tag and builds `hermes-agent:<tag>`, which
+# container/Dockerfile builds on. Bump both lines together, rebuild, and prove a run in the world.
+HERMES_REPO=https://github.com/NousResearch/hermes-agent.git
+HERMES_TAG=v2026.8.31
+HERMES_COMMIT=29112bef099274229cadff79cdff7bf7b99c4b77

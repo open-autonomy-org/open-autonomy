@@ -1,0 +1,21 @@
+{
+  "name": "@open-autonomy/sdk",
+  "version": "2.0.0",
+  "description": "The Open Autonomy SDK: the roadmap model and its codec, the development-stream client (sessions, turns, updates), and the key helpers. Everything it does is a documented HTTP wire any language can speak without it.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./roadmap": "./src/roadmap.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "test": "bun test test/*.test.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun test test/*.test.ts && bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "typescript": "^5.9.0"
+  }
+}

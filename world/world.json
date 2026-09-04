@@ -1,6 +1,6 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy's world: the platform worker built from this tree, metering against the model gateway (the openai twin playing the gateway's OpenAI wire, scripted by the cookbook's scenario) and the GitHub twin, with the world playing GitHub Actions for it. Cookbooks are the projects under test, run as the template runs them (world/stack.ts); nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
@@ -12,82 +12,55 @@
       "id": "gateway",
       "type": "twin",
       "command": "bun",
-      "args": [
-        "${TWINS_ROOT}/packages/twin/openai/src/cli.ts",
-        "serve"
-      ],
+      "args": ["${TWINS_ROOT}/packages/twin/openai/src/cli.ts", "serve"],
       "port": 47611,
-      "portReason": "the cookbook's containers were given this address at seed time (the sidecar's key file, the clone's origin) and a restart of the world must keep it",
+      "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "injectEnv": "GATEWAY_TWIN_URL",
-      "env": {
-        "TWIN_OPENAI_SCENARIO": "${SCENARIO}"
-      }
+      "env": { "TWIN_OPENAI_SCENARIO": "${SCENARIO}" }
     },
     {
       "id": "github",
       "type": "twin",
       "command": "bun",
-      "args": [
-        "${TWINS_ROOT}/packages/twin/github/src/cli.ts",
-        "serve"
-      ],
+      "args": ["${TWINS_ROOT}/packages/twin/github/src/cli.ts", "serve"],
       "port": 47612,
-      "portReason": "the cookbook's containers were given this address at seed time (the sidecar's key file, the clone's origin) and a restart of the world must keep it",
+      "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "injectEnv": "GITHUB_TWIN_URL"
     },
     {
       "id": "discord",
       "type": "twin",
       "command": "bun",
-      "args": [
-        "${TWINS_ROOT}/packages/twin/discord/src/cli.ts",
-        "serve"
-      ],
+      "args": ["${TWINS_ROOT}/packages/twin/discord/src/cli.ts", "serve"],
       "port": 47615,
-      "portReason": "the cookbook's containers reach the twin's gateway websocket at this address (TWIN_DISCORD_GATEWAY_URL) and a restart of the world must keep it",
+      "portReason": "the cookbook's containers reach the twin's gateway websocket at this address and a restart of the world must keep it",
       "injectEnv": "DISCORD_TWIN_URL",
-      "env": {
-        "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway"
-      }
+      "env": { "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway" }
     },
     {
       "id": "platform",
       "type": "process",
       "command": "bun",
-      "args": [
-        "world/platform.ts"
-      ],
+      "args": ["${WORLD_DIR}/platform.ts"],
       "port": 47613,
-      "portReason": "the cookbook's containers were given this address at seed time (the sidecar's key file, the clone's origin) and a restart of the world must keep it",
+      "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "portArg": false,
       "rootArg": "--persist-to",
       "injectEnv": "PLATFORM_URL",
-      "ready": {
-        "httpUrl": "${url}/healthz",
-        "timeoutMs": 120000,
-        "intervalMs": 500
-      }
+      "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 120000, "intervalMs": 500 }
     },
     {
       "id": "actions",
       "type": "process",
       "command": "bun",
-      "args": [
-        "world/actions.ts"
-      ],
+      "args": ["${WORLD_DIR}/actions.ts"],
       "port": 47614,
-      "portReason": "the cookbook's containers were given this address at seed time (the sidecar's key file, the clone's origin) and a restart of the world must keep it",
+      "portReason": "pinned like the others so a restart of the world keeps every address",
       "portArg": false,
       "rootArg": false,
       "injectEnv": "ACTIONS_URL",
-      "env": {
-        "WORLD_ACTIONS_REPOS": "cookbook/${COOKBOOK},open-autonomy-org/open-autonomy"
-      },
-      "ready": {
-        "httpUrl": "${url}/healthz",
-        "timeoutMs": 30000,
-        "intervalMs": 200
-      }
+      "env": { "WORLD_ACTIONS_REPOS": "cookbook/${COOKBOOK}" },
+      "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 30000, "intervalMs": 200 }
     }
   ]
 }

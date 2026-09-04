@@ -1,0 +1,13 @@
+# The roadmap the agent works, top to bottom, in phase order. `status` is one of
+# proposed | planned | active | done, and the agent updates it as it finishes an item.
+# Each item's acceptance lines are the whole definition of done; keep them checkable.
+schema: open-autonomy.roadmap.v3
+items:
+  - id: hello
+    phase: 1
+    priority: high
+    status: planned
+    title: The project says hello
+    acceptance:
+      - "`bun run check` passes on a fresh clone."
+      - README.md describes what this project is for in one paragraph.

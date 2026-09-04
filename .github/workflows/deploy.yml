@@ -1,22 +1,15 @@
-name: Deploy proxy
-# Production deploy of the agent model proxy (platform).
-#
-# Security model (see the deploy-security design):
-#  - Fires ONLY on a human-cut `deploy-v*` tag. Agents cannot push tags, and the `production`
-#    environment's deployment policy admits only `deploy-v*` tags — so nothing deploys without an
-#    affirmative human promotion (the allowlist wall).
-#  - `production` also carries a required-reviewer gate: a maintainer approves each deployment.
-#  - The code is human-promoted AND human-reviewed (platform/** is a CODEOWNERS path), so the
-#    build here runs trusted code — no build/publish split needed.
-#  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot be exfiltrated to any
-#    other host. The token itself is scoped to Workers-edit on this one worker (set as the
-#    CLOUDFLARE_API_TOKEN environment secret), so even a leak can do nothing but redeploy this worker.
-#  - Backstop (outside this repo's trust loop): hard provider-side spend caps + instant Cloudflare
-#    rollback bound the worst case of a bad deploy.
+name: Deploy platform
+# Production deploy of the platform worker (apps/platform).
+#  - Fires ONLY on a human-cut `deploy-v*` tag (agents cannot push tags) or a manual dispatch; either way the
+#    `production` environment's required reviewer approves each deployment.
+#  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot leave to any other host. The
+#    token is scoped to Workers-edit on this one worker.
+#  - The books live in the worker's Durable Object and survive the deploy; keys verify by signature and
+#    expiry and survive it too (apps/platform/DEPLOY.md).
 on:
   push:
     tags: ['deploy-v*']
-  workflow_dispatch: # deploy main now: still waits on the production reviewer
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -40,14 +33,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.10
-          no-cache: true # no restored cache can poison a privileged tag-publish deploy
-      - name: Install proxy deps (frozen)
-        working-directory: platform
+          no-cache: true # no restored cache can poison a privileged deploy
+      - name: Install (frozen)
         run: bun install --frozen-lockfile
-      - name: Deploy (wrangler — pinned in the lockfile, integrity-verified by check:supply-chain)
-        working-directory: platform
+      - name: Deploy (the lockfile-pinned wrangler)
+        working-directory: apps/platform
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
-        run: bun run deploy # the lockfile-pinned wrangler from the frozen install above
+        run: bun run deploy

@@ -1,0 +1,61 @@
+# The Hermes kit
+
+The default Open Autonomy starter kit: a complete repository that runs its own Hermes agent against the
+platform, with the SDK wired in. One command scaffolds it from two identity parameters, the project's name
+and its platform account; everything else is boilerplate the kit fills in.
+
+```bash
+bun create open-autonomy my-project --project my-project --account owner/my-project
+create-open-autonomy adopt .   --project my-project --account owner/my-project   # into an existing repository
+create-open-autonomy check .     # the kit-owned files against the kit (exit 1 on drift)
+create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
+```
+
+## What a generated repository contains
+
+```text
+README.md            the project's front page, with the account's four widgets
+ROADMAP.yml          what gets built, in order — the agent works it top to bottom
+docs/VISION.md       why the project exists; its first paragraph is the page's lead
+CHANGELOG.md         what shipped
+AGENTS.md            the agent's rules for this repository
+LICENSE              Apache-2.0, seeded; the project's own
+package.json, test/  the project's own check (`bun run check`), starting with one test
+hermes/              the agent: SOUL.md, the build-roadmap skill, the schedule seed, config.yaml (the model:
+                     the project's own choice), the schedule-seed hook
+.open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
+                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), the vendored
+                     SDK, kit.json (which kit, version and parameters made this repository)
+container/           the stack: the agent, the key valve, the reporter; the pinned Hermes image
+.github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
+```
+
+**Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml`), the reporter, the key
+tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in
+`kit.json`'s `divergences`. **Seeded** files are written once and never touched again: the README, the
+roadmap, the vision, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
+
+## How the repository runs itself
+
+The agent is stock Hermes in a container, its home the committed `hermes/`, its checkout the repository,
+its model calls forwarded by the key valve beside it (which alone holds the project's key) to the platform,
+where each is metered to the project's account. Its schedule fires the `build-roadmap` job, which takes the
+top open item of `ROADMAP.yml`, builds it, verifies it, lands it on an `agent/<item>` branch that the landing
+workflow merges when the checks pass, and marks it done.
+
+The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
+(`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve
+with the Open Autonomy SDK, attaching it to the roadmap item it serves. Scheduled runs publish by default;
+`.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
+and settled cent per item, live while a session runs.
+
+**Environmental dependency.** The reporter reads Hermes through supercode's `hermes` harness, which is on
+supercode's main branch and not yet in a published release (`@volter-ai-dev/supercode` 0.4.13 lists no
+Hermes harness). Until the release that carries it, the reporter needs a build from that branch, named by
+`SUPERCODE_BIN`; this repository's world builds one from the checkout beside it.
+
+## Nothing in the agent's reach is a secret that matters
+
+The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent forwarded from the host
+holding one repository-scoped deploy key. Delivery uses at most a Discord bot token. Every session's turns
+are published; the platform redacts secret-shaped text at intake as the second wall.

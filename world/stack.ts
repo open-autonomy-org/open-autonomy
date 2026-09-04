@@ -1,70 +1,65 @@
 #!/usr/bin/env bun
-// The cookbook's agent as the template runs it (bun world/run.ts stack up|down|clock): the adopter's own steps
-// from template/README.md, performed against the world's Docker host, and nothing else. The stack is the
-// product's compose file untouched — the gateway carries the schedule and fires the run itself; the world
-// only seeds, waits and audits. What the world adds is stack.override.yml: its clock, reaching the container.
+// The cookbook's stack as the kit runs it (bun world/run.ts stack up|down|clock): the adopter's own steps
+// from container/README.md, performed against the world's Docker host, and nothing else. The compose file is
+// the kit's untouched — the gateway carries the schedule and fires the run itself; the world only seeds,
+// waits and audits. What the world adds is stack.override.yml: its clock, reaching the container.
 //
 //   up     the Hermes image, the two volumes (home from the cookbook's hermes/, the clone from the twin),
-//          the key file the sidecar reads, then `docker compose up -d --build`
+//          the key file the valve reads, then `docker compose up -d --build`
 //   down   `docker compose down`; with --purge the volumes too
 //   clock advance <N>(s|m|h|d)   move the container's clock (the schedule is "every 360m" from boot)
 //
-// The Docker host is the world's own (WORLD_DOCKER_CONTEXT, default colima-open-autonomy-world): the compose
-// file names its containers and volumes, so a host runs one agent — this VM is the world's, as the template
-// says "a VM of its own is best". Containers reach the host's services at host.docker.internal.
+// The Docker host is the world's own (WORLD_DOCKER_CONTEXT, default colima-open-autonomy-world). Containers
+// reach the host's services at host.docker.internal.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, REPO, agentEnv, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, HOME_CHANNEL, ROOT, agentEnv, need } from './lib.ts';
 
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
 const profile = context.replace(/^colima-/, '');
 const project = 'oa';
 const stackDir = resolve(DATA, 'stack');
-const compose = ['docker', '--context', context, 'compose', '-p', project, '-f', resolve(REPO, 'template/container/compose.yml'), '-f', resolve(REPO, 'world/stack.override.yml')];
-const twinsCli = resolve(process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts');
-const REFLECT_FRONT = 443; // what a container reaches https on
-const REFLECT_RESOLVER = 53; // a container takes a DNS address, not a port
-const worldDir = resolve(DATA, 'stack', 'world'); // mounted at /opt/world: the clock, its library, the CA
+const compose = ['docker', '--context', context, 'compose', '-p', project, '-f', resolve(COOKBOOK, 'container/compose.yml'), '-f', resolve(ROOT, 'world/stack.override.yml')];
+const twinsCli = resolve(process.env.TWINS_ROOT ?? resolve(ROOT, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts');
+const REFLECT_FRONT = 443;
+const REFLECT_RESOLVER = 53;
+const worldDir = resolve(DATA, 'stack', 'world');
 const uid = process.env.AGENT_UID ?? String(process.getuid?.() ?? 501);
 const gid = process.env.AGENT_GID ?? String(process.getgid?.() ?? 20);
 
 // Docker and colima are the machine's tooling, not the product under test: they run outside the world's
-// proxy (image pulls and builds go to their registries), with the injector's NODE_OPTIONS dropped too.
+// proxy (image pulls and builds go to their registries).
 const hostEnv = (): Record<string, string> => {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(https?_proxy|all_proxy|no_proxy|node_options|node_extra_ca_certs)$/i.test(k)) env[k] = v;
   return env;
 };
 function sh(cmd: string[], opts: { input?: string; quiet?: boolean; check?: boolean; env?: Record<string, string> } = {}): { code: number; out: string } {
-  const r = Bun.spawnSync({ cmd, cwd: REPO, stdin: opts.input === undefined ? 'inherit' : new TextEncoder().encode(opts.input), stdout: 'pipe', stderr: opts.quiet ? 'pipe' : 'inherit', env: { ...hostEnv(), ...opts.env } });
+  const r = Bun.spawnSync({ cmd, cwd: ROOT, stdin: opts.input === undefined ? 'inherit' : new TextEncoder().encode(opts.input), stdout: 'pipe', stderr: opts.quiet ? 'pipe' : 'inherit', env: { ...hostEnv(), ...opts.env } });
   const out = r.stdout.toString();
   if (opts.check !== false && r.exitCode !== 0) throw new Error(`${cmd.slice(0, 4).join(' ')} … failed (${r.exitCode})${opts.quiet ? `\n${r.stderr.toString().slice(-800)}` : ''}`);
   return { code: r.exitCode, out };
 }
 const docker = (...args: string[]) => sh(['docker', '--context', context, ...args], { quiet: true });
-// A container reaches the host's services (the platform, the GitHub twin) at host.docker.internal.
+const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ stack: ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
 const forContainers = (url: string) => url.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/, '//host.docker.internal');
 function hostIp(): string {
   const ip = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
   return ip;
 }
-// The world's reflect front and resolver (docs/ATTACH.md in the twins repository), for the vendor the
-// agent's own HTTP client cannot be pointed elsewhere: discord.py. Routed hosts resolve to the host, on
-// whose :443 the front terminates TLS with the session CA and forwards to the twin. The verb runs in the
-// foreground and supervises nothing, so the recipe keeps it alive for the stack's life.
-// The resolver's address for containers: on colima the VM's gateway address answers DNS itself, so the
-// resolver is reached at the host's own LAN address (the default route's interface).
 function resolverIp(): string {
   const iface = sh(['sh', '-c', "route -n get default 2>/dev/null | awk '/interface:/{print $2}'"], { quiet: true, check: false }).out.trim();
   const ip = iface ? sh(['ipconfig', 'getifaddr', iface], { quiet: true, check: false }).out.trim() : '';
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error('stack: the host has no LAN address for the containers\' DNS (route -n get default / ipconfig getifaddr)');
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("stack: the host has no LAN address for the containers' DNS");
   return ip;
 }
+// The world's reflect front and resolver, for the vendor the agent's own HTTP client cannot be pointed
+// elsewhere: discord.py. Routed hosts resolve to the host, whose :443 terminates TLS with the session CA.
 function reflectUp(ip: string, dnsIp: string): void {
   reflectDown();
-  for (const host of ['discord.com', 'gateway.discord.gg']) sh(['bun', twinsCli, 'route', 'open-autonomy', 'add', host, '--root', REPO], { quiet: true, check: false });
-  const child = Bun.spawn({ cmd: ['bun', twinsCli, 'reflect', 'open-autonomy', '--target-ip', ip, '--resolver-ip', dnsIp, '--port', String(REFLECT_FRONT), '--resolver-port', String(REFLECT_RESOLVER), '--root', REPO], cwd: REPO, stdout: Bun.file(resolve(stackDir, 'reflect.log')), stderr: Bun.file(resolve(stackDir, 'reflect.log')), env: hostEnv() });
+  for (const host of ['discord.com', 'gateway.discord.gg']) sh(['bun', twinsCli, 'route', 'open-autonomy', 'add', host, '--root', ROOT], { quiet: true, check: false });
+  const child = Bun.spawn({ cmd: ['bun', twinsCli, 'reflect', 'open-autonomy', '--target-ip', ip, '--resolver-ip', dnsIp, '--port', String(REFLECT_FRONT), '--resolver-port', String(REFLECT_RESOLVER), '--root', ROOT], cwd: ROOT, stdout: Bun.file(resolve(stackDir, 'reflect.log')), stderr: Bun.file(resolve(stackDir, 'reflect.log')), env: hostEnv() });
   child.unref();
   writeFileSync(resolve(stackDir, 'reflect.pid'), `${child.pid}\n`);
   const deadline = Date.now() + 15_000;
@@ -86,94 +81,104 @@ function reflectDown(): void {
 async function up(): Promise<void> {
   const github = need('GITHUB_TWIN_URL');
   const env = agentEnv();
-  // The Docker host: the world's own VM, started once and kept (like the twins checkout).
   if (sh(['docker', 'context', 'inspect', context], { quiet: true, check: false }).code !== 0) {
     console.log(`stack: starting the world's Docker host (colima profile ${profile}, one-time)`);
     sh(['colima', 'start', profile, '--cpu', '4', '--memory', '6', '--disk', '20']);
   }
-  // The pinned Hermes image, by the template's own tool (copied from another Docker host on this machine
-  // when one already built it — same tag, same digest — since the build is ten minutes).
-  const pin = Object.fromEntries(readFileSync(resolve(REPO, 'template/container/hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k));
+  // The pinned Hermes image, by the kit's own tool (copied from another Docker host on this machine when
+  // one already built it, since the build is ten minutes).
+  const pin = Object.fromEntries(readFileSync(resolve(COOKBOOK, 'container/hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k));
   const image = `hermes-agent:${pin.HERMES_TAG}`;
   if (docker('image', 'inspect', image).code !== 0) {
     const other = sh(['docker', 'context', 'ls', '-q'], { quiet: true }).out.split('\n').map((c) => c.trim()).filter((c) => c && c !== context)
       .find((c) => Bun.spawnSync({ cmd: ['docker', '--context', c, 'image', 'inspect', image], stdout: 'ignore', stderr: 'ignore' }).exitCode === 0);
     if (other) {
       console.log(`stack: copying ${image} from Docker host ${other}`);
-      const r = Bun.spawnSync({ cmd: ['sh', '-c', `docker --context '${other}' save '${image}' | docker --context '${context}' load`], cwd: REPO, stdout: 'inherit', stderr: 'inherit', env: hostEnv() });
+      const r = Bun.spawnSync({ cmd: ['sh', '-c', `docker --context '${other}' save '${image}' | docker --context '${context}' load`], cwd: ROOT, stdout: 'inherit', stderr: 'inherit', env: hostEnv() });
       if (r.exitCode !== 0) throw new Error('image copy failed');
     } else {
-      console.log(`stack: building ${image} (template/container/build-hermes.sh, ~10 minutes)`);
-      sh(['sh', resolve(REPO, 'template/container/build-hermes.sh')], { env: { DOCKER_CONTEXT: context } });
+      console.log(`stack: building ${image} (container/build-hermes.sh, ~10 minutes)`);
+      sh(['sh', resolve(COOKBOOK, 'container/build-hermes.sh')], { env: { DOCKER_CONTEXT: context } });
     }
   }
   const ip = hostIp();
-  // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at the
-  // sidecar, and names the optional Discord bot — a fake token the twin accepts — and its home channel), the
-  // checkout cloned from the project's origin — here the GitHub twin.
+  // A previous stack's containers would keep the volumes pinned; take them down first.
+  down(false);
+  // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at
+  // the valve and names the Discord bot — a fake token the twin accepts — and its home channel), the
+  // checkout cloned from the project's origin, here the GitHub twin.
   mkdirSync(stackDir, { recursive: true });
   const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
   if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
+  timed('volumes', () => {
   for (const v of ['oa-home', 'oa-repo']) { sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false }); docker('volume', 'create', v); }
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${resolve(COOKBOOK, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
-    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://sidecar:8787/v1\\nOPEN_AUTONOMY_KEY=sidecar\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
+    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1\\nOPEN_AUTONOMY_KEY=valve\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine/git:2.47.2', '-c', 'safe.directory=*', 'clone', '-q', `${forContainers(github)}/${ACCOUNT}.git`, '/work'], { quiet: true });
   sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine:3', 'chown', '-R', `${uid}:${gid}`, '/work'], { quiet: true });
-  // The key file the sidecar reads (template/README.md: ~/.config/open-autonomy/agent.env), with the
-  // platform's address as the container sees it.
+  });
+  // The key file the valve reads, with the platform's address as the container sees it.
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
   writeFileSync(resolve(secrets, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(env.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${env.OPEN_AUTONOMY_KEY}\n`);
   // What the world mounts into the container (stack.override.yml): the clock — libfaketime, built once for
-  // the image's Debian and kept under .volter, and the offset file starting at zero — and the session CA.
-  const faketime = worldDir;
-  mkdirSync(faketime, { recursive: true });
-  const lib = resolve(REPO, '.volter', 'faketime', 'libfaketime.so.1');
+  // the image's Debian — and the session CA in Python's certifi bundle.
+  mkdirSync(worldDir, { recursive: true });
+  const lib = resolve(ROOT, '.volter', 'faketime', 'libfaketime.so.1');
   if (!existsSync(lib)) {
-    mkdirSync(resolve(REPO, '.volter', 'faketime'), { recursive: true });
+    mkdirSync(resolve(ROOT, '.volter', 'faketime'), { recursive: true });
     console.log('stack: building libfaketime for the image (one-time)');
-    sh(['docker', '--context', context, 'run', '--rm', '-v', `${resolve(REPO, '.volter', 'faketime')}:/out`, 'debian:trixie-slim', 'sh', '-c',
+    sh(['docker', '--context', context, 'run', '--rm', '-v', `${resolve(ROOT, '.volter', 'faketime')}:/out`, 'debian:trixie-slim', 'sh', '-c',
       'apt-get update -qq >/dev/null && apt-get install -y -qq libfaketime >/dev/null 2>&1 && cp /usr/lib/*/faketime/libfaketime.so.1 /out/'], { quiet: true });
   }
-  writeFileSync(resolve(faketime, 'libfaketime.so.1'), readFileSync(lib));
-  writeFileSync(resolve(faketime, 'clock'), '+0\n');
-  const ca = readFileSync(resolve(REPO, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
-  // Python's aiohttp (discord.py's client) trusts certifi's bundle, not the system store: the image's own
-  // bundle plus the session CA, mounted over certifi's file (the path is the image's, read from it).
-  const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', 'open-autonomy-agent:local', '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
+  writeFileSync(resolve(worldDir, 'libfaketime.so.1'), readFileSync(lib));
+  writeFileSync(resolve(worldDir, 'clock'), '+0\n');
+  const ca = readFileSync(resolve(ROOT, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
+  // The agent image is built first (a build needs no world) so certifi's path can be read from it.
+  timed('agent image', () => sh([...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } }));
+  const certifiPath = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', '/opt/hermes/.venv/bin/python', `${COOKBOOK_NAME}-agent:local`, '-c', 'import certifi; print(certifi.where())'], { quiet: true, check: false }).out.trim();
   if (!certifiPath.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
-  const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', 'open-autonomy-agent:local', certifiPath], { quiet: true }).out;
-  writeFileSync(resolve(faketime, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
+  const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', `${COOKBOOK_NAME}-agent:local`, certifiPath], { quiet: true }).out;
+  writeFileSync(resolve(worldDir, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
+  // supercode with Hermes support is on its main branch, not yet released: the reporter runs a build from
+  // the checkout beside the twins (SUPERCODE_ROOT, default ../../supercode), made once on the world's
+  // Docker host for the image's Linux and kept under .volter.
+  const supercodeBin = resolve(ROOT, '.volter', 'supercode-build', 'supercode');
+  if (!existsSync(supercodeBin)) {
+    const src = resolve(process.env.SUPERCODE_ROOT ?? resolve(ROOT, '..', 'supercode'));
+    if (!existsSync(resolve(src, 'crates', 'cli', 'Cargo.toml'))) throw new Error(`stack: no supercode checkout at ${src} (SUPERCODE_ROOT) to build the reporter's supercode from`);
+    console.log('stack: building supercode from the checkout for the reporter (one-time, ~15 minutes)');
+    mkdirSync(resolve(ROOT, '.volter', 'supercode-build'), { recursive: true });
+    sh(['docker', '--context', context, 'run', '--rm', '-v', `${src}:/src:ro`, '-v', `${resolve(ROOT, '.volter', 'supercode-build')}:/out`, 'rust:1-bookworm', 'sh', '-c',
+      'mkdir /build && tar -C /src --exclude=./target --exclude=./node_modules --exclude=./.git --exclude="*/node_modules" -cf - . | tar -C /build -xf - && cd /build && cargo build --release --bin supercode && cp target/release/supercode /out/supercode']);
+  }
+  writeFileSync(resolve(worldDir, 'supercode'), readFileSync(supercodeBin), { mode: 0o755 });
   const dnsIp = resolverIp();
-  reflectUp(ip, dnsIp);
+  timed('reflect', () => reflectUp(ip, dnsIp));
   // The stack, as the adopter starts it — attached: every container's DNS is the world's resolver and its
-  // trust the session CA, composed by volter-world from the compose files themselves.
-  sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', REPO, '--', ...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, TWINS_ROOT: process.env.TWINS_ROOT ?? resolve(REPO, '..', 'twin') } });
-  seal();
-  // The gateway seeds its schedule from cron/jobs.seed.json as it boots (the schedule-seed hook). Its first
-  // fire is one interval after that, so the clock is only worth advancing once the job exists — the product's
-  // own door says when: `hermes cron list` (template/README.md).
+  // trust the session CA.
+  timed('compose up --build', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', ROOT, '--', ...compose, 'up', '-d', '--build'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid } }));
+  timed('seal', () => seal());
+  // The gateway seeds its schedule as it boots; the clock is only worth advancing once the job exists.
   const deadline = Date.now() + 300_000;
+  const booted = Date.now();
   for (;;) {
     const list = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'hermes', 'cron', 'list'], { quiet: true, check: false }).out;
     if (/build-roadmap/.test(list)) break;
     if (Date.now() > deadline) throw new Error('stack: the gateway did not seed its schedule within five minutes (docker logs oa-agent)');
-    Bun.sleepSync(5000);
+    Bun.sleepSync(2000);
   }
+  console.log(`⏱ stack: gateway boot to schedule seeded: ${((Date.now() - booted) / 1000).toFixed(1)}s`);
   console.log(`stack: up on ${context} — the gateway carries the schedule (build-roadmap seeded); \`bun world/run.ts clock advance 360m\` brings its first fire forward`);
 }
 
-// The seal: nothing leaves the world. On the world's Docker host, traffic off the stack's bridge may only
-// go to the host (the platform and the twins, at host.docker.internal); every other destination is refused,
-// not served — a public probe Hermes makes at boot fails the way a sealed world fails it. Container-to-
-// container traffic never leaves the bridge and is untouched. The rule lives in a chain of its own, so
-// re-applying it is idempotent and `down` can drop it.
+// The seal: off the stack's bridge only the host (the platform, the twins, the front, the resolver) is
+// reachable; everything else is refused. Container-to-container traffic is untouched.
 function seal(): void {
   const netId = docker('network', 'inspect', `${project}_agent`, '--format', '{{.Id}}').out.trim();
   const bridge = `br-${netId.slice(0, 12)}`;
   const dnsIp = resolverIp();
-  const host = sh(['docker', '--context', context, 'run', '--rm', 'alpine:3', 'getent', 'hosts', 'host.docker.internal'], { quiet: true }).out.trim().split(/\s+/)[0];
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(host ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
+  const host = hostIp();
   const script = [
     'iptables -N OA_WORLD_SEAL 2>/dev/null || true',
     'iptables -F OA_WORLD_SEAL',
@@ -183,7 +188,7 @@ function seal(): void {
     'iptables -C DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null || iptables -I DOCKER-USER 1 -j OA_WORLD_SEAL',
   ].join(' && ');
   sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', script], { quiet: true });
-  console.log(`stack: sealed — off ${bridge} only the host (${host}: the platform, the twins, the front; ${dnsIp}: the resolver) is reachable`);
+  console.log(`stack: sealed — off ${bridge} only the host (${host}; ${dnsIp}: the resolver) is reachable`);
 }
 function unseal(): void {
   sh(['colima', 'ssh', '-p', profile, '--', 'sudo', 'sh', '-c', 'iptables -D DOCKER-USER -j OA_WORLD_SEAL 2>/dev/null; iptables -F OA_WORLD_SEAL 2>/dev/null; iptables -X OA_WORLD_SEAL 2>/dev/null; iptables -t nat -D PREROUTING -j OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -F OA_WORLD_REFLECT 2>/dev/null; iptables -t nat -X OA_WORLD_REFLECT 2>/dev/null; true'], { quiet: true, check: false });

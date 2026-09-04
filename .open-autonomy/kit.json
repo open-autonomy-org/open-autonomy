@@ -1,0 +1,12 @@
+{
+  "kit": "hermes",
+  "version": "2.0.0",
+  "params": {
+    "project": "open-autonomy",
+    "account": "open-autonomy-org/open-autonomy"
+  },
+  "divergences": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/land.yml"
+  ]
+}
