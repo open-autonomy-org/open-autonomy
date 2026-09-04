@@ -146,7 +146,8 @@ async function up(): Promise<void> {
     if (!existsSync(resolve(src, 'crates', 'cli', 'Cargo.toml'))) throw new Error(`stack: no supercode checkout at ${src} (SUPERCODE_ROOT) to build the reporter's supercode from`);
     console.log('stack: building supercode from the checkout for the reporter (one-time, ~15 minutes)');
     mkdirSync(resolve(ROOT, '.volter', 'supercode-build'), { recursive: true });
-    sh(['docker', '--context', context, 'run', '--rm', '-v', `${src}:/src:ro`, '-v', `${resolve(ROOT, '.volter', 'supercode-build')}:/out`, 'rust:1-bookworm', 'sh', '-c', 'cp -r /src /build && cd /build && cargo build --release --bin supercode && cp target/release/supercode /out/supercode']);
+    sh(['docker', '--context', context, 'run', '--rm', '-v', `${src}:/src:ro`, '-v', `${resolve(ROOT, '.volter', 'supercode-build')}:/out`, 'rust:1-bookworm', 'sh', '-c',
+      'mkdir /build && tar -C /src --exclude=./target --exclude=./node_modules --exclude=./.git --exclude="*/node_modules" -cf - . | tar -C /build -xf - && cd /build && cargo build --release --bin supercode && cp target/release/supercode /out/supercode']);
   }
   writeFileSync(resolve(worldDir, 'supercode'), readFileSync(supercodeBin), { mode: 0o755 });
   const dnsIp = resolverIp();
