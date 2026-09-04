@@ -1,51 +1,247 @@
 # The roadmap the agent works, top to bottom, in phase order. `status` is one of
 # proposed | planned | active | done, and the agent updates it as it finishes an item.
-# The site renders this file as-is.
+# The site renders this file as-is. What was built before this plan is in CHANGELOG.md.
 #
-# Items are about the PRODUCT: template/ and platform/. hermes/ (our own applied template) and world/ (the
-# scenarios) are touched only when a product change reaches into them. An item looks like:
-#
-#   - id: short-slug
-#     phase: 1
-#     priority: high | medium | low
-#     status: planned
-#     title: One line saying what will be true when it is done
-#     acceptance:
-#       - A line the agent can verify on the running system.
-#
-# Empty on purpose: what was built so far is in CHANGELOG.md; what comes next is decided here.
+# This is the redesign punchlist. Open Autonomy is a way to run self-building technologies, in four
+# pieces: the platform (a Patreon-style app funding projects with agentic funds, spent through public
+# audited rails, reported through an SDK), starter kits (Hermes first: a full boilerplate repo that
+# runs itself out of the box), cookbooks (complete autonomous projects worth copying), and this
+# install's own boilerplate (our hermes/, the world, these files) — because Open Autonomy is itself
+# an Open Autonomy project. The phases below cut the legacy of older architectures and reshape the
+# repo into that. Every item lands through the landing convention with `bun run check` and the
+# world's gate green; an item needing a maintainer deploy is left `active` with a report, per
+# AGENTS.md.
 schema: open-autonomy.roadmap.v3
 items:
-  - id: stack-attaches-to-world
+  - id: four-pieces-framing
     phase: 1
+    priority: high
+    status: planned
+    title: The docs state what Open Autonomy is, in four pieces
+    acceptance:
+      - README.md and docs/VISION.md lead with the four pieces (platform, starter kits, cookbooks, this install's boilerplate) and describe the platform as a Patreon-style app with spend rails (agent endpoints live; minted cards and partners planned) and an SDK for progress.
+      - No doc in the repo claims token usage is the only thing funded, and no doc names a world verb or file that does not exist.
+      - AGENTS.md states the same four pieces in its "what this is" line.
+
+  - id: drop-hello-roadmap
+    phase: 1
+    priority: high
+    status: planned
+    title: hello-roadmap is gone; todo-cli is the cookbook
+    acceptance:
+      - cookbook/hello-roadmap and world/handlers/hello-roadmap do not exist; no file in the repo references hello-roadmap.
+      - todo-cli is the world's default cookbook, and the world README documents one clock fire of it as the smoke path.
+      - "`bun world/run.ts check` passes with the new default."
+
+  - id: remove-run-model
+    phase: 2
+    priority: high
+    status: planned
+    title: The per-run token model is gone from the platform
+    acceptance:
+      - Key claims carry account, allowed models, key id and expiry, and nothing else; the admin per-run mint, per-run status and per-run revoke routes are gone.
+      - Grep for issue, actor, purpose, github_run_id, github_run_attempt and github_workflow_ref in platform/src returns nothing.
+      - The proxy tests are rebuilt around claim-file keys (mint, spend, audit, rotate) and the suite is green; `bun world/run.ts check` passes.
+
+  - id: remove-lanes
+    phase: 2
+    priority: high
+    status: planned
+    title: The ledger bounds spend by balance and the daily rail only
+    acceptance:
+      - The user and system run lanes, the per-repo, per-actor and per-issue daily counters, the purposes set and the expiry-slot reaping are gone from the ledger; the balance hard-stop, the global daily rail and its admin reset hatch remain, with tests.
+      - The nine wrangler vars configuring per-run caps and lanes are gone from wrangler.toml and platform/README.md; the remaining vars match the code's defaults.
+
+  - id: remove-session-capture
+    phase: 2
+    priority: high
+    status: planned
+    title: Receipts are the only transcript
+    acceptance:
+      - The proxy captures nothing from request bodies; the run-session routes, pages and JSON are gone; the secret redactor lives beside the receipts intake and keeps its tests.
+      - A narrated run in the world still shows its turns on the project page (receipt path unchanged), verified by the world's gate.
+
+  - id: remove-fleet-health
+    phase: 2
     priority: medium
-    status: done
-    title: The agent's containers attach to a world by name
+    status: planned
+    title: The fleet health monitor is gone
     acceptance:
-      - "`volter-world attach <world> --via reflect -- docker compose -f template/container/compose.yml up` is the whole recipe: the resolver, the session CA and the container composition are attach's, developed in volter-world, and the world's stack step is the adopter's own steps plus what is image-specific (the clock, Python's certifi bundle)."
-      - "`bun world/run.ts check` still passes: the run lands, the report reaches the Discord twin, egress stays sealed."
-  - id: narration-proof
-    phase: 1
+      - The /health route, the health module, its two env vars, its tests and the last-activity stamping that fed it are gone; /healthz remains.
+      - The project page's health line from job receipts still renders, verified in the world.
+
+  - id: site-legacy-cut
+    phase: 2
+    priority: medium
+    status: planned
+    title: The site renders funding and receipts, not the old fleet
+    acceptance:
+      - The live-runs panel, the planner and strategist role labels, issue links, actor handles, GitHub Actions deep links and the session drawer are gone from the rendered pages.
+      - The receipts spine, live SSE turns, tiers, patrons, the flow feed and coupon redemption still render, verified against the world's platform.
+
+  - id: platform-residue-sweep
+    phase: 2
+    priority: medium
+    status: planned
+    title: Dead residue of older architectures is gone from the platform
+    acceptance:
+      - The roadmap-issues rollup remnant and its orphaned CSS, the FLEET_ constants, the BACKERS.md perk and every comment or log tag naming the agent-model-proxy or the old fleet are gone.
+      - The platform package is named for the platform; the deployed worker name is unchanged, with one comment saying it holds the live books.
+
+  - id: durable-keys
+    phase: 3
     priority: high
-    status: done
-    title: A run narrated by the agent's own webhooks appears as a receipt with its turns
+    status: planned
+    title: Keys survive any redeploy
     acceptance:
-      - The world's gate passes with the receipt path exercised end to end (bun world/run.ts check).
-      - CHANGELOG.md's Unreleased section names this item as proven by a real run.
-  - id: container-proof
-    phase: 1
+      - A signed, unexpired key spends with no per-key Durable Object state present; verification is signature plus expiry, with a ledger key registry consulted only for explicit revocation and listing.
+      - A platform test proves a key with no registry record still spends and a revoked key does not; admin routes list and revoke keys by id.
+      - DEPLOY.md states that rotating AGENT_PROXY_HMAC_SECRET is the one act that invalidates every key, and how to plan a coordinated re-mint.
+
+  - id: retire-run-budget
+    phase: 3
     priority: high
-    status: done
-    title: The containerised agent lands a change through its branch
+    status: planned
+    title: The per-run budget object is retired without stranding a key
     acceptance:
-      - CHANGELOG.md's Unreleased section carries a line, added by the agent, saying the container landed this item.
-      - The item's status is done.
-  - id: world-health-badge
-    phase: 1
+      - Only after durable-keys is deployed to production does a migration remove the RunBudget class; no route or module references it.
+      - The live standing key keeps spending across that deploy, shown by the account's audit trail continuing without a re-mint.
+      - This item needs the maintainer's reviewed deploy; the agent leaves it active with a report naming exactly that step.
+
+  - id: serve-models-route
+    phase: 3
+    priority: low
+    status: planned
+    title: The platform serves the models listing
+    acceptance:
+      - GET /v1/models with a valid key returns the key's allowed models in OpenAI list shape, covered by a test; the sidecar's existing forward of that route now returns 200 in the world.
+
+  - id: spend-rails-seam
+    phase: 4
     priority: high
-    status: done
-    title: The project page states whether the agent's last run succeeded
+    status: planned
+    title: Spending goes through one rails seam on the books
     acceptance:
-      - A project page served by the worker carries a line naming the outcome of the account's most recent finished run, or says there has been no run yet.
-      - The line is rendered from the account's own job receipts, not from any new stored field.
-      - Verified in the world - the page fetched from $PLATFORM_URL after a run shows the line - and the platform test suite covers the no-run case.
+      - The books expose one internal reserve, settle, release and audit door keyed by account and request id; the model proxy is refactored behind it as the endpoints rail with no route or behavior change.
+      - The audit trail rows for a world run are identical in shape before and after, verified by the world's gate.
+
+  - id: stub-rails
+    phase: 4
+    priority: low
+    status: planned
+    title: Cards and partners exist as rails on the seam
+    acceptance:
+      - platform src carries cards and partners rail modules that compile against the seam and serve nothing, each with a README stating what the rail will be (Stripe-minted cards; partner integrations) and what bounds it.
+      - The roadmap gains one proposed item per rail with real acceptance lines, awaiting the owner.
+
+  - id: sdk-package
+    phase: 5
+    priority: high
+    status: planned
+    title: The SDK is a package and the sidecar is its first consumer
+    acceptance:
+      - packages/sdk holds the narration event schema and a client (narrate started/turns/finished, key mint and rotate helpers); the sidecar imports it and re-types nothing.
+      - The schema exists in exactly one place in the repo; the world's receipt path is unchanged.
+
+  - id: workspaces-root
+    phase: 6
+    priority: high
+    status: planned
+    title: The repo is a workspace monorepo
+    acceptance:
+      - The root package.json declares apps/* and packages/* workspaces with one root lockfile and a base tsconfig; `bun run check` fans out to every workspace plus the standalone cookbook checks.
+      - The supply-chain gate discovers and passes every lockfile.
+
+  - id: platform-to-apps
+    phase: 6
+    priority: high
+    status: planned
+    title: The platform lives at apps/platform
+    acceptance:
+      - The worker builds, tests and deploys from apps/platform; deploy.yml, admin.yml, security.yml, CODEOWNERS, the PR template and world/platform.ts all point at the new path.
+      - ci and security are green on the landing branch and `bun world/run.ts check` passes.
+
+  - id: kit-cookbook-paths
+    phase: 6
+    priority: medium
+    status: planned
+    title: The kit and cookbooks live at their real paths
+    acceptance:
+      - template/ is packages/kit-hermes and cookbook/ is cookbooks/ (todo-cli only, outside the workspace); the apply tool, the world's seed, stack and actions, and every doc reference use the new paths.
+      - "`bun world/run.ts check` passes from the new layout."
+
+  - id: kit-generator
+    phase: 7
+    priority: high
+    status: planned
+    title: The Hermes kit is a cookiecutter generator
+    acceptance:
+      - "`bun create open-autonomy <dir>` scaffolds a complete repo from parameters (project name, account, model, license) and writes a committed params file recording kit name and version."
+      - The same tool supports adopt into an existing repo (writes only what is missing), check (regenerate and diff template-owned files) and upgrade (check plus write), each covered by a test.
+
+  - id: extract-boilerplate
+    phase: 7
+    priority: high
+    status: planned
+    title: The generated repo is the full boilerplate
+    acceptance:
+      - A generated repo contains a README with the account's four widgets, ROADMAP.yml, docs/VISION.md, CHANGELOG.md, AGENTS.md, the hermes home, land and ci workflows, the hermes-state gitignore allowlist, a self-contained container directory and a license.
+      - A generated repo's own check passes from a bare clone with no reference to this monorepo.
+
+  - id: compose-de-leak
+    phase: 7
+    priority: medium
+    status: planned
+    title: The kit's compose file carries nothing install-specific
+    acceptance:
+      - The twins-checkout mount is gone from the kit's compose and lives in this install's own override; a generated repo's compose names only its own services and volumes.
+
+  - id: cookbook-via-kit
+    phase: 7
+    priority: medium
+    status: planned
+    title: todo-cli is provably an instance of the kit
+    acceptance:
+      - todo-cli's template-owned files are the generator's output for its params, and CI verifies that with the kit's check verb instead of a byte compare against one directory.
+
+  - id: self-via-kit
+    phase: 7
+    priority: low
+    status: planned
+    title: This install's boilerplate passes the kit's check
+    acceptance:
+      - Our hermes home and landing workflows pass the kit's check for the files the kit owns, with any deliberate divergence listed in the params file, not silently different.
+
+  - id: generated-repo-proof
+    phase: 7
+    priority: high
+    status: planned
+    title: The world lands an item from a freshly generated repo
+    acceptance:
+      - A world run seeds a repo scaffolded by the generator (not a committed cookbook), fires the schedule once, and verify passes - the run lands, the receipt narrates, delivery reaches the Discord twin, egress stays sealed.
+
+  - id: honest-tiers
+    phase: 8
+    priority: low
+    status: planned
+    title: Every rendered perk is deliverable
+    acceptance:
+      - The default tiers name only perks a mechanism actually delivers today, and the coupons-stay-admin-only decision is recorded in platform docs.
+
+  - id: docs-from-code
+    phase: 9
+    priority: high
+    status: planned
+    title: Every doc describes the repo as it is
+    acceptance:
+      - Per-package READMEs, the platform API section, DEPLOY.md, SECURITY.md, CONTRIBUTING.md, the bug template and the world README are rewritten from the code; no doc names a route, file, path or cap that does not exist, verified by grepping each named artifact.
+      - The world README's coverage section states what is actually covered (Discord delivery is; the ssh deploy-key push path is not).
+      - The hermes gitignore block is an allowlist.
+
+  - id: changelog-rewrite
+    phase: 9
+    priority: medium
+    status: planned
+    title: The changelog names only things that shipped
+    acceptance:
+      - CHANGELOG.md is rewritten in the four-pieces vocabulary; every file, tool or route it names exists in history under that name, and the redesign lands as one dated entry.
