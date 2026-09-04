@@ -211,7 +211,7 @@ items:
     status: planned
     title: The Hermes kit is a cookiecutter generator
     acceptance:
-      - "`bun create open-autonomy <dir>` scaffolds a complete repo from parameters (project name, account, model, license) and writes .open-autonomy/kit.json recording kit name, version and parameters - the anchor for check and upgrade."
+      - "`bun create open-autonomy <dir>` scaffolds a complete repo from its identity parameters (project name, account) and writes .open-autonomy/kit.json recording kit name, version and parameters - the anchor for check and upgrade. The model is runtime config in the generated home and the license is the project's own file: create seeds both as a courtesy, but neither is a parameter and neither is kit-owned or checked."
       - The same tool supports adopt into an existing repo (writes only what is missing), check (regenerate and diff template-owned files) and upgrade (check plus write), each covered by a test.
 
   - id: extract-boilerplate
