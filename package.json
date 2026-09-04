@@ -1,7 +1,7 @@
 {
   "name": "open-autonomy",
   "private": true,
-  "description": "Fund a project's agent token usage in the open: metered spend, public books, and a live view of what the agents are doing.",
+  "description": "A project's agent, checked in, funded by token usage in the open: the template any repository applies, and the platform that meters it and shows the books.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -13,8 +13,9 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "check": "cd platform && bun install --frozen-lockfile && bun test test/*.test.ts && bunx tsc --noEmit",
+    "check": "bun template/apply.ts --check && cd platform && bun install --frozen-lockfile && bun test test/*.test.ts && bunx tsc --noEmit",
     "check:supply-chain": "bun platform/scripts/check-supply-chain.ts",
-    "deploy": "cd platform && bun run deploy"
+    "deploy": "cd platform && bun run deploy",
+    "check:world": "bun world/run.ts check"
   }
 }

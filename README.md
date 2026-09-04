@@ -17,17 +17,22 @@ running is metered in the open. Sponsors pay for token usage and nothing else, e
 on public books, and the site and this README show what the agent is doing, what it will do next, and
 what it cost.
 
-This repository is two things:
+This repository is a product and a use of it:
 
-1. **`platform/`** — the books. One Cloudflare Worker that meters every model call against a
-   project's account (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors,
-   coupons), forwards the call to the model gateway, and serves the public funding page and the
-   README widget. The site renders this project's `docs/VISION.md` and `ROADMAP.yml` straight from
-   the repository.
-2. **`hermes/`** — this project's own agent, checked in. A stock [Hermes](https://github.com/NousResearch/hermes-agent)
-   home (identity, skills, schedule) that works `ROADMAP.yml` top to bottom, running off this
-   project's funded account on a standing key. It is the thing sponsors are paying for, and it is
-   readable by anyone.
+1. **`template/`** — the product. A Hermes home any project drops into its repository as `hermes/`, the
+   container stack that runs it without holding a secret, and the tool that mints its key. Applied to a
+   repository, it gives that project an agent that works its `ROADMAP.yml` top to bottom, funded by the
+   project's sponsors, readable by anyone.
+2. **`platform/`** — the books. One Cloudflare Worker that meters every model call against a project's
+   account (mint / grant / consume, hard-stop at zero), takes money in (GitHub Sponsors, coupons), forwards
+   the call to the model gateway, and serves the public funding page, each project's page and the README
+   widgets.
+3. **`cookbook/`** — worked examples: `hello-roadmap` is the smallest repository the template applies to,
+   and what the world runs to prove the template builds something.
+4. **`world/`** — the volter-world: twins of GitHub and the model gateway, the platform built from this
+   tree, and the scenarios. `check` applies the template to a cookbook and runs it end to end with no keys.
+5. **`hermes/`** — our own use of the product: the template applied to this repository. It is the agent
+   that develops the template and the platform, and it is not special.
 
 The compiler that turns a substrate-neutral org description into GitHub Actions or a local runner
 lives in [`volter-ai/open-autonomy-compiler`](https://github.com/volter-ai/open-autonomy-compiler).
@@ -71,15 +76,21 @@ stops at zero.
 
 ## Run the whole thing with no keys
 
-`world/` is a [volter-world](https://github.com/volter-ai/twin): the real worker, the real agent, and local
-twins of GitHub and the model gateway. No account, no credential, no spend. See `world/README.md`.
+`world/` is a [volter-world](https://github.com/volter-ai/twin): the platform built from this tree, the real
+agent applied to a cookbook, and local twins of GitHub and the model gateway. No account, no credential, no
+spend. See `world/README.md`.
 
 ```bash
 export TWINS_ROOT=/path/to/twin
-bun world/run.ts up          # the product, running on your machine
-bun world/run.ts agent       # one build-roadmap run of the real agent against it
+bun world/run.ts up          # twins + the platform, seeded: the product, running on your machine
+bun world/run.ts agent       # the template on cookbook/hello-roadmap, one run
 bun world/run.ts check       # the gate: up → seed → agent → verify → down
 ```
+
+## Give your project an agent
+
+See [`template/README.md`](template/README.md): apply the home, write your `AGENTS.md` and `ROADMAP.yml`,
+mint a key by proving control of your repository, run the stack.
 
 ## Run the checks
 

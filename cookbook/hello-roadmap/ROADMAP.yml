@@ -1,0 +1,11 @@
+# The roadmap the agent works, top to bottom, in phase order. `status` is one of
+# proposed | planned | active | done, and the agent updates it as it finishes an item.
+schema: open-autonomy.roadmap.v3
+items:
+  - id: world-item
+    phase: 1
+    priority: high
+    status: planned
+    title: The one item this project's agent works
+    acceptance:
+      - The item's status is done on the agent's branch.

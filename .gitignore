@@ -52,3 +52,9 @@ hermes/reporter-state.json
 
 # volter-world instances (the committed world is world/)
 .volter/
+hermes/.clean_shutdown
+hermes/gateway/
+hermes/skills/.curator_state
+cookbook/*/hermes/.env
+cookbook/*/hermes/logs/
+cookbook/*/hermes/state.db*

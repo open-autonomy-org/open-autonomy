@@ -1,5 +1,5 @@
 {
-  "$comment": "The model's side of one build-roadmap run, served by the openai twin through the REAL platform. Rules are stateless and key on the request's own features, never on call counts: the platform meters Hermes's housekeeping calls too and their number is not contractual. The first rule is the failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which Hermes retries four times and then fails — so the run only succeeds when the platform forwards a roomy cap.",
+  "$comment": "The model's side of one build-roadmap run on cookbook/hello-roadmap, served by the openai twin through the REAL platform. Rules are stateless and key on the request's own features, never on call counts: the platform meters Hermes's housekeeping calls too and their number is not contractual. The first rule is the failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which Hermes retries four times and then fails — so the run only succeeds when the platform forwards a roomy cap.",
   "handlers": [
     {
       "id": "clamped-output-cap",

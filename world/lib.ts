@@ -5,7 +5,8 @@ import { resolve } from 'node:path';
 export const NAME = 'open-autonomy';
 export const REPO = resolve(import.meta.dir, '..');
 export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(REPO, '.volter', 'worlds', NAME, 'data');
-export const ACCOUNT = process.env.OPEN_AUTONOMY_ACCOUNT ?? 'open-autonomy-org/open-autonomy';
+export const ACCOUNT = process.env.OPEN_AUTONOMY_ACCOUNT ?? 'cookbook/hello-roadmap';
+export const COOKBOOK = resolve(REPO, 'cookbook', process.env.WORLD_COOKBOOK ?? 'hello-roadmap');
 export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'deepseek/deepseek-v4-flash';
 export const ENC = encodeURIComponent(ACCOUNT);
 export const [OWNER, REPO_NAME] = ACCOUNT.split('/');
@@ -41,14 +42,3 @@ export function agentEnv(): Record<string, string> {
   return out;
 }
 
-export const ROADMAP_FIXTURE = `# The world's roadmap: one planned item the agent works. The real repository's roadmap is not the world's business.
-schema: open-autonomy.roadmap.v3
-items:
-  - id: world-item
-    phase: 1
-    priority: high
-    status: planned
-    title: The one item the world's agent works
-    acceptance:
-      - The item's status is done on the agent's branch.
-`;
