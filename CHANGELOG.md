@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- `card-rail`: an agent mints a single-use virtual card against its balance (Stripe Issuing), bounded to an amount and the owner's merchant categories in `.open-autonomy/config.yaml`; the issuer's real-time authorization is decided at the platform's webhook, a capture settles on the books as a `card` audit record naming the merchant, and any decline releases the reservation. Proven in the world against the Stripe twin.
+- `partner-rail`: a partner service settles a metered charge against the balance with the project's key, for a partner the owner listed and within the owner's bound, as a `partner` audit record naming the partner, the unit and the quantity.
 - `roadmap-drivers`: the platform holds one normalized, revisioned roadmap per project (who, when, source, diff, conformance). The file driver and the credential-free GitHub milestones driver are pulled on sync; the Jira driver runs owner-side and pushes through the SDK on a steer-scoped key. Key scopes split steer from spend and narrate. The kit's `roadmap.ts` pulls a tracker into ROADMAP.yml, pushes it, and reconciles finished items back; the agent stays tracker-blind.
 - `docs-from-code`: `bun scripts/check-docs.ts` fails the check on any doc naming a path, route or world verb that does not exist.
 - **The redesign.** The repository is Open Autonomy in four pieces, greenfield: the platform (`apps/platform`), the SDK (`packages/sdk`), the Hermes kit (`packages/kit-hermes`), the cookbooks, and this install's own boilerplate. The compiler lineage lives in `volter-ai/open-autonomy-compiler`.

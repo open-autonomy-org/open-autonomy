@@ -12,7 +12,9 @@ const fail = (m: string) => { throw new Error(`verify: ${m}`); };
 const calls = await pub.get(`/v1/accounts/${ENC}/calls`);
 if (calls.status !== 200) fail(`calls → ${calls.status}`);
 if (!(calls.body.calls_total >= 3)) fail(`expected ≥3 metered calls, saw ${calls.body.calls_total}`);
-if (!calls.body.calls.every((c: { model: string; rail: string }) => c.model === MODEL && c.rail === 'model')) fail("a metered call was not the agent's model on the model rail");
+// Every model-rail record is the agent's model; the other rails (a card, a partner) name themselves.
+if (!calls.body.calls.every((c: { model?: string; rail: string }) => (c.rail === 'model' ? c.model === MODEL : c.rail === 'card' || c.rail === 'partner'))) fail("a metered call was not the agent's model on the model rail, nor a card or partner record");
+if (!calls.body.calls.some((c: { rail: string }) => c.rail === 'model')) fail('no model-rail call on the trail');
 const funding = await pub.get(`/v1/accounts/${ENC}`);
 if (!(funding.body.consumed_usd_cents > 0 && funding.body.balance_usd_cents < 500)) fail(`the books did not move: ${JSON.stringify(funding.body).slice(0, 200)}`);
 
@@ -73,4 +75,4 @@ const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', cont
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (every model call ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);

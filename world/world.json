@@ -38,6 +38,15 @@
       "env": { "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway" }
     },
     {
+      "id": "stripe",
+      "type": "twin",
+      "command": "bun",
+      "args": ["${TWINS_ROOT}/packages/twin/stripe/src/cli.ts", "serve"],
+      "port": 47616,
+      "portReason": "the platform enrols its webhook endpoint here at start and a restart of the world must keep the address",
+      "injectEnv": "STRIPE_TWIN_URL"
+    },
+    {
       "id": "platform",
       "type": "process",
       "command": "bun",

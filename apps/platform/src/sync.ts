@@ -62,6 +62,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       cover_url: cover,
       homepage: repo ? repo.homepage || repo.html_url || undefined : undefined,
       synced_at: new Date().toISOString(),
+      config_yaml: config ?? '',
     };
     Object.keys(DOC_PATHS).forEach((k, i) => { profile[k] = docs[i] ?? ''; });
     const ledger = new LedgerClient(env.LIMITS);

@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./roadmap": "./src/roadmap.ts",
     "./client": "./src/client.ts",
-    "./drivers": "./src/drivers.ts"
+    "./drivers": "./src/drivers.ts",
+    "./rails": "./src/rails.ts"
   },
   "scripts": {
     "test": "bun test test/*.test.ts",

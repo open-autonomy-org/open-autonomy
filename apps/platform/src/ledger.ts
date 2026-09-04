@@ -57,6 +57,8 @@ export interface Account {
   live_sessions?: string[];
   // The roadmap's current revision number (the records live in storage, see roadmapSet).
   roadmap_revision?: number;
+  // The card rail: the account's cardholder at the issuer, created on its first card.
+  stripe_cardholder?: string;
   daily_spend: Record<string, number>;
   sponsors: Sponsor[];
   sponsors_active: Record<string, Sponsor>;
@@ -85,8 +87,10 @@ export interface AccountProfile {
   setup_md?: string;
   soul_md?: string;
   agent_config_yaml?: string;
+  // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
+  config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'roadmap_yml', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'roadmap_yml', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_config_yaml', 'config_yaml'] as const;
 
 export interface Tier { usd_cents: number; name: string }
 
@@ -101,9 +105,27 @@ export interface Flow {
   ts: string;
 }
 
-// The rails money leaves through. `model` is live; minted cards and partner services are planned and
-// will name themselves here when they land.
-export type Rail = 'model';
+// The rails money leaves through: a model call, a card captured, a partner's charge. Each names itself
+// on the audit trail.
+export type Rail = 'model' | 'card' | 'partner';
+
+// A card the card rail minted: single use, bounded to its amount and the owner's merchant categories,
+// holding a reservation until it is settled or declined.
+export interface CardRecord {
+  id: string;
+  account: string;
+  request_id: string;
+  usd_cents: number;
+  categories: string[];
+  purpose: string;
+  last4: string;
+  status: 'minted' | 'authorized' | 'declined' | 'settled';
+  authorization?: string;
+  merchant?: string;
+  category?: string;
+  settled_usd_cents?: number;
+  created_at: string;
+}
 
 export interface Sponsor {
   login: string;
@@ -145,6 +167,15 @@ export interface CallRecord {
   route?: string;
   input_tokens?: number;
   output_tokens?: number;
+  // The card rail: who was paid, in which category, on which card. The partner rail: which partner, for
+  // what unit and quantity. `reference` is the vendor's own id for the settlement.
+  merchant?: string;
+  category?: string;
+  card_last4?: string;
+  partner?: string;
+  unit?: string;
+  quantity?: number;
+  reference?: string;
   usd_cents: number;
   outcome?: string;
 }
@@ -246,6 +277,9 @@ export class LimitLedger implements DurableObject {
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
       case 'roadmap_revisions': return json(await this.roadmapRevisions(s('account'), Number(body.limit)));
+      case 'card_put': return json(await this.cardPut(body.card as CardRecord));
+      case 'card': return json(await this.cardGet(s('id')));
+      case 'set_cardholder': return json(await this.setCardholder(s('account'), s('cardholder')));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
       case 'directory': return json({ ok: true, entries: this.directory() });
@@ -460,16 +494,18 @@ export class LimitLedger implements DurableObject {
     const a = this.ensureAcct(reservation.account);
     a.consumed_usd_cents += spent;
     recordDailySpend(a, spent);
-    if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, rail: 'model' });
+    const rail: Rail = event?.rail ?? 'model';
+    if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, rail });
     a.calls_total = (a.calls_total ?? 0) + 1;
     a.last_call_ms = Date.now();
     const session = await this.attributeSpend(reservation.account, spent);
     // The audit trail: every metered spend, appended durably under the account, never evicted. The running
     // count breaks ties within one millisecond, so the trail's order is the settle order.
-    await this.ctx.storage.put(`call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`, {
-      ts: new Date().toISOString(), request_id: requestId, rail: 'model', ...(session ? { session } : {}),
-      model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens, usd_cents: spent, outcome: event?.outcome,
-    } satisfies CallRecord);
+    const record: CallRecord = { ts: new Date().toISOString(), request_id: requestId, rail, ...(session ? { session } : {}), usd_cents: spent, outcome: event?.outcome };
+    if (rail === 'model') Object.assign(record, { model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens });
+    if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference });
+    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference });
+    await this.ctx.storage.put(`call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`, record);
     await this.save();
   }
 
@@ -626,6 +662,23 @@ export class LimitLedger implements DurableObject {
     return live[0];
   }
 
+  // ---- the card rail's cards ---------------------------------------------------------------------------
+  // `card:<stripe card id>`: a card minted against the balance, its reservation, and where it stands.
+  private async cardPut(card: CardRecord): Promise<{ ok: boolean; error?: string }> {
+    if (!card || typeof card.id !== 'string' || !card.id || typeof card.account !== 'string') return { ok: false, error: 'invalid_card' };
+    await this.ctx.storage.put(`card:${card.id}`, card);
+    return { ok: true };
+  }
+  private async cardGet(id: string): Promise<{ ok: boolean; error?: string; card?: CardRecord }> {
+    const card = await this.ctx.storage.get<CardRecord>(`card:${id}`);
+    return card ? { ok: true, card } : { ok: false, error: 'card_not_found' };
+  }
+  private async setCardholder(account: string, cardholder: string): Promise<{ ok: true }> {
+    this.ensureAcct(account).stripe_cardholder = cardholder;
+    await this.save();
+    return { ok: true };
+  }
+
   // ---- the roadmap: one normalized model, revisioned ---------------------------------------------------
   // Every driver lands here: the file driver on sync, the milestones driver on sync, an owner-side driver
   // through the steer-scoped push. A revision records who, when, from which source, and what changed; an
@@ -729,6 +782,7 @@ export class LimitLedger implements DurableObject {
       patron_count: patronCount(a) + projectPatrons,
       monthly_usd_cents: monthlyTotal(a),
       live_sessions: [...(a?.live_sessions ?? [])],
+      ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       status: fundingStatus(f),
     };
   }
@@ -796,6 +850,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.last_call_ms === 'number') acct.last_call_ms = a.last_call_ms;
     if (Array.isArray(a.live_sessions) && a.live_sessions.length) acct.live_sessions = a.live_sessions.filter((k) => typeof k === 'string');
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
+    if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
     acct.daily_spend = a.daily_spend && typeof a.daily_spend === 'object' ? a.daily_spend : {};
     acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
     acct.sponsors_active = a.sponsors_active && typeof a.sponsors_active === 'object' ? a.sponsors_active : {};
@@ -974,6 +1029,7 @@ export interface DirectoryEntry {
   patron_count: number;
   monthly_usd_cents: number;
   live_sessions: string[];
+  stripe_cardholder?: string;
   status: 'funded' | 'low' | 'unfunded';
 }
 
@@ -1033,6 +1089,9 @@ export class LedgerClient {
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.rpc<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
   roadmap(account: string) { return this.rpc<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
   roadmapRevisions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; revisions: RoadmapRevision[] }>('roadmap_revisions', { account, limit }); }
+  cardPut(card: CardRecord) { return this.rpc<{ ok: boolean; error?: string }>('card_put', { card }); }
+  card(id: string) { return this.rpc<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
+  setCardholder(account: string, cardholder: string) { return this.rpc<{ ok: true }>('set_cardholder', { account, cardholder }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
   directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }

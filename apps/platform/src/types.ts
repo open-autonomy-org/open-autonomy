@@ -18,6 +18,10 @@ export interface Env {
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
+  // The card rail: Stripe Issuing. Absent → the rail refuses with rail_not_configured.
+  STRIPE_API_BASE?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
   LIMITS: DurableObjectNamespace;
 }
 
@@ -38,14 +42,25 @@ export type KeyScope = 'spend' | 'narrate' | 'steer';
 export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
 export const hasScope = (claims: KeyClaims, scope: KeyScope): boolean => (claims.scopes ?? DEFAULT_SCOPES).includes(scope);
 
-// One settled model call, as the proxy reports it to the books.
+// One settled spend, as a rail reports it to the books: a model call, a card authorization captured, a
+// partner's charge.
 export interface UsageEvent {
   request_id: string;
-  model: string;
-  route: string;
+  rail?: 'model' | 'card' | 'partner';
+  model?: string;
+  route?: string;
   reserved_usd_cents: number;
   actual_usd_cents: number;
   input_tokens?: number;
   output_tokens?: number;
+  // The card rail: who was paid, in which merchant category, on which card; the partner rail: which
+  // partner, for what unit and quantity.
+  merchant?: string;
+  category?: string;
+  card_last4?: string;
+  partner?: string;
+  unit?: string;
+  quantity?: number;
+  reference?: string;
   outcome: 'ok' | 'metering_error';
 }

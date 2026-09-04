@@ -41,7 +41,7 @@ items:
   - id: card-rail
     phase: 3
     priority: medium
-    status: proposed
+    status: done
     title: Agents spend through minted cards
     acceptance:
       - A project's agent can request a single-use card minted against its balance through Stripe Issuing, bounded by an amount and a merchant category the owner set in .open-autonomy/config.yaml; each authorization settles on the books as a `card` rail record with the merchant and amount on the public audit trail.
@@ -50,7 +50,7 @@ items:
   - id: partner-rail
     phase: 3
     priority: medium
-    status: proposed
+    status: done
     title: Agents spend through partner services
     acceptance:
       - A partner service can settle a metered charge against a project's account with the project's key, recorded as a `partner` rail record naming the partner and the unit; the balance hard-stop and the daily rail apply as they do to the model rail.

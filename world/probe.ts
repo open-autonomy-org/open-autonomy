@@ -97,6 +97,45 @@ const demoPage = await pub.get(`/p/${demoEnc}`);
 if (demoPage.status !== 200 || !demoPage.text.includes('Roadmap from <b>github-milestones</b>')) fail('the demo page does not render the milestones roadmap');
 ok.push('the file driver and the milestones driver both landed revisions from the twin');
 
+// 7. The rails beyond the model, against the Stripe twin. A card minted against the balance, bounded by the
+//    cookbook's config; a merchant's authorization within the bound and category is approved in real time
+//    through the platform's webhook, its capture settles on the books as a card rail record and retires the
+//    card; a partner's charge settles as a partner rail record. Bounds refuse what the owner did not allow.
+const stripeTwin = api(need('STRIPE_TWIN_URL'), { authorization: 'Bearer sk_test_world', 'content-type': 'application/x-www-form-urlencoded' });
+const form = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+const balanceBefore = (await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents as number;
+if ((await bearer.post('/v1/rails/card', { usd_cents: 100000, purpose: 'too much' })).status !== 403) fail('a card over the owner\'s bound was minted');
+const minted = await bearer.post('/v1/rails/card', { usd_cents: 250, purpose: 'probe: a domain' });
+if (minted.status !== 200 || !minted.body?.card?.id) fail(`card mint → ${minted.status} ${minted.text.slice(0, 200)}`);
+const cardId = minted.body.card.id as string;
+if (minted.body.card.single_use !== true || minted.body.card.usd_cents !== 250) fail('the minted card is not a single-use card of the requested amount');
+// Present a merchant authorization at the issuer: the twin asks the platform in real time.
+const present = async (amount: number, category: string) => fetch(`${need('STRIPE_TWIN_URL')}/v1/test_helpers/issuing/authorizations`, { method: 'POST', headers: { authorization: 'Bearer sk_test_world', 'content-type': 'application/x-www-form-urlencoded' }, body: form({ card: cardId, amount: String(amount), 'merchant_data[category]': category, 'merchant_data[name]': 'Namecheap' }) }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) as Record<string, any> }));
+const auth = await present(200, 'computer_software_stores');
+if (auth.status !== 200 || auth.body.approved !== true) fail(`the in-bound authorization was not approved: ${auth.status} ${JSON.stringify(auth.body).slice(0, 300)}`);
+const captured = await stripeTwin.post(`/v1/test_helpers/issuing/authorizations/${auth.body.id}/capture`, '');
+if (captured.status !== 200) fail(`capture → ${captured.status} ${captured.text.slice(0, 200)}`);
+await Bun.sleep(1500); // the twin delivers the transaction event to the platform's webhook
+const afterCard = (await pub.get(`/v1/accounts/${ENC}`)).body;
+if (Math.round(balanceBefore - afterCard.balance_usd_cents) !== 200) fail(`the capture did not settle 200 cents: balance ${balanceBefore} → ${afterCard.balance_usd_cents}`);
+const trail = (await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls as Array<Record<string, unknown>>;
+const cardRecord = trail.find((c) => c.rail === 'card');
+if (!cardRecord || cardRecord.merchant !== 'Namecheap' || cardRecord.usd_cents !== 200 || cardRecord.category !== 'computer_software_stores') fail(`no card rail record on the audit trail: ${JSON.stringify(cardRecord)}`);
+// Single use: the same card is refused a second time; a card for the wrong category is declined and spends nothing.
+if ((await present(50, 'computer_software_stores')).body.approved === true) fail('a settled card authorized again');
+const second = await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: wrong category' });
+const declined = await fetch(`${need('STRIPE_TWIN_URL')}/v1/test_helpers/issuing/authorizations`, { method: 'POST', headers: { authorization: 'Bearer sk_test_world', 'content-type': 'application/x-www-form-urlencoded' }, body: form({ card: second.body.card.id, amount: '80', 'merchant_data[category]': 'bakeries', 'merchant_data[name]': 'Cake' }) }).then((r) => r.json() as Promise<Record<string, any>>);
+if (declined.approved !== false) fail(`an out-of-category authorization was approved: ${JSON.stringify(declined).slice(0, 200)}`);
+if ((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents !== afterCard.balance_usd_cents) fail('a declined authorization moved the books');
+if ((await pub.get(`/v1/accounts/${ENC}`)).body.reserved_usd_cents !== 0) fail('a declined card kept its reservation');
+// The partner rail.
+if ((await bearer.post('/v1/rails/partner', { partner: 'nobody', usd_cents: 10 })).status !== 403) fail('an unlisted partner settled a charge');
+const partner = await bearer.post('/v1/rails/partner', { partner: 'browserless', usd_cents: 30, unit: 'minute', quantity: 3, reference: 'probe-1' });
+if (partner.status !== 200) fail(`partner settle → ${partner.status} ${partner.text.slice(0, 200)}`);
+const partnerRecord = ((await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls as Array<Record<string, unknown>>).find((c) => c.rail === 'partner');
+if (!partnerRecord || partnerRecord.partner !== 'browserless' || partnerRecord.usd_cents !== 30 || partnerRecord.quantity !== 3) fail(`no partner rail record on the audit trail: ${JSON.stringify(partnerRecord)}`);
+ok.push('a minted card paid a merchant within its bound and settled on the books; the wrong category and an unlisted partner were refused; a partner charge settled');
+
 // Leave the books as the seed left them for what follows: the probe's session is dropped.
 await admin.del(`/admin/accounts/${ENC}/sessions/probe-1`);
 console.log(`probe: OK — ${ACCOUNT}\n  ${ok.join('\n  ')}`);

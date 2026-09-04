@@ -19,6 +19,17 @@ const vars: Record<string, string> = {
   DEFAULT_FUNDING_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
   DEFAULT_SPONSOR_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
 };
+// The card rail's issuer is the Stripe twin. The platform's webhook endpoint is enrolled on it here, the
+// way an operator enrols one in the Stripe dashboard, and the twin's signing secret for it becomes the
+// worker's STRIPE_WEBHOOK_SECRET. Enrolled for the real-time authorization decision and the capture.
+if (process.env.STRIPE_TWIN_URL) {
+  vars.STRIPE_API_BASE = process.env.STRIPE_TWIN_URL;
+  vars.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? 'sk_test_world';
+  const res = await fetch(`${process.env.STRIPE_TWIN_URL}/v1/webhook_endpoints`, { method: 'POST', headers: { authorization: `Bearer ${vars.STRIPE_SECRET_KEY}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `url=${encodeURIComponent(`http://127.0.0.1:${port}/webhooks/stripe`)}&enabled_events[0]=issuing_authorization.request&enabled_events[1]=issuing_authorization.created&enabled_events[2]=issuing_transaction.created` });
+  const endpoint = await res.json().catch(() => ({})) as { secret?: string };
+  if (!res.ok || !endpoint.secret) { console.error(`world/platform.ts: cannot enrol the webhook endpoint on the Stripe twin (${res.status})`); process.exit(2); }
+  vars.STRIPE_WEBHOOK_SECRET = endpoint.secret;
+}
 const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () => new Response('') }); const p = s.port; s.stop(true); return p; })();
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
