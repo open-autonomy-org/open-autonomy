@@ -14,7 +14,7 @@ items:
   - id: live-switch
     phase: 1
     priority: high
-    status: planned
+    status: done
     title: This install runs on the redesigned product
     acceptance:
       - The redesigned worker is deployed through deploy.yml; the books read the same balances as before the deploy, and the audit trail is intact.
@@ -23,7 +23,7 @@ items:
   - id: supercode-release
     phase: 1
     priority: high
-    status: planned
+    status: proposed
     title: The reporter runs on a released supercode
     acceptance:
       - "`@volter-ai-dev/supercode` publishes a release whose harness list includes hermes and whose session index subscription accepts it; the kit's reporter dependency names that version and the world stops building supercode from a checkout."
