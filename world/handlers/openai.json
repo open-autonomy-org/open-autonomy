@@ -1,0 +1,35 @@
+{
+  "$comment": "The model's side of one build-roadmap run, served by the openai twin through the REAL platform. Rules are stateless and key on the request's own features, never on call counts: the platform meters Hermes's housekeeping calls too and their number is not contractual. The first rule is the failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which Hermes retries four times and then fails — so the run only succeeds when the platform forwards a roomy cap.",
+  "handlers": [
+    {
+      "id": "clamped-output-cap",
+      "on": { "maxTokensBelow": 16384 },
+      "respond": { "text": "", "finishReason": "length" }
+    },
+    {
+      "id": "after-terminal-report",
+      "on": { "toolResultFor": "terminal" },
+      "respond": { "text": "Done. world-item — status set to done in ROADMAP.yml, committed as the Open Autonomy agent, pushed to agent/world-item. The landing workflow merges it when the checks pass." }
+    },
+    {
+      "id": "after-read-land-it",
+      "on": { "toolResultFor": "read_file" },
+      "respond": {
+        "toolCalls": {
+          "name": "terminal",
+          "arguments": { "command": "git fetch -q origin main && git checkout -q -B agent/world-item origin/main && perl -0pi -e 's/(id: world-item\\n    phase: 1\\n    priority: high\\n    status: )planned/${1}done/' ROADMAP.yml && git add ROADMAP.yml && git -c user.name='Open Autonomy agent' -c user.email='agent@open-autonomy.org' commit -q -s -m 'world-item: marked done in the world' && git push -q -u origin agent/world-item && git rev-parse HEAD" }
+        }
+      }
+    },
+    {
+      "id": "agent-turn-read-roadmap",
+      "on": { "hasTool": "read_file", "lastMessageIsToolResult": false },
+      "respond": { "toolCalls": { "name": "read_file", "arguments": { "path": "ROADMAP.yml" } } }
+    },
+    {
+      "id": "housekeeping",
+      "on": {},
+      "respond": { "text": "ok" }
+    }
+  ]
+}
