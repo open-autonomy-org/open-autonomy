@@ -32,6 +32,20 @@ await git(work, 'commit', '-q', '-m', `${REPO_NAME}: the template applied`);
 await git(work, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/main');
 console.log(`seed: ${ACCOUNT} on the GitHub twin at ${await git(work, 'rev-parse', '--short', 'HEAD')} (main), from ${COOKBOOK}`);
 
+// 1b. Open Autonomy itself is on the same twin: this tree pushed as open-autonomy-org/open-autonomy, so the
+//     local platform's own project page renders from the twin too, and both projects share one GitHub.
+const self = 'open-autonomy-org/open-autonomy';
+const selfCreated = await gh.post('/orgs/open-autonomy-org/repos', { name: 'open-autonomy' });
+if (![201, 422].includes(selfCreated.status)) throw new Error(`github twin: create ${self} → ${selfCreated.status}`);
+const mirror = resolve(DATA, 'open-autonomy');
+rmSync(mirror, { recursive: true, force: true });
+await git(DATA, 'clone', '-q', `file://${REPO}`, mirror);
+await git(mirror, 'remote', 'set-url', 'origin', `${github}/${self}.git`);
+await git(mirror, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/main');
+const selfMint = await admin.post(`/admin/accounts/${encodeURIComponent(self)}/mint`, { amount_usd_cents: 500, key: 'world-seed-self' });
+if (selfMint.status !== 200) throw new Error(`platform: mint ${self} → ${selfMint.status}`);
+console.log(`seed: ${self} on the GitHub twin at ${await git(mirror, 'rev-parse', '--short', 'HEAD')} (main), funded`);
+
 // 2. Fund the project on the local books (idempotent on the key).
 const minted = await admin.post(`/admin/accounts/${ENC}/mint`, { amount_usd_cents: 500, key: 'world-seed' });
 if (minted.status !== 200) throw new Error(`platform: mint → ${minted.status} ${minted.text.slice(0, 200)}`);

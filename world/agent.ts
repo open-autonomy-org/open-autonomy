@@ -6,7 +6,7 @@
 // verify step reads the books and the twin, never this run's prose.
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { COOKBOOK, DATA, MODEL, agentEnv, need } from './lib.ts';
+import { COOKBOOK, DATA, MODEL, WORK, agentEnv, git, need } from './lib.ts';
 
 const hermes = process.env.HERMES_BIN ?? Bun.which('hermes');
 if (!hermes) throw new Error('no runnable `hermes` on PATH (or HERMES_BIN): the agent leg cannot run');
@@ -26,7 +26,9 @@ writeFileSync(resolve(home, '.env'), `OPEN_AUTONOMY_BASE_URL=${env.OPEN_AUTONOMY
 mkdirSync(resolve(home, 'cache'), { recursive: true });
 writeFileSync(resolve(home, 'cache', 'openrouter_model_metadata.json'), JSON.stringify({ [MODEL]: { context_length: 1_000_000, max_completion_tokens: 65536, name: 'DeepSeek V4 Flash (world)', pricing: {} } }));
 
-const work = resolve(DATA, 'work');
+const work = WORK;
+// Start where the last landing left main: the skill itself fetches, but a stale checkout costs the agent turns.
+await git(work, 'fetch', '-q', 'origin'); await git(work, 'checkout', '-q', 'main'); await git(work, 'reset', '-q', '--hard', 'origin/main');
 const prompt = "Work the top open item of ROADMAP.yml in this project's repository using the build-roadmap skill. Finish it, verify it, push your branch, record its status, and report in five lines or fewer.";
 const proc = Bun.spawn({
   cmd: [hermes, 'chat', '-q', prompt, '--oneshot', '-Q', '--skills', 'build-roadmap', '--in', work],

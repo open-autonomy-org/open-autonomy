@@ -5,9 +5,11 @@ import { resolve } from 'node:path';
 export const NAME = 'open-autonomy';
 export const REPO = resolve(import.meta.dir, '..');
 export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(REPO, '.volter', 'worlds', NAME, 'data');
-export const ACCOUNT = process.env.OPEN_AUTONOMY_ACCOUNT ?? 'cookbook/hello-roadmap';
-export const COOKBOOK = resolve(REPO, 'cookbook', process.env.WORLD_COOKBOOK ?? 'hello-roadmap');
+export const COOKBOOK_NAME = process.env.WORLD_COOKBOOK ?? 'hello-roadmap';
+export const COOKBOOK = resolve(REPO, 'cookbook', COOKBOOK_NAME);
+export const ACCOUNT = `cookbook/${COOKBOOK_NAME}`;
 export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'deepseek/deepseek-v4-flash';
+export const WORK = resolve(DATA, 'work');
 export const ENC = encodeURIComponent(ACCOUNT);
 export const [OWNER, REPO_NAME] = ACCOUNT.split('/');
 

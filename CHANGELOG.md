@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `cookbook/todo-cli`: the smallest project the template builds, eight roadmap items of one command and one test each, for iterating on the template fast. The world runs it entirely twinned — this tree's platform and the cookbook on one GitHub twin, the model played by the gateway twin from `world/handlers/todo-cli/` — and `agent` + `land`, repeated, walks the roadmap down one item per run; nothing in the world calls a real API. `bun world/run.ts check --cookbook <name>` is the gate.
 - `world-health-badge`: the project page's spine now states the outcome of the account's most recent finished run (done / failed / no run yet), rendered from the job receipts — no new stored field.
 - `container-proof`: the containerised agent, running off the project's standing key, landed this item through its own branch and pushed it to main on merge.
 
