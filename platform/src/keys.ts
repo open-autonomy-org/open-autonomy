@@ -13,7 +13,7 @@ import type { Env, RunClaims } from './types.js';
 // "controls the repo" — which is exactly what the file proves.
 
 export const CLAIM_FILE = '.open-autonomy-claim';
-const DEFAULT_MODELS = ['z-ai/glm-5.3-flash'];
+const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 // A rotated-away key keeps working this long so a running gateway can pick up the new one on its own time.
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
 
