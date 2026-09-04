@@ -57,4 +57,10 @@ const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id 
 if (!clamp) fail('the clamped-output-cap handler is not loaded — the world cannot see a clamping proxy');
 if (clamp.matches > 0) fail(`the platform clamped the agent's output cap: ${clamp.matches} request(s) came in under the ceiling`);
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main`);
+// The seal: from the agent's own container, a public host is refused, the platform is not.
+const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
+const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', context, 'exec', 'oa-agent', 'curl', '-s', '-o', '/dev/null', '-m', '8', '-w', '%{http_code}', url], stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
+if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
+
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered calls (all ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${receipts.length} receipt(s)${unlanded.length ? `; not landed: ${unlanded.join(', ')}` : ''}; check green at main; egress sealed`);
