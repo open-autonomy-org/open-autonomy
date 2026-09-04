@@ -16,15 +16,20 @@ is a secret that matters: a container (`container/compose.yml`) holding only its
 - **Model calls** go to a sidecar container that holds the project's standing key and forwards the model
   routes to the platform. The agent's own `.env` says `OPEN_AUTONOMY_KEY=sidecar`. The key file the sidecar
   reads lives on the host at `~/.config/open-autonomy/agent.env`, minted by `platform/scripts/hermes-key.ts`
-  (the adopter way: a claim file proves control of the repo, no admin token).
+  (the adopter way: a claim file proves control of the repo, no admin token). The file is re-read when it
+  changes, so a rotated key needs no restart.
+- **Receipts** are Hermes's own outbound webhooks (`hooks.outbound` in `config.yaml`) pushed to the sidecar,
+  which translates them into the platform's CloudEvents on the standing key. A scheduled run becomes the
+  NOW band while it runs and a DONE receipt when it ends; a Discord conversation is never narrated.
 - **Pushes** sign through an ssh-agent forwarded from the host, holding one repository-scoped deploy key.
   The agent pushes `agent/<item>` branches; `.github/workflows/land.yml` opens the pull request and it
   merges when the `ci` and `security` checks pass. The agent cannot push to `main`, open a pull request,
   cut a deploy tag, or dispatch a workflow.
 - **Discord** is the one token in its reach: it can only post as the bot.
 
-Three containers, one VM (`container/compose.yml`): `oa-agent` (the gateway: Discord + the cron schedule),
-`oa-sidecar` (the key), `oa-reporter` (narrates runs to the platform through supercode's harness protocol).
+Two containers, one VM (`container/compose.yml`): `oa-agent` (the gateway: Discord + the cron schedule)
+and `oa-sidecar`, which holds the standing key, forwards the model routes, and turns Hermes's own
+lifecycle events into the platform's receipts — nothing tails the agent's database.
 The Hermes home and the checkout live in Docker volumes, `oa-home` and `oa-repo`: SQLite over a host bind
 mount crashes the gateway, and nothing on the host needs them. Inspect with `docker exec`.
 
@@ -44,13 +49,13 @@ export DOCKER_CONTEXT=colima-open-autonomy
 docker volume create oa-home && docker volume create oa-repo
 #   seed oa-home from hermes/ (+ .env), and oa-repo from a clone made with the deploy key
 
-# once: supercode for the VM, for the reporter image
-container/build-supercode.sh
+# once: the pinned Hermes image the agent runs on (container/hermes.pin)
+container/build-hermes.sh
 
 # every time
 docker compose -f container/compose.yml up -d --build
 docker exec -u $UID oa-agent hermes cron run build-roadmap    # a run now
-docker logs -f oa-reporter                                     # what it is narrating
+docker logs -f oa-sidecar                                      # what it is narrating to the platform
 ```
 
 Discord: the bot "Open Autonomy" lives in the "Open Autonomy" server (invite: https://discord.gg/AcKMuMv2HC); the home's

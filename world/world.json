@@ -1,6 +1,6 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy with no keys anywhere: the real platform worker under wrangler dev, metering against the openai twin as the model gateway, syncing docs and minting keys against the GitHub twin. The agent (real Hermes) runs against it with `bun world/run.ts env -- …`. ${TWINS_ROOT} and ${WORLD_DIR} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy with no keys anywhere: the real platform worker under wrangler dev, metering against the openai twin as the model gateway, syncing docs and minting keys against the GitHub twin. The agent (real Hermes) narrates its run through the same key sidecar production uses, and runs against it with `bun world/run.ts env -- \u2026`. ${TWINS_ROOT} and ${WORLD_DIR} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
@@ -13,16 +13,24 @@
       "id": "openai",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/openai/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/openai/src/cli.ts",
+        "serve"
+      ],
       "port": "auto",
       "injectEnv": "OPENAI_TWIN_URL",
-      "env": { "TWIN_OPENAI_SCENARIO": "${WORLD_DIR}/handlers/openai.json" }
+      "env": {
+        "TWIN_OPENAI_SCENARIO": "${WORLD_DIR}/handlers/openai.json"
+      }
     },
     {
       "id": "github",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/github/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/github/src/cli.ts",
+        "serve"
+      ],
       "port": "auto",
       "injectEnv": "GITHUB_TWIN_URL"
     },
@@ -30,12 +38,40 @@
       "id": "platform",
       "type": "process",
       "command": "bun",
-      "args": ["world/platform.ts"],
+      "args": [
+        "world/platform.ts"
+      ],
       "port": "auto",
       "portArg": false,
       "rootArg": "--persist-to",
       "injectEnv": "PLATFORM_URL",
-      "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 120000, "intervalMs": 500 }
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 120000,
+        "intervalMs": 500
+      }
+    },
+    {
+      "id": "sidecar",
+      "type": "process",
+      "command": "bun",
+      "args": [
+        "platform/scripts/agent-sidecar.ts"
+      ],
+      "port": "auto",
+      "portArg": "--port",
+      "rootArg": false,
+      "injectEnv": "SIDECAR_URL",
+      "env": {
+        "AGENT_ENV_FILE": "${WORLD_DIR}/../.volter/worlds/open-autonomy/data/agent.env",
+        "OPEN_AUTONOMY_BASE_URL": "",
+        "OPEN_AUTONOMY_NARRATE_SESSIONS": "all"
+      },
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 30000,
+        "intervalMs": 200
+      }
     }
   ]
 }

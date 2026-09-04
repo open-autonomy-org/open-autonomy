@@ -1,7 +1,0 @@
-# The reporter beside the agent: bun for the script, git to find the commit a run landed, and a Linux
-# build of supercode (`container/build-supercode.sh`) for the harness protocol that reads the home.
-FROM oven/bun:1.3.10
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY container/supercode-linux-arm64 /usr/local/bin/supercode
-COPY platform/scripts/agent-reporter.ts /reporter/agent-reporter.ts
-RUN chmod 755 /usr/local/bin/supercode && /usr/local/bin/supercode --version

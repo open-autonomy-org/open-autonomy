@@ -13,8 +13,8 @@ Fund a project's agents in the open. **The only thing funded is token usage.** T
   delivery). It runs in containers (`container/compose.yml`, see `hermes/README.md`) holding nothing whose
   leak matters: the standing key lives in a sidecar, pushes sign through a forwarded ssh-agent with one
   repository-scoped deploy key, and it lands work on `agent/*` branches that `land.yml` merges when `ci`
-  and `security` pass. `platform/scripts/agent-reporter.ts` narrates runs as CloudEvents, reading the home
-  through supercode's `sessions.index.subscribe` + `sessions.follow`.
+  and `security` pass. Runs become receipts through Hermes's own outbound
+  webhooks, translated by the sidecar (`platform/scripts/agent-sidecar.ts`).
 - the live view (inside `platform/`) — the project page's spine (NEXT from the roadmap, NOW streaming the
   running job, DONE as receipts), the run page, the Setup pane read from `hermes/`, and the `now.svg` widget.
   **Visualization only.** It never drives the agent.

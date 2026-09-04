@@ -55,12 +55,13 @@ Endpoints:
   mints a **standing key** (no per-run cap; bounded by the account balance + the global daily cap; ≤ 3 per
   account). `POST /v1/keys/rotate` with the current key as bearer → a fresh key; the old one lives one more day.
 - `POST /v1/agent/events` (bearer: the project's standing key; the account is the key's own) — the agent-side
-  reporter's narration of a run: `{kind:'started', key, title?, job_name?, item_id?, started_at?}`,
+  agent's narration of a run: `{kind:'started', key, title?, job_name?, item_id?, started_at?}`,
   `{kind:'turns', key, turns:[{role, text?, tool?, args?, result?, ts?}], item_id?}` (appended, bounded),
   `{kind:'finished', key, status:'done'|'failed', report?, commit_sha?}`. `GET /v1/accounts/:id/jobs` lists the
   receipts (and `current`, the job in flight); `GET .../jobs/:key` is one job with its transcript.
-  `DELETE /admin/accounts/:id/jobs/:key` drops a mis-narrated receipt. `platform/scripts/agent-reporter.ts` is
-  the reporter (reads the Hermes home through supercode's harness protocol; `--install` for launchd).
+  `DELETE /admin/accounts/:id/jobs/:key` drops a mis-narrated receipt (through the reviewed admin workflow).
+  The agent's side is `platform/scripts/agent-sidecar.ts`: it holds the standing key and translates Hermes's
+  own outbound webhooks into these events.
 - `GET /v1/accounts/:id/calls?limit=50&before=<cursor>` — public, the account's **audit trail**: every metered
   model call (time, run, actor, model, tokens, cost), newest first, durable and never evicted. `next` is the
   cursor for the following page.
