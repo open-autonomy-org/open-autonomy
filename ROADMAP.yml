@@ -21,3 +21,12 @@ items:
     acceptance:
       - CHANGELOG.md's Unreleased section carries a line, added by the agent, saying the container landed this item.
       - The item's status is done.
+  - id: world-health-badge
+    phase: 1
+    priority: high
+    status: planned
+    title: The project page states whether the agent's last run succeeded
+    acceptance:
+      - A project page served by the worker carries a line naming the outcome of the account's most recent finished run, or says there has been no run yet.
+      - The line is rendered from the account's own job receipts, not from any new stored field.
+      - Verified in the world - the page fetched from $PLATFORM_URL after a run shows the line - and the platform test suite covers the no-run case.
