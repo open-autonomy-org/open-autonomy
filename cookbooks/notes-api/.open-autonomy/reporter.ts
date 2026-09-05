@@ -253,7 +253,9 @@ await sc.start();
 // is published under that item whenever it changes. A task the board marks done after a review it requested
 // was approved by that review.
 type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; branch?: string; commit?: string } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
-const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'triage' ? 'proposed' : 'planned');
+// The lanes as the roadmap's four words: done; running or review is active; blocked waits on the owner, so proposed;
+// the rest is planned.
+const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' ? 'proposed' : 'planned');
 const boardDigests = new Map<string, string>();
 let roadmapDigest = '';
 async function board(): Promise<void> {

@@ -27,6 +27,7 @@ clobbering them.
 import json
 import logging
 import re
+import time
 from pathlib import Path
 
 logger = logging.getLogger("hooks.seed")
@@ -137,8 +138,7 @@ def _seed_board() -> None:
                "--skill", "develop", "--skill", "review", "--json"]
         if previous:
             cmd += ["--parent", previous]
-        if spec.get("triage"):
-            cmd.append("--triage")  # filed, not released: the owner's to accept onto the board
+
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode != 0:
             logger.error("seed: cannot file task '%s': %s", spec["key"], (r.stderr or r.stdout).strip()[-400:])
@@ -148,6 +148,12 @@ def _seed_board() -> None:
             logger.error("seed: no task id in the board's answer for '%s'", spec["key"])
             return
         previous = m.group(1)
+        # A task the seed holds (`"held": "<why>"`) is filed and blocked at once, for the owner to release with
+        # `hermes kanban unblock`; only at filing, so a release is never undone by the next boot.
+        held = spec.get("held")
+        created_at = re.search(r'"created_at":\s*(\d+)', r.stdout)
+        if held and created_at and time.time() - int(created_at.group(1)) < 120:
+            subprocess.run(["hermes", "kanban", "block", previous, "--kind", "needs_input", str(held)], capture_output=True, text=True)
     logger.info("seed: the board holds the %d seed task(s)", len(tasks))
 
 

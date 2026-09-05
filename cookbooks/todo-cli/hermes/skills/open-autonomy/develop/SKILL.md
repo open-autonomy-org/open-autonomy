@@ -33,8 +33,9 @@ is not done.
    history. If the branch exists from an earlier attempt, push to `agent/<task id>-<YYYYMMDD-HHMM>`.
 7. Hand off: `kanban_request_review` naming the branch and the commit, and what is verified how.
 
-If a line cannot be made true from here, `kanban_block` with exactly what is missing. Do not loop on a failure
-you cannot explain.
+If a line cannot be made true from here, `kanban_block` with exactly what is missing, and stop. Never file,
+split or decompose tasks, and never create one: the board is the owner's. Do not loop on a failure you cannot
+explain.
 
 ## Spending through a rail
 
