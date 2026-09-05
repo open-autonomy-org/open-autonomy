@@ -15,7 +15,7 @@
 //
 // The world's stack step calls this same file, so what an adopter runs and what the world proves never drift.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 const here = resolve(import.meta.dir, '..');
@@ -69,8 +69,10 @@ else {
   run([...docker, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${join(here, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
     `cp -a /src/. /opt/data/ && printf '%s\\n' ${env.map((e) => `'${e.replace(/'/g, "'\\''")}'`).join(' ')} > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
   say(`home: oa-home seeded from hermes/ (.env: the valve's address, the dummy key${args('--env').length ? `, ${args('--env').map((e) => e.split('=')[0]).join(', ')}` : ''})`);
-  // The clone is made on the host with your own git (and so your own keys), then carried into the volume.
-  const tmp = mkdtempSync(join(tmpdir(), 'oa-setup-'));
+  // The clone is made on the host with your own git (and so your own keys), then carried into the volume through a
+  // directory under your home: a Docker host mounts the home directory, not the system's temporary one.
+  mkdirSync(join(homedir(), '.config', 'open-autonomy'), { recursive: true });
+  const tmp = mkdtempSync(join(homedir(), '.config', 'open-autonomy', 'setup-'));
   try {
     run(['git', 'clone', '-q', origin, join(tmp, 'repo')], { quiet: true });
     if (originInside !== origin) run(['git', '-C', join(tmp, 'repo'), 'remote', 'set-url', 'origin', originInside], { quiet: true });
