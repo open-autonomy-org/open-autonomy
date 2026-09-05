@@ -8,7 +8,7 @@
 [![activity](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/activity.svg)](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/calls)
 
 **A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,
-in the open: the setup is checked in, the roadmap is a file, and what the agent spends is funded by people
+in the open: the setup is checked in, the roadmap is the agent's own board, and what the agent spends is funded by people
 who want the project to exist and metered on public books. Four pieces:
 
 1. **The platform** (`apps/platform`) — a Patreon-style app where people fund projects with agentic funds.
@@ -30,7 +30,7 @@ Three ways in:
 - **Run your own.** Three commands: `bun create open-autonomy <dir> --project <name> --account <owner/repo>`
   makes the repository; `bun .open-autonomy/mint-key.ts` mints its key the adopter way (a claim file in the
   repository); `bun .open-autonomy/setup.ts` sets up the host and says what to run next. The agent then works
-  `ROADMAP.yml` on its own board, in the open, metered to your project's account.
+  its board, in the open, metered to your project's account.
 - **Contribute.** `bun run check` is every package's smoke tests and typecheck; `bun world/run.ts check` is the
   gate: the platform from this tree and the kit on a cookbook, against twins of every vendor, with no keys.
   Nothing pushes to `main`; a `land/<topic>` branch lands itself when the checks pass.

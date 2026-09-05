@@ -1,6 +1,6 @@
 {
   "name": "create-open-autonomy",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "The default Open Autonomy starter kit: a complete repository that runs its own Hermes agent against the platform, with the SDK wired in. `bun create open-autonomy <dir>` scaffolds one.",
   "license": "Apache-2.0",
   "repository": {

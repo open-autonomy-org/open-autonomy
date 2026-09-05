@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseRailsConfig } from '../packages/sdk/src/rails.ts';
-import { parseRoadmap } from '../packages/sdk/src/roadmap.ts';
+import { ROADMAP_SCHEMA } from '../packages/sdk/src/roadmap.ts';
 import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need } from './lib.ts';
 
 const platform = need('PLATFORM_URL');
@@ -51,9 +51,11 @@ for (const path of [`/p/${ENC}`, `/p/${ENC}/sessions/probe-1`, `/p/${ENC}/items/
   if (page.status !== 200) fail(`${path} → ${page.status}`);
   if (!page.text.includes('probe')) fail(`${path} does not show the probe's session`);
 }
-// The roadmap arrives through the key, the way a project's reporter narrates the file it works.
-const cookbookRoadmap = parseRoadmap(readFileSync(resolve(COOKBOOK, 'ROADMAP.yml'), 'utf8'));
-const pushed = await bearer.post('/v1/agent/roadmap', { source: 'file', roadmap: cookbookRoadmap });
+// The roadmap arrives through the key, the way a project's reporter publishes its board: here the cookbook's seed
+// tasks, as the board would hold them before any ran.
+const seed = JSON.parse(readFileSync(resolve(COOKBOOK, 'hermes', 'kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance: string[] }> };
+const cookbookRoadmap = { schema: ROADMAP_SCHEMA, items: seed.tasks.map((t) => ({ id: `t_${t.key}`, title: t.title, status: 'planned' as const, acceptance: t.acceptance })) };
+const pushed = await bearer.post('/v1/agent/roadmap', { source: 'kanban', roadmap: cookbookRoadmap });
 if (pushed.status !== 200) fail(`roadmap push through the key → ${pushed.status} ${pushed.text.slice(0, 200)}`);
 const page = (await pub.get(`/p/${ENC}`)).text;
 if (!page.includes(cookbookRoadmap.items[0].title)) fail('the project page does not render the roadmap published through the key');
@@ -76,11 +78,11 @@ for (const w of ['runway', 'roadmap', 'activity', 'now']) if ((await pub.get(`/v
 if ((await admin.get('/admin/status')).status !== 200) fail('admin status did not serve');
 ok.push('refusals and widgets as specified');
 
-// 6. The roadmap drivers against the twin. The cookbook's roadmap came through the file driver on sync; a
+// 6. The roadmap drivers against the twin. The cookbook's roadmap came through the key from its board; a
 //    second project whose config names github-milestones is created on the twin with two milestones, and
 //    the platform pulls them, credential-free, into a revision with the driver's conformance.
 const road = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body;
-if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not arrive through the key: ${JSON.stringify(road).slice(0, 200)}`);
+if (road?.revision?.source !== 'kanban' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not arrive through the key: ${JSON.stringify(road).slice(0, 200)}`);
 const gh = api(need('GITHUB_TWIN_URL'));
 const created = await gh.post('/orgs/cookbook/repos', { name: 'milestones-demo' });
 if (![201, 422].includes(created.status)) fail(`github twin: create milestones-demo → ${created.status}`);

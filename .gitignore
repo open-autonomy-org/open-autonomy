@@ -20,9 +20,9 @@ hermes/*_cache/
 hermes/memories/
 hermes/pairing/
 hermes/hooks/*
-!hermes/hooks/schedule-seed/
-!hermes/hooks/schedule-seed/HOOK.yaml
-!hermes/hooks/schedule-seed/handler.py
+!hermes/hooks/seed/
+!hermes/hooks/seed/HOOK.yaml
+!hermes/hooks/seed/handler.py
 hermes/cron/output/
 hermes/cron/*.lock
 hermes/cron/jobs.json

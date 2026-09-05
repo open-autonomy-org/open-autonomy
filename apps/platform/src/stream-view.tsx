@@ -77,7 +77,7 @@ export function Spine({ account, roadmap, scheduleJson, sessions, live, repoUrl,
       <ol class="rm-spine">
         {proposed.map((r) => <Station item={r.item} state={r.state} enc={enc}><Acceptance item={r.item} /></Station>)}
         {next.map((r) => <Station item={r.item} state={r.state} enc={enc}><Acceptance item={r.item} /></Station>)}
-        {!proposed.length && !next.length ? <li class="empty">Nothing queued. The roadmap file decides what comes next.</li> : null}
+        {!proposed.length && !next.length ? <li class="empty">Nothing queued. What comes next is the project's to file.</li> : null}
       </ol>
       <h3>Now</h3>
       {liveSessions.length ? liveSessions.map((s) => (
@@ -98,7 +98,7 @@ export function Spine({ account, roadmap, scheduleJson, sessions, live, repoUrl,
         {!done.length ? <li class="empty">Nothing shipped yet.</li> : null}
       </ol>
       {orphan.length ? <><h3>Other sessions</h3>{orphan.slice(0, 5).map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />)}{orphan.length > 5 ? <div class="rc-none">{orphan.length - 5} more · <a href={`/p/${enc}/sessions`}>every session ↗</a></div> : null}</> : null}
-      <div class="rc-proofs" style="margin-top:14px">{repoUrl ? <a href={`${repoUrl}/blob/HEAD/ROADMAP.yml`}>the roadmap file ↗</a> : null}<a href={`/p/${enc}/sessions`}>every session ↗</a><a href={`/v1/accounts/${enc}/roadmap/revisions`}>every roadmap revision ↗</a></div>
+      <div class="rc-proofs" style="margin-top:14px"><a href={`/p/${enc}/sessions`}>every session ↗</a><a href={`/v1/accounts/${enc}/roadmap/revisions`}>every roadmap revision ↗</a></div>
     </div>
   );
 }

@@ -57,5 +57,5 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - README widgets: `/v1/accounts/:account/{runway,now,roadmap,activity}.svg` (Camo-safe SVG).
 - A project page shows what its substrate publishes through the SDK — the sessions, the roadmap, the board, the
   agent's setup — and reads from its repository only `docs/VISION.md` and `CHANGELOG.md` (re-synced every ten
-  minutes; `admin.yml` → `sync` forces it) plus `.open-autonomy/config.yaml` for the owner's bounds. Hermes and the
-  file roadmap are starters the kit makes, not shapes the platform knows.
+  minutes; `admin.yml` → `sync` forces it) plus `.open-autonomy/config.yaml` for the owner's bounds. Hermes and its
+  board are a starter the kit makes, not shapes the platform knows.

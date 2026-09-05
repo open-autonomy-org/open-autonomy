@@ -25,8 +25,3 @@ rails:
 
 hermes_home: /opt/data
 state_file: /work/project/.open-autonomy/reporter-state.json
-
-# The roadmap this project reports against. `file` is the default driver: ROADMAP.yml in git.
-roadmap:
-  source: file
-  path: ROADMAP.yml

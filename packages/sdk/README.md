@@ -24,7 +24,7 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
   It opens, its turns append with an offset, and it ends with an optional outcome: a run has a verdict
   (`done` | `failed`), a chat does not. Several can be live at once.
 - **An update** is a short progress note on a roadmap item, optionally from a session.
-- **The roadmap** is `ROADMAP.yml` in the project's git. This package reads it into a typed shape and writes
+- **The roadmap** is one normalized document per project, whatever holds it natively: a board, a tracker, a file. This package reads the file form into a typed shape and writes
   it back byte for byte (`parseRoadmap`, `serializeRoadmap`, `withStatus`, `renderRoadmap`); the platform's
   page parses through the same code. There is no write API: the file in git is the only roadmap surface.
   Adapters that mirror it to a tracker are what the shape is for.
@@ -35,12 +35,12 @@ an item's page shows every session, update and settled cent that touched it.
 ## Drivers
 
 The platform holds one normalized roadmap per project, revisioned: who, when, from which source, what
-changed. Drivers feed it. `file` (the default) is ROADMAP.yml pulled on sync. `github-milestones` is the
+changed. Substrates feed it: a reporter publishing its board, or a driver. `file` is a roadmap file in git pulled on sync. `github-milestones` is the
 repository's milestones, pulled on sync with no credential (`fromMilestones`). `jira` is the project's
 epics, read owner-side where the credential is and pushed with `pushRoadmap` on a `steer`-scoped key
 (`fromJira`). Each driver declares its conformance, what its tracker cannot express (`CONFORMANCE`), and a
 reconcile plan carries a finished item back to the native side (`milestoneChanges`, `jiraChanges`). The
-agent is tracker-blind: whatever the source, it works ROADMAP.yml and narrates the item and its outcome.
+agent is tracker-blind: whatever the source, it works its own queue and narrates the item and its outcome.
 
 | Route | What |
 |---|---|

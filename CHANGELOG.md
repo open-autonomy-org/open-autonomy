@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **The board is the roadmap.** The Hermes kit has no roadmap file and no fire: the owner files tasks on the agent's board (the kit seeds the first ones from `hermes/kanban.seed.json`, in order), the dispatcher pulls them down one at a time, and the reporter publishes the board as the roadmap through the SDK. Three skills: `develop` (build, verify in the project's world, land, hand off), `review` (the handoff against `STANDARDS.md`), `pm` (hourly: unstick what is stuck, report). No test-driven-development skill, no `ROADMAP.yml`, no tracker driver tool.
 - A project page is live between sessions too: one stream per project carries the books, the live set and the roadmap revision; the funding numbers update in place and the page refreshes itself when a session starts or ends, a revision lands or money arrives.
 - The reporter publishes the roadmap as the repository's main holds it, read through GitHub's contents API every five minutes, so the page follows landed items while the agent's checkout stands on its branch. The world's reporter runs on the world clock and reads the GitHub twin.
 - `v2-done`: v2 is complete. Projects run on grant credits from the org's grants account, this install included; real money (Polar and Stripe Issuing on the live org) moves to a later phase.

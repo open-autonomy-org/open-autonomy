@@ -7,8 +7,8 @@
 //   up     the Hermes image, the two volumes (home from the cookbook's hermes/, the clone from the twin),
 //          the key file the valve reads, then `docker compose up -d --build`
 //   down   `docker compose down`; with --purge the volumes too
-//   clock advance <N>(s|m|h|d)   move the container's clock (the schedule is "every 360m" from boot)
-//   between-fires  what the owner does between two fires: the config on the twin's main moves from the
+//   clock advance <N>(s|m|h|d)   move the container's clock (the PM job is "every 60m" from boot)
+//   between-tasks  what the owner does between two tasks: the config on the twin's main moves from the
 //          previous model to the cookbook's, the checkout follows, the stack restarts (the next worker spends on
 //          it), and the key is rotated with a short grace (the valve picks the new key up unrestarted; the old
 //          key is refused after its grace)
@@ -113,7 +113,7 @@ function waitSchedule(): void {
   const booted = Date.now();
   for (;;) {
     const list = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'hermes', 'cron', 'list'], { quiet: true, check: false }).out;
-    if (/file-roadmap-item/.test(list)) break;
+    if (/\bpm\b/.test(list)) break;
     if (Date.now() > deadline) throw new Error('stack: the gateway did not seed its schedule within five minutes (docker logs oa-agent)');
     Bun.sleepSync(2000);
   }
@@ -124,7 +124,7 @@ const certifiIn = (image: string): string => {
   if (!p.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   return p;
 };
-const composeEnv = (certifiPath: string) => ({ AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, WORLD_GITHUB_API_BASE: forContainers(need('GITHUB_TWIN_URL')) });
+const composeEnv = (certifiPath: string) => ({ AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid });
 
 async function up(): Promise<void> {
   const github = need('GITHUB_TWIN_URL');
@@ -178,7 +178,7 @@ async function up(): Promise<void> {
   timed('compose up --build', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--build'], { env: composeEnv(certifiPath) }));
   timed('seal', () => seal());
   waitSchedule();
-  console.log(`stack: up on ${context} — the gateway carries the schedule (file-roadmap-item seeded) and the board's dispatcher; \`bun world/run.ts clock advance 360m\` brings its first fire forward`);
+  console.log(`stack: up on ${context} — the board holds the seed tasks and its dispatcher is pulling them down; the PM job is seeded (\`bun world/run.ts clock advance 60m\` brings its first hour forward)`);
 }
 
 // The seal: off the stack's bridge only the host (the platform, the twins, the front, the resolver) is
@@ -205,14 +205,15 @@ function unseal(): void {
 
 // The owner moves the model: hermes/config.yaml on main now names the cookbook's model, the agent's checkout
 // follows main, and the stack restarts the way an adopter restarts it (`docker compose up -d`): home-sync
-// carries the config into the home and the gateway boots; the next task's worker takes the model from it.
-async function betweenFires(): Promise<void> {
+// carries the config into the home and the gateway boots (its seed hook finds the board already filed); the
+// next worker the board dispatches takes the model from it.
+async function betweenTasks(): Promise<void> {
   await putMain('hermes/config.yaml', configYaml(), `hermes/config.yaml: model ${MODEL}`);
   sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'sh', '-c', 'cd /work/project && git fetch -q origin && git checkout -q main && git reset -q --hard origin/main'], { quiet: true });
   timed('compose up (restart)', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--force-recreate', 'home-sync', 'agent'], { env: composeEnv(certifiIn(`${COOKBOOK_NAME}-agent:local`)) }));
   waitSchedule();
   await rotateKey();
-  console.log(`stack: the model moved to ${MODEL} and the schedule followed; \`bun world/run.ts clock advance 360m\` brings the next fire forward`);
+  console.log(`stack: the model moved to ${MODEL}; the next worker the board dispatches spends on it`);
 }
 
 // The owner rotates the key the adopter way (`bun .open-autonomy/mint-key.ts --rotate`), here with a five-second
@@ -272,5 +273,5 @@ if (verb === 'up') await up();
 else if (verb === 'down') down(rest.includes('--purge'));
 else if (verb === 'clock' && rest[0] === 'advance' && rest[1]) clockAdvance(rest[1]);
 else if (verb === 'seal') seal();
-else if (verb === 'between-fires') await betweenFires();
-else { console.error('usage: stack.ts up | down [--purge] | seal | between-fires | clock advance <N>(s|m|h|d)'); process.exit(2); }
+else if (verb === 'between-tasks') await betweenTasks();
+else { console.error('usage: stack.ts up | down [--purge] | seal | between-tasks | clock advance <N>(s|m|h|d)'); process.exit(2); }

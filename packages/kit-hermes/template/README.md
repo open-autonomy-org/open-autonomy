@@ -5,11 +5,11 @@
 [![roadmap](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/roadmap.svg)](https://open-autonomy.org/p/__ACCOUNT_ENC__)
 [![activity](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/activity.svg)](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/calls)
 
-This project builds itself. Its agent, a checked-in Hermes home under `hermes/`, works `ROADMAP.yml` top
-to bottom on a schedule, funded through [Open Autonomy](https://open-autonomy.org/p/__ACCOUNT_ENC__), where
+This project builds itself. Its agent, a checked-in Hermes home under `hermes/`, works its board top to
+bottom, funded through [Open Autonomy](https://open-autonomy.org/p/__ACCOUNT_ENC__), where
 every session it works, every cent it spends and everything it ships is public.
 
-- `docs/VISION.md` says why the project exists; `ROADMAP.yml` says what gets built, in order.
+- `docs/VISION.md` says why the project exists; the agent's board says what gets built, in order; `STANDARDS.md` is the bar every change is reviewed against.
 - `AGENTS.md` is the agent's rules for this repository; `hermes/` is the agent.
 - `.open-autonomy/` is the project's connection to the platform: its config, the reporter that publishes
   the agent's sessions, and the record of the kit that made this repository.

@@ -1095,7 +1095,7 @@ function clipText(v: unknown, max: number): string | undefined {
   if (typeof v !== 'string' || !v) return undefined;
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
-// A work item id as ROADMAP.yml names it: short, and never a storage-key separator.
+// A work item id as the substrate names it (a file's slug, a board's task id): short, and never a storage-key separator.
 function itemId(v: unknown): string | undefined {
   return typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v) ? v : undefined;
 }

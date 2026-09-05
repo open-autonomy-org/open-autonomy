@@ -2,14 +2,14 @@
 // platform account — into a complete repository. Two kinds of files come out of it:
 //   kit-owned   the agent's home, the reporter, the container stack, the landing workflows: what the kit
 //               keeps current. `check` diffs them against a fresh render; `upgrade` rewrites them.
-//   seeded      README, roadmap, vision, changelog, AGENTS.md, license, the model config, the publish
+//   seeded      README, the board's seed, STANDARDS.md, vision, changelog, AGENTS.md, license, the model config, the publish
 //               policy: the project's own files, written once as a courtesy and never touched again.
 // `.open-autonomy/kit.json` records which kit, which version and which parameters made the repo: the anchor
 // `check` and `upgrade` read, so neither needs to be told anything twice.
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.0.0' } as const;
+export const KIT = { name: 'hermes', version: '2.1.0' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
@@ -17,7 +17,7 @@ export interface KitParams { project: string; account: string }
 export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
 
 // What the kit keeps current. Everything else in the template is seeded once.
-const OWNED = [/^hermes\/(?!config\.yaml$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|roadmap\.ts|setup\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|setup\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -89,7 +89,22 @@ export function check(dir: string): Outcome {
     const have = existsSync(at) ? readFileSync(at) : null;
     if (!have || Buffer.compare(have, want) !== 0) drift.push(`${rel}: ${have ? 'differs from' : 'missing; in'} the kit`);
   }
+  for (const rel of retired(dir, rendered, rec)) drift.push(`${rel}: retired from the kit`);
   return { written: [], skipped: [], drift };
+}
+
+// Kit-owned files the repository has that the kit no longer renders: what an earlier kit made and this one
+// retired. `upgrade` removes them; a project that keeps one names it in `divergences`. Only the families the
+// kit writes are looked at — never the agent's runtime state beside them (its database, sessions, logs, .env).
+const RETIRABLE = [/^hermes\/(skills|hooks|scripts)\//, /^\.open-autonomy\/([a-z-]+\.ts|sdk\/)/, /^container\//];
+function retired(dir: string, rendered: Map<string, Buffer>, rec: KitRecord): string[] {
+  const out: string[] = [];
+  for (const root of ['hermes/skills', 'hermes/hooks', 'hermes/scripts', '.open-autonomy', 'container']) {
+    const at = join(dir, root);
+    if (!existsSync(at)) continue;
+    for (const rel of walk(at).map((f) => `${root}/${f}`)) if (RETIRABLE.some((re) => re.test(rel)) && isOwned(rel) && !rendered.has(rel) && !rec.divergences.includes(rel)) out.push(rel);
+  }
+  return out;
 }
 
 // upgrade: check, then rewrite the drifted kit-owned files and stamp the kit version.
@@ -98,6 +113,9 @@ export function upgrade(dir: string): Outcome {
   const rendered = render(rec.params);
   const before = check(dir);
   const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE);
+  for (const rel of retired(dir, rendered, rec)) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
+  // A directory the retirement emptied goes too.
+  for (const rel of [...new Set(retired(dir, rendered, rec).map((r) => dirname(r)))]) { try { if (!readdirSync(join(dir, rel)).length) rmSync(join(dir, rel), { recursive: true }); } catch { /* gone */ } }
   // The record keeps the project's divergences; only the version moves.
   writeFileSync(join(dir, KIT_FILE), `${JSON.stringify({ ...rec, version: KIT.version } satisfies KitRecord, null, 2)}\n`);
   return { ...out, drift: before.drift };

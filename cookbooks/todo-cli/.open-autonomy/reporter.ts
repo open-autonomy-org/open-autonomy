@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
-import { parseRoadmap } from './sdk/roadmap.ts';
+import { ROADMAP_SCHEMA, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -100,11 +100,10 @@ function turnsOf(m: NormalizedMessage): Turn[] {
   if (m.role === 'user') return [{ ts, role: 'user', text: text.slice(0, 2000) }];
   return [];
 }
-// The roadmap item a run works: the skill lands on agent/<item>, so the branch in a git command names it.
-// The item a session serves: the agent branch it names in what it says, runs, or reads back (a reviewer
-// meets the branch in the handoff it reads from the board).
-const itemIn = (turns: Turn[]): string | undefined => turns.map((t) => /\bagent\/([a-z0-9][a-z0-9-]*)/.exec(`${t.args ?? ''} ${t.text ?? ''} ${t.result ?? ''}`)?.[1]).find(Boolean);
-const shaIn = (turns: Turn[]): string | undefined => turns.map((t) => /PUSHED_BRANCH=agent\/[a-z0-9-]+ ([0-9a-f]{7,40})/.exec(t.result ?? '')?.[1]).find(Boolean);
+// The task a session serves is the board's task id: the dispatcher's own prompt names it (`work kanban task <id>`), and
+// so does the agent branch (agent/<task id>) in what the session says, runs, or reads back.
+const itemIn = (turns: Turn[]): string | undefined => turns.map((t) => (t.role === 'user' ? /\bkanban task (\S+)/.exec(t.text ?? '')?.[1] : undefined) ?? /\bagent\/([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(`${t.args ?? ''} ${t.text ?? ''} ${t.result ?? ''}`)?.[1]).find(Boolean);
+const shaIn = (turns: Turn[]): string | undefined => turns.map((t) => /PUSHED_BRANCH=agent\/[A-Za-z0-9._-]+ ([0-9a-f]{7,40})/.exec(t.result ?? '')?.[1]).find(Boolean);
 
 // supercode synthesizes this result for a tool call whose answer is not recorded yet; a live follow sees it
 // before the real result lands in its place. Such a turn is held back until it resolves.
@@ -248,34 +247,43 @@ sc.on('sessionActivityEvent', (ev) => { const key = activitySubs.get(ev.subscrip
 sc.on('exit', (code) => { log(`supercode harness serve exited (${code}); stopping`); process.exit(1); });
 
 await sc.start();
-// The board, through supercode's workflow layer: every task that names a roadmap item (`ROADMAP_ITEM=<id>` in
-// its body) is published as that item's board state — lane, attempts, handoff, review verdicts — whenever it
-// changes. A task the board marks done after a review it requested was approved by that review.
-type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; metadata?: unknown } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+// The board, through supercode's workflow layer, is the project's roadmap and its work record, both published
+// through the SDK. Every task is a roadmap item — its id, its title, its lane as the item's status, the `- `
+// lines of its body as the acceptance — and each task's board state (lane, attempts, handoff, review verdicts)
+// is published under that item whenever it changes. A task the board marks done after a review it requested
+// was approved by that review.
+type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; branch?: string; commit?: string } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'triage' ? 'proposed' : 'planned');
 const boardDigests = new Map<string, string>();
+let roadmapDigest = '';
 async function board(): Promise<void> {
   let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
   try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return; }
-  for (const b of Object.values(read.workflow?.boards ?? {})) for (const t of Object.values(b.tasks ?? {})) {
-    const item = /^ROADMAP_ITEM=([a-z0-9][a-z0-9-]*)$/m.exec(t.body ?? '')?.[1];
-    if (!item) continue;
+  const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  // A read that found no board at all (the database mid-write) is not an empty board.
+  if (!tasks.length) return;
+  const items: RoadmapItem[] = tasks.map((t) => ({ id: t.id, title: t.title ?? t.id, status: statusOf(t.lane), acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()) }));
+  const digest = JSON.stringify(items);
+  if (digest !== roadmapDigest) {
+    try { const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'kanban', 'reporter'); if (r.ok) { roadmapDigest = digest; if (!r.unchanged) log(`roadmap published from the board (${items.length} task(s))`); } else log(`roadmap publish refused: ${r.error ?? r.status}`); } catch (e) { log(`roadmap publish failed: ${(e as Error).message}`); }
+  }
+  for (const t of tasks) {
+    const item = t.id;
     const attempts = (t.attempts ?? []).map((a) => ({ id: a.id, profile: a.profile, status: a.status, started_at: a.started_at, ended_at: a.ended_at, outcome: a.outcome, summary: a.handoff?.summary }));
     const reviews = (t.reviews ?? []).map((r) => ({ verdict: r.verdict as 'requested', by: r.by, reason: r.reason, at: r.at }));
     const requested = [...reviews].reverse().find((r) => r.verdict === 'requested');
     if (t.lane === 'done' && requested && !reviews.some((r) => r.verdict === 'changes_requested' && (r.at ?? '') > (requested.at ?? ''))) reviews.push({ verdict: 'approved' as 'requested', by: attempts[attempts.length - 1]?.profile, at: t.completed_at ?? attempts[attempts.length - 1]?.ended_at });
     const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
     const state = { item, task_id: t.id, lane: t.lane, title: t.title, assignee: t.assignee, attempts, reviews, handoff: last?.handoff, updated_at: new Date().toISOString() };
-    const digest = JSON.stringify([state.lane, attempts.map((a) => [a.id, a.status, a.ended_at]), reviews.length, last?.handoff?.summary]);
-    if (boardDigests.get(t.id) === digest) continue;
-    try { if (await oa.task(state)) { boardDigests.set(t.id, digest); log(`board: ${t.id} → ${item} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
+    const taskDigest = JSON.stringify([state.lane, attempts.map((a) => [a.id, a.status, a.ended_at]), reviews.length, last?.handoff?.summary]);
+    if (boardDigests.get(t.id) === taskDigest) continue;
+    try { if (await oa.task(state)) { boardDigests.set(t.id, taskDigest); log(`board: ${t.id} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
   }
 }
 // The agent's setup, from the home it runs with — the identity text, the model, the schedule seed, the
-// skills — published whenever they change; and the roadmap from the repository's main (below). The platform
-// reads no harness file for either.
+// skills — published whenever they change. The platform reads no harness file.
 const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
 let setupDigest = '';
-let roadmapDigest = '';
 async function setup(): Promise<void> {
   const home = cfg.hermes_home;
   const config = readText(resolve(home, 'config.yaml')) ?? '';
@@ -290,28 +298,9 @@ async function setup(): Promise<void> {
   if (digest === setupDigest) return;
   try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
 }
-// The roadmap as the repository's main holds it, read through GitHub's contents API (the repository is public
-// and the agent's checkout stands on its own branch while it works), every five minutes and at start, published
-// when it changes. GITHUB_API_BASE names another GitHub (a world's twin); api.github.com otherwise.
-const GITHUB_API = (process.env.GITHUB_API_BASE ?? 'https://api.github.com').replace(/\/$/, '');
-const ROADMAP_POLL_MS = Number(process.env.OPEN_AUTONOMY_ROADMAP_POLL_MS ?? 5 * 60_000);
-let roadmapReadAt = 0;
-async function roadmap(): Promise<void> {
-  if (Date.now() - roadmapReadAt < ROADMAP_POLL_MS) return;
-  roadmapReadAt = Date.now();
-  let text: string | undefined;
-  try {
-    const res = await fetch(`${GITHUB_API}/repos/${cfg.account}/contents/ROADMAP.yml`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy-reporter' } });
-    if (!res.ok) { log(`roadmap: ROADMAP.yml on main → ${res.status}`); return; }
-    const j = await res.json() as { content?: string; encoding?: string };
-    if (j.content && j.encoding === 'base64') text = Buffer.from(j.content.replace(/\n/g, ''), 'base64').toString('utf8');
-  } catch (e) { log(`roadmap: cannot read main (${(e as Error).message})`); return; }
-  if (!text || text === roadmapDigest) return;
-  try { const r = await oa.pushRoadmap(parseRoadmap(text), 'file', 'reporter'); if (r.ok) { roadmapDigest = text; if (!r.unchanged) log(`roadmap published (${parseRoadmap(text).items.length} items)`); } else log(`roadmap publish refused: ${r.error ?? r.status}`); } catch (e) { log(`roadmap publish failed: ${(e as Error).message}`); }
-}
 const index = await sc.subscribeSessionIndex({ harnesses: ['hermes'], homes });
-await setup(); await roadmap(); await board();
-setInterval(() => { void setup(); void roadmap(); void board(); }, 10_000);
+await setup(); await board();
+setInterval(() => { void setup(); void board(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
 for (const d of index.initial) await consider(d);
 process.on('SIGTERM', () => { void sc.close().then(() => process.exit(0)); });
