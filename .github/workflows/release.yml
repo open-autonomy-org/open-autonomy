@@ -52,5 +52,10 @@ jobs:
           for p in packages/sdk packages/kit-hermes; do printf '%s\n' "$rc" > "$p/.npmrc"; done
           export NPM_CONFIG_TOKEN="$NPM_TOKEN"
           echo "home: $HOME; npmrc: $(wc -c < "$HOME/.npmrc") bytes; whoami: $(cd packages/sdk && bun pm whoami 2>&1 | tail -1)"
-          (cd packages/sdk && bun publish --access public --registry https://registry.npmjs.org/)
-          (cd packages/kit-hermes && bun publish --access public --registry https://registry.npmjs.org/)
+          # A version already on the registry is not published again (a rerun after a partial release), and an
+          # unpublished one that fails, fails loudly.
+          for p in packages/sdk packages/kit-hermes; do
+            name=$(bun -e "console.log(require('./$p/package.json').name)"); v=$(bun -e "console.log(require('./$p/package.json').version)")
+            if npm view "$name@$v" version >/dev/null 2>&1; then echo "$name@$v is already on the registry"; continue; fi
+            (cd "$p" && bun publish --access public --registry https://registry.npmjs.org/)
+          done
