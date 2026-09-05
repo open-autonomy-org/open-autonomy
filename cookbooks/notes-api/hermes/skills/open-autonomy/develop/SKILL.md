@@ -22,11 +22,13 @@ is not done.
 2. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
    what is out of scope is blocked, not built), `CONTRIBUTING.md` (how code is written here) and `AGENTS.md`.
    Read the code an acceptance line touches before you write.
-3. Build it. Match `CONTRIBUTING.md`. Write a test only where an acceptance line names one, or where the project's
-   check would otherwise not cover the line; never tests for their own sake.
-4. Verify every acceptance line where `AGENTS.md` says the project is verified: in the project's own twin world
-   when it keeps one (`world/`), as its operator, driving the real surface; otherwise the project's check. You
-   cannot reach production and must not try. Run the check once, green, before every push.
+3. Build it. Match `CONTRIBUTING.md`. Write no test unless the acceptance line guards an invariant of the
+   constitution and `bun run check` stays under thirty seconds with it; behavior is verified by running the system,
+   never by a test written for the occasion.
+4. Verify every acceptance line by driving the running system where `AGENTS.md` says it is verified: in the
+   project's own twin world when it keeps one (`world/`), as its operator, one action at a time, reading what
+   comes back; otherwise by running the program itself. You cannot reach production and must not try. Run
+   `bun run check` once, green, before every push.
 5. Commit small, signed as the agent, the task id first in the subject:
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
 6. Push the branch: `git push -u origin agent/<task id>`. The landing workflow opens the pull request and merges

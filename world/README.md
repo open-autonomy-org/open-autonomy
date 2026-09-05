@@ -9,21 +9,22 @@ schedule and fires the run itself. The world seeds, moves the clock, waits and a
 
 ```bash
 export TWINS_ROOT=/path/to/twin        # until the twin packages are published
-bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the
-                                       # cookbook's stack (container/compose.yml) on the world's VM
-bun world/run.ts probe                 # the platform's own proof, no agent: the operator at its doors
-bun world/run.ts kit                   # the kit's proof: published to the npm twin, `bun create open-autonomy` from it, the project's check
-bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
-bun world/run.ts clock advance 360m    # the container's clock: the schedule's next fire is now
-bun world/run.ts wait                  # watch: the run's session, then its pull request merged on the twin
-bun world/run.ts verify                # the audit: the books, the twin's main, the check, the page, the stream
+export WORLD_STATE_ROOT=/fast/disk     # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
+bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the cookbook's stack
+                                       # (container/compose.yml) as the stack `world` on the machine's Docker host
+open "$(bun world/run.ts env -- sh -c 'echo $PLATFORM_URL')/p/cookbook%2Ftodo-cli"   # the page: watch the board work
+bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world: the books, the sessions, the twins' ledgers
+bun world/run.ts clock advance 60m     # the container's clock: the PM's hour is now
+bun world/run.ts stack between-tasks   # what an owner does between two tasks: move the model, rotate the key, restart the stack
 bun world/run.ts down --purge          # forget it (the stack's volumes too)
-WORLD_STATE_ROOT=/fast/disk bun world/run.ts check   # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
-bun world/run.ts check                 # the gate: up → probe → clock → wait → verify → down
-bun world/run.ts check --cookbook notes-api   # the same gate on the second cookbook, a service
 ```
 
-The cookbook is `todo-cli` (`--cookbook <name>` picks another): eight items, each one command and one test.
+The world is an environment, not a test. Nothing in it asserts and nothing runs unattended: whoever brings it up
+drives it one action at a time — the page, the books, the board, the twins' ledgers (`volter-world tail`) — and
+reads what the product says. That is the repository's standing rule on tests: everything that runs by itself finishes
+in under thirty seconds (`bun run check`), and behavior is verified by driving the running product.
+
+The cookbook is `todo-cli` (`--cookbook <name>` picks another): nine seed tasks, each one command.
 Each `clock advance 360m` fires the schedule once; the roadmap walks down one item per fire.
 
 **The smoke path** while iterating: `up`, then `probe` for a platform change, or `clock advance 360m`,
@@ -57,5 +58,5 @@ commits the claim file to the repository on the twin, the platform reads it back
 | `actions.ts` | GitHub Actions for the twin, played by the world |
 | `stack.ts` `stack.override.yml` | the cookbook's stack as the adopter starts it, attached, on the world's Docker host, plus the clock |
 | `handlers/<cookbook>/gateway.ts` | the model's side of that cookbook's runs, and `stages/<item>/`, the files it writes |
-| `seed.ts` `probe.ts` `wait.ts` `verify.ts` | the steps, each run with the world's env |
+| `seed.ts` | the seed, run with the world's env: the cookbook on the GitHub twin, the books funded, the keys minted the adopter way |
 | `run.ts` | the runner |

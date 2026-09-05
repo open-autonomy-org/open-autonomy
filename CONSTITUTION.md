@@ -29,8 +29,13 @@ got right. Changing this file is the owner's act, never a task's.
   are the owner's committed word. A key can spend, pay, narrate, steer or give within them, never widen them.
 - **Nothing in an agent's reach is a secret that matters.** Every session is published live; a key spends one
   project's balance and stops at zero; a treasurer's key alone may pay.
-- **The world is the proof.** Nothing here develops against a real API; the twins are where every claim is
-  proven, and a claim that cannot be proven through a real path is not made.
+- **Nothing runs unattended for more than thirty seconds.** Every test and every check in this repository together
+  finish in under thirty seconds, or they are cut. No integration suite, no gate over the world, no script that
+  waits on an agent. A test earns its place only by guarding an invariant on this page and costs its share of the
+  budget; the review sends back a diff that adds one for anything else. Behavior is verified by driving the running
+  product and its world one action at a time, reading the product's own doors.
+- **Nothing here develops against a real API.** The twins are where every claim is exercised, by hand; a claim
+  that cannot be exercised through a real path is not made.
 
 ## Out of scope
 

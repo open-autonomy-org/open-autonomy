@@ -29,13 +29,13 @@ Include: the affected component, reproduction steps, impact, and any proof-of-co
 
 Every boundary below is a claim the code makes and a test or a world line proves. `scripts/check-docs.ts`
 verifies each `proof:` names a line that exists (`smoke` — `apps/platform/test/smoke.test.ts`; `world` —
-`world/probe.ts`, `world/verify.ts`, `world/stack.ts`), so a claim cannot outlive its proof. Reports that
+`apps/platform/test/smoke.test.ts`), so a claim cannot outlive its proof; a claim with no label is exercised by
+hand in the world, through the product's doors. Reports that
 cross one of these boundaries are especially valuable.
 
 - **A key is a signed claim file.** `base64url(claims).hmac`: it verifies by signature and expiry alone, so
   it survives every redeploy, and a forged or altered key is refused. The registry can only shorten a key's
-  life (revoke, or a rotation's grace). proof: smoke "survives a redeploy; refusals"; proof: world "the key
-  spent again after the books were re-read"; proof: world "the old key is refused after its grace".
+  life (revoke, or a rotation's grace). proof: smoke "survives a redeploy; refusals";.;.
 - **A key spends only what it names.** Its models are in its claims; a model outside them is refused (403);
   an unfunded account is refused before any model is reached. proof: smoke "a forged key, a model outside
   the key, an unfunded account, admin without the token".
@@ -50,18 +50,15 @@ cross one of these boundaries are especially valuable.
 - **The rails are bounded by the owner, not the agent.** A card is single-use, bounded to its amount and the
   owner's merchant categories, decided in real time, retired on capture; a decline releases its
   reservation; a partner the owner did not list cannot settle. proof: smoke "a card minted within the bound,
-  approved in real time, settled on capture and retired; a decline releases"; proof: world "the wrong
-  category and an unlisted partner were refused".
+  approved in real time, settled on capture and retired; a decline releases";.
 - **Grant credits move only from a funder's own books.** A funder's key proves their GitHub login through the
   claim file in a repository they own and can only give; a grant over the credits they hold is refused, and a
-  give key can neither spend nor narrate. proof: smoke "over the credits refused; a give key cannot spend";
-  proof: world "over the credits and spending were refused".
+  give key can neither spend nor narrate. proof: smoke "over the credits refused; a give key cannot spend";.
 - **The org's matching bonus spreads, never returns.** A funder's bonus credits can be given only to projects
-  the funder does not own, and the org matches only from what its grants account holds. proof: smoke "bonus_only_for_others";
-  proof: world "the bonus went only to another project, the refusal named it".
+  the funder does not own, and the org matches only from what its grants account holds. proof: smoke "bonus_only_for_others";.
 - **Webhooks are signed.** Stripe's, Polar's and GitHub Sponsors' events are accepted only with a valid
   signature within their window; a forged event moves nothing. proof: smoke "a forged webhook, an unlisted
-  partner"; proof: world "a forged event was refused".
+  partner";.
 - **The key valve, and the keyless reporter.** Inside a project's stack only the valve holds the key; it
   forwards the model routes, the narration route, the rails and public reads, never key management or admin
   routes. The reporter holds no key. The agent's environment says `OPEN_AUTONOMY_KEY=valve`, and every
@@ -72,7 +69,7 @@ cross one of these boundaries are especially valuable.
   reviewer approves each run. proof: smoke "admin without the token".
 - **The books can be restored, only whole and only by admin.** An export is every entry; an import into a
   non-empty worker is refused unless the reviewed caller says replace. proof: smoke "exported whole, restored
-  over a wiped worker, the same"; proof: world "restored over the wiped worker".
+  over a wiped worker, the same";.
 - **What the agent can read.** The agent reads its own account's public routes and nothing privileged; the
   world's egress is sealed, so anything it reached for outside the twins would be refused loudly. proof:
   world "egress sealed".

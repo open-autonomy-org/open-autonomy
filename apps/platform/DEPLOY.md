@@ -36,6 +36,7 @@ this worker needs was in it.
 
 ## Verify
 
-Before a deploy that touches metering, keys, the docs sync or the stream: `bun world/run.ts check`. After:
+Before a deploy that touches metering, keys, the docs sync or the stream: bring the world up and drive the change
+through its page (`bun world/run.ts up`). After:
 `curl https://open-autonomy.org/healthz`, the project page, and one metered call on the project's key
 showing up at `/v1/accounts/<account>/calls`.
