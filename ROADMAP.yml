@@ -69,24 +69,24 @@ items:
       - The kit's reporter dependency names that version; the world no longer builds supercode from a checkout and this install's compose override is gone; the world gate passes on the published binary and this install's reporter publishes a live fire on it.
 
   # ---- Phase 2: money in — the Patreon half of the platform --------------------------------------------
-  - id: stripe-checkout
+  - id: polar-checkout
     phase: 2
     priority: high
     status: planned
-    title: People fund a project on its page, by card
+    title: People fund a project on its page, through Polar
     acceptance:
-      - "`POST /v1/patrons/checkout {account, usd_cents, recurring}` opens a Stripe Checkout session for the project; the page's tiers and a custom amount go through it; a completed session or a paid recurring invoice mints the amount to the account as a `mint` flow carrying the patron's name and avatar (never the card), through the Stripe webhook the platform already verifies."
-      - Recurring patronage accrues on Stripe's invoice events, so the monthly accrual cron is only for GitHub Sponsors; the patrons wall and the explore grid count Checkout patrons.
-      - Proven in the world against the Stripe twin: a checkout completed and an invoice paid land on the books and the page; a forged webhook does not.
+      - "Polar is the merchant of record for patronage: each project's tiers are Polar products (one-time and monthly) the platform creates and keeps in step; `POST /v1/patrons/checkout {account, tier}` opens a Polar checkout for the project and the page's tiers go through it; a paid order or an active subscription's invoice mints the amount to the account as a `mint` flow carrying the patron's name (never a card), through Polar's signed webhook."
+      - Recurring patronage accrues on Polar's order events, so the monthly accrual cron is only for GitHub Sponsors; the patrons wall and the explore grid count Polar patrons.
+      - Proven in the world against the Polar twin: a checkout confirmed and a renewal order land on the books and the page; a forged webhook does not.
 
-  - id: checkout-live
+  - id: polar-live
     phase: 2
     priority: high
     status: proposed
-    title: Checkout takes real money on open-autonomy.org
+    title: Polar takes real money on open-autonomy.org
     acceptance:
-      - "Owner-gated: a Stripe account for Open Autonomy with Checkout enabled, its secret key and webhook secret installed through the admin workflow's secret sync, and the webhook endpoint enrolled in the Stripe dashboard for the event types the platform handles."
-      - One real patronage (any amount) lands on this project's account and its audit trail on the live page, and the payout reaches the org's bank; DEPLOY.md records the enrolment steps.
+      - "Owner-gated: a Polar organization for Open Autonomy, its access token and webhook secret installed through the admin workflow's secret sync, and the webhook endpoint enrolled for the event types the platform handles."
+      - One real patronage (any amount) lands on this project's account and its audit trail on the live page, and the payout reaches the org; DEPLOY.md records the enrolment steps.
 
   - id: card-rail-live
     phase: 2
@@ -94,7 +94,7 @@ items:
     status: proposed
     title: Agents spend real money through minted cards
     acceptance:
-      - "Owner-gated: Stripe Issuing enabled on the same account, an Issuing balance funded from the org's bank, the keys installed through the admin workflow."
+      - "Owner-gated: a Stripe account with Issuing enabled (Polar sells; it does not issue cards), an Issuing balance funded from the org's bank, the keys installed through the admin workflow."
       - This install's agent mints a bounded card for one real purchase its roadmap needs (a domain, a service), the authorization is decided by the live platform, and the capture shows on the audit trail as a card record naming the merchant.
 
   # ---- Phase 3: the kit is complete ------------------------------------------------------------------
