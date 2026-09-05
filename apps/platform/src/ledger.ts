@@ -83,16 +83,19 @@ export interface AccountProfile {
   tagline_override?: string;
   cover_override?: string;
   vision_md?: string;
-  roadmap_yml?: string;
   changelog_md?: string;
+  // The agent's setup, as its substrate publishes it through the SDK (never read from a harness's files).
   schedule_json?: string;
   setup_md?: string;
   soul_md?: string;
-  agent_config_yaml?: string;
+  agent_harness?: string;
+  agent_model?: string;
+  agent_provider?: string;
+  agent_skills?: string;
   // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
   config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'roadmap_yml', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_config_yaml', 'config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
 
 export interface Tier { usd_cents: number; name: string }
 
@@ -235,6 +238,20 @@ export interface UpdateRecord {
   text: string;
   session?: string;
 }
+// The board's state for an item, as the project's reporter publishes it from the agent's harness: the task's
+// lane, every attempt, the handoff, the review verdicts. Replaced whole on each publish.
+export interface TaskRecord {
+  account: string;
+  item_id: string;
+  task_id: string;
+  lane: string;
+  title?: string;
+  assignee?: string;
+  attempts: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; summary?: string }>;
+  reviews: Array<{ verdict: string; by?: string; reason?: string; at?: string }>;
+  handoff?: { summary?: string; metadata?: unknown };
+  updated_at: string;
+}
 export interface ItemView {
   ok: true;
   account: string;
@@ -242,6 +259,10 @@ export interface ItemView {
   live: string[];
   sessions: SessionSummary[];
   updates: UpdateRecord[];
+  // The card and partner settlements attributed to this item's sessions: what the agent bought for it.
+  purchases: CallRecord[];
+  // The board's state for the item, when the reporter has published one.
+  task?: TaskRecord;
   usd_cents: number;
 }
 
@@ -279,6 +300,8 @@ export class LimitLedger implements DurableObject {
       case 'session': return json(await this.getSession(s('account'), s('key')));
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
+      case 'task_put': return json(await this.taskPut(s('account'), s('item_id'), body.task as Record<string, unknown>));
+      case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
@@ -291,6 +314,8 @@ export class LimitLedger implements DurableObject {
       case 'polar_checkout': return json(await this.polarCheckoutGet(s('id')));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
+      case 'export_all': return json(await this.exportAll());
+      case 'import_all': return json(await this.importAll(body.entries as Array<[string, unknown]>, body.replace === true));
       case 'directory': return json({ ok: true, entries: this.directory() });
       case 'project': return json(this.projectView(s('account')));
       case 'status': return json(this.snapshot());
@@ -310,6 +335,26 @@ export class LimitLedger implements DurableObject {
 
   private async save(): Promise<void> {
     await this.ctx.storage.put('state', this.state);
+  }
+
+  // ---- the books as a whole: export and restore -------------------------------------------------------
+  // Everything the platform holds is this object's storage: the state (accounts, flows, coupons, the key
+  // registry), the audit trail, sessions and their item pointers, updates, roadmap revisions, cards,
+  // checkouts. An export is every entry; a restore puts every entry back, into an empty worker unless the
+  // caller says replace.
+  private async exportAll(): Promise<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }> {
+    const all = await this.ctx.storage.list();
+    return { ok: true, exported_at: new Date().toISOString(), entries: [...all.entries()] };
+  }
+  private async importAll(entries: Array<[string, unknown]>, replace: boolean): Promise<{ ok: boolean; error?: string; entries?: number }> {
+    if (!Array.isArray(entries) || !entries.every((e) => Array.isArray(e) && typeof e[0] === 'string')) return { ok: false, error: 'invalid_export' };
+    const existing = await this.ctx.storage.list({ limit: 1 });
+    if (existing.size && !replace) return { ok: false, error: 'not_empty' };
+    if (replace) await this.ctx.storage.deleteAll();
+    for (let i = 0; i < entries.length; i += 128) await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + 128)));
+    this.loaded = false;
+    await this.load();
+    return { ok: true, entries: entries.length };
   }
 
   // ---- accounts --------------------------------------------------------------------------------------
@@ -653,7 +698,34 @@ export class LimitLedger implements DurableObject {
     const sessions = records.filter((s): s is SessionRecord => !!s).map(sessionSummary);
     const updates = [...(await this.ctx.storage.list<UpdateRecord>({ prefix: `update:${account}:${item_id}:`, reverse: true, limit: 100 })).values()];
     const usd_cents = Number(sessions.reduce((sum, s) => sum + (s.usd_cents ?? 0), 0).toFixed(6));
-    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, usd_cents };
+    const keys = new Set(sessions.map((s) => s.key));
+    const purchases = (await this.listCalls(account, 300)).calls.filter((c) => c.rail !== 'model' && c.session && keys.has(c.session));
+    const task = await this.ctx.storage.get<TaskRecord>(`task:${account}:${item_id}`);
+    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
+  }
+
+  // The agent's setup replaces what was there: its substrate publishes the whole record each time.
+  private async setupPut(account: string, setup: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+    if (!setup || typeof setup !== 'object') return { ok: false, error: 'invalid_setup' };
+    const text = (v: unknown, max: number): string | undefined => (typeof v === 'string' ? v.slice(0, max) : undefined);
+    const schedule = Array.isArray(setup.schedule) ? setup.schedule.slice(0, 20).filter((j: unknown) => j && typeof j === 'object').map((j: Record<string, unknown>) => ({ name: text(j.name, 80), schedule: text(j.schedule, 80), prompt: text(j.description, 400) })) : [];
+    const skills = Array.isArray(setup.skills) ? setup.skills.filter((k: unknown) => typeof k === 'string').slice(0, 50).map((k: string) => k.slice(0, 80)) : [];
+    const profile: Partial<AccountProfile> = { soul_md: text(setup.persona, 20_000) ?? '', setup_md: text(setup.setup_md, 20_000) ?? '', schedule_json: JSON.stringify({ jobs: schedule }), agent_harness: text(setup.harness, 40) ?? '', agent_model: text(setup.model, 120) ?? '', agent_provider: text(setup.provider, 40) ?? '', agent_skills: skills.join(',') };
+    await this.setProfile(account, profile);
+    return { ok: true };
+  }
+
+  // The board's state for an item replaces what was there: the reporter publishes the whole task each time.
+  private async taskPut(account: string, item: string, task: Record<string, unknown>): Promise<{ ok: boolean; error?: string; task?: TaskRecord }> {
+    const item_id = itemId(item);
+    if (!item_id || !task || typeof task.task_id !== 'string' || typeof task.lane !== 'string') return { ok: false, error: 'invalid_task' };
+    const text = (v: unknown, max = 400): string | undefined => (typeof v === 'string' && v.trim() ? v.slice(0, max) : undefined);
+    const attempts = (Array.isArray(task.attempts) ? task.attempts : []).slice(-50).map((a: Record<string, unknown>) => ({ id: String(a.id ?? ''), profile: text(a.profile, 80), status: text(a.status, 40) ?? '', started_at: text(a.started_at, 40), ended_at: text(a.ended_at, 40), outcome: text(a.outcome, 40), summary: text(a.summary, 2000) }));
+    const reviews = (Array.isArray(task.reviews) ? task.reviews : []).slice(-50).map((r: Record<string, unknown>) => ({ verdict: text(r.verdict, 40) ?? 'requested', by: text(r.by, 80), reason: text(r.reason, 2000), at: text(r.at, 40) }));
+    const handoff = task.handoff && typeof task.handoff === 'object' ? { summary: text((task.handoff as Record<string, unknown>).summary, 4000), metadata: (task.handoff as Record<string, unknown>).metadata } : undefined;
+    const record: TaskRecord = { account, item_id, task_id: task.task_id.slice(0, 80), lane: task.lane.slice(0, 40), title: text(task.title, 200), assignee: text(task.assignee, 80), attempts, reviews, ...(handoff ? { handoff } : {}), updated_at: new Date().toISOString() };
+    await this.ctx.storage.put(`task:${account}:${item_id}`, record);
+    return { ok: true, task: record };
   }
 
   // Spend lands on the session that was live when it settled. With one live session the attribution is
@@ -713,7 +785,8 @@ export class LimitLedger implements DurableObject {
   private async roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string): Promise<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }> {
     const model = normalizeRoadmap(roadmap);
     if (!model) return { ok: false, error: 'invalid_roadmap' };
-    if (!(['file', 'github-milestones', 'jira'] as string[]).includes(source)) return { ok: false, error: 'invalid_source' };
+    // The source is the substrate's own label: a file, a tracker, a board, whatever reads its roadmap onto the model.
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(source)) return { ok: false, error: 'invalid_source' };
     const a = this.ensureAcct(account);
     const current = a.roadmap_revision ? await this.ctx.storage.get<RoadmapRevision>(`roadmap:${account}:${String(a.roadmap_revision).padStart(9, '0')}`) : undefined;
     if (current && sameRoadmap(current.roadmap, model) && current.source === source) return { ok: true, unchanged: true, revision: current };
@@ -1114,6 +1187,8 @@ export class LedgerClient {
   sessions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
   session(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
+  setupPut(account: string, setup: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.rpc<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
   item(account: string, itemId: string) { return this.rpc<ItemView>('item', { account, item_id: itemId }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.rpc<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
@@ -1127,6 +1202,8 @@ export class LedgerClient {
   polarCheckout(id: string) { return this.rpc<{ ok: boolean; error?: string; checkout?: PolarCheckout }>('polar_checkout', { id }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
+  exportAll() { return this.rpc<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
+  importAll(entries: Array<[string, unknown]>, replace = false) { return this.rpc<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }
   directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
   project(account: string) { return this.rpc<ProjectView>('project', { account }); }
   status() { return this.rpc<unknown>('status'); }

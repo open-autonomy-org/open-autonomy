@@ -1,0 +1,9 @@
+{
+  "name": "notes-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "bun src/server.ts",
+    "check": "bun test"
+  }
+}

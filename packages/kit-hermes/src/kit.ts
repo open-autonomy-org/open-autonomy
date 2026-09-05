@@ -17,7 +17,7 @@ export interface KitParams { project: string; account: string }
 export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
 
 // What the kit keeps current. Everything else in the template is seeded once.
-const OWNED = [/^hermes\/(?!config\.yaml$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|roadmap\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|roadmap\.ts|setup\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {

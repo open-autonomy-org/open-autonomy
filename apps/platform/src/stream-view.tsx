@@ -174,10 +174,24 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
         <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
         {item?.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null}
       </div>
+      {view.task ? (
+        <div class="panel">
+          <h3>Board</h3>
+          <p class="meta"><b>{view.task.lane}</b> · task {view.task.task_id}{view.task.assignee ? ` · ${view.task.assignee}` : ''} · {view.task.attempts.length} attempt{view.task.attempts.length === 1 ? '' : 's'}{view.task.reviews.length ? ` · review: ${view.task.reviews.map((r) => r.verdict).join(' → ')}` : ''}</p>
+          {view.task.attempts.length ? <ul class="updates">{view.task.attempts.map((a) => <li><span class="u-when">{a.started_at ? fmtAgo(a.started_at, now) : ''}</span><div class="u-text">#{a.id} {a.profile ? `@${a.profile} ` : ''}{a.status}{a.outcome ? ` · ${a.outcome}` : ''}{a.started_at ? ` · ${fmtDur(a.started_at, a.ended_at, now)}` : ''}{a.summary ? <><br />{a.summary}</> : null}</div></li>)}</ul> : null}
+          {view.task.reviews.length ? <ul class="updates">{view.task.reviews.map((r) => <li><span class="u-when">{r.at ? fmtAgo(r.at, now) : ''}</span><div class="u-text">review {r.verdict}{r.by ? ` by @${r.by}` : ''}{r.reason ? `: ${r.reason}` : ''}</div></li>)}</ul> : null}
+        </div>
+      ) : null}
       <div class="panel">
         <h3>Sessions</h3>
         {view.sessions.length ? view.sessions.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />) : <p class="sub">No session has worked this item yet.</p>}
       </div>
+      {view.purchases.length ? (
+        <div class="panel">
+          <h3>Purchases</h3>
+          <ul class="updates">{view.purchases.map((c) => <li><span class="u-when">{fmtAgo(c.ts, now)}</span><div class="u-text">{c.rail === 'card' ? <>{c.merchant ?? 'a merchant'}{c.category ? ` (${c.category})` : ''} on card ···{c.card_last4 ?? '????'}</> : <>{c.partner ?? 'a partner'}{c.unit ? ` · ${c.quantity ?? 1} ${c.unit}` : ''}</>} · {usd(c.usd_cents)}{c.session ? <> · <a href={`/p/${enc}/sessions/${encodeURIComponent(c.session)}`}>session</a></> : null}</div></li>)}</ul>
+        </div>
+      ) : null}
       <div class="panel">
         <h3>Updates</h3>
         {view.updates.length ? <ul class="updates">{view.updates.map((u: UpdateRecord) => <li><span class="u-when">{fmtAgo(u.ts, now)}</span><div class="u-text prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(u.text) }} />{u.session ? <a class="u-sess" href={`/p/${enc}/sessions/${encodeURIComponent(u.session)}`}>from session ↗</a> : null}</li>)}</ul> : <p class="sub">No updates posted on this item.</p>}
@@ -187,41 +201,30 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
   );
 }
 
-// ---- Setup: who the agent is and how it runs, read from its checked-in home ------------------------------
-export interface AgentSetup { model?: string; provider?: string }
-export function parseAgentConfig(yaml: string | undefined): AgentSetup {
-  if (!yaml) return {};
-  const out: AgentSetup = {};
-  let inModel = false;
-  for (const raw of yaml.split('\n')) {
-    if (/^\S/.test(raw)) inModel = /^model:\s*$/.test(raw);
-    else if (inModel) { const m = /^\s+(default|provider):\s*(.+?)\s*$/.exec(raw); if (m) out[m[1] === 'default' ? 'model' : 'provider'] = m[2].replace(/^["']|["']$/g, ''); }
-  }
-  return out;
-}
+// ---- Setup: who the agent is and how it runs, as its substrate published it through the SDK -----------------
 export function leadParagraphs(md: string | undefined, max = 2): string {
   if (!md) return '';
   return md.split('\n').filter((l) => !/^#/.test(l)).join('\n').trim().split(/\n{2,}/).slice(0, max).join('\n\n').trim();
 }
-export function SetupPanel({ setupMd, soulMd, configYaml, scheduleJson, repoUrl }: { setupMd?: string; soulMd?: string; configYaml?: string; scheduleJson?: string; repoUrl?: string }) {
+export function SetupPanel({ setupMd, soulMd, model, provider, harness, skills, scheduleJson }: { setupMd?: string; soulMd?: string; model?: string; provider?: string; harness?: string; skills?: string; scheduleJson?: string }) {
   const soul = leadParagraphs(soulMd, 2);
   const setup = leadParagraphs(setupMd, 2);
-  const cfg = parseAgentConfig(configYaml);
   const jobs = parseSchedule(scheduleJson);
-  if (!soul && !setup && !cfg.model) return null;
-  const file = (path: string) => (repoUrl ? `${repoUrl}/blob/HEAD/hermes/${path}` : undefined);
+  const known = (skills ?? '').split(',').map((k) => k.trim()).filter(Boolean);
+  if (!soul && !setup && !model) return null;
   return (
     <div class="panel" id="setup">
       <h3>Setup</h3>
-      <p class="note">Everything the agent is lives in the repository's <a href={repoUrl ? `${repoUrl}/tree/HEAD/hermes` : '#'}>hermes/</a> home, checked in. This page reads it; nothing here drives the agent.</p>
+      <p class="note">Who the agent is and how it runs, as it publishes it through the SDK. Nothing here drives the agent; it is the agent's own account of itself.</p>
       <div class="facts">
-        {cfg.model ? <div class="fact"><span class="k">model</span><span class="v">{cfg.model}</span></div> : null}
+        {harness ? <div class="fact"><span class="k">harness</span><span class="v">{harness}</span></div> : null}
+        {model ? <div class="fact"><span class="k">model</span><span class="v">{model}{provider ? ` (${provider})` : ''}</span></div> : null}
         <div class="fact"><span class="k">calls</span><span class="v">through the platform on the project's key, every one metered</span></div>
         {jobs.length ? <div class="fact"><span class="k">schedule</span><span class="v">{jobs.map((j) => `${j.name ?? 'job'} · ${j.schedule ?? '?'}`).join(' · ')}</span></div> : null}
+        {known.length ? <div class="fact"><span class="k">skills</span><span class="v">{known.join(' · ')}</span></div> : null}
       </div>
-      {soul ? <><h4>Who it is <a class="filelink" href={file('SOUL.md')}>SOUL.md</a></h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(soul) }} /></> : null}
-      {setup ? <><h4>How it runs <a class="filelink" href={file('README.md')}>hermes/README.md</a></h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(setup) }} /></> : null}
-      {repoUrl ? <a class="docmore" href={file('config.yaml')}>The model config →</a> : null}
+      {soul ? <><h4>Who it is</h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(soul) }} /></> : null}
+      {setup ? <><h4>How it runs</h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(setup) }} /></> : null}
     </div>
   );
 }

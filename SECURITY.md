@@ -27,8 +27,47 @@ Include: the affected component, reproduction steps, impact, and any proof-of-co
 
 ## Trust model
 
-The abuse and spend model is documented in `apps/platform/README.md`. Reports that violate those
-boundaries are especially valuable.
+Every boundary below is a claim the code makes and a test or a world line proves. `scripts/check-docs.ts`
+verifies each `proof:` names a line that exists (`smoke` — `apps/platform/test/smoke.test.ts`; `world` —
+`world/probe.ts`, `world/verify.ts`, `world/stack.ts`), so a claim cannot outlive its proof. Reports that
+cross one of these boundaries are especially valuable.
+
+- **A key is a signed claim file.** `base64url(claims).hmac`: it verifies by signature and expiry alone, so
+  it survives every redeploy, and a forged or altered key is refused. The registry can only shorten a key's
+  life (revoke, or a rotation's grace). proof: smoke "survives a redeploy; refusals"; proof: world "the key
+  spent again after the books were re-read"; proof: world "the old key is refused after its grace".
+- **A key spends only what it names.** Its models are in its claims; a model outside them is refused (403);
+  an unfunded account is refused before any model is reached. proof: smoke "a forged key, a model outside
+  the key, an unfunded account, admin without the token".
+- **Key scopes.** `spend` reaches the rails; `narrate` the development stream and the roadmap the substrate
+  works; `steer` an owner-side roadmap push. A steer key spends nothing, and a key that only spends can neither
+  narrate nor steer. proof: smoke "a steer key spends nothing; a key that only spends cannot narrate or steer a
+  roadmap".
+- **The balance hard-stop and the daily rail.** Every spend reserves before it runs and settles to the
+  reported cost; at zero balance, or over the global daily cap, the platform refuses. proof: smoke "books and
+  keys: money in, a key by claim file, a metered call on both wires, the audit trail".
+- **The rails are bounded by the owner, not the agent.** A card is single-use, bounded to its amount and the
+  owner's merchant categories, decided in real time, retired on capture; a decline releases its
+  reservation; a partner the owner did not list cannot settle. proof: smoke "a card minted within the bound,
+  approved in real time, settled on capture and retired; a decline releases"; proof: world "the wrong
+  category and an unlisted partner were refused".
+- **Webhooks are signed.** Stripe's, Polar's and GitHub Sponsors' events are accepted only with a valid
+  signature within their window; a forged event moves nothing. proof: smoke "a forged webhook, an unlisted
+  partner"; proof: world "a forged event was refused".
+- **The key valve, and the keyless reporter.** Inside a project's stack only the valve holds the key; it
+  forwards the model routes, the narration route, the rails and public reads, never key management or admin
+  routes. The reporter holds no key. The agent's environment says `OPEN_AUTONOMY_KEY=valve`, and every
+  session's turns are published, so nothing in the agent's reach is a secret that matters. proof: smoke
+  "secrets never reach the books".
+- **Admin goes through GitHub.** Every admin route needs the admin token, which lives only in the
+  `production` environment (and in the worker); `.github/workflows/admin.yml` is the only caller, and its
+  reviewer approves each run. proof: smoke "admin without the token".
+- **The books can be restored, only whole and only by admin.** An export is every entry; an import into a
+  non-empty worker is refused unless the reviewed caller says replace. proof: smoke "exported whole, restored
+  over a wiped worker, the same"; proof: world "restored over the wiped worker".
+- **What the agent can read.** The agent reads its own account's public routes and nothing privileged; the
+  world's egress is sealed, so anything it reached for outside the twins would be refused loudly. proof:
+  world "egress sealed".
 
 ## Operating it yourself
 

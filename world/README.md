@@ -12,6 +12,7 @@ export TWINS_ROOT=/path/to/twin        # until the twin packages are published
 bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the
                                        # cookbook's stack (container/compose.yml) on the world's VM
 bun world/run.ts probe                 # the platform's own proof, no agent: the operator at its doors
+bun world/run.ts kit                   # the kit's proof: published to the npm twin, `bun create open-autonomy` from it, the project's check
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
 bun world/run.ts clock advance 360m    # the container's clock: the schedule's next fire is now
 bun world/run.ts wait                  # watch: the run's session, then its pull request merged on the twin
@@ -19,6 +20,7 @@ bun world/run.ts verify                # the audit: the books, the twin's main, 
 bun world/run.ts down --purge          # forget it (the stack's volumes too)
 WORLD_STATE_ROOT=/fast/disk bun world/run.ts check   # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
 bun world/run.ts check                 # the gate: up → probe → clock → wait → verify → down
+bun world/run.ts check --cookbook notes-api   # the same gate on the second cookbook, a service
 ```
 
 The cookbook is `todo-cli` (`--cookbook <name>` picks another): eight items, each one command and one test.

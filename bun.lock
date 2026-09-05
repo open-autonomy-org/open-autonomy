@@ -19,7 +19,7 @@
       },
     },
     "packages/kit-hermes": {
-      "name": "@open-autonomy/kit-hermes",
+      "name": "create-open-autonomy",
       "version": "2.0.0",
       "bin": {
         "create-open-autonomy": "./src/cli.ts",
@@ -175,8 +175,6 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
-    "@open-autonomy/kit-hermes": ["@open-autonomy/kit-hermes@workspace:packages/kit-hermes"],
-
     "@open-autonomy/platform": ["@open-autonomy/platform@workspace:apps/platform"],
 
     "@open-autonomy/sdk": ["@open-autonomy/sdk@workspace:packages/sdk"],
@@ -200,6 +198,8 @@
     "bun-types": ["bun-types@1.4.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-loKuVrAFZKfEv+JvWkHRS9GW5IqLuLRjVXN9p+vZvBN86O5hf/pBZQ5hSoyipsrMmWObZBDvWnlmKvjKTM0PdA=="],
 
     "cookie": ["cookie@1.1.1", "", {}, "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="],
+
+    "create-open-autonomy": ["create-open-autonomy@workspace:packages/kit-hermes"],
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 

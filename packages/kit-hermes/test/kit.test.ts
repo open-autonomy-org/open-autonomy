@@ -12,7 +12,7 @@ describe('the Hermes kit', () => {
     const dir = tmp();
     const out = create(dir, params);
     for (const f of ['README.md', 'ROADMAP.yml', 'docs/VISION.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', '.gitignore', 'package.json',
-      'hermes/config.yaml', 'hermes/SOUL.md', 'hermes/cron/jobs.seed.json', 'hermes/scripts/file-roadmap-item.sh', 'hermes/skills/open-autonomy/roadmap/SKILL.md', 'hermes/skills/open-autonomy/land/SKILL.md', 'hermes/skills/open-autonomy/verify-in-world/SKILL.md', 'hermes/hooks/schedule-seed/handler.py',
+      '.open-autonomy/setup.ts', 'hermes/config.yaml', 'hermes/SOUL.md', 'hermes/cron/jobs.seed.json', 'hermes/scripts/file-roadmap-item.sh', 'hermes/skills/open-autonomy/roadmap/SKILL.md', 'hermes/skills/open-autonomy/land/SKILL.md', 'hermes/skills/open-autonomy/verify-in-world/SKILL.md', 'hermes/skills/open-autonomy/rails/SKILL.md', 'hermes/hooks/schedule-seed/handler.py',
       '.open-autonomy/config.yaml', '.open-autonomy/reporter.ts', '.open-autonomy/mint-key.ts', '.open-autonomy/roadmap.ts', '.open-autonomy/sdk/client.ts', '.open-autonomy/sdk/roadmap.ts', '.open-autonomy/sdk/drivers.ts', '.open-autonomy/kit.json',
       'container/compose.yml', 'container/Dockerfile', 'container/Dockerfile.valve', 'container/Dockerfile.reporter', 'container/key-valve.ts', 'container/hermes.pin', 'container/build-hermes.sh',
       '.github/workflows/ci.yml', '.github/workflows/land.yml']) {

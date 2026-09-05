@@ -102,15 +102,18 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
   return mintKey(env, body.account, models, scopes);
 }
 
-// POST /v1/keys/rotate (Authorization: Bearer <current key>) → a fresh key for the same account and
-// models. The old key keeps working for ROTATE_GRACE_MS, then the registry refuses it.
+// POST /v1/keys/rotate (Authorization: Bearer <current key>) {grace_seconds?} → a fresh key for the same
+// account and models. The old key keeps working for the grace (ROTATE_GRACE_MS unless the caller asks for
+// less), then the registry refuses it.
 export async function handleKeyRotate(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
   const minted = await mintKey(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES);
   if (!minted.ok) return minted;
-  const graceUntil = new Date(Date.now() + ROTATE_GRACE_MS).toISOString();
+  let graceMs = ROTATE_GRACE_MS;
+  try { const body = JSON.parse(await req.text() || '{}') as { grace_seconds?: unknown }; if (typeof body.grace_seconds === 'number' && Number.isFinite(body.grace_seconds)) graceMs = Math.min(ROTATE_GRACE_MS, Math.max(0, body.grace_seconds) * 1000); } catch { /* no body: the full grace */ }
+  const graceUntil = new Date(Date.now() + graceMs).toISOString();
   await new LedgerClient(env.LIMITS).keyExpire(claims.kid, graceUntil);
   const payload = await minted.json() as { ok: true; key: KeyClaims; token: string };
   return json({ ...payload, previous: { kid: claims.kid, exp: graceUntil } });

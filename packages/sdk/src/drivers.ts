@@ -46,6 +46,7 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
 }
 
 export interface DriverConformance { source: RoadmapSource; cannot: string[] }
+
 export const CONFORMANCE: Record<RoadmapSource, string[]> = {
   file: [],
   'github-milestones': ['priority (a milestone has none; every item is medium)', 'proposed (a milestone is open or closed; open is planned)', 'acceptance lines are the description\'s bullet lines, or its paragraphs'],

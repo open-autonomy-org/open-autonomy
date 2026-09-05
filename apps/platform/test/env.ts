@@ -11,8 +11,9 @@ class MemoryStorage {
   private readonly values = new Map<string, unknown>();
   private alarm: number | null = null;
   async get<T = unknown>(key: string): Promise<T | undefined> { return this.values.get(key) as T | undefined; }
-  async put<T>(key: string, value: T): Promise<void> { this.values.set(key, structuredClone(value)); }
+  async put<T>(key: string | Record<string, T>, value?: T): Promise<void> { if (typeof key === 'string') this.values.set(key, structuredClone(value)); else for (const [k, v] of Object.entries(key)) this.values.set(k, structuredClone(v)); }
   async delete(key: string): Promise<boolean> { return this.values.delete(key); }
+  async deleteAll(): Promise<void> { this.values.clear(); }
   async list<T = unknown>(options: { prefix?: string; reverse?: boolean; limit?: number; end?: string } = {}): Promise<Map<string, T>> {
     let keys = [...this.values.keys()].filter((k) => !options.prefix || k.startsWith(options.prefix)).sort();
     if (options.end !== undefined) keys = keys.filter((k) => k < (options.end as string));

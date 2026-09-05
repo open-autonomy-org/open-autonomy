@@ -10,7 +10,7 @@
 //   bun world/run.ts wait [--timeout s]   # watch: the run's session, then its pull request merged on the twin
 //   bun world/run.ts verify            # audit the books, the twin's main, the project's check, the page
 //   bun world/run.ts walk [--items N]  # N fires in a row
-//   bun world/run.ts check [--cookbook <name>]   # the gate: up → clock → wait → repin → clock → wait → verify → down --purge
+//   bun world/run.ts check [--cookbook <name>]   # the gate: up → probe → kit → clock → wait → between-fires → clock → wait → verify → down --purge
 //   bun world/run.ts down [--purge]    # tear down (--purge: forget the books, the twin and the stack's volumes)
 //
 // --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
@@ -70,7 +70,7 @@ switch (verb) {
     console.log(`\nworld up, cookbook ${cookbook}. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts probe   # the platform's proof     clock advance 360m     wait     verify     down --purge`);
     break;
   }
-  case 'seed': case 'probe': case 'verify': step(verb); break;
+  case 'seed': case 'probe': case 'kit': case 'verify': step(verb); break;
   case 'wait': step('wait', ...argv.filter((a, i) => a === '--timeout' || argv[i - 1] === '--timeout')); break;
   case 'walk': { const n = Number(flag('--items') ?? 1); for (let i = 1; i <= n; i++) { console.log(`\nwalk: fire ${i} of ${n}`); stack('clock', 'advance', '360m'); step('wait'); } break; }
   case 'stack': stack(...argv.slice(argv.indexOf('stack') + 1).filter((a) => a !== '--cookbook' && a !== cookbook)); break;
@@ -83,8 +83,8 @@ switch (verb) {
     world(['up', config, '--env-file', envFile, '--name', NAME, '--mode', mode, '--root', STATE]);
     let ok = false;
     try {
-      step('seed'); step('probe');
-      if (hasStack) { stack('up'); stack('clock', 'advance', '360m'); step('wait'); stack('repin'); stack('clock', 'advance', '360m'); step('wait'); step('verify'); }
+      step('seed'); step('probe'); step('kit');
+      if (hasStack) { stack('up'); stack('clock', 'advance', '360m'); step('wait'); stack('between-fires'); stack('clock', 'advance', '360m'); step('wait'); step('verify'); }
       ok = true;
     } finally {
       if (ok || !process.env.WORLD_PRESERVE) { stackDown(true); world(['down', NAME, '--root', STATE, '--purge'], { check: false }); }
@@ -93,6 +93,6 @@ switch (verb) {
     break;
   }
   default:
-    console.error('usage: bun world/run.ts up | seed | probe | stack up|down [--purge]|repin | clock advance <N>(s|m|h|d) | wait [--timeout s] | walk [--items N] | verify | check | down [--purge] | env -- <cmd>   [--cookbook <name>]');
+    console.error('usage: bun world/run.ts up | seed | probe | kit | stack up|down [--purge]|between-fires | clock advance <N>(s|m|h|d) | wait [--timeout s] | walk [--items N] | verify | check | down [--purge] | env -- <cmd>   [--cookbook <name>]');
     process.exit(2);
 }

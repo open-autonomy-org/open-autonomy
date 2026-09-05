@@ -53,11 +53,24 @@ describe('the platform, one smoke test per surface', () => {
     expect((await request(env, '/v1/agent/events', { method: 'POST', body: ce('session.started', 'x', {}) })).status).toBe(401);
   });
 
-  test('the roadmap: the file driver on sync, the milestones driver on sync, an owner-side push on a steer key; scopes hold', async () => {
+  test('the board: a task published under its item shows on the item, lane, attempts and verdict', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 100);
+    const { token } = await mintKey(env);
+    const auth = { authorization: `Bearer ${token}` };
+    const ce = (data: unknown) => ({ specversion: '1.0', id: crypto.randomUUID(), source: 't', type: 'org.open-autonomy.item.task', subject: 'add', time: new Date().toISOString(), data });
+    expect((await request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce({ task_id: 't_1', lane: 'done', attempts: [{ id: '1', profile: 'default', status: 'review_requested', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved', by: 'default' }] }) })).status).toBe(200);
+    const item = await requestJson(env, '/v1/accounts/acme%2Fapp/items/add');
+    expect(item.task).toMatchObject({ lane: 'done', attempts: [{ id: '1', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved' }] });
+    expect(await (await request(env, '/p/acme%2Fapp/items/add')).text()).toContain('review: requested → approved');
+  });
+
+  test('the roadmap: a substrate narrates its file through the key, the milestones driver on sync, an owner-side push on a steer key; scopes hold', async () => {
     const env = useEnv(testEnv());
     github.repos['acme/app'] = { description: 'x' };
-    github.files['acme/app:ROADMAP.yml'] = 'schema: open-autonomy.roadmap.v3\nitems:\n  - id: add\n    status: planned\n    title: todo add\n';
-    await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
+    await fund(env, 'acme/app', 100);
+    const narrate = (await mintKey(env)).token;
+    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${narrate}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.roadmap.v3', items: [{ id: 'add', title: 'todo add', status: 'planned', acceptance: [] }] } } })).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/roadmap')).revision).toMatchObject({ revision: 1, source: 'file' });
     github.files['acme/app:.open-autonomy/config.yaml'] = 'roadmap:\n  source: github-milestones\n';
     github.milestones['acme/app'] = [{ number: 1, title: 'Search', state: 'open', due_on: null, created_at: '2026-09-01T00:00:00Z' }];
@@ -68,9 +81,9 @@ describe('the platform, one smoke test per surface', () => {
     const roadmap = { schema: 'open-autonomy.roadmap.v3', items: [{ id: 'TODO-1', title: 'Add', status: 'active', acceptance: [] }] };
     expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${steer}` }, body: { source: 'jira', roadmap } })).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/roadmap')).revision).toMatchObject({ revision: 3, source: 'jira' });
-    // Security: a steer key spends nothing; a spending key cannot steer.
+    // Security: a steer key spends nothing; a key that only spends cannot narrate or steer a roadmap.
     expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${steer}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(403);
-    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${(await mintKey(env)).token}` }, body: { source: 'jira', roadmap } })).status).toBe(403);
+    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${(await requestJson(env, '/v1/keys/mint', { body: { account: 'acme/app', scopes: ['spend'] } })).token}` }, body: { source: 'jira', roadmap } })).status).toBe(403);
   });
 
   test('patronage: a tier checkout through Polar lands on the books from the thanks page once, a renewal from the signed webhook once, a forged webhook never', async () => {
@@ -95,6 +108,16 @@ describe('the platform, one smoke test per surface', () => {
     for (let i = 0; i < 2; i++) expect((await hook(renewal)).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(1100);
     expect((await hook(renewal, 'whsec_' + btoa('forged'))).status).toBe(401);
+  });
+
+  test('the books: exported whole, restored over a wiped worker, the same', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 700);
+    const before = await requestJson(env, '/v1/accounts/acme%2Fapp');
+    const books = await requestJson(env, '/admin/export', { headers: admin });
+    expect((await request(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries } })).status).toBe(409);
+    expect((await requestJson(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries, replace: true } })).entries).toBe(books.entries.length);
+    expect(await requestJson(env, '/v1/accounts/acme%2Fapp')).toEqual(before);
   });
 
   test('the rails: a card minted within the bound, approved in real time, settled on capture and retired; a decline releases; a partner charge settles', async () => {
@@ -128,10 +151,10 @@ describe('the platform, one smoke test per surface', () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 500);
     github.repos['acme/app'] = { description: 'A todo list that builds itself', html_url: 'https://github.com/acme/app' };
-    github.files['acme/app:ROADMAP.yml'] = 'schema: open-autonomy.roadmap.v3\nitems:\n  - id: add\n    phase: 1\n    status: active\n    title: todo add appends an item\n    acceptance:\n      - It appends.\n';
     github.files['acme/app:docs/VISION.md'] = '# Vision\n\nA todo list built by its own agent.';
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
     const { token } = await mintKey(env);
+    await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.roadmap.v3', items: [{ id: 'add', phase: '1', status: 'active', title: 'todo add appends an item', acceptance: ['It appends.'] }] } } });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('session.started', 'run-1', { session_kind: 'run', item_id: 'add' }) });
     for (const [path, expected] of [['/', 'A todo list that builds itself'], ['/p/acme%2Fapp', 'todo add appends an item'], ['/p/acme%2Fapp/sessions', '/sessions/run-1'], ['/p/acme%2Fapp/sessions/run-1', 'new EventSource('], ['/p/acme%2Fapp/items/add', 'It appends.']]) {
       const res = await request(env, path);

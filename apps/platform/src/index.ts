@@ -108,6 +108,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (path === '/admin/status') { if (get()) return get()!; return json(await ledger.status()); }
     if (path === '/admin/reset-daily') { if (req.method !== 'POST') return methodNotAllowed(); return json(await ledger.resetDaily()); }
+    // The books, whole: an export is every storage entry; an import restores one into an empty worker, or
+    // over this one when the reviewed caller says replace.
+    if (path === '/admin/export') { if (get()) return get()!; return json(await ledger.exportAll(), { headers: NO_STORE }); }
+    if (path === '/admin/import') {
+      if (req.method !== 'POST') return methodNotAllowed();
+      const body = parseJson<{ entries?: Array<[string, unknown]>; replace?: boolean }>(await req.text());
+      if (!body || !Array.isArray(body.entries)) return error('invalid_request');
+      const r = await ledger.importAll(body.entries, body.replace === true);
+      return json(r, { status: r.ok ? 200 : r.error === 'not_empty' ? 409 : 400 });
+    }
     if (path === '/admin/coupons') {
       if (req.method === 'GET') return json(await ledger.couponList());
       if (req.method !== 'POST') return methodNotAllowed();
@@ -166,7 +176,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (req.method !== 'POST') return methodNotAllowed();
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    // A substrate narrates the roadmap it works (narrate); an owner-side driver steers it (steer).
+    if (!hasScope(claims, 'steer') && !hasScope(claims, 'narrate')) return error('scope_required', 403, { scope: 'narrate' });
     const body = parseJson<{ source?: string; roadmap?: Roadmap; by?: string }>(await req.text());
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);

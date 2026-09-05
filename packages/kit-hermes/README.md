@@ -11,6 +11,14 @@ create-open-autonomy check .     # the kit-owned files against the kit (exit 1 o
 create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
 ```
 
+## From npm
+
+Both packages publish from this repository: `@open-autonomy/sdk` and `create-open-autonomy`, at one version.
+`.github/workflows/release.yml` publishes them on a human-cut `release-v<version>` tag (or a manual dispatch)
+after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
+(`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
+open-autonomy` from it against the npm registry twin (`bun world/run.ts kit`) before any release is cut.
+
 ## What a generated repository contains
 
 ```text
@@ -21,10 +29,10 @@ CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world), the schedule seed and the fire's script, config.yaml (the model:
+hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world, rails), the schedule seed and the fire's script, config.yaml (the model:
                      the project's own choice), the schedule-seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
-                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), roadmap.ts
+                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), setup.ts (the host, by one command), roadmap.ts
                      (the owner-side roadmap driver: pull a tracker into ROADMAP.yml, push it to the platform,
                      reconcile finished items back), the vendored SDK, kit.json (which kit, version and
                      parameters made this repository)
@@ -49,7 +57,10 @@ handoff in a session of its own. Both sessions show on the project's page with t
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
 (`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve
-with the Open Autonomy SDK, attaching it to the roadmap item it serves. Scheduled runs publish by default;
+with the Open Autonomy SDK, attaching it to the roadmap item it serves. It publishes the rest the same way:
+the board (`workflowLoad`: each task's lane, attempts, handoff and verdicts under its item), the roadmap it finds
+in the checkout, and the agent's setup (its persona, model, schedule and skills). The platform reads no file of
+the agent's; everything a page shows about it came through the SDK. Scheduled runs publish by default;
 `.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
 and settled cent per item, live while a session runs.
 

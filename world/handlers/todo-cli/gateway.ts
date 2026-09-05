@@ -33,8 +33,19 @@ function implement(item: { id: string; title: string }): string {
   const stage = resolve(here, 'stages', item.id);
   const heredoc = (path: string, text: string) => `cat > '${path}' <<'__OA_FILE__'\n${text}${text.endsWith('\n') ? '' : '\n'}__OA_FILE__`;
   const writes = [...files(stage).map((f) => heredoc(f, readFileSync(join(stage, f), 'utf8'))), heredoc('ROADMAP.yml', roadmapAfter(item.id))].join('\n');
+  // The `domain` item needs a purchase: a card from the platform's card rail through the valve, presented to the
+  // registrar (the Stripe twin, at its world.json address as the container sees it), captured.
+  const purchase = item.id === 'domain' ? [
+    `card=$(curl -sf -X POST http://valve:8787/v1/rails/card -H 'authorization: Bearer valve' -H 'content-type: application/json' -d '{"usd_cents":250,"purpose":"domain todo-cli.example"}') || { echo "IMPLEMENTATION_""RAN the card rail refused"; exit 1; }`,
+    `card_id=$(printf '%s' "$card" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4); [ -n "$card_id" ] || { echo "IMPLEMENTATION_""RAN no card id: $card"; exit 1; }`,
+    `auth=$(curl -sf -u sk_test_world: -X POST http://host.docker.internal:47616/v1/test_helpers/issuing/authorizations -d card=$card_id -d amount=200 -d 'merchant_data[category]=computer_software_stores' -d 'merchant_data[name]=Namecheap') || { echo "IMPLEMENTATION_""RAN the registrar could not authorize"; exit 1; }`,
+    `auth_id=$(printf '%s' "$auth" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4); printf '%s' "$auth" | grep -q '"approved":true' || { echo "IMPLEMENTATION_""RAN the authorization was declined: $auth"; exit 1; }`,
+    `curl -sf -u sk_test_world: -X POST http://host.docker.internal:47616/v1/test_helpers/issuing/authorizations/$auth_id/capture >/dev/null || { echo "IMPLEMENTATION_""RAN the capture failed"; exit 1; }`,
+    `echo "PURCHASED domain todo-cli.example at Namecheap on card $card_id"`,
+  ] : [];
   return [
     `git fetch -q origin main && git checkout -q -B agent/${item.id} origin/main || { echo "IMPLEMENTATION_""RAN cannot start"; exit 1; }`,
+    ...purchase,
     writes,
     `bun run check >/dev/null 2>&1 || { echo "IMPLEMENTATION_""RAN the check failed:"; bun run check 2>&1 | tail -20; exit 1; }`,
     `git add -A && git -c user.name='Open Autonomy agent' -c user.email='agent@open-autonomy.org' commit -q -s -m '${item.id}: ${item.title.replace(/'/g, "'\\''")}' && git push -q -u origin agent/${item.id} || { echo "IMPLEMENTATION_""RAN push failed"; exit 1; }`,

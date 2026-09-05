@@ -3,7 +3,11 @@
 // world (bun world/run.ts probe, after seed). Each line is an acceptance line of the platform read back
 // through a public route: the books move on a metered call, the key survives a redeploy, a session posted
 // on the key lands on the page, an item view carries what touched it, egress to the docs goes to the twin.
-import { ACCOUNT, ENC, MODEL, agentEnv, api, need } from './lib.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { parseRailsConfig } from '../packages/sdk/src/rails.ts';
+import { parseRoadmap } from '../packages/sdk/src/roadmap.ts';
+import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need } from './lib.ts';
 
 const platform = need('PLATFORM_URL');
 const pub = api(platform);
@@ -47,8 +51,12 @@ for (const path of [`/p/${ENC}`, `/p/${ENC}/sessions/probe-1`, `/p/${ENC}/items/
   if (page.status !== 200) fail(`${path} → ${page.status}`);
   if (!page.text.includes('probe')) fail(`${path} does not show the probe's session`);
 }
+// The roadmap arrives through the key, the way a project's reporter narrates the file it works.
+const cookbookRoadmap = parseRoadmap(readFileSync(resolve(COOKBOOK, 'ROADMAP.yml'), 'utf8'));
+const pushed = await bearer.post('/v1/agent/roadmap', { source: 'file', roadmap: cookbookRoadmap });
+if (pushed.status !== 200) fail(`roadmap push through the key → ${pushed.status} ${pushed.text.slice(0, 200)}`);
 const page = (await pub.get(`/p/${ENC}`)).text;
-if (!page.includes('todo add appends an item')) fail('the project page does not render the roadmap synced from the twin');
+if (!page.includes(cookbookRoadmap.items[0].title)) fail('the project page does not render the roadmap published through the key');
 if (!/last run .*: done/.test(page)) fail('the project page has no health line naming the last run');
 ok.push('the session, the update and the item read back and render on the page');
 
@@ -72,7 +80,7 @@ ok.push('refusals and widgets as specified');
 //    second project whose config names github-milestones is created on the twin with two milestones, and
 //    the platform pulls them, credential-free, into a revision with the driver's conformance.
 const road = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body;
-if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not come through the file driver: ${JSON.stringify(road).slice(0, 200)}`);
+if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not arrive through the key: ${JSON.stringify(road).slice(0, 200)}`);
 const gh = api(need('GITHUB_TWIN_URL'));
 const created = await gh.post('/orgs/cookbook/repos', { name: 'milestones-demo' });
 if (![201, 422].includes(created.status)) fail(`github twin: create milestones-demo → ${created.status}`);
@@ -97,6 +105,13 @@ const demoPage = await pub.get(`/p/${demoEnc}`);
 if (demoPage.status !== 200 || !demoPage.text.includes('Roadmap from <b>github-milestones</b>')) fail('the demo page does not render the milestones roadmap');
 ok.push('the file driver and the milestones driver both landed revisions from the twin');
 
+// 7. The rails beyond the model, against the Stripe twin — where the cookbook's owner opened them; a cookbook
+//    with no rail bound proves the refusal instead.
+const railsCfg = parseRailsConfig(readFileSync(resolve(COOKBOOK, '.open-autonomy', 'config.yaml'), 'utf8'));
+if (!(railsCfg.card.max_usd_cents > 0)) {
+  if ((await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: no bound' })).status !== 403) fail('a card was minted with no bound set');
+  ok.push('the card rail refused with no bound set');
+} else {
 // 7. The rails beyond the model, against the Stripe twin. A card minted against the balance, bounded by the
 //    cookbook's config; a merchant's authorization within the bound and category is approved in real time
 //    through the platform's webhook, its capture settles on the books as a card rail record and retires the
@@ -135,6 +150,7 @@ if (partner.status !== 200) fail(`partner settle → ${partner.status} ${partner
 const partnerRecord = ((await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls as Array<Record<string, unknown>>).find((c) => c.rail === 'partner');
 if (!partnerRecord || partnerRecord.partner !== 'browserless' || partnerRecord.usd_cents !== 30 || partnerRecord.quantity !== 3) fail(`no partner rail record on the audit trail: ${JSON.stringify(partnerRecord)}`);
 ok.push('a minted card paid a merchant within its bound and settled on the books; the wrong category and an unlisted partner were refused; a partner charge settled');
+}
 
 // 8. Money in, against the Polar twin. A patron picks a tier on the page: the platform creates the tier's
 //    products at Polar and opens a checkout; the patron pays (confirms at the twin) and lands on the thanks
@@ -165,6 +181,19 @@ for (let i = 0; i < 2; i++) { const r = await signed(renewal); if (r.status !== 
 if (Math.round((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents - booksAfter) !== tier) fail('the renewal did not mint the tier once');
 if ((await signed(renewal, new TextEncoder().encode('forged'))).status !== 401) fail('a forged Polar event was accepted');
 ok.push('a tier paid through the Polar twin landed on the books from the thanks page, a renewal from the signed event, each once; a forged event was refused');
+
+// 9. The books can be exported and restored: an export of everything, a restore over the wiped worker, and every
+//    balance, call record and session reads back the same.
+const exported = await admin.get('/admin/export');
+if (exported.status !== 200 || !Array.isArray(exported.body?.entries) || !exported.body.entries.length) fail(`export → ${exported.status} ${exported.text.slice(0, 200)}`);
+const snapshot = async () => ({ funding: (await pub.get(`/v1/accounts/${ENC}`)).body, calls: (await pub.get(`/v1/accounts/${ENC}/calls`)).body, sessions: (await pub.get(`/v1/accounts/${ENC}/sessions`)).body, roadmap: (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body });
+const beforeRestore = await snapshot();
+if ((await admin.post('/admin/import', { entries: exported.body.entries })).status !== 409) fail('an import over a non-empty worker was not refused without replace');
+const restored = await admin.post('/admin/import', { entries: exported.body.entries, replace: true });
+if (restored.status !== 200 || restored.body?.entries !== exported.body.entries.length) fail(`restore → ${restored.status} ${restored.text.slice(0, 200)}`);
+const afterRestore = await snapshot();
+for (const k of ['funding', 'calls', 'sessions', 'roadmap'] as const) if (JSON.stringify(beforeRestore[k]) !== JSON.stringify(afterRestore[k])) fail(`${k} reads back differently after the restore`);
+ok.push(`the books exported (${exported.body.entries.length} entries) and restored over the wiped worker; every balance, call record, session and roadmap revision reads back the same`);
 
 // Leave the books as the seed left them for what follows: the probe's session is dropped.
 await admin.del(`/admin/accounts/${ENC}/sessions/probe-1`);

@@ -8,8 +8,10 @@
 //          the key file the valve reads, then `docker compose up -d --build`
 //   down   `docker compose down`; with --purge the volumes too
 //   clock advance <N>(s|m|h|d)   move the container's clock (the schedule is "every 360m" from boot)
-//   repin  the owner's model change between two fires: the config on the twin's main moves from the previous
-//          model to the cookbook's, the checkout follows, the stack restarts; the next worker spends on it
+//   between-fires  what the owner does between two fires: the config on the twin's main moves from the
+//          previous model to the cookbook's, the checkout follows, the stack restarts (the next worker spends on
+//          it), and the key is rotated with a short grace (the valve picks the new key up unrestarted; the old
+//          key is refused after its grace)
 //
 // The Docker host is the world's own (WORLD_DOCKER_CONTEXT, default colima-open-autonomy-world). Containers
 // reach the host's services at host.docker.internal.
@@ -128,40 +130,23 @@ async function up(): Promise<void> {
   }
   // The pinned Hermes image, by the kit's own tool (copied from another Docker host on this machine when
   // one already built it, since the build is ten minutes).
-  const pin = Object.fromEntries(readFileSync(resolve(COOKBOOK, 'container/hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k));
-  const image = `hermes-agent:${pin.HERMES_TAG}`;
-  if (docker('image', 'inspect', image).code !== 0) {
-    const other = sh(['docker', 'context', 'ls', '-q'], { quiet: true }).out.split('\n').map((c) => c.trim()).filter((c) => c && c !== context)
-      .find((c) => Bun.spawnSync({ cmd: ['docker', '--context', c, 'image', 'inspect', image], stdout: 'ignore', stderr: 'ignore' }).exitCode === 0);
-    if (other) {
-      console.log(`stack: copying ${image} from Docker host ${other}`);
-      const r = Bun.spawnSync({ cmd: ['sh', '-c', `docker --context '${other}' save '${image}' | docker --context '${context}' load`], cwd: ROOT, stdout: 'inherit', stderr: 'inherit', env: hostEnv() });
-      if (r.exitCode !== 0) throw new Error('image copy failed');
-    } else {
-      console.log(`stack: building ${image} (container/build-hermes.sh, ~10 minutes)`);
-      sh(['sh', resolve(COOKBOOK, 'container/build-hermes.sh')], { env: { DOCKER_CONTEXT: context } });
-    }
-  }
   const ip = hostIp();
   // A previous stack's containers would keep the volumes pinned; take them down first.
   down(false);
-  // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at
-  // the valve and names the Discord bot — a fake token the twin accepts — and its home channel), the
-  // checkout cloned from the project's origin, here the GitHub twin.
   mkdirSync(stackDir, { recursive: true });
-  const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
-  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
-  timed('volumes', () => {
-  for (const v of ['oa-home', 'oa-repo']) { sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false }); docker('volume', 'create', v); }
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${resolve(COOKBOOK, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
-    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1\\nOPEN_AUTONOMY_KEY=valve\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine/git:2.47.2', '-c', 'safe.directory=*', 'clone', '-q', `${forContainers(github)}/${ACCOUNT}.git`, '/work'], { quiet: true });
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine:3', 'chown', '-R', `${uid}:${gid}`, '/work'], { quiet: true });
-  });
   // The key file the valve reads, with the platform's address as the container sees it.
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
   writeFileSync(resolve(secrets, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(env.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${env.OPEN_AUTONOMY_KEY}\n`);
+  // The host, the adopter way: the kit's own setup tool makes the image and the two volumes — the home from the
+  // cookbook's hermes/ (its .env names the Discord bot, a fake token the twin accepts, and its home channel),
+  // the checkout cloned from the project's origin, here the GitHub twin — so what the world proves is what
+  // an adopter runs.
+  const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
+  timed('setup', () => sh(['bun', resolve(COOKBOOK, '.open-autonomy', 'setup.ts'), '--context', context, '--secrets', secrets, '--uid', uid, '--gid', gid, '--fresh',
+    '--origin', `${github}/${ACCOUNT}.git`, '--origin-in-container', `${forContainers(github)}/${ACCOUNT}.git`,
+    '--env', `DISCORD_BOT_TOKEN=${botToken}`, '--env', `DISCORD_HOME_CHANNEL=${HOME_CHANNEL}`]));
   // What the world mounts into the container (stack.override.yml): the clock — libfaketime, built once for
   // the image's Debian — and the session CA in Python's certifi bundle.
   mkdirSync(worldDir, { recursive: true });
@@ -215,12 +200,46 @@ function unseal(): void {
 // The owner moves the model: hermes/config.yaml on main now names the cookbook's model, the agent's checkout
 // follows main, and the stack restarts the way an adopter restarts it (`docker compose up -d`): home-sync
 // carries the config into the home and the gateway boots; the next task's worker takes the model from it.
-async function repin(): Promise<void> {
+async function betweenFires(): Promise<void> {
   await putMain('hermes/config.yaml', configYaml(), `hermes/config.yaml: model ${MODEL}`);
   sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'sh', '-c', 'cd /work/project && git fetch -q origin && git checkout -q main && git reset -q --hard origin/main'], { quiet: true });
   timed('compose up (restart)', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--force-recreate', 'home-sync', 'agent'], { env: composeEnv(certifiIn(`${COOKBOOK_NAME}-agent:local`)) }));
   waitSchedule();
+  await rotateKey();
   console.log(`stack: the model moved to ${MODEL} and the schedule followed; \`bun world/run.ts clock advance 360m\` brings the next fire forward`);
+}
+
+// The owner rotates the key the adopter way (`bun .open-autonomy/mint-key.ts --rotate`), here with a five-second
+// grace so the refusal is provable now. The valve re-reads the mounted key file on its next request; the old key
+// is listed with its shortened expiry, then refused.
+async function rotateKey(): Promise<void> {
+  const platform = need('PLATFORM_URL').replace(/\/$/, '');
+  const file = resolve(stackDir, 'secrets', 'agent.env');
+  const before = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(readFileSync(file, 'utf8'))?.[1];
+  if (!before) throw new Error(`stack: no key in ${file} to rotate`);
+  const r = Bun.spawnSync({ cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'mint-key.ts'), '--rotate', '--out', file, '--grace', '5'], cwd: COOKBOOK, env: { ...process.env, OPEN_AUTONOMY_URL: platform }, stdout: 'pipe', stderr: 'pipe' });
+  if (r.exitCode !== 0) throw new Error(`stack: key rotation failed: ${r.stderr.toString().slice(-400)}`);
+  // The tool writes the platform's address as it reached it (the host's); the valve reads the file from inside
+  // the stack, so the address is rewritten as the containers see it — the same file, the same inode.
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^OPEN_AUTONOMY_BASE_URL=.*$/m, `OPEN_AUTONOMY_BASE_URL=${forContainers(platform)}/v1`));
+  const after = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(readFileSync(file, 'utf8'))?.[1];
+  if (!after || after === before) throw new Error('stack: the key file was not rewritten with a new key');
+  const api = (token: string, path: string) => fetch(`${platform}${path}`, { headers: { authorization: `Bearer ${token}` } });
+  const listed = await (await api(after, '/v1/keys')).json() as { keys?: Array<{ kid: string; exp: string }> };
+  if ((listed.keys ?? []).length < 2) throw new Error(`stack: the registry does not list both keys after the rotation: ${JSON.stringify(listed).slice(0, 200)}`);
+  // The valve sees the new key without a restart: its health line names the new key.
+  const newKid = (JSON.parse(Buffer.from(after.split('.')[0], 'base64url').toString('utf8')) as { kid: string }).kid;
+  // The mounted file's new bytes reach the container within moments; the valve reads them on its next request.
+  let health = '';
+  for (let i = 0; i < 20 && !health.includes(newKid); i++) {
+    await Bun.sleep(500);
+    health = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
+  }
+  if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key within ten seconds: ${health}`);
+  await Bun.sleep(6500);
+  if ((await api(before, '/v1/models')).status !== 401) throw new Error('stack: the old key still works after its grace');
+  if ((await api(after, '/v1/models')).status !== 200) throw new Error('stack: the new key does not spend');
+  console.log(`stack: key rotated (${newKid}); the valve took it unrestarted and the old key is refused after its grace`);
 }
 
 function down(purge: boolean): void {
@@ -247,5 +266,5 @@ if (verb === 'up') await up();
 else if (verb === 'down') down(rest.includes('--purge'));
 else if (verb === 'clock' && rest[0] === 'advance' && rest[1]) clockAdvance(rest[1]);
 else if (verb === 'seal') seal();
-else if (verb === 'repin') await repin();
-else { console.error('usage: stack.ts up | down [--purge] | seal | repin | clock advance <N>(s|m|h|d)'); process.exit(2); }
+else if (verb === 'between-fires') await betweenFires();
+else { console.error('usage: stack.ts up | down [--purge] | seal | between-fires | clock advance <N>(s|m|h|d)'); process.exit(2); }

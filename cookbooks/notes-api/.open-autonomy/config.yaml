@@ -1,0 +1,43 @@
+# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and the key
+# tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the project's own.
+account: cookbook/notes-api
+platform: https://open-autonomy.org
+
+# What the reporter publishes. Work sessions (the scheduled runs, the funded work) publish by default; the
+# private exceptions are named here. Anything listed under `private` is never sent.
+publish:
+  runs: true        # sessions the schedule started (trigger: cron)
+  chats: false      # conversations on a channel (Discord, a terminal)
+  private:          # session ids or job names that never publish, whatever their kind
+    - []
+
+# Where sessions come from: the Hermes home the reporter reads through supercode, and where it keeps its
+# own cursor. Inside the container stack these are the mounted volume and the checkout.
+hermes_home: /opt/data
+state_file: /work/project/.open-autonomy/reporter-state.json
+
+# The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
+# bound is set. Every rail leaves a record on the public audit trail naming itself.
+rails:
+  card:                       # a single-use virtual card minted against the balance (Stripe Issuing)
+    max_usd_cents: 0          # the most one card may be minted for
+    categories: []            # Stripe merchant categories a card may pay at, e.g. [computer_software_stores]
+  partner:                    # a partner service settling a metered charge against the balance
+    max_usd_cents: 0          # the most one charge may be
+    partners: []              # the partner ids allowed to settle
+
+# Where the roadmap lives. `file` (the default): ROADMAP.yml in git, pulled by the platform on sync.
+# `github-milestones`: this repository's milestones, pulled by the platform with no credential; `bun
+# .open-autonomy/roadmap.ts pull` mirrors them into ROADMAP.yml for the agent, `reconcile` closes the
+# milestones the agent finished. `jira`: the project's epics, read and pushed owner-side by the same tool
+# (`push` on a steer-scoped key; JIRA_EMAIL and JIRA_TOKEN from the environment). The agent never sees a
+# tracker: it works ROADMAP.yml whatever the source.
+roadmap:
+  source: file
+  path: ROADMAP.yml
+  # github:
+  #   repo: owner/repo          # another repository's milestones (default: this one)
+  # jira:
+  #   base_url: https://your-site.atlassian.net
+  #   project: KEY
+  #   done_transition: Done     # the transition name that closes an epic (default: any to the done category)
