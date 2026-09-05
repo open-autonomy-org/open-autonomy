@@ -61,12 +61,20 @@ const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 
 const saveState = () => { try { writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`); } catch (e) { log(`cannot write ${stateFile}: ${(e as Error).message}`); } };
 
 const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' ? 'run' : 'chat');
-// A run's source is its job's name. supercode's job model carries the job's id, not its name; the name is
-// how its Hermes codec titles the session (`<job name> · <fired at>`), so the title's first segment is it.
-const sourceOf = (d: SessionDescriptor): string => {
-  if (d.recurrence?.job_id) return d.title?.split(' · ')[0]?.trim() || d.recurrence.job_id;
-  return d.surface?.platform ?? kindOf(d);
-};
+// A run's source is its job's name. supercode's job model carries the job's id, not its name; Hermes keeps
+// the name beside the id in its own schedule store in the home the reporter reads, so that is where the
+// name comes from (read-only, refreshed whenever an id is new), falling back to the id.
+const jobNames = new Map<string, string>();
+function jobName(id: string): string {
+  if (!jobNames.has(id)) {
+    try {
+      const store = JSON.parse(readFileSync(resolve(cfg.hermes_home, 'cron', 'jobs.json'), 'utf8')) as { jobs?: Array<{ id?: string; name?: string }> } | Array<{ id?: string; name?: string }>;
+      for (const j of Array.isArray(store) ? store : store.jobs ?? []) if (j.id && j.name) jobNames.set(j.id, j.name);
+    } catch { /* no schedule store yet */ }
+  }
+  return jobNames.get(id) ?? id;
+}
+const sourceOf = (d: SessionDescriptor): string => (d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.surface?.platform ?? kindOf(d));
 function publishes(d: SessionDescriptor): boolean {
   const id = d.locator.session_id;
   if (cfg.publish.private.includes(id) || (d.recurrence?.job_id && cfg.publish.private.includes(d.recurrence.job_id))) return false;
