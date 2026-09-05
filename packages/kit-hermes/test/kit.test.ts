@@ -12,7 +12,7 @@ describe('the Hermes kit', () => {
     const dir = tmp();
     const out = create(dir, params);
     for (const f of ['README.md', 'STANDARDS.md', 'docs/VISION.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', '.gitignore', 'package.json',
-      '.open-autonomy/setup.ts', 'hermes/config.yaml', 'hermes/SOUL.md', 'hermes/cron/jobs.seed.json', 'hermes/kanban.seed.json', 'hermes/skills/open-autonomy/develop/SKILL.md', 'hermes/skills/open-autonomy/review/SKILL.md', 'hermes/skills/open-autonomy/pm/SKILL.md', 'hermes/hooks/seed/handler.py',
+      '.open-autonomy/setup.ts', 'hermes/config.yaml', 'hermes/SOUL.md', 'hermes/cron/jobs.seed.json', 'hermes/kanban.seed.json', 'hermes/skills/open-autonomy/develop/SKILL.md', 'hermes/skills/open-autonomy/pm/SKILL.md', 'hermes/hooks/seed/handler.py',
       '.open-autonomy/config.yaml', '.open-autonomy/reporter.ts', '.open-autonomy/mint-key.ts', '.open-autonomy/sdk/client.ts', '.open-autonomy/sdk/roadmap.ts', '.open-autonomy/sdk/drivers.ts', '.open-autonomy/kit.json',
       'container/compose.yml', 'container/Dockerfile', 'container/Dockerfile.valve', 'container/Dockerfile.reporter', 'container/key-valve.ts', 'container/hermes.pin', 'container/build-hermes.sh',
       '.github/workflows/ci.yml', '.github/workflows/land.yml']) {

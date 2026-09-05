@@ -135,7 +135,7 @@ def _seed_board() -> None:
         body = "\n".join(f"- {line}" for line in spec.get("acceptance", []) if isinstance(line, str))
         cmd = ["hermes", "kanban", "create", str(spec["title"]), "--body", body, "--assignee", "default",
                "--workspace", workspace, "--idempotency-key", f"seed:{spec['key']}", "--created-by", "seed",
-               "--skill", "develop", "--skill", "review", "--json"]
+               "--skill", "develop", "--json"]
         if previous:
             cmd += ["--parent", previous]
 
