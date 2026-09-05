@@ -19,6 +19,8 @@ else it got right. Changing this file is the owner's act, never a task's.
 - **One endpoint, one test; no dependencies.** bun's own server and test runner, nothing installed.
 - **Done means true in the running system.** A task is done when its acceptance lines hold where the project is
   verified, not when code exists.
+- **No automated test runs for more than thirty seconds.** All of them together, ever. Behavior is verified by
+  driving the running system.
 
 ## Out of scope
 
