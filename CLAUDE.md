@@ -27,8 +27,6 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   `land/<topic>` branch; `land.yml` opens its pull request and auto-merge lands it when `ci` and `security`
   pass. Don't wait on it.
 - Live proof is the proof: the deployed worker and the rendered site, not local tests alone.
-- The SDK and the kit publish to npm through `release.yml` only (a `release-v<version>` tag or a dispatch,
-  the `production` reviewer, `NPM_TOKEN` in that environment); `bun world/run.ts kit` proves the publish first.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
