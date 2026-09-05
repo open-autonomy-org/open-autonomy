@@ -961,8 +961,12 @@ export class LimitLedger implements DurableObject {
   }
 
   private snapshot() {
+    // What the org owes in spend: every account's balance summed. Real money must cover it (the Issuing balance for
+    // cards, the gateway account for model calls); whoever tops those up reads this number.
+    const owed = Number(Object.keys(this.state.accounts).reduce((sum, id) => sum + this.balanceOf(id), 0).toFixed(6));
     return {
       day_key: this.state.day_key,
+      owed_usd_cents: owed,
       consumed_usd_cents: this.state.consumed_usd_cents,
       reserved_usd_cents: this.state.reserved_usd_cents,
       reservations: Object.keys(this.state.reservations).length,

@@ -16,9 +16,13 @@ required reviewer. No machine holds a deploy or admin token.
 
 ## Secrets (set once with `wrangler secret put`, never in the repository)
 
-`AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`, `MODEL_GATEWAY_API_KEY`,
-`GITHUB_SPONSORS_WEBHOOK_SECRET`, optionally `GITHUB_TOKEN`. `admin.yml`'s `sync-admin-token` installs the
-environment's admin token as the worker's, so the two never drift.
+`AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`, `MODEL_GATEWAY_API_KEY`, optionally `GITHUB_TOKEN`; and the
+money paths' `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`GITHUB_SPONSORS_WEBHOOK_SECRET`. Every one is set as a `production` environment secret and installed by
+`admin.yml`: `sync-admin-token` for the admin token, `sync-secrets` for the money paths' (it installs whichever
+are set). The cardholder's billing address is the var `ISSUING_BILLING_ADDRESS_JSON` in `wrangler.toml`; with it
+unset the card rail refuses. `/admin/status` reports `owed_usd_cents`, every account's balance summed: what the
+Issuing balance and the gateway account must cover.
 
 ## The cutover to this worker
 

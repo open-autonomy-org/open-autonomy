@@ -68,6 +68,7 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
     GITHUB_RAW_BASE: 'https://raw.test',
     STRIPE_API_BASE: 'https://stripe.test',
     STRIPE_SECRET_KEY: 'sk_test_fake',
+    ISSUING_BILLING_ADDRESS_JSON: JSON.stringify({ line1: '1 Test Street', city: 'Testville', state: 'CA', postal_code: '00000', country: 'US' }),
     STRIPE_WEBHOOK_SECRET: 'whsec_test',
     POLAR_API_BASE: 'https://polar.test',
     POLAR_ACCESS_TOKEN: 'polar_at_test',

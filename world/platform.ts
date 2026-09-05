@@ -31,6 +31,7 @@ const vars: Record<string, string> = {
 if (process.env.STRIPE_TWIN_URL) {
   vars.STRIPE_API_BASE = process.env.STRIPE_TWIN_URL;
   vars.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? 'sk_test_world';
+  vars.ISSUING_BILLING_ADDRESS_JSON = JSON.stringify({ line1: '1 World Street', city: 'Twin City', state: 'CA', postal_code: '00000', country: 'US' });
   const res = await fetch(`${process.env.STRIPE_TWIN_URL}/v1/webhook_endpoints`, { method: 'POST', headers: { authorization: `Bearer ${vars.STRIPE_SECRET_KEY}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `url=${encodeURIComponent(`http://127.0.0.1:${port}/webhooks/stripe`)}&enabled_events[0]=issuing_authorization.request&enabled_events[1]=issuing_authorization.created&enabled_events[2]=issuing_transaction.created` });
   const endpoint = await res.json().catch(() => ({})) as { secret?: string };
   if (!res.ok || !endpoint.secret) { console.error(`world/platform.ts: cannot enrol the webhook endpoint on the Stripe twin (${res.status})`); process.exit(2); }
