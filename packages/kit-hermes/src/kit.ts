@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.2.1' } as const;
+export const KIT = { name: 'hermes', version: '2.3.0' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
@@ -17,7 +17,9 @@ export interface KitParams { project: string; account: string }
 export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
 
 // What the kit keeps current. Everything else in the template is seeded once.
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$)/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+// A project's own, seeded once: its config, its board seed, its schedule, and any skill of its own outside
+// hermes/skills/open-autonomy/ (the kit's two).
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -98,7 +100,7 @@ export function check(dir: string): Outcome {
 // Kit-owned files the repository has that the kit no longer renders: what an earlier kit made and this one
 // retired. `upgrade` removes them; a project that keeps one names it in `divergences`. Only the families the
 // kit writes are looked at — never the agent's runtime state beside them (its database, sessions, logs, .env).
-const RETIRABLE = [/^hermes\/(skills|hooks|scripts)\//, /^\.open-autonomy\/([a-z-]+\.ts|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const RETIRABLE = [/^hermes\/(skills\/open-autonomy|hooks|scripts)\//, /^\.open-autonomy\/([a-z-]+\.ts|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 function retired(dir: string, rendered: Map<string, Buffer>, rec: KitRecord): string[] {
   const out: string[] = [];
   for (const root of ['hermes/skills', 'hermes/hooks', 'hermes/scripts', '.open-autonomy', 'container', '.github/workflows']) {

@@ -1,0 +1,24 @@
+[
+  {
+    "term": "agent",
+    "definition": "The checked-in Hermes agent that builds a project, month after month, on a budget its patrons fund; everything it is lives in the repository.",
+    "source": "https://open-autonomy.org",
+    "added": "2026-09-01"
+  },
+  {
+    "term": "board",
+    "definition": "A project's Hermes kanban: the roadmap. The owner files tasks on it, the agent's dispatcher pulls them down in order, and its state is published to the project page.",
+    "added": "2026-09-01"
+  },
+  {
+    "term": "constitution",
+    "definition": "CONSTITUTION.md: what a project is and must remain \u2014 the invariants no change may violate and the scope no change may leave. Every review is held to it.",
+    "added": "2026-09-01"
+  },
+  {
+    "term": "twin",
+    "definition": "A local stand-in for a vendor's API that a program talks to unmodified: the same SDK, the same wire, no key, no spend. A world is a set of them.",
+    "source": "https://github.com/volter-ai/twin",
+    "added": "2026-09-05"
+  }
+]

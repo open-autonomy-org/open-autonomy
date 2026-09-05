@@ -18,7 +18,9 @@ who want the project to exist and metered on public books. Four pieces:
 2. **Starter kits** (`packages/kit-hermes`) — a complete repository that runs itself out of the box with the
    SDK wired in. The Hermes kit is the default: `bun create open-autonomy <dir>`.
 3. **Cookbooks** (`cookbooks/`) — complete projects ready to run autonomously, made with a kit plus their own
-   code. `todo-cli` is the one the world runs.
+   code. `todo-cli` is the one the world runs by default; `lexicon` is the one with a community: its agent reads the
+   repository's issues and discussions and its Discord channel, answers where it was asked, files what fits its
+   constitution on its board, and keeps a GitHub Pages homepage.
 4. **This install's own boilerplate** — the world (`world/`: the platform from this tree and the kit on a
    cookbook, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
 
@@ -39,7 +41,8 @@ Three ways in:
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
-cookbooks/todo-cli   the cookbook the world runs; cookbooks/notes-api the second, a service (`--cookbook notes-api`)
+cookbooks/todo-cli   the cookbook the world runs; cookbooks/notes-api a service; cookbooks/lexicon the one with a community
+                     desk (issues, discussions, Discord) and a GitHub Pages homepage (`--cookbook <name>`)
 world/               the world: twins + the platform + the kit on the cookbook; `bun world/run.ts up`
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
 ```

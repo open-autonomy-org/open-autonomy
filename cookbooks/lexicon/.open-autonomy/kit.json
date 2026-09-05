@@ -1,0 +1,9 @@
+{
+  "kit": "hermes",
+  "version": "2.3.0",
+  "params": {
+    "project": "lexicon",
+    "account": "cookbook/lexicon"
+  },
+  "divergences": []
+}

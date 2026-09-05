@@ -1,0 +1,10 @@
+{
+  "name": "lexicon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lexicon": "bun src/lexicon.ts",
+    "community": "bun src/community.ts",
+    "check": "bun test"
+  }
+}

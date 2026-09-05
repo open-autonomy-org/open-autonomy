@@ -29,7 +29,7 @@ CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, its two skills (develop, pm), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (the board's first tasks, in order),
+hermes/              the agent: SOUL.md, its two skills (develop, pm; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (the board's first tasks, in order),
                      cron/jobs.seed.json (the PM, hourly), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, rail bounds), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the agent's four

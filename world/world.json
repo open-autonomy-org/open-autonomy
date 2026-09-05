@@ -1,6 +1,6 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario) and the GitHub twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
@@ -34,6 +34,21 @@
       "port": 47612,
       "portReason": "the cookbook's agent was given this address at seed time and a restart of the world must keep it",
       "injectEnv": "GITHUB_TWIN_URL"
+    },
+    {
+      "id": "discord",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWINS_ROOT}/packages/twin/discord/src/cli.ts",
+        "serve"
+      ],
+      "port": 47615,
+      "portReason": "the cookbook's agent reaches the twin's gateway websocket at this address and a restart of the world must keep it",
+      "injectEnv": "DISCORD_TWIN_URL",
+      "env": {
+        "TWIN_DISCORD_GATEWAY_URL": "ws://127.0.0.1:47615/gateway"
+      }
     },
     {
       "id": "stripe",

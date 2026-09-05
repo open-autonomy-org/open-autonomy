@@ -13,7 +13,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
   generated repository is self-contained (the SDK is vendored into it).
-- `cookbooks/` — complete autonomous projects, made with a kit plus their own code. `todo-cli` is the one the
+- `cookbooks/` — complete autonomous projects, made with a kit plus their own code (`lexicon`: a community desk over
+  the GitHub twin's issues and discussions and the Discord twin, a GitHub Pages homepage). `todo-cli` is the one the
   world runs.
 - `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook, an environment to
   drive, never a gate.
@@ -46,7 +47,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   root's free space). The world runs the cookbook's agent bare, as the kit's start script starts it on a laptop:
   no Docker, no isolation (nothing the world's agent reaches is worth protecting), the pinned Hermes installed once
   under that root. Our own agent runs in the container lane on the colima VM `open-autonomy` (4 GiB, started at
-  login by a launch agent), as the stack `oa`.
+  login by a launch agent running the VM start script in the open-autonomy config directory), as the stack `oa`.
+  colima enforces no permissions on a bind mount, so on this Mac the secrets come from the root-owned volume
+  `oa-secrets` (the secrets-sync script beside the VM start script fills it from that directory: at every VM
+  start, and by hand after a key rotation) through the compose override in the same directory.
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts up` brings the twins,
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
   world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
