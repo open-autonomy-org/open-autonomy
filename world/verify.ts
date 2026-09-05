@@ -52,6 +52,16 @@ if (check.exitCode !== 0) fail(`the project's own check fails at main:\n${check.
 const kit = Bun.spawnSync({ cmd: ['bun', new URL('../packages/kit-hermes/src/cli.ts', import.meta.url).pathname, 'check', WORK], stdout: 'pipe', stderr: 'pipe' });
 if (kit.exitCode !== 0) fail(`the kit's files drifted on main:\n${kit.stderr.toString().slice(-600)}`);
 
+// The board on the page: every landed item's view carries its task in the done lane with the review it went
+// through, published by the reporter from the agent's own board through supercode's workflow layer.
+for (const item of done) {
+  const view = (await pub.get(`/v1/accounts/${ENC}/items/${encodeURIComponent(item)}`)).body;
+  if (view?.task?.lane !== 'done') fail(`item ${item}'s board task is not done on its page: ${JSON.stringify(view?.task ?? null).slice(0, 200)}`);
+  const verdicts = (view.task.reviews as Array<{ verdict: string }>).map((r) => r.verdict);
+  if (!verdicts.includes('requested') || !verdicts.includes('approved')) fail(`item ${item} did not go through the review lane: ${verdicts.join(', ') || 'no reviews'}`);
+  if (!(view.task.attempts as unknown[]).length) fail(`item ${item}'s task carries no attempts`);
+}
+
 // The rails from the agent's side: the domain item's purchase settled as a card record under a session on that item,
 // with the merchant, and the item page shows it.
 if (done.includes('domain')) {

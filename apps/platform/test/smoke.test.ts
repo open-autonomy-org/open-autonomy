@@ -53,6 +53,18 @@ describe('the platform, one smoke test per surface', () => {
     expect((await request(env, '/v1/agent/events', { method: 'POST', body: ce('session.started', 'x', {}) })).status).toBe(401);
   });
 
+  test('the board: a task published under its item shows on the item, lane, attempts and verdict', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 100);
+    const { token } = await mintKey(env);
+    const auth = { authorization: `Bearer ${token}` };
+    const ce = (data: unknown) => ({ specversion: '1.0', id: crypto.randomUUID(), source: 't', type: 'org.open-autonomy.item.task', subject: 'add', time: new Date().toISOString(), data });
+    expect((await request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce({ task_id: 't_1', lane: 'done', attempts: [{ id: '1', profile: 'default', status: 'review_requested', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved', by: 'default' }] }) })).status).toBe(200);
+    const item = await requestJson(env, '/v1/accounts/acme%2Fapp/items/add');
+    expect(item.task).toMatchObject({ lane: 'done', attempts: [{ id: '1', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved' }] });
+    expect(await (await request(env, '/p/acme%2Fapp/items/add')).text()).toContain('review: requested → approved');
+  });
+
   test('the roadmap: the file driver on sync, the milestones driver on sync, an owner-side push on a steer key; scopes hold', async () => {
     const env = useEnv(testEnv());
     github.repos['acme/app'] = { description: 'x' };

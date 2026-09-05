@@ -174,6 +174,14 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
         <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
         {item?.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null}
       </div>
+      {view.task ? (
+        <div class="panel">
+          <h3>Board</h3>
+          <p class="meta"><b>{view.task.lane}</b> · task {view.task.task_id}{view.task.assignee ? ` · ${view.task.assignee}` : ''} · {view.task.attempts.length} attempt{view.task.attempts.length === 1 ? '' : 's'}{view.task.reviews.length ? ` · review: ${view.task.reviews.map((r) => r.verdict).join(' → ')}` : ''}</p>
+          {view.task.attempts.length ? <ul class="updates">{view.task.attempts.map((a) => <li><span class="u-when">{a.started_at ? fmtAgo(a.started_at, now) : ''}</span><div class="u-text">#{a.id} {a.profile ? `@${a.profile} ` : ''}{a.status}{a.outcome ? ` · ${a.outcome}` : ''}{a.started_at ? ` · ${fmtDur(a.started_at, a.ended_at, now)}` : ''}{a.summary ? <><br />{a.summary}</> : null}</div></li>)}</ul> : null}
+          {view.task.reviews.length ? <ul class="updates">{view.task.reviews.map((r) => <li><span class="u-when">{r.at ? fmtAgo(r.at, now) : ''}</span><div class="u-text">review {r.verdict}{r.by ? ` by @${r.by}` : ''}{r.reason ? `: ${r.reason}` : ''}</div></li>)}</ul> : null}
+        </div>
+      ) : null}
       <div class="panel">
         <h3>Sessions</h3>
         {view.sessions.length ? view.sessions.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />) : <p class="sub">No session has worked this item yet.</p>}

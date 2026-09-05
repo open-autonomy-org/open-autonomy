@@ -22,6 +22,12 @@ export type SessionOutcome = 'done' | 'failed';
 export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
 export interface Update { item: string; text: string; session?: string; at?: string }
+// The board's state for a roadmap item, as the agent's harness keeps it: the task's lane, every attempt at
+// it, the handoff and the review verdicts. Published by the reporter from the harness's own board.
+export interface TaskAttempt { id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; summary?: string }
+export interface TaskReview { verdict: 'requested' | 'approved' | 'changes_requested' | 'escalated'; by?: string; reason?: string; at?: string }
+export interface TaskState { item: string; task_id: string; lane: string; title?: string; assignee?: string; attempts: TaskAttempt[]; reviews: TaskReview[]; handoff?: { summary?: string; metadata?: unknown }; updated_at?: string }
+export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 
 export interface CloudEvent {
   specversion: '1.0';
@@ -103,6 +109,13 @@ export class OpenAutonomy {
   async update(u: Update): Promise<UpdateRecord | undefined> {
     const r = await this.send(updateEvent(u));
     return r.results[0]?.update;
+  }
+
+  // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.
+  async task(t: TaskState): Promise<boolean> {
+    const { item, ...data } = t;
+    const r = await this.send(event(TASK_EVENT_TYPE, item, data as unknown as Record<string, unknown>, data.updated_at));
+    return r.results[0]?.ok === true;
   }
 
   // Public reads (no key): the stream, one session with its transcript, one item with everything on it.
