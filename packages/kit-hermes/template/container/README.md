@@ -16,6 +16,9 @@ one repository-scoped deploy key; delivery uses at most a Discord bot token, whi
 
 ## The host
 
+`bun .open-autonomy/setup.ts` does the steps below, idempotently, and says what it cannot do and what to run
+next; the world's stack step calls the same file. By hand:
+
 - `~/.config/open-autonomy/agent.env` — the key, from `bun .open-autonomy/mint-key.ts`. Rotate it with
   `bun .open-autonomy/mint-key.ts --rotate`: the valve takes the new key from the file without a restart, and its
   `/healthz` (and its log, and the reporter's) say when the key expires; both warn inside fourteen days.

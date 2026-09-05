@@ -128,7 +128,7 @@ items:
   - id: host-setup-tool
     phase: 3
     priority: medium
-    status: planned
+    status: active
     title: A project's host is set up by one command
     acceptance:
       - "`bun .open-autonomy/setup.ts` performs container/README.md's host steps idempotently: checks the key file, builds or copies the pinned Hermes image, creates and seeds the two volumes from the repository and its origin, states plainly what it cannot do (the deploy key and its ssh-agent are the owner's) and what to run next; it is what the world's stack step calls, so the two never drift."

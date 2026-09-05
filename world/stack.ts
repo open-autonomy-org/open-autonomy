@@ -130,40 +130,23 @@ async function up(): Promise<void> {
   }
   // The pinned Hermes image, by the kit's own tool (copied from another Docker host on this machine when
   // one already built it, since the build is ten minutes).
-  const pin = Object.fromEntries(readFileSync(resolve(COOKBOOK, 'container/hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k));
-  const image = `hermes-agent:${pin.HERMES_TAG}`;
-  if (docker('image', 'inspect', image).code !== 0) {
-    const other = sh(['docker', 'context', 'ls', '-q'], { quiet: true }).out.split('\n').map((c) => c.trim()).filter((c) => c && c !== context)
-      .find((c) => Bun.spawnSync({ cmd: ['docker', '--context', c, 'image', 'inspect', image], stdout: 'ignore', stderr: 'ignore' }).exitCode === 0);
-    if (other) {
-      console.log(`stack: copying ${image} from Docker host ${other}`);
-      const r = Bun.spawnSync({ cmd: ['sh', '-c', `docker --context '${other}' save '${image}' | docker --context '${context}' load`], cwd: ROOT, stdout: 'inherit', stderr: 'inherit', env: hostEnv() });
-      if (r.exitCode !== 0) throw new Error('image copy failed');
-    } else {
-      console.log(`stack: building ${image} (container/build-hermes.sh, ~10 minutes)`);
-      sh(['sh', resolve(COOKBOOK, 'container/build-hermes.sh')], { env: { DOCKER_CONTEXT: context } });
-    }
-  }
   const ip = hostIp();
   // A previous stack's containers would keep the volumes pinned; take them down first.
   down(false);
-  // The two volumes, as the adopter seeds them: the home from the cookbook's hermes/ (its .env points at
-  // the valve and names the Discord bot — a fake token the twin accepts — and its home channel), the
-  // checkout cloned from the project's origin, here the GitHub twin.
   mkdirSync(stackDir, { recursive: true });
-  const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
-  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
-  timed('volumes', () => {
-  for (const v of ['oa-home', 'oa-repo']) { sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false }); docker('volume', 'create', v); }
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${resolve(COOKBOOK, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
-    `cp -a /src/. /opt/data/ && printf 'OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1\\nOPEN_AUTONOMY_KEY=valve\\nDISCORD_BOT_TOKEN=${botToken}\\nDISCORD_HOME_CHANNEL=${HOME_CHANNEL}\\n' > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine/git:2.47.2', '-c', 'safe.directory=*', 'clone', '-q', `${forContainers(github)}/${ACCOUNT}.git`, '/work'], { quiet: true });
-  sh(['docker', '--context', context, 'run', '--rm', '-v', 'oa-repo:/work', 'alpine:3', 'chown', '-R', `${uid}:${gid}`, '/work'], { quiet: true });
-  });
   // The key file the valve reads, with the platform's address as the container sees it.
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
   writeFileSync(resolve(secrets, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(env.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${env.OPEN_AUTONOMY_KEY}\n`);
+  // The host, the adopter way: the kit's own setup tool makes the image and the two volumes — the home from the
+  // cookbook's hermes/ (its .env names the Discord bot, a fake token the twin accepts, and its home channel),
+  // the checkout cloned from the project's origin, here the GitHub twin — so what the world proves is what
+  // an adopter runs.
+  const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
+  timed('setup', () => sh(['bun', resolve(COOKBOOK, '.open-autonomy', 'setup.ts'), '--context', context, '--secrets', secrets, '--uid', uid, '--gid', gid, '--fresh',
+    '--origin', `${github}/${ACCOUNT}.git`, '--origin-in-container', `${forContainers(github)}/${ACCOUNT}.git`,
+    '--env', `DISCORD_BOT_TOKEN=${botToken}`, '--env', `DISCORD_HOME_CHANNEL=${HOME_CHANNEL}`]));
   // What the world mounts into the container (stack.override.yml): the clock — libfaketime, built once for
   // the image's Debian — and the session CA in Python's certifi bundle.
   mkdirSync(worldDir, { recursive: true });

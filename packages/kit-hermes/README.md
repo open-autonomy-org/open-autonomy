@@ -32,7 +32,7 @@ package.json, test/  the project's own check (`bun run check`), starting with on
 hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world, rails), the schedule seed and the fire's script, config.yaml (the model:
                      the project's own choice), the schedule-seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
-                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), roadmap.ts
+                     reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), setup.ts (the host, by one command), roadmap.ts
                      (the owner-side roadmap driver: pull a tracker into ROADMAP.yml, push it to the platform,
                      reconcile finished items back), the vendored SDK, kit.json (which kit, version and
                      parameters made this repository)
