@@ -23,13 +23,13 @@ open-autonomy` from it against the npm registry twin (`bun world/run.ts kit`) be
 
 ```text
 README.md            the project's front page, with the account's four widgets
-STANDARDS.md         the coding standards every change is reviewed against
-docs/VISION.md       why the project exists; its first paragraph is the page's lead
+CONSTITUTION.md      what the project is and must remain; its first paragraph leads the page, its invariants bind every task
+CONTRIBUTING.md      how code is written here, the bar every diff is reviewed against
 CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, its two skills (develop, pm), kanban.seed.json (the board's first tasks, in order),
+hermes/              the agent: SOUL.md, its two skills (develop, pm), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (the board's first tasks, in order),
                      cron/jobs.seed.json (the PM, hourly), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, rail bounds), reporter.ts (the bridge:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), setup.ts (the host, by one
@@ -41,7 +41,7 @@ container/           the stack: the agent, the key valve, the reporter; the pinn
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in
 `kit.json`'s `divergences`. **Seeded** files are written once and never touched again: the README, the
-board's seed, `STANDARDS.md`, the vision, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
+board's seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 
 ## How the repository runs itself
 
@@ -51,7 +51,7 @@ where each is metered to the project's account. The board is the roadmap: the ow
 files the first ones, in order, on the first boot), the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, lands it on an `agent/<task id>` branch the landing workflow merges when the checks pass, and hands
-off; the review lane, Hermes's own, verifies the handoff against `STANDARDS.md` in a session of its own; once an hour the PM job reads the whole board and unsticks what is stuck (the `pm` skill). Every
+off; the review lane, Hermes's own, verifies the handoff against the constitution and `CONTRIBUTING.md` in a session of its own; once an hour the PM job reads the whole board and unsticks what is stuck (the `pm` skill). Every
 session shows on the project's page with its cost.
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK

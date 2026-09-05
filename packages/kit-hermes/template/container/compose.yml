@@ -1,7 +1,10 @@
 # The project's agent, as it runs: three containers in one VM, none holding a secret that matters.
-#   agent     stock Hermes (the gateway: the schedule, and Discord when configured) with the project checkout
-#   valve     holds the project's key: forwards the model routes and the narration route, nothing else
-#   reporter  keyless; reads the agent's sessions through supercode and publishes them through the valve
+#   agent      stock Hermes (the gateway: the schedule, and Discord when configured) with the project checkout;
+#              two profiles, the developer and the treasurer
+#   valve      holds the developer's key (spend + narrate): the model routes and the narration routes
+#   valve-pay  holds the treasurer's key (spend + narrate + pay): the same routes and the rails; only the
+#              treasurer profile is pointed at it
+#   reporter   keyless; reads the agent's sessions through supercode and publishes them through the valve
 # The home and the checkout live in Docker volumes: SQLite over a host bind mount is a bus error waiting
 # to happen, and nothing on the host needs them. Inspect with `docker exec`.
 #
@@ -18,6 +21,18 @@ services:
       - AGENT_ENV_FILE=/secrets/agent.env
     volumes:
       - ${AGENT_SECRETS:-~/.config/open-autonomy}/agent.env:/secrets/agent.env:ro
+    networks: [agent]
+  valve-pay:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile.valve
+    image: __PROJECT__-valve:local
+    container_name: oa-valve-pay
+    restart: unless-stopped
+    environment:
+      - AGENT_ENV_FILE=/secrets/treasurer.env
+    volumes:
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}/treasurer.env:/secrets/treasurer.env:ro
     networks: [agent]
   # The committed home (SOUL, skills, config, the schedule seed) into the volume before the gateway starts:
   # hermes/ in the repository is the source of truth for what the agent IS; the volume only holds what the

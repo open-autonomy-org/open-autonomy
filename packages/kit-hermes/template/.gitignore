@@ -17,6 +17,18 @@ hermes/hooks/*
 !hermes/hooks/seed/
 !hermes/hooks/seed/HOOK.yaml
 !hermes/hooks/seed/handler.py
+# The treasurer profile's runtime state, like the default's.
+hermes/profiles/*/.env
+hermes/profiles/*/auth.json
+hermes/profiles/*/*.lock
+hermes/profiles/*/state.db*
+hermes/profiles/*/sessions/
+hermes/profiles/*/logs/
+hermes/profiles/*/cache/
+hermes/profiles/*/*_cache/
+hermes/profiles/*/memories/
+hermes/profiles/*/cron/
+hermes/profiles/*/kanban*
 hermes/cron/output/
 hermes/cron/*.lock
 hermes/cron/jobs.json

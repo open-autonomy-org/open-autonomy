@@ -7,13 +7,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseRailsConfig } from '../packages/sdk/src/rails.ts';
 import { ROADMAP_SCHEMA } from '../packages/sdk/src/roadmap.ts';
-import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need, treasurerEnv } from './lib.ts';
 
 const platform = need('PLATFORM_URL');
 const pub = api(platform);
 const admin = api(platform, { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin' });
 const key = agentEnv().OPEN_AUTONOMY_KEY;
 const bearer = api(platform, { authorization: `Bearer ${key}` });
+// The treasurer's key: the one that pays. The developer's is refused at the rails.
+const payer = api(platform, { authorization: `Bearer ${treasurerEnv().OPEN_AUTONOMY_KEY}` });
 const fail = (m: string) => { throw new Error(`probe: ${m}`); };
 const ok: string[] = [];
 
@@ -108,10 +110,12 @@ if (demoPage.status !== 200 || !demoPage.text.includes('Roadmap from <b>github-m
 ok.push('the file driver and the milestones driver both landed revisions from the twin');
 
 // 7. The rails beyond the model, against the Stripe twin — where the cookbook's owner opened them; a cookbook
-//    with no rail bound proves the refusal instead.
+//    with no rail bound proves the refusal instead. First: the developer's key never reaches a rail.
+const refusedDev = await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: the developer asks' });
+if (refusedDev.status !== 403 || refusedDev.body?.error?.scope !== 'pay') fail(`the developer's key reached the card rail: ${refusedDev.status} ${refusedDev.text.slice(0, 120)}`);
 const railsCfg = parseRailsConfig(readFileSync(resolve(COOKBOOK, '.open-autonomy', 'config.yaml'), 'utf8'));
 if (!(railsCfg.card.max_usd_cents > 0)) {
-  if ((await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: no bound' })).status !== 403) fail('a card was minted with no bound set');
+  if ((await payer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: no bound' })).status !== 403) fail('a card was minted with no bound set');
   ok.push('the card rail refused with no bound set');
 } else {
 // 7. The rails beyond the model, against the Stripe twin. A card minted against the balance, bounded by the
@@ -121,8 +125,8 @@ if (!(railsCfg.card.max_usd_cents > 0)) {
 const stripeTwin = api(need('STRIPE_TWIN_URL'), { authorization: 'Bearer sk_test_world', 'content-type': 'application/x-www-form-urlencoded' });
 const form = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 const balanceBefore = (await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents as number;
-if ((await bearer.post('/v1/rails/card', { usd_cents: 100000, purpose: 'too much' })).status !== 403) fail('a card over the owner\'s bound was minted');
-const minted = await bearer.post('/v1/rails/card', { usd_cents: 250, purpose: 'probe: a domain' });
+if ((await payer.post('/v1/rails/card', { usd_cents: 100000, purpose: 'too much' })).status !== 403) fail('a card over the owner\'s bound was minted');
+const minted = await payer.post('/v1/rails/card', { usd_cents: 250, purpose: 'probe: a domain' });
 if (minted.status !== 200 || !minted.body?.card?.id) fail(`card mint → ${minted.status} ${minted.text.slice(0, 200)}`);
 const cardId = minted.body.card.id as string;
 if (minted.body.card.single_use !== true || minted.body.card.usd_cents !== 250) fail('the minted card is not a single-use card of the requested amount');
@@ -140,14 +144,14 @@ const cardRecord = trail.find((c) => c.rail === 'card');
 if (!cardRecord || cardRecord.merchant !== 'Namecheap' || cardRecord.usd_cents !== 200 || cardRecord.category !== 'computer_software_stores') fail(`no card rail record on the audit trail: ${JSON.stringify(cardRecord)}`);
 // Single use: the same card is refused a second time; a card for the wrong category is declined and spends nothing.
 if ((await present(50, 'computer_software_stores')).body.approved === true) fail('a settled card authorized again');
-const second = await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: wrong category' });
+const second = await payer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: wrong category' });
 const declined = await fetch(`${need('STRIPE_TWIN_URL')}/v1/test_helpers/issuing/authorizations`, { method: 'POST', headers: { authorization: 'Bearer sk_test_world', 'content-type': 'application/x-www-form-urlencoded' }, body: form({ card: second.body.card.id, amount: '80', 'merchant_data[category]': 'bakeries', 'merchant_data[name]': 'Cake' }) }).then((r) => r.json() as Promise<Record<string, any>>);
 if (declined.approved !== false) fail(`an out-of-category authorization was approved: ${JSON.stringify(declined).slice(0, 200)}`);
 if ((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents !== afterCard.balance_usd_cents) fail('a declined authorization moved the books');
 if ((await pub.get(`/v1/accounts/${ENC}`)).body.reserved_usd_cents !== 0) fail('a declined card kept its reservation');
 // The partner rail.
-if ((await bearer.post('/v1/rails/partner', { partner: 'nobody', usd_cents: 10 })).status !== 403) fail('an unlisted partner settled a charge');
-const partner = await bearer.post('/v1/rails/partner', { partner: 'browserless', usd_cents: 30, unit: 'minute', quantity: 3, reference: 'probe-1' });
+if ((await payer.post('/v1/rails/partner', { partner: 'nobody', usd_cents: 10 })).status !== 403) fail('an unlisted partner settled a charge');
+const partner = await payer.post('/v1/rails/partner', { partner: 'browserless', usd_cents: 30, unit: 'minute', quantity: 3, reference: 'probe-1' });
 if (partner.status !== 200) fail(`partner settle → ${partner.status} ${partner.text.slice(0, 200)}`);
 const partnerRecord = ((await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls as Array<Record<string, unknown>>).find((c) => c.rail === 'partner');
 if (!partnerRecord || partnerRecord.partner !== 'browserless' || partnerRecord.usd_cents !== 30 || partnerRecord.quantity !== 3) fail(`no partner rail record on the audit trail: ${JSON.stringify(partnerRecord)}`);

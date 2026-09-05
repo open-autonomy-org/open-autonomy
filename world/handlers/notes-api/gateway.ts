@@ -17,13 +17,13 @@ function files(dir: string, base = dir): string[] {
 // and the commit. Outcome markers are assembled so an echoed command never reads as one.
 function implement(item: { id: string; title: string }): string {
   const stage = resolve(here, 'stages', item.id);
-  const heredoc = (path: string, text: string) => `cat > '${path}' <<'__OA_FILE__'\n${text}${text.endsWith('\n') ? '' : '\n'}__OA_FILE__`;
+  const heredoc = (path: string, text: string) => `mkdir -p "$(dirname '${path}')" && cat > '${path}' <<'__OA_FILE__'\n${text}${text.endsWith('\n') ? '' : '\n'}__OA_FILE__`;
   const writes = files(stage).map((f) => heredoc(f, readFileSync(join(stage, f), 'utf8'))).join('\n');
   return [
     // The task's id: the board's one running task, else the dispatcher's own prompt on the worker process above this shell.
-    `task=$(hermes kanban list --status running --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p' | head -1)`,
+    `task=$(HERMES_HOME=/opt/data /opt/hermes/bin/hermes kanban list --status running --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p' | head -1)`,
     `[ -n "$task" ] || { p=$$; while [ "$p" -gt 1 ] && [ -z "$task" ]; do task=$(tr '\\0' ' ' < /proc/$p/cmdline 2>/dev/null | sed -n 's/.*kanban task \\(t_[0-9a-f]*\\).*/\\1/p'); p=$(awk '/^PPid:/{print $2}' /proc/$p/status 2>/dev/null); [ -n "$p" ] || p=1; done; }`,
-    `[ -n "$task" ] || { echo "IMPLEMENTATION_""RAN no running task on the board (hermes=$(command -v hermes); list: $(hermes kanban list --status running --json 2>&1 | head -c 200))"; exit 1; }`,
+    `[ -n "$task" ] || { echo "IMPLEMENTATION_""RAN no running task on the board (hermes=$(command -v hermes); list: $(HERMES_HOME=/opt/data /opt/hermes/bin/hermes kanban list --status running --json 2>&1 | head -c 200))"; exit 1; }`,
     `git fetch -q origin main && git checkout -q -B agent/$task origin/main || { echo "IMPLEMENTATION_""RAN cannot start"; exit 1; }`,
     writes,
     `bun run check >/dev/null 2>&1 || { echo "IMPLEMENTATION_""RAN the check failed:"; bun run check 2>&1 | tail -20; exit 1; }`,

@@ -19,6 +19,8 @@ const UPDATE_EVENT_TYPE = 'org.open-autonomy.item.update';
 const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 // The agent's setup: who it is, its model, its schedule, what it knows — published by its substrate.
 const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
+// The project's documents: what it is and what shipped, published by its substrate from whatever files it keeps.
+const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 
 export async function agentEvents(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
@@ -41,6 +43,12 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     }
     if (e.type === SETUP_EVENT_TYPE) {
       const result = await ledger.setupPut(claims.account, data);
+      results.push({ id: e.id, ...result });
+      if (!result.ok) return json({ ok: false, results }, { status: 400 });
+      continue;
+    }
+    if (e.type === DOCS_EVENT_TYPE) {
+      const result = await ledger.docsPut(claims.account, data);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;

@@ -4,9 +4,11 @@ Three containers in one VM, none holding a secret that matters:
 
 - **agent** — stock Hermes at the pinned tag (`hermes.pin`), with the project checkout at `/work/project`
   and the home volume at `/opt/data`, seeded from `hermes/` and re-synced from the repository on every start.
-- **valve** — holds the project's key. The agent's model calls and the reporter's narration go through it;
-  key management and admin routes never do. It re-reads the key file when it changes, so a rotated key
-  needs no restart.
+- **valve** — holds the developer's key (spend + narrate). The agent's model calls and the reporter's narration
+  go through it; key management and admin routes never do. It re-reads the key file when it changes, so a
+  rotated key needs no restart.
+- **valve-pay** — holds the treasurer's key, the only one with the `pay` scope. The treasurer profile alone is
+  pointed at it, so a purchase can only be made by the treasurer, within the owner's bounds.
 - **reporter** — keyless. Reads the agent's sessions through supercode and publishes them to the project's
   page through the valve, as they happen.
 
@@ -19,7 +21,9 @@ one repository-scoped deploy key; delivery uses at most a Discord bot token, whi
 `bun .open-autonomy/setup.ts` does the steps below, idempotently, and says what it cannot do and what to run
 next; the world's stack step calls the same file. By hand:
 
-- `~/.config/open-autonomy/agent.env` — the key, from `bun .open-autonomy/mint-key.ts`. Rotate it with
+- `~/.config/open-autonomy/agent.env` — the developer's key, from `bun .open-autonomy/mint-key.ts`;
+  `~/.config/open-autonomy/treasurer.env` — the treasurer's, from `bun .open-autonomy/mint-key.ts --scopes
+  spend,narrate,pay --out ~/.config/open-autonomy/treasurer.env`. Rotate it with
   `bun .open-autonomy/mint-key.ts --rotate`: the valve takes the new key from the file without a restart, and its
   `/healthz` (and its log, and the reporter's) say when the key expires; both warn inside fourteen days.
 - An ssh-agent holding only the deploy key, forwarded into the Docker host (on macOS with colima:

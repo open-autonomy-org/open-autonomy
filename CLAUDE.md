@@ -56,6 +56,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - Worker: `https://open-autonomy.org` (`/v1/funding`, `/healthz`, `/`; the workers.dev URL is the same worker).
 - README widgets: `/v1/accounts/:account/{runway,now,roadmap,activity}.svg` (Camo-safe SVG).
 - A project page shows what its substrate publishes through the SDK — the sessions, the roadmap, the board, the
-  agent's setup — and reads from its repository only `docs/VISION.md` and `CHANGELOG.md` (re-synced every ten
-  minutes; `admin.yml` → `sync` forces it) plus `.open-autonomy/config.yaml` for the owner's bounds. Hermes and its
-  board are a starter the kit makes, not shapes the platform knows.
+  agent's setup, the project's documents (what it is, what shipped) — and reads from its repository only its
+  metadata, a README cover and `.open-autonomy/config.yaml` for the owner's bounds (re-synced every ten minutes;
+  `admin.yml` → `sync` forces it). Hermes and its board are a starter the kit makes, not shapes the platform knows.
+- `CONSTITUTION.md` is what this project is and must remain; `CONTRIBUTING.md` how its code is written.

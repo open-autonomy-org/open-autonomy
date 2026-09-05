@@ -5,7 +5,7 @@ import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type S
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
 import { handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
+import { renderDocPage, renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -89,6 +89,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if ((m = path.match(/^\/p\/(.+)\/thanks$/))) {
     if (get()) return get()!;
     return thanksPage(env, dec(m[1]), url.searchParams.get('checkout_id'));
+  }
+  if ((m = path.match(/^\/p\/(.+)\/(about|shipped)$/))) {
+    const account = dec(m[1]);
+    const view = await ledger.project(account);
+    if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
+    return html(renderDocPage(account, m[2] === 'about' ? 'About' : 'Shipped', m[2] === 'about' ? view.profile.about_md : view.profile.shipped_md));
   }
   if ((m = path.match(/^\/p\/(.+)\/sessions$/))) {
     if (get()) return get()!;
@@ -181,7 +187,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    if (!hasScope(claims, 'spend')) return error('scope_required', 403, { scope: 'spend' });
+    if (!hasScope(claims, 'pay')) return error('scope_required', 403, { scope: 'pay' });
     return path === '/v1/rails/card' ? mintCard(req, env, claims) : settlePartner(req, env, claims);
   }
   if (path === '/v1/coupons/redeem') {

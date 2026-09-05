@@ -3,17 +3,14 @@ import { parseRoadmap } from '@open-autonomy/sdk/roadmap';
 import { LedgerClient } from './ledger.js';
 import type { Env } from './types.js';
 
-// The docs sync: a project's page is its repository's mirror. The vision, the roadmap, the changelog, the
-// schedule and the agent's home are read from the repo itself and cached on the account, so a flipped
-// roadmap status or a landed changelog line shows on the next look. Unauthenticated reads: only public
-// repos sync, which is exactly the gate for appearing on the public site. Best-effort, never throws.
+// The sync: what a project's page takes from its repository — its metadata (tagline, avatar, homepage), a
+// cover from the README, and the owner's `.open-autonomy/config.yaml` (the bounds the platform enforces, which
+// must come from the repository and not from a key). Everything else a page shows arrives through the SDK.
+// Unauthenticated reads: only public repos sync, which is exactly the gate for appearing on the public site.
+// Best-effort, never throws.
 
 const STALE_MS = 10 * 60 * 1000;
 
-export const DOC_PATHS = {
-  vision_md: 'docs/VISION.md',
-  changelog_md: 'CHANGELOG.md',
-} as const;
 
 interface GitHubRepo {
   description?: string | null;
@@ -47,10 +44,10 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     } else if (res.status === 404) {
       return false;
     } else {
-      console.warn(`sync: ${account} metadata ${res.status}; syncing docs only`);
+      console.warn(`sync: ${account} metadata ${res.status}; syncing the config only`);
     }
     const cover = repo ? (await firstReadmeImage(env, account)) ?? '' : undefined;
-    const [config, ...docs] = await Promise.all([fetchRepoText(env, account, '.open-autonomy/config.yaml', 8_000), ...Object.values(DOC_PATHS).map((p) => fetchRepoText(env, account, p, p.endsWith('.yaml') ? 8_000 : 24_000))]);
+    const config = await fetchRepoText(env, account, '.open-autonomy/config.yaml', 8_000);
     const profile: Record<string, string | undefined> = {
       tagline: repo?.description ?? undefined,
       avatar_url: repo?.owner?.avatar_url ?? undefined,
@@ -59,7 +56,6 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
       synced_at: new Date().toISOString(),
       config_yaml: config ?? '',
     };
-    Object.keys(DOC_PATHS).forEach((k, i) => { profile[k] = docs[i] ?? ''; });
     const ledger = new LedgerClient(env.LIMITS);
     await ledger.setProfile(account, profile);
     // The roadmap arrives through the SDK: a substrate narrates the file it works, an owner-side driver pushes

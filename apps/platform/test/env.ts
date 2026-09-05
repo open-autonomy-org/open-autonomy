@@ -148,9 +148,9 @@ export async function fund(env: Env, account: string, cents = 1000): Promise<voi
   if (!r.ok) throw new Error(`fund: ${JSON.stringify(r)}`);
 }
 // A key for tests: signed like the platform signs one, registered on the books.
-export async function mintKey(env: Env, account = 'acme/app', models = ['zai/glm-5.3-flash']): Promise<{ token: string; claims: KeyClaims }> {
+export async function mintKey(env: Env, account = 'acme/app', models = ['zai/glm-5.3-flash'], scopes?: string[]): Promise<{ token: string; claims: KeyClaims }> {
   github.files[`${account}:.open-autonomy-claim`] = (await requestJson(env, `/v1/keys/challenge?account=${encodeURIComponent(account)}`)).claim;
-  const r = await requestJson(env, '/v1/keys/mint', { body: { account, models } });
+  const r = await requestJson(env, '/v1/keys/mint', { body: { account, models, ...(scopes ? { scopes } : {}) } });
   if (!r.ok) throw new Error(`mintKey: ${JSON.stringify(r)}`);
   return { token: r.token, claims: r.key };
 }

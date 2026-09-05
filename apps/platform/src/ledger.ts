@@ -84,8 +84,9 @@ export interface AccountProfile {
   synced_at?: string;
   tagline_override?: string;
   cover_override?: string;
-  vision_md?: string;
-  changelog_md?: string;
+  // What the substrate publishes about the project (`org.open-autonomy.project.docs`): what it is, what shipped.
+  about_md?: string;
+  shipped_md?: string;
   // The agent's setup, as its substrate publishes it through the SDK (never read from a harness's files).
   schedule_json?: string;
   setup_md?: string;
@@ -97,7 +98,7 @@ export interface AccountProfile {
   // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
   config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'shipped_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
 
 export interface Tier { usd_cents: number; name: string }
 
@@ -127,6 +128,7 @@ export interface CardRecord {
   usd_cents: number;
   categories: string[];
   purpose: string;
+  item?: string;
   last4: string;
   status: 'minted' | 'authorized' | 'declined' | 'settled';
   authorization?: string;
@@ -189,6 +191,7 @@ export interface CallRecord {
   unit?: string;
   quantity?: number;
   reference?: string;
+  item?: string;
   usd_cents: number;
   outcome?: string;
 }
@@ -309,6 +312,7 @@ export class LimitLedger implements DurableObject {
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
       case 'task_put': return json(await this.taskPut(s('account'), s('item_id'), body.task as Record<string, unknown>));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
+      case 'docs_put': return json(await this.docsPut(s('account'), body.docs as Record<string, unknown>));
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
@@ -573,8 +577,8 @@ export class LimitLedger implements DurableObject {
     // count breaks ties within one millisecond, so the trail's order is the settle order.
     const record: CallRecord = { ts: new Date().toISOString(), request_id: requestId, rail, ...(session ? { session } : {}), usd_cents: spent, outcome: event?.outcome };
     if (rail === 'model') Object.assign(record, { model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens });
-    if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference });
-    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference });
+    if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
+    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
     await this.ctx.storage.put(`call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`, record);
     await this.save();
   }
@@ -715,7 +719,8 @@ export class LimitLedger implements DurableObject {
     const updates = [...(await this.ctx.storage.list<UpdateRecord>({ prefix: `update:${account}:${item_id}:`, reverse: true, limit: 100 })).values()];
     const usd_cents = Number(sessions.reduce((sum, s) => sum + (s.usd_cents ?? 0), 0).toFixed(6));
     const keys = new Set(sessions.map((s) => s.key));
-    const purchases = (await this.listCalls(account, 300)).calls.filter((c) => c.rail !== 'model' && c.session && keys.has(c.session));
+    // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
+    const purchases = (await this.listCalls(account, 300)).calls.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session))));
     const task = await this.ctx.storage.get<TaskRecord>(`task:${account}:${item_id}`);
     return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
   }
@@ -727,6 +732,18 @@ export class LimitLedger implements DurableObject {
     const schedule = Array.isArray(setup.schedule) ? setup.schedule.slice(0, 20).filter((j: unknown) => j && typeof j === 'object').map((j: Record<string, unknown>) => ({ name: text(j.name, 80), schedule: text(j.schedule, 80), prompt: text(j.description, 400) })) : [];
     const skills = Array.isArray(setup.skills) ? setup.skills.filter((k: unknown) => typeof k === 'string').slice(0, 50).map((k: string) => k.slice(0, 80)) : [];
     const profile: Partial<AccountProfile> = { soul_md: text(setup.persona, 20_000) ?? '', setup_md: text(setup.setup_md, 20_000) ?? '', schedule_json: JSON.stringify({ jobs: schedule }), agent_harness: text(setup.harness, 40) ?? '', agent_model: text(setup.model, 120) ?? '', agent_provider: text(setup.provider, 40) ?? '', agent_skills: skills.join(',') };
+    await this.setProfile(account, profile);
+    return { ok: true };
+  }
+
+  // The project's documents, as its substrate publishes them: what the project is (the page's lead is its first
+  // paragraph) and what shipped. Each replaces what was there; a missing field leaves the other alone.
+  private async docsPut(account: string, docs: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+    if (!docs || typeof docs !== 'object') return { ok: false, error: 'invalid_docs' };
+    const profile: Partial<AccountProfile> = {};
+    if (typeof docs.about_md === 'string') profile.about_md = docs.about_md.slice(0, 40_000);
+    if (typeof docs.shipped_md === 'string') profile.shipped_md = docs.shipped_md.slice(0, 40_000);
+    if (!Object.keys(profile).length) return { ok: false, error: 'invalid_docs' };
     await this.setProfile(account, profile);
     return { ok: true };
   }
@@ -1260,6 +1277,7 @@ export class LedgerClient {
   session(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   setupPut(account: string, setup: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  docsPut(account: string, docs: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
   taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.rpc<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
   item(account: string, itemId: string) { return this.rpc<ItemView>('item', { account, item_id: itemId }); }

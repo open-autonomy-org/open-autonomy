@@ -1,0 +1,33 @@
+# The treasurer profile's config: the same agent, pointed at its own valve. Everything else is the default's.
+# The project agent's Hermes configuration. The model is this project's choice (runtime config, seeded by
+# the kit, never checked by it). Secrets live in hermes/.env (git-ignored):
+#   OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY  — inside the stack, the key valve's address and a dummy
+#   DISCORD_BOT_TOKEN / DISCORD_HOME_CHANNEL    — optional Discord delivery
+model:
+  default: zai/glm-5.3-flash
+  provider: custom
+  base_url: http://valve-pay:8787/v1 # the treasurer's valve: the only key that pays
+  api_key: valve
+  api_mode: chat_completions
+
+terminal:
+  backend: local
+  timeout: 300
+
+# Everything the agent is must be readable in the repository, so it carries no private memory between runs.
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+compression:
+  enabled: true
+  threshold: 0.50
+
+agent:
+  max_turns: 80
+
+# The board (Hermes Kanban) the schedule files roadmap items on. Its dispatcher runs inside the gateway and
+# the review lane verifies every handoff; the interval is how soon a filed task is picked up.
+kanban:
+  dispatch_interval_seconds: 15
+  review_dispatch: true

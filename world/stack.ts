@@ -17,7 +17,7 @@
 // reach the host's services at host.docker.internal.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, ROOT, WORK, agentEnv, git, need, STATE } from './lib.ts';
+import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, ROOT, WORK, agentEnv, git, need, STATE, treasurerEnv } from './lib.ts';
 
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
 const profile = context.replace(/^colima-/, '');
@@ -144,6 +144,8 @@ async function up(): Promise<void> {
   const secrets = resolve(stackDir, 'secrets');
   mkdirSync(secrets, { recursive: true });
   writeFileSync(resolve(secrets, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(env.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${env.OPEN_AUTONOMY_KEY}\n`);
+  const pay = treasurerEnv();
+  writeFileSync(resolve(secrets, 'treasurer.env'), `OPEN_AUTONOMY_BASE_URL=${forContainers(pay.OPEN_AUTONOMY_BASE_URL!)}\nOPEN_AUTONOMY_KEY=${pay.OPEN_AUTONOMY_KEY}\n`);
   // The host, the adopter way: the kit's own setup tool makes the image and the two volumes — the home from the
   // cookbook's hermes/ (its .env names the Discord bot, a fake token the twin accepts, and its home channel),
   // the checkout cloned from the project's origin, here the GitHub twin — so what the world proves is what

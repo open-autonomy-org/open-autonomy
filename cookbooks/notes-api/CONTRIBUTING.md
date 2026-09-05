@@ -1,6 +1,7 @@
-# todo-cli — coding standards
+# Contributing to notes-api
 
-The bar every change is reviewed against. Short on purpose; the reviewer reads it whole.
+How code is written here, for people and for the agent alike. The bar every diff is reviewed against, beside
+the constitution's invariants. Short on purpose; the reviewer reads it whole.
 
 - **Language and tooling.** TypeScript on Bun. `bun run check` is the definition of green and runs in seconds.
 - **Shape.** Small modules with one job each, named for what they hold. No layer that exists only to forward.

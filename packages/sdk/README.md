@@ -111,6 +111,7 @@ Public reads, no key:
 | `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes |
 | `GET /v1/accounts/:account/items/:item` | every session, update and settled cent on the item |
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
+| `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md?, shipped_md? }` | the project's documents, from whatever files the substrate keeps: what it is (the page leads with the first paragraph), what shipped |
 | `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision); stays open |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |

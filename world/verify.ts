@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // The audit after any number of runs (bun world/run.ts verify): the books, the GitHub twin, the project's
 // own check at main, the page, the stream. Never the agent's prose.
-import { existsSync } from 'node:fs';
-import { ACCOUNT, ENC, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, WORK, api, git, need } from './lib.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { ACCOUNT, COOKBOOK, ENC, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, WORK, api, git, need } from './lib.ts';
 
 const pub = api(need('PLATFORM_URL'));
 const gh = api(need('GITHUB_TWIN_URL'));
@@ -39,6 +40,9 @@ if (!latest || latest.source !== 'kanban') fail(`the page's roadmap did not come
 const done = latest.roadmap.items.filter((i) => i.status === 'done').map((i) => i.id);
 if (!done.length) fail('no task is done on the board — nothing landed');
 const titled = (fragment: string) => latest.roadmap.items.find((i) => i.title.includes(fragment))?.id;
+// The roadmap is the developer's tasks and nothing else: a purchase request the treasurer worked is not an item.
+const seedCount = (JSON.parse(readFileSync(resolve(COOKBOOK, 'hermes', 'kanban.seed.json'), 'utf8')) as { tasks: unknown[] }).tasks.length;
+if (latest.roadmap.items.length !== seedCount) fail(`the page's roadmap has ${latest.roadmap.items.length} items for ${seedCount} seed tasks: a task of another profile leaked onto it`);
 if (!existsSync(WORK)) fail(`${WORK} is missing — run seed first`);
 await git(WORK, 'fetch', '-q', 'origin');
 const history = (await git(WORK, 'log', '--format=%an%x09%s', 'origin/main')).split('\n').map((l) => { const [author, ...subject] = l.split('\t'); return { author, subject: subject.join('\t') }; });

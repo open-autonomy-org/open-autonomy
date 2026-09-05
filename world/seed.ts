@@ -54,6 +54,11 @@ const key = await pub.post('/v1/keys/mint', { account: ACCOUNT, models: [MODEL, 
 if (key.status !== 200 || !key.body?.token) throw new Error(`platform: mint key → ${key.status} ${key.text.slice(0, 300)}`);
 writeFileSync(resolve(DATA, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${platform}/v1\nOPEN_AUTONOMY_KEY=${key.body.token}\n`);
 console.log(`seed: key minted by claim file → ${resolve(DATA, 'agent.env')}${existsSync(resolve(DATA, 'agent.env')) ? '' : ' (missing!)'}`);
+// The treasurer's key: the same claim, one more scope. The only key in the stack that can pay.
+const payKey = await pub.post('/v1/keys/mint', { account: ACCOUNT, models: [MODEL, PREVIOUS_MODEL], scopes: ['spend', 'narrate', 'pay'] });
+if (payKey.status !== 200 || !payKey.body?.token) throw new Error(`platform: mint the treasurer's key → ${payKey.status} ${payKey.text.slice(0, 300)}`);
+writeFileSync(resolve(DATA, 'treasurer.env'), `OPEN_AUTONOMY_BASE_URL=${platform}/v1\nOPEN_AUTONOMY_KEY=${payKey.body.token}\n`);
+console.log(`seed: the treasurer's key (pay) → ${resolve(DATA, 'treasurer.env')}`);
 // The page reads the repository: sync it now rather than waiting for staleness.
 const synced = await admin.post(`/admin/accounts/${ENC}/sync`);
 console.log(`seed: docs synced from the twin → ${synced.body?.ok}`);

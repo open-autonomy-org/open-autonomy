@@ -11,8 +11,9 @@ The agent's model calls go through the Open Autonomy platform on the project's k
 to this project's account and paid for by its patrons. The board is the roadmap: the owner files tasks
 (`hermes kanban create`), the gateway's dispatcher pulls them down in order and runs each as a worker session
 that builds it and lands it on an `agent/<task id>` branch, the review lane (Hermes's own) verifies the handoff
-against `STANDARDS.md` in a session of its own, and once an hour the PM job reads the whole board and unsticks what is
-stuck. The reporter beside it (`.open-autonomy/reporter.ts`) publishes the board, every session and the agent's
-setup to the project's page as they happen.
+against `CONSTITUTION.md` and `CONTRIBUTING.md` in a session of its own, and once an hour the PM job reads the whole board and unsticks what is
+stuck. The reporter beside it (`.open-autonomy/reporter.ts`) publishes the board, every session, the agent's setup,
+and the project's documents (`CONSTITUTION.md` as what it is, `CHANGELOG.md` as what shipped) to the project's
+page as they happen. The platform reads none of these files itself.
 
 How it runs, and how to run it yourself: `container/README.md`.

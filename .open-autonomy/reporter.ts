@@ -261,7 +261,9 @@ let roadmapDigest = '';
 async function board(): Promise<void> {
   let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
   try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return; }
-  const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  // The developer's tasks are the roadmap. Tasks assigned to another profile (a purchase request for the treasurer)
+  // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
+  const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
   // A read that found no board at all (the database mid-write) is not an empty board.
   if (!tasks.length) return;
   const items: RoadmapItem[] = tasks.map((t) => ({ id: t.id, title: t.title ?? t.id, status: statusOf(t.lane), acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()) }));
@@ -285,6 +287,16 @@ async function board(): Promise<void> {
 // The agent's setup, from the home it runs with — the identity text, the model, the schedule seed, the
 // skills — published whenever they change. The platform reads no harness file.
 const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
+// The project's documents, from the checkout: CONSTITUTION.md is what the project is (the page leads with its first
+// paragraph), CHANGELOG.md is what shipped. Published when they change. The platform reads no file for either.
+const projectDir = resolve(stateFile, '..', '..');
+let docsDigest = '';
+async function docs(): Promise<void> {
+  const d = { about_md: readText(resolve(projectDir, 'CONSTITUTION.md')), shipped_md: readText(resolve(projectDir, 'CHANGELOG.md')) };
+  const digest = JSON.stringify(d);
+  if (digest === docsDigest || (!d.about_md && !d.shipped_md)) return;
+  try { if (await oa.docs(d)) { docsDigest = digest; log(`documents published (${[d.about_md && 'about', d.shipped_md && 'shipped'].filter(Boolean).join(', ')})`); } } catch (e) { log(`documents publish failed: ${(e as Error).message}`); }
+}
 let setupDigest = '';
 async function setup(): Promise<void> {
   const home = cfg.hermes_home;
@@ -301,8 +313,8 @@ async function setup(): Promise<void> {
   try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
 }
 const index = await sc.subscribeSessionIndex({ harnesses: ['hermes'], homes });
-await setup(); await board();
-setInterval(() => { void setup(); void board(); }, 10_000);
+await setup(); await docs(); await board();
+setInterval(() => { void setup(); void docs(); void board(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
 for (const d of index.initial) await consider(d);
 process.on('SIGTERM', () => { void sc.close().then(() => process.exit(0)); });
