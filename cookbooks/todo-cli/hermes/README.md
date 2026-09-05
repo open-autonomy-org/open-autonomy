@@ -12,7 +12,8 @@ to this project's account and paid for by its patrons. The board is the roadmap:
 (`hermes kanban create`), the gateway's dispatcher pulls them down in order and runs each as a worker session
 that builds it and lands it on an `agent/<task id>` branch, the review lane (Hermes's own) verifies the handoff
 against `CONSTITUTION.md` and `CONTRIBUTING.md` in a session of its own, and once an hour the PM job reads the whole board and unsticks what is
-stuck. The reporter beside it (`.open-autonomy/reporter.ts`) publishes the board, every session, the agent's setup,
+stuck. The bridge beside it (the valve holding the keys, an ssh-agent holding the deploy key, and the reporter,
+`.open-autonomy/reporter.ts`) publishes the board, every session, the agent's setup,
 and the project's documents (`CONSTITUTION.md` as what it is, `CHANGELOG.md` as what shipped) to the project's
 page as they happen. The platform reads none of these files itself.
 

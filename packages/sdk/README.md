@@ -121,3 +121,17 @@ Keys, the adopter way: `GET /v1/keys/challenge?account=owner/repo` names a claim
 is at HEAD; `POST /v1/keys/rotate` with the current key mints a successor and leaves the old one a day of
 grace. A key is verified by its signature and expiry alone, so it survives every redeploy; the platform's
 registry can only revoke it or shorten it.
+
+## The valve
+
+`open-autonomy-valve`, the package's one binary, is a credential-injecting sidecar for the project's key: the key
+lives in a file only the valve reads, the agent is pointed at the valve's address with the literal word `valve`
+as its key, and the valve adds the real bearer at the edge. It forwards the model routes, the narration routes
+(`/v1/agent/events`, `/v1/agent/roadmap`), the rails and public reads of the account, and refuses the rest, so an
+agent whose output is public never possesses the one credential that spends its sponsors' money.
+
+```bash
+open-autonomy-valve --key ~/.config/open-autonomy/agent.env:8787 --key ~/.config/open-autonomy/treasurer.env:8788
+```
+
+One port per key file; each file re-read when it changes; `/healthz` on each port names the key's expiry.
