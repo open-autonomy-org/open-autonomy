@@ -60,7 +60,8 @@ interface State { ended: Record<string, string> }
 const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) as State : { ended: {} };
 const saveState = () => { try { writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`); } catch (e) { log(`cannot write ${stateFile}: ${(e as Error).message}`); } };
 
-const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' ? 'run' : 'chat');
+// A run: the schedule fired it, or the board's dispatcher spawned it for a task (a worker or a reviewer).
+const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' || d.trigger === 'task' ? 'run' : 'chat');
 // A run's source is its job's name. supercode's job model carries the job's id, not its name; Hermes keeps
 // the name beside the id in its own schedule store in the home the reporter reads, so that is where the
 // name comes from (read-only, refreshed whenever an id is new), falling back to the id.
@@ -74,7 +75,7 @@ function jobName(id: string): string {
   }
   return jobNames.get(id) ?? id;
 }
-const sourceOf = (d: SessionDescriptor): string => (d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.surface?.platform ?? kindOf(d));
+const sourceOf = (d: SessionDescriptor): string => (d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d));
 function publishes(d: SessionDescriptor): boolean {
   const id = d.locator.session_id;
   if (cfg.publish.private.includes(id) || (d.recurrence?.job_id && cfg.publish.private.includes(d.recurrence.job_id))) return false;
@@ -96,7 +97,9 @@ function turnsOf(m: NormalizedMessage): Turn[] {
   return [];
 }
 // The roadmap item a run works: the skill lands on agent/<item>, so the branch in a git command names it.
-const itemIn = (turns: Turn[]): string | undefined => turns.map((t) => /\bagent\/([a-z0-9][a-z0-9-]*)/.exec(`${t.args ?? ''} ${t.text ?? ''}`)?.[1]).find(Boolean);
+// The item a session serves: the agent branch it names in what it says, runs, or reads back (a reviewer
+// meets the branch in the handoff it reads from the board).
+const itemIn = (turns: Turn[]): string | undefined => turns.map((t) => /\bagent\/([a-z0-9][a-z0-9-]*)/.exec(`${t.args ?? ''} ${t.text ?? ''} ${t.result ?? ''}`)?.[1]).find(Boolean);
 const shaIn = (turns: Turn[]): string | undefined => turns.map((t) => /PUSHED_BRANCH=agent\/[a-z0-9-]+ ([0-9a-f]{7,40})/.exec(t.result ?? '')?.[1]).find(Boolean);
 
 // supercode synthesizes this result for a tool call whose answer is not recorded yet; a live follow sees it

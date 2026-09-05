@@ -39,7 +39,7 @@ describe('the platform, one smoke test per surface', () => {
     await fund(env, 'acme/app', 100);
     const { token } = await mintKey(env);
     const post = (body: unknown) => request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
-    expect((await post(ce('session.started', 'run-1', { session_kind: 'run', source: 'build-roadmap', item_id: 'add' }))).status).toBe(200);
+    expect((await post(ce('session.started', 'run-1', { session_kind: 'run', source: 'board', item_id: 'add' }))).status).toBe(200);
     await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } });
     const bearer = ['eyJhbGciOiJIUzI1NiJ9', 'a'.repeat(42)].join('.');
     expect((await post([ce('session.turns', 'run-1', { seq: 0, turns: [{ role: 'assistant', tool: 'terminal', args: `curl -H "authorization: Bearer ${bearer}"` }, { role: 'tool', tool: 'terminal', result: 'ok' }] }), ce('item.update', 'add', { text: 'halfway', session: 'run-1' })])).status).toBe(200);

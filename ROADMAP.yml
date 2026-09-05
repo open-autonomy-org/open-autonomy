@@ -21,7 +21,7 @@ items:
     title: This install runs on the redesigned product
     acceptance:
       - The redesigned worker is deployed through deploy.yml; the books read the same balances as before the deploy, and the audit trail is intact.
-      - This repository's own key is re-minted the adopter way and its stack runs the kit's three containers (agent, key valve, reporter) on this Mac; the build-roadmap schedule fires and its session appears on the project page under the item it worked.
+      - This repository's own key is re-minted the adopter way and its stack runs the kit's three containers (agent, key valve, reporter) on this Mac; the schedule fires and its session appears on the project page under the item it worked.
 
   - id: roadmap-drivers
     phase: 0
@@ -62,10 +62,10 @@ items:
   - id: supercode-release
     phase: 1
     priority: high
-    status: active
+    status: done
     title: The reporter runs on a released supercode
     acceptance:
-      - "`@volter-ai-dev/supercode` publishes a release whose harness list includes hermes and whose session index subscription accepts it (v0.4.17, cut from supercode main with the harness's ACP frontend gated behind its feature)."
+      - "`@volter-ai-dev/supercode` publishes a release whose harness list includes hermes and whose session index subscription accepts it (v0.4.18, cut from supercode main with the harness's ACP frontend gated behind its feature)."
       - The kit's reporter dependency names that version; the world no longer builds supercode from a checkout and this install's compose override is gone; the world gate passes on the published binary and this install's reporter publishes a live fire on it.
 
   # ---- Phase 2: money in — the Patreon half of the platform --------------------------------------------
@@ -88,31 +88,42 @@ items:
       - "`create-open-autonomy` (the kit) and `@open-autonomy/sdk` are published from this repository by a release workflow gated like the deploy; `bun create open-autonomy my-project --account owner/my-project` works on a clean machine with nothing but bun, and the generated repository passes its own check."
       - The kit still vendors the SDK into a generated repository, so a project depends on npm for nothing at runtime; the published SDK is for adapters and other reporters.
 
+  - id: hermes-native-cycle
+    phase: 3
+    priority: high
+    status: done
+    title: The agent works the roadmap through Hermes's own development cycle, not a home-made one
+    acceptance:
+      - "The kit ships no procedure skill. The fire's job files the top open ROADMAP.yml item onto the gateway's Kanban board when no task is open for it and stops; the dispatcher runs it as a worker whose brief is Hermes's own delivery loop (the `github` issue-to-PR discipline with `test-driven-development` and `requesting-code-review` loaded, the project's `AGENTS.md` as the rules); the review lane verifies the handoff independently through `sdlc-review`; a task reaching done sets the item's `status: done` in ROADMAP.yml on the agent's branch, and the landing workflow merges it."
+      - "ROADMAP.yml stays the owner's queue and the page's source: the agent never adds an item; `proposed` items await the owner. What the kit adds is know-how, each a small skill usable from any job or a chat: reading and updating the roadmap's status grammar; landing on the agent branch without waiting; operating the project's world as its operator; reporting to patrons in five lines."
+      - The reporter publishes the worker's and the reviewer's sessions the way it publishes the run today, each with its cost, filed under the item; the item page shows both lanes.
+      - Proven in the world on the cookbook, one item per fire as today, with the review lane's session on the page; and on this repository's own agent.
+
   - id: agent-side-rails
     phase: 3
     priority: high
     status: planned
     title: The agent can spend through the card and partner rails from inside its stack
     acceptance:
-      - The key valve forwards `/v1/rails/card` and `/v1/rails/partner` beside the model routes; the build-roadmap skill documents when and how to spend through a rail (only for an acceptance line that needs it, within the owner's bounds, naming the purpose), and `.open-autonomy/config.yaml` is where the owner opens each rail.
+      - The key valve forwards `/v1/rails/card` and `/v1/rails/partner` beside the model routes; a rail skill documents when and how to spend through a rail (only for an acceptance line that needs it, within the owner's bounds, naming the purpose), and `.open-autonomy/config.yaml` is where the owner opens each rail.
       - The world proves it from the agent's side: a cookbook item whose acceptance requires a purchase, the scripted model minting a card through the valve and paying the Stripe twin, the capture settling under that item with the merchant on the audit trail and on the item page.
 
   - id: schedule-pins-model
     phase: 3
     priority: high
-    status: planned
+    status: done
     title: A model change never strands the schedule
     acceptance:
-      - The schedule-seed hook creates each job pinned to the provider and model in hermes/config.yaml, so Hermes's drift guard never skips a fire after the owner changes the model; a job the seed already created is re-pinned on the next boot when the config moved.
-      - The world proves it: the cookbook's config changes model between two fires and the second fire runs and lands.
+      - The fire is a script job that spends nothing, so Hermes's drift guard has no model to skip on; a worker takes the model from hermes/config.yaml at dispatch. Any agent job the seed creates is pinned to the config's provider and model and re-pinned on the next boot when the config moved.
+      - The world proves it: the cookbook's config changes model between two fires; the first fire's worker spends on the previous model, the second fire's on the new one, and both land.
 
   - id: skill-stops-when-nothing-queued
     phase: 3
     priority: medium
-    status: planned
+    status: done
     title: An idle schedule costs almost nothing
     acceptance:
-      - The build-roadmap skill reads ROADMAP.yml before anything else and, when no item is active or planned, stops within five turns with the one-line report; a fire on an all-done roadmap in the world publishes a session of at most five turns.
+      - The fire reads ROADMAP.yml before anything else and, when no item is active or planned, files nothing and delivers the one-line report; it spends nothing, so a fire on an all-done roadmap costs no model call and publishes no session.
 
   - id: host-setup-tool
     phase: 3

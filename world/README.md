@@ -17,6 +17,7 @@ bun world/run.ts clock advance 360m    # the container's clock: the schedule's n
 bun world/run.ts wait                  # watch: the run's session, then its pull request merged on the twin
 bun world/run.ts verify                # the audit: the books, the twin's main, the check, the page, the stream
 bun world/run.ts down --purge          # forget it (the stack's volumes too)
+WORLD_STATE_ROOT=/fast/disk bun world/run.ts check   # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
 bun world/run.ts check                 # the gate: up → probe → clock → wait → verify → down
 ```
 

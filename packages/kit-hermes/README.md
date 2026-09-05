@@ -21,7 +21,7 @@ CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, the build-roadmap skill, the schedule seed, config.yaml (the model:
+hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world), the schedule seed and the fire's script, config.yaml (the model:
                      the project's own choice), the schedule-seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
                      reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), roadmap.ts
@@ -41,9 +41,11 @@ roadmap, the vision, the changelog, `AGENTS.md`, the license, the model config, 
 
 The agent is stock Hermes in a container, its home the committed `hermes/`, its checkout the repository,
 its model calls forwarded by the key valve beside it (which alone holds the project's key) to the platform,
-where each is metered to the project's account. Its schedule fires the `build-roadmap` job, which takes the
-top open item of `ROADMAP.yml`, builds it, verifies it, lands it on an `agent/<item>` branch that the landing
-workflow merges when the checks pass, and marks it done.
+where each is metered to the project's account. Its schedule fires a script that files the
+top open item of `ROADMAP.yml` on the agent's board (Hermes's Kanban) and spends nothing; the gateway's
+dispatcher runs the item as a worker session that builds it, verifies it, lands it on an `agent/<item>` branch
+the landing workflow merges when the checks pass, marks it done and hands off; the review lane verifies the
+handoff in a session of its own. Both sessions show on the project's page with their cost.
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
 (`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve

@@ -4,11 +4,18 @@ import { resolve } from 'node:path';
 
 export const NAME = 'open-autonomy';
 export const ROOT = resolve(import.meta.dir, '..');
-export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(ROOT, '.volter', 'worlds', NAME, 'data');
+// Where the world's state lives (its instances, generated config, the platform's books, the stack's mounts): the
+// repository by default, or WORLD_STATE_ROOT — a disk with headroom, since the runtime admits a world only
+// against the free space of the root it is given.
+export const STATE = process.env.WORLD_STATE_ROOT ? resolve(process.env.WORLD_STATE_ROOT) : ROOT;
+export const DATA = process.env.VOLTER_WORLD_DATA ?? resolve(STATE, '.volter', 'worlds', NAME, 'data');
 export const COOKBOOK_NAME = process.env.WORLD_COOKBOOK ?? 'todo-cli';
 export const COOKBOOK = resolve(ROOT, 'cookbooks', COOKBOOK_NAME);
 export const ACCOUNT = `cookbook/${COOKBOOK_NAME}`;
 export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'zai/glm-5.3-flash';
+// The model the cookbook's config names before the owner moves it to MODEL between two fires: a world-only
+// name, allowed on the key, so the schedule's re-pin is proven the way the production incident happened.
+export const PREVIOUS_MODEL = `${MODEL}-previous`;
 export const WORK = resolve(DATA, 'work');
 // The cookbook agent's Discord home channel on the Discord twin: the id its .env names and the seed creates.
 export const HOME_CHANNEL = '1000000000000000001';

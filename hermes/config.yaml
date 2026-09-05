@@ -24,3 +24,9 @@ compression:
 
 agent:
   max_turns: 80
+
+# The board (Hermes Kanban) the schedule files roadmap items on. Its dispatcher runs inside the gateway and
+# the review lane verifies every handoff; the interval is how soon a filed task is picked up.
+kanban:
+  dispatch_interval_seconds: 15
+  review_dispatch: true

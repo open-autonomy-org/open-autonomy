@@ -1,11 +1,9 @@
 {
   "jobs": [
     {
-      "name": "build-roadmap",
-      "prompt": "Work the top open item of ROADMAP.yml in this project's repository using the build-roadmap skill. Finish it, verify it, push to main, record its status, and report in five lines or fewer.",
-      "skills": [
-        "build-roadmap"
-      ],
+      "name": "file-roadmap-item",
+      "script": "file-roadmap-item.sh",
+      "no_agent": true,
       "schedule": "every 360m",
       "deliver": "discord",
       "workdir": "/work/project"

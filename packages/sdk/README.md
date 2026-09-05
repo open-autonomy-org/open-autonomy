@@ -9,7 +9,7 @@ the same without this package. The Hermes kit vendors it into a generated reposi
 import { OpenAutonomy } from '@open-autonomy/sdk';
 
 const oa = new OpenAutonomy({ baseUrl: 'https://open-autonomy.org/v1', key: process.env.OPEN_AUTONOMY_KEY! });
-const s = await oa.open({ key: 'cron_build-roadmap_20260904_0020', kind: 'run', source: 'build-roadmap', item: 'add' });
+const s = await oa.open({ key: 'a3f9c1d2', kind: 'run', source: 'board', item: 'add' });
 await s.turns([{ role: 'assistant', tool: 'terminal', args: '{"command":"bun run check"}' }, { role: 'tool', tool: 'terminal', result: 'ok' }]);
 await oa.update({ item: 'add', text: 'the store writes; the id counter next', session: s.key });
 await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commit: '7d30729' });
@@ -70,7 +70,7 @@ intake; everything accepted is public.
 ```json
 [{ "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "2026-09-04T00:20:11Z",
    "type": "org.open-autonomy.session.started", "subject": "<session key>",
-   "data": { "session_kind": "run", "source": "build-roadmap", "title": "…", "item_id": "add" } },
+   "data": { "session_kind": "run", "source": "board", "title": "…", "item_id": "add" } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.session.turns", "subject": "<session key>",
    "data": { "seq": 0, "item_id": "add", "turns": [
