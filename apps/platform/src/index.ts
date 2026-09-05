@@ -7,7 +7,7 @@ import { handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
-import { agentEvents, itemEvents, sessionEvents } from './stream.js';
+import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
 import { grantsAccount, hasScope, type Env } from './types.js';
 import { LOGO_SVG } from './ui.js';
@@ -218,6 +218,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) return sessionEvents(env, dec(m[1]), dec(m[2]), req);
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { if (get()) return get()!; const r = await ledger.session(dec(m[1]), dec(m[2])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) return itemEvents(env, dec(m[1]), dec(m[2]), req);
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) return accountEvents(env, dec(m[1]), req);
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { if (get()) return get()!; return json(await ledger.item(dec(m[1]), dec(m[2])), { headers: NO_STORE }); }
   if (path === '/v1/funding/sessions') { if (get()) return get()!; return json(await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
 

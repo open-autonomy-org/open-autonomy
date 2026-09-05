@@ -229,10 +229,12 @@ export function SetupPanel({ setupMd, soulMd, model, provider, harness, skills, 
   );
 }
 
-// The page-side half of the live channels. On a session page or the spine's live box: EventSource over the
-// session's SSE route, turns appended as rows, status updating the header, a reload once it ends. On an
-// item page: EventSource over the item's route, counters updating and a reload when what touched the item
-// changes shape. Follows the log unless the reader has scrolled up.
+// The page-side half of the live channels. On a project page: EventSource over the project's route, the
+// books' numbers updating in place and a reload when the shape changes (a session starts or ends, a roadmap
+// revision, money in). On a session page or the spine's live box: EventSource over the session's SSE route,
+// turns appended as rows, status updating the header, a reload once it ends. On an item page: EventSource
+// over the item's route, counters updating and a reload when what touched the item changes shape. Follows
+// the log unless the reader has scrolled up.
 export const LIVE_SCRIPT = `(() => {
   const enc = encodeURIComponent;
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -248,6 +250,19 @@ export const LIVE_SCRIPT = `(() => {
       set('[data-item-turns]', String(d.turn_count)); set('[data-item-cents]', '$' + (d.usd_cents / 100).toFixed(2));
     });
     return;
+  }
+  const project = document.querySelector('[data-project]');
+  if (project && 'EventSource' in window) {
+    const account = project.getAttribute('data-project'), shape = project.getAttribute('data-shape');
+    const usd = (c) => '$' + (c / 100).toFixed(2);
+    const es = new EventSource('/v1/accounts/' + enc(account) + '/events');
+    es.addEventListener('project', (e) => {
+      const d = JSON.parse(e.data);
+      if (JSON.stringify([d.live, d.roadmap_revision, d.granted_in_usd_cents]) !== shape) { es.close(); setTimeout(() => location.reload(), 800); return; }
+      const set = (sel, v) => { const el = document.querySelector(sel); if (el) el.textContent = v; };
+      set('[data-spent]', usd(d.consumed_usd_cents)); set('[data-balance]', usd(d.balance_usd_cents)); set('[data-received]', usd(d.granted_in_usd_cents));
+    });
+    es.onerror = () => {};
   }
   const list = document.querySelector('[data-turns-list]');
   const box = document.querySelector('[data-live-session]');

@@ -130,3 +130,28 @@ export async function itemEvents(env: Env, account: string, itemId: string, req:
   });
   return new Response(stream, { headers: SSE_HEADERS });
 }
+
+// Server-Sent Events over a project: `project` on any change to the books' numbers, the live set or the
+// roadmap's revision. Stays open between sessions — the page between two fires is what it is for.
+export async function accountEvents(env: Env, account: string, req: Request): Promise<Response> {
+  if (req.method !== 'GET') return methodNotAllowed();
+  const ledger = new LedgerClient(env.LIMITS);
+  const enc = new TextEncoder();
+  let last = '';
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (s: string) => controller.enqueue(enc.encode(s));
+      send(`retry: 3000${NL}${NL}`);
+      let idle = 0;
+      for (let i = 0; i < 1800; i += 1) {
+        const p = await ledger.pulse(account);
+        const digest = JSON.stringify(p);
+        if (digest !== last) { last = digest; send(`event: project${NL}data: ${digest}${NL}${NL}`); }
+        if (++idle % 8 === 0) send(`: keepalive${NL}${NL}`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: SSE_HEADERS });
+}

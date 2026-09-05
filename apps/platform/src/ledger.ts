@@ -300,6 +300,7 @@ export class LimitLedger implements DurableObject {
       case 'key_revoke': return json(await this.keyRevoke(s('kid')));
       case 'keys': return json(this.keysOf(s('account')));
       case 'funding': return json(this.fundingSnapshot(s('account')));
+      case 'pulse': return json(this.pulse(s('account')));
       case 'calls': return json(await this.listCalls(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'session_event': return json(await this.sessionEvent(s('account'), body.event as SessionEvent));
       case 'sessions': return json(await this.listSessions(s('account'), Number(body.limit)));
@@ -829,6 +830,14 @@ export class LimitLedger implements DurableObject {
 
   // ---- read models -----------------------------------------------------------------------------------
 
+  // What a project page watches between reloads: the books' three numbers, what is live, the roadmap's revision.
+  // All in memory, so a page can ask every couple of seconds.
+  private pulse(account: string): Pulse {
+    const f = this.fundingSnapshot(account);
+    const a = this.acct(account);
+    return { balance_usd_cents: f.balance_usd_cents, consumed_usd_cents: f.consumed_usd_cents, granted_in_usd_cents: f.granted_in_usd_cents, live: [...(a?.live_sessions ?? [])], roadmap_revision: a?.roadmap_revision ?? 0 };
+  }
+
   fundingSnapshot(account: string): FundingSnapshot {
     const a = this.acct(account);
     const grantedIn = a?.granted_in_usd_cents ?? 0;
@@ -1134,6 +1143,7 @@ function normalizeRoadmap(r: unknown): Roadmap | undefined {
   return { schema: typeof (r as Roadmap).schema === 'string' ? (r as Roadmap).schema : ROADMAP_SCHEMA, items };
 }
 
+export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; granted_in_usd_cents: number; live: string[]; roadmap_revision: number }
 export interface FundingSnapshot {
   account: string;
   funded: boolean;
@@ -1243,6 +1253,7 @@ export class LedgerClient {
   keyRevoke(kid: string) { return this.rpc<{ ok: boolean; error?: string }>('key_revoke', { kid }); }
   keys(account: string) { return this.rpc<{ ok: true; account: string; keys: KeyEntry[] }>('keys', { account }); }
   funding(account: string) { return this.rpc<FundingSnapshot>('funding', { account }); }
+  pulse(account: string) { return this.rpc<Pulse>('pulse', { account }); }
   calls(account: string, limit?: number, before?: string) { return this.rpc<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before }); }
   sessionEvent(account: string, event: SessionEvent) { return this.rpc<{ ok: boolean; error?: string; session?: SessionSummary; idempotent?: boolean }>('session_event', { account, event }); }
   sessions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
