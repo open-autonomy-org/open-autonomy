@@ -97,6 +97,16 @@ describe('the platform, one smoke test per surface', () => {
     expect((await hook(renewal, 'whsec_' + btoa('forged'))).status).toBe(401);
   });
 
+  test('the books: exported whole, restored over a wiped worker, the same', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 700);
+    const before = await requestJson(env, '/v1/accounts/acme%2Fapp');
+    const books = await requestJson(env, '/admin/export', { headers: admin });
+    expect((await request(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries } })).status).toBe(409);
+    expect((await requestJson(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries, replace: true } })).entries).toBe(books.entries.length);
+    expect(await requestJson(env, '/v1/accounts/acme%2Fapp')).toEqual(before);
+  });
+
   test('the rails: a card minted within the bound, approved in real time, settled on capture and retired; a decline releases; a partner charge settles', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 1000);

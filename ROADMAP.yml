@@ -164,7 +164,7 @@ items:
   - id: books-backup
     phase: 5
     priority: high
-    status: planned
+    status: active
     title: The books can be exported and restored
     acceptance:
       - "`admin.yml → export` writes the books — accounts, flows, coupons, the key registry, the audit trail, sessions, updates, roadmap revisions — as a dated JSON artifact of the workflow run, and a monthly schedule does the same; `POST /admin/import` (admin, reviewed) restores an export into an empty worker."

@@ -293,6 +293,8 @@ export class LimitLedger implements DurableObject {
       case 'polar_checkout': return json(await this.polarCheckoutGet(s('id')));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
+      case 'export_all': return json(await this.exportAll());
+      case 'import_all': return json(await this.importAll(body.entries as Array<[string, unknown]>, body.replace === true));
       case 'directory': return json({ ok: true, entries: this.directory() });
       case 'project': return json(this.projectView(s('account')));
       case 'status': return json(this.snapshot());
@@ -312,6 +314,26 @@ export class LimitLedger implements DurableObject {
 
   private async save(): Promise<void> {
     await this.ctx.storage.put('state', this.state);
+  }
+
+  // ---- the books as a whole: export and restore -------------------------------------------------------
+  // Everything the platform holds is this object's storage: the state (accounts, flows, coupons, the key
+  // registry), the audit trail, sessions and their item pointers, updates, roadmap revisions, cards,
+  // checkouts. An export is every entry; a restore puts every entry back, into an empty worker unless the
+  // caller says replace.
+  private async exportAll(): Promise<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }> {
+    const all = await this.ctx.storage.list();
+    return { ok: true, exported_at: new Date().toISOString(), entries: [...all.entries()] };
+  }
+  private async importAll(entries: Array<[string, unknown]>, replace: boolean): Promise<{ ok: boolean; error?: string; entries?: number }> {
+    if (!Array.isArray(entries) || !entries.every((e) => Array.isArray(e) && typeof e[0] === 'string')) return { ok: false, error: 'invalid_export' };
+    const existing = await this.ctx.storage.list({ limit: 1 });
+    if (existing.size && !replace) return { ok: false, error: 'not_empty' };
+    if (replace) await this.ctx.storage.deleteAll();
+    for (let i = 0; i < entries.length; i += 128) await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + 128)));
+    this.loaded = false;
+    await this.load();
+    return { ok: true, entries: entries.length };
   }
 
   // ---- accounts --------------------------------------------------------------------------------------
@@ -1131,6 +1153,8 @@ export class LedgerClient {
   polarCheckout(id: string) { return this.rpc<{ ok: boolean; error?: string; checkout?: PolarCheckout }>('polar_checkout', { id }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
+  exportAll() { return this.rpc<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
+  importAll(entries: Array<[string, unknown]>, replace = false) { return this.rpc<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }
   directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
   project(account: string) { return this.rpc<ProjectView>('project', { account }); }
   status() { return this.rpc<unknown>('status'); }

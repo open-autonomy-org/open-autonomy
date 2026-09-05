@@ -166,6 +166,19 @@ if (Math.round((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents - b
 if ((await signed(renewal, new TextEncoder().encode('forged'))).status !== 401) fail('a forged Polar event was accepted');
 ok.push('a tier paid through the Polar twin landed on the books from the thanks page, a renewal from the signed event, each once; a forged event was refused');
 
+// 9. The books can be exported and restored: an export of everything, a restore over the wiped worker, and every
+//    balance, call record and session reads back the same.
+const exported = await admin.get('/admin/export');
+if (exported.status !== 200 || !Array.isArray(exported.body?.entries) || !exported.body.entries.length) fail(`export → ${exported.status} ${exported.text.slice(0, 200)}`);
+const snapshot = async () => ({ funding: (await pub.get(`/v1/accounts/${ENC}`)).body, calls: (await pub.get(`/v1/accounts/${ENC}/calls`)).body, sessions: (await pub.get(`/v1/accounts/${ENC}/sessions`)).body, roadmap: (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body });
+const beforeRestore = await snapshot();
+if ((await admin.post('/admin/import', { entries: exported.body.entries })).status !== 409) fail('an import over a non-empty worker was not refused without replace');
+const restored = await admin.post('/admin/import', { entries: exported.body.entries, replace: true });
+if (restored.status !== 200 || restored.body?.entries !== exported.body.entries.length) fail(`restore → ${restored.status} ${restored.text.slice(0, 200)}`);
+const afterRestore = await snapshot();
+for (const k of ['funding', 'calls', 'sessions', 'roadmap'] as const) if (JSON.stringify(beforeRestore[k]) !== JSON.stringify(afterRestore[k])) fail(`${k} reads back differently after the restore`);
+ok.push(`the books exported (${exported.body.entries.length} entries) and restored over the wiped worker; every balance, call record, session and roadmap revision reads back the same`);
+
 // Leave the books as the seed left them for what follows: the probe's session is dropped.
 await admin.del(`/admin/accounts/${ENC}/sessions/probe-1`);
 console.log(`probe: OK — ${ACCOUNT}\n  ${ok.join('\n  ')}`);

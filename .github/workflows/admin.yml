@@ -13,7 +13,7 @@ on:
         description: what to do
         type: choice
         required: true
-        options: [status, mint, grant, sync, keys, revoke-key, delete-session, reset-daily, sync-admin-token]
+        options: [status, mint, grant, sync, keys, revoke-key, delete-session, reset-daily, export, import, sync-admin-token]
       account:
         description: account (owner/repo) the op applies to
         type: string
@@ -27,11 +27,20 @@ on:
         type: string
         default: ""
       key:
-        description: idempotency key (mint, grant); the key id (revoke-key); the session key (delete-session)
+        description: idempotency key (mint, grant); the key id (revoke-key); the session key (delete-session); the run id whose books artifact to restore (import)
         type: string
         default: ""
+      replace:
+        description: import over a non-empty worker (import)
+        type: boolean
+        default: false
+  # The books, exported on the first of every month as this run's artifact, so a restore is never further
+  # than a month behind and the export path is exercised without anyone remembering to.
+  schedule:
+    - cron: '0 3 1 * *'
 permissions:
   contents: read
+  actions: read
 jobs:
   admin:
     runs-on: ubuntu-latest
@@ -50,11 +59,13 @@ jobs:
             registry.npmjs.org:443
             api.cloudflare.com:443
             open-autonomy.org:443
-      - name: ${{ inputs.op }} ${{ inputs.account }}
+      - name: ${{ inputs.op || 'export' }} ${{ inputs.account }}
         if: inputs.op != 'sync-admin-token'
         env:
           ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
-          OP: ${{ inputs.op }}
+          OP: ${{ inputs.op || 'export' }}
+          REPLACE: ${{ inputs.replace }}
+          GH_TOKEN: ${{ github.token }}
           ACCOUNT: ${{ inputs.account }}
           AMOUNT: ${{ inputs.amount_usd_cents }}
           TO: ${{ inputs.to }}
@@ -74,8 +85,20 @@ jobs:
             revoke-key) curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/keys/$KEY/revoke" ;;
             delete-session) curl -sS --fail-with-body -X DELETE -H "x-admin-token: $ADMIN" "$base/admin/accounts/$enc/sessions/$KEY" ;;
             reset-daily) curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" "$base/admin/reset-daily" ;;
+            export) mkdir -p books && curl -sS --fail-with-body -H "x-admin-token: $ADMIN" "$base/admin/export" -o "books/books-$(date -u +%Y-%m-%d).json" \
+                      && echo "exported $(bun -e "console.log(JSON.parse(require('fs').readFileSync(require('fs').readdirSync('books').map((f) => 'books/' + f)[0], 'utf8')).entries.length)") entries" ;;
+            import) gh run download "$KEY" -n books -D books && f=$(ls books/*.json | head -1) \
+                      && bun -e "const e = JSON.parse(require('fs').readFileSync('$f', 'utf8')).entries; process.stdout.write(JSON.stringify({ entries: e, replace: $REPLACE }))" \
+                        | curl -sS --fail-with-body -X POST -H "x-admin-token: $ADMIN" -H 'content-type: application/json' --data-binary @- "$base/admin/import" ;;
           esac
           echo
+      - name: Keep the books export as this run's artifact
+        if: (inputs.op || 'export') == 'export'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: books
+          path: books/
+          retention-days: 400
       # Rotation: a maintainer sets a new value as the production environment secret, then dispatches this
       # op, which installs the same value as the worker's secret. The two homes never drift.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

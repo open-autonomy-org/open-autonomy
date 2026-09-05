@@ -108,6 +108,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (path === '/admin/status') { if (get()) return get()!; return json(await ledger.status()); }
     if (path === '/admin/reset-daily') { if (req.method !== 'POST') return methodNotAllowed(); return json(await ledger.resetDaily()); }
+    // The books, whole: an export is every storage entry; an import restores one into an empty worker, or
+    // over this one when the reviewed caller says replace.
+    if (path === '/admin/export') { if (get()) return get()!; return json(await ledger.exportAll(), { headers: NO_STORE }); }
+    if (path === '/admin/import') {
+      if (req.method !== 'POST') return methodNotAllowed();
+      const body = parseJson<{ entries?: Array<[string, unknown]>; replace?: boolean }>(await req.text());
+      if (!body || !Array.isArray(body.entries)) return error('invalid_request');
+      const r = await ledger.importAll(body.entries, body.replace === true);
+      return json(r, { status: r.ok ? 200 : r.error === 'not_empty' ? 409 : 400 });
+    }
     if (path === '/admin/coupons') {
       if (req.method === 'GET') return json(await ledger.couponList());
       if (req.method !== 'POST') return methodNotAllowed();
