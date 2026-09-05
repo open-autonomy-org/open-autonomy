@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.1.1' } as const;
+export const KIT = { name: 'hermes', version: '2.1.2' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
@@ -47,8 +47,10 @@ export function render(params: KitParams): Map<string, Buffer> {
   for (const rel of walk(TEMPLATE)) {
     const raw = readFileSync(join(TEMPLATE, rel));
     const text = raw.toString('utf8');
+    // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
+    const out_rel = rel === '_gitignore' ? '.gitignore' : rel;
     const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account));
-    out.set(rel, rendered);
+    out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
   out.set(KIT_FILE, Buffer.from(`${JSON.stringify({ kit: KIT.name, version: KIT.version, params, divergences: [] } satisfies KitRecord, null, 2)}\n`));

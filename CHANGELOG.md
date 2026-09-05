@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.1.2: the created project has its `.gitignore` again — the template ships it as `_gitignore`, since a `.gitignore` never survives npm's pack rules — so an adopter's first commit does not carry the agent's runtime state.
 - Before real money: `admin.yml` → `sync-secrets` installs the money paths' secrets from the production environment (nothing typed into a machine); the Issuing cardholder carries the org's own billing address from `ISSUING_BILLING_ADDRESS_JSON` and the rail refuses without it; `/admin/status` reports `owed_usd_cents`, the balances real money must cover.
 - The PM never releases what the owner holds: only a `transient` block is retried; a `needs_input` block or a parked task waits for its decision. A held seed task is parked in Hermes's Scheduled lane rather than blocked, since the board escalates repeated blocks into decomposition. The constitution opens with the north star, which the page leads with.
 - **The treasurer.** A key scope `pay` for the card and partner rails: the developer's key spends on the model and cannot buy; the treasurer, a second Hermes profile behind its own valve with the only paying key, buys within the owner's bounds. The developer files one purchase request assigned to `treasurer` and blocks on it; the treasurer mints the card naming the developer's task (the purchase shows on that item), pays the merchant itself, posts the receipt and releases the task. Its sessions never reach the page; every cent it spends does.
