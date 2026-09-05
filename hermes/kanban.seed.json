@@ -7,7 +7,8 @@
       "acceptance": [
         "Owner-gated (identity and a bank, not code): a Polar organization for Open Autonomy and the org's Stripe account with Issuing, their tokens and webhook secrets installed through the admin workflow's secret sync, the webhook endpoints enrolled; everything else is already proven against the twins.",
         "One real patronage lands on this project's books through Polar, its payout reaches the org, the Issuing balance is funded from it, and this install's agent makes one real bounded purchase that shows on the audit trail."
-      ]
+      ],
+      "triage": true
     }
   ]
 }
