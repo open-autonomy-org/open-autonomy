@@ -271,9 +271,8 @@ async function board(): Promise<void> {
   }
 }
 // The agent's setup, from the home it runs with — the identity text, the model, the schedule seed, the
-// skills — and the roadmap from the project's checkout when it stands on main: published whenever they
-// change. The platform reads no harness file for either.
-const projectDir = resolve(stateFile, '..', '..');
+// skills — published whenever they change; and the roadmap from the repository's main (below). The platform
+// reads no harness file for either.
 const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
 let setupDigest = '';
 let roadmapDigest = '';
@@ -291,10 +290,22 @@ async function setup(): Promise<void> {
   if (digest === setupDigest) return;
   try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
 }
+// The roadmap as the repository's main holds it, read through GitHub's contents API (the repository is public
+// and the agent's checkout stands on its own branch while it works), every five minutes and at start, published
+// when it changes. GITHUB_API_BASE names another GitHub (a world's twin); api.github.com otherwise.
+const GITHUB_API = (process.env.GITHUB_API_BASE ?? 'https://api.github.com').replace(/\/$/, '');
+const ROADMAP_POLL_MS = Number(process.env.OPEN_AUTONOMY_ROADMAP_POLL_MS ?? 5 * 60_000);
+let roadmapReadAt = 0;
 async function roadmap(): Promise<void> {
-  const head = readText(resolve(projectDir, '.git', 'HEAD'))?.trim();
-  if (head !== 'ref: refs/heads/main') return;
-  const text = readText(resolve(projectDir, 'ROADMAP.yml'));
+  if (Date.now() - roadmapReadAt < ROADMAP_POLL_MS) return;
+  roadmapReadAt = Date.now();
+  let text: string | undefined;
+  try {
+    const res = await fetch(`${GITHUB_API}/repos/${cfg.account}/contents/ROADMAP.yml`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy-reporter' } });
+    if (!res.ok) { log(`roadmap: ROADMAP.yml on main → ${res.status}`); return; }
+    const j = await res.json() as { content?: string; encoding?: string };
+    if (j.content && j.encoding === 'base64') text = Buffer.from(j.content.replace(/\n/g, ''), 'base64').toString('utf8');
+  } catch (e) { log(`roadmap: cannot read main (${(e as Error).message})`); return; }
   if (!text || text === roadmapDigest) return;
   try { const r = await oa.pushRoadmap(parseRoadmap(text), 'file', 'reporter'); if (r.ok) { roadmapDigest = text; if (!r.unchanged) log(`roadmap published (${parseRoadmap(text).items.length} items)`); } else log(`roadmap publish refused: ${r.error ?? r.status}`); } catch (e) { log(`roadmap publish failed: ${(e as Error).message}`); }
 }

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- The reporter publishes the roadmap as the repository's main holds it, read through GitHub's contents API every five minutes, so the page follows landed items while the agent's checkout stands on its branch. The world's reporter runs on the world clock and reads the GitHub twin.
 - `v2-done`: v2 is complete. Projects run on grant credits from the org's grants account, this install included; real money (Polar and Stripe Issuing on the live org) moves to a later phase.
 - A balance refusal names what the call needed and what was free beside the balance (in-flight reservations hold part of it). The world prices the owner's previous model like the model it stands for, so a $5 cookbook is not refused a second call in flight.
 - `funder-self-funding`: a funder buys credit packs through Polar; the org matches a share from its grants account as bonus credits that go only to projects the funder does not own.

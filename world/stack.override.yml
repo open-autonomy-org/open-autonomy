@@ -4,6 +4,7 @@
 #   the clock   libfaketime preloaded into every process, its offset read from a file the world advances
 #               (`bun world/run.ts clock advance 6h`), so the schedule fires inside the world instead of six
 #               real hours after boot. Monotonic time stays real: sleeps and timeouts are unaffected.
+#   github      the reporter reads the roadmap from the repository's main through GitHub's API: the twin's.
 #   certifi     Python's aiohttp (discord.py's client) trusts certifi's bundle, not the system store: the
 #               image's own bundle plus the session CA, mounted over certifi's file.
 services:
@@ -17,3 +18,13 @@ services:
     volumes:
       - ${WORLD_STACK_DIR}/world:/opt/world:ro
       - ${WORLD_STACK_DIR}/world/ca-bundle.pem:${WORLD_CERTIFI_PATH}:ro
+  reporter:
+    environment:
+      - GITHUB_API_BASE=${WORLD_GITHUB_API_BASE:-https://api.github.com}
+      - LD_PRELOAD=/opt/world/libfaketime.so.1
+      - FAKETIME_TIMESTAMP_FILE=/opt/world/clock
+      - FAKETIME_CACHE_DURATION=2
+      - FAKETIME_DONT_FAKE_MONOTONIC=1
+      - DONT_FAKE_MONOTONIC=1
+    volumes:
+      - ${WORLD_STACK_DIR}/world:/opt/world:ro

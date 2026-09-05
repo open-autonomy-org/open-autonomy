@@ -124,7 +124,7 @@ const certifiIn = (image: string): string => {
   if (!p.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   return p;
 };
-const composeEnv = (certifiPath: string) => ({ AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid });
+const composeEnv = (certifiPath: string) => ({ AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid, WORLD_GITHUB_API_BASE: forContainers(need('GITHUB_TWIN_URL')) });
 
 async function up(): Promise<void> {
   const github = need('GITHUB_TWIN_URL');
