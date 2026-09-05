@@ -1,0 +1,26 @@
+# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and the key
+# tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the project's own.
+account: cookbook/lexicon
+platform: https://open-autonomy.org
+
+# What the reporter publishes. Work sessions (the scheduled runs, the funded work) publish by default; the
+# private exceptions are named here. Anything listed under `private` is never sent.
+publish:
+  runs: true        # sessions the schedule started (trigger: cron)
+  chats: true       # conversations on a channel (Discord): the community's, published
+  private:          # session ids or job names that never publish, whatever their kind
+    - []
+
+# Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
+# environment), and where it keeps its own cursor (beside this file).
+state_file: reporter-state.json
+
+# The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
+# bound is set. Every rail leaves a record on the public audit trail naming itself.
+rails:
+  card:                       # a single-use virtual card minted against the balance (Stripe Issuing)
+    max_usd_cents: 0          # the most one card may be minted for
+    categories: []            # Stripe merchant categories a card may pay at, e.g. [computer_software_stores]
+  partner:                    # a partner service settling a metered charge against the balance
+    max_usd_cents: 0          # the most one charge may be
+    partners: []              # the partner ids allowed to settle

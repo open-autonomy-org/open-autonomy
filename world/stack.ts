@@ -16,7 +16,7 @@
 //                  `hermes cron run pm`: the PM's hour, now)
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, MODEL, PREVIOUS_MODEL, STATE, WORK, git, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, ROOT, STATE, WORK, git, need } from './lib.ts';
 
 const stackDir = resolve(STATE, '.volter', 'stack');
 const home = resolve(stackDir, 'home');
@@ -46,7 +46,7 @@ function hermesBin(): string {
     Bun.spawnSync({ cmd: ['git', 'clone', '-q', '--depth', '1', '--branch', pin.HERMES_TAG, pin.HERMES_REPO, dir], env: outside, stdout: 'inherit', stderr: 'inherit' });
     const have = sh(['git', '-C', dir, 'rev-parse', 'HEAD'], { quiet: true, env: outside }).out.trim();
     if (have !== pin.HERMES_COMMIT) throw new Error(`hermes.pin: ${pin.HERMES_TAG} is ${have}, not the pinned ${pin.HERMES_COMMIT}`);
-    sh(['uv', 'sync', '--frozen', '--python', '3.12'], { cwd: dir, env: outside });
+    sh(['uv', 'sync', '--frozen', '--python', '3.12', '--extra', 'messaging'], { cwd: dir, env: outside });
   }
   return resolve(dir, '.venv', 'bin');
 }
@@ -77,11 +77,18 @@ function start(): void {
   if (!existsSync(resolve(COOKBOOK, '.open-autonomy', 'node_modules'))) throw new Error(`stack: the reporter's dependencies are not installed — (cd ${resolve(COOKBOOK, '.open-autonomy')} && bun install)`);
   for (const f of ['agent.env', 'treasurer.env']) if (!existsSync(resolve(DATA, f))) throw new Error(`${resolve(DATA, f)} is missing — run \`bun world/run.ts seed\` first`);
   mkdirSync(stackDir, { recursive: true });
+  // The agent's Discord: a bot token the twin accepts (a fake the twins mint) and its home channel, which the start
+  // script writes into the home's .env on the first start. discord.py reaches the twin through the world's proxy
+  // (HTTPS_PROXY, which Hermes's Discord platform honors) and the session CA.
+  const botToken = sh(['bun', resolve(process.env.TWINS_ROOT ?? resolve(ROOT, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
   // One appending descriptor for every process's output: separate opens would overwrite one another.
   const log = openSync(logFile, 'a');
   const child = Bun.spawn({
     cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'start.ts'), '--project', project, '--home', home, '--secrets', DATA, '--origin', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`],
-    cwd: COOKBOOK, env: agentEnv(bin), stdout: log, stderr: log, stdin: 'ignore',
+    // The channel is open to anyone in it; the repository's issues and discussions are the GitHub twin's, on a token
+    // it accepts (the community tool's door: GITHUB_API_URL and GITHUB_TOKEN).
+    cwd: COOKBOOK, env: { ...agentEnv(bin), DISCORD_BOT_TOKEN: botToken, DISCORD_HOME_CHANNEL: HOME_CHANNEL, DISCORD_ALLOWED_CHANNELS: '*', DISCORD_ALLOWED_USERS: '*', GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot' }, stdout: log, stderr: log, stdin: 'ignore',
   });
   child.unref();
   writeFileSync(pidFile, `${child.pid}\n`);

@@ -78,7 +78,8 @@ if (existsSync(committed)) cpSync(committed, home, { recursive: true, force: tru
 const envFile = resolve(home, '.env');
 if (!existsSync(envFile)) {
   const lines = ['OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1', 'OPEN_AUTONOMY_KEY=valve'];
-  for (const k of ['DISCORD_BOT_TOKEN', 'DISCORD_HOME_CHANNEL']) if (process.env[k]) lines.push(`${k}=${process.env[k]}`);
+  // What the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
+  for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
   writeFileSync(envFile, `${lines.join('\n')}\n`);
 }
 own(home);

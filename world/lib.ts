@@ -17,6 +17,8 @@ export const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'zai/glm-5.3-flash';
 // name, allowed on the key, so the schedule's re-pin is proven the way the production incident happened.
 export const PREVIOUS_MODEL = `${MODEL}-previous`;
 export const WORK = resolve(DATA, 'work');
+// The cookbook agent's Discord home channel on the Discord twin: the id its .env names and the seed creates.
+export const HOME_CHANNEL = '1000000000000000001';
 export const ENC = encodeURIComponent(ACCOUNT);
 export const [OWNER, REPO_NAME] = ACCOUNT.split('/');
 

@@ -8,6 +8,7 @@
 //                                             # cookbook's agent, bare, as the kit starts it (.open-autonomy/start.ts)
 //   bun world/run.ts env -- <cmd>      # run anything with the world's env (twin URLs, PLATFORM_URL)
 //   bun world/run.ts hermes <args…>    # the pinned Hermes against the world's agent: kanban list, cron run pm
+//   bun world/run.ts say <text…>       # a person speaks in the agent's channel on the Discord twin
 //   bun world/run.ts down [--purge]    # tear down (--purge: forget the books, the twin and the stack's volumes)
 //
 // --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
@@ -71,8 +72,9 @@ switch (verb) {
   case 'stack': stack(...argv.slice(argv.indexOf('stack') + 1).filter((a) => a !== '--cookbook' && a !== cookbook)); break;
   case 'hermes': process.exit(stack('hermes', ...argv.slice(argv.indexOf('hermes') + 1).filter((a) => a !== '--cookbook' && a !== cookbook))); break;
   case 'env': inWorld(rest); break;
+  case 'say': inWorld(['bun', resolve(ROOT, 'world', 'say.ts'), ...argv.slice(argv.indexOf('say') + 1).filter((a) => a !== '--cookbook' && a !== cookbook)]); break;
   case 'down': stackDown(purge); world(['down', NAME, '--root', STATE, ...(purge ? ['--purge'] : [])]); break;
   default:
-    console.error('usage: bun world/run.ts up | seed | stack up|down [--purge]|between-tasks | hermes <args…> | down [--purge] | env -- <cmd>   [--cookbook <name>]');
+    console.error('usage: bun world/run.ts up | seed | stack up|down [--purge]|between-tasks | hermes <args…> | say <text…> | down [--purge] | env -- <cmd>   [--cookbook <name>]');
     process.exit(2);
 }
