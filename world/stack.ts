@@ -226,8 +226,13 @@ async function rotateKey(): Promise<void> {
   if ((listed.keys ?? []).length < 2) throw new Error(`stack: the registry does not list both keys after the rotation: ${JSON.stringify(listed).slice(0, 200)}`);
   // The valve sees the new key without a restart: its health line names the new key.
   const newKid = (JSON.parse(Buffer.from(after.split('.')[0], 'base64url').toString('utf8')) as { kid: string }).kid;
-  const health = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
-  if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key: ${health}`);
+  // The mounted file's new bytes reach the container within moments; the valve reads them on its next request.
+  let health = '';
+  for (let i = 0; i < 20 && !health.includes(newKid); i++) {
+    await Bun.sleep(500);
+    health = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
+  }
+  if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key within ten seconds: ${health}`);
   await Bun.sleep(6500);
   if ((await api(before, '/v1/models')).status !== 401) throw new Error('stack: the old key still works after its grace');
   if ((await api(after, '/v1/models')).status !== 200) throw new Error('stack: the new key does not spend');
