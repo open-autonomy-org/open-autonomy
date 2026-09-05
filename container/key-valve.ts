@@ -25,7 +25,9 @@ const base = (): string => (keyEnv().OPEN_AUTONOMY_BASE_URL || 'https://open-aut
 const key = (): string | undefined => keyEnv().OPEN_AUTONOMY_KEY;
 const portArg = process.argv.indexOf('--port');
 const port = Number((portArg >= 0 ? process.argv[portArg + 1] : undefined) || process.env.PORT || 8787);
-const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/agent/events']);
+// The model routes, the narration route, and the two other rails (a card, a partner charge): the platform
+// bounds each rail by the owner's config, and every settlement lands on the public audit trail.
+const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/agent/events', '/v1/rails/card', '/v1/rails/partner']);
 // Public reads the reporter needs to resume where the platform is (its own account's sessions).
 const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+\/(sessions|items)(\/|$)/.test(path);
 
@@ -36,7 +38,7 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === '/healthz') return new Response(key() ? 'ok' : 'no key yet');
-    if (!FORWARDED.has(url.pathname) && !isPublicRead(url.pathname, req.method)) return Response.json({ error: { code: 'not_forwarded', message: 'the valve forwards the model routes, the narration route and public reads of this account only' } }, { status: 403 });
+    if (!FORWARDED.has(url.pathname) && !isPublicRead(url.pathname, req.method)) return Response.json({ error: { code: 'not_forwarded', message: 'the valve forwards the model routes, the narration route, the rails and public reads of this account only' } }, { status: 403 });
     const bearer = key();
     if (!bearer) return Response.json({ error: { code: 'no_key', message: 'the valve has no key yet' } }, { status: 503 });
     // A clean request: the body buffered (one honest Content-Length), only the headers that carry meaning.

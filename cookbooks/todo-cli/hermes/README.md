@@ -2,7 +2,7 @@
 
 This directory is a complete Hermes home (`HERMES_HOME`), from the Open Autonomy Hermes kit. Everything the
 agent is lives here and is committed: `SOUL.md` (identity), `skills/` (what it knows how to do: the roadmap's
-grammar, landing, verifying in the world), `cron/jobs.seed.json` and `scripts/` (when it acts, and the fire
+grammar, landing, verifying in the world, spending through a rail), `cron/jobs.seed.json` and `scripts/` (when it acts, and the fire
 itself: a script that files the top open roadmap item on the agent's board and spends nothing), `config.yaml`
 (which model, through the platform; a worker takes it at dispatch, so a model change never strands the
 schedule), `hooks/` (the schedule seed). Its runtime state (sessions, logs, caches, `.env`) is git-ignored.

@@ -12,6 +12,14 @@ items:
       - "`todo add \"buy milk\"` appends {id, text, done:false, created} to the store and prints the new id."
       - Ids are small integers that never repeat within a store, even after removals.
       - A test adds two items to a temp store and asserts the ids 1 and 2 and the stored text.
+  - id: domain
+    phase: 1
+    priority: high
+    status: planned
+    title: the project owns its domain name
+    acceptance:
+      - "`todo-cli.example` is registered for the project: a single-use card minted through the platform's card rail, within the owner's bound and merchant category, pays the registrar once, and the purchase shows on the audit trail and on this item's page with the merchant."
+      - "`docs/DOMAIN.md` records the domain, the registrar and the amount, and a test asserts the file names the domain."
   - id: list
     phase: 1
     priority: high

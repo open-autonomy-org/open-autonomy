@@ -178,6 +178,12 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
         <h3>Sessions</h3>
         {view.sessions.length ? view.sessions.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />) : <p class="sub">No session has worked this item yet.</p>}
       </div>
+      {view.purchases.length ? (
+        <div class="panel">
+          <h3>Purchases</h3>
+          <ul class="updates">{view.purchases.map((c) => <li><span class="u-when">{fmtAgo(c.ts, now)}</span><div class="u-text">{c.rail === 'card' ? <>{c.merchant ?? 'a merchant'}{c.category ? ` (${c.category})` : ''} on card ···{c.card_last4 ?? '????'}</> : <>{c.partner ?? 'a partner'}{c.unit ? ` · ${c.quantity ?? 1} ${c.unit}` : ''}</>} · {usd(c.usd_cents)}{c.session ? <> · <a href={`/p/${enc}/sessions/${encodeURIComponent(c.session)}`}>session</a></> : null}</div></li>)}</ul>
+        </div>
+      ) : null}
       <div class="panel">
         <h3>Updates</h3>
         {view.updates.length ? <ul class="updates">{view.updates.map((u: UpdateRecord) => <li><span class="u-when">{fmtAgo(u.ts, now)}</span><div class="u-text prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(u.text) }} />{u.session ? <a class="u-sess" href={`/p/${enc}/sessions/${encodeURIComponent(u.session)}`}>from session ↗</a> : null}</li>)}</ul> : <p class="sub">No updates posted on this item.</p>}

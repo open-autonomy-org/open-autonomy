@@ -52,6 +52,17 @@ if (check.exitCode !== 0) fail(`the project's own check fails at main:\n${check.
 const kit = Bun.spawnSync({ cmd: ['bun', new URL('../packages/kit-hermes/src/cli.ts', import.meta.url).pathname, 'check', WORK], stdout: 'pipe', stderr: 'pipe' });
 if (kit.exitCode !== 0) fail(`the kit's files drifted on main:\n${kit.stderr.toString().slice(-600)}`);
 
+// The rails from the agent's side: the domain item's purchase settled as a card record under a session on that item,
+// with the merchant, and the item page shows it.
+if (done.includes('domain')) {
+  const domainView = (await pub.get(`/v1/accounts/${ENC}/items/domain`)).body;
+  const purchase = (domainView?.purchases ?? []).find((c: { rail: string; merchant?: string }) => c.rail === 'card' && c.merchant === 'Namecheap');
+  if (!purchase) fail(`the domain item carries no card purchase at Namecheap: ${JSON.stringify(domainView?.purchases ?? []).slice(0, 300)}`);
+  if (purchase.usd_cents !== 200 || purchase.category !== 'computer_software_stores') fail(`the domain purchase is not 200 cents at computer_software_stores: ${JSON.stringify(purchase)}`);
+  const domainPage = await pub.get(`/p/${ENC}/items/domain`);
+  if (domainPage.status !== 200 || !domainPage.text.includes('Namecheap')) fail('the domain item page does not show the purchase');
+}
+
 // The stream: a session per run, kind run, ended with a verdict, filed under the item it landed, with its
 // settled cents; the item view carries it; the page shows it live-or-ended with the health line.
 const stream = (await pub.get(`/v1/accounts/${ENC}/sessions`)).body;

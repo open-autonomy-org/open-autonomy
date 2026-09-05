@@ -102,7 +102,7 @@ items:
   - id: agent-side-rails
     phase: 3
     priority: high
-    status: planned
+    status: active
     title: The agent can spend through the card and partner rails from inside its stack
     acceptance:
       - The key valve forwards `/v1/rails/card` and `/v1/rails/partner` beside the model routes; a rail skill documents when and how to spend through a rail (only for an acceptance line that needs it, within the owner's bounds, naming the purpose), and `.open-autonomy/config.yaml` is where the owner opens each rail.

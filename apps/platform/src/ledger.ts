@@ -242,6 +242,8 @@ export interface ItemView {
   live: string[];
   sessions: SessionSummary[];
   updates: UpdateRecord[];
+  // The card and partner settlements attributed to this item's sessions: what the agent bought for it.
+  purchases: CallRecord[];
   usd_cents: number;
 }
 
@@ -653,7 +655,9 @@ export class LimitLedger implements DurableObject {
     const sessions = records.filter((s): s is SessionRecord => !!s).map(sessionSummary);
     const updates = [...(await this.ctx.storage.list<UpdateRecord>({ prefix: `update:${account}:${item_id}:`, reverse: true, limit: 100 })).values()];
     const usd_cents = Number(sessions.reduce((sum, s) => sum + (s.usd_cents ?? 0), 0).toFixed(6));
-    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, usd_cents };
+    const keys = new Set(sessions.map((s) => s.key));
+    const purchases = (await this.listCalls(account, 300)).calls.filter((c) => c.rail !== 'model' && c.session && keys.has(c.session));
+    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents };
   }
 
   // Spend lands on the session that was live when it settled. With one live session the attribution is

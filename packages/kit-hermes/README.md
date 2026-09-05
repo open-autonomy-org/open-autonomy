@@ -29,7 +29,7 @@ CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world), the schedule seed and the fire's script, config.yaml (the model:
+hermes/              the agent: SOUL.md, its skills (roadmap, land, verify-in-world, rails), the schedule seed and the fire's script, config.yaml (the model:
                      the project's own choice), the schedule-seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, roadmap source),
                      reporter.ts (the sessions bridge), mint-key.ts (the key, the adopter way), roadmap.ts
