@@ -42,4 +42,8 @@ docker exec -u $UID oa-agent hermes kanban list                  # the board: th
 docker logs -f oa-reporter                               # what is being published
 ```
 
+Several stacks on one Docker host, two projects or a project beside a world's copy of it: give each a name,
+`bun .open-autonomy/setup.ts --stack <name>` and `STACK=<name> docker compose -p <name> …`; the containers and
+volumes carry it (`<name>-agent`, `<name>-home`). The default is `oa`.
+
 The kit owns this directory; `create-open-autonomy upgrade .` brings it forward.

@@ -9,13 +9,16 @@
 # to happen, and nothing on the host needs them. Inspect with `docker exec`.
 #
 #   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
+# Several stacks on one Docker host (two projects, or a project beside a world's copy of it): each has its own
+# STACK name, which the containers and volumes carry, and its own compose project: `STACK=<name> docker compose
+# -p <name> …`. The default is `oa`.
 services:
   valve:
     build:
       context: ..
       dockerfile: container/Dockerfile.valve
     image: todo-cli-valve:local
-    container_name: oa-valve
+    container_name: ${STACK:-oa}-valve
     restart: unless-stopped
     environment:
       - AGENT_ENV_FILE=/secrets/agent.env
@@ -27,7 +30,7 @@ services:
       context: ..
       dockerfile: container/Dockerfile.valve
     image: todo-cli-valve:local
-    container_name: oa-valve-pay
+    container_name: ${STACK:-oa}-valve-pay
     restart: unless-stopped
     environment:
       - AGENT_ENV_FILE=/secrets/treasurer.env
@@ -39,7 +42,7 @@ services:
   # agent has since done.
   home-sync:
     image: alpine:3
-    container_name: oa-home-sync
+    container_name: ${STACK:-oa}-home-sync
     restart: "no"
     command: ["sh", "-c", "cd /repo/hermes && find . -type f ! -name '.env' -exec cp -a --parents {} /opt/data/ \\; && chown -R ${AGENT_UID:-501}:${AGENT_GID:-20} /opt/data && echo 'home synced from the repository'"]
     volumes:
@@ -52,7 +55,7 @@ services:
       args:
         HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31} # container/build-hermes.sh builds it
     image: todo-cli-agent:local
-    container_name: oa-agent
+    container_name: ${STACK:-oa}-agent
     restart: unless-stopped
     depends_on:
       valve: { condition: service_started }
@@ -74,7 +77,7 @@ services:
       context: ..
       dockerfile: container/Dockerfile.reporter
     image: todo-cli-reporter:local
-    container_name: oa-reporter
+    container_name: ${STACK:-oa}-reporter
     restart: unless-stopped
     # The agent's own ids: the home it reads and the checkout it keeps its cursor in are the agent's.
     user: "${AGENT_UID:-501}:${AGENT_GID:-20}"
@@ -90,10 +93,10 @@ services:
     networks: [agent]
 volumes:
   oa-home:
-    name: oa-home
+    name: ${STACK:-oa}-home
     external: true # seeded once from hermes/ (container/README.md)
   oa-repo:
-    name: oa-repo
+    name: ${STACK:-oa}-repo
     external: true # the agent's clone
 networks:
   agent: {}

@@ -2,14 +2,14 @@
 // The host, set up by one command, idempotently: what container/README.md asks of the owner before
 // `docker compose up`, done or found done, and what it cannot do said plainly. Safe to run again.
 //
-//   bun .open-autonomy/setup.ts [--context <docker context>] [--secrets <dir>] [--origin <url>]
+//   bun .open-autonomy/setup.ts [--context <docker context>] [--secrets <dir>] [--origin <url>] [--stack <name>]
 //                               [--origin-in-container <url>] [--env KEY=VALUE ...] [--uid N --gid N] [--fresh]
 //
 //   1. the key files <secrets>/agent.env (the developer's: spend + narrate) and <secrets>/treasurer.env (the
 //                    treasurer's: spend + narrate + pay), default ~/.config/open-autonomy, from mint-key.ts — found or named
 //   2. the image     hermes-agent:<tag> from container/hermes.pin — present, copied from another Docker host
 //                    that has it, or built (container/build-hermes.sh, ~10 minutes)
-//   3. the volumes   oa-home from hermes/ (its .env: the valve's address, the dummy key, every --env), oa-repo
+//   3. the volumes   <stack>-home from hermes/ (its .env: the valve's address, the dummy key, every --env), oa-repo
 //                    a clone of --origin (default: this repository's origin, cloned with your own git and
 //                    keys); --fresh recreates both
 //   4. what is yours the deploy key and the ssh-agent that forwards it, the Discord token; then compose up
@@ -28,6 +28,9 @@ const secrets = resolve(arg('--secrets') ?? join(homedir(), '.config', 'open-aut
 const uid = arg('--uid') ?? String(process.getuid?.() ?? 501);
 const gid = arg('--gid') ?? String(process.getgid?.() ?? 20);
 const fresh = argv.includes('--fresh');
+// The stack's name on a Docker host shared with others (the containers and volumes carry it); `oa` alone otherwise.
+const stack = arg('--stack') ?? 'oa';
+const HOME_VOL = `${stack}-home`; const REPO_VOL = `${stack}-repo`;
 const docker = ['docker', ...(context ? ['--context', context] : [])];
 const say = (m: string) => console.log(`setup: ${m}`);
 const run = (cmd: string[], opts: { quiet?: boolean; check?: boolean; env?: Record<string, string>; cwd?: string } = {}) => {
@@ -63,16 +66,16 @@ else {
 
 // 3. The volumes.
 const have = (v: string) => run([...docker, 'volume', 'inspect', v], { quiet: true, check: false }).code === 0;
-if (fresh) for (const v of ['oa-home', 'oa-repo']) run([...docker, 'volume', 'rm', '-f', v], { quiet: true, check: false });
-if (have('oa-home') && have('oa-repo')) say('volumes: oa-home and oa-repo present (compose re-syncs the home from hermes/ on every start; --fresh recreates both)');
+if (fresh) for (const v of [HOME_VOL, REPO_VOL]) run([...docker, 'volume', 'rm', '-f', v], { quiet: true, check: false });
+if (have(HOME_VOL) && have(REPO_VOL)) say(`volumes: ${HOME_VOL} and ${REPO_VOL} present (compose re-syncs the home from hermes/ on every start; --fresh recreates both)`);
 else {
   const origin = arg('--origin') ?? run(['git', 'remote', 'get-url', 'origin'], { quiet: true }).out.trim();
   const originInside = arg('--origin-in-container') ?? origin;
-  for (const v of ['oa-home', 'oa-repo']) if (!have(v)) run([...docker, 'volume', 'create', v], { quiet: true });
+  for (const v of [HOME_VOL, REPO_VOL]) if (!have(v)) run([...docker, 'volume', 'create', v], { quiet: true });
   const env = [`OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1`, `OPEN_AUTONOMY_KEY=valve`, ...args('--env')];
-  run([...docker, 'run', '--rm', '-v', 'oa-home:/opt/data', '-v', `${join(here, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
+  run([...docker, 'run', '--rm', '-v', `${HOME_VOL}:/opt/data`, '-v', `${join(here, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
     `cp -a /src/. /opt/data/ && printf '%s\\n' ${env.map((e) => `'${e.replace(/'/g, "'\\''")}'`).join(' ')} > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
-  say(`home: oa-home seeded from hermes/ (.env: the valve's address, the dummy key${args('--env').length ? `, ${args('--env').map((e) => e.split('=')[0]).join(', ')}` : ''})`);
+  say(`home: ${HOME_VOL} seeded from hermes/ (.env: the valve's address, the dummy key${args('--env').length ? `, ${args('--env').map((e) => e.split('=')[0]).join(', ')}` : ''})`);
   // The clone is made on the host with your own git (and so your own keys), then carried into the volume through a
   // directory under your home: a Docker host mounts the home directory, not the system's temporary one.
   mkdirSync(join(homedir(), '.config', 'open-autonomy'), { recursive: true });
@@ -80,12 +83,12 @@ else {
   try {
     run(['git', 'clone', '-q', origin, join(tmp, 'repo')], { quiet: true });
     if (originInside !== origin) run(['git', '-C', join(tmp, 'repo'), 'remote', 'set-url', 'origin', originInside], { quiet: true });
-    run([...docker, 'run', '--rm', '-v', 'oa-repo:/work', '-v', `${join(tmp, 'repo')}:/src:ro`, 'alpine:3', 'sh', '-c', `cp -a /src/. /work/ && chown -R ${uid}:${gid} /work`], { quiet: true });
+    run([...docker, 'run', '--rm', '-v', `${REPO_VOL}:/work`, '-v', `${join(tmp, 'repo')}:/src:ro`, 'alpine:3', 'sh', '-c', `cp -a /src/. /work/ && chown -R ${uid}:${gid} /work`], { quiet: true });
   } finally { rmSync(tmp, { recursive: true, force: true }); }
-  say(`repo: oa-repo cloned from ${origin}${originInside !== origin ? ` (origin inside the container: ${originInside})` : ''}`);
+  say(`repo: ${REPO_VOL} cloned from ${origin}${originInside !== origin ? ` (origin inside the container: ${originInside})` : ''}`);
 }
 
 // 4. What is the owner's, and what is next.
 say('yours: the deploy key and the ssh-agent that forwards it into the Docker host (container/README.md), and the Discord bot token if you deliver there');
 for (const t of todo) say(`next: ${t}`);
-say(`next: AGENT_SECRETS=${secrets} ${docker.join(' ')} compose -f container/compose.yml up -d --build`);
+say(`next: ${stack === 'oa' ? '' : `STACK=${stack} `}AGENT_SECRETS=${secrets} ${docker.join(' ')} compose${stack === 'oa' ? '' : ` -p ${stack}`} -f container/compose.yml up -d --build`);

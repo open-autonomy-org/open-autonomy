@@ -13,15 +13,17 @@
 //          it), and the key is rotated with a short grace (the valve picks the new key up unrestarted; the old
 //          key is refused after its grace)
 //
-// The Docker host is the world's own (WORLD_DOCKER_CONTEXT, default colima-open-autonomy-world). Containers
+// The Docker host is the machine's (WORLD_DOCKER_CONTEXT, default colima-open-autonomy: the same host the production
+// stack runs on — the world's stack is named `world`, its containers and volumes with it, so the two never touch). Containers
 // reach the host's services at host.docker.internal.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, ROOT, WORK, agentEnv, git, need, STATE, treasurerEnv } from './lib.ts';
 
-const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
+const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy';
 const profile = context.replace(/^colima-/, '');
-const project = 'oa';
+const project = 'world';
+const STACK = { STACK: project };
 // What the containers mount (the secrets, the clock, the CA bundle) stays under the home directory: the world's
 // Docker host mounts nothing outside it, whatever disk the rest of the state lives on.
 const stackDir = resolve(ROOT, '.volter', 'stack');
@@ -112,9 +114,9 @@ function waitSchedule(): void {
   const deadline = Date.now() + 300_000;
   const booted = Date.now();
   for (;;) {
-    const list = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'hermes', 'cron', 'list'], { quiet: true, check: false }).out;
+    const list = sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'hermes', 'cron', 'list'], { quiet: true, check: false }).out;
     if (/\bpm\b/.test(list)) break;
-    if (Date.now() > deadline) throw new Error('stack: the gateway did not seed its schedule within five minutes (docker logs oa-agent)');
+    if (Date.now() > deadline) throw new Error('stack: the gateway did not seed its schedule within five minutes (docker logs world-agent)');
     Bun.sleepSync(2000);
   }
   console.log(`⏱ stack: gateway boot to schedule seeded: ${((Date.now() - booted) / 1000).toFixed(1)}s`);
@@ -124,7 +126,7 @@ const certifiIn = (image: string): string => {
   if (!p.startsWith('/')) throw new Error('stack: cannot find certifi in the agent image');
   return p;
 };
-const composeEnv = (certifiPath: string) => ({ AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid });
+const composeEnv = (certifiPath: string) => ({ ...STACK, AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: certifiPath, AGENT_UID: uid, AGENT_GID: gid });
 
 async function up(): Promise<void> {
   const github = need('GITHUB_TWIN_URL');
@@ -152,7 +154,7 @@ async function up(): Promise<void> {
   // an adopter runs.
   const botToken = sh(['bun', twinsCli, 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
   if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
-  timed('setup', () => sh(['bun', resolve(COOKBOOK, '.open-autonomy', 'setup.ts'), '--context', context, '--secrets', secrets, '--uid', uid, '--gid', gid, '--fresh',
+  timed('setup', () => sh(['bun', resolve(COOKBOOK, '.open-autonomy', 'setup.ts'), '--context', context, '--stack', project, '--secrets', secrets, '--uid', uid, '--gid', gid, '--fresh',
     '--origin', `${github}/${ACCOUNT}.git`, '--origin-in-container', `${forContainers(github)}/${ACCOUNT}.git`,
     '--env', `DISCORD_BOT_TOKEN=${botToken}`, '--env', `DISCORD_HOME_CHANNEL=${HOME_CHANNEL}`]));
   // What the world mounts into the container (stack.override.yml): the clock — libfaketime, built once for
@@ -169,7 +171,7 @@ async function up(): Promise<void> {
   writeFileSync(resolve(worldDir, 'clock'), '+0\n');
   const ca = readFileSync(resolve(STATE, '.volter', 'worlds', 'open-autonomy', 'tls', 'ca-cert.pem'), 'utf8');
   // The agent image is built first (a build needs no world) so certifi's path can be read from it.
-  timed('agent image', () => sh([...compose, 'build', 'agent'], { env: { AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } }));
+  timed('agent image', () => sh([...compose, 'build', 'agent'], { env: { ...STACK, AGENT_SECRETS: secrets, WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null', AGENT_UID: uid, AGENT_GID: gid } }));
   const certifiPath = certifiIn(`${COOKBOOK_NAME}-agent:local`);
   const bundle = sh(['docker', '--context', context, 'run', '--rm', '--entrypoint', 'cat', `${COOKBOOK_NAME}-agent:local`, certifiPath], { quiet: true }).out;
   writeFileSync(resolve(worldDir, 'ca-bundle.pem'), `${bundle.trimEnd()}\n${ca}`);
@@ -211,7 +213,7 @@ function unseal(): void {
 // next worker the board dispatches takes the model from it.
 async function betweenTasks(): Promise<void> {
   await putMain('hermes/config.yaml', configYaml(), `hermes/config.yaml: model ${MODEL}`);
-  sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'sh', '-c', 'cd /work/project && git fetch -q origin && git checkout -q main && git reset -q --hard origin/main'], { quiet: true });
+  sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'sh', '-c', 'cd /work/project && git fetch -q origin && git checkout -q main && git reset -q --hard origin/main'], { quiet: true });
   timed('compose up (restart)', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--force-recreate', 'home-sync', 'agent'], { env: composeEnv(certifiIn(`${COOKBOOK_NAME}-agent:local`)) }));
   waitSchedule();
   await rotateKey();
@@ -242,7 +244,7 @@ async function rotateKey(): Promise<void> {
   let health = '';
   for (let i = 0; i < 20 && !health.includes(newKid); i++) {
     await Bun.sleep(500);
-    health = sh(['docker', '--context', context, 'exec', '-u', uid, 'oa-agent', 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
+    health = sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
   }
   if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key within ten seconds: ${health}`);
   await Bun.sleep(6500);
@@ -255,8 +257,8 @@ function down(purge: boolean): void {
   if (sh(['docker', 'context', 'inspect', context], { quiet: true, check: false }).code !== 0) return;
   unseal();
   reflectDown();
-  sh([...compose, 'down', '--remove-orphans'], { env: { AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null' }, quiet: true, check: false });
-  if (purge) for (const v of ['oa-home', 'oa-repo']) sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false });
+  sh([...compose, 'down', '--remove-orphans'], { env: { ...STACK, AGENT_SECRETS: resolve(stackDir, 'secrets'), WORLD_STACK_DIR: stackDir, WORLD_CERTIFI_PATH: '/dev/null' }, quiet: true, check: false });
+  if (purge) for (const v of [`${project}-home`, `${project}-repo`]) sh(['docker', '--context', context, 'volume', 'rm', '-f', v], { quiet: true, check: false });
   console.log(`stack: down${purge ? ', volumes removed' : ''}`);
 }
 
