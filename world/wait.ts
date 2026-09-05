@@ -39,6 +39,17 @@ for (;;) {
   // a reporter.
   const merged = landed ?? (await pulls()).find((p) => p.merged && !mergedBefore.has(p.number) && p.head.ref.startsWith('agent/'));
   if (merged && !landed) { landed = merged; console.log(`wait: pull request #${merged.number} (${merged.head.ref}) merged on the twin${current ? '' : ' — no session was published for it'}`); }
-  if (merged && (seen || !current)) process.exit(0);
+  // The board's verdict lands after the landing: the review lane runs once the worker has handed off. A fire is
+  // over when the item's task is done on its page (or the run published no item to look for).
+  if (merged && (seen || !current)) {
+    const item = seen?.item_id ?? current?.item_id;
+    if (!item) process.exit(0);
+    const view = (await pub.get(`/v1/accounts/${ENC}/items/${encodeURIComponent(item)}`)).body;
+    const lane = view?.task?.lane as string | undefined;
+    const line = `wait: board ${item}: ${lane ?? 'no task yet'}`;
+    if (line !== noted) { console.log(line); noted = line; }
+    if (lane === 'done') process.exit(0);
+    if (lane === 'blocked') { console.error(`wait: the board blocked ${item}: ${JSON.stringify(view?.task?.attempts?.slice(-1) ?? []).slice(0, 300)}`); process.exit(1); }
+  }
   await Bun.sleep(2000);
 }
