@@ -283,10 +283,11 @@ function PatronChip({ p }: { p: Patron }) {
   return p.url ? <a class="patron" href={p.url}>{inner}</a> : <span class="patron">{inner}</span>;
 }
 
-function VisionPanel({ md, repoUrl }: { md?: string; repoUrl?: string }) {
+// What the project is, as its substrate published it: the first paragraph leads; the rest is a page.
+function AboutPanel({ md, enc }: { md?: string; enc: string }) {
   const excerpt = leadParagraphs(md, 1);
   if (!excerpt) return null;
-  return <div class="panel"><h3>Vision</h3><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(excerpt) }} />{repoUrl ? <a class="docmore" href={`${repoUrl}/blob/HEAD/docs/VISION.md`}>Read the full vision →</a> : null}</div>;
+  return <div class="panel"><h3>About</h3><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(excerpt) }} />{(md ?? '').trim().length > excerpt.length ? <a class="docmore" href={`/p/${enc}/about`}>Read more →</a> : null}</div>;
 }
 
 export function parseChangelog(md: string, maxSections = 2, maxLines = 6): Array<{ heading: string; lines: string[] }> {
@@ -301,14 +302,14 @@ export function parseChangelog(md: string, maxSections = 2, maxLines = 6): Array
   if (cur) sections.push(cur);
   return sections.slice(0, maxSections).map((s) => ({ heading: s.heading, lines: s.lines.slice(0, maxLines) }));
 }
-function ChangelogPanel({ md, repoUrl }: { md?: string; repoUrl?: string }) {
+function ChangelogPanel({ md, enc }: { md?: string; enc: string }) {
   const withLines = parseChangelog(md ?? '').filter((s) => s.lines.length);
   if (!withLines.length) return null;
   return (
     <div class="panel">
       <h3>What's shipped</h3>
       {withLines.map((s) => <div class="release"><div class="rel-head">{s.heading}</div><ul class="changelog">{s.lines.map((l) => <li>{l}</li>)}</ul></div>)}
-      {repoUrl ? <a class="docmore" href={`${repoUrl}/blob/HEAD/CHANGELOG.md`}>Full changelog →</a> : null}
+      <a class="docmore" href={`/p/${enc}/shipped`}>Everything shipped →</a>
     </div>
   );
 }
@@ -364,11 +365,11 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
         </div>
         <div class="cols">
           <div>
-            <VisionPanel md={v.profile.vision_md} repoUrl={repoUrl} />
+            <AboutPanel md={v.profile.about_md} enc={enc} />
             <Spine account={v.account} roadmap={roadmap} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} />
             {revision ? <p class="note">Roadmap from <b>{revision.source}</b>, revision {revision.revision}, {fmtAgo(revision.ts, now)}{revision.by ? ` by ${revision.by}` : ''}{revision.conformance.length ? <> · this source cannot say: {revision.conformance.join('; ')}</> : null} · <a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision</a></p> : null}
             <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} model={v.profile.agent_model} provider={v.profile.agent_provider} harness={v.profile.agent_harness} skills={v.profile.agent_skills} scheduleJson={v.profile.schedule_json} />
-            <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
+            <ChangelogPanel md={v.profile.shipped_md} enc={enc} />
             <div class="panel">
               <h3>Goal</h3>
               <div class="goalrow" style="margin-bottom:2px"><span style={`font-size:15px;color:${C.body};font-weight:600`}>{g.label}</span></div>
@@ -422,6 +423,11 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
 
 export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants'): string {
   return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} grants={grants} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
+}
+
+// A project document in full: what it is, or everything shipped.
+export function renderDocPage(account: string, title: string, md: string | undefined): string {
+  return render(<Shell title={`${title} · ${nameOf(account)} · open-autonomy`}><Nav /><div class="wrap"><h1>{nameOf(account)} · {title}</h1>{md ? <div class="panel prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(md) }} /> : <p class="sub">Nothing published yet.</p>}<p><a href={`/p/${encodeURIComponent(account)}`}>← back to the project</a></p></div></Shell>);
 }
 
 export function renderSessionsPage(account: string, sessions: SessionSummary[], live: string[], nowMs: number): string {

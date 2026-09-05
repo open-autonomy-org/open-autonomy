@@ -4,7 +4,7 @@
 // is the ability to push, which the maintainer running it already has. The key spends the project's balance
 // and nothing else, and stops at zero.
 //
-//   bun .open-autonomy/mint-key.ts [--models a,b]                          # commit the claim, mint
+//   bun .open-autonomy/mint-key.ts [--models a,b] [--scopes spend,narrate,pay] [--out <file>]   # commit the claim, mint
 //   bun .open-autonomy/mint-key.ts --rotate [--grace <seconds>]            # with the current key; no commit
 //
 // The key is written to ~/.config/open-autonomy/agent.env (the file the key valve reads; created if
@@ -21,6 +21,8 @@ const account = arg('--account') ?? /^account:\s*(\S+)/m.exec(config)?.[1] ?? ''
 const platform = (process.env.OPEN_AUTONOMY_URL ?? /^platform:\s*(\S+)/m.exec(config)?.[1] ?? 'https://open-autonomy.org').replace(/\/$/, '');
 const base = `${platform}/v1`;
 const models = (arg('--models') ?? 'zai/glm-5.3-flash').split(',').map((m) => m.trim()).filter(Boolean);
+// The developer's key spends and narrates; the treasurer's adds `pay` (--scopes spend,narrate,pay --out …/treasurer.env).
+const scopes = arg('--scopes')?.split(',').map((x) => x.trim()).filter(Boolean);
 const dir = join(homedir(), '.config', 'open-autonomy');
 const envPath = arg('--out') ?? join(dir, 'agent.env');
 const git = (...args: string[]) => { const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'inherit'] }); if (r.status !== 0) { console.error(`git ${args.join(' ')} failed`); process.exit(1); } return r.stdout.toString().trim(); };
@@ -38,7 +40,7 @@ if (process.argv.includes('--rotate')) {
   writeFileSync(challenge.file, `${challenge.claim}\n`);
   git('add', challenge.file);
   if (git('status', '--porcelain', '--', challenge.file)) { git('commit', '-q', '-m', `claim: ${account} key`, '--', challenge.file); git('push', '-q'); }
-  minted = await keyMint(base, account, models);
+  minted = await keyMint(base, account, models, scopes);
 }
 if (!minted.ok || !minted.token) { console.error(`mint failed: ${JSON.stringify(minted)}`); process.exit(1); }
 mkdirSync(dir, { recursive: true });

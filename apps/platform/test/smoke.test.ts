@@ -157,15 +157,18 @@ describe('the platform, one smoke test per surface', () => {
     github.repos['acme/app'] = { description: 'x' };
     github.files['acme/app:.open-autonomy/config.yaml'] = 'rails:\n  card:\n    max_usd_cents: 500\n    categories: [computer_software_stores]\n  partner:\n    max_usd_cents: 100\n    partners: [browserless]\n';
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
-    const { token } = await mintKey(env);
+    // The developer's key (spend) cannot reach the rails; the treasurer's (pay) can, within the owner's bound.
+    expect((await request(env, '/v1/rails/card', { headers: { authorization: `Bearer ${(await mintKey(env)).token}` }, body: { usd_cents: 100 } })).status).toBe(403);
+    const { token } = await mintKey(env, 'acme/app', ['zai/glm-5.3-flash'], ['spend', 'narrate', 'pay']);
     const auth = { authorization: `Bearer ${token}` };
     expect((await request(env, '/v1/rails/card', { headers: auth, body: { usd_cents: 900 } })).status).toBe(403);
-    const card = (await requestJson(env, '/v1/rails/card', { headers: auth, body: { usd_cents: 250, purpose: 'a domain' } })).card;
+    const card = (await requestJson(env, '/v1/rails/card', { headers: auth, body: { usd_cents: 250, purpose: 'a domain', item: 'domain' } })).card;
     expect(card).toMatchObject({ last4: '4242', usd_cents: 250, single_use: true });
     const hook = async (event: unknown) => { const payload = JSON.stringify(event); return request(env, '/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': await sign('whsec_test', payload) }, body: payload }); };
     expect(await (await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_1', card: { id: card.id }, amount: 200, merchant_data: { name: 'Namecheap', category: 'computer_software_stores' } } } })).json()).toEqual({ approved: true });
     await hook({ type: 'issuing_transaction.created', data: { object: { id: 'ipi_1', type: 'capture', card: { id: card.id }, amount: -200, merchant_data: { name: 'Namecheap', category: 'computer_software_stores' } } } });
-    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls[0]).toMatchObject({ rail: 'card', merchant: 'Namecheap', usd_cents: 200 });
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls[0]).toMatchObject({ rail: 'card', merchant: 'Namecheap', usd_cents: 200, item: 'domain' });
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/items/domain')).purchases[0]).toMatchObject({ rail: 'card', merchant: 'Namecheap' });
     expect(stripe.cards[card.id].status).toBe('canceled');
     const second = (await requestJson(env, '/v1/rails/card', { headers: auth, body: { usd_cents: 100 } })).card;
     expect(await (await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_2', card: { id: second.id }, amount: 50, merchant_data: { category: 'bakeries' } } } })).json()).toEqual({ approved: false });
@@ -182,12 +185,12 @@ describe('the platform, one smoke test per surface', () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 500);
     github.repos['acme/app'] = { description: 'A todo list that builds itself', html_url: 'https://github.com/acme/app' };
-    github.files['acme/app:docs/VISION.md'] = '# Vision\n\nA todo list built by its own agent.';
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
     const { token } = await mintKey(env);
     await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.roadmap.v3', items: [{ id: 'add', phase: '1', status: 'active', title: 'todo add appends an item', acceptance: ['It appends.'] }] } } });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('session.started', 'run-1', { session_kind: 'run', item_id: 'add' }) });
-    for (const [path, expected] of [['/', 'A todo list that builds itself'], ['/p/acme%2Fapp', 'todo add appends an item'], ['/p/acme%2Fapp/sessions', '/sessions/run-1'], ['/p/acme%2Fapp/sessions/run-1', 'new EventSource('], ['/p/acme%2Fapp/items/add', 'It appends.']]) {
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('project.docs', 'project', { about_md: '# acme\n\nA todo list built by its own agent.', shipped_md: '## Unreleased\n- add: appends an item' }) });
+    for (const [path, expected] of [['/', 'A todo list that builds itself'], ['/p/acme%2Fapp', 'todo add appends an item'], ['/p/acme%2Fapp', 'built by its own agent'], ['/p/acme%2Fapp/about', 'built by its own agent'], ['/p/acme%2Fapp/shipped', 'appends an item'], ['/p/acme%2Fapp/sessions', '/sessions/run-1'], ['/p/acme%2Fapp/sessions/run-1', 'new EventSource('], ['/p/acme%2Fapp/items/add', 'It appends.']]) {
       const res = await request(env, path);
       expect(res.status).toBe(200);
       expect((await res.text()).includes(expected)).toBe(true);

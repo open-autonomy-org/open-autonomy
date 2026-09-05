@@ -33,6 +33,10 @@ export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 // beside the roadmap; it reads no harness's files for it.
 export interface AgentSetup { harness?: string; persona?: string; model?: string; provider?: string; schedule?: Array<{ name: string; schedule: string; description?: string }>; skills?: string[]; setup_md?: string }
 export const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
+// The project's documents, from whatever files the substrate keeps: what the project is (`about_md`; the page
+// leads with its first paragraph) and what shipped (`shipped_md`). Each field replaces what was there.
+export interface ProjectDocs { about_md?: string; shipped_md?: string }
+export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 
 export interface CloudEvent {
   specversion: '1.0';
@@ -128,6 +132,12 @@ export class OpenAutonomy {
     return r.results[0]?.ok === true;
   }
 
+  // The project's documents, replacing what was there.
+  async docs(d: ProjectDocs): Promise<boolean> {
+    const r = await this.send(event(DOCS_EVENT_TYPE, 'project', d as unknown as Record<string, unknown>));
+    return r.results[0]?.ok === true;
+  }
+
   // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.
   async task(t: TaskState): Promise<boolean> {
     const { item, ...data } = t;
@@ -202,8 +212,10 @@ export async function keyChallenge(baseUrl: string, account: string, fetchImpl: 
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/challenge?account=${encodeURIComponent(account)}`);
   return await res.json() as KeyChallenge;
 }
-export async function keyMint(baseUrl: string, account: string, models?: string[], fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
-  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ account, models }) });
+// `scopes` picks what the key may do (the platform's default is spend + narrate): a treasurer's key adds `pay`,
+// the rails; an owner-side driver's is `steer` alone.
+export async function keyMint(baseUrl: string, account: string, models?: string[], scopes?: string[], fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ account, models, ...(scopes ? { scopes } : {}) }) });
   return await res.json() as MintedKey;
 }
 // `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).

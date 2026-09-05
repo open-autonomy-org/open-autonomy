@@ -43,7 +43,7 @@ const project = join(work, 'probe');
 const local = JSON.parse(readFileSync(join(ROOT, 'packages/kit-hermes/package.json'), 'utf8')) as { version: string };
 const record = JSON.parse(readFileSync(join(project, '.open-autonomy/kit.json'), 'utf8')) as { version?: string };
 if (record.version !== local.version) fail(`the created project records kit ${record.version}, not the ${local.version} packed here — a stale package was served`);
-for (const f of ['STANDARDS.md', 'hermes/SOUL.md', 'hermes/kanban.seed.json', 'hermes/skills/open-autonomy/develop/SKILL.md', '.open-autonomy/reporter.ts', '.open-autonomy/sdk/client.ts', 'container/compose.yml']) if (!(await Bun.file(join(project, f)).exists())) fail(`the created project lacks ${f}\n${created.slice(-800)}`);
+for (const f of ['CONSTITUTION.md', 'CONTRIBUTING.md', 'hermes/SOUL.md', 'hermes/kanban.seed.json', 'hermes/skills/open-autonomy/develop/SKILL.md', 'hermes/profiles/treasurer/SOUL.md', '.open-autonomy/reporter.ts', '.open-autonomy/sdk/client.ts', 'container/compose.yml']) if (!(await Bun.file(join(project, f)).exists())) fail(`the created project lacks ${f}\n${created.slice(-800)}`);
 
 // 3. The generated repository passes its own check (its tooling from npm, as a clean machine gets it) and the installed kit's.
 run('bun install (the project)', ['bun', 'install'], project, outside());

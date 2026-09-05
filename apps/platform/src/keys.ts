@@ -17,7 +17,7 @@ export const CLAIM_FILE = '.open-autonomy-claim';
 export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 // A rotated-away key keeps working this long so a running stack can pick up the new one on its own time.
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
-const SCOPES: KeyScope[] = ['spend', 'narrate', 'steer', 'give'];
+const SCOPES: KeyScope[] = ['spend', 'pay', 'narrate', 'steer', 'give'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
 // A funder is a person: `@<github login>` on the books, proven by the claim file in a repository they own.
 const FUNDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;

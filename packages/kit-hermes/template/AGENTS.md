@@ -1,6 +1,6 @@
 # __PROJECT__ — rules for the agent working this repository
 
-- **What this is.** __PROJECT__, a project that builds itself through Open Autonomy. `docs/VISION.md` is why. The board is what you build next, in order. `STANDARDS.md` is the bar. `hermes/` is you.
+- **What this is.** __PROJECT__, a project that builds itself through Open Autonomy. `CONSTITUTION.md` is what it is and must remain. The board is what you build next, in order. `CONTRIBUTING.md` is how code is written here. `hermes/` is you.
 - **Checks.** `bun run check` from the repository root is the project's definition of green. It must pass before every push.
 - **Verify.** State here where the project is verified: its check, and any local or twinned surface. You cannot reach production and must not try. Where an acceptance line names a surface, exercise the surface.
 - **Git.** You cannot push to `main` and must not try. Work on `agent/<task id>` off a fresh `origin/main`, commit small with the task id first in the subject, and push the branch; the landing workflow opens the pull request and it merges itself when the checks pass. Never rewrite history, never force-push.

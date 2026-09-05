@@ -9,14 +9,15 @@ import type { Env, KeyClaims } from './types.js';
 // against the balance and the daily rail like a model call, and both leave a record on the audit trail
 // naming the rail, the merchant or partner, and the amount.
 
-// POST /v1/rails/card {usd_cents, purpose?} (spend scope) → a single-use virtual card bounded to the
+// POST /v1/rails/card {usd_cents, purpose?, item?} (pay scope) → a single-use virtual card bounded to the
 // amount and the owner's merchant categories. The card's details are what Stripe returns: last4 and
 // expiry always; number and cvc where the account exposes them. The reservation is held until the card
 // is used once (settled) or declined (released).
 export async function mintCard(req: Request, env: Env, claims: KeyClaims): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   if (!stripeConfigured(env)) return error('rail_not_configured', 503, { rail: 'card' });
-  const body = parseJson<{ usd_cents?: number; purpose?: string }>(await req.text());
+  const body = parseJson<{ usd_cents?: number; purpose?: string; item?: string }>(await req.text());
+  const item = typeof body?.item === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(body.item) ? body.item : undefined;
   if (!body || !Number.isInteger(body.usd_cents) || (body.usd_cents as number) <= 0) return error('invalid_amount');
   const ledger = new LedgerClient(env.LIMITS);
   const view = await ledger.project(claims.account);
@@ -40,17 +41,18 @@ export async function mintCard(req: Request, env: Env, claims: KeyClaims): Promi
     metadata: { account: claims.account, request_id: requestId, purpose: (body.purpose ?? '').slice(0, 200) },
   });
   if (!card.ok || !card.body.id) { await ledger.release(requestId); return error('card_issuer_unavailable', 502); }
-  const record: CardRecord = { id: card.body.id, account: claims.account, request_id: requestId, usd_cents: body.usd_cents as number, categories: rails.card.categories, purpose: (body.purpose ?? '').slice(0, 200), last4: card.body.last4 ?? '', status: 'minted', created_at: new Date().toISOString() };
+  const record: CardRecord = { id: card.body.id, account: claims.account, request_id: requestId, usd_cents: body.usd_cents as number, categories: rails.card.categories, purpose: (body.purpose ?? '').slice(0, 200), ...(item ? { item } : {}), last4: card.body.last4 ?? '', status: 'minted', created_at: new Date().toISOString() };
   await ledger.cardPut(record);
   const details = await stripe<{ number?: string; cvc?: string; exp_month?: number; exp_year?: number }>(env, 'GET', `/v1/issuing/cards/${card.body.id}`, { 'expand[]': ['number', 'cvc'] });
   return json({ ok: true, card: { id: record.id, last4: record.last4, exp_month: details.body.exp_month ?? card.body.exp_month, exp_year: details.body.exp_year ?? card.body.exp_year, number: details.body.number, cvc: details.body.cvc, usd_cents: record.usd_cents, categories: record.categories, single_use: true } });
 }
 
-// POST /v1/rails/partner {partner, usd_cents, unit?, quantity?, reference?} (spend scope) → the charge
+// POST /v1/rails/partner {partner, usd_cents, unit?, quantity?, reference?, item?} (pay scope) → the charge
 // settles now, as a partner rail record. The owner names the partners and the most one charge may be.
 export async function settlePartner(req: Request, env: Env, claims: KeyClaims): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
-  const body = parseJson<{ partner?: string; usd_cents?: number; unit?: string; quantity?: number; reference?: string }>(await req.text());
+  const body = parseJson<{ partner?: string; usd_cents?: number; unit?: string; quantity?: number; reference?: string; item?: string }>(await req.text());
+  const item = typeof body?.item === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(body.item) ? body.item : undefined;
   if (!body || typeof body.partner !== 'string' || !/^[a-z0-9][a-z0-9.-]{0,63}$/.test(body.partner)) return error('invalid_partner');
   if (!Number.isFinite(body.usd_cents) || (body.usd_cents as number) <= 0) return error('invalid_amount');
   const ledger = new LedgerClient(env.LIMITS);
@@ -62,7 +64,7 @@ export async function settlePartner(req: Request, env: Env, claims: KeyClaims): 
   const requestId = crypto.randomUUID();
   const reserved = await ledger.reserve(requestId, claims.account, claims.kid, body.usd_cents as number, Number(env.MAX_GLOBAL_DAILY_USD_CENTS ?? 5000));
   if (!reserved.ok) return error(reserved.error, 402, { account: claims.account, balance_usd_cents: reserved.balance_usd_cents, reserved_usd_cents: reserved.reserved_usd_cents, available_usd_cents: reserved.available_usd_cents, needed_usd_cents: reserved.needed_usd_cents });
-  await ledger.consume(requestId, body.usd_cents as number, { request_id: requestId, rail: 'partner', partner: body.partner, unit: typeof body.unit === 'string' ? body.unit.slice(0, 40) : undefined, quantity: typeof body.quantity === 'number' ? body.quantity : undefined, reference: typeof body.reference === 'string' ? body.reference.slice(0, 120) : undefined, reserved_usd_cents: body.usd_cents as number, actual_usd_cents: body.usd_cents as number, outcome: 'ok' });
+  await ledger.consume(requestId, body.usd_cents as number, { request_id: requestId, rail: 'partner', partner: body.partner, unit: typeof body.unit === 'string' ? body.unit.slice(0, 40) : undefined, quantity: typeof body.quantity === 'number' ? body.quantity : undefined, reference: typeof body.reference === 'string' ? body.reference.slice(0, 120) : undefined, item, reserved_usd_cents: body.usd_cents as number, actual_usd_cents: body.usd_cents as number, outcome: 'ok' });
   return json({ ok: true, rail: 'partner', partner: body.partner, usd_cents: body.usd_cents, request_id: requestId, balance_usd_cents: (await ledger.funding(claims.account)).balance_usd_cents });
 }
 
@@ -109,7 +111,7 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
     const card = cardId ? (await ledger.card(cardId)).card : undefined;
     if (!card || card.status === 'settled') return json({ ok: true, ignored: card ? 'already settled' : 'unknown card' });
     const spent = Math.abs(Number(obj.amount ?? 0));
-    await ledger.consume(card.request_id, spent, { request_id: card.request_id, rail: 'card', merchant: String(obj.merchant_data?.name ?? card.merchant ?? ''), category: String(obj.merchant_data?.category ?? card.category ?? ''), card_last4: card.last4, reference: String(obj.id ?? ''), reserved_usd_cents: card.usd_cents, actual_usd_cents: spent, outcome: 'ok' });
+    await ledger.consume(card.request_id, spent, { request_id: card.request_id, rail: 'card', merchant: String(obj.merchant_data?.name ?? card.merchant ?? ''), category: String(obj.merchant_data?.category ?? card.category ?? ''), card_last4: card.last4, reference: String(obj.id ?? ''), item: card.item, reserved_usd_cents: card.usd_cents, actual_usd_cents: spent, outcome: 'ok' });
     await ledger.cardPut({ ...card, status: 'settled', settled_usd_cents: spent });
     await stripe(env, 'POST', `/v1/issuing/cards/${card.id}`, { status: 'canceled' });
     return json({ ok: true, settled_usd_cents: spent });

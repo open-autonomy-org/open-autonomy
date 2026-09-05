@@ -1,6 +1,6 @@
 # notes-api — rules for the agent working this repository
 
-- **What this is.** notes-api, a project that builds itself through Open Autonomy. `docs/VISION.md` is why. The board is what you build next, in order. `STANDARDS.md` is the bar. `hermes/` is you.
+- **What this is.** notes-api, a project that builds itself through Open Autonomy. `CONSTITUTION.md` is what it is and must remain. The board is what you build next, in order. `CONTRIBUTING.md` is how code is written here. `hermes/` is you.
 - **Checks.** `bun run check` from the repository root is the project's definition of green. It must pass before every push. Every item adds tests for what it adds.
 - **Verify.** This project's surface is its HTTP server. An acceptance line is verified by a test that starts the server with `serve(0)` and probes the route, and by `bun run serve` with `curl` against it. You cannot reach production and must not try.
 - **Git.** You cannot push to `main` and must not try. Work on `agent/<task id>` off a fresh `origin/main`, commit small with the task id first in the subject, and push the branch; the landing workflow opens the pull request and it merges itself when the checks pass. Never rewrite history, never force-push.

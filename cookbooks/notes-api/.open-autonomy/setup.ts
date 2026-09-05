@@ -5,7 +5,8 @@
 //   bun .open-autonomy/setup.ts [--context <docker context>] [--secrets <dir>] [--origin <url>]
 //                               [--origin-in-container <url>] [--env KEY=VALUE ...] [--uid N --gid N] [--fresh]
 //
-//   1. the key file  <secrets>/agent.env (default ~/.config/open-autonomy), from mint-key.ts — found or named
+//   1. the key files <secrets>/agent.env (the developer's: spend + narrate) and <secrets>/treasurer.env (the
+//                    treasurer's: spend + narrate + pay), default ~/.config/open-autonomy, from mint-key.ts — found or named
 //   2. the image     hermes-agent:<tag> from container/hermes.pin — present, copied from another Docker host
 //                    that has it, or built (container/build-hermes.sh, ~10 minutes)
 //   3. the volumes   oa-home from hermes/ (its .env: the valve's address, the dummy key, every --env), oa-repo
@@ -43,8 +44,11 @@ if (token) {
   try { const c = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8')) as { kid?: string; exp?: string }; say(`key: ${c.kid} in ${keyFile}, expires ${c.exp}`); } catch { say(`key: present in ${keyFile}`); }
 } else {
   say(`no key in ${keyFile}`);
-  todo.push(`mint the key: bun .open-autonomy/mint-key.ts${secrets === join(homedir(), '.config', 'open-autonomy') ? '' : ` --out ${keyFile}`}`);
+  todo.push(`mint the developer's key: bun .open-autonomy/mint-key.ts${secrets === join(homedir(), '.config', 'open-autonomy') ? '' : ` --out ${keyFile}`}`);
 }
+const payFile = join(secrets, 'treasurer.env');
+if (existsSync(payFile) && /^OPEN_AUTONOMY_KEY=/m.test(readFileSync(payFile, 'utf8'))) say(`treasurer's key: in ${payFile}`);
+else { say(`no treasurer's key in ${payFile}`); todo.push(`mint the treasurer's key (the only one that pays): bun .open-autonomy/mint-key.ts --scopes spend,narrate,pay --out ${payFile}`); }
 
 // 2. The image.
 const pin = Object.fromEntries(readFileSync(join(here, 'container', 'hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k && !k.startsWith('#')));

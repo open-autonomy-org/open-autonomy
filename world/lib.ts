@@ -48,6 +48,14 @@ export async function git(cwd: string, ...args: string[]): Promise<string> {
   return out.trim();
 }
 
+// The treasurer's key file (spend + narrate + pay), minted beside the developer's.
+export function treasurerEnv(): Record<string, string> {
+  const p = resolve(DATA, 'treasurer.env');
+  if (!existsSync(p)) throw new Error(`${p} is missing — run \`bun world/run.ts seed\` first`);
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(p, 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2]; }
+  return out;
+}
 export function agentEnv(): Record<string, string> {
   const p = resolve(DATA, 'agent.env');
   if (!existsSync(p)) throw new Error(`${p} is missing — run \`bun world/run.ts seed\` first`);

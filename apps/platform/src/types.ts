@@ -42,14 +42,15 @@ export interface KeyClaims {
   kid: string;
   account: string;
   models: string[];
-  // What the key may do. `spend`: the rails; `narrate`: the development stream; `steer`: push a roadmap
-  // revision (an owner-side driver's key, which spends nothing); `give`: a funder's key, which moves grant
-  // credits from the funder's own books to a project. Absent means spend + narrate.
+  // What the key may do. `spend`: the model rail; `pay`: the card and partner rails (a treasurer's key, kept
+  // apart from the developer's); `narrate`: the development stream; `steer`: push a roadmap revision (an
+  // owner-side driver's key, which spends nothing); `give`: a funder's key, which moves grant credits from the
+  // funder's own books to a project. Absent means spend + narrate.
   scopes?: KeyScope[];
   iat: string;
   exp: string;
 }
-export type KeyScope = 'spend' | 'narrate' | 'steer' | 'give';
+export type KeyScope = 'spend' | 'pay' | 'narrate' | 'steer' | 'give';
 export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
 export const grantsAccount = (env: Env): string => env.GRANTS_ACCOUNT || 'open-autonomy-org/grants';
 export const isFunder = (account: string): boolean => account.startsWith('@');
@@ -75,5 +76,7 @@ export interface UsageEvent {
   unit?: string;
   quantity?: number;
   reference?: string;
+  // The work item a purchase serves, named by the payer: the item page shows it under that item.
+  item?: string;
   outcome: 'ok' | 'metering_error';
 }
