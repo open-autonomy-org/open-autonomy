@@ -36,6 +36,11 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   agent is the only thing that spends on the real platform. Models are `zai/glm-5.3-flash`, everywhere.
 - `bun run check` = every package + the kit's check on the cookbook + the cookbook's check.
   `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
+- **Tests are smoke tests.** One per surface, end to end through the worker, saying a change broke the
+  surface, not why; one line each for the security claims (a forged key, a wrong scope, a forged webhook).
+  The world gate is the proof. Do not grow the suites; grow the world.
+- **Money in is Polar** (the merchant of record for patronage); **cards out are Stripe Issuing**. Nothing
+  else takes or moves money.
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the
   gate — up, seed, probe, one clock fire, wait, verify, down. Run it before deploying anything that touches
   metering, keys, the stream, the docs sync or the kit. The reporter's supercode with Hermes support is
