@@ -219,6 +219,9 @@ async function rotateKey(): Promise<void> {
   if (!before) throw new Error(`stack: no key in ${file} to rotate`);
   const r = Bun.spawnSync({ cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'mint-key.ts'), '--rotate', '--out', file, '--grace', '5'], cwd: COOKBOOK, env: { ...process.env, OPEN_AUTONOMY_URL: platform }, stdout: 'pipe', stderr: 'pipe' });
   if (r.exitCode !== 0) throw new Error(`stack: key rotation failed: ${r.stderr.toString().slice(-400)}`);
+  // The tool writes the platform's address as it reached it (the host's); the valve reads the file from inside
+  // the stack, so the address is rewritten as the containers see it — the same file, the same inode.
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^OPEN_AUTONOMY_BASE_URL=.*$/m, `OPEN_AUTONOMY_BASE_URL=${forContainers(platform)}/v1`));
   const after = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(readFileSync(file, 'utf8'))?.[1];
   if (!after || after === before) throw new Error('stack: the key file was not rewritten with a new key');
   const api = (token: string, path: string) => fetch(`${platform}${path}`, { headers: { authorization: `Bearer ${token}` } });
