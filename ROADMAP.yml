@@ -99,14 +99,14 @@ items:
       - The reporter publishes the worker's and the reviewer's sessions the way it publishes the run today, each with its cost, filed under the item; the item page shows both lanes.
       - Proven in the world on the cookbook, one item per fire as today, with the review lane's session on the page; and on this repository's own agent.
 
-  - id: board-on-the-page
+  - id: through-the-sdk
     phase: 3
     priority: high
     status: active
-    title: The agent's board is read through the SDK and shown on the page
+    title: Everything a page shows about the agent comes through the SDK; the platform knows no harness
     acceptance:
       - "The reporter reads the agent's board through supercode's workflow layer and publishes each task that names a roadmap item as that item's board state — lane, attempts, handoff, review verdicts — on the development stream (`org.open-autonomy.item.task`); the item's view and page carry it beside the sessions, live."
-      - "The SDK's kanban driver maps a board onto the roadmap model (every task an item, its lane the status), so a board and a file speak the same model to whatever reads them; no configuration and no tool outside the reporter is involved."
+      - "The agent's setup (`org.open-autonomy.agent.setup`: persona, model, schedule, skills, how it runs) and the roadmap it works (`POST /v1/agent/roadmap`, a narrate key, any source label) are published by the substrate; the platform pulls no harness file and no roadmap file, only the repository's public docs and the owner's config. Hermes and the file roadmap are starters the kit makes."
       - The world proves the first reading: every landed item's page shows its task done after a requested and approved review.
   - id: agent-side-rails
     phase: 3

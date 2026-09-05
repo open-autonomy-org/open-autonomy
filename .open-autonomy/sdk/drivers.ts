@@ -6,7 +6,7 @@
 // narrates ROADMAP.yml, and a driver's `reconcile` plan carries a finished item back to the native side.
 import { ROADMAP_SCHEMA, type Roadmap, type RoadmapItem, type RoadmapStatus } from './roadmap.ts';
 
-export type RoadmapSource = 'file' | 'github-milestones' | 'jira' | 'hermes-kanban';
+export type RoadmapSource = 'file' | 'github-milestones' | 'jira';
 export const ROADMAP_SOURCES: readonly RoadmapSource[] = ['file', 'github-milestones', 'jira'];
 
 export interface RoadmapConfig {
@@ -47,30 +47,10 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
 
 export interface DriverConformance { source: RoadmapSource; cannot: string[] }
 
-// The Hermes board read onto the roadmap model: every task on the board is an item. What the reporter reads
-// through supercode's workflow layer, mapped here so the board and a file speak the same model. A task filed from a roadmap
-// names its item (`ROADMAP_ITEM=<id>` in its body) and keeps that id; any other task is an item under its
-// own task id. The lane is the status: triage, todo, scheduled and ready are planned; running, review and
-// blocked are active; done is done; archived tasks are left out. The body's bullet lines are the acceptance.
-export interface BoardTask { id: string; title: string; body?: string | null; lane: string; priority?: number; created_at?: string }
-export function fromKanban(tasks: BoardTask[]): Roadmap {
-  const status = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : ['running', 'review', 'blocked'].includes(lane) ? 'active' : 'planned');
-  const items = tasks
-    .filter((t) => t.lane !== 'archived')
-    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || (a.created_at ?? '').localeCompare(b.created_at ?? ''))
-    .map((t): RoadmapItem => {
-      const body = t.body ?? '';
-      const id = /^ROADMAP_ITEM=([a-z0-9][a-z0-9-]*)$/m.exec(body)?.[1] ?? t.id.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-      const acceptance = body.split('\n').filter((l) => /^\s*-\s+/.test(l)).map((l) => l.replace(/^\s*-\s+/, '').trim()).filter(Boolean);
-      return { id, title: t.title, status: status(t.lane), acceptance };
-    });
-  return { schema: 'open-autonomy.roadmap.v3', items };
-}
 export const CONFORMANCE: Record<RoadmapSource, string[]> = {
   file: [],
   'github-milestones': ['priority (a milestone has none; every item is medium)', 'proposed (a milestone is open or closed; open is planned)', 'acceptance lines are the description\'s bullet lines, or its paragraphs'],
   jira: ['phase (an epic has none; the epic\'s rank order is the phase)', 'proposed and active map from the status category: to-do is planned, in-progress is active, done is done'],
-  'hermes-kanban': ['a phase and a priority (a board has lanes and a priority number, not phases); an item the board does not know (the roadmap is what is filed on the board)'],
 };
 
 // ---- GitHub milestones -----------------------------------------------------------------------------------

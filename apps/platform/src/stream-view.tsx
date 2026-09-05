@@ -201,41 +201,30 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
   );
 }
 
-// ---- Setup: who the agent is and how it runs, read from its checked-in home ------------------------------
-export interface AgentSetup { model?: string; provider?: string }
-export function parseAgentConfig(yaml: string | undefined): AgentSetup {
-  if (!yaml) return {};
-  const out: AgentSetup = {};
-  let inModel = false;
-  for (const raw of yaml.split('\n')) {
-    if (/^\S/.test(raw)) inModel = /^model:\s*$/.test(raw);
-    else if (inModel) { const m = /^\s+(default|provider):\s*(.+?)\s*$/.exec(raw); if (m) out[m[1] === 'default' ? 'model' : 'provider'] = m[2].replace(/^["']|["']$/g, ''); }
-  }
-  return out;
-}
+// ---- Setup: who the agent is and how it runs, as its substrate published it through the SDK -----------------
 export function leadParagraphs(md: string | undefined, max = 2): string {
   if (!md) return '';
   return md.split('\n').filter((l) => !/^#/.test(l)).join('\n').trim().split(/\n{2,}/).slice(0, max).join('\n\n').trim();
 }
-export function SetupPanel({ setupMd, soulMd, configYaml, scheduleJson, repoUrl }: { setupMd?: string; soulMd?: string; configYaml?: string; scheduleJson?: string; repoUrl?: string }) {
+export function SetupPanel({ setupMd, soulMd, model, provider, harness, skills, scheduleJson }: { setupMd?: string; soulMd?: string; model?: string; provider?: string; harness?: string; skills?: string; scheduleJson?: string }) {
   const soul = leadParagraphs(soulMd, 2);
   const setup = leadParagraphs(setupMd, 2);
-  const cfg = parseAgentConfig(configYaml);
   const jobs = parseSchedule(scheduleJson);
-  if (!soul && !setup && !cfg.model) return null;
-  const file = (path: string) => (repoUrl ? `${repoUrl}/blob/HEAD/hermes/${path}` : undefined);
+  const known = (skills ?? '').split(',').map((k) => k.trim()).filter(Boolean);
+  if (!soul && !setup && !model) return null;
   return (
     <div class="panel" id="setup">
       <h3>Setup</h3>
-      <p class="note">Everything the agent is lives in the repository's <a href={repoUrl ? `${repoUrl}/tree/HEAD/hermes` : '#'}>hermes/</a> home, checked in. This page reads it; nothing here drives the agent.</p>
+      <p class="note">Who the agent is and how it runs, as it publishes it through the SDK. Nothing here drives the agent; it is the agent's own account of itself.</p>
       <div class="facts">
-        {cfg.model ? <div class="fact"><span class="k">model</span><span class="v">{cfg.model}</span></div> : null}
+        {harness ? <div class="fact"><span class="k">harness</span><span class="v">{harness}</span></div> : null}
+        {model ? <div class="fact"><span class="k">model</span><span class="v">{model}{provider ? ` (${provider})` : ''}</span></div> : null}
         <div class="fact"><span class="k">calls</span><span class="v">through the platform on the project's key, every one metered</span></div>
         {jobs.length ? <div class="fact"><span class="k">schedule</span><span class="v">{jobs.map((j) => `${j.name ?? 'job'} · ${j.schedule ?? '?'}`).join(' · ')}</span></div> : null}
+        {known.length ? <div class="fact"><span class="k">skills</span><span class="v">{known.join(' · ')}</span></div> : null}
       </div>
-      {soul ? <><h4>Who it is <a class="filelink" href={file('SOUL.md')}>SOUL.md</a></h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(soul) }} /></> : null}
-      {setup ? <><h4>How it runs <a class="filelink" href={file('README.md')}>hermes/README.md</a></h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(setup) }} /></> : null}
-      {repoUrl ? <a class="docmore" href={file('config.yaml')}>The model config →</a> : null}
+      {soul ? <><h4>Who it is</h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(soul) }} /></> : null}
+      {setup ? <><h4>How it runs</h4><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(setup) }} /></> : null}
     </div>
   );
 }

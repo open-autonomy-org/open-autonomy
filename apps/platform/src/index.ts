@@ -176,7 +176,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (req.method !== 'POST') return methodNotAllowed();
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    // A substrate narrates the roadmap it works (narrate); an owner-side driver steers it (steer).
+    if (!hasScope(claims, 'steer') && !hasScope(claims, 'narrate')) return error('scope_required', 403, { scope: 'narrate' });
     const body = parseJson<{ source?: string; roadmap?: Roadmap; by?: string }>(await req.text());
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);

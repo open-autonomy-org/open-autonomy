@@ -83,16 +83,19 @@ export interface AccountProfile {
   tagline_override?: string;
   cover_override?: string;
   vision_md?: string;
-  roadmap_yml?: string;
   changelog_md?: string;
+  // The agent's setup, as its substrate publishes it through the SDK (never read from a harness's files).
   schedule_json?: string;
   setup_md?: string;
   soul_md?: string;
-  agent_config_yaml?: string;
+  agent_harness?: string;
+  agent_model?: string;
+  agent_provider?: string;
+  agent_skills?: string;
   // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
   config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'roadmap_yml', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_config_yaml', 'config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'vision_md', 'changelog_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
 
 export interface Tier { usd_cents: number; name: string }
 
@@ -298,6 +301,7 @@ export class LimitLedger implements DurableObject {
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
       case 'task_put': return json(await this.taskPut(s('account'), s('item_id'), body.task as Record<string, unknown>));
+      case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
@@ -700,6 +704,17 @@ export class LimitLedger implements DurableObject {
     return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
   }
 
+  // The agent's setup replaces what was there: its substrate publishes the whole record each time.
+  private async setupPut(account: string, setup: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+    if (!setup || typeof setup !== 'object') return { ok: false, error: 'invalid_setup' };
+    const text = (v: unknown, max: number): string | undefined => (typeof v === 'string' ? v.slice(0, max) : undefined);
+    const schedule = Array.isArray(setup.schedule) ? setup.schedule.slice(0, 20).filter((j: unknown) => j && typeof j === 'object').map((j: Record<string, unknown>) => ({ name: text(j.name, 80), schedule: text(j.schedule, 80), prompt: text(j.description, 400) })) : [];
+    const skills = Array.isArray(setup.skills) ? setup.skills.filter((k: unknown) => typeof k === 'string').slice(0, 50).map((k: string) => k.slice(0, 80)) : [];
+    const profile: Partial<AccountProfile> = { soul_md: text(setup.persona, 20_000) ?? '', setup_md: text(setup.setup_md, 20_000) ?? '', schedule_json: JSON.stringify({ jobs: schedule }), agent_harness: text(setup.harness, 40) ?? '', agent_model: text(setup.model, 120) ?? '', agent_provider: text(setup.provider, 40) ?? '', agent_skills: skills.join(',') };
+    await this.setProfile(account, profile);
+    return { ok: true };
+  }
+
   // The board's state for an item replaces what was there: the reporter publishes the whole task each time.
   private async taskPut(account: string, item: string, task: Record<string, unknown>): Promise<{ ok: boolean; error?: string; task?: TaskRecord }> {
     const item_id = itemId(item);
@@ -770,7 +785,8 @@ export class LimitLedger implements DurableObject {
   private async roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string): Promise<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }> {
     const model = normalizeRoadmap(roadmap);
     if (!model) return { ok: false, error: 'invalid_roadmap' };
-    if (!(['file', 'github-milestones', 'jira'] as string[]).includes(source)) return { ok: false, error: 'invalid_source' };
+    // The source is the substrate's own label: a file, a tracker, a board, whatever reads its roadmap onto the model.
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(source)) return { ok: false, error: 'invalid_source' };
     const a = this.ensureAcct(account);
     const current = a.roadmap_revision ? await this.ctx.storage.get<RoadmapRevision>(`roadmap:${account}:${String(a.roadmap_revision).padStart(9, '0')}`) : undefined;
     if (current && sameRoadmap(current.roadmap, model) && current.source === source) return { ok: true, unchanged: true, revision: current };
@@ -1171,6 +1187,7 @@ export class LedgerClient {
   sessions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
   session(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
+  setupPut(account: string, setup: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
   taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.rpc<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
   item(account: string, itemId: string) { return this.rpc<ItemView>('item', { account, item_id: itemId }); }

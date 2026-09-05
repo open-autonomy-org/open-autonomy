@@ -12,12 +12,7 @@ const STALE_MS = 10 * 60 * 1000;
 
 export const DOC_PATHS = {
   vision_md: 'docs/VISION.md',
-  roadmap_yml: 'ROADMAP.yml',
   changelog_md: 'CHANGELOG.md',
-  schedule_json: 'hermes/cron/jobs.seed.json',
-  setup_md: 'hermes/README.md',
-  soul_md: 'hermes/SOUL.md',
-  agent_config_yaml: 'hermes/config.yaml',
 } as const;
 
 interface GitHubRepo {
@@ -67,13 +62,10 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     Object.keys(DOC_PATHS).forEach((k, i) => { profile[k] = docs[i] ?? ''; });
     const ledger = new LedgerClient(env.LIMITS);
     await ledger.setProfile(account, profile);
-    // The roadmap, through the driver the project's config names. The platform-pulled drivers land here;
-    // an owner-side driver (jira) pushes its own revisions and the sync leaves them alone.
+    // The roadmap arrives through the SDK: a substrate narrates the file it works, an owner-side driver pushes
+    // its own revisions. The one platform-pulled driver is GitHub milestones, a public tracker with no credential.
     const roadmapCfg = parseRoadmapConfig(config ?? '');
-    if (roadmapCfg.source === 'file') {
-      const text = roadmapCfg.path === 'ROADMAP.yml' ? docs[Object.keys(DOC_PATHS).indexOf('roadmap_yml')] : await fetchRepoText(env, account, roadmapCfg.path);
-      if (text) await ledger.roadmapSet(account, parseRoadmap(text), 'file', 'sync');
-    } else if (roadmapCfg.source === 'github-milestones') {
+    if (roadmapCfg.source === 'github-milestones') {
       const milestones = await fetchMilestones(env, roadmapCfg.github?.repo ?? account);
       if (milestones) await ledger.roadmapSet(account, fromMilestones(milestones), 'github-milestones', 'sync');
     }

@@ -3,7 +3,10 @@
 // world (bun world/run.ts probe, after seed). Each line is an acceptance line of the platform read back
 // through a public route: the books move on a metered call, the key survives a redeploy, a session posted
 // on the key lands on the page, an item view carries what touched it, egress to the docs goes to the twin.
-import { ACCOUNT, ENC, MODEL, agentEnv, api, need } from './lib.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { parseRoadmap } from '../packages/sdk/src/roadmap.ts';
+import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need } from './lib.ts';
 
 const platform = need('PLATFORM_URL');
 const pub = api(platform);
@@ -47,8 +50,11 @@ for (const path of [`/p/${ENC}`, `/p/${ENC}/sessions/probe-1`, `/p/${ENC}/items/
   if (page.status !== 200) fail(`${path} → ${page.status}`);
   if (!page.text.includes('probe')) fail(`${path} does not show the probe's session`);
 }
+// The roadmap arrives through the key, the way a project's reporter narrates the file it works.
+const pushed = await bearer.post('/v1/agent/roadmap', { source: 'file', roadmap: parseRoadmap(readFileSync(resolve(COOKBOOK, 'ROADMAP.yml'), 'utf8')) });
+if (pushed.status !== 200) fail(`roadmap push through the key → ${pushed.status} ${pushed.text.slice(0, 200)}`);
 const page = (await pub.get(`/p/${ENC}`)).text;
-if (!page.includes('todo add appends an item')) fail('the project page does not render the roadmap synced from the twin');
+if (!page.includes('todo add appends an item')) fail('the project page does not render the roadmap published through the key');
 if (!/last run .*: done/.test(page)) fail('the project page has no health line naming the last run');
 ok.push('the session, the update and the item read back and render on the page');
 
@@ -72,7 +78,7 @@ ok.push('refusals and widgets as specified');
 //    second project whose config names github-milestones is created on the twin with two milestones, and
 //    the platform pulls them, credential-free, into a revision with the driver's conformance.
 const road = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body;
-if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not come through the file driver: ${JSON.stringify(road).slice(0, 200)}`);
+if (road?.revision?.source !== 'file' || !road.revision.roadmap.items.length) fail(`the cookbook's roadmap did not arrive through the key: ${JSON.stringify(road).slice(0, 200)}`);
 const gh = api(need('GITHUB_TWIN_URL'));
 const created = await gh.post('/orgs/cookbook/repos', { name: 'milestones-demo' });
 if (![201, 422].includes(created.status)) fail(`github twin: create milestones-demo → ${created.status}`);

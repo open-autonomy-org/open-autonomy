@@ -17,6 +17,8 @@ const SESSION_EVENT_TYPES: Record<string, 'started' | 'turns' | 'ended'> = {
 const UPDATE_EVENT_TYPE = 'org.open-autonomy.item.update';
 // The board's state for an item (its task's lane, attempts, handoff, reviews), replaced whole each time.
 const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
+// The agent's setup: who it is, its model, its schedule, what it knows — published by its substrate.
+const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 
 export async function agentEvents(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
@@ -33,6 +35,12 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     const data = redactDeep(e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
     if (e.type === UPDATE_EVENT_TYPE) {
       const result = await ledger.postUpdate(claims.account, e.subject, String(data.text ?? ''), typeof data.session === 'string' ? data.session : undefined, typeof e.time === 'string' ? e.time : undefined);
+      results.push({ id: e.id, ...result });
+      if (!result.ok) return json({ ok: false, results }, { status: 400 });
+      continue;
+    }
+    if (e.type === SETUP_EVENT_TYPE) {
+      const result = await ledger.setupPut(claims.account, data);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;

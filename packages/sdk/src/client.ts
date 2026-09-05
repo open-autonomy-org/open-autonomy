@@ -28,6 +28,11 @@ export interface TaskAttempt { id: string; profile?: string; status: string; sta
 export interface TaskReview { verdict: 'requested' | 'approved' | 'changes_requested' | 'escalated'; by?: string; reason?: string; at?: string }
 export interface TaskState { item: string; task_id: string; lane: string; title?: string; assignee?: string; attempts: TaskAttempt[]; reviews: TaskReview[]; handoff?: { summary?: string; metadata?: unknown }; updated_at?: string }
 export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
+// Who the agent is and how it runs, as its substrate publishes it: a persona (the identity text it runs
+// with), its model, its schedule, what it knows how to do, and how to run it. The platform shows this
+// beside the roadmap; it reads no harness's files for it.
+export interface AgentSetup { harness?: string; persona?: string; model?: string; provider?: string; schedule?: Array<{ name: string; schedule: string; description?: string }>; skills?: string[]; setup_md?: string }
+export const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 
 export interface CloudEvent {
   specversion: '1.0';
@@ -109,6 +114,12 @@ export class OpenAutonomy {
   async update(u: Update): Promise<UpdateRecord | undefined> {
     const r = await this.send(updateEvent(u));
     return r.results[0]?.update;
+  }
+
+  // The agent's setup, replacing what was there.
+  async setup(s: AgentSetup): Promise<boolean> {
+    const r = await this.send(event(SETUP_EVENT_TYPE, 'agent', s as unknown as Record<string, unknown>));
+    return r.results[0]?.ok === true;
   }
 
   // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.

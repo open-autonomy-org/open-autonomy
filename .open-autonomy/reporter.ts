@@ -11,9 +11,10 @@
 // index changes (`sessionIndexEvent`); `session(locator).follow()` yields a snapshot then appended
 // messages; `subscribeSessionActivity` reports presence and turn state. A Hermes home is named by the
 // path of its state.db in `homes.hermes`.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
+import { parseRoadmap } from './sdk/roadmap.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -247,7 +248,59 @@ sc.on('sessionActivityEvent', (ev) => { const key = activitySubs.get(ev.subscrip
 sc.on('exit', (code) => { log(`supercode harness serve exited (${code}); stopping`); process.exit(1); });
 
 await sc.start();
+// The board, through supercode's workflow layer: every task that names a roadmap item (`ROADMAP_ITEM=<id>` in
+// its body) is published as that item's board state — lane, attempts, handoff, review verdicts — whenever it
+// changes. A task the board marks done after a review it requested was approved by that review.
+type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; metadata?: unknown } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+const boardDigests = new Map<string, string>();
+async function board(): Promise<void> {
+  let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
+  try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return; }
+  for (const b of Object.values(read.workflow?.boards ?? {})) for (const t of Object.values(b.tasks ?? {})) {
+    const item = /^ROADMAP_ITEM=([a-z0-9][a-z0-9-]*)$/m.exec(t.body ?? '')?.[1];
+    if (!item) continue;
+    const attempts = (t.attempts ?? []).map((a) => ({ id: a.id, profile: a.profile, status: a.status, started_at: a.started_at, ended_at: a.ended_at, outcome: a.outcome, summary: a.handoff?.summary }));
+    const reviews = (t.reviews ?? []).map((r) => ({ verdict: r.verdict as 'requested', by: r.by, reason: r.reason, at: r.at }));
+    const requested = [...reviews].reverse().find((r) => r.verdict === 'requested');
+    if (t.lane === 'done' && requested && !reviews.some((r) => r.verdict === 'changes_requested' && (r.at ?? '') > (requested.at ?? ''))) reviews.push({ verdict: 'approved' as 'requested', by: attempts[attempts.length - 1]?.profile, at: t.completed_at ?? attempts[attempts.length - 1]?.ended_at });
+    const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
+    const state = { item, task_id: t.id, lane: t.lane, title: t.title, assignee: t.assignee, attempts, reviews, handoff: last?.handoff, updated_at: new Date().toISOString() };
+    const digest = JSON.stringify([state.lane, attempts.map((a) => [a.id, a.status, a.ended_at]), reviews.length, last?.handoff?.summary]);
+    if (boardDigests.get(t.id) === digest) continue;
+    try { if (await oa.task(state)) { boardDigests.set(t.id, digest); log(`board: ${t.id} → ${item} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
+  }
+}
+// The agent's setup, from the home it runs with — the identity text, the model, the schedule seed, the
+// skills — and the roadmap from the project's checkout when it stands on main: published whenever they
+// change. The platform reads no harness file for either.
+const projectDir = resolve(stateFile, '..', '..');
+const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
+let setupDigest = '';
+let roadmapDigest = '';
+async function setup(): Promise<void> {
+  const home = cfg.hermes_home;
+  const config = readText(resolve(home, 'config.yaml')) ?? '';
+  const model = /^\s+default:\s*(\S+)/m.exec(config)?.[1];
+  const provider = /^\s+provider:\s*(\S+)/m.exec(config)?.[1];
+  let schedule: Array<{ name: string; schedule: string; description?: string }> = [];
+  try { const seed = JSON.parse(readText(resolve(home, 'cron', 'jobs.seed.json')) ?? '{}') as { jobs?: Array<{ name?: string; schedule?: string; prompt?: string; script?: string }> }; schedule = (seed.jobs ?? []).filter((j) => j.name && j.schedule).map((j) => ({ name: j.name!, schedule: j.schedule!, description: j.prompt ?? (j.script ? `runs ${j.script}` : undefined) })); } catch { /* no seed */ }
+  const skills: string[] = [];
+  try { for (const cat of readdirSync(resolve(home, 'skills'))) { try { for (const name of readdirSync(resolve(home, 'skills', cat))) if (existsSync(resolve(home, 'skills', cat, name, 'SKILL.md'))) skills.push(name); } catch { /* a file */ } } } catch { /* no skills */ }
+  const s = { harness: 'hermes', persona: readText(resolve(home, 'SOUL.md')), model, provider, schedule, skills: skills.sort(), setup_md: readText(resolve(home, 'README.md')) };
+  const digest = JSON.stringify(s);
+  if (digest === setupDigest) return;
+  try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
+}
+async function roadmap(): Promise<void> {
+  const head = readText(resolve(projectDir, '.git', 'HEAD'))?.trim();
+  if (head !== 'ref: refs/heads/main') return;
+  const text = readText(resolve(projectDir, 'ROADMAP.yml'));
+  if (!text || text === roadmapDigest) return;
+  try { const r = await oa.pushRoadmap(parseRoadmap(text), 'file', 'reporter'); if (r.ok) { roadmapDigest = text; if (!r.unchanged) log(`roadmap published (${parseRoadmap(text).items.length} items)`); } else log(`roadmap publish refused: ${r.error ?? r.status}`); } catch (e) { log(`roadmap publish failed: ${(e as Error).message}`); }
+}
 const index = await sc.subscribeSessionIndex({ harnesses: ['hermes'], homes });
+await setup(); await roadmap(); await board();
+setInterval(() => { void setup(); void roadmap(); void board(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
 for (const d of index.initial) await consider(d);
 process.on('SIGTERM', () => { void sc.close().then(() => process.exit(0)); });

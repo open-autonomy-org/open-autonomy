@@ -1,9 +1,11 @@
 # @open-autonomy/sdk
 
 The Open Autonomy SDK: how a project reports its own development to the platform, and the roadmap model
-every kit writes. Everything it does is one documented HTTP wire, shown raw below, so any language can do
-the same without this package. The Hermes kit vendors it into a generated repository under
-`.open-autonomy/sdk/`.
+every kit writes. Everything a project's page shows about its agent comes through this wire — the sessions,
+the roadmap, the board, the agent's setup — and nothing through the platform reading a harness's files, so
+any substrate can be a project: the Hermes kit and the file roadmap are starters, not the shape. Everything
+here is one documented HTTP wire, shown raw below, so any language can do the same without this package.
+The Hermes kit vendors it into a generated repository under `.open-autonomy/sdk/`.
 
 ```ts
 import { OpenAutonomy } from '@open-autonomy/sdk';
@@ -80,6 +82,11 @@ intake; everything accepted is public.
      { "ts": "…", "role": "assistant", "text": "…" } ] } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.item.update", "subject": "<item id>",
+   … }
+   { "type": "org.open-autonomy.item.task", "subject": "<item id>",
+     "data": { "task_id": "…", "lane": "review", "attempts": [{ "id": "1", "profile": "default", "status": "review_requested", "summary": "…" }], "reviews": [{ "verdict": "requested" }], "handoff": { "summary": "…" } } }
+   { "type": "org.open-autonomy.agent.setup", "subject": "agent",
+     "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "file-roadmap-item", "schedule": "every 360m" }], "skills": ["roadmap", "land"], "setup_md": "…" }
    "data": { "text": "…", "session": "<session key>" } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.session.ended", "subject": "<session key>",

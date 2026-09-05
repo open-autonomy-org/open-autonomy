@@ -364,7 +364,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: Proj
             <VisionPanel md={v.profile.vision_md} repoUrl={repoUrl} />
             <Spine account={v.account} roadmap={roadmap} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} />
             {revision ? <p class="note">Roadmap from <b>{revision.source}</b>, revision {revision.revision}, {fmtAgo(revision.ts, now)}{revision.by ? ` by ${revision.by}` : ''}{revision.conformance.length ? <> · this source cannot say: {revision.conformance.join('; ')}</> : null} · <a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision</a></p> : null}
-            <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} configYaml={v.profile.agent_config_yaml} scheduleJson={v.profile.schedule_json} repoUrl={repoUrl} />
+            <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} model={v.profile.agent_model} provider={v.profile.agent_provider} harness={v.profile.agent_harness} skills={v.profile.agent_skills} scheduleJson={v.profile.schedule_json} />
             <ChangelogPanel md={v.profile.changelog_md} repoUrl={repoUrl} />
             <div class="panel">
               <h3>Goal</h3>

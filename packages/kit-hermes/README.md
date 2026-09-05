@@ -57,7 +57,10 @@ handoff in a session of its own. Both sessions show on the project's page with t
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
 (`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve
-with the Open Autonomy SDK, attaching it to the roadmap item it serves. Scheduled runs publish by default;
+with the Open Autonomy SDK, attaching it to the roadmap item it serves. It publishes the rest the same way:
+the board (`workflowLoad`: each task's lane, attempts, handoff and verdicts under its item), the roadmap it finds
+in the checkout, and the agent's setup (its persona, model, schedule and skills). The platform reads no file of
+the agent's; everything a page shows about it came through the SDK. Scheduled runs publish by default;
 `.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
 and settled cent per item, live while a session runs.
 

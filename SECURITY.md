@@ -39,9 +39,10 @@ cross one of these boundaries are especially valuable.
 - **A key spends only what it names.** Its models are in its claims; a model outside them is refused (403);
   an unfunded account is refused before any model is reached. proof: smoke "a forged key, a model outside
   the key, an unfunded account, admin without the token".
-- **Key scopes.** `spend` reaches the rails, `narrate` the development stream, `steer` a roadmap push; a steer
-  key spends nothing and a spending key cannot steer. proof: smoke "a steer key spends nothing; a spending
-  key cannot steer".
+- **Key scopes.** `spend` reaches the rails; `narrate` the development stream and the roadmap the substrate
+  works; `steer` an owner-side roadmap push. A steer key spends nothing, and a key that only spends can neither
+  narrate nor steer. proof: smoke "a steer key spends nothing; a key that only spends cannot narrate or steer a
+  roadmap".
 - **The balance hard-stop and the daily rail.** Every spend reserves before it runs and settles to the
   reported cost; at zero balance, or over the global daily cap, the platform refuses. proof: smoke "books and
   keys: money in, a key by claim file, a metered call on both wires, the audit trail".
