@@ -1,0 +1,106 @@
+#!/usr/bin/env bun
+// Start the agent. The same processes wherever it runs; only how this script is started differs:
+//   on your machine   `bun .open-autonomy/start.ts` — everything as you, no isolation, for development
+//   in a container    the image's entrypoint, as root with the secrets mounted for root alone and `--as <user>`:
+//                     the gateway and the reporter run as that user and can reach no key (container/README.md)
+//
+//   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>]
+//
+// The processes, in order:
+//   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
+//               and never holds the key (absent: pushes are your own git's business)
+//   the clone   <project> cloned from --origin when it is not a checkout yet (a container's first boot)
+//   the home    hermes/ in the checkout copied into <home> before every start — the repository is the source of
+//               truth for what the agent IS; the home keeps what it has since done (its .env is kept)
+//   valve       <secrets>/agent.env on :8787 (the developer's key), <secrets>/treasurer.env on :8788 (the
+//               treasurer's, the only one that pays) — the agent's .env names the valve and the word `valve`
+//   reporter    keyless, publishing the home's sessions and board through the valve
+//   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
+// When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, userInfo } from 'node:os';
+import { basename, resolve } from 'node:path';
+
+const argv = process.argv.slice(2);
+const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
+const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', basename(project), 'home'));
+const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
+const origin = arg('--origin') ?? process.env.ORIGIN;
+const as = arg('--as');
+const say = (m: string) => console.log(`start: ${m}`);
+const sock = resolve(home, 'ssh-agent.sock');
+
+// Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
+const user = as ? (() => { const r = Bun.spawnSync({ cmd: ['id', '-u', as], stdout: 'pipe', stderr: 'pipe' }); const g = Bun.spawnSync({ cmd: ['id', '-g', as], stdout: 'pipe' }); if (r.exitCode !== 0) throw new Error(`start: no such user ${as}`); return { name: as, uid: Number(r.stdout.toString().trim()), gid: Number(g.stdout.toString().trim()) }; })() : null;
+const drop = (cmd: string[]): string[] => (user ? ['setpriv', `--reuid=${user.uid}`, `--regid=${user.gid}`, '--clear-groups', ...cmd] : cmd);
+const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `${user.uid}:${user.gid}`, path] }); };
+const agentEnv = (): Record<string, string> => ({ ...process.env as Record<string, string>, HERMES_HOME: home, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
+
+const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
+let ending = false;
+function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean }) {
+  const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? (process.env as Record<string, string>), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' });
+  children.push({ name, proc });
+  proc.exited.then((code) => { if (ending) return; ending = true; say(`${name} ended (${code}); stopping the rest`); for (const c of children) if (c.proc !== proc) c.proc.kill(); setTimeout(() => process.exit(1), 500); });
+  return proc;
+}
+for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { ending = true; for (const c of children) c.proc.kill(); setTimeout(() => process.exit(0), 300); });
+
+mkdirSync(home, { recursive: true });
+own(home);
+
+// 1. ssh-agent, as the agent (an agent only answers its own uid, or root): the key is added by us, from a file
+//    the agent cannot read, and lives in the agent's memory alone.
+const deployKey = resolve(secrets, 'deploy_key');
+if (existsSync(deployKey)) {
+  rmSync(sock, { force: true });
+  spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home });
+  const t0 = Date.now(); while (!existsSync(sock) && Date.now() - t0 < 5000) Bun.sleepSync(50);
+  const add = Bun.spawnSync({ cmd: ['ssh-add', '-q', deployKey], env: { ...process.env, SSH_AUTH_SOCK: sock }, stdout: 'pipe', stderr: 'pipe' });
+  if (add.exitCode !== 0) { console.error(`start: ssh-add ${deployKey}: ${add.stderr.toString().trim()}`); process.exit(1); }
+  say(`ssh-agent holds the deploy key at ${sock}`);
+} else say(`no ${deployKey}: pushes use your own git and keys`);
+
+// 2. The checkout.
+if (!existsSync(resolve(project, '.git'))) {
+  if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
+  mkdirSync(project, { recursive: true }); own(project);
+  const clone = Bun.spawnSync({ cmd: drop(['git', 'clone', '-q', origin, project]), env: agentEnv(), stdout: 'inherit', stderr: 'inherit' });
+  if (clone.exitCode !== 0) { console.error(`start: cannot clone ${origin}`); process.exit(1); }
+  say(`cloned ${origin} → ${project}`);
+}
+
+// 3. The home, from the checkout: everything under hermes/ except its .env, which is the home's own.
+const committed = resolve(project, 'hermes');
+if (existsSync(committed)) cpSync(committed, home, { recursive: true, filter: (src) => basename(src) !== '.env' });
+const envFile = resolve(home, '.env');
+if (!existsSync(envFile)) {
+  const lines = ['OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1', 'OPEN_AUTONOMY_KEY=valve'];
+  for (const k of ['DISCORD_BOT_TOKEN', 'DISCORD_HOME_CHANNEL']) if (process.env[k]) lines.push(`${k}=${process.env[k]}`);
+  writeFileSync(envFile, `${lines.join('\n')}\n`);
+}
+own(home);
+say(`home ${home} synced from ${committed}`);
+
+// 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
+const keys: string[] = [];
+if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:8787`);
+if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:8788`);
+if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} — mint the developer's key: bun .open-autonomy/mint-key.ts`); process.exit(1); }
+if (user) {
+  // The whole point of --as: the agent's user must not be able to read a key.
+  const peek = Bun.spawnSync({ cmd: drop(['cat', resolve(secrets, 'agent.env')]), stdout: 'pipe', stderr: 'pipe' });
+  if (peek.exitCode === 0) { console.error(`start: ${resolve(secrets, 'agent.env')} is readable by ${user.name}; the secrets must belong to root alone`); process.exit(1); }
+}
+// The valve and the reporter run from this script's own directory (its node_modules, its vendored SDK): in a
+// container that is the image's copy, and the checkout only has to be the project.
+spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
+
+// 5. The reporter and the gateway, as the agent.
+const env = agentEnv();
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: 'http://127.0.0.1:8787/v1' } });
+spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :8787${keys.length > 2 ? ' and :8788' : ''}`);
+if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
+await new Promise(() => {});

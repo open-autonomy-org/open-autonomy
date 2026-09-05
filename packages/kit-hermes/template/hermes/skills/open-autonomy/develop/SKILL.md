@@ -46,7 +46,7 @@ You cannot pay: your key reaches the model, not the rails. The treasurer, a seco
 holds the only key that can. Ask it the way a company does, once, and wait:
 
 1. File the request, the one task you may create:
-   `kanban_create` with `assignee: "treasurer"`, `workspace_kind: "dir"`, `workspace_path: "/work/project"` (so the
+   `kanban_create` with `assignee: "treasurer"`, `workspace_kind: "dir"`, `workspace_path: <the project checkout, your working directory>` (so the
    treasurer reads the owner's bounds), title `Purchase: <what> at <merchant>, at most $<ceiling>`, and a body of
    `- ` lines: what, merchant (and its category), at most N cents, purpose, `for task: <your task id>`,
    and how to pay (the merchant's checkout: a URL, a command). Stay within the owner's bounds in
@@ -63,7 +63,7 @@ The card never passes through you. Every purchase lands on the public audit trai
 
 The board's tools (`kanban_show`, `kanban_create`, `kanban_block`, `kanban_request_review`) are yours in the
 conversation. From the terminal the CLI needs its home and its path named in full:
-`HERMES_HOME=/opt/data /opt/hermes/bin/hermes kanban …`.
+`hermes kanban …` (HERMES_HOME is set in your environment).
 
 ## Cost
 

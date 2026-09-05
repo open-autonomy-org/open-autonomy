@@ -6,7 +6,7 @@
 model:
   default: zai/glm-5.3-flash
   provider: custom
-  base_url: http://bridge:8788/v1 # the bridge's second port: the treasurer's key, the only one that pays
+  base_url: http://127.0.0.1:8788/v1 # the valve's second port: the treasurer's key, the only one that pays
   api_key: valve
   api_mode: chat_completions
 

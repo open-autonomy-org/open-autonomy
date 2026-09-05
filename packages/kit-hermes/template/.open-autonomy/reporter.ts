@@ -5,14 +5,14 @@
 // third service: it authenticates through the key valve's forwarded narration route and never sees the
 // project's key. Nothing here drives the agent; it only reads.
 //
-//   OPEN_AUTONOMY_BASE_URL=http://bridge:8787/v1 bun .open-autonomy/reporter.ts [--config .open-autonomy/config.yaml]
+//   HERMES_HOME=<the agent's home> OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1 bun .open-autonomy/reporter.ts [--config .open-autonomy/config.yaml]
 //
 // Supercode's contract, as its SDK documents it: `subscribeSessionIndex` lists sessions and streams
 // index changes (`sessionIndexEvent`); `session(locator).follow()` yields a snapshot then appended
 // messages; `subscribeSessionActivity` reports presence and turn state. A Hermes home is named by the
 // path of its state.db in `homes.hermes`.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
@@ -54,8 +54,8 @@ function readConfig(path: string): Config {
   return {
     account: top.account ?? '', platform: (top.platform ?? 'https://open-autonomy.org').replace(/\/$/, ''),
     publish: { runs: (publish.runs ?? 'true') !== 'false', chats: (publish.chats ?? 'false') === 'true', private: priv },
-    hermes_home: top.hermes_home ?? process.env.HERMES_HOME ?? '/opt/data',
-    state_file: top.state_file ?? resolve(import.meta.dir, 'reporter-state.json'),
+    hermes_home: top.hermes_home ?? process.env.HERMES_HOME ?? '',
+    state_file: resolve(dirname(configPath), top.state_file ?? 'reporter-state.json'),
   };
 }
 

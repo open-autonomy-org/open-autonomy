@@ -43,13 +43,13 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.
 - On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
   before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
-  root's free space). One Docker host serves both stacks: the colima VM `open-autonomy`,
-  4 GiB, mounting the home and the SSD (the world's CA and data reach the containers from that root), where the
-  production stack runs as `oa-*` and the world's copy of the cookbook as `world-*` (the kit's `STACK` name), each
-  with its own volumes; a gate purges only its own. The VM is started at login by a launch agent (a start
-  script under the open-autonomy config directory).
+  root's free space). The world runs the cookbook's agent bare, as the kit's start script starts it on a laptop:
+  no Docker, no isolation (nothing the world's agent reaches is worth protecting), the pinned Hermes installed once
+  under that root. Our own agent runs in the container lane on the colima VM `open-autonomy` (4 GiB, started at
+  login by a launch agent), as the stack `oa`.
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts up` brings the twins,
-  the real platform and the cookbook's agent stack up; drive it through its page and doors, then `down --purge`.
+  the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
+  world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
 - Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).
   It never runs the agent leg.
 
