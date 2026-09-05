@@ -208,7 +208,7 @@ items:
   - id: v2-done
     phase: 6
     priority: high
-    status: planned
+    status: proposed
     title: v2 is complete
     acceptance:
-      - Every item above is done; the world gate, the root check and the docs check are green on main; the live page shows this install's agent working this roadmap on a released supercode, and real money flows.
+      - "Every item above is done; the world gate, the root check and the docs check are green on main; the live page shows this install's agent working this roadmap through its board on a released supercode. What remains is real-money-live, the owner's, so this item awaits the owner too."
