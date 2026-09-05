@@ -4,9 +4,12 @@
 // knows it is in a world. The world gives PORT and --persist-to (the local Durable Object storage).
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { MODEL_PRICES } from '../apps/platform/src/pricing.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const need = (name: string): string => { const v = process.env[name]; if (!v) { console.error(`world/platform.ts: ${name} is required (the world injects it)`); process.exit(2); } return v; };
+const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'zai/glm-5.3-flash';
+const PREVIOUS_MODEL = `${MODEL}-previous`;
 const port = need('PORT');
 const persist = arg('--persist-to') ?? resolve('.volter/platform-state');
 const vars: Record<string, string> = {
@@ -16,6 +19,9 @@ const vars: Record<string, string> = {
   AGENT_PROXY_HMAC_SECRET: process.env.AGENT_PROXY_HMAC_SECRET ?? 'world-hmac-secret',
   GITHUB_API_BASE: need('GITHUB_TWIN_URL'),
   GITHUB_RAW_BASE: 'http://127.0.0.1:9/raw', // dead on purpose: the docs sync falls back to the twin's contents API
+  // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
+  // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
+  MODEL_PRICES_JSON: JSON.stringify({ [PREVIOUS_MODEL]: MODEL_PRICES[MODEL] }),
   DEFAULT_FUNDING_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
   DEFAULT_SPONSOR_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
 };

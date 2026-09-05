@@ -25,7 +25,7 @@ export async function mintCard(req: Request, env: Env, claims: KeyClaims): Promi
   if ((body.usd_cents as number) > rails.card.max_usd_cents) return error('amount_over_bound', 403, { max_usd_cents: rails.card.max_usd_cents });
   const requestId = crypto.randomUUID();
   const reserved = await ledger.reserve(requestId, claims.account, claims.kid, body.usd_cents as number, Number(env.MAX_GLOBAL_DAILY_USD_CENTS ?? 5000));
-  if (!reserved.ok) return error(reserved.error, 402, { account: claims.account, balance_usd_cents: reserved.balance_usd_cents });
+  if (!reserved.ok) return error(reserved.error, 402, { account: claims.account, balance_usd_cents: reserved.balance_usd_cents, reserved_usd_cents: reserved.reserved_usd_cents, available_usd_cents: reserved.available_usd_cents, needed_usd_cents: reserved.needed_usd_cents });
 
   let cardholder = view.stripe_cardholder;
   if (!cardholder) {
@@ -61,7 +61,7 @@ export async function settlePartner(req: Request, env: Env, claims: KeyClaims): 
   if ((body.usd_cents as number) > rails.partner.max_usd_cents) return error('amount_over_bound', 403, { max_usd_cents: rails.partner.max_usd_cents });
   const requestId = crypto.randomUUID();
   const reserved = await ledger.reserve(requestId, claims.account, claims.kid, body.usd_cents as number, Number(env.MAX_GLOBAL_DAILY_USD_CENTS ?? 5000));
-  if (!reserved.ok) return error(reserved.error, 402, { account: claims.account, balance_usd_cents: reserved.balance_usd_cents });
+  if (!reserved.ok) return error(reserved.error, 402, { account: claims.account, balance_usd_cents: reserved.balance_usd_cents, reserved_usd_cents: reserved.reserved_usd_cents, available_usd_cents: reserved.available_usd_cents, needed_usd_cents: reserved.needed_usd_cents });
   await ledger.consume(requestId, body.usd_cents as number, { request_id: requestId, rail: 'partner', partner: body.partner, unit: typeof body.unit === 'string' ? body.unit.slice(0, 40) : undefined, quantity: typeof body.quantity === 'number' ? body.quantity : undefined, reference: typeof body.reference === 'string' ? body.reference.slice(0, 120) : undefined, reserved_usd_cents: body.usd_cents as number, actual_usd_cents: body.usd_cents as number, outcome: 'ok' });
   return json({ ok: true, rail: 'partner', partner: body.partner, usd_cents: body.usd_cents, request_id: requestId, balance_usd_cents: (await ledger.funding(claims.account)).balance_usd_cents });
 }

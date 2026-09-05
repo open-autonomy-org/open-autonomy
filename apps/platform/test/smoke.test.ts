@@ -30,7 +30,9 @@ describe('the platform, one smoke test per surface', () => {
     // Security: a forged key, a model outside the key, an unfunded account, admin without the token.
     expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token.split('.')[0]}.AAAA` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(401);
     expect((await request(env, '/v1/chat/completions', { headers: auth, body: { model: 'gpt-4o', messages: [] } })).status).toBe(403);
-    expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${(await mintKey(env, 'poor/repo')).token}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(402);
+    const poor = await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${(await mintKey(env, 'poor/repo')).token}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } });
+    expect(poor.status).toBe(402);
+    expect(((await poor.json()) as any).error.needed_usd_cents).toBeGreaterThan(0);
     expect((await request(env, '/admin/status')).status).toBe(401);
   });
 
