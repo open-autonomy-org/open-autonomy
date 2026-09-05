@@ -46,6 +46,6 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           [ -n "$NPM_TOKEN" ] || { echo "NPM_TOKEN is not installed in the production environment"; exit 1; }
-          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > ~/.npmrc
-          (cd packages/sdk && bun publish --access public)
-          (cd packages/kit-hermes && bun publish --access public)
+          # bun takes the token on its own flag; it does not read an _authToken line for registry.npmjs.org.
+          (cd packages/sdk && bun publish --access public --token "$NPM_TOKEN")
+          (cd packages/kit-hermes && bun publish --access public --token "$NPM_TOKEN")
