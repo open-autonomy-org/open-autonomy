@@ -73,7 +73,8 @@ if (!existsSync(resolve(project, '.git'))) {
 
 // 3. The home, from the checkout: everything under hermes/ except its .env, which is the home's own.
 const committed = resolve(project, 'hermes');
-if (existsSync(committed)) cpSync(committed, home, { recursive: true, filter: (src) => basename(src) !== '.env' });
+// force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
+if (existsSync(committed)) cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
 const envFile = resolve(home, '.env');
 if (!existsSync(envFile)) {
   const lines = ['OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1', 'OPEN_AUTONOMY_KEY=valve'];
