@@ -28,7 +28,9 @@ export interface Env {
   POLAR_API_BASE?: string;
   POLAR_ACCESS_TOKEN?: string;
   POLAR_WEBHOOK_SECRET?: string;
-  // The card rail: Stripe Issuing. Absent → the rail refuses with rail_not_configured.
+  // The card rail: Stripe Issuing. Absent → the rail refuses with rail_not_configured. The cardholder every card is
+  // minted under carries the org's own billing address, a JSON object {line1, city, state, postal_code, country}.
+  ISSUING_BILLING_ADDRESS_JSON?: string;
   STRIPE_API_BASE?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

@@ -30,7 +30,9 @@ export async function mintCard(req: Request, env: Env, claims: KeyClaims): Promi
 
   let cardholder = view.stripe_cardholder;
   if (!cardholder) {
-    const ch = await stripe<{ id?: string }>(env, 'POST', '/v1/issuing/cardholders', { name: `Open Autonomy · ${claims.account}`, type: 'company', billing: { address: { line1: '1 Open Autonomy Way', city: 'San Francisco', state: 'CA', postal_code: '94105', country: 'US' } }, metadata: { account: claims.account } });
+    const address = parseJson<Record<string, string>>(env.ISSUING_BILLING_ADDRESS_JSON ?? '');
+    if (!address?.line1 || !address.city || !address.postal_code || !address.country) { await ledger.release(requestId); return error('rail_not_configured', 503, { rail: 'card', how: 'set ISSUING_BILLING_ADDRESS_JSON, the org\'s billing address, on the worker' }); }
+    const ch = await stripe<{ id?: string }>(env, 'POST', '/v1/issuing/cardholders', { name: `Open Autonomy · ${claims.account}`, type: 'company', billing: { address }, metadata: { account: claims.account } });
     if (!ch.ok || !ch.body.id) { await ledger.release(requestId); return error('card_issuer_unavailable', 502); }
     cardholder = ch.body.id;
     await ledger.setCardholder(claims.account, cardholder);

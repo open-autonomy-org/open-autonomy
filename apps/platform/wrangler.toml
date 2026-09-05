@@ -23,7 +23,9 @@ crons = ["0 6 1 * *"]
 
 # One Durable Object: the books. The class name and binding are the deployed worker's, so the state carries
 # over. Secrets (never in this file): AGENT_PROXY_ADMIN_TOKEN, AGENT_PROXY_HMAC_SECRET, MODEL_GATEWAY_API_KEY,
-# GITHUB_SPONSORS_WEBHOOK_SECRET, GITHUB_TOKEN.
+# GITHUB_SPONSORS_WEBHOOK_SECRET, GITHUB_TOKEN, and the money paths' POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET,
+# STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (installed by admin.yml → sync-secrets). ISSUING_BILLING_ADDRESS_JSON, the
+# org's billing address for the cardholder, is a var set here once the org exists.
 [[durable_objects.bindings]]
 name = "LIMITS"
 class_name = "LimitLedger"

@@ -15,7 +15,7 @@ on:
         description: what to do
         type: choice
         required: true
-        options: [status, mint, grant, sync, keys, revoke-key, delete-session, reset-daily, export, import, sync-admin-token]
+        options: [status, mint, grant, sync, keys, revoke-key, delete-session, reset-daily, export, import, sync-admin-token, sync-secrets]
       account:
         description: account (owner/repo) the op applies to
         type: string
@@ -62,7 +62,7 @@ jobs:
             api.cloudflare.com:443
             open-autonomy.org:443
       - name: ${{ inputs.op || 'export' }} ${{ inputs.account }}
-        if: inputs.op != 'sync-admin-token'
+        if: inputs.op != 'sync-admin-token' && inputs.op != 'sync-secrets'
         env:
           ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
           OP: ${{ inputs.op || 'export' }}
@@ -104,14 +104,14 @@ jobs:
       # Rotation: a maintainer sets a new value as the production environment secret, then dispatches this
       # op, which installs the same value as the worker's secret. The two homes never drift.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        if: inputs.op == 'sync-admin-token'
+        if: inputs.op == 'sync-admin-token' || inputs.op == 'sync-secrets'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        if: inputs.op == 'sync-admin-token'
+        if: inputs.op == 'sync-admin-token' || inputs.op == 'sync-secrets'
         with:
           bun-version: 1.3.10
           no-cache: true
       - name: Install the worker's pinned wrangler
-        if: inputs.op == 'sync-admin-token'
+        if: inputs.op == 'sync-admin-token' || inputs.op == 'sync-secrets'
         run: bun install --frozen-lockfile
       - name: Install the environment's admin token as the worker's secret
         if: inputs.op == 'sync-admin-token'
@@ -122,3 +122,26 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
           ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
         run: printf '%s' "$ADMIN" | bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN
+      # The money paths' secrets, same rule: a maintainer sets them as production environment secrets, this op
+      # installs whichever are set as the worker's. Nothing is typed into a machine by hand.
+      - name: Install the money paths' secrets the environment holds
+        if: inputs.op == 'sync-secrets'
+        working-directory: apps/platform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+          POLAR_WEBHOOK_SECRET: ${{ secrets.POLAR_WEBHOOK_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          GITHUB_SPONSORS_WEBHOOK_SECRET: ${{ secrets.GITHUB_SPONSORS_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          n=0
+          for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET; do
+            v="${!name:-}"
+            if [ -z "$v" ]; then echo "$name: not set in the production environment; skipped"; continue; fi
+            printf '%s' "$v" | bunx wrangler secret put "$name"; n=$((n+1))
+          done
+          echo "installed $n secret(s)"
