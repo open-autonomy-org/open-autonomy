@@ -17,9 +17,8 @@ else it got right. Changing this file is the owner's act, never a task's.
   the platform and published, with what it was for.
 - **Done means true in the running system.** A task is done when its acceptance lines hold where the project is
   verified, not when code exists.
-- **Nothing runs unattended for more than thirty seconds.** Every test and check in this repository together finish
-  in under thirty seconds, or they are cut. A test earns its place only by guarding an invariant on this page;
-  behavior is verified by driving the running system, one action at a time.
+- **No automated test runs for more than thirty seconds.** All of them together, ever. Behavior is verified by
+  driving the running system.
 
 ## Out of scope
 
