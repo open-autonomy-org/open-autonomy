@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `funder-self-funding`: a funder buys credit packs through Polar; the org matches a share from its grants account as bonus credits that go only to projects the funder does not own.
 - `grant-credits`: a third source of money in — funders (`@login`, a claim-file key that can only give) hold grant credits from the org and give them to projects they believe in; the org's grants account gives directly; `Granted by …` on the page and the patrons wall, and a funder's own page.
 - `live-switch`: the redesigned worker is deployed; the books read the same balances and audit trail as before; this repository's key was re-minted the adopter way and its stack runs the kit's three containers on this Mac, the reporter publishing its sessions to the live page.
 - `card-rail`: an agent mints a single-use virtual card against its balance (Stripe Issuing), bounded to an amount and the owner's merchant categories in `.open-autonomy/config.yaml`; the issuer's real-time authorization is decided at the platform's webhook, a capture settles on the books as a `card` audit record naming the merchant, and any decline releases the reservation. Proven in the world against the Stripe twin.

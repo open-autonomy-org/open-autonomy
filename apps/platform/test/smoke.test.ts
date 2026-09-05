@@ -67,6 +67,19 @@ describe('the platform, one smoke test per surface', () => {
     expect((await requestJson(env, '/v1/funders/pat')).given_usd_cents).toBe(300);
     expect(await (await request(env, '/p/acme%2Fapp')).text()).toContain('Granted by @pat — I believe in it');
     expect(await (await request(env, '/p/%40pat')).text()).toContain('Granted to');
+    // Self-funding: a credit pack bought through Polar lands on the funder's books; the org matches a tenth from its
+    // grants account as bonus credits, which go only to projects the funder does not own.
+    await requestJson(env, '/admin/accounts/open-autonomy-org%2Fgrants/mint', { headers: admin, method: 'POST', body: { amount_usd_cents: 1000, key: 'org-1' } });
+    const opened = await requestJson(env, '/v1/patrons/checkout', { method: 'POST', body: { account: '@pat', tier: 0, interval: 'once' } });
+    polar.checkouts[opened.checkout_id].status = 'confirmed';
+    polar.orders.push({ id: 'ord_pat', paid: true, total_amount: 1000, checkout_id: opened.checkout_id, customer_id: 'cus_1', billing_reason: 'purchase' });
+    expect((await request(env, `/p/%40pat/thanks?checkout_id=${opened.checkout_id}`)).status).toBe(200);
+    const pat = await requestJson(env, '/v1/funders/pat');
+    expect(pat).toMatchObject({ credits_usd_cents: 200 + 1000 + 100, bonus_usd_cents: 100 });
+    github.repos['pat/app'] = { description: 'mine' };
+    await fund(env, 'pat/app', 1);
+    expect((await requestJson(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'pat/app', usd_cents: 1250 } })).error).toBe('bonus_only_for_others');
+    expect((await requestJson(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 1300 } })).ok).toBe(true);
   });
 
   test('the board: a task published under its item shows on the item, lane, attempts and verdict', async () => {

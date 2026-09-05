@@ -59,7 +59,8 @@ are bounded by the owner in `.open-autonomy/config.yaml` (`parseRailsConfig`) an
 | `POST /v1/rails/card` `{ usd_cents, purpose? }` | a single-use virtual card minted against the balance (Stripe Issuing), bounded to the amount and the owner's merchant categories; returns the card's `id`, `last4`, expiry, and `number`/`cvc` where the issuer exposes them. A merchant's authorization is decided in real time, its capture settles as a `card` record (merchant, category, last4), and the card is retired |
 | `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login; the key can only give |
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key? }` (a give key) | grant credits from the funder's books to a project's: money in for the project, `Granted by @login` on its page, once per `key` |
-| `GET /v1/funders/:login` | a funder's public books: credits to give, given, received |
+| `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received |
+| `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
 Key scopes: `spend` (the rails), `narrate` (the stream), `steer` (a roadmap push). A key minted without

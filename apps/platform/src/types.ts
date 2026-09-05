@@ -18,8 +18,11 @@ export interface Env {
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
-  // Grant credits: the org's own grants account (its funder identity on the books), default open-autonomy-org/grants.
+  // Grant credits: the org's own grants account (its funder identity on the books), default open-autonomy-org/grants;
+  // and the share of credits a funder buys that the org matches from that account as a bonus for other people's
+  // projects (percent, default 10; 0 turns matching off).
   GRANTS_ACCOUNT?: string;
+  GRANT_MATCH_PERCENT?: string;
   // Money in, beside GitHub Sponsors: Polar, the merchant of record for direct patronage. Absent → the page's
   // tiers offer GitHub Sponsors alone.
   POLAR_API_BASE?: string;
@@ -48,6 +51,8 @@ export interface KeyClaims {
 }
 export type KeyScope = 'spend' | 'narrate' | 'steer' | 'give';
 export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
+export const grantsAccount = (env: Env): string => env.GRANTS_ACCOUNT || 'open-autonomy-org/grants';
+export const isFunder = (account: string): boolean => account.startsWith('@');
 export const hasScope = (claims: KeyClaims, scope: KeyScope): boolean => (claims.scopes ?? DEFAULT_SCOPES).includes(scope);
 
 // One settled spend, as a rail reports it to the books: a model call, a card authorization captured, a

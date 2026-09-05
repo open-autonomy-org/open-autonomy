@@ -437,7 +437,7 @@ export function renderItemPage(v: ProjectView, view: ItemView, roadmap: Roadmap,
 }
 
 // A funder's page: the credits they hold, where they came from, and what they gave and to whom.
-export function renderFunder(f: FunderView, grants: string): string {
+export function renderFunder(f: FunderView, grants: string, polar = false): string {
   const now = Date.now();
   return render(
     <Shell title={`${f.account} · open-autonomy`}>
@@ -448,7 +448,7 @@ export function renderFunder(f: FunderView, grants: string): string {
           <div class="htext">
             <h1>{f.account}</h1>
             <p class="tag">A funder: grant credits on their own books, given to projects they believe in.</p>
-            <div class="metarow"><span><b>{usd(f.credits_usd_cents)}</b> to give</span><span class="sep">|</span><span><b>{usd(f.given_usd_cents)}</b> given</span><span class="sep">|</span><span><b>{usd(f.received_usd_cents)}</b> received</span></div>
+            <div class="metarow"><span><b>{usd(f.credits_usd_cents)}</b> to give{f.bonus_usd_cents > 0 ? ` (${usd(f.bonus_usd_cents)} of it bonus, for projects you do not own)` : ''}</span><span class="sep">|</span><span><b>{usd(f.given_usd_cents)}</b> given</span><span class="sep">|</span><span><b>{usd(f.received_usd_cents)}</b> received</span></div>
           </div>
         </div>
         <div class="cols">
@@ -456,7 +456,20 @@ export function renderFunder(f: FunderView, grants: string): string {
             <div class="panel"><h3>Given</h3>{f.given.length ? <ul class="feed">{f.given.map((g) => <li><span>Granted to <a href={`/p/${encodeURIComponent(g.to)}`}>{g.to}</a>{g.note ? ` — ${g.note}` : ''}<span class="when"> · {fmtAgo(g.ts, now)}</span></span><span class="amt">−{usd(g.amount_usd_cents)}</span></li>)}</ul> : <p class="sub">Nothing given yet.</p>}</div>
             <div class="panel"><h3>Received</h3>{f.received.length ? <ul class="feed">{f.received.map((r) => <li><span>{r.kind === 'grant' ? (r.from === grants ? 'Granted by Open Autonomy' : `Granted from ${r.from ?? ''}`) : r.sponsor_login ? `Credits from @${r.sponsor_login}` : 'Credits from Open Autonomy'}<span class="when"> · {fmtAgo(r.ts, now)}</span></span><span class="amt">+{usd(r.amount_usd_cents)}</span></li>)}</ul> : <p class="sub">No credits yet.</p>}</div>
           </div>
-          <div class="side"><div class="panel"><h3>Giving</h3><p class="note">Give from any project's page with your funder key, or <code>POST /v1/grants/give</code> with it. Every grant is public here and on the project's page.</p></div></div>
+          <div class="side">
+            <div class="panel">
+              <h3>Fund yourself</h3>
+              <p class="sub">Buy grant credits to give. Open Autonomy matches a share as bonus credits for projects you do not own, from what it holds.</p>
+              {polar ? (
+                <form class="pay" method="post" action="/v1/patrons/checkout">
+                  <input type="hidden" name="account" value={f.account} /><input type="hidden" name="interval" value="once" />
+                  <button class="btn block outline" type="submit" name="tier" value="0">$10</button>
+                  <button class="btn block outline" type="submit" name="tier" value="1">$25</button>
+                  <button class="btn block outline" type="submit" name="tier" value="2">$100</button>
+                </form>
+              ) : <p class="note">Credits come from Open Autonomy for now; buying them opens with the platform's Polar account.</p>}
+            </div>
+            <div class="panel"><h3>Giving</h3><p class="note">Give from any project's page with your funder key, or <code>POST /v1/grants/give</code> with it. Every grant is public here and on the project's page.</p></div></div>
         </div>
       </div>
     </Shell>,
