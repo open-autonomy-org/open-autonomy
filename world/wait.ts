@@ -15,16 +15,27 @@ const pulls = async (): Promise<Pull[]> => ((await gh.get(`/repos/${ACCOUNT}/pul
 const sessions = async (): Promise<Sess[] | null> => { try { return ((await pub.get(`/v1/accounts/${ENC}/sessions`)).body?.sessions ?? []) as Sess[]; } catch { return null; } };
 let initial: Sess[] | null = null;
 while (initial === null) { initial = await sessions(); if (initial === null) await Bun.sleep(2000); }
+let noted = '';
 const before = new Set(initial.map((s) => s.key));
+// --pm: the hourly PM job fired (the clock moved); its session ends with a report and nothing lands. The newest PM
+// session counts, whenever it started: the hour may have fired while a task was being waited for.
+if (process.argv.includes('--pm')) {
+  for (;;) {
+    if (Date.now() > deadline) { console.error('wait: no PM session ended within the deadline'); process.exit(1); }
+    const all = (await sessions()) ?? [];
+    const pm = all.find((s) => (s as { source?: string }).source === 'pm');
+    if (pm) { const line = `wait: pm ${pm.key}: ${pm.status}${pm.report ? ` · ${pm.report.slice(0, 80)}` : ''}`; if (line !== noted) { console.log(line); noted = line; } if (pm.status === 'ended') process.exit(0); }
+    await Bun.sleep(2000);
+  }
+}
 const mergedBefore = new Set((await pulls()).filter((p) => p.merged).map((p) => p.number));
 let seen: Sess | undefined;
 let landed: Pull | undefined;
-let noted = '';
 for (;;) {
   if (Date.now() > deadline) { console.error(`wait: ${landed ? 'the run landed but the reporter never ended its session' : seen ? 'nothing landed' : 'nothing ran'} within the deadline`); process.exit(1); }
   const all = await sessions();
   if (all === null) { await Bun.sleep(2000); continue; }
-  const current = all.filter((s) => !before.has(s.key) && s.kind === 'run')[0];
+  const current = all.filter((s) => !before.has(s.key) && s.kind === 'run' && (s as { source?: string }).source === 'board')[0];
   if (current && !seen) {
     const line = `${current.key}: ${current.status}${current.outcome ? ` · ${current.outcome}` : ''}${current.item_id ? ` · ${current.item_id}` : ''}`;
     if (line !== noted) { console.log(`wait: run ${line}`); noted = line; }

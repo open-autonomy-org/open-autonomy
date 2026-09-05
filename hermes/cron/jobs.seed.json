@@ -1,10 +1,10 @@
 {
   "jobs": [
     {
-      "name": "file-roadmap-item",
-      "script": "file-roadmap-item.sh",
-      "no_agent": true,
-      "schedule": "every 360m",
+      "name": "pm",
+      "prompt": "You are this project's PM for the hour. Run the pm skill: read the board, unstick what is stuck, report.",
+      "schedule": "every 60m",
+      "skills": ["pm"],
       "deliver": "discord",
       "workdir": "/work/project"
     }

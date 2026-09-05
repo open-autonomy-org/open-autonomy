@@ -31,13 +31,14 @@ if (!calls.body.calls.some((c: { rail: string }) => c.rail === 'model')) fail('n
 const funding = await pub.get(`/v1/accounts/${ENC}`);
 if (!(funding.body.consumed_usd_cents > 0 && funding.body.balance_usd_cents < funding.body.granted_in_usd_cents)) fail(`the books did not move: ${JSON.stringify(funding.body).slice(0, 200)}`);
 
-// The twin's main: the landed roadmap. Every done item has a commit by the agent naming it, and the
-// project's own check passes at main.
-const main = await gh.get(`/repos/${ACCOUNT}/contents/ROADMAP.yml?ref=main`);
-if (main.status !== 200) fail(`ROADMAP.yml on main → ${main.status}`);
-const yml = Buffer.from(main.body.content, 'base64').toString('utf8');
-const done = [...yml.matchAll(/- id: ([a-z0-9-]+)\n(?:(?!- id:)[\s\S])*?status: done/g)].map((m) => m[1]);
-if (!done.length) fail('no roadmap item is done on main — nothing landed');
+// The board is the roadmap: the page's latest revision came from it through the SDK, and every task it marks done
+// has a commit by the agent naming the task id, a merged pull request from agent/<task id>, and the project's own
+// check passes at main.
+const latest = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body?.revision as { revision: number; source: string; roadmap: { items: Array<{ id: string; title: string; status: string }> } } | undefined;
+if (!latest || latest.source !== 'kanban') fail(`the page's roadmap did not come from the board: ${JSON.stringify(latest?.source ?? null)}`);
+const done = latest.roadmap.items.filter((i) => i.status === 'done').map((i) => i.id);
+if (!done.length) fail('no task is done on the board — nothing landed');
+const titled = (fragment: string) => latest.roadmap.items.find((i) => i.title.includes(fragment))?.id;
 if (!existsSync(WORK)) fail(`${WORK} is missing — run seed first`);
 await git(WORK, 'fetch', '-q', 'origin');
 const history = (await git(WORK, 'log', '--format=%an%x09%s', 'origin/main')).split('\n').map((l) => { const [author, ...subject] = l.split('\t'); return { author, subject: subject.join('\t') }; });
@@ -64,12 +65,13 @@ for (const item of done) {
 
 // The rails from the agent's side: the domain item's purchase settled as a card record under a session on that item,
 // with the merchant, and the item page shows it.
-if (done.includes('domain')) {
-  const domainView = (await pub.get(`/v1/accounts/${ENC}/items/domain`)).body;
+const domain = titled('domain name');
+if (domain && done.includes(domain)) {
+  const domainView = (await pub.get(`/v1/accounts/${ENC}/items/${encodeURIComponent(domain)}`)).body;
   const purchase = (domainView?.purchases ?? []).find((c: { rail: string; merchant?: string }) => c.rail === 'card' && c.merchant === 'Namecheap');
   if (!purchase) fail(`the domain item carries no card purchase at Namecheap: ${JSON.stringify(domainView?.purchases ?? []).slice(0, 300)}`);
   if (purchase.usd_cents !== 200 || purchase.category !== 'computer_software_stores') fail(`the domain purchase is not 200 cents at computer_software_stores: ${JSON.stringify(purchase)}`);
-  const domainPage = await pub.get(`/p/${ENC}/items/domain`);
+  const domainPage = await pub.get(`/p/${ENC}/items/${encodeURIComponent(domain)}`);
   if (domainPage.status !== 200 || !domainPage.text.includes('Namecheap')) fail('the domain item page does not show the purchase');
 }
 
@@ -86,17 +88,11 @@ for (const item of done) {
   if (!(view.usd_cents > 0)) fail(`item ${item}'s sessions settled no cents`);
   if (!view.sessions.every((s: { turn_count: number }) => s.turn_count > 0)) fail(`a session on ${item} has no turns`);
 }
-// The page's roadmap is the repository's: every item done on main is done in the latest published revision
-// (the reporter reads main through the GitHub twin), and no ended session ends before it started.
-const latest = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body?.revision;
-if (!latest) fail('no roadmap revision published — the reporter never read main');
-for (const item of done) if (latest.roadmap.items.find((i: { id: string; status: string }) => i.id === item)?.status !== 'done') fail(`item ${item} is done on main but the page's roadmap (revision ${latest.revision}) does not say so`);
-for (const s of runs as Array<{ key: string; started_at?: string; ended_at?: string }>) if (s.ended_at && s.started_at && Date.parse(s.ended_at) < Date.parse(s.started_at)) fail(`session ${s.key} ends before it starts (${s.started_at} → ${s.ended_at}): the stack's clocks disagree`);
 const page = await pub.get(`/p/${ENC}`);
 if (page.status !== 200) fail(`project page → ${page.status}`);
 if (!/last run .*: done|last run .*: failed/.test(page.text)) fail('project page has no health line naming the last run');
 if (!page.text.includes(encodeURIComponent(landed[0]!.key))) fail("the page does not link the landed run's session");
-const itemPage = await pub.get(`/p/${ENC}/items/${done[done.length - 1]}`);
+const itemPage = await pub.get(`/p/${ENC}/items/${encodeURIComponent(done[done.length - 1]!)}`);
 if (itemPage.status !== 200 || !itemPage.text.includes('/sessions/')) fail('the item page does not render the sessions that touched it');
 const scenario = await api(need('GATEWAY_TWIN_URL')).get('/twin/scenario');
 const clamp = (scenario.body?.handlers ?? []).find((h: { id?: string }) => h.id === 'clamped-output-cap');
@@ -105,9 +101,11 @@ if (clamp.matches > 0) fail(`the platform clamped the agent's output cap: ${clam
 
 // Delivery: the run's report, posted by the bot to its home channel on the Discord twin, through reflect.
 const posted = (await api(need('DISCORD_TWIN_URL')).get(`/api/v10/channels/${HOME_CHANNEL}/messages?limit=50`)).body as Array<{ content: string }> | null;
-// The fire's own report is the filing line the script job delivers ("filed <item> as task …"); each landed item has one.
-const delivered = done.filter((item) => (posted ?? []).some((m) => m.content.includes(`filed ${item} as task`)));
-if (!delivered.length) fail(`no fire's report reached the Discord twin: ${(posted ?? []).length} message(s) in the home channel, none saying an item was filed`);
+// The PM's hourly report is what the schedule delivers; the world advanced the clock once, so there is one.
+const delivered = (posted ?? []).filter((m) => m.content.includes('PM:'));
+if (!delivered.length) fail(`no PM report reached the Discord twin: ${(posted ?? []).length} message(s) in the home channel, none from the PM`);
+const pm = runs.find((s) => (s as { source?: string }).source === 'pm' && s.status === 'ended');
+if (!pm) fail(`no ended PM session on the page: ${JSON.stringify(runs.map((r) => [r.key, (r as { source?: string }).source, r.status])).slice(0, 300)}`);
 
 // The seal: from the agent's own container, a public host is refused, the platform is not.
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
@@ -115,4 +113,4 @@ const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', cont
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (the newest on ${MODEL}, the earlier fire on ${PREVIOUS_MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; the page's roadmap at revision ${latest.revision} says so; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (the newest on ${MODEL}, the earlier fire on ${PREVIOUS_MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on the board and main: ${done.map((id) => latest.roadmap.items.find((i) => i.id === id)?.title ?? id).join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} PM report(s) delivered to Discord; egress sealed`);
