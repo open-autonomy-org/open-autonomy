@@ -82,7 +82,7 @@ items:
   - id: kit-published
     phase: 3
     priority: high
-    status: active
+    status: done
     title: The kit and the SDK install from npm
     acceptance:
       - "`create-open-autonomy` (the kit) and `@open-autonomy/sdk` are published from this repository by a release workflow gated like the deploy; `bun create open-autonomy my-project --account owner/my-project` works on a clean machine with nothing but bun, and the generated repository passes its own check."
@@ -102,7 +102,7 @@ items:
   - id: through-the-sdk
     phase: 3
     priority: high
-    status: active
+    status: done
     title: Everything a page shows about the agent comes through the SDK; the platform knows no harness
     acceptance:
       - "The reporter reads the agent's board through supercode's workflow layer and publishes each task that names a roadmap item as that item's board state — lane, attempts, handoff, review verdicts — on the development stream (`org.open-autonomy.item.task`); the item's view and page carry it beside the sessions, live."
@@ -111,7 +111,7 @@ items:
   - id: agent-side-rails
     phase: 3
     priority: high
-    status: active
+    status: done
     title: The agent can spend through the card and partner rails from inside its stack
     acceptance:
       - The key valve forwards `/v1/rails/card` and `/v1/rails/partner` beside the model routes; a rail skill documents when and how to spend through a rail (only for an acceptance line that needs it, within the owner's bounds, naming the purpose), and `.open-autonomy/config.yaml` is where the owner opens each rail.
@@ -137,7 +137,7 @@ items:
   - id: host-setup-tool
     phase: 3
     priority: medium
-    status: active
+    status: done
     title: A project's host is set up by one command
     acceptance:
       - "`bun .open-autonomy/setup.ts` performs container/README.md's host steps idempotently: checks the key file, builds or copies the pinned Hermes image, creates and seeds the two volumes from the repository and its origin, states plainly what it cannot do (the deploy key and its ssh-agent are the owner's) and what to run next; it is what the world's stack step calls, so the two never drift."
@@ -145,7 +145,7 @@ items:
   - id: key-rotation-proven
     phase: 3
     priority: medium
-    status: active
+    status: done
     title: Keys rotate without a restart, and their expiry is visible
     acceptance:
       - "`GET /v1/keys` on the project's key lists each key's expiry; the reporter and the valve log the key's expiry at start and warn when it is within fourteen days; `bun .open-autonomy/mint-key.ts --rotate` rewrites the host key file and the valve picks it up unrestarted."
@@ -155,7 +155,7 @@ items:
   - id: second-cookbook
     phase: 4
     priority: medium
-    status: active
+    status: done
     title: A second cookbook, not a CLI
     acceptance:
       - "`cookbooks/notes-api`: a small HTTP service (bun, one file, one test file) with a six-item roadmap of one endpoint and one test each, made with the kit plus its own code; its check starts and probes the server."
@@ -164,7 +164,7 @@ items:
   - id: cookbook-through-create
     phase: 4
     priority: medium
-    status: active
+    status: done
     title: A cookbook is exactly what the generator makes plus the project's own files
     acceptance:
       - "`bun create open-autonomy` into an empty directory, then the project's own src/test/README/ROADMAP copied in, is byte-identical to the committed cookbook (a test asserts it), so a cookbook can never drift from the kit."
@@ -173,7 +173,7 @@ items:
   - id: books-backup
     phase: 5
     priority: high
-    status: active
+    status: done
     title: The books can be exported and restored
     acceptance:
       - "`admin.yml → export` writes the books — accounts, flows, coupons, the key registry, the audit trail, sessions, updates, roadmap revisions — as a dated JSON artifact of the workflow run, and a monthly schedule does the same; `POST /admin/import` (admin, reviewed) restores an export into an empty worker."
@@ -182,7 +182,7 @@ items:
   - id: security-model
     phase: 5
     priority: high
-    status: active
+    status: done
     title: The threat model is written down and each claim names its test
     acceptance:
       - SECURITY.md describes v2's trust boundaries (the key valve, the keyless reporter, key scopes, the balance hard-stop and the daily rail, the webhook signatures, the admin path through GitHub, what the agent can read) and, for each claim, names the test or world line that proves it; `scripts/check-docs.ts` verifies the named tests exist.
@@ -190,7 +190,7 @@ items:
   - id: readme-for-three-readers
     phase: 5
     priority: low
-    status: active
+    status: done
     title: The front page serves the funder, the adopter and the contributor
     acceptance:
       - README.md opens with the four pieces and then three short paths — fund a project (the site), run your own (the kit in three commands), contribute (the world and the check) — each naming only surfaces that exist, verified by the docs check.
