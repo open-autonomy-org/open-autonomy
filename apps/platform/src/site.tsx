@@ -1,6 +1,6 @@
 import { raw } from 'hono/html';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import type { DirectoryEntry, Flow, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
+import type { DirectoryEntry, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
@@ -250,8 +250,10 @@ function ProjectCard({ e }: { e: DirectoryEntry }) {
   );
 }
 
-export function renderExplore(entries: DirectoryEntry[]): string {
+export function renderExplore(entries: DirectoryEntry[], grants = 'open-autonomy-org/grants'): string {
   const listed = entries.filter((e) => e.listed);
+  const granted = entries.filter((e) => e.account.startsWith('@') || e.account === grants).reduce((s, e) => s + e.granted_out_usd_cents, 0);
+  const funders = entries.filter((e) => e.account.startsWith('@') && e.granted_out_usd_cents > 0).length;
   const totalIn = listed.reduce((s, e) => s + (e.granted_in_usd_cents - e.granted_out_usd_cents), 0);
   const totalSpent = listed.reduce((s, e) => s + e.consumed_usd_cents, 0);
   const patrons = listed.reduce((s, e) => s + e.patron_count, 0);
@@ -266,6 +268,7 @@ export function renderExplore(entries: DirectoryEntry[]): string {
           <div><span class="n">{usd0(totalSpent)}</span><span class="k">spent by agents</span></div>
           <div><span class="n">{listed.length}</span><span class="k">{`project${listed.length === 1 ? '' : 's'}`}</span></div>
           <div><span class="n">{patrons}</span><span class="k">{`patron${patrons === 1 ? '' : 's'}`}</span></div>
+          {granted > 0 ? <div><span class="n">{usd0(granted)}</span><span class="k">{`granted by ${funders} funder${funders === 1 ? '' : 's'}`}</span></div> : null}
         </div>
         <div class="sectionhdr"><h2>Projects</h2></div>
         {listed.length ? <div class="grid">{listed.map((e) => <ProjectCard e={e} />)}</div> : <div class="empty">No projects yet. A repository appears here once it has a key and its public repository has synced.</div>}
@@ -310,8 +313,8 @@ function ChangelogPanel({ md, repoUrl }: { md?: string; repoUrl?: string }) {
   );
 }
 
-function FundRow({ f, now }: { f: Flow; now: number }) {
-  const label = f.kind === 'grant' ? `Granted from ${f.from ?? ''}` : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
+function FundRow({ f, now, grants }: { f: Flow; now: number; grants: string }) {
+  const label = f.kind === 'grant' ? (f.from === grants ? 'Granted by Open Autonomy' : f.from?.startsWith('@') ? `Granted by ${f.from}` : `Granted from ${f.from ?? ''}`) + (f.note ? ` — ${f.note}` : '') : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
   return <li><span>{label}<span class="when"> · {fmtAgo(f.ts, now)}</span></span><span class="amt">+{usd(f.amount_usd_cents)}</span></li>;
 }
 
@@ -336,7 +339,7 @@ function TierCard({ t, i, feat, owner, burn, account, polar }: { t: ProjectView[
   );
 }
 
-function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean }) {
+function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
   const enc = encodeURIComponent(v.account);
@@ -381,7 +384,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: Proj
                 <div class="item"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
                 <div class="item"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
               </div>
-              {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.slice(0, 8).map((f) => <FundRow f={f} now={now} />)}</ul> : null}
+              {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.slice(0, 8).map((f) => <FundRow f={f} now={now} grants={grants} />)}</ul> : null}
               <a class="docmore" href={`/v1/accounts/${enc}/calls`}>Every metered call →</a>
             </div>
             <div class="panel"><h3>Patrons</h3>{v.patrons.length ? <div class="patrons">{v.patrons.map((p) => <PatronChip p={p} />)}</div> : <p class="sub">No patrons yet — be the first.</p>}</div>
@@ -390,6 +393,17 @@ function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: Proj
             <div class="panel">
               <h3>Become a patron</h3>
               {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} />)}
+            </div>
+            <div class="panel">
+              <h3>Give grant credits</h3>
+              <p class="sub">Funders hold grant credits on their own books — given by Open Autonomy, or bought — and give them to a project they believe in. On these books a grant is money in, like a patron's.</p>
+              <form class="coupon give" method="post" action={`/p/${enc}/give`}>
+                <input name="key" placeholder="your funder key" autocomplete="off" />
+                <input name="usd_cents" type="number" min={1} placeholder="cents" />
+                <input name="note" placeholder="a word, optional" maxlength={280} />
+                <button class="btn" type="submit">Give</button>
+              </form>
+              <p class="note">A funder key proves your GitHub login with the claim file in a repository of yours: <code>GET /v1/keys/challenge?funder=&lt;login&gt;</code>, then <code>POST /v1/keys/mint</code>. It can only give.</p>
             </div>
             <div class="panel">
               <h3>Have a sponsor coupon?</h3>
@@ -406,8 +420,8 @@ function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: Proj
   );
 }
 
-export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants'): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} grants={grants} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderSessionsPage(account: string, sessions: SessionSummary[], live: string[], nowMs: number): string {
@@ -420,6 +434,33 @@ export function renderSessionPage(account: string, s: SessionRecord, nowMs: numb
 
 export function renderItemPage(v: ProjectView, view: ItemView, roadmap: Roadmap, nowMs: number): string {
   return render(<Shell title={`${view.item_id} · ${nameOf(v.account)} · open-autonomy`}><Nav /><ItemPage account={v.account} roadmap={roadmap} view={view} repoUrl={repoUrlOf(v.account)} now={nowMs} />{view.live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+}
+
+// A funder's page: the credits they hold, where they came from, and what they gave and to whom.
+export function renderFunder(f: FunderView, grants: string): string {
+  const now = Date.now();
+  return render(
+    <Shell title={`${f.account} · open-autonomy`}>
+      <Nav />
+      <div class="wrap">
+        <div class="phead">
+          <Avatar url={`https://github.com/${encodeURIComponent(f.login)}.png?size=208`} size={104} cls="ring" />
+          <div class="htext">
+            <h1>{f.account}</h1>
+            <p class="tag">A funder: grant credits on their own books, given to projects they believe in.</p>
+            <div class="metarow"><span><b>{usd(f.credits_usd_cents)}</b> to give</span><span class="sep">|</span><span><b>{usd(f.given_usd_cents)}</b> given</span><span class="sep">|</span><span><b>{usd(f.received_usd_cents)}</b> received</span></div>
+          </div>
+        </div>
+        <div class="cols">
+          <div class="main">
+            <div class="panel"><h3>Given</h3>{f.given.length ? <ul class="feed">{f.given.map((g) => <li><span>Granted to <a href={`/p/${encodeURIComponent(g.to)}`}>{g.to}</a>{g.note ? ` — ${g.note}` : ''}<span class="when"> · {fmtAgo(g.ts, now)}</span></span><span class="amt">−{usd(g.amount_usd_cents)}</span></li>)}</ul> : <p class="sub">Nothing given yet.</p>}</div>
+            <div class="panel"><h3>Received</h3>{f.received.length ? <ul class="feed">{f.received.map((r) => <li><span>{r.kind === 'grant' ? (r.from === grants ? 'Granted by Open Autonomy' : `Granted from ${r.from ?? ''}`) : r.sponsor_login ? `Credits from @${r.sponsor_login}` : 'Credits from Open Autonomy'}<span class="when"> · {fmtAgo(r.ts, now)}</span></span><span class="amt">+{usd(r.amount_usd_cents)}</span></li>)}</ul> : <p class="sub">No credits yet.</p>}</div>
+          </div>
+          <div class="side"><div class="panel"><h3>Giving</h3><p class="note">Give from any project's page with your funder key, or <code>POST /v1/grants/give</code> with it. Every grant is public here and on the project's page.</p></div></div>
+        </div>
+      </div>
+    </Shell>,
+  );
 }
 
 export function renderMessage(account: string, ok: boolean, title: string, message: string): string {

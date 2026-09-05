@@ -38,8 +38,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - **Tests are smoke tests.** One per surface, end to end through the worker, saying a change broke the
   surface, not why; one line each for the security claims (a forged key, a wrong scope, a forged webhook).
   The world gate is the proof. Do not grow the suites; grow the world.
-- **Money in is GitHub Sponsors and Polar**, side by side, both minting to the same books (Polar is the
-  merchant of record for direct patronage); **cards out are Stripe Issuing**. Nothing else takes or moves money.
+- **Money in is GitHub Sponsors, Polar and grant credits**, side by side, all onto the same books (Polar is the
+  merchant of record for direct patronage; grant credits are held by funders and by the org's grants account,
+  and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.
 - On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
   before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
   root's free space). The world's Docker host mounts it: `colima start -p open-autonomy-world --mount "$HOME:w"

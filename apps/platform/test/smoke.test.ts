@@ -53,6 +53,22 @@ describe('the platform, one smoke test per surface', () => {
     expect((await request(env, '/v1/agent/events', { method: 'POST', body: ce('session.started', 'x', {}) })).status).toBe(401);
   });
 
+  test('grant credits: a funder proves a login by the claim file, gets a give key, gives; the project shows the grant; over the credits refused; a give key cannot spend', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 100);
+    github.files['pat/notes:.open-autonomy-claim'] = (await requestJson(env, '/v1/keys/challenge?funder=pat')).claim;
+    expect((await request(env, '/v1/keys/mint', { body: { funder: 'pat', repo: 'other/notes' } })).status).toBe(403);
+    const give = (await requestJson(env, '/v1/keys/mint', { body: { funder: 'pat', repo: 'pat/notes' } })).token;
+    await requestJson(env, '/admin/accounts/%40pat/mint', { headers: admin, method: 'POST', body: { amount_usd_cents: 500, key: 'credits-1', sponsor: { login: 'open-autonomy' } } });
+    const given = await requestJson(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 300, note: 'I believe in it', key: 'g1' } });
+    expect(given).toMatchObject({ ok: true, from: '@pat', to_balance_usd_cents: 400 });
+    expect((await request(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 300 } })).status).toBe(402);
+    expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${give}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(403);
+    expect((await requestJson(env, '/v1/funders/pat')).given_usd_cents).toBe(300);
+    expect(await (await request(env, '/p/acme%2Fapp')).text()).toContain('Granted by @pat — I believe in it');
+    expect(await (await request(env, '/p/%40pat')).text()).toContain('Granted to');
+  });
+
   test('the board: a task published under its item shows on the item, lane, attempts and verdict', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 100);

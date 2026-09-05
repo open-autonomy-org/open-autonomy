@@ -17,8 +17,12 @@ export const CLAIM_FILE = '.open-autonomy-claim';
 export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 // A rotated-away key keeps working this long so a running stack can pick up the new one on its own time.
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
-const SCOPES: KeyScope[] = ['spend', 'narrate', 'steer'];
+const SCOPES: KeyScope[] = ['spend', 'narrate', 'steer', 'give'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
+// A funder is a person: `@<github login>` on the books, proven by the claim file in a repository they own.
+const FUNDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
+const FUNDER_ACCOUNT_RE = /^@[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+export const funderAccount = (login: string): string => `@${login.toLowerCase()}`;
 
 export function dayKeyUTC(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -43,8 +47,11 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   if (!constantTimeEqual(signature, await hmac(env.AGENT_PROXY_HMAC_SECRET, payload))) return null;
   let claims: KeyClaims;
   try { claims = JSON.parse(new TextDecoder().decode(fromBase64url(payload))) as KeyClaims; } catch { return null; }
-  if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !ACCOUNT_RE.test(claims.account)) return null;
-  if (!Array.isArray(claims.models) || !claims.models.length || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
+  // A project's key names owner/repo; a funder's names @login and carries no models (it can only give).
+  if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !(ACCOUNT_RE.test(claims.account) || FUNDER_ACCOUNT_RE.test(claims.account))) return null;
+  if (!Array.isArray(claims.models) || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
+  const giveOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give');
+  if (!claims.models.length && !giveOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
@@ -72,7 +79,14 @@ export async function mintKey(env: Env, account: string, models: string[], scope
 // commit that lands near midnight still verifies.
 export async function handleKeyChallenge(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'GET') return methodNotAllowed();
-  const account = new URL(req.url).searchParams.get('account') ?? '';
+  const url = new URL(req.url);
+  const funder = url.searchParams.get('funder');
+  if (funder !== null) {
+    if (!FUNDER_RE.test(funder)) return error('invalid_funder', 400);
+    const tomorrow = dayKeyUTC(new Date(Date.now() + 86_400_000));
+    return json({ ok: true, funder: funder.toLowerCase(), file: CLAIM_FILE, claim: await claimCode(env, funderAccount(funder), dayKeyUTC()), valid_through: `${tomorrow}T23:59:59Z`, next: `commit ${CLAIM_FILE} containing the claim to the default branch of a repository you own (${funder}/<repo>), then POST /v1/keys/mint {"funder":"${funder}","repo":"${funder}/<repo>"}` });
+  }
+  const account = url.searchParams.get('account') ?? '';
   if (!ACCOUNT_RE.test(account)) return error('invalid_account', 400);
   const tomorrow = dayKeyUTC(new Date(Date.now() + 86_400_000));
   return json({
@@ -89,7 +103,18 @@ export async function handleKeyChallenge(req: Request, env: Env): Promise<Respon
 // code. `scopes: ["steer"]` mints an owner-side driver's key, which can push a roadmap and nothing else.
 export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
-  const body = parseJson<{ account?: string; models?: string[]; scopes?: KeyScope[] }>(await req.text());
+  const body = parseJson<{ account?: string; models?: string[]; scopes?: KeyScope[]; funder?: string; repo?: string }>(await req.text());
+  if (body && typeof body.funder === 'string') {
+    // A funder's key: the claim file in a repository the login owns proves the login; the key only gives.
+    if (!FUNDER_RE.test(body.funder) || typeof body.repo !== 'string' || !ACCOUNT_RE.test(body.repo)) return error('invalid_funder', 400);
+    if (body.repo.split('/')[0].toLowerCase() !== body.funder.toLowerCase()) return error('repo_not_owned', 403);
+    const found = (await fetchRepoText(env, body.repo, CLAIM_FILE, 256))?.trim();
+    if (!found) return error('claim_file_missing', 403);
+    const account = funderAccount(body.funder);
+    const accepted = [await claimCode(env, account, dayKeyUTC()), await claimCode(env, account, dayKeyUTC(new Date(Date.now() - 86_400_000)))];
+    if (!accepted.includes(found)) return error('claim_mismatch', 403);
+    return mintKey(env, account, [], ['give']);
+  }
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);
   const models = Array.isArray(body.models) && body.models.length ? body.models : DEFAULT_MODELS;
   if (models.some((m) => typeof m !== 'string' || !m)) return error('invalid_models', 400);

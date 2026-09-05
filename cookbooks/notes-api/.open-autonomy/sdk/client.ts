@@ -116,6 +116,12 @@ export class OpenAutonomy {
     return r.results[0]?.update;
   }
 
+  // A grant: credits from this funder's books to a project's, once per idempotency key, with a word.
+  async give(g: { to: string; usd_cents: number; note?: string; key?: string }): Promise<{ ok: boolean; error?: string; from?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
+    const res = await this.fetchImpl(`${this.base}/grants/give`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify(g) });
+    return await res.json() as { ok: boolean; error?: string };
+  }
+
   // The agent's setup, replacing what was there.
   async setup(s: AgentSetup): Promise<boolean> {
     const r = await this.send(event(SETUP_EVENT_TYPE, 'agent', s as unknown as Record<string, unknown>));
@@ -201,6 +207,16 @@ export async function keyMint(baseUrl: string, account: string, models?: string[
   return await res.json() as MintedKey;
 }
 // `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).
+// A funder: a person who holds grant credits on their own books (`@login`). Their key proves their GitHub
+// login through the claim file in a repository they own and can only give.
+export async function funderChallenge(baseUrl: string, login: string, fetchImpl: typeof fetch = fetch): Promise<KeyChallenge & { funder?: string }> {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/challenge?funder=${encodeURIComponent(login)}`);
+  return await res.json() as KeyChallenge & { funder?: string };
+}
+export async function funderMint(baseUrl: string, login: string, repo: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ funder: login, repo }) });
+  return await res.json() as MintedKey;
+}
 export async function keyRotate(baseUrl: string, currentKey: string, options: { graceSeconds?: number; fetchImpl?: typeof fetch } = {}): Promise<MintedKey> {
   const res = await (options.fetchImpl ?? fetch)(`${baseUrl.replace(/\/$/, '')}/keys/rotate`, { method: 'POST', headers: { authorization: `Bearer ${currentKey}`, 'content-type': 'application/json' }, body: JSON.stringify(options.graceSeconds === undefined ? {} : { grace_seconds: options.graceSeconds }) });
   return await res.json() as MintedKey;

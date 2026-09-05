@@ -18,6 +18,8 @@ export interface Env {
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
+  // Grant credits: the org's own grants account (its funder identity on the books), default open-autonomy-org/grants.
+  GRANTS_ACCOUNT?: string;
   // Money in, beside GitHub Sponsors: Polar, the merchant of record for direct patronage. Absent → the page's
   // tiers offer GitHub Sponsors alone.
   POLAR_API_BASE?: string;
@@ -38,12 +40,13 @@ export interface KeyClaims {
   account: string;
   models: string[];
   // What the key may do. `spend`: the rails; `narrate`: the development stream; `steer`: push a roadmap
-  // revision (an owner-side driver's key, which spends nothing). Absent means spend + narrate.
+  // revision (an owner-side driver's key, which spends nothing); `give`: a funder's key, which moves grant
+  // credits from the funder's own books to a project. Absent means spend + narrate.
   scopes?: KeyScope[];
   iat: string;
   exp: string;
 }
-export type KeyScope = 'spend' | 'narrate' | 'steer';
+export type KeyScope = 'spend' | 'narrate' | 'steer' | 'give';
 export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
 export const hasScope = (claims: KeyClaims, scope: KeyScope): boolean => (claims.scopes ?? DEFAULT_SCOPES).includes(scope);
 
