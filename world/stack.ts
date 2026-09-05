@@ -54,10 +54,14 @@ function hostIp(): string {
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip ?? '')) throw new Error('stack: cannot resolve host.docker.internal from a container');
   return ip;
 }
+// The default route's interface first; when that is a tunnel without an address (a VPN), the first LAN interface
+// that has one — the VM reaches the host's LAN address either way.
 function resolverIp(): string {
   const iface = sh(['sh', '-c', "route -n get default 2>/dev/null | awk '/interface:/{print $2}'"], { quiet: true, check: false }).out.trim();
-  const ip = iface ? sh(['ipconfig', 'getifaddr', iface], { quiet: true, check: false }).out.trim() : '';
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("stack: the host has no LAN address for the containers' DNS");
+  const v4 = (i: string) => { const ip = sh(['ipconfig', 'getifaddr', i], { quiet: true, check: false }).out.trim(); return /^\d+\.\d+\.\d+\.\d+$/.test(ip) ? ip : ''; };
+  const lan = sh(['sh', '-c', "ifconfig -l"], { quiet: true, check: false }).out.trim().split(/\s+/).filter((i) => /^en\d+$/.test(i));
+  const ip = [iface, ...lan].filter(Boolean).map(v4).find(Boolean);
+  if (!ip) throw new Error("stack: the host has no LAN address for the containers' DNS");
   return ip;
 }
 // The world's reflect front and resolver, for the vendor the agent's own HTTP client cannot be pointed
@@ -92,6 +96,8 @@ async function putMain(path: string, content: string, message: string): Promise<
   await git(WORK, 'checkout', '-q', 'main');
   await git(WORK, 'reset', '-q', '--hard', 'origin/main');
   writeFileSync(resolve(WORK, path), content);
+  // Already on main (a second `stack up` on the same instance): nothing to commit, nothing to push.
+  if (!(await git(WORK, 'status', '--porcelain', '--', path)).trim()) return;
   await git(WORK, '-c', 'user.name=owner', '-c', 'user.email=owner@example.com', 'commit', '-q', '-am', message);
   await git(WORK, 'push', '-q', 'origin', 'main');
 }
