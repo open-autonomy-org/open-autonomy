@@ -20,6 +20,7 @@ bun world/run.ts verify                # the audit: the books, the twin's main, 
 bun world/run.ts down --purge          # forget it (the stack's volumes too)
 WORLD_STATE_ROOT=/fast/disk bun world/run.ts check   # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
 bun world/run.ts check                 # the gate: up → probe → clock → wait → verify → down
+bun world/run.ts check --cookbook notes-api   # the same gate on the second cookbook, a service
 ```
 
 The cookbook is `todo-cli` (`--cookbook <name>` picks another): eight items, each one command and one test.

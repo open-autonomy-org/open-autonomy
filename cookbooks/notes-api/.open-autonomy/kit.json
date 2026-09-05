@@ -1,0 +1,9 @@
+{
+  "kit": "hermes",
+  "version": "2.0.0",
+  "params": {
+    "project": "notes-api",
+    "account": "cookbook/notes-api"
+  },
+  "divergences": []
+}

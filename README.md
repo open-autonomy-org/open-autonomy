@@ -39,7 +39,7 @@ Three ways in:
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
-cookbooks/todo-cli   the cookbook the world runs
+cookbooks/todo-cli   the cookbook the world runs; cookbooks/notes-api the second, a service (`--cookbook notes-api`)
 world/               the world: twins + the platform + the kit on the cookbook; `bun world/run.ts check`
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
 ```

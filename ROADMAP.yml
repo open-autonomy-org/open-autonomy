@@ -146,7 +146,7 @@ items:
   - id: second-cookbook
     phase: 4
     priority: medium
-    status: planned
+    status: active
     title: A second cookbook, not a CLI
     acceptance:
       - "`cookbooks/notes-api`: a small HTTP service (bun, one file, one test file) with a six-item roadmap of one endpoint and one test each, made with the kit plus its own code; its check starts and probes the server."

@@ -1,0 +1,45 @@
+# notes-api's roadmap: one endpoint and one test per item, top to bottom. The agent marks each done.
+schema: open-autonomy.roadmap.v3
+items:
+  - id: health
+    phase: 1
+    priority: high
+    status: planned
+    title: GET /healthz says the service is up
+    acceptance:
+      - "`GET /healthz` answers 200 with `{ok: true}`; a test starts the server on a free port and asserts it."
+  - id: create
+    phase: 1
+    priority: high
+    status: planned
+    title: POST /notes creates a note
+    acceptance:
+      - "`POST /notes` with `{text}` answers 201 with `{id, text, created}`; ids are small integers that never repeat; a test creates two notes and asserts ids 1 and 2."
+  - id: list
+    phase: 1
+    priority: high
+    status: planned
+    title: GET /notes lists the notes
+    acceptance:
+      - "`GET /notes` answers 200 with every note, oldest first; a test creates two and lists them."
+  - id: read
+    phase: 2
+    priority: medium
+    status: planned
+    title: GET /notes/:id reads one note
+    acceptance:
+      - "`GET /notes/:id` answers 200 with the note, or 404 `{error: \"not_found\"}`; a test asserts both."
+  - id: remove
+    phase: 2
+    priority: medium
+    status: planned
+    title: DELETE /notes/:id removes a note
+    acceptance:
+      - "`DELETE /notes/:id` answers 204 and the note is gone from the list, or 404 when absent; a test asserts both."
+  - id: search
+    phase: 3
+    priority: low
+    status: planned
+    title: GET /notes?q= searches the notes
+    acceptance:
+      - "`GET /notes?q=<word>` answers the notes whose text contains the word, case-insensitive; a test asserts a hit and a miss."

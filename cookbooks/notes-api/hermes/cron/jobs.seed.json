@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "name": "file-roadmap-item",
+      "script": "file-roadmap-item.sh",
+      "no_agent": true,
+      "schedule": "every 360m",
+      "deliver": "discord",
+      "workdir": "/work/project"
+    }
+  ]
+}
