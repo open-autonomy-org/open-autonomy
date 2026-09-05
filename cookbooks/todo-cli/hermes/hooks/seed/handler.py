@@ -148,12 +148,14 @@ def _seed_board() -> None:
             logger.error("seed: no task id in the board's answer for '%s'", spec["key"])
             return
         previous = m.group(1)
-        # A task the seed holds (`"held": "<why>"`) is filed and blocked at once, for the owner to release with
-        # `hermes kanban unblock`; only at filing, so a release is never undone by the next boot.
+        # A task the seed holds (`"held": "<why>"`) is filed and parked in the board's Scheduled lane at once, for the
+        # owner to release with `hermes kanban unblock`; only at filing, so a release is never undone by the next
+        # boot. Parked, not blocked: the board escalates repeated blocks into triage and decomposition, and the
+        # PM never touches Scheduled.
         held = spec.get("held")
         created_at = re.search(r'"created_at":\s*(\d+)', r.stdout)
         if held and created_at and time.time() - int(created_at.group(1)) < 120:
-            subprocess.run(["hermes", "kanban", "block", previous, "--kind", "needs_input", str(held)], capture_output=True, text=True)
+            subprocess.run(["hermes", "kanban", "schedule", previous, str(held)], capture_output=True, text=True)
     logger.info("seed: the board holds the %d seed task(s)", len(tasks))
 
 

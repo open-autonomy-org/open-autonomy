@@ -1,9 +1,5 @@
 # Open Autonomy — constitution
 
-What this project is and what it must remain. The opening paragraph is the north star and leads the project's
-page; the invariants bind every task, and a review that finds one violated sends the work back whatever else it
-got right. Changing this file is the owner's act, never a task's.
-
 Open Autonomy is a way to run self-building technologies: projects whose agents keep working their board for
 months, in the open, funded by the people who want them to exist. It is four pieces. The **platform** holds each
 project's funds, meters every spend as it happens, takes money in, and shows the books, the roadmap, the
@@ -11,6 +7,10 @@ sessions and the audit trail so a stranger can see the work continuing and where
 kits** are complete repositories that run themselves out of the box with the SDK wired in; the Hermes kit is
 the first. **Cookbooks** are complete projects ready to run autonomously, worth copying. And this repository's
 **own boilerplate**, because Open Autonomy is itself an Open Autonomy project.
+
+What this project is and what it must remain. The opening paragraph is the north star and leads the project's
+page; the invariants bind every task, and a review that finds one violated sends the work back whatever else it
+got right. Changing this file is the owner's act, never a task's.
 
 ## Invariants
 

@@ -2,7 +2,7 @@
 
 This directory is a complete Hermes home (`HERMES_HOME`), from the Open Autonomy Hermes kit. Everything the
 agent is lives here and is committed: `SOUL.md` (identity), `skills/` (the two things it does beyond what Hermes
-brings: `develop`, `pm`), `kanban.seed.json` (the board's first tasks, in order; one with a `held` reason is filed blocked, the owner's to release), `cron/jobs.seed.json` (its one job: the
+brings: `develop`, `pm`), `kanban.seed.json` (the board's first tasks, in order; one with a `held` reason is filed parked, the owner's to release with `hermes kanban unblock`), `cron/jobs.seed.json` (its one job: the
 PM, hourly), `config.yaml` (which model, through the platform; a worker takes it at dispatch, so a model change
 never strands anything), `hooks/` (the seed: the schedule and the board, on every boot, idempotent). Its runtime
 state (sessions, logs, caches, `.env`, the board's database) is git-ignored.
