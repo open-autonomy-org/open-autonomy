@@ -2,18 +2,31 @@
 // The audit after any number of runs (bun world/run.ts verify): the books, the GitHub twin, the project's
 // own check at main, the page, the stream. Never the agent's prose.
 import { existsSync } from 'node:fs';
-import { ACCOUNT, ENC, HOME_CHANNEL, MODEL, WORK, api, git, need } from './lib.ts';
+import { ACCOUNT, ENC, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, WORK, api, git, need } from './lib.ts';
 
 const pub = api(need('PLATFORM_URL'));
 const gh = api(need('GITHUB_TWIN_URL'));
 const fail = (m: string) => { throw new Error(`verify: ${m}`); };
 
 // The books: every metered call is the agent's model on the model rail, and money moved.
-const calls = await pub.get(`/v1/accounts/${ENC}/calls`);
+// The whole audit trail, paged: two fires and their reviews outrun one page.
+const calls = { status: 200, body: { calls_total: 0, calls: [] as Array<Record<string, any>> } };
+for (let before: string | undefined; ;) {
+  const page = await pub.get(`/v1/accounts/${ENC}/calls?limit=200${before ? `&before=${encodeURIComponent(before)}` : ''}`);
+  if (page.status !== 200) fail(`calls → ${page.status}`);
+  calls.body.calls_total = page.body.calls_total; calls.body.calls.push(...page.body.calls);
+  if (!page.body.next) break;
+  before = page.body.next;
+}
 if (calls.status !== 200) fail(`calls → ${calls.status}`);
 if (!(calls.body.calls_total >= 3)) fail(`expected ≥3 metered calls, saw ${calls.body.calls_total}`);
 // Every model-rail record is the agent's model; the other rails (a card, a partner) name themselves.
-if (!calls.body.calls.every((c: { model?: string; rail: string }) => (c.rail === 'model' ? c.model === MODEL : c.rail === 'card' || c.rail === 'partner'))) fail("a metered call was not the agent's model on the model rail, nor a card or partner record");
+if (!calls.body.calls.every((c: { model?: string; rail: string }) => (c.rail === 'model' ? c.model === MODEL || c.model === PREVIOUS_MODEL : c.rail === 'card' || c.rail === 'partner'))) fail("a metered call was not the agent's model on the model rail, nor a card or partner record");
+// The schedule followed the owner's model change: the newest model call is on the config's model, and the
+// fire before the change spent on the previous one (so the re-pin, not the pin alone, is what was proven).
+const modelCalls = calls.body.calls.filter((c: { rail: string }) => c.rail === 'model') as Array<{ model?: string }>;
+if (modelCalls.length && modelCalls[0].model !== MODEL) fail(`the newest model call is on ${modelCalls[0].model}, not the config's ${MODEL}: the schedule did not follow the model change`);
+if (modelCalls.length && !modelCalls.some((c) => c.model === PREVIOUS_MODEL)) fail(`no model call spent on ${PREVIOUS_MODEL}: the fire before the model change did not happen`);
 if (!calls.body.calls.some((c: { rail: string }) => c.rail === 'model')) fail('no model-rail call on the trail');
 const funding = await pub.get(`/v1/accounts/${ENC}`);
 if (!(funding.body.consumed_usd_cents > 0 && funding.body.balance_usd_cents < funding.body.granted_in_usd_cents)) fail(`the books did not move: ${JSON.stringify(funding.body).slice(0, 200)}`);
@@ -65,9 +78,9 @@ if (clamp.matches > 0) fail(`the platform clamped the agent's output cap: ${clam
 
 // Delivery: the run's report, posted by the bot to its home channel on the Discord twin, through reflect.
 const posted = (await api(need('DISCORD_TWIN_URL')).get(`/api/v10/channels/${HOME_CHANNEL}/messages?limit=50`)).body as Array<{ content: string }> | null;
-const reports = runs.map((r) => r.report ?? '').filter(Boolean);
-const delivered = reports.filter((report) => (posted ?? []).some((m) => m.content.includes(report.slice(0, 60))));
-if (!delivered.length) fail(`no run report reached the Discord twin: ${(posted ?? []).length} message(s) in the home channel, none carrying a session's report`);
+// The fire's own report is the filing line the script job delivers ("filed <item> as task …"); each landed item has one.
+const delivered = done.filter((item) => (posted ?? []).some((m) => m.content.includes(`filed ${item} as task`)));
+if (!delivered.length) fail(`no fire's report reached the Discord twin: ${(posted ?? []).length} message(s) in the home channel, none saying an item was filed`);
 
 // The seal: from the agent's own container, a public host is refused, the platform is not.
 const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
@@ -75,4 +88,4 @@ const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', cont
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (every model call ${MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (the newest on ${MODEL}, the earlier fire on ${PREVIOUS_MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);

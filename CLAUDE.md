@@ -18,9 +18,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook.
   `bun world/run.ts check` is the gate.
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running in
-  containers on this Mac (`container/compose.yml` plus this install's `container/compose.override.yml`, which
-  mounts the reporter's supercode build). It develops the product, and it is not special. Runtime state is
-  git-ignored.
+  containers on this Mac (`container/compose.yml`). It develops the product, and it is not special. Runtime
+  state is git-ignored.
 
 ## Working agreement
 
@@ -41,10 +40,13 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   The world gate is the proof. Do not grow the suites; grow the world.
 - **Money in is GitHub Sponsors and Polar**, side by side, both minting to the same books (Polar is the
   merchant of record for direct patronage); **cards out are Stripe Issuing**. Nothing else takes or moves money.
+- On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
+  before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
+  root's free space). The world's Docker host mounts it: `colima start -p open-autonomy-world --mount "$HOME:w"
+  --mount /Volumes/PeakSSD:w` (the runtime mounts the world's CA and data into containers from that root).
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the
   gate — up, seed, probe, one clock fire, wait, verify, down. Run it before deploying anything that touches
-  metering, keys, the stream, the docs sync or the kit. The reporter's supercode with Hermes support is
-  unreleased: the world builds it from the checkout beside this one (`SUPERCODE_ROOT`).
+  metering, keys, the stream, the docs sync or the kit.
 - Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).
   It never runs the agent leg.
 

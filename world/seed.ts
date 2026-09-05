@@ -6,7 +6,7 @@
 // lands in <data>/agent.env: a world artifact, worthless anywhere else.
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, REPO_NAME, api, git, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, api, git, need } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL');
@@ -50,7 +50,7 @@ writeFileSync(resolve(work, challenge.body.file), `${challenge.body.claim}\n`);
 await git(work, 'add', challenge.body.file);
 await git(work, 'commit', '-q', '-m', 'claim');
 await git(work, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
-const key = await pub.post('/v1/keys/mint', { account: ACCOUNT, models: [MODEL] });
+const key = await pub.post('/v1/keys/mint', { account: ACCOUNT, models: [MODEL, PREVIOUS_MODEL] });
 if (key.status !== 200 || !key.body?.token) throw new Error(`platform: mint key → ${key.status} ${key.text.slice(0, 300)}`);
 writeFileSync(resolve(DATA, 'agent.env'), `OPEN_AUTONOMY_BASE_URL=${platform}/v1\nOPEN_AUTONOMY_KEY=${key.body.token}\n`);
 console.log(`seed: key minted by claim file → ${resolve(DATA, 'agent.env')}${existsSync(resolve(DATA, 'agent.env')) ? '' : ' (missing!)'}`);

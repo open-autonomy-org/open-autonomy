@@ -1,5 +1,5 @@
 # The agent's container: stock Hermes at the pinned tag (container/hermes.pin, built by
-# container/build-hermes.sh) plus what the build-roadmap skill runs: git over ssh to push, bun for the
+# container/build-hermes.sh) plus what a worker runs: git over ssh to push, bun for the
 # project's checks. It holds no secret: the key lives in the valve, the push key in an ssh-agent forwarded
 # from the host, and the only thing in its environment is an optional Discord token.
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
