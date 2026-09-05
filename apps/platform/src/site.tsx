@@ -378,11 +378,11 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
             <div class="panel">
               <h3>Funding</h3>
               <img src={`/v1/accounts/${enc}/runway.svg`} width="460" height="116" style={`max-width:100%;border-radius:12px;border:1px solid ${C.line}`} alt="funding runway" />
-              <div class="ledger">
-                <div class="item"><div class="v">{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
+              <div class="ledger" data-project={v.account} data-shape={JSON.stringify([live, revision?.revision ?? 0, v.granted_in_usd_cents])}>
+                <div class="item"><div class="v" data-received>{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
                 {v.granted_out_usd_cents > 0 ? <div class="item"><div class="v">{usd(v.granted_out_usd_cents)}</div><div class="l">funded onward</div></div> : null}
-                <div class="item"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
-                <div class="item"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
+                <div class="item"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
+                <div class="item"><div class="v" data-balance>{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
               </div>
               {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.slice(0, 8).map((f) => <FundRow f={f} now={now} grants={grants} />)}</ul> : null}
               <a class="docmore" href={`/v1/accounts/${enc}/calls`}>Every metered call →</a>
@@ -421,7 +421,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
 }
 
 export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants'): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} grants={grants} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} grants={grants} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
 }
 
 export function renderSessionsPage(account: string, sessions: SessionSummary[], live: string[], nowMs: number): string {
