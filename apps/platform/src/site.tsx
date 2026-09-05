@@ -1,7 +1,7 @@
 import { raw } from 'hono/html';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { DirectoryEntry, Flow, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
-import { ItemPage, LIVE_SCRIPT, SessionPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
+import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
 // The funding site, server-rendered from the books: the explore grid (GET /) and the project page
@@ -398,6 +398,10 @@ function Project({ v, sessions, live, roadmap, revision, now }: { v: ProjectView
 
 export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision): string {
   return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+}
+
+export function renderSessionsPage(account: string, sessions: SessionSummary[], live: string[], nowMs: number): string {
+  return render(<Shell title={`sessions · ${nameOf(account)} · open-autonomy`}><Nav /><SessionsPage account={account} sessions={sessions} live={live} repoUrl={repoUrlOf(account)} now={nowMs} /></Shell>);
 }
 
 export function renderSessionPage(account: string, s: SessionRecord, nowMs: number): string {

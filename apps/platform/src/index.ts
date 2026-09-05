@@ -4,7 +4,7 @@ import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleK
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
 import { handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderExplore, renderItemPage, renderMessage, renderProject, renderSessionPage } from './site.js';
+import { renderExplore, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -67,6 +67,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const result = await ledger.couponRedeem(code, account);
     const message = result.ok ? `Added $${((result.amount_usd_cents ?? 0) / 100).toFixed(2)} to ${account}.` : redeemMessage(result.error);
     return html(renderMessage(account, result.ok, result.ok ? 'Coupon redeemed' : 'Coupon not redeemed', message), result.ok ? 200 : 400);
+  }
+  if ((m = path.match(/^\/p\/(.+)\/sessions$/))) {
+    if (get()) return get()!;
+    const account = dec(m[1]);
+    const view = await ledger.project(account);
+    if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
+    const stream = await ledger.sessions(account, 100);
+    return html(renderSessionsPage(account, stream.sessions, stream.live, Date.now()));
   }
   if ((m = path.match(/^\/p\/(.+)\/sessions\/([^/]+)$/))) {
     if (get()) return get()!;

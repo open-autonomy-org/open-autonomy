@@ -97,8 +97,25 @@ export function Spine({ account, roadmap, scheduleJson, sessions, live, repoUrl,
         {done.map((r) => { const receipts = byItem.get(r.item.id) ?? []; return <Station item={r.item} state={r.state} enc={enc}>{receipts.length ? receipts.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />) : <div class="rc-none">shipped by the maintainer · no agent session</div>}</Station>; })}
         {!done.length ? <li class="empty">Nothing shipped yet.</li> : null}
       </ol>
-      {orphan.length ? <><h3>Other sessions</h3>{orphan.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />)}</> : null}
-      {repoUrl ? <a class="docmore" href={`${repoUrl}/blob/HEAD/ROADMAP.yml`}>The roadmap file →</a> : null}
+      {orphan.length ? <><h3>Other sessions</h3>{orphan.slice(0, 5).map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />)}{orphan.length > 5 ? <div class="rc-none">{orphan.length - 5} more · <a href={`/p/${enc}/sessions`}>every session ↗</a></div> : null}</> : null}
+      <div class="rc-proofs" style="margin-top:14px">{repoUrl ? <a href={`${repoUrl}/blob/HEAD/ROADMAP.yml`}>the roadmap file ↗</a> : null}<a href={`/p/${enc}/sessions`}>every session ↗</a><a href={`/v1/accounts/${enc}/roadmap/revisions`}>every roadmap revision ↗</a></div>
+    </div>
+  );
+}
+
+// ---- every session ------------------------------------------------------------------------------------
+export function SessionsPage({ account, sessions, live, repoUrl, now }: { account: string; sessions: SessionSummary[]; live: string[]; repoUrl?: string; now: number }) {
+  const enc = encodeURIComponent(account);
+  return (
+    <div class="wrap">
+      <p class="crumb"><a href={`/p/${enc}`}>← {account}</a></p>
+      <div class="panel jobhead">
+        <h1>Every session</h1>
+        <p class="meta">{sessions.length} session{sessions.length === 1 ? '' : 's'} on the page · {live.length} live · newest first · <a href={`/v1/accounts/${enc}/sessions?limit=100`}>as JSON ↗</a></p>
+      </div>
+      <div class="panel">
+        {sessions.length ? sessions.map((s) => <div>{s.item_id ? <div class="rc-none">item <a href={`/p/${enc}/items/${encodeURIComponent(s.item_id)}`}>{s.item_id}</a></div> : null}<Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} /></div>) : <p class="sub">No session has been published yet.</p>}
+      </div>
     </div>
   );
 }

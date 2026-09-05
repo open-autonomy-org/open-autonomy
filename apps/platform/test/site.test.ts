@@ -104,6 +104,12 @@ describe('the site: explore, the project page, the session page, the item page',
     expect(item.includes('sorting next')).toBe(true);
     expect(item.includes('data-live="1"')).toBe(true);
     expect(item.includes('/items/')).toBe(true);
+    // Every session, on its own page, newest first, each filed under its item.
+    const all = await (await request(env, '/p/acme%2Fapp/sessions')).text();
+    expect(all.indexOf('/sessions/run-2')).toBeLessThan(all.indexOf('/sessions/run-1'));
+    expect(all.includes('href="/p/acme%2Fapp/items/add"')).toBe(true);
+    expect(all.includes('2 sessions on the page · 1 live')).toBe(true);
+    expect((await request(env, '/p/nobody%2Fnothing/sessions')).status).toBe(404);
     await post(ce('session.ended', 'run-2', { outcome: 'failed', report: 'the check failed' }));
     const after = await (await request(env, '/p/acme%2Fapp')).text();
     expect(/last run .*: failed/.test(after)).toBe(true);
