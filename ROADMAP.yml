@@ -65,7 +65,7 @@ items:
     status: active
     title: The reporter runs on a released supercode
     acceptance:
-      - "`@volter-ai-dev/supercode` publishes a release whose harness list includes hermes and whose session index subscription accepts it (v0.4.15, cut from supercode main with the harness's ACP frontend gated behind its feature)."
+      - "`@volter-ai-dev/supercode` publishes a release whose harness list includes hermes and whose session index subscription accepts it (v0.4.17, cut from supercode main with the harness's ACP frontend gated behind its feature)."
       - The kit's reporter dependency names that version; the world no longer builds supercode from a checkout and this install's compose override is gone; the world gate passes on the published binary and this install's reporter publishes a live fire on it.
 
   # ---- Phase 2: money in — the Patreon half of the platform --------------------------------------------

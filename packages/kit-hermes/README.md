@@ -56,11 +56,6 @@ and settled cent per item, live while a session runs.
 balance for a bounded amount at the owner's merchant categories, and a partner service's metered charge
 for a listed partner within a bound. Both leave records on the public audit trail naming the rail.
 
-**Environmental dependency.** The reporter reads Hermes through supercode's `hermes` harness, which is on
-supercode's main branch and not yet in a published release (`@volter-ai-dev/supercode` 0.4.13 lists no
-Hermes harness). Until the release that carries it, the reporter needs a build from that branch, named by
-`SUPERCODE_BIN`; this repository's world builds one from the checkout beside it.
-
 ## Nothing in the agent's reach is a secret that matters
 
 The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent forwarded from the host
