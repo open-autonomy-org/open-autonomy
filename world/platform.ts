@@ -30,6 +30,13 @@ if (process.env.STRIPE_TWIN_URL) {
   if (!res.ok || !endpoint.secret) { console.error(`world/platform.ts: cannot enrol the webhook endpoint on the Stripe twin (${res.status})`); process.exit(2); }
   vars.STRIPE_WEBHOOK_SECRET = endpoint.secret;
 }
+// Money in is the Polar twin. It stores products, checkouts and orders but delivers no webhooks, so the
+// worker's signing secret is the world's own and the probe signs the events Polar would send.
+if (process.env.POLAR_TWIN_URL) {
+  vars.POLAR_API_BASE = process.env.POLAR_TWIN_URL;
+  vars.POLAR_ACCESS_TOKEN = 'polar_at_world';
+  vars.POLAR_WEBHOOK_SECRET = `whsec_${Buffer.from('world-polar-secret').toString('base64')}`;
+}
 const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () => new Response('') }); const p = s.port; s.stop(true); return p; })();
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);

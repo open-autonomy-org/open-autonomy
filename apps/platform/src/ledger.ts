@@ -59,6 +59,8 @@ export interface Account {
   roadmap_revision?: number;
   // The card rail: the account's cardholder at the issuer, created on its first card.
   stripe_cardholder?: string;
+  // Money in: the Polar products behind the account's tiers (`<tier index>:<month|once>` → product id).
+  polar_products?: Record<string, string>;
   daily_spend: Record<string, number>;
   sponsors: Sponsor[];
   sponsors_active: Record<string, Sponsor>;
@@ -126,6 +128,10 @@ export interface CardRecord {
   settled_usd_cents?: number;
   created_at: string;
 }
+
+// A Polar checkout the platform opened for a patron: which account and tier it funds, so a paid order is
+// attributed even when Polar's order carries no metadata.
+export interface PolarCheckout { id: string; account: string; tier: number; interval: 'month' | 'once'; usd_cents: number; created_at: string }
 
 export interface Sponsor {
   login: string;
@@ -280,6 +286,9 @@ export class LimitLedger implements DurableObject {
       case 'card_put': return json(await this.cardPut(body.card as CardRecord));
       case 'card': return json(await this.cardGet(s('id')));
       case 'set_cardholder': return json(await this.setCardholder(s('account'), s('cardholder')));
+      case 'set_polar_products': return json(await this.setPolarProducts(s('account'), body.products as Record<string, string>));
+      case 'polar_checkout_put': return json(await this.polarCheckoutPut(body.checkout as PolarCheckout));
+      case 'polar_checkout': return json(await this.polarCheckoutGet(s('id')));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
       case 'directory': return json({ ok: true, entries: this.directory() });
@@ -679,6 +688,24 @@ export class LimitLedger implements DurableObject {
     return { ok: true };
   }
 
+  // ---- money in: Polar's products and checkouts ---------------------------------------------------------
+  private async setPolarProducts(account: string, products: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
+    if (!products || typeof products !== 'object') return { ok: false, error: 'invalid_products' };
+    this.ensureAcct(account).polar_products = Object.fromEntries(Object.entries(products).filter(([k, v]) => typeof k === 'string' && typeof v === 'string'));
+    await this.save();
+    return { ok: true };
+  }
+  // `polar_checkout:<checkout id>`: the account and tier a checkout funds.
+  private async polarCheckoutPut(checkout: PolarCheckout): Promise<{ ok: boolean; error?: string }> {
+    if (!checkout || typeof checkout.id !== 'string' || !checkout.id || typeof checkout.account !== 'string') return { ok: false, error: 'invalid_checkout' };
+    await this.ctx.storage.put(`polar_checkout:${checkout.id}`, checkout);
+    return { ok: true };
+  }
+  private async polarCheckoutGet(id: string): Promise<{ ok: boolean; error?: string; checkout?: PolarCheckout }> {
+    const checkout = await this.ctx.storage.get<PolarCheckout>(`polar_checkout:${id}`);
+    return checkout ? { ok: true, checkout } : { ok: false, error: 'checkout_not_found' };
+  }
+
   // ---- the roadmap: one normalized model, revisioned ---------------------------------------------------
   // Every driver lands here: the file driver on sync, the milestones driver on sync, an owner-side driver
   // through the steer-scoped push. A revision records who, when, from which source, and what changed; an
@@ -783,6 +810,7 @@ export class LimitLedger implements DurableObject {
       monthly_usd_cents: monthlyTotal(a),
       live_sessions: [...(a?.live_sessions ?? [])],
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
+      ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
       status: fundingStatus(f),
     };
   }
@@ -851,6 +879,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (Array.isArray(a.live_sessions) && a.live_sessions.length) acct.live_sessions = a.live_sessions.filter((k) => typeof k === 'string');
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
+    if (a.polar_products && typeof a.polar_products === 'object') acct.polar_products = Object.fromEntries(Object.entries(a.polar_products).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     acct.daily_spend = a.daily_spend && typeof a.daily_spend === 'object' ? a.daily_spend : {};
     acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
     acct.sponsors_active = a.sponsors_active && typeof a.sponsors_active === 'object' ? a.sponsors_active : {};
@@ -1030,6 +1059,7 @@ export interface DirectoryEntry {
   monthly_usd_cents: number;
   live_sessions: string[];
   stripe_cardholder?: string;
+  polar_products?: Record<string, string>;
   status: 'funded' | 'low' | 'unfunded';
 }
 
@@ -1092,6 +1122,9 @@ export class LedgerClient {
   cardPut(card: CardRecord) { return this.rpc<{ ok: boolean; error?: string }>('card_put', { card }); }
   card(id: string) { return this.rpc<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
   setCardholder(account: string, cardholder: string) { return this.rpc<{ ok: true }>('set_cardholder', { account, cardholder }); }
+  setPolarProducts(account: string, products: Record<string, string>) { return this.rpc<{ ok: boolean; error?: string }>('set_polar_products', { account, products }); }
+  polarCheckoutPut(checkout: PolarCheckout) { return this.rpc<{ ok: boolean; error?: string }>('polar_checkout_put', { checkout }); }
+  polarCheckout(id: string) { return this.rpc<{ ok: boolean; error?: string; checkout?: PolarCheckout }>('polar_checkout', { id }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
   directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }

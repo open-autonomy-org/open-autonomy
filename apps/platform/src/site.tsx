@@ -111,6 +111,8 @@ export const STYLES = `
   .tier .tp{font-weight:800;font-size:20px;letter-spacing:-.02em;}
   .tier .tp span{font-weight:500;font-size:13px;color:${C.muted};}
   .tier p{color:${C.body};font-size:14px;margin:0 0 14px;}
+  .tier .pay{display:flex;gap:8px;margin-bottom:8px;}
+  .tier .pay .btn{flex:1;padding:11px 12px;}
   .coupon{display:flex;gap:10px;margin-top:6px;}
   .coupon input{flex:1;min-width:0;background:${C.bg};border:1.5px solid ${C.line};border-radius:12px;color:${C.ink};padding:11px 14px;font:14px 'Inter',ui-monospace,Menlo,monospace;letter-spacing:.04em;}
   .note{color:${C.faint};font-size:13px;line-height:1.5;margin-top:10px;}
@@ -314,19 +316,27 @@ function FundRow({ f, now }: { f: Flow; now: number }) {
 }
 
 // A tier says what the platform delivers for it: the patrons wall, and the runway the amount buys at the
-// project's own burn.
-function TierCard({ t, feat, owner, burn }: { t: ProjectView['tiers'][number]; feat: boolean; owner: string; burn: number }) {
+// project's own burn. Two doors, side by side, onto the same books: Polar (monthly or once, when the
+// platform has it) and GitHub Sponsors.
+function TierCard({ t, i, feat, owner, burn, account, polar }: { t: ProjectView['tiers'][number]; i: number; feat: boolean; owner: string; burn: number; account: string; polar: boolean }) {
   const days = burn > 0 ? Math.round(t.usd_cents / burn) : null;
   return (
     <div class={`tier${feat ? ' feat' : ''}`}>
       <div class="th"><span class="tn">{t.name}</span><span class="tp">{usd0(t.usd_cents)} <span>/mo</span></span></div>
       <p>On the patrons wall{days !== null ? `; about ${days} day${days === 1 ? '' : 's'} of the agent's runway each month at its current burn` : ''}.</p>
-      <a class={`btn block ${feat ? '' : 'outline'}`} href={`https://github.com/sponsors/${owner}`}>Join</a>
+      {polar ? (
+        <form class="pay" method="post" action="/v1/patrons/checkout">
+          <input type="hidden" name="account" value={account} /><input type="hidden" name="tier" value={String(i)} />
+          <button class={`btn block ${feat ? '' : 'outline'}`} type="submit" name="interval" value="month">{usd0(t.usd_cents)} monthly</button>
+          <button class="btn block outline" type="submit" name="interval" value="once">{usd0(t.usd_cents)} once</button>
+        </form>
+      ) : null}
+      <a class={`btn block ${feat && !polar ? '' : 'outline'}`} href={`https://github.com/sponsors/${owner}`}><Icon name="github" /> Sponsor on GitHub</a>
     </div>
   );
 }
 
-function Project({ v, sessions, live, roadmap, revision, now }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number }) {
+function Project({ v, sessions, live, roadmap, revision, now, polar }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
   const enc = encodeURIComponent(v.account);
@@ -379,7 +389,7 @@ function Project({ v, sessions, live, roadmap, revision, now }: { v: ProjectView
           <div class="side">
             <div class="panel">
               <h3>Become a patron</h3>
-              {v.tiers.map((t, i) => <TierCard t={t} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} />)}
+              {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} />)}
             </div>
             <div class="panel">
               <h3>Have a sponsor coupon?</h3>
@@ -396,8 +406,8 @@ function Project({ v, sessions, live, roadmap, revision, now }: { v: ProjectView
   );
 }
 
-export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
+export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} />{live.length ? <script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /> : null}</Shell>);
 }
 
 export function renderSessionsPage(account: string, sessions: SessionSummary[], live: string[], nowMs: number): string {

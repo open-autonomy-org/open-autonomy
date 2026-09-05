@@ -16,7 +16,7 @@ if (!(calls.body.calls_total >= 3)) fail(`expected ≥3 metered calls, saw ${cal
 if (!calls.body.calls.every((c: { model?: string; rail: string }) => (c.rail === 'model' ? c.model === MODEL : c.rail === 'card' || c.rail === 'partner'))) fail("a metered call was not the agent's model on the model rail, nor a card or partner record");
 if (!calls.body.calls.some((c: { rail: string }) => c.rail === 'model')) fail('no model-rail call on the trail');
 const funding = await pub.get(`/v1/accounts/${ENC}`);
-if (!(funding.body.consumed_usd_cents > 0 && funding.body.balance_usd_cents < 500)) fail(`the books did not move: ${JSON.stringify(funding.body).slice(0, 200)}`);
+if (!(funding.body.consumed_usd_cents > 0 && funding.body.balance_usd_cents < funding.body.granted_in_usd_cents)) fail(`the books did not move: ${JSON.stringify(funding.body).slice(0, 200)}`);
 
 // The twin's main: the landed roadmap. Every done item has a commit by the agent naming it, and the
 // project's own check passes at main.

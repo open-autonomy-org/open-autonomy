@@ -47,6 +47,15 @@
       "injectEnv": "STRIPE_TWIN_URL"
     },
     {
+      "id": "polar",
+      "type": "twin",
+      "command": "bun",
+      "args": ["${TWINS_ROOT}/packages/twin/polar/src/cli.ts", "serve"],
+      "port": 47617,
+      "portReason": "the platform is given this address at start and a restart of the world must keep it",
+      "injectEnv": "POLAR_TWIN_URL"
+    },
+    {
       "id": "platform",
       "type": "process",
       "command": "bun",

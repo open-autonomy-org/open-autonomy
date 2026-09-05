@@ -136,6 +136,36 @@ const partnerRecord = ((await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls a
 if (!partnerRecord || partnerRecord.partner !== 'browserless' || partnerRecord.usd_cents !== 30 || partnerRecord.quantity !== 3) fail(`no partner rail record on the audit trail: ${JSON.stringify(partnerRecord)}`);
 ok.push('a minted card paid a merchant within its bound and settled on the books; the wrong category and an unlisted partner were refused; a partner charge settled');
 
+// 8. Money in, against the Polar twin. A patron picks a tier on the page: the platform creates the tier's
+//    products at Polar and opens a checkout; the patron pays (confirms at the twin) and lands on the thanks
+//    page, which reads the checkout back and mints once; a renewal arrives as Polar's signed order event and
+//    mints once; a forged event is refused.
+const polarTwin = api(need('POLAR_TWIN_URL'), { authorization: 'Bearer polar_at_world' });
+const opened = await pub.post('/v1/patrons/checkout', { account: ACCOUNT, tier: 0, interval: 'month' });
+if (opened.status !== 200 || !opened.body?.checkout_id || !opened.body?.url) fail(`patron checkout → ${opened.status} ${opened.text.slice(0, 200)}`);
+const checkoutId = opened.body.checkout_id as string;
+const tier = opened.body.usd_cents as number;
+const paid = await polarTwin.post(`/v1/checkouts/${checkoutId}/confirm`, { customer_email: 'pat@example.com', customer_name: 'Pat Patron' });
+if (paid.status !== 200 || paid.body?.status !== 'confirmed') fail(`the twin did not confirm the checkout: ${paid.status} ${paid.text.slice(0, 200)}`);
+const booksBefore = (await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents as number;
+for (let i = 0; i < 2; i++) { const thanks = await pub.get(`/p/${ENC}/thanks?checkout_id=${checkoutId}`); if (thanks.status !== 200 || !thanks.text.includes('Thank you')) fail(`thanks page → ${thanks.status}`); }
+const booksAfter = (await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents as number;
+if (!tier || Math.round(booksAfter - booksBefore) !== tier) fail(`the paid checkout did not mint the tier once: ${booksBefore} → ${booksAfter} (tier ${tier})`);
+const patronPage = await pub.get(`/p/${ENC}`);
+if (!patronPage.text.includes('@pat')) fail('the patron is not on the page');
+const secretBytes = new TextEncoder().encode('world-polar-secret');
+const signed = async (payload: string, bytes = secretBytes) => {
+  const id = crypto.randomUUID(); const ts = String(Math.floor(Date.now() / 1000));
+  const key = await crypto.subtle.importKey('raw', bytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${ts}.${payload}`)))));
+  return fetch(`${platform}/webhooks/polar`, { method: 'POST', headers: { 'content-type': 'application/json', 'webhook-id': id, 'webhook-timestamp': ts, 'webhook-signature': `v1,${sig}` }, body: payload });
+};
+const renewal = JSON.stringify({ type: 'order.paid', data: { id: `ord_probe_${checkoutId}`, paid: true, total_amount: tier, checkout_id: checkoutId, billing_reason: 'subscription_cycle', customer: { email: 'pat@example.com', name: 'Pat Patron' } } });
+for (let i = 0; i < 2; i++) { const r = await signed(renewal); if (r.status !== 200) fail(`renewal webhook → ${r.status} ${await r.text()}`); }
+if (Math.round((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents - booksAfter) !== tier) fail('the renewal did not mint the tier once');
+if ((await signed(renewal, new TextEncoder().encode('forged'))).status !== 401) fail('a forged Polar event was accepted');
+ok.push('a tier paid through the Polar twin landed on the books from the thanks page, a renewal from the signed event, each once; a forged event was refused');
+
 // Leave the books as the seed left them for what follows: the probe's session is dropped.
 await admin.del(`/admin/accounts/${ENC}/sessions/probe-1`);
 console.log(`probe: OK — ${ACCOUNT}\n  ${ok.join('\n  ')}`);

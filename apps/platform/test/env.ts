@@ -68,6 +68,9 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
     STRIPE_API_BASE: 'https://stripe.test',
     STRIPE_SECRET_KEY: 'sk_test_fake',
     STRIPE_WEBHOOK_SECRET: 'whsec_test',
+    POLAR_API_BASE: 'https://polar.test',
+    POLAR_ACCESS_TOKEN: 'polar_at_test',
+    POLAR_WEBHOOK_SECRET: 'whsec_' + btoa('polar-test'),
     LIMITS: ns,
     ns,
     gateway: gw,
@@ -79,7 +82,8 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
 export const github: { files: Record<string, string>; repos: Record<string, Record<string, unknown>>; milestones: Record<string, unknown[]> } = { files: {}, repos: {}, milestones: {} };
 export const stripe: { requests: Array<{ method: string; path: string; body: Record<string, string> }>; cards: Record<string, Record<string, any>>; decisions: string[] } = { requests: [], cards: {}, decisions: [] };
 let current: ReturnType<typeof testEnv> | undefined;
-export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; stripe.requests = []; stripe.cards = {}; stripe.decisions = []; return env; }
+export const polar: { products: Record<string, Record<string, any>>; checkouts: Record<string, Record<string, any>>; orders: Record<string, any>[] } = { products: {}, checkouts: {}, orders: [] };
+export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; stripe.requests = []; stripe.cards = {}; stripe.decisions = []; polar.products = {}; polar.checkouts = {}; polar.orders = []; return env; }
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const req = new Request(input, init);
   const url = new URL(req.url);
@@ -92,6 +96,17 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const m = url.pathname.match(/^\/([^/]+\/[^/]+)\/HEAD\/(.+)$/);
     const text = m ? github.files[`${m[1]}:${m[2]}`] : undefined;
     return text === undefined ? new Response('', { status: 404 }) : new Response(text);
+  }
+  // A tiny Polar: products, checkouts, orders, customers. The test pays a checkout by confirming it here.
+  if (url.origin === 'https://polar.test') {
+    const body = req.method === 'POST' ? JSON.parse(await req.text() || '{}') as Record<string, any> : {};
+    if (req.method === 'POST' && url.pathname === '/v1/products/') { const id = `prod_${Object.keys(polar.products).length + 1}`; polar.products[id] = { id, ...body }; return Response.json(polar.products[id], { status: 201 }); }
+    if (req.method === 'POST' && url.pathname === '/v1/checkouts/') { const id = `chk_${Object.keys(polar.checkouts).length + 1}`; const product = polar.products[body.products?.[0]]; polar.checkouts[id] = { id, status: 'open', url: `https://polar.test/checkout/${id}`, product_id: product?.id, amount: product?.prices?.[0]?.price_amount ?? 0, metadata: body.metadata ?? {} }; return Response.json(polar.checkouts[id], { status: 201 }); }
+    let m = url.pathname.match(/^\/v1\/checkouts\/([^/]+)$/);
+    if (m && req.method === 'GET') return polar.checkouts[m[1]] ? Response.json(polar.checkouts[m[1]]) : new Response('{}', { status: 404 });
+    if (url.pathname === '/v1/orders/' && req.method === 'GET') return Response.json({ items: polar.orders.filter((o) => !url.searchParams.get('checkout_id') || o.checkout_id === url.searchParams.get('checkout_id')) });
+    if ((m = url.pathname.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === 'GET') return Response.json({ id: m[1], email: 'pat@example.com', name: 'Pat Patron' });
+    return new Response('{}', { status: 404 });
   }
   // A tiny Stripe Issuing: cardholders, cards, cards retrieved with their number, cards canceled,
   // authorizations approved or declined by the API. Everything it stores is inspectable by the test.
