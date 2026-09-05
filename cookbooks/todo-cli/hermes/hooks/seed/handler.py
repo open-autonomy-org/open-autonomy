@@ -137,6 +137,8 @@ def _seed_board() -> None:
                "--skill", "develop", "--skill", "review", "--json"]
         if previous:
             cmd += ["--parent", previous]
+        if spec.get("triage"):
+            cmd.append("--triage")  # filed, not released: the owner's to accept onto the board
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode != 0:
             logger.error("seed: cannot file task '%s': %s", spec["key"], (r.stderr or r.stdout).strip()[-400:])
