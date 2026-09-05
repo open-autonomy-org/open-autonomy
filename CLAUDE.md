@@ -43,8 +43,11 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.
 - On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
   before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
-  root's free space). The world's Docker host mounts it: `colima start -p open-autonomy-world --mount "$HOME:w"
-  --mount /Volumes/PeakSSD:w` (the runtime mounts the world's CA and data into containers from that root).
+  root's free space). One Docker host serves both stacks: the colima VM `open-autonomy`,
+  4 GiB, where the production stack runs as `oa-*` and the world's copy of the cookbook as `world-*` (the kit's
+  `STACK` name), each with its own volumes; a gate purges only its own. The VM is started at login by a launch agent
+  (a start script under the open-autonomy config directory, which also repairs colima's forwarded ssh socket after a
+  boot).
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the
   gate — up, seed, probe, one clock fire, wait, verify, down. Run it before deploying anything that touches
   metering, keys, the stream, the docs sync or the kit.

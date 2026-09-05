@@ -112,8 +112,8 @@ const pm = runs.find((s) => (s as { source?: string }).source === 'pm' && s.stat
 if (!pm) fail(`no ended PM session on the page: ${JSON.stringify(runs.map((r) => [r.key, (r as { source?: string }).source, r.status])).slice(0, 300)}`);
 
 // The seal: from the agent's own container, a public host is refused, the platform is not.
-const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy-world';
-const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', context, 'exec', 'oa-agent', 'curl', '-s', '-o', '/dev/null', '-m', '8', '-w', '%{http_code}', url], stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+const context = process.env.WORLD_DOCKER_CONTEXT ?? 'colima-open-autonomy';
+const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', context, 'exec', 'world-agent', 'curl', '-s', '-o', '/dev/null', '-m', '8', '-w', '%{http_code}', url], stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
