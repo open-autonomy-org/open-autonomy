@@ -539,7 +539,8 @@ export class LimitLedger implements DurableObject {
     if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
     // The funding hard-stop: settled spend plus in-flight reservations may not exceed the balance.
     const available = this.balanceOf(account) - this.reservedFor(account);
-    if (amount > available) return { ok: false, error: 'account_balance_exhausted', account, balance_usd_cents: this.balanceOf(account) };
+    // The refusal says what the call needed against what was free: the balance less what other calls in flight hold.
+    if (amount > available) return { ok: false, error: 'account_balance_exhausted', account, balance_usd_cents: this.balanceOf(account), reserved_usd_cents: this.reservedFor(account), available_usd_cents: available, needed_usd_cents: amount };
     // The global daily rail: runaway safety, independent of any balance.
     const cap = Number.isFinite(dailyCap) && dailyCap > 0 ? dailyCap : 5000;
     if (amount > cap - this.state.consumed_usd_cents - this.state.reserved_usd_cents) {
@@ -1218,7 +1219,7 @@ export class LedgerClient {
     return await res.json() as T;
   }
   reserve(requestId: string, account: string, kid: string, amountUsdCents: number, dailyCapUsdCents: number) {
-    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents });
+    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents });
   }
   consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
   release(requestId: string) { return this.rpc<{ ok: true }>('release', { request_id: requestId }); }
