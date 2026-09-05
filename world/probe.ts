@@ -5,6 +5,7 @@
 // on the key lands on the page, an item view carries what touched it, egress to the docs goes to the twin.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseRailsConfig } from '../packages/sdk/src/rails.ts';
 import { parseRoadmap } from '../packages/sdk/src/roadmap.ts';
 import { ACCOUNT, COOKBOOK, ENC, MODEL, agentEnv, api, need } from './lib.ts';
 
@@ -104,6 +105,13 @@ const demoPage = await pub.get(`/p/${demoEnc}`);
 if (demoPage.status !== 200 || !demoPage.text.includes('Roadmap from <b>github-milestones</b>')) fail('the demo page does not render the milestones roadmap');
 ok.push('the file driver and the milestones driver both landed revisions from the twin');
 
+// 7. The rails beyond the model, against the Stripe twin — where the cookbook's owner opened them; a cookbook
+//    with no rail bound proves the refusal instead.
+const railsCfg = parseRailsConfig(readFileSync(resolve(COOKBOOK, '.open-autonomy', 'config.yaml'), 'utf8'));
+if (!(railsCfg.card.max_usd_cents > 0)) {
+  if ((await bearer.post('/v1/rails/card', { usd_cents: 100, purpose: 'probe: no bound' })).status !== 403) fail('a card was minted with no bound set');
+  ok.push('the card rail refused with no bound set');
+} else {
 // 7. The rails beyond the model, against the Stripe twin. A card minted against the balance, bounded by the
 //    cookbook's config; a merchant's authorization within the bound and category is approved in real time
 //    through the platform's webhook, its capture settles on the books as a card rail record and retires the
@@ -142,6 +150,7 @@ if (partner.status !== 200) fail(`partner settle → ${partner.status} ${partner
 const partnerRecord = ((await pub.get(`/v1/accounts/${ENC}/calls`)).body.calls as Array<Record<string, unknown>>).find((c) => c.rail === 'partner');
 if (!partnerRecord || partnerRecord.partner !== 'browserless' || partnerRecord.usd_cents !== 30 || partnerRecord.quantity !== 3) fail(`no partner rail record on the audit trail: ${JSON.stringify(partnerRecord)}`);
 ok.push('a minted card paid a merchant within its bound and settled on the books; the wrong category and an unlisted partner were refused; a partner charge settled');
+}
 
 // 8. Money in, against the Polar twin. A patron picks a tier on the page: the platform creates the tier's
 //    products at Polar and opens a checkout; the patron pays (confirms at the twin) and lands on the thanks

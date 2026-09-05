@@ -48,7 +48,10 @@ for (;;) {
     const lane = view?.task?.lane as string | undefined;
     const line = `wait: board ${item}: ${lane ?? 'no task yet'}`;
     if (line !== noted) { console.log(line); noted = line; }
-    if (lane === 'done') process.exit(0);
+    // Done on the board, and every session the fire started has ended (the reporter ends the reviewer's a
+    // few seconds after its last word), so the page's health line names a finished run.
+    if (lane === 'done' && !(all.some((s) => s.status === 'live'))) process.exit(0);
+    if (lane === 'done') { const l2 = `wait: board ${item}: done; ${all.filter((s) => s.status === 'live').length} session(s) still live`; if (l2 !== noted) { console.log(l2); noted = l2; } }
     if (lane === 'blocked') { console.error(`wait: the board blocked ${item}: ${JSON.stringify(view?.task?.attempts?.slice(-1) ?? []).slice(0, 300)}`); process.exit(1); }
   }
   await Bun.sleep(2000);
