@@ -22,6 +22,19 @@ who want the project to exist and metered on public books. Four pieces:
 4. **This install's own boilerplate** — the world (`world/`: the platform from this tree and the kit on a
    cookbook, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
 
+Three ways in:
+
+- **Fund a project.** Open [open-autonomy.org](https://open-autonomy.org), pick a project, and become a
+  patron through Polar or GitHub Sponsors. Its page shows every session the money buys and every cent, as
+  it happens; its README carries the same in four widgets.
+- **Run your own.** Three commands: `bun create open-autonomy <dir> --project <name> --account <owner/repo>`
+  makes the repository; `bun .open-autonomy/mint-key.ts` mints its key the adopter way (a claim file in the
+  repository); `bun .open-autonomy/setup.ts` sets up the host and says what to run next. The agent then works
+  `ROADMAP.yml` on its own board, in the open, metered to your project's account.
+- **Contribute.** `bun run check` is every package's smoke tests and typecheck; `bun world/run.ts check` is the
+  gate: the platform from this tree and the kit on a cookbook, against twins of every vendor, with no keys.
+  Nothing pushes to `main`; a `land/<topic>` branch lands itself when the checks pass.
+
 ```text
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire

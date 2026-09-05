@@ -173,7 +173,7 @@ items:
   - id: security-model
     phase: 5
     priority: high
-    status: planned
+    status: active
     title: The threat model is written down and each claim names its test
     acceptance:
       - SECURITY.md describes v2's trust boundaries (the key valve, the keyless reporter, key scopes, the balance hard-stop and the daily rail, the webhook signatures, the admin path through GitHub, what the agent can read) and, for each claim, names the test or world line that proves it; `scripts/check-docs.ts` verifies the named tests exist.
@@ -181,7 +181,7 @@ items:
   - id: readme-for-three-readers
     phase: 5
     priority: low
-    status: planned
+    status: active
     title: The front page serves the funder, the adopter and the contributor
     acceptance:
       - README.md opens with the four pieces and then three short paths — fund a project (the site), run your own (the kit in three commands), contribute (the world and the check) — each naming only surfaces that exist, verified by the docs check.
