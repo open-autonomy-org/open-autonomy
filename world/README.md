@@ -12,6 +12,7 @@ export TWINS_ROOT=/path/to/twin        # until the twin packages are published
 bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the
                                        # cookbook's stack (container/compose.yml) on the world's VM
 bun world/run.ts probe                 # the platform's own proof, no agent: the operator at its doors
+bun world/run.ts kit                   # the kit's proof: published to the npm twin, `bun create open-autonomy` from it, the project's check
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world
 bun world/run.ts clock advance 360m    # the container's clock: the schedule's next fire is now
 bun world/run.ts wait                  # watch: the run's session, then its pull request merged on the twin

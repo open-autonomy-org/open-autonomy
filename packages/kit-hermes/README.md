@@ -11,6 +11,14 @@ create-open-autonomy check .     # the kit-owned files against the kit (exit 1 o
 create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
 ```
 
+## From npm
+
+Both packages publish from this repository: `@open-autonomy/sdk` and `create-open-autonomy`, at one version.
+`.github/workflows/release.yml` publishes them on a human-cut `release-v<version>` tag (or a manual dispatch)
+after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
+(`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
+open-autonomy` from it against the npm registry twin (`bun world/run.ts kit`) before any release is cut.
+
 ## What a generated repository contains
 
 ```text

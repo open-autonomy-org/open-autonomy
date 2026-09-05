@@ -12,17 +12,25 @@
       "id": "gateway",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/openai/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/openai/src/cli.ts",
+        "serve"
+      ],
       "port": 47611,
       "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "injectEnv": "GATEWAY_TWIN_URL",
-      "env": { "TWIN_OPENAI_SCENARIO": "${SCENARIO}" }
+      "env": {
+        "TWIN_OPENAI_SCENARIO": "${SCENARIO}"
+      }
     },
     {
       "id": "github",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/github/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/github/src/cli.ts",
+        "serve"
+      ],
       "port": 47612,
       "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "injectEnv": "GITHUB_TWIN_URL"
@@ -31,17 +39,25 @@
       "id": "discord",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/discord/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/discord/src/cli.ts",
+        "serve"
+      ],
       "port": 47615,
       "portReason": "the cookbook's containers reach the twin's gateway websocket at this address and a restart of the world must keep it",
       "injectEnv": "DISCORD_TWIN_URL",
-      "env": { "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway" }
+      "env": {
+        "TWIN_DISCORD_GATEWAY_URL": "ws://host.docker.internal:47615/gateway"
+      }
     },
     {
       "id": "stripe",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/stripe/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/stripe/src/cli.ts",
+        "serve"
+      ],
       "port": 47616,
       "portReason": "the platform enrols its webhook endpoint here at start and a restart of the world must keep the address",
       "injectEnv": "STRIPE_TWIN_URL"
@@ -50,35 +66,64 @@
       "id": "polar",
       "type": "twin",
       "command": "bun",
-      "args": ["${TWINS_ROOT}/packages/twin/polar/src/cli.ts", "serve"],
+      "args": [
+        "${TWINS_ROOT}/packages/twin/polar/src/cli.ts",
+        "serve"
+      ],
       "port": 47617,
       "portReason": "the platform is given this address at start and a restart of the world must keep it",
       "injectEnv": "POLAR_TWIN_URL"
     },
     {
+      "id": "npm",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWINS_ROOT}/packages/twin/npm-registry/src/cli.ts",
+        "serve"
+      ],
+      "port": 47618,
+      "portReason": "pinned like the others so a restart of the world keeps every address",
+      "injectEnv": "NPM_REGISTRY_TWIN_URL"
+    },
+    {
       "id": "platform",
       "type": "process",
       "command": "bun",
-      "args": ["${WORLD_DIR}/platform.ts"],
+      "args": [
+        "${WORLD_DIR}/platform.ts"
+      ],
       "port": 47613,
       "portReason": "the cookbook's containers were given this address at seed time and a restart of the world must keep it",
       "portArg": false,
       "rootArg": "--persist-to",
       "injectEnv": "PLATFORM_URL",
-      "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 120000, "intervalMs": 500 }
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 120000,
+        "intervalMs": 500
+      }
     },
     {
       "id": "actions",
       "type": "process",
       "command": "bun",
-      "args": ["${WORLD_DIR}/actions.ts"],
+      "args": [
+        "${WORLD_DIR}/actions.ts"
+      ],
       "port": 47614,
       "portReason": "pinned like the others so a restart of the world keeps every address",
       "portArg": false,
       "rootArg": false,
       "injectEnv": "ACTIONS_URL",
-      "env": { "WORLD_ACTIONS_REPOS": "cookbook/${COOKBOOK}" },
-      "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 30000, "intervalMs": 200 }
+      "env": {
+        "WORLD_ACTIONS_REPOS": "cookbook/${COOKBOOK}"
+      },
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 30000,
+        "intervalMs": 200
+      }
     }
   ]
 }

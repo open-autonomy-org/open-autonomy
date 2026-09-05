@@ -82,7 +82,7 @@ items:
   - id: kit-published
     phase: 3
     priority: high
-    status: planned
+    status: active
     title: The kit and the SDK install from npm
     acceptance:
       - "`create-open-autonomy` (the kit) and `@open-autonomy/sdk` are published from this repository by a release workflow gated like the deploy; `bun create open-autonomy my-project --account owner/my-project` works on a clean machine with nothing but bun, and the generated repository passes its own check."
