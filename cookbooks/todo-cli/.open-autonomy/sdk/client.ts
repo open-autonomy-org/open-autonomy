@@ -176,7 +176,8 @@ export async function keyMint(baseUrl: string, account: string, models?: string[
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ account, models }) });
   return await res.json() as MintedKey;
 }
-export async function keyRotate(baseUrl: string, currentKey: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
-  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/rotate`, { method: 'POST', headers: { authorization: `Bearer ${currentKey}` } });
+// `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).
+export async function keyRotate(baseUrl: string, currentKey: string, options: { graceSeconds?: number; fetchImpl?: typeof fetch } = {}): Promise<MintedKey> {
+  const res = await (options.fetchImpl ?? fetch)(`${baseUrl.replace(/\/$/, '')}/keys/rotate`, { method: 'POST', headers: { authorization: `Bearer ${currentKey}`, 'content-type': 'application/json' }, body: JSON.stringify(options.graceSeconds === undefined ? {} : { grace_seconds: options.graceSeconds }) });
   return await res.json() as MintedKey;
 }

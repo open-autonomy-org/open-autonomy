@@ -25,6 +25,9 @@ const stateFile = resolve(cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
 const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 15_000);
 const log = (m: string) => console.log(`reporter: ${m}`);
+// The valve holds the key; its health line says when the key expires. Logged once at start so a reader of
+// either log sees the expiry.
+fetch(`${baseUrl.replace(/\/v1\/?$/, '')}/healthz`).then(async (r) => log(`valve: ${(await r.text()).trim()}`)).catch((e: Error) => log(`valve unreachable at start: ${e.message}`));
 
 interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
 // The config's shape is small and fixed, so a line reader suffices: top-level `key: value` and the

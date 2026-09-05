@@ -10,7 +10,7 @@
 //   bun world/run.ts wait [--timeout s]   # watch: the run's session, then its pull request merged on the twin
 //   bun world/run.ts verify            # audit the books, the twin's main, the project's check, the page
 //   bun world/run.ts walk [--items N]  # N fires in a row
-//   bun world/run.ts check [--cookbook <name>]   # the gate: up → probe → kit → clock → wait → repin → clock → wait → verify → down --purge
+//   bun world/run.ts check [--cookbook <name>]   # the gate: up → probe → kit → clock → wait → between-fires → clock → wait → verify → down --purge
 //   bun world/run.ts down [--purge]    # tear down (--purge: forget the books, the twin and the stack's volumes)
 //
 // --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
@@ -84,7 +84,7 @@ switch (verb) {
     let ok = false;
     try {
       step('seed'); step('probe'); step('kit');
-      if (hasStack) { stack('up'); stack('clock', 'advance', '360m'); step('wait'); stack('repin'); stack('clock', 'advance', '360m'); step('wait'); step('verify'); }
+      if (hasStack) { stack('up'); stack('clock', 'advance', '360m'); step('wait'); stack('between-fires'); stack('clock', 'advance', '360m'); step('wait'); step('verify'); }
       ok = true;
     } finally {
       if (ok || !process.env.WORLD_PRESERVE) { stackDown(true); world(['down', NAME, '--root', STATE, '--purge'], { check: false }); }
@@ -93,6 +93,6 @@ switch (verb) {
     break;
   }
   default:
-    console.error('usage: bun world/run.ts up | seed | probe | kit | stack up|down [--purge]|repin | clock advance <N>(s|m|h|d) | wait [--timeout s] | walk [--items N] | verify | check | down [--purge] | env -- <cmd>   [--cookbook <name>]');
+    console.error('usage: bun world/run.ts up | seed | probe | kit | stack up|down [--purge]|between-fires | clock advance <N>(s|m|h|d) | wait [--timeout s] | walk [--items N] | verify | check | down [--purge] | env -- <cmd>   [--cookbook <name>]');
     process.exit(2);
 }

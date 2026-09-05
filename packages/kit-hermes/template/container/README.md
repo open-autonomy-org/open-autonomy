@@ -16,7 +16,9 @@ one repository-scoped deploy key; delivery uses at most a Discord bot token, whi
 
 ## The host
 
-- `~/.config/open-autonomy/agent.env` — the key, from `bun .open-autonomy/mint-key.ts`.
+- `~/.config/open-autonomy/agent.env` — the key, from `bun .open-autonomy/mint-key.ts`. Rotate it with
+  `bun .open-autonomy/mint-key.ts --rotate`: the valve takes the new key from the file without a restart, and its
+  `/healthz` (and its log, and the reporter's) say when the key expires; both warn inside fourteen days.
 - An ssh-agent holding only the deploy key, forwarded into the Docker host (on macOS with colima:
   `SSH_AUTH_SOCK=~/.config/open-autonomy/agent.sock colima start <profile> --ssh-agent`).
 - The pinned Hermes image: `sh container/build-hermes.sh` builds it from `hermes.pin`.

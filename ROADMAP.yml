@@ -136,7 +136,7 @@ items:
   - id: key-rotation-proven
     phase: 3
     priority: medium
-    status: planned
+    status: active
     title: Keys rotate without a restart, and their expiry is visible
     acceptance:
       - "`GET /v1/keys` on the project's key lists each key's expiry; the reporter and the valve log the key's expiry at start and warn when it is within fourteen days; `bun .open-autonomy/mint-key.ts --rotate` rewrites the host key file and the valve picks it up unrestarted."

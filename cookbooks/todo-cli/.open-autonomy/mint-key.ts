@@ -5,7 +5,7 @@
 // and nothing else, and stops at zero.
 //
 //   bun .open-autonomy/mint-key.ts [--models a,b]                          # commit the claim, mint
-//   bun .open-autonomy/mint-key.ts --rotate                                # with the current key; no commit
+//   bun .open-autonomy/mint-key.ts --rotate [--grace <seconds>]            # with the current key; no commit
 //
 // The key is written to ~/.config/open-autonomy/agent.env (the file the key valve reads; created if
 // absent), with OPEN_AUTONOMY_BASE_URL. The agent itself never sees it.
@@ -30,7 +30,8 @@ let minted;
 if (process.argv.includes('--rotate')) {
   const current = existsSync(envPath) ? /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(readFileSync(envPath, 'utf8'))?.[1] : undefined;
   if (!current) { console.error(`no OPEN_AUTONOMY_KEY in ${envPath} to rotate`); process.exit(2); }
-  minted = await keyRotate(base, current);
+  const grace = arg('--grace');
+  minted = await keyRotate(base, current, grace === undefined ? {} : { graceSeconds: Number(grace) });
 } else {
   const challenge = await keyChallenge(base, account);
   if (!challenge.ok) { console.error(`challenge failed: ${JSON.stringify(challenge)}`); process.exit(1); }

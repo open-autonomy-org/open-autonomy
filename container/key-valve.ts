@@ -18,8 +18,24 @@ function keyEnv(): Record<string, string> {
     const env: Record<string, string> = {};
     for (const line of readFileSync(envFile, 'utf8').split('\n')) { const m = /^([A-Z_]+)=(.*)$/.exec(line.trim()); if (m) env[m[1]] = m[2]; }
     cached = { at, env };
+    announce(env.OPEN_AUTONOMY_KEY);
   }
   return cached.env;
+}
+// The key says when it expires (its claims are readable; only the signature is not). Announced whenever the
+// file changes, warned inside fourteen days, and answered on /healthz so the reporter can log it too.
+function expiry(token: string | undefined): { kid: string; account: string; exp: string; days: number } | undefined {
+  try {
+    const claims = JSON.parse(Buffer.from((token ?? '').split('.')[0], 'base64url').toString('utf8')) as { kid?: string; account?: string; exp?: string };
+    if (!claims.exp) return undefined;
+    return { kid: claims.kid ?? '?', account: claims.account ?? '?', exp: claims.exp, days: Math.floor((Date.parse(claims.exp) - Date.now()) / 86_400_000) };
+  } catch { return undefined; }
+}
+const status = (): string => { const e = expiry(key()); return e ? `key ${e.kid} for ${e.account} expires ${e.exp} (${e.days} day${e.days === 1 ? '' : 's'})${e.days < 14 ? ' — rotate it: bun .open-autonomy/mint-key.ts --rotate' : ''}` : 'no key yet'; };
+function announce(token: string | undefined): void {
+  const e = expiry(token);
+  console.log(`key-valve: ${e ? status() : 'no readable key in the key file'}`);
+  if (e && e.days < 14) console.warn(`key-valve: WARNING the key expires in ${e.days} day${e.days === 1 ? '' : 's'}`);
 }
 const base = (): string => (keyEnv().OPEN_AUTONOMY_BASE_URL || 'https://open-autonomy.org/v1').replace(/\/$/, '');
 const key = (): string | undefined => keyEnv().OPEN_AUTONOMY_KEY;
@@ -37,7 +53,7 @@ Bun.serve({
   idleTimeout: 255,
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === '/healthz') return new Response(key() ? 'ok' : 'no key yet');
+    if (url.pathname === '/healthz') return new Response(key() ? `ok · ${status()}` : 'no key yet');
     if (!FORWARDED.has(url.pathname) && !isPublicRead(url.pathname, req.method)) return Response.json({ error: { code: 'not_forwarded', message: 'the valve forwards the model routes, the narration route, the rails and public reads of this account only' } }, { status: 403 });
     const bearer = key();
     if (!bearer) return Response.json({ error: { code: 'no_key', message: 'the valve has no key yet' } }, { status: 503 });
