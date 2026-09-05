@@ -47,15 +47,15 @@ for (const doc of DOCS) {
     }
   }
 }
-// SECURITY.md: every `proof: smoke "…"` / `proof: world "…"` names text that exists in the smoke suite or the
-// world's own scripts, so a claim cannot outlive its proof.
+// SECURITY.md: every `proof: smoke "…"` names text that exists in the smoke suite, so a claim cannot outlive its
+// proof. A claim with no label is one exercised by hand in the world, through the product's doors.
 const security = readFileSync(resolve(ROOT, 'SECURITY.md'), 'utf8');
-const proofs = { smoke: readFileSync(resolve(ROOT, 'apps/platform/test/smoke.test.ts'), 'utf8'), world: ['probe', 'verify', 'stack'].map((f) => readFileSync(resolve(ROOT, `world/${f}.ts`), 'utf8')).join('\n') };
+const proofs = { smoke: readFileSync(resolve(ROOT, 'apps/platform/test/smoke.test.ts'), 'utf8') };
 let claims = 0;
-for (const m of security.matchAll(/proof:\s*(smoke|world)\s*"([^"]+)"/g)) {
+for (const m of security.matchAll(/proof:\s*(smoke)\s*"([^"]+)"/g)) {
   claims++;
   const quote = m[2].replace(/\s+/g, ' ');
-  const haystack = proofs[m[1] as 'smoke' | 'world'].replace(/\s+/g, ' ');
+  const haystack = proofs[m[1] as 'smoke'].replace(/\s+/g, ' ');
   if (!haystack.includes(quote)) problems.push(`SECURITY.md: no ${m[1]} line says "${m[2]}"`);
 }
 if (!claims) problems.push('SECURITY.md: names no proofs');

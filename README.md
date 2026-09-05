@@ -31,20 +31,20 @@ Three ways in:
   makes the repository; `bun .open-autonomy/mint-key.ts` mints its key the adopter way (a claim file in the
   repository); `bun .open-autonomy/setup.ts` sets up the host and says what to run next. The agent then works
   its board, in the open, metered to your project's account.
-- **Contribute.** `bun run check` is every package's smoke tests and typecheck; `bun world/run.ts check` is the
-  gate: the platform from this tree and the kit on a cookbook, against twins of every vendor, with no keys.
-  Nothing pushes to `main`; a `land/<topic>` branch lands itself when the checks pass.
+- **Contribute.** `bun run check` is the whole check, under thirty seconds. `bun world/run.ts up` brings up the
+  platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive
+  through its page. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
 
 ```text
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
 cookbooks/todo-cli   the cookbook the world runs; cookbooks/notes-api the second, a service (`--cookbook notes-api`)
-world/               the world: twins + the platform + the kit on the cookbook; `bun world/run.ts check`
+world/               the world: twins + the platform + the kit on the cookbook; `bun world/run.ts up`
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
 ```
 
 ```bash
-bun run check          # every package's tests and typecheck
-bun run check:world    # the gate: the world, one clock fire, the audit (needs TWINS_ROOT)
+bun run check          # the whole check, under thirty seconds (the pre-commit hook runs it)
+bun world/run.ts up    # the world, to drive (needs TWINS_ROOT and WORLD_STATE_ROOT)
 ```

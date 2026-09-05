@@ -15,8 +15,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   generated repository is self-contained (the SDK is vendored into it).
 - `cookbooks/` — complete autonomous projects, made with a kit plus their own code. `todo-cli` is the one the
   world runs.
-- `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook.
-  `bun world/run.ts check` is the gate.
+- `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook, an environment to
+  drive, never a gate.
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running in
   containers on this Mac (`container/compose.yml`). It develops the product, and it is not special. Runtime
   state is git-ignored.
@@ -24,8 +24,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 ## Working agreement
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a
-  `land/<topic>` branch; `land.yml` opens its pull request and auto-merge lands it when `ci` and `security`
-  pass. Don't wait on it.
+  `land/<topic>` branch; `land.yml` opens its pull request and merges it. No check stands between a branch and main.
 - Live proof is the proof: the deployed worker and the rendered site, not local tests alone.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
@@ -33,24 +32,25 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
 - Nothing here develops against a real API: the cookbook and the platform run only in the world; our own
   agent is the only thing that spends on the real platform. Models are `zai/glm-5.3-flash`, everywhere.
-- `bun run check` = every package + the kit's check on the cookbook + the cookbook's check.
-  `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
-- **Tests are smoke tests.** One per surface, end to end through the worker, saying a change broke the
-  surface, not why; one line each for the security claims (a forged key, a wrong scope, a forged webhook).
-  The world gate is the proof. Do not grow the suites; grow the world.
+- `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
+  the docs check); the pre-commit hook runs it. `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
+- **Thirty seconds, total, forever.** Every test and check together finish in under thirty seconds or they are
+  cut; a test guards a constitution invariant (money, keys, authority) or is not written. Behavior is verified by
+  driving the running product and the world one action at a time. No gate over the world, nothing waiting on an
+  agent.
 - **Money in is GitHub Sponsors, Polar and grant credits**, side by side, all onto the same books (Polar is the
   merchant of record for direct patronage; grant credits are held by funders and by the org's grants account,
   and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.
 - On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
   before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
   root's free space). One Docker host serves both stacks: the colima VM `open-autonomy`,
-  4 GiB, where the production stack runs as `oa-*` and the world's copy of the cookbook as `world-*` (the kit's
-  `STACK` name), each with its own volumes; a gate purges only its own. The VM is started at login by a launch agent
+  4 GiB, mounting the home and the SSD (the world's CA and data reach the containers from that root), where the
+  production stack runs as `oa-*` and the world's copy of the cookbook as `world-*` (the kit's `STACK` name), each
+  with its own volumes; a gate purges only its own. The VM is started at login by a launch agent
   (a start script under the open-autonomy config directory, which also repairs colima's forwarded ssh socket after a
   boot).
-- **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the
-  gate — up, seed, probe, one clock fire, wait, verify, down. Run it before deploying anything that touches
-  metering, keys, the stream, the docs sync or the kit.
+- **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts up` brings the twins,
+  the real platform and the cookbook's agent stack up; drive it through its page and doors, then `down --purge`.
 - Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).
   It never runs the agent leg.
 

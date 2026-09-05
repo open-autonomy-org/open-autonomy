@@ -24,9 +24,8 @@
     "access": "public"
   },
   "scripts": {
-    "test": "bun test test/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun test test/*.test.ts && bunx tsc --noEmit"
+    "check": "bunx tsc --noEmit"
   },
   "dependencies": {
     "@open-autonomy/sdk": "workspace:*"

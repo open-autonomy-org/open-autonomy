@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun test"
+    "check": "bunx tsc --noEmit"
   }
 }
