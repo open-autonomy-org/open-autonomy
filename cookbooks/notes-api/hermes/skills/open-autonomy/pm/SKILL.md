@@ -23,7 +23,7 @@ as a worker session, and the review lane verifies every handoff. Your hour is ab
      restarts a worker that will only block again, and the board escalates repeated blocks into decomposition.
    - `running` with no heartbeat for over an hour, or `review` with no reviewer for over an hour: `hermes kanban
      unblock <id>` returns it to ready.
-   The CLI from your shell needs its home and path in full: `HERMES_HOME=/opt/data /opt/hermes/bin/hermes kanban …`.
+   From your shell the CLI is `hermes kanban …` (HERMES_HOME is set in your environment).
 3. Report, in one paragraph, where the job says: what was done since the last hour, what is in progress, what is
    stuck and why, and what the owner must decide. When the board is empty, say so; nothing else to do.
 

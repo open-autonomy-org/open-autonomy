@@ -1,46 +1,40 @@
 # Running the agent
 
-Two containers, none holding a secret the agent can reach:
+The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
+developer's on :8787, the treasurer's on :8788, each re-read when its file changes), the keyless reporter, and
+the Hermes gateway. One script starts them, `.open-autonomy/start.ts`, and it is the only way they are started.
 
-- **agent** — stock Hermes at the pinned tag (`hermes.pin`), with the project checkout at `/work/project`
-  and the home volume at `/opt/data`, synced from `hermes/` on every start.
-- **bridge** — everything the agent may use but must not possess: the valve (the developer's key on :8787, the
-  treasurer's on :8788, each re-read when its file changes, `/healthz` naming the expiry), an ssh-agent holding
-  the deploy key with its socket shared over a volume, and the keyless reporter that reads the agent's home
-  through supercode and publishes it through the valve.
+**On your machine**, for development: everything as you, no isolation.
 
-Every session's turns are published, so the agent's environment holds nothing whose leak matters: its `.env`
-says `OPEN_AUTONOMY_KEY=valve`; pushes sign through the bridge's socket; delivery uses at most a Discord bot
-token, which can only post as the bot.
+```bash
+bun .open-autonomy/mint-key.ts                                   # the developer's key → ~/.config/open-autonomy/agent.env
+bun .open-autonomy/mint-key.ts --scopes spend,narrate,pay --out ~/.config/open-autonomy/treasurer.env
+bun .open-autonomy/start.ts                                      # ssh-agent, valve, reporter, gateway; Ctrl-C ends all
+HERMES_HOME=~/.local/state/open-autonomy/<project>/home hermes kanban list   # the board, from another shell
+```
 
-## The host
+**In a container**, for a real setup: the same script is the image's entrypoint, run as root with the secrets
+mounted for root alone; the gateway and the reporter run as the image's `hermes` user and can reach no key
+(the script refuses to start if they could). Every session's turns are published, so the agent's environment
+holds nothing whose leak matters: its `.env` says `OPEN_AUTONOMY_KEY=valve`; pushes sign through the
+ssh-agent's socket; delivery uses at most a Discord bot token, which can only post as the bot.
 
-`bun .open-autonomy/setup.ts` does the steps below, idempotently, and says what it cannot do and what to run
-next. By hand:
-
-- `~/.config/open-autonomy/agent.env` — the developer's key, from `bun .open-autonomy/mint-key.ts`;
-  `~/.config/open-autonomy/treasurer.env` — the treasurer's, from `bun .open-autonomy/mint-key.ts --scopes
-  spend,narrate,pay --out ~/.config/open-autonomy/treasurer.env`. Rotate with `--rotate`; the bridge takes the
-  new key from the file without a restart.
-- `~/.config/open-autonomy/deploy_key` — a deploy key for this one repository, write access:
-  `ssh-keygen -t ed25519 -N '' -f ~/.config/open-autonomy/deploy_key` and `gh repo deploy-key add
-  ~/.config/open-autonomy/deploy_key.pub --allow-write`.
-- The pinned Hermes image: `sh container/build-hermes.sh` builds it from `hermes.pin`.
-
-Then the two volumes, once: `oa-home` from your `hermes/` (with a `.env` naming
-`OPEN_AUTONOMY_BASE_URL=http://bridge:8787/v1`, `OPEN_AUTONOMY_KEY=valve`, and the Discord token if any) and
-`oa-repo`, a clone. Then:
+- `~/.config/open-autonomy/agent.env` and `treasurer.env`: the keys, as above (rotate with `--rotate`; the
+  valve takes the new key from the file without a restart).
+- `~/.config/open-autonomy/deploy_key`: a deploy key for this one repository, write access:
+  `ssh-keygen -t ed25519 -N '' -f ~/.config/open-autonomy/deploy_key` and
+  `gh repo deploy-key add ~/.config/open-autonomy/deploy_key.pub --allow-write`. The container clones through it
+  on first boot.
+- The pinned Hermes image: `sh container/build-hermes.sh` builds it from `hermes.pin` (~10 minutes, once).
 
 ```bash
 AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
-docker exec -u $UID oa-agent hermes cron list            # the schedule: the PM, hourly, seeded from hermes/cron/jobs.seed.json
-docker exec -u $UID oa-agent hermes kanban create 'A task' --body '- its acceptance line' --assignee default --workspace dir:/work/project --skill develop   # file work
-docker exec -u $UID oa-agent hermes kanban list                  # the board: the task, its lane, its attempts
-docker logs -f oa-bridge                                 # the valve's keys, the reporter's publishing
+docker logs -f oa-agent                                                          # the start's four processes
+docker exec -u hermes oa-agent hermes kanban list                                # the board
+docker exec -u hermes oa-agent hermes kanban create 'A task' --body '- its acceptance line' --assignee default --workspace dir:/work/project --skill develop
 ```
 
-Several stacks on one Docker host, two projects or a project beside a world's copy of it: give each a name,
-`bun .open-autonomy/setup.ts --stack <name>` and `STACK=<name> docker compose -p <name> …`; the containers and
-volumes carry it (`<name>-agent`, `<name>-home`). The default is `oa`.
+Several stacks on one Docker host: `STACK=<name> docker compose -p <name> …`; the container and volumes carry
+the name (`<name>-agent`, `<name>-home`, `<name>-repo`). The default is `oa`.
 
-The kit owns this directory; `create-open-autonomy upgrade .` brings it forward.
+The kit owns this directory and `.open-autonomy/start.ts`; `create-open-autonomy upgrade .` brings them forward.

@@ -6,7 +6,7 @@
 // lands in <data>/agent.env: a world artifact, worthless anywhere else.
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, api, git, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, ENC, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, api, git, need } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL');
@@ -33,17 +33,12 @@ console.log(`seed: ${ACCOUNT} on the GitHub twin at ${await git(work, 'rev-parse
 const protect = await gh.put(`/repos/${ACCOUNT}/branches/main/protection`, { required_status_checks: { strict: false, contexts: ['ci'] }, enforce_admins: true, required_pull_request_reviews: null, restrictions: null });
 if (protect.status !== 200) throw new Error(`github twin: protect main → ${protect.status} ${protect.text.slice(0, 200)}`);
 
-// 2. The agent's Discord home channel on the Discord twin: created by the maintainer's first message.
-const discord = api(need('DISCORD_TWIN_URL'), { authorization: 'Bot maintainer' });
-const hello = await discord.post(`/api/v10/channels/${HOME_CHANNEL}/messages`, { content: `home channel of ${ACCOUNT}` });
-if (hello.status !== 200) throw new Error(`discord twin: seed channel → ${hello.status} ${hello.text.slice(0, 200)}`);
-
-// 3. Fund the project on the local books (idempotent on the key).
+// 2. Fund the project on the local books (idempotent on the key).
 const minted = await admin.post(`/admin/accounts/${ENC}/mint`, { amount_usd_cents: 500, key: 'world-seed' });
 if (minted.status !== 200) throw new Error(`platform: mint → ${minted.status} ${minted.text.slice(0, 200)}`);
 console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${ENC}`)).body?.balance_usd_cents} cents`);
 
-// 4. The agent's key, the adopter way: challenge → claim file on main → mint.
+// 3. The agent's key, the adopter way: challenge → claim file on main → mint.
 const challenge = await pub.get(`/v1/keys/challenge?account=${ENC}`);
 if (challenge.status !== 200) throw new Error(`platform: challenge → ${challenge.status} ${challenge.text.slice(0, 200)}`);
 writeFileSync(resolve(work, challenge.body.file), `${challenge.body.claim}\n`);

@@ -1,32 +1,14 @@
-# The project's agent, as it runs: two containers, none holding a secret the agent can reach.
-#   agent   stock Hermes (the gateway: the board's dispatcher, the PM's hour, Discord when configured) with the
-#           project checkout at /work/project and the home at /opt/data, synced from hermes/ on every start
-#   bridge  everything the agent may use but not possess: the valve (the developer's key on :8787, the treasurer's
-#           on :8788), an ssh-agent with the deploy key (its socket shared over a volume), and the keyless reporter
-# The home and the checkout live in Docker volumes: SQLite over a host bind mount is a bus error waiting to
-# happen, and nothing on the host needs them. Inspect with `docker exec`.
+# The agent as a real setup runs it: one container, started by the same script a laptop uses
+# (.open-autonomy/start.ts), as root with the secrets mounted for root alone; the gateway inside runs as the
+# image's `hermes` user and can reach no key. The home and the checkout live in Docker volumes (SQLite over a
+# bind mount is a bus error waiting to happen); inspect them with `docker exec`.
 #
 #   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
+#
 # Several stacks on one Docker host (two projects, or a project beside a world's copy of it): each has its own
-# STACK name, which the containers and volumes carry, and its own compose project: `STACK=<name> docker compose
+# STACK name, which the container and volumes carry, and its own compose project: `STACK=<name> docker compose
 # -p <name> …`. The default is `oa`.
 services:
-  bridge:
-    build:
-      context: ..
-      dockerfile: container/Dockerfile.bridge
-    image: open-autonomy-bridge:local
-    container_name: ${STACK:-oa}-bridge
-    restart: unless-stopped
-    environment:
-      - AGENT_UID=${AGENT_UID:-501}
-      - AGENT_GID=${AGENT_GID:-20}
-    volumes:
-      - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:ro
-      - home:/opt/data:ro
-      - repo:/work/project
-      - bridge:/run/bridge
-    networks: [agent]
   agent:
     build:
       context: ..
@@ -36,27 +18,16 @@ services:
     image: open-autonomy-agent:local
     container_name: ${STACK:-oa}-agent
     restart: unless-stopped
-    depends_on:
-      bridge: { condition: service_started }
-    command: ["gateway", "run"]
     environment:
-      - HERMES_UID=${AGENT_UID:-501}
-      - HERMES_GID=${AGENT_GID:-20}
-      - SSH_AUTH_SOCK=/run/bridge/ssh-agent.sock
-      - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new
+      - ORIGIN=${ORIGIN:-git@github.com:open-autonomy-org/open-autonomy.git} # cloned on first boot, through the deploy key
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_HOME_CHANNEL=${DISCORD_HOME_CHANNEL:-}
     volumes:
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:ro
       - home:/opt/data
       - repo:/work/project
-      - bridge:/run/bridge
-    networks: [agent]
 volumes:
   home:
     name: ${STACK:-oa}-home
-    external: true # seeded once from hermes/ (container/README.md)
   repo:
     name: ${STACK:-oa}-repo
-    external: true # the agent's clone
-  bridge:
-    name: ${STACK:-oa}-bridge
-networks:
-  agent: {}

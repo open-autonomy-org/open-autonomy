@@ -1,0 +1,28 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "todo-cli-open-autonomy",
+      "dependencies": {
+        "@volter-ai-dev/supercode": "^0.4.19",
+        "@volter-ai-dev/supercode-harness-sdk": "^0.3.21",
+      },
+    },
+  },
+  "packages": {
+    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.19", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.19", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.19" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-rhYypXJLhKv45+SY2nl9eo/UAXf/gO04lD/ZVnxsxXWU9GX3jGADaINI/u4gDZZ4C3heMmsH99/zm1CVdxQYjA=="],
+
+    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.19", "", { "os": "darwin", "cpu": "arm64" }, "sha512-JlaR0CDQu0yCK9nkA8JiSlBw9maxSv+4gD2gj6J8wvy7ufhHItYn3JDvEuW5Twrvu1jS0rKyqLqY/CRMvg0h6A=="],
+
+    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.19", "", { "os": "darwin", "cpu": "x64" }, "sha512-7W3ojZx4NR0B/1BQZIN4XundK4kN352geLNTQAqcZsOyoMjhtZXKGT3PChERG7IR7PoFqJYs+gKyQ54OpsnHZQ=="],
+
+    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.19", "", { "os": "linux", "cpu": "arm64" }, "sha512-twOdGLR/cTh5C630Kem24qX62iVohoCCCYHfgTkAGeCBGcWcw8XE3UqwMojTCz+Y0PbyNAqtfw0MwIMoeM7gRA=="],
+
+    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.19", "", { "os": "linux", "cpu": "x64" }, "sha512-BVDPj3skwFyEOv6vg4HHVcNEJawh5GsLQsGjoZRCtTsfwP0OSo7PsyimWeQo3SulfG7DtU6Aj1RPy1uai4KEFg=="],
+
+    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.19", "", { "os": "win32", "cpu": "x64" }, "sha512-UxlCxFog8I+TiYsU5pGFdIXProTS4AFNAnLxX8pGwPOj/6KHVGVwFmEZl9sh7YDOOwk3wCXglgNkeY8iqdg/8g=="],
+
+    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.21", "", {}, "sha512-nhnWQFND37aHna8iZ8j9C1C2kNJLgvv1taTDVwD98zKl5cvgazIbfdF6MUG9i0bCXAyi4Iknd9uFwuASCY3tpA=="],
+  }
+}

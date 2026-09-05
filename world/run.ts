@@ -5,9 +5,9 @@
 // books, its board, the twins' ledgers) one action at a time. Nothing here asserts; nothing runs unattended.
 //
 //   bun world/run.ts up [--cookbook <name>]   # twins + the real platform + the Actions runner, seeded; then the
-//                                             # cookbook's own container stack, as the kit runs it
+//                                             # cookbook's agent, bare, as the kit starts it (.open-autonomy/start.ts)
 //   bun world/run.ts env -- <cmd>      # run anything with the world's env (twin URLs, PLATFORM_URL)
-//   bun world/run.ts clock advance 60m    # the container's clock: the hourly PM fires on its own
+//   bun world/run.ts hermes <args…>    # the pinned Hermes against the world's agent: kanban list, cron run pm
 //   bun world/run.ts down [--purge]    # tear down (--purge: forget the books, the twin and the stack's volumes)
 //
 // --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
@@ -34,7 +34,7 @@ const scenario = resolve(generated, `gateway.${cookbook}.json`);
 mkdirSync(generated, { recursive: true });
 const handler = resolve(ROOT, 'world', 'handlers', cookbook, 'gateway.ts');
 if (!existsSync(handler)) { console.error(`no world/handlers/${cookbook}/gateway.ts: the cookbook has no scenario`); process.exit(2); }
-const r = Bun.spawnSync({ cmd: ['bun', handler], cwd: ROOT, stdout: 'pipe', stderr: 'inherit' });
+const r = Bun.spawnSync({ cmd: ['bun', handler], cwd: ROOT, stdout: 'pipe', stderr: 'inherit', env: { ...process.env, WORLD_PROJECT_DIR: resolve(STATE, '.volter', 'stack', 'project') } });
 if (r.exitCode !== 0) { console.error(`world/handlers/${cookbook}/gateway.ts failed (${r.exitCode})`); process.exit(r.exitCode || 1); }
 writeFileSync(scenario, r.stdout);
 writeFileSync(config, readFileSync(resolve(ROOT, 'world', 'world.json'), 'utf8')
@@ -64,15 +64,15 @@ switch (verb) {
     world(['up', config, '--env-file', envFile, '--name', NAME, '--mode', mode, '--root', STATE]);
     step('seed');
     stack('up');
-    console.log(`\nworld up, cookbook ${cookbook}: the board is working its seed tasks. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts probe   # clock advance 60m (the PM's hour)     stack between-tasks     down --purge`);
+    console.log(`\nworld up, cookbook ${cookbook}: the board is working its seed tasks. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts hermes kanban list     hermes cron run pm (the PM's hour)     stack between-tasks     down --purge`);
     break;
   }
   case 'seed': step('seed'); break;
   case 'stack': stack(...argv.slice(argv.indexOf('stack') + 1).filter((a) => a !== '--cookbook' && a !== cookbook)); break;
-  case 'clock': stack('clock', ...argv.slice(argv.indexOf('clock') + 1).filter((a) => a !== '--cookbook' && a !== cookbook)); break;
+  case 'hermes': process.exit(stack('hermes', ...argv.slice(argv.indexOf('hermes') + 1).filter((a) => a !== '--cookbook' && a !== cookbook))); break;
   case 'env': inWorld(rest); break;
   case 'down': stackDown(purge); world(['down', NAME, '--root', STATE, ...(purge ? ['--purge'] : [])]); break;
   default:
-    console.error('usage: bun world/run.ts up | seed | stack up|down [--purge]|between-tasks | clock advance <N>(s|m|h|d) | down [--purge] | env -- <cmd>   [--cookbook <name>]');
+    console.error('usage: bun world/run.ts up | seed | stack up|down [--purge]|between-tasks | hermes <args…> | down [--purge] | env -- <cmd>   [--cookbook <name>]');
     process.exit(2);
 }

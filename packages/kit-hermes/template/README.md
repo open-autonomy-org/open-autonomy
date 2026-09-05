@@ -13,12 +13,13 @@ every session it works, every cent it spends and everything it ships is public.
 - `AGENTS.md` is the agent's rules for this repository; `hermes/` is the agent.
 - `.open-autonomy/` is the project's connection to the platform: its config, the reporter that publishes
   the agent's sessions, and the record of the kit that made this repository.
-- `container/` runs it: the agent, the key valve that holds the project's key, and the reporter.
+- `.open-autonomy/start.ts` starts it: the valve that holds the project's keys, the reporter, the Hermes gateway;
+  `container/` runs the same script as a container's entrypoint, for a real setup.
 
 ```bash
 bun run check                                  # the project's own definition of green
 bun .open-autonomy/mint-key.ts                 # prove control of this repository, get the project's key
-AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
+bun .open-autonomy/start.ts                    # the agent, here, as you (container/README.md for the container)
 ```
 
 Made with the Open Autonomy Hermes kit; `create-open-autonomy check .` says whether the kit's files are current.

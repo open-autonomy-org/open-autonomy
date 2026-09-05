@@ -2,6 +2,25 @@
   "workspace": "dir:/work/project",
   "tasks": [
     {
+      "key": "template-used-as-meant",
+      "title": "The kit's template is used the way it is written",
+      "acceptance": [
+        "In the world, with the todo-cli cookbook, every part of the template is exercised and read back through the product's doors: the developer files a purchase and blocks with needs_input, the treasurer profile pays it on its own key and releases it with a receipt, the review lane checks the handoff against CONSTITUTION.md and CONTRIBUTING.md and its verdict names them, the PM's hour unsticks a transient block and leaves a needs_input block and a parked task alone, the reporter publishes the board, the sessions and the two documents to the page.",
+        "Anything the template says that the world shows is not happening is fixed in the template, never papered over in the cookbook."
+      ],
+      "held": "After the shape is simple (one start script, no Docker in the world). Release when the current cut has landed."
+    },
+    {
+      "key": "community-cookbook",
+      "title": "A second cookbook with a community gateway: Discord, GitHub issues and discussions, a GitHub Pages homepage",
+      "acceptance": [
+        "A cookbook whose agent takes work and questions from its community as well as its board: a Discord channel, the repository's issues and discussions; triage files board tasks, answers land where they were asked, and every conversation the agent has in public is a published session.",
+        "Its homepage is a GitHub Pages site the agent maintains from the repository, carrying the project's page widgets.",
+        "Proven only in the world, against twins of Discord and of GitHub's issues and discussions (the GitHub twin extended where it must be), with nothing in the cookbook calling a real API."
+      ],
+      "held": "After template-used-as-meant: the simple shape first, then the second, more comprehensive cookbook."
+    },
+    {
       "key": "real-money-live",
       "title": "Real money flows on open-autonomy.org",
       "acceptance": [

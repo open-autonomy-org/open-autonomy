@@ -108,15 +108,17 @@ def _seed_jobs() -> list:
 # ---- the board -------------------------------------------------------------------------------------------------
 
 def _seed_tasks() -> tuple:
+    import os
+    # Every seed task works in the project checkout: the directory the gateway runs in.
+    workspace = f"dir:{os.getcwd()}"
     seed_file = _hermes_home() / "kanban.seed.json"
     if not seed_file.exists():
-        return "dir:/work/project", []
+        return workspace, []
     try:
         data = json.loads(seed_file.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         logger.error("seed: failed to read %s: %s", seed_file, e)
-        return "dir:/work/project", []
-    workspace = str(data.get("workspace") or "dir:/work/project")
+        return workspace, []
     tasks = [t for t in data.get("tasks", []) if isinstance(t, dict) and t.get("key") and t.get("title")]
     return workspace, tasks
 
@@ -160,6 +162,7 @@ def _seed_board() -> None:
 
 
 async def handle(event_type: str, context: dict) -> None:
+    import os
     _seed_board()
     try:
         from cron.jobs import create_job, load_jobs, update_job
@@ -205,7 +208,7 @@ async def handle(event_type: str, context: dict) -> None:
                 deliver=_deliver_target(name, spec.get("deliver")),
                 skills=spec.get("skills") or None,
                 skill=spec.get("skill"),
-                workdir=spec.get("workdir"),
+                workdir=os.getcwd(),
                 script=spec.get("script"),
                 no_agent=bool(spec.get("no_agent")),
                 model=None if spec.get("no_agent") else model,
