@@ -21,6 +21,7 @@ services:
   reporter:
     environment:
       - GITHUB_API_BASE=${WORLD_GITHUB_API_BASE:-https://api.github.com}
+      - OPEN_AUTONOMY_ROADMAP_POLL_MS=10000 # main is read every ten seconds here, so the audit sees a landing within one wait
       - LD_PRELOAD=/opt/world/libfaketime.so.1
       - FAKETIME_TIMESTAMP_FILE=/opt/world/clock
       - FAKETIME_CACHE_DURATION=2
