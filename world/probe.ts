@@ -193,6 +193,7 @@ if ((await gh.put('/repos/funder/notes/contents/.open-autonomy-claim', { message
 const giveKey = (await pub.post('/v1/keys/mint', { funder: 'funder', repo: 'funder/notes' })).body;
 if (!giveKey?.token) fail(`funder key → ${JSON.stringify(giveKey).slice(0, 200)}`);
 if ((await admin.post('/admin/accounts/%40funder/mint', { amount_usd_cents: 400, key: 'probe-credits', sponsor: { login: 'open-autonomy' } })).status !== 200) fail('credits were not given to the funder');
+if ((await admin.post('/admin/accounts/open-autonomy-org%2Fgrants/mint', { amount_usd_cents: 1000, key: 'probe-org-credits' })).status !== 200) fail('the org\'s grants account was not funded');
 const giver = api(platform, { authorization: `Bearer ${giveKey.token}` });
 const balanceBeforeGrant = (await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents as number;
 const gave = await giver.post('/v1/grants/give', { to: ACCOUNT, usd_cents: 300, note: 'probe believes in it', key: 'probe-1' });
@@ -200,12 +201,27 @@ if (gave.status !== 200 || gave.body?.from !== '@funder') fail(`give → ${gave.
 if (Math.round((await pub.get(`/v1/accounts/${ENC}`)).body.balance_usd_cents - balanceBeforeGrant) !== 300) fail('the grant did not land on the books');
 if ((await giver.post('/v1/grants/give', { to: ACCOUNT, usd_cents: 300 })).status !== 402) fail('a grant over the funder\'s credits was not refused');
 if ((await giver.post('/v1/chat/completions', { model: MODEL, messages: [] })).status !== 403) fail('a give key spent');
-if ((await admin.post('/admin/accounts/open-autonomy-org%2Fgrants/mint', { amount_usd_cents: 1000, key: 'probe-org-credits' })).status !== 200) fail('the org\'s grants account was not funded');
 if ((await admin.post('/admin/accounts/open-autonomy-org%2Fgrants/grant', { to: ACCOUNT, amount_usd_cents: 200, key: 'probe-org-grant' })).status !== 200) fail('the org did not grant');
 const granted = (await pub.get(`/p/${ENC}`)).text;
 if (!granted.includes('Granted by @funder — probe believes in it') || !granted.includes('Granted by Open Autonomy')) fail('the page does not show the grants as money in');
 if (!(await pub.get('/p/%40funder')).text.includes(`Granted to <a href="/p/${ENC}">`)) fail('the funder\'s page does not show what they gave');
 ok.push('a funder proved their login by the claim file, was given credits, and granted 300 cents; the org granted 200; both are on the page; over the credits and spending were refused');
+// The funder funds themself: a credit pack through the Polar twin, matched a tenth by the org as bonus credits,
+// which go only to projects they do not own.
+const pack = await pub.post('/v1/patrons/checkout', { account: '@funder', tier: 0, interval: 'once' });
+if (pack.status !== 200 || !pack.body?.checkout_id) fail(`funder checkout → ${pack.status} ${pack.text.slice(0, 200)}`);
+if ((await polarTwin.post(`/v1/checkouts/${pack.body.checkout_id}/confirm`, { customer_email: 'funder@example.com' })).status !== 200) fail('the twin did not confirm the funder\'s checkout');
+if ((await pub.get(`/p/%40funder/thanks?checkout_id=${pack.body.checkout_id}`)).status !== 200) fail('the funder\'s thanks page failed');
+const funded = (await pub.get('/v1/funders/funder')).body;
+if (funded?.credits_usd_cents !== 100 + 1000 + 100 || funded.bonus_usd_cents !== 100) fail(`the funder's credits after buying: ${JSON.stringify(funded).slice(0, 200)}`);
+// Their own project: the claim file already proves funder/notes; a key makes it an account.
+const ownClaim = (await pub.get('/v1/keys/challenge?account=funder%2Fnotes')).body;
+if ((await gh.put('/repos/funder/notes/contents/.open-autonomy-claim', { message: 'claim', content: Buffer.from(`${ownClaim.claim}\n`).toString('base64'), sha: undefined })).status >= 300) fail('cannot rewrite the claim for funder/notes');
+if (!(await pub.post('/v1/keys/mint', { account: 'funder/notes', models: [MODEL] })).body?.token) fail('funder/notes got no key');
+const own = await giver.post('/v1/grants/give', { to: 'funder/notes', usd_cents: 1150 });
+if (own.status !== 400 || own.body?.error !== 'bonus_only_for_others') fail(`a grant of bonus credits to the funder's own project was not refused: ${own.status} ${own.text.slice(0, 160)}`);
+if ((await giver.post('/v1/grants/give', { to: ACCOUNT, usd_cents: 1200, note: 'the bonus, spread', key: 'probe-2' })).status !== 200) fail('the bonus could not be given to another project');
+ok.push('the funder bought $10 of credits through the Polar twin and was matched $1 by the org; the bonus went only to another project, the refusal named it');
 
 // 9. The books can be exported and restored: an export of everything, a restore over the wiped worker, and every
 //    balance, call record and session reads back the same.

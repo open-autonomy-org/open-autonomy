@@ -44,6 +44,8 @@ src/runway.ts     the Bayesian runway estimate
   repository they own; a key that can only give) holds credits the org gave them (or bought) and gives them to a
   project they believe in — `POST /v1/grants/give`, or the form on the project's page; the org's own grants
   account gives through `admin.yml`. On the project's books a grant is money in, `Granted by @login` on the page.
+  A funder funds themself through the same Polar door (credit packs), and the org matches a share from its
+  grants account as bonus credits that go only to projects the funder does not own (`GRANT_MATCH_PERCENT`).
   Then the two doors on every tier: GitHub Sponsors: its
   webhook keeps the recurring list and a monthly cron credits it. Polar, the merchant of record for direct
   patronage: `POST /v1/patrons/checkout {account, tier, interval}` opens a Polar checkout for the tier's

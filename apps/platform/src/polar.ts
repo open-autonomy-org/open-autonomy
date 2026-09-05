@@ -1,7 +1,10 @@
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { LedgerClient, type Sponsor, type Tier } from './ledger.js';
 import { renderMessage } from './site.js';
-import type { Env } from './types.js';
+import { grantsAccount, isFunder, type Env } from './types.js';
+
+// What a funder buys: credit packs, once. Credits are money in on the funder's own books.
+const FUNDER_PACKS: Tier[] = [{ usd_cents: 1000, name: '$10 of grant credits' }, { usd_cents: 2500, name: '$25 of grant credits' }, { usd_cents: 10000, name: '$100 of grant credits' }];
 
 // Money in through Polar, beside GitHub Sponsors: two doors onto the same books. Each project's tiers are Polar products the platform
 // creates on first use and keeps in step (one monthly and one one-time product per tier). A patron's
@@ -52,20 +55,24 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
   const account = String(input.account ?? '');
   const tier = Number(input.tier);
   const interval = input.interval === 'once' ? 'once' : 'month';
-  if (!/^[^/\s]+\/[^/\s]+$/.test(account) || !Number.isInteger(tier) || tier < 0) return error('invalid_request');
+  // A project (owner/repo) buys patronage; a funder (@login) buys credit packs.
+  if (!(/^[^/\s@]+\/[^/\s]+$/.test(account) || /^@[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/.test(account)) || !Number.isInteger(tier) || tier < 0) return error('invalid_request');
   const ledger = new LedgerClient(env.LIMITS);
-  const view = await ledger.project(account);
-  if (!view.found || tier >= view.tiers.length) return error('no_such_tier', 404);
-  const products = await ensureProducts(env, ledger, account, view.tiers, view.polar_products ?? {});
+  const funder = isFunder(account) ? await ledger.funder(account) : undefined;
+  const view = funder ? undefined : await ledger.project(account);
+  const tiers = funder ? FUNDER_PACKS : view?.tiers ?? [];
+  if (!(funder?.found || view?.found) || tier >= tiers.length) return error('no_such_tier', 404);
+  const packs = funder ? 'once' : interval;
+  const products = await ensureProducts(env, ledger, account, tiers, (funder ? funder.polar_products : view?.polar_products) ?? {});
   const origin = new URL(req.url).origin;
   const created = await polar<{ id?: string; url?: string }>(env, 'POST', '/v1/checkouts/', {
-    products: [products[`${tier}:${interval}`]],
+    products: [products[`${tier}:${packs}`]],
     success_url: `${origin}/p/${encodeURIComponent(account)}/thanks?checkout_id={CHECKOUT_ID}`,
-    metadata: { account, tier: String(tier), interval },
+    metadata: { account, tier: String(tier), interval: packs },
   });
   if (!created.ok || !created.body.id || !created.body.url) return error('checkout_unavailable', 502);
-  await ledger.polarCheckoutPut({ id: created.body.id, account, tier, interval, usd_cents: view.tiers[tier].usd_cents, created_at: new Date().toISOString() });
-  return ct.includes('json') ? json({ ok: true, checkout_id: created.body.id, url: created.body.url, usd_cents: view.tiers[tier].usd_cents, interval }) : new Response(null, { status: 303, headers: { location: created.body.url } });
+  await ledger.polarCheckoutPut({ id: created.body.id, account, tier, interval: packs, usd_cents: tiers[tier].usd_cents, created_at: new Date().toISOString() });
+  return ct.includes('json') ? json({ ok: true, checkout_id: created.body.id, url: created.body.url, usd_cents: tiers[tier].usd_cents, interval: packs }) : new Response(null, { status: 303, headers: { location: created.body.url } });
 }
 
 interface PolarOrder { id: string; paid?: boolean; status?: string; total_amount?: number; net_amount?: number; amount?: number; checkout_id?: string | null; customer_id?: string | null; product_id?: string | null; billing_reason?: string; metadata?: Record<string, unknown>; customer?: { email?: string; name?: string | null } }
@@ -84,6 +91,16 @@ export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOr
   const email = customer?.email ?? '';
   const sponsor: Sponsor = { login: (email.split('@')[0] || customer?.name || 'patron').slice(0, 60), name: customer?.name ?? undefined, monthly_usd_cents: order.billing_reason?.startsWith('subscription') ? amount : undefined };
   const minted = await ledger.mint(account, amount, `polar:order:${order.id}`, sponsor);
+  // A funder who buys credits is matched by the org from its own grants account — only what it holds, and only
+  // as bonus credits for other people's projects. That is how funding spreads.
+  const percent = Number(env.GRANT_MATCH_PERCENT ?? 10);
+  if (minted.ok && !minted.idempotent && isFunder(account) && percent > 0) {
+    const bonus = Math.floor(amount * percent / 100);
+    if (bonus > 0) {
+      const match = await ledger.grant(grantsAccount(env), account, bonus, `polar:match:${order.id}`, 'matching bonus, for projects you do not own');
+      if (match.ok) await ledger.bonusAdd(account, bonus);
+    }
+  }
   return { ok: minted.ok, minted: !minted.idempotent, account };
 }
 

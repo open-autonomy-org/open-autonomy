@@ -61,6 +61,8 @@ export interface Account {
   stripe_cardholder?: string;
   // Money in: the Polar products behind the account's tiers (`<tier index>:<month|once>` → product id).
   polar_products?: Record<string, string>;
+  // A funder's bonus credits (the org's match on what they bought): given only to projects they do not own.
+  bonus_usd_cents?: number;
   daily_spend: Record<string, number>;
   sponsors: Sponsor[];
   sponsors_active: Record<string, Sponsor>;
@@ -285,6 +287,7 @@ export class LimitLedger implements DurableObject {
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined));
       case 'funder': return json(this.funderView(s('account')));
+      case 'bonus_add': return json(await this.bonusAdd(s('account'), Number(body.amount_usd_cents)));
       case 'sponsor_upsert': return json(await this.sponsorUpsert(s('account'), body.sponsor as Sponsor));
       case 'sponsor_remove': return json(await this.sponsorRemove(s('account'), s('login')));
       case 'accrue': return json(await this.accrue(s('account'), s('key')));
@@ -401,10 +404,18 @@ export class LimitLedger implements DurableObject {
   private async grant(from: string, to: string, amount: number, key?: string, note?: string): Promise<Record<string, unknown>> {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
+    // A funder's bonus credits go only to other people's projects: giving to their own draws on what they hold
+    // beyond the bonus; giving to another's draws on the bonus first.
+    if (from.startsWith('@')) {
+      const bonus = this.acct(from)?.bonus_usd_cents ?? 0;
+      const own = to.split('/')[0].toLowerCase() === from.slice(1).toLowerCase();
+      if (own && this.balanceOf(from) - bonus < amount) return { ok: false, error: 'bonus_only_for_others', bonus_usd_cents: bonus };
+    }
     if (this.balanceOf(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
     this.ensureAcct(from).granted_out_usd_cents += Math.floor(amount);
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
     this.recordFlow({ kind: 'grant', from, to, amount_usd_cents: Math.floor(amount), ...(note ? { note: note.slice(0, 280) } : {}) });
+    if (from.startsWith('@') && to.split('/')[0].toLowerCase() !== from.slice(1).toLowerCase()) { const acct = this.ensureAcct(from); acct.bonus_usd_cents = Math.max(0, (acct.bonus_usd_cents ?? 0) - Math.floor(amount)); }
     await this.save();
     return { ok: true, from, to, amount_usd_cents: Math.floor(amount), from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
   }
@@ -891,6 +902,14 @@ export class LimitLedger implements DurableObject {
     };
   }
 
+  private async bonusAdd(account: string, amount: number): Promise<{ ok: boolean; bonus_usd_cents?: number; error?: string }> {
+    if (!account.startsWith('@') || !(amount > 0)) return { ok: false, error: 'invalid_bonus' };
+    const acct = this.ensureAcct(account);
+    acct.bonus_usd_cents = (acct.bonus_usd_cents ?? 0) + Math.floor(amount);
+    await this.save();
+    return { ok: true, bonus_usd_cents: acct.bonus_usd_cents };
+  }
+
   // A funder on the books: the credits they hold, what they were given, what they gave and to whom.
   private funderView(account: string): FunderView {
     const a = this.acct(account);
@@ -898,7 +917,8 @@ export class LimitLedger implements DurableObject {
     const flows = this.state.flows.filter((x) => x.to === account || x.from === account);
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
-      credits_usd_cents: f.balance_usd_cents, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
+      credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
+      ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
       given: flows.filter((x) => x.kind === 'grant' && x.from === account).slice(-50).reverse(),
       received: flows.filter((x) => x.to === account && x.kind !== 'consume').slice(-50).reverse(),
     };
@@ -968,6 +988,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (Array.isArray(a.live_sessions) && a.live_sessions.length) acct.live_sessions = a.live_sessions.filter((k) => typeof k === 'string');
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
+    if (typeof a.bonus_usd_cents === 'number') acct.bonus_usd_cents = a.bonus_usd_cents;
     if (a.polar_products && typeof a.polar_products === 'object') acct.polar_products = Object.fromEntries(Object.entries(a.polar_products).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     acct.daily_spend = a.daily_spend && typeof a.daily_spend === 'object' ? a.daily_spend : {};
     acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
@@ -1174,6 +1195,9 @@ export interface FunderView {
   account: string;
   login: string;
   credits_usd_cents: number;
+  // Of the credits, the org's matching bonus: for other people's projects only.
+  bonus_usd_cents: number;
+  polar_products?: Record<string, string>;
   received_usd_cents: number;
   given_usd_cents: number;
   given: Flow[];
@@ -1205,6 +1229,7 @@ export class LedgerClient {
     return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note });
   }
   funder(account: string) { return this.rpc<FunderView>('funder', { account }); }
+  bonusAdd(account: string, amountUsdCents: number) { return this.rpc<{ ok: boolean; bonus_usd_cents?: number; error?: string }>('bonus_add', { account, amount_usd_cents: amountUsdCents }); }
   sponsorUpsert(account: string, sponsor: Sponsor) { return this.rpc<{ ok: boolean; active_sponsors?: number; error?: string }>('sponsor_upsert', { account, sponsor }); }
   sponsorRemove(account: string, login: string) { return this.rpc<{ ok: boolean }>('sponsor_remove', { account, login }); }
   accrue(account: string, key: string) { return this.rpc<{ ok: boolean; credited?: boolean; idempotent?: boolean; balance_usd_cents?: number; monthly_total_usd_cents?: number }>('accrue', { account, key }); }

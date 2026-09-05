@@ -87,6 +87,14 @@ items:
     acceptance:
       - "A funder is a person on the books (`@login`): they prove their GitHub login through the claim file in a repository they own and get a key that can only give; the org (or a purchase, later) gives them grant credits; they give credits to a project they believe in with a word (`POST /v1/grants/give`, or the form on the project's page), and on the project's books that is money in, `Granted by @login` on its page and on the patrons wall, with the funder's own public page showing what they gave."
       - "The org gives directly from its own grants account through the admin workflow (`Granted by Open Autonomy`); credits never move beyond what a funder holds; a give key can neither spend nor narrate. Proven in the world and in one smoke line."
+  - id: funder-self-funding
+    phase: 2
+    priority: high
+    status: done
+    title: A funder funds themself, and the org matches a share that spreads
+    acceptance:
+      - "A funder buys grant credits through the same Polar door a patron uses (credit packs, once), landing as money in on their own books; the org matches a share (`GRANT_MATCH_PERCENT`, default 10) from its grants account — only what it holds — as bonus credits."
+      - "Bonus credits can be given only to projects the funder does not own; their own credits go anywhere. Proven in the world against the Polar twin and in one smoke line."
   - id: kit-published
     phase: 3
     priority: high

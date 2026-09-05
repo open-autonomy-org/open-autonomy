@@ -55,6 +55,9 @@ cross one of these boundaries are especially valuable.
   claim file in a repository they own and can only give; a grant over the credits they hold is refused, and a
   give key can neither spend nor narrate. proof: smoke "over the credits refused; a give key cannot spend";
   proof: world "over the credits and spending were refused".
+- **The org's matching bonus spreads, never returns.** A funder's bonus credits can be given only to projects
+  the funder does not own, and the org matches only from what its grants account holds. proof: smoke "bonus_only_for_others";
+  proof: world "the bonus went only to another project, the refusal named it".
 - **Webhooks are signed.** Stripe's, Polar's and GitHub Sponsors' events are accepted only with a valid
   signature within their window; a forged event moves nothing. proof: smoke "a forged webhook, an unlisted
   partner"; proof: world "a forged event was refused".

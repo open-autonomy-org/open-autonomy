@@ -9,7 +9,7 @@ import { renderExplore, renderFunder, renderItemPage, renderMessage, renderProje
 import { handleSponsorsWebhook } from './sponsors.js';
 import { agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
-import { hasScope, type Env } from './types.js';
+import { grantsAccount, hasScope, type Env } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg } from './widgets.js';
 
@@ -38,8 +38,6 @@ const SVG = { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': '
 const NO_STORE = { 'cache-control': 'no-store' };
 const fundingAccount = (env: Env): string => env.DEFAULT_FUNDING_ACCOUNT || 'open-autonomy-org/open-autonomy';
 const sponsorAccount = (env: Env): string => env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
-// The org's own funder identity: grant credits given by Open Autonomy itself move from this account.
-const grantsAccount = (env: Env): string => env.GRANTS_ACCOUNT || 'open-autonomy-org/grants';
 // A funder gives grant credits from their own books to a project: money in for the project, once per key.
 async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
   if (typeof to !== 'string' || !/^[^/\s@]+\/[^/\s]+$/.test(to) || typeof usdCents !== 'number' || !Number.isFinite(usdCents) || usdCents < 1) return { ok: false, error: 'invalid_request' };
@@ -115,7 +113,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if ((m = path.match(/^\/p\/(.+)$/))) {
     if (get()) return get()!;
     const account = dec(m[1]);
-    if (account.startsWith('@')) { const f = await ledger.funder(account); return f.found ? html(renderFunder(f, grantsAccount(env))) : html(renderMessage(account, false, 'No such funder', `No funder found for ${account}.`), 404); }
+    if (account.startsWith('@')) { const f = await ledger.funder(account); return f.found ? html(renderFunder(f, grantsAccount(env), polarConfigured(env))) : html(renderMessage(account, false, 'No such funder', `No funder found for ${account}.`), 404); }
     const view = await ledger.project(account);
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
