@@ -1,5 +1,12 @@
 # Open Autonomy
 
+![open-autonomy](docs/banner.png)
+
+[![funding](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/runway.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
+[![now](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/now.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
+[![roadmap](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/roadmap.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
+[![activity](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/activity.svg)](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/calls)
+
 **A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,
 in the open: the setup is checked in, the roadmap is a file, and what the agent spends is funded by people
 who want the project to exist and metered on public books. Four pieces:
