@@ -12,7 +12,7 @@
 //   3. the volumes   <stack>-home from hermes/ (its .env: the valve's address, the dummy key, every --env), oa-repo
 //                    a clone of --origin (default: this repository's origin, cloned with your own git and
 //                    keys); --fresh recreates both
-//   4. what is yours the deploy key and the ssh-agent that forwards it, the Discord token; then compose up
+//   4. what is yours the deploy key file the bridge loads, the Discord token; then compose up
 //
 // The world's stack step calls this same file, so what an adopter runs and what the world proves never drift.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -72,7 +72,7 @@ else {
   const origin = arg('--origin') ?? run(['git', 'remote', 'get-url', 'origin'], { quiet: true }).out.trim();
   const originInside = arg('--origin-in-container') ?? origin;
   for (const v of [HOME_VOL, REPO_VOL]) if (!have(v)) run([...docker, 'volume', 'create', v], { quiet: true });
-  const env = [`OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1`, `OPEN_AUTONOMY_KEY=valve`, ...args('--env')];
+  const env = [`OPEN_AUTONOMY_BASE_URL=http://bridge:8787/v1`, `OPEN_AUTONOMY_KEY=valve`, ...args('--env')];
   run([...docker, 'run', '--rm', '-v', `${HOME_VOL}:/opt/data`, '-v', `${join(here, 'hermes')}:/src:ro`, 'alpine:3', 'sh', '-c',
     `cp -a /src/. /opt/data/ && printf '%s\\n' ${env.map((e) => `'${e.replace(/'/g, "'\\''")}'`).join(' ')} > /opt/data/.env && chown -R ${uid}:${gid} /opt/data`], { quiet: true });
   say(`home: ${HOME_VOL} seeded from hermes/ (.env: the valve's address, the dummy key${args('--env').length ? `, ${args('--env').map((e) => e.split('=')[0]).join(', ')}` : ''})`);
@@ -89,6 +89,9 @@ else {
 }
 
 // 4. What is the owner's, and what is next.
-say('yours: the deploy key and the ssh-agent that forwards it into the Docker host (container/README.md), and the Discord bot token if you deliver there');
+const deployKey = join(secrets, 'deploy_key');
+if (existsSync(deployKey)) say(`deploy key: ${deployKey} (the bridge loads it into its ssh-agent)`);
+else todo.push(`the deploy key: ssh-keygen -t ed25519 -N '' -f ${deployKey} && gh repo deploy-key add ${deployKey}.pub --allow-write --title 'open-autonomy agent'`);
+say('yours: the Discord bot token if you deliver there');
 for (const t of todo) say(`next: ${t}`);
 say(`next: ${stack === 'oa' ? '' : `STACK=${stack} `}AGENT_SECRETS=${secrets} ${docker.join(' ')} compose${stack === 'oa' ? '' : ` -p ${stack}`} -f container/compose.yml up -d --build`);

@@ -17,7 +17,7 @@ services:
     volumes:
       - ${WORLD_STACK_DIR}/world:/opt/world:ro
       - ${WORLD_STACK_DIR}/world/ca-bundle.pem:${WORLD_CERTIFI_PATH}:ro
-  reporter:
+  bridge:
     environment:
       - LD_PRELOAD=/opt/world/libfaketime.so.1
       - FAKETIME_TIMESTAMP_FILE=/opt/world/clock

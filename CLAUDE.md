@@ -46,9 +46,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   root's free space). One Docker host serves both stacks: the colima VM `open-autonomy`,
   4 GiB, mounting the home and the SSD (the world's CA and data reach the containers from that root), where the
   production stack runs as `oa-*` and the world's copy of the cookbook as `world-*` (the kit's `STACK` name), each
-  with its own volumes; a gate purges only its own. The VM is started at login by a launch agent
-  (a start script under the open-autonomy config directory, which also repairs colima's forwarded ssh socket after a
-  boot).
+  with its own volumes; a gate purges only its own. The VM is started at login by a launch agent (a start
+  script under the open-autonomy config directory).
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts up` brings the twins,
   the real platform and the cookbook's agent stack up; drive it through its page and doors, then `down --purge`.
 - Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).

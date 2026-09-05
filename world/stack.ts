@@ -208,13 +208,13 @@ function unseal(): void {
 }
 
 // The owner moves the model: hermes/config.yaml on main now names the cookbook's model, the agent's checkout
-// follows main, and the stack restarts the way an adopter restarts it (`docker compose up -d`): home-sync
-// carries the config into the home and the gateway boots (its seed hook finds the board already filed); the
+// follows main, and the stack restarts the way an adopter restarts it (`docker compose up -d`): the agent's init
+// the agent's own init carries the config into the home and the gateway boots (its seed hook finds the board already filed); the
 // next worker the board dispatches takes the model from it.
 async function betweenTasks(): Promise<void> {
   await putMain('hermes/config.yaml', configYaml(), `hermes/config.yaml: model ${MODEL}`);
   sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'sh', '-c', 'cd /work/project && git fetch -q origin && git checkout -q main && git reset -q --hard origin/main'], { quiet: true });
-  timed('compose up (restart)', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--force-recreate', 'home-sync', 'agent'], { env: composeEnv(certifiIn(`${COOKBOOK_NAME}-agent:local`)) }));
+  timed('compose up (restart)', () => sh(['bun', twinsCli, 'attach', 'open-autonomy', '--via', 'reflect', '--root', STATE, '--', ...compose, 'up', '-d', '--force-recreate', 'agent'], { env: composeEnv(certifiIn(`${COOKBOOK_NAME}-agent:local`)) }));
   waitSchedule();
   await rotateKey();
   console.log(`stack: the model moved to ${MODEL}; the next worker the board dispatches spends on it`);
@@ -244,7 +244,7 @@ async function rotateKey(): Promise<void> {
   let health = '';
   for (let i = 0; i < 20 && !health.includes(newKid); i++) {
     await Bun.sleep(500);
-    health = sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'curl', '-s', 'http://valve:8787/healthz'], { quiet: true, check: false }).out;
+    health = sh(['docker', '--context', context, 'exec', '-u', uid, `${project}-agent`, 'curl', '-s', 'http://bridge:8787/healthz'], { quiet: true, check: false }).out;
   }
   if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key within ten seconds: ${health}`);
   await Bun.sleep(6500);

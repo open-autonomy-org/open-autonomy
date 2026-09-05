@@ -20,7 +20,7 @@
     },
     "packages/kit-hermes": {
       "name": "create-open-autonomy",
-      "version": "2.1.2",
+      "version": "2.2.0",
       "bin": {
         "create-open-autonomy": "./src/cli.ts",
       },
@@ -34,7 +34,7 @@
     },
     "packages/sdk": {
       "name": "@open-autonomy/sdk",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "devDependencies": {
         "@types/bun": "^1.3.10",
         "typescript": "^5.9.0",

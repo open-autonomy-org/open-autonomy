@@ -5,7 +5,7 @@
 // third service: it authenticates through the key valve's forwarded narration route and never sees the
 // project's key. Nothing here drives the agent; it only reads.
 //
-//   OPEN_AUTONOMY_BASE_URL=http://valve:8787/v1 bun .open-autonomy/reporter.ts [--config .open-autonomy/config.yaml]
+//   OPEN_AUTONOMY_BASE_URL=http://bridge:8787/v1 bun .open-autonomy/reporter.ts [--config .open-autonomy/config.yaml]
 //
 // Supercode's contract, as its SDK documents it: `subscribeSessionIndex` lists sessions and streams
 // index changes (`sessionIndexEvent`); `session(locator).follow()` yields a snapshot then appended

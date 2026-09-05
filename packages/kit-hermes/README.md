@@ -34,7 +34,7 @@ hermes/              the agent: SOUL.md, its two skills (develop, pm), profiles/
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, rail bounds), reporter.ts (the bridge:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), setup.ts (the host, by one
                      command), the vendored SDK, kit.json (which kit, version and parameters made this repository)
-container/           the stack: the agent, the key valve, the reporter; the pinned Hermes image
+container/           the stack: two containers, the agent and the bridge (the valve, the deploy key's ssh-agent, the reporter); the pinned Hermes image
 .github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
 ```
 
@@ -70,6 +70,6 @@ for a listed partner within a bound. Both leave records on the public audit trai
 
 ## Nothing in the agent's reach is a secret that matters
 
-The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent forwarded from the host
+The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through the bridge's ssh-agent, which holds the deploy key from the host
 holding one repository-scoped deploy key. Delivery uses at most a Discord bot token. Every session's turns
 are published; the platform redacts secret-shaped text at intake as the second wall.
