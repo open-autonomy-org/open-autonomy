@@ -1,11 +1,11 @@
 # __PROJECT__ — constitution
 
+__PROJECT__ is built by its own agent, in the open. Say here, in a paragraph, what the project is, for whom,
+and what it will be when it is done.
+
 What this project is and what it must remain. Its opening paragraph is the project's north star and leads its
 page; the invariants below bind every task, and a review that finds one violated sends the work back whatever
 else it got right. Changing this file is the owner's act, never a task's.
-
-__PROJECT__ is built by its own agent, in the open. Say here, in a paragraph, what the project is, for whom,
-and what it will be when it is done.
 
 ## Invariants
 
