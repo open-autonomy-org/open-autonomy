@@ -46,8 +46,11 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           [ -n "$NPM_TOKEN" ] || { echo "NPM_TOKEN is not installed in the production environment"; exit 1; }
-          # The shape the world proves against the registry twin: an .npmrc naming the registry and its token, and
-          # the registry named again on the command line.
-          printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > ~/.npmrc
+          # The token where bun looks for it: the home's .npmrc, each package's .npmrc, and the environment.
+          rc=$(printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN")
+          printf '%s\n' "$rc" > "$HOME/.npmrc"
+          for p in packages/sdk packages/kit-hermes; do printf '%s\n' "$rc" > "$p/.npmrc"; done
+          export NPM_CONFIG_TOKEN="$NPM_TOKEN"
+          echo "home: $HOME; npmrc: $(wc -c < "$HOME/.npmrc") bytes; whoami: $(cd packages/sdk && bun pm whoami 2>&1 | tail -1)"
           (cd packages/sdk && bun publish --access public --registry https://registry.npmjs.org/)
           (cd packages/kit-hermes && bun publish --access public --registry https://registry.npmjs.org/)
