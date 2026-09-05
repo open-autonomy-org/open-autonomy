@@ -51,10 +51,11 @@ for (const path of [`/p/${ENC}`, `/p/${ENC}/sessions/probe-1`, `/p/${ENC}/items/
   if (!page.text.includes('probe')) fail(`${path} does not show the probe's session`);
 }
 // The roadmap arrives through the key, the way a project's reporter narrates the file it works.
-const pushed = await bearer.post('/v1/agent/roadmap', { source: 'file', roadmap: parseRoadmap(readFileSync(resolve(COOKBOOK, 'ROADMAP.yml'), 'utf8')) });
+const cookbookRoadmap = parseRoadmap(readFileSync(resolve(COOKBOOK, 'ROADMAP.yml'), 'utf8'));
+const pushed = await bearer.post('/v1/agent/roadmap', { source: 'file', roadmap: cookbookRoadmap });
 if (pushed.status !== 200) fail(`roadmap push through the key → ${pushed.status} ${pushed.text.slice(0, 200)}`);
 const page = (await pub.get(`/p/${ENC}`)).text;
-if (!page.includes('todo add appends an item')) fail('the project page does not render the roadmap published through the key');
+if (!page.includes(cookbookRoadmap.items[0].title)) fail('the project page does not render the roadmap published through the key');
 if (!/last run .*: done/.test(page)) fail('the project page has no health line naming the last run');
 ok.push('the session, the update and the item read back and render on the page');
 
