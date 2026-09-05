@@ -113,9 +113,10 @@ export function upgrade(dir: string): Outcome {
   const rendered = render(rec.params);
   const before = check(dir);
   const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE);
-  for (const rel of retired(dir, rendered, rec)) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
+  const gone = retired(dir, rendered, rec);
+  for (const rel of gone) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
   // A directory the retirement emptied goes too.
-  for (const rel of [...new Set(retired(dir, rendered, rec).map((r) => dirname(r)))]) { try { if (!readdirSync(join(dir, rel)).length) rmSync(join(dir, rel), { recursive: true }); } catch { /* gone */ } }
+  for (const rel of [...new Set(gone.map((r) => dirname(r)))]) { try { if (!readdirSync(join(dir, rel)).length) rmSync(join(dir, rel), { recursive: true }); } catch { /* gone */ } }
   // The record keeps the project's divergences; only the version moves.
   writeFileSync(join(dir, KIT_FILE), `${JSON.stringify({ ...rec, version: KIT.version } satisfies KitRecord, null, 2)}\n`);
   return { ...out, drift: before.drift };

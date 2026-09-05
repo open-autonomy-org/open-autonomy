@@ -29,7 +29,7 @@ CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json, test/  the project's own check (`bun run check`), starting with one test
-hermes/              the agent: SOUL.md, its three skills (develop, review, pm), kanban.seed.json (the board's first tasks, in order),
+hermes/              the agent: SOUL.md, its two skills (develop, pm), kanban.seed.json (the board's first tasks, in order),
                      cron/jobs.seed.json (the PM, hourly), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, rail bounds), reporter.ts (the bridge:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), setup.ts (the host, by one
@@ -51,8 +51,7 @@ where each is metered to the project's account. The board is the roadmap: the ow
 files the first ones, in order, on the first boot), the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, lands it on an `agent/<task id>` branch the landing workflow merges when the checks pass, and hands
-off; the review lane verifies the handoff against `STANDARDS.md` in a session of its own (the `review`
-skill); once an hour the PM job reads the whole board and unsticks what is stuck (the `pm` skill). Every
+off; the review lane, Hermes's own, verifies the handoff against `STANDARDS.md` in a session of its own; once an hour the PM job reads the whole board and unsticks what is stuck (the `pm` skill). Every
 session shows on the project's page with its cost.
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK

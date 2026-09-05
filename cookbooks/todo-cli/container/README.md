@@ -33,7 +33,7 @@ Then the two volumes, once: `oa-home` from your `hermes/` (with a `.env` naming
 ```bash
 AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
 docker exec -u $UID oa-agent hermes cron list            # the schedule: the PM, hourly, seeded from hermes/cron/jobs.seed.json
-docker exec -u $UID oa-agent hermes kanban create 'A task' --body '- its acceptance line' --assignee default --workspace dir:/work/project --skill develop --skill review   # file work
+docker exec -u $UID oa-agent hermes kanban create 'A task' --body '- its acceptance line' --assignee default --workspace dir:/work/project --skill develop   # file work
 docker exec -u $UID oa-agent hermes kanban list                  # the board: the task, its lane, its attempts
 docker logs -f oa-reporter                               # what is being published
 ```
