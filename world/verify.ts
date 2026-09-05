@@ -86,6 +86,12 @@ for (const item of done) {
   if (!(view.usd_cents > 0)) fail(`item ${item}'s sessions settled no cents`);
   if (!view.sessions.every((s: { turn_count: number }) => s.turn_count > 0)) fail(`a session on ${item} has no turns`);
 }
+// The page's roadmap is the repository's: every item done on main is done in the latest published revision
+// (the reporter reads main through the GitHub twin), and no ended session ends before it started.
+const latest = (await pub.get(`/v1/accounts/${ENC}/roadmap`)).body?.revision;
+if (!latest) fail('no roadmap revision published — the reporter never read main');
+for (const item of done) if (latest.roadmap.items.find((i: { id: string; status: string }) => i.id === item)?.status !== 'done') fail(`item ${item} is done on main but the page's roadmap (revision ${latest.revision}) does not say so`);
+for (const s of runs as Array<{ key: string; started_at?: string; ended_at?: string }>) if (s.ended_at && s.started_at && Date.parse(s.ended_at) < Date.parse(s.started_at)) fail(`session ${s.key} ends before it starts (${s.started_at} → ${s.ended_at}): the stack's clocks disagree`);
 const page = await pub.get(`/p/${ENC}`);
 if (page.status !== 200) fail(`project page → ${page.status}`);
 if (!/last run .*: done|last run .*: failed/.test(page.text)) fail('project page has no health line naming the last run');
@@ -109,4 +115,4 @@ const probe = (url: string) => Bun.spawnSync({ cmd: ['docker', '--context', cont
 if (probe('https://openrouter.ai/api/v1/models') !== '000') fail("the agent's container reaches the public internet — the world is not sealed");
 if (probe('http://host.docker.internal:47613/healthz') !== '200') fail("the agent's container cannot reach the platform");
 
-console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (the newest on ${MODEL}, the earlier fire on ${PREVIOUS_MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);
+console.log(`verify: OK — ${ACCOUNT}: ${calls.body.calls_total} metered spends (the newest on ${MODEL}, the earlier fire on ${PREVIOUS_MODEL}), ${funding.body.consumed_usd_cents.toFixed(4)} cents; done on main: ${done.join(', ')}; ${pulls.filter((p) => p.merged).length} pull request(s) merged; ${runs.length} run session(s), ${landed.length} done; the page's roadmap at revision ${latest.revision} says so; kit files current at main; check green at main; ${delivered.length} report(s) delivered to Discord; egress sealed`);
