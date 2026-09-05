@@ -18,6 +18,11 @@ export interface Env {
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
+  // Money in, beside GitHub Sponsors: Polar, the merchant of record for direct patronage. Absent → the page's
+  // tiers offer GitHub Sponsors alone.
+  POLAR_API_BASE?: string;
+  POLAR_ACCESS_TOKEN?: string;
+  POLAR_WEBHOOK_SECRET?: string;
   // The card rail: Stripe Issuing. Absent → the rail refuses with rail_not_configured.
   STRIPE_API_BASE?: string;
   STRIPE_SECRET_KEY?: string;

@@ -39,8 +39,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - **Tests are smoke tests.** One per surface, end to end through the worker, saying a change broke the
   surface, not why; one line each for the security claims (a forged key, a wrong scope, a forged webhook).
   The world gate is the proof. Do not grow the suites; grow the world.
-- **Money in is Polar** (the merchant of record for patronage); **cards out are Stripe Issuing**. Nothing
-  else takes or moves money.
+- **Money in is GitHub Sponsors and Polar**, side by side, both minting to the same books (Polar is the
+  merchant of record for direct patronage); **cards out are Stripe Issuing**. Nothing else takes or moves money.
 - **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts check` is the
   gate — up, seed, probe, one clock fire, wait, verify, down. Run it before deploying anything that touches
   metering, keys, the stream, the docs sync or the kit. The reporter's supercode with Hermes support is

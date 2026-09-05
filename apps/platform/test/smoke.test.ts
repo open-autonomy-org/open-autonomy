@@ -2,7 +2,7 @@
 // vendors, plus one line for each security claim the working agreement holds to a higher bar. The world
 // gate (`bun world/run.ts check`) is the proof; these say a change broke a surface, not why.
 import { describe, expect, test } from 'bun:test';
-import { admin, fund, github, mintKey, request, requestJson, stripe, testEnv, useEnv } from './env.ts';
+import { admin, fund, github, mintKey, polar, request, requestJson, stripe, testEnv, useEnv } from './env.ts';
 
 const ce = (type: string, subject: string, data: unknown) => ({ specversion: '1.0', id: crypto.randomUUID(), source: 'test', type: `org.open-autonomy.${type}`, subject, time: new Date().toISOString(), data });
 const sign = async (secret: string, payload: string): Promise<string> => {
@@ -71,6 +71,30 @@ describe('the platform, one smoke test per surface', () => {
     // Security: a steer key spends nothing; a spending key cannot steer.
     expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${steer}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(403);
     expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${(await mintKey(env)).token}` }, body: { source: 'jira', roadmap } })).status).toBe(403);
+  });
+
+  test('patronage: a tier checkout through Polar lands on the books from the thanks page once, a renewal from the signed webhook once, a forged webhook never', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/app', 100);
+    const opened = await requestJson(env, '/v1/patrons/checkout', { method: 'POST', body: { account: 'acme/app', tier: 0, interval: 'once' } });
+    expect(opened.url).toBe('https://polar.test/checkout/chk_1');
+    expect(Object.keys(polar.products)).toHaveLength(6);
+    // The patron pays at Polar.
+    polar.checkouts.chk_1.status = 'confirmed';
+    polar.orders.push({ id: 'ord_1', paid: true, total_amount: 500, checkout_id: 'chk_1', customer_id: 'cus_1', billing_reason: 'purchase' });
+    for (let i = 0; i < 2; i++) expect((await request(env, '/p/acme%2Fapp/thanks?checkout_id=chk_1')).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(600);
+    expect((await request(env, '/p/acme%2Fapp')).text()).resolves.toContain('@pat');
+    const hook = async (payload: string, secret = env.POLAR_WEBHOOK_SECRET!) => {
+      const id = 'msg_1'; const ts = String(Math.floor(Date.now() / 1000));
+      const key = await crypto.subtle.importKey('raw', Uint8Array.from(atob(secret.slice(6)), (c) => c.charCodeAt(0)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${ts}.${payload}`)))));
+      return request(env, '/webhooks/polar', { method: 'POST', headers: { 'webhook-id': id, 'webhook-timestamp': ts, 'webhook-signature': `v1,${sig}` }, body: payload });
+    };
+    const renewal = JSON.stringify({ type: 'order.paid', data: { id: 'ord_2', paid: true, total_amount: 500, checkout_id: 'chk_1', billing_reason: 'subscription_cycle', customer: { email: 'pat@example.com', name: 'Pat Patron' } } });
+    for (let i = 0; i < 2; i++) expect((await hook(renewal)).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(1100);
+    expect((await hook(renewal, 'whsec_' + btoa('forged'))).status).toBe(401);
   });
 
   test('the rails: a card minted within the bound, approved in real time, settled on capture and retired; a decline releases; a partner charge settles', async () => {

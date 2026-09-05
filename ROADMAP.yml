@@ -72,11 +72,11 @@ items:
   - id: polar-checkout
     phase: 2
     priority: high
-    status: planned
-    title: People fund a project on its page, through Polar
+    status: done
+    title: People fund a project on its page through Polar, beside GitHub Sponsors
     acceptance:
-      - "Polar is the merchant of record for patronage: each project's tiers are Polar products (one-time and monthly) the platform creates and keeps in step; `POST /v1/patrons/checkout {account, tier}` opens a Polar checkout for the project and the page's tiers go through it; a paid order or an active subscription's invoice mints the amount to the account as a `mint` flow carrying the patron's name (never a card), through Polar's signed webhook."
-      - Recurring patronage accrues on Polar's order events, so the monthly accrual cron is only for GitHub Sponsors; the patrons wall and the explore grid count Polar patrons.
+      - "Two doors onto the same books, side by side on every tier: GitHub Sponsors (as today) and Polar, the merchant of record for direct patronage. Each project's tiers are Polar products (one-time and monthly) the platform creates and keeps in step; `POST /v1/patrons/checkout {account, tier}` opens a Polar checkout for the project and the page's tiers go through it; a paid order or an active subscription's invoice mints the amount to the account as a `mint` flow carrying the patron's name (never a card), through Polar's signed webhook."
+      - Recurring patronage through Polar accrues on its order events, while GitHub Sponsors keep accruing on the monthly cron; the patrons wall and the explore grid count both.
       - Proven in the world against the Polar twin: a checkout confirmed and a renewal order land on the books and the page; a forged webhook does not.
 
   - id: kit-published

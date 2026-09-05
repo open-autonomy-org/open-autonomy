@@ -17,6 +17,7 @@ src/stream-view.tsx  the spine (NEXT / NOW / DONE), the session and item pages, 
 src/widgets.ts    runway, now, roadmap and activity SVGs for a README
 src/sync.ts       the docs sync: a project's page is its repository's mirror
 src/sponsors.ts   the GitHub Sponsors webhook
+src/polar.ts      money in through Polar: the tiers as products, the checkout, the thanks page, the webhook
 src/runway.ts     the Bayesian runway estimate
 ```
 
@@ -39,8 +40,13 @@ src/runway.ts     the Bayesian runway estimate
 - **The partner rail.** `POST /v1/rails/partner` settles a partner service's metered charge now, for a
   partner the owner listed and within the amount the owner set, as a `partner` audit record naming the
   partner, the unit and the quantity.
-- **Sponsors.** The GitHub Sponsors webhook keeps the recurring list; a monthly cron credits it. Coupons
-  are bearer grants redeemed on the page or at `/v1/coupons/redeem`.
+- **Money in.** Two doors on every tier of a project's page, onto the same books. GitHub Sponsors: its
+  webhook keeps the recurring list and a monthly cron credits it. Polar, the merchant of record for direct
+  patronage: `POST /v1/patrons/checkout {account, tier, interval}` opens a Polar checkout for the tier's
+  product (monthly or once; the platform creates the products on first use), and a paid order mints to the
+  account with the patron's name, once, from whichever arrives first of Polar's signed `order.paid` webhook
+  at `/webhooks/polar` and the thanks page the patron lands on. Renewals are orders too. Coupons are bearer
+  grants redeemed on the page or at `/v1/coupons/redeem`.
 
 ## Keys
 

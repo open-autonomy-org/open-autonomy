@@ -2,6 +2,7 @@ import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
+import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
 import { handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { renderExplore, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
@@ -68,6 +69,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const message = result.ok ? `Added $${((result.amount_usd_cents ?? 0) / 100).toFixed(2)} to ${account}.` : redeemMessage(result.error);
     return html(renderMessage(account, result.ok, result.ok ? 'Coupon redeemed' : 'Coupon not redeemed', message), result.ok ? 200 : 400);
   }
+  if ((m = path.match(/^\/p\/(.+)\/thanks$/))) {
+    if (get()) return get()!;
+    return thanksPage(env, dec(m[1]), url.searchParams.get('checkout_id'));
+  }
   if ((m = path.match(/^\/p\/(.+)\/sessions$/))) {
     if (get()) return get()!;
     const account = dec(m[1]);
@@ -95,7 +100,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
     const [stream, road] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account)]);
-    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision));
+    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env)));
   }
 
   // ---- admin: through the reviewed workflow only ----
@@ -131,6 +136,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   if (path === '/webhooks/github-sponsors') return handleSponsorsWebhook(req, env, sponsorAccount(env));
   if (path === '/webhooks/stripe') return stripeWebhook(req, env);
+  if (path === '/webhooks/polar') return polarWebhook(req, env);
+  if (path === '/v1/patrons/checkout') return patronCheckout(req, env);
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
     const claims = await authedClaims(req, env);
