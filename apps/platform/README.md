@@ -40,7 +40,11 @@ src/runway.ts     the Bayesian runway estimate
 - **The partner rail.** `POST /v1/rails/partner` settles a partner service's metered charge now, for a
   partner the owner listed and within the amount the owner set, as a `partner` audit record naming the
   partner, the unit and the quantity.
-- **Money in.** Two doors on every tier of a project's page, onto the same books. GitHub Sponsors: its
+- **Money in.** Three doors onto the same books. Grant credits: a funder (`@login`, proven by the claim file in a
+  repository they own; a key that can only give) holds credits the org gave them (or bought) and gives them to a
+  project they believe in — `POST /v1/grants/give`, or the form on the project's page; the org's own grants
+  account gives through `admin.yml`. On the project's books a grant is money in, `Granted by @login` on the page.
+  Then the two doors on every tier: GitHub Sponsors: its
   webhook keeps the recurring list and a monthly cron credits it. Polar, the merchant of record for direct
   patronage: `POST /v1/patrons/checkout {account, tier, interval}` opens a Polar checkout for the tier's
   product (monthly or once; the platform creates the products on first use), and a paid order mints to the

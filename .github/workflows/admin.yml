@@ -3,7 +3,9 @@ name: Admin
 # `production` environment's required reviewer before the admin token is used. The token lives only in that
 # environment's secrets (and in Cloudflare, as the worker's own secret). No machine holds it.
 #
-# Money ops move balance on the books (mint from the platform's own funding, grant between accounts). Coupons
+# Money ops move balance on the books (mint from the platform's own funding, grant between accounts). Grant
+# credits: `mint` to a funder (`account: @login`) gives them credits to give; `grant` from
+# `open-autonomy-org/grants` is the org giving directly. Coupons
 # are not issued here: a coupon code is a bearer for money and a public repo's run logs are public — fund an
 # adopter by grant instead.
 on:

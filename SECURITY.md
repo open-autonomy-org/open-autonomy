@@ -51,6 +51,10 @@ cross one of these boundaries are especially valuable.
   reservation; a partner the owner did not list cannot settle. proof: smoke "a card minted within the bound,
   approved in real time, settled on capture and retired; a decline releases"; proof: world "the wrong
   category and an unlisted partner were refused".
+- **Grant credits move only from a funder's own books.** A funder's key proves their GitHub login through the
+  claim file in a repository they own and can only give; a grant over the credits they hold is refused, and a
+  give key can neither spend nor narrate. proof: smoke "over the credits refused; a give key cannot spend";
+  proof: world "over the credits and spending were refused".
 - **Webhooks are signed.** Stripe's, Polar's and GitHub Sponsors' events are accepted only with a valid
   signature within their window; a forged event moves nothing. proof: smoke "a forged webhook, an unlisted
   partner"; proof: world "a forged event was refused".

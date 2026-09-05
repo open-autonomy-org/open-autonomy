@@ -79,6 +79,14 @@ items:
       - Recurring patronage through Polar accrues on its order events, while GitHub Sponsors keep accruing on the monthly cron; the patrons wall and the explore grid count both.
       - Proven in the world against the Polar twin: a checkout confirmed and a renewal order land on the books and the page; a forged webhook does not.
 
+  - id: grant-credits
+    phase: 2
+    priority: high
+    status: done
+    title: Grant credits — a third source of money in, from the org or from any funder
+    acceptance:
+      - "A funder is a person on the books (`@login`): they prove their GitHub login through the claim file in a repository they own and get a key that can only give; the org (or a purchase, later) gives them grant credits; they give credits to a project they believe in with a word (`POST /v1/grants/give`, or the form on the project's page), and on the project's books that is money in, `Granted by @login` on its page and on the patrons wall, with the funder's own public page showing what they gave."
+      - "The org gives directly from its own grants account through the admin workflow (`Granted by Open Autonomy`); credits never move beyond what a funder holds; a give key can neither spend nor narrate. Proven in the world and in one smoke line."
   - id: kit-published
     phase: 3
     priority: high

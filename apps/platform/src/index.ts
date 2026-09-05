@@ -5,7 +5,7 @@ import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type S
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
 import { handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderExplore, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
+import { renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -38,6 +38,15 @@ const SVG = { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': '
 const NO_STORE = { 'cache-control': 'no-store' };
 const fundingAccount = (env: Env): string => env.DEFAULT_FUNDING_ACCOUNT || 'open-autonomy-org/open-autonomy';
 const sponsorAccount = (env: Env): string => env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
+// The org's own funder identity: grant credits given by Open Autonomy itself move from this account.
+const grantsAccount = (env: Env): string => env.GRANTS_ACCOUNT || 'open-autonomy-org/grants';
+// A funder gives grant credits from their own books to a project: money in for the project, once per key.
+async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
+  if (typeof to !== 'string' || !/^[^/\s@]+\/[^/\s]+$/.test(to) || typeof usdCents !== 'number' || !Number.isFinite(usdCents) || usdCents < 1) return { ok: false, error: 'invalid_request' };
+  const ledger = new LedgerClient(env.LIMITS);
+  if (!(await ledger.project(to)).found) return { ok: false, error: 'no_such_project' };
+  return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined);
+}
 const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
 const EMPTY_ROADMAP: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] };
@@ -57,9 +66,19 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (get()) return get()!;
     const { entries } = await ledger.directory();
     for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
-    return html(renderExplore(entries));
+    return html(renderExplore(entries, grantsAccount(env)));
   }
   let m: RegExpMatchArray | null;
+  // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
+  if ((m = path.match(/^\/p\/(.+)\/give$/))) {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const account = dec(m[1]);
+    const form = await req.formData();
+    const claims = await authedClaims(new Request(req.url, { headers: { authorization: `Bearer ${String(form.get('key') ?? '').trim()}` } }), env);
+    if (!claims || !hasScope(claims, 'give')) return html(renderMessage(account, false, 'Not given', 'That is not a funder key. Prove your GitHub login with the claim file and mint one: GET /v1/keys/challenge?funder=<login>.'), 401);
+    const r = await give(env, claims.account, account, Number(form.get('usd_cents')), String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`);
+    return html(renderMessage(account, r.ok, r.ok ? 'Given' : 'Not given', r.ok ? `${claims.account} granted $${(Number(form.get('usd_cents')) / 100).toFixed(2)} to ${account}. It is on the books and on the page.` : r.error === 'insufficient_balance' ? `${claims.account} holds fewer credits than that.` : `Refused: ${r.error}.`), r.ok ? 200 : 400);
+  }
   if ((m = path.match(/^\/p\/(.+)\/redeem$/))) {
     if (req.method !== 'POST') return methodNotAllowed();
     const account = dec(m[1]);
@@ -96,11 +115,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if ((m = path.match(/^\/p\/(.+)$/))) {
     if (get()) return get()!;
     const account = dec(m[1]);
+    if (account.startsWith('@')) { const f = await ledger.funder(account); return f.found ? html(renderFunder(f, grantsAccount(env))) : html(renderMessage(account, false, 'No such funder', `No funder found for ${account}.`), 404); }
     const view = await ledger.project(account);
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
     const [stream, road] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account)]);
-    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env)));
+    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env), grantsAccount(env)));
   }
 
   // ---- admin: through the reviewed workflow only ----
@@ -148,6 +168,17 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/webhooks/stripe') return stripeWebhook(req, env);
   if (path === '/webhooks/polar') return polarWebhook(req, env);
   if (path === '/v1/patrons/checkout') return patronCheckout(req, env);
+  // Grant credits: a funder's key gives to a project; a funder's books are public.
+  if (path === '/v1/grants/give') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'give')) return error('scope_required', 403, { scope: 'give' });
+    const body = parseJson<{ to?: string; usd_cents?: number; note?: string; key?: string }>(await req.text()) ?? {};
+    const r = await give(env, claims.account, body.to, body.usd_cents, body.note, typeof body.key === 'string' ? `give:${claims.account}:${body.key}` : `give:${crypto.randomUUID()}`);
+    return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' ? 404 : 400 });
+  }
+  if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
     const claims = await authedClaims(req, env);

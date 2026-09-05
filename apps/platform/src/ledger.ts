@@ -107,6 +107,8 @@ export interface Flow {
   sponsor_login?: string;
   coupon?: boolean;
   rail?: Rail;
+  // A grant's word from the funder: what they believe in.
+  note?: string;
   ts: string;
 }
 
@@ -281,7 +283,8 @@ export class LimitLedger implements DurableObject {
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined));
-      case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined));
+      case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined));
+      case 'funder': return json(this.funderView(s('account')));
       case 'sponsor_upsert': return json(await this.sponsorUpsert(s('account'), body.sponsor as Sponsor));
       case 'sponsor_remove': return json(await this.sponsorRemove(s('account'), s('login')));
       case 'accrue': return json(await this.accrue(s('account'), s('key')));
@@ -395,13 +398,13 @@ export class LimitLedger implements DurableObject {
   }
 
   // Money moves down the tree: conserves the total, refused if the source lacks the balance.
-  private async grant(from: string, to: string, amount: number, key?: string): Promise<Record<string, unknown>> {
+  private async grant(from: string, to: string, amount: number, key?: string, note?: string): Promise<Record<string, unknown>> {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
     if (this.balanceOf(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
     this.ensureAcct(from).granted_out_usd_cents += Math.floor(amount);
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
-    this.recordFlow({ kind: 'grant', from, to, amount_usd_cents: Math.floor(amount) });
+    this.recordFlow({ kind: 'grant', from, to, amount_usd_cents: Math.floor(amount), ...(note ? { note: note.slice(0, 280) } : {}) });
     await this.save();
     return { ok: true, from, to, amount_usd_cents: Math.floor(amount), from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
   }
@@ -888,6 +891,19 @@ export class LimitLedger implements DurableObject {
     };
   }
 
+  // A funder on the books: the credits they hold, what they were given, what they gave and to whom.
+  private funderView(account: string): FunderView {
+    const a = this.acct(account);
+    const f = this.fundingSnapshot(account);
+    const flows = this.state.flows.filter((x) => x.to === account || x.from === account);
+    return {
+      ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
+      credits_usd_cents: f.balance_usd_cents, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
+      given: flows.filter((x) => x.kind === 'grant' && x.from === account).slice(-50).reverse(),
+      received: flows.filter((x) => x.to === account && x.kind !== 'consume').slice(-50).reverse(),
+    };
+  }
+
   private projectView(account: string): ProjectView {
     const a = this.acct(account);
     const entry = this.entryFor(account);
@@ -1020,10 +1036,16 @@ function fundingStatus(f: FundingSnapshot): 'funded' | 'low' | 'unfunded' {
   if (f.runway_confident && f.runway_days !== null && f.runway_days < 7) return 'low';
   return 'funded';
 }
-// Projects that have granted INTO this account are patrons whose avatar is another project.
+// Projects and funders that have granted INTO this account are patrons: a project's avatar is its own, a
+// funder's is their GitHub login's.
 function projectPatronsOf(flows: Flow[], account: string, profileOf: (id: string) => AccountProfile): Patron[] {
   const byFrom = new Map<string, number>();
-  for (const flow of flows) if (flow.kind === 'grant' && flow.to === account && flow.from && flow.from.includes('/')) byFrom.set(flow.from, (byFrom.get(flow.from) ?? 0) + flow.amount_usd_cents);
+  for (const flow of flows) if (flow.kind === 'grant' && flow.to === account && flow.from && (flow.from.includes('/') || flow.from.startsWith('@'))) byFrom.set(flow.from, (byFrom.get(flow.from) ?? 0) + flow.amount_usd_cents);
+  const funders: Patron[] = [...byFrom.entries()].filter(([from]) => from.startsWith('@')).map(([from, total]) => ({ kind: 'funder', login: from.slice(1), name: from, avatar_url: `https://github.com/${encodeURIComponent(from.slice(1))}.png?size=64`, url: `/p/${encodeURIComponent(from)}`, amount_label: `granted ${(total / 100).toFixed(2)}` }));
+  byFrom.forEach((_, from) => { if (from.startsWith('@')) byFrom.delete(from); });
+  return projectPatronsOfProjects(byFrom, profileOf);
+}
+function projectPatronsOfProjects(byFrom: Map<string, number>, profileOf: (id: string) => AccountProfile): Patron[] {
   return [...byFrom.entries()].map(([from, total]) => ({ kind: 'project', login: from, name: from, avatar_url: profileOf(from).avatar_url, url: `/p/${encodeURIComponent(from)}`, amount_label: `granted $${(total / 100).toFixed(0)}` }));
 }
 function generateCouponCode(): string {
@@ -1137,13 +1159,25 @@ export interface DirectoryEntry {
 }
 
 export interface Patron {
-  kind: 'sponsor' | 'project';
+  kind: 'sponsor' | 'project' | 'funder';
   login: string;
   name?: string;
   avatar_url?: string;
   url?: string;
   tagline?: string;
   amount_label?: string;
+}
+
+export interface FunderView {
+  ok: true;
+  found: boolean;
+  account: string;
+  login: string;
+  credits_usd_cents: number;
+  received_usd_cents: number;
+  given_usd_cents: number;
+  given: Flow[];
+  received: Flow[];
 }
 
 export interface ProjectView extends DirectoryEntry {
@@ -1167,9 +1201,10 @@ export class LedgerClient {
   mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor) {
     return this.rpc<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor });
   }
-  grant(from: string, to: string, amountUsdCents: number, key?: string) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key });
+  grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string) {
+    return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note });
   }
+  funder(account: string) { return this.rpc<FunderView>('funder', { account }); }
   sponsorUpsert(account: string, sponsor: Sponsor) { return this.rpc<{ ok: boolean; active_sponsors?: number; error?: string }>('sponsor_upsert', { account, sponsor }); }
   sponsorRemove(account: string, login: string) { return this.rpc<{ ok: boolean }>('sponsor_remove', { account, login }); }
   accrue(account: string, key: string) { return this.rpc<{ ok: boolean; credited?: boolean; idempotent?: boolean; balance_usd_cents?: number; monthly_total_usd_cents?: number }>('accrue', { account, key }); }
