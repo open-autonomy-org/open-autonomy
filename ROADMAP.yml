@@ -155,7 +155,7 @@ items:
   - id: cookbook-through-create
     phase: 4
     priority: medium
-    status: planned
+    status: active
     title: A cookbook is exactly what the generator makes plus the project's own files
     acceptance:
       - "`bun create open-autonomy` into an empty directory, then the project's own src/test/README/ROADMAP copied in, is byte-identical to the committed cookbook (a test asserts it), so a cookbook can never drift from the kit."

@@ -20,7 +20,7 @@
     "undici": "^7.29.0"
   },
   "scripts": {
-    "check": "bun install --frozen-lockfile && bun run --filter '*' check && bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check . && bun scripts/check-docs.ts && cd cookbooks/todo-cli && bun run check",
+    "check": "bun install --frozen-lockfile && bun run --filter '*' check && bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun scripts/check-cookbook.ts cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check . && bun scripts/check-docs.ts && cd cookbooks/todo-cli && bun run check",
     "check:world": "bun world/run.ts check"
   }
 }
