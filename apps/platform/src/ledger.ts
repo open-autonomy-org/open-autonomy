@@ -176,7 +176,7 @@ export interface CallRecord {
   ts: string;
   request_id: string;
   rail: Rail;
-  // The session live when this settled (exact when one was live; absent otherwise).
+  // The session the caller named, absent only when the calling client supplied none.
   session?: string;
   model?: string;
   route?: string;
@@ -572,7 +572,7 @@ export class LimitLedger implements DurableObject {
     if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, rail });
     a.calls_total = (a.calls_total ?? 0) + 1;
     a.last_call_ms = Date.now();
-    const session = await this.attributeSpend(reservation.account, spent);
+    const session = await this.attributeSpend(reservation.account, spent, event?.session);
     // The audit trail: every metered spend, appended durably under the account, never evicted. The running
     // count breaks ties within one millisecond, so the trail's order is the settle order.
     const record: CallRecord = { ts: new Date().toISOString(), request_id: requestId, rail, ...(session ? { session } : {}), usd_cents: spent, outcome: event?.outcome };
@@ -618,13 +618,17 @@ export class LimitLedger implements DurableObject {
     if (ev.kind === 'started') {
       if (session) return { ok: true, session: sessionSummary(session), idempotent: true };
       const startedMs = Number.isFinite(Date.parse(ev.started_at ?? '')) ? Date.parse(ev.started_at as string) : now;
+      const pendingKey = `sessionspend:${account}:${ev.key}`;
+      const pending = await this.ctx.storage.get<{ usd_cents: number; calls: number }>(pendingKey);
       session = {
         key: ev.key, account, kind: sessionKind(ev.session_kind), status: 'live',
         title: clipText(ev.title, 200), item_id: itemId(ev.item_id), source: clipText(ev.source, 80),
-        started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, next_seq: 0, usd_cents: 0, calls: 0, updated_at: new Date(now).toISOString(),
+        started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, next_seq: 0,
+        usd_cents: pending?.usd_cents ?? 0, calls: pending?.calls ?? 0, updated_at: new Date(now).toISOString(),
       };
       storageKey = `session:${account}:${String(startedMs).padStart(13, '0')}:${ev.key}`;
       await this.ctx.storage.put(idxKey, storageKey);
+      if (pending) await this.ctx.storage.delete(pendingKey);
       a.live_sessions = [...(a.live_sessions ?? []).filter((k) => k !== ev.key), ev.key];
     } else if (!session || !storageKey) {
       return { ok: false, error: 'session_not_started' };
@@ -761,19 +765,26 @@ export class LimitLedger implements DurableObject {
     return { ok: true, task: record };
   }
 
-  // Spend lands on the session that was live when it settled. With one live session the attribution is
-  // exact; with none or several it is left unattributed rather than guessed.
-  private async attributeSpend(account: string, cents: number): Promise<string | undefined> {
-    const live = this.acct(account)?.live_sessions ?? [];
-    if (live.length !== 1) return undefined;
-    const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${live[0]}`);
+  // Spend lands only on the session the caller named. A call can settle before the reporter announces that
+  // session, so its counters wait under the same key and are folded in when the started event arrives.
+  private async attributeSpend(account: string, cents: number, key?: string): Promise<string | undefined> {
+    if (!key) return undefined;
+    const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${key}`);
     const session = storageKey ? await this.ctx.storage.get<SessionRecord>(storageKey) : undefined;
-    if (!session || !storageKey) return undefined;
+    if (!session || !storageKey) {
+      const pendingKey = `sessionspend:${account}:${key}`;
+      const pending = await this.ctx.storage.get<{ usd_cents: number; calls: number }>(pendingKey);
+      await this.ctx.storage.put(pendingKey, {
+        usd_cents: Number(((pending?.usd_cents ?? 0) + cents).toFixed(6)),
+        calls: (pending?.calls ?? 0) + 1,
+      });
+      return key;
+    }
     session.usd_cents = Number(((session.usd_cents ?? 0) + cents).toFixed(6));
     session.calls = (session.calls ?? 0) + 1;
     session.updated_at = new Date().toISOString();
     await this.ctx.storage.put(storageKey, session);
-    return live[0];
+    return key;
   }
 
   // ---- the card rail's cards ---------------------------------------------------------------------------

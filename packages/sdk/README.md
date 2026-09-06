@@ -29,8 +29,8 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
   page parses through the same code. There is no write API: the file in git is the only roadmap surface.
   Adapters that mirror it to a tracker are what the shape is for.
 
-Spend is attributed by the platform: a metered call settles on the one session live at that moment, so
-an item's page shows every session, update and settled cent that touched it.
+Spend is attributed by the platform: Hermes names its session on each model request, so overlapping sessions
+each receive their own settled calls and cents and an item's page shows everything that touched it.
 
 ## Drivers
 

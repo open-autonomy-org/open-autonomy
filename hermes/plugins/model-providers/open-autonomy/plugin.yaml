@@ -1,0 +1,5 @@
+name: open-autonomy
+kind: model-provider
+version: 1.0.0
+description: Names the active Hermes session on Open Autonomy model calls.
+author: Open Autonomy

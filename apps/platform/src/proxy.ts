@@ -21,6 +21,10 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   if (bodyText === null) return error('body_too_large', 413);
   const body = parseJson<Record<string, unknown>>(bodyText);
   if (!body) return error('invalid_json', 400);
+  const session = modelSession(body.session_id);
+  if (Object.hasOwn(body, 'session_id') && !session) return error('invalid_session', 400);
+  // Open Autonomy owns this field: the model gateway should see only its own wire.
+  delete body.session_id;
   const model = typeof body.model === 'string' ? body.model : '';
   if (!claims.models.includes(model)) return error('model_not_allowed', 403);
   // The owner's bound from the repository (models: in .open-autonomy/config.yaml) holds whatever the key was minted with.
@@ -63,7 +67,7 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
 
   const out = forwardedHeaders(upstream.headers, anthropic);
   out.set('x-open-autonomy-balance-usd-cents', String(reservation.balance_usd_cents));
-  const event = (actual: number, usage: TokenUsage, outcome: UsageEvent['outcome']): UsageEvent => ({ request_id: requestId, model, route, reserved_usd_cents: reserved, actual_usd_cents: actual, input_tokens: usage.input_tokens, output_tokens: usage.output_tokens, outcome });
+  const event = (actual: number, usage: TokenUsage, outcome: UsageEvent['outcome']): UsageEvent => ({ request_id: requestId, ...(session ? { session } : {}), model, route, reserved_usd_cents: reserved, actual_usd_cents: actual, input_tokens: usage.input_tokens, output_tokens: usage.output_tokens, outcome });
   if ((upstream.headers.get('content-type') ?? '').includes('text/event-stream')) {
     const [client, meter] = upstream.body!.tee();
     ctx.waitUntil(usageFromSse(meter, anthropic)
@@ -76,6 +80,10 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   const actual = settleCents(price, usage, reserved);
   await ledger.consume(requestId, actual, event(actual, usage, 'ok'));
   return new Response(text, { status: upstream.status, headers: out });
+}
+
+function modelSession(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200 && !value.includes(':') ? value : undefined;
 }
 
 // The output cap the request asks for, bounded to the reservation ceiling. Never clamped lower: a low

@@ -196,7 +196,7 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
         <h3>Updates</h3>
         {view.updates.length ? <ul class="updates">{view.updates.map((u: UpdateRecord) => <li><span class="u-when">{fmtAgo(u.ts, now)}</span><div class="u-text prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(u.text) }} />{u.session ? <a class="u-sess" href={`/p/${enc}/sessions/${encodeURIComponent(u.session)}`}>from session ↗</a> : null}</li>)}</ul> : <p class="sub">No updates posted on this item.</p>}
       </div>
-      <p class="note">Settled cents are the metered calls that landed while a session on this item was the only one live; the <a href={`/v1/accounts/${enc}/calls`}>audit trail</a> is the full record.</p>
+      <p class="note">Settled cents are the metered calls made by sessions on this item; the <a href={`/v1/accounts/${enc}/calls`}>audit trail</a> is the full record.</p>
     </div>
   );
 }
