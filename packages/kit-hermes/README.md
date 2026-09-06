@@ -34,7 +34,7 @@ hermes/              the agent: SOUL.md, its three skills (develop, pm, communit
 .open-autonomy/      the platform connection: config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the agent's four
                      processes, the one way it starts), the vendored SDK, kit.json (which kit, version and parameters made this repository)
-container/           a real setup: one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
+container/           the default for a real deployment (bare is for development and fast debugging): one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
 .github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
 ```
 

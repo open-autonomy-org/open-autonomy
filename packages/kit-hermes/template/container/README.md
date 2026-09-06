@@ -4,7 +4,7 @@ The agent is four processes: an ssh-agent holding the deploy key, the valve hold
 developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
 the Hermes gateway. One script starts them, `.open-autonomy/start.ts`, and it is the only way they are started.
 
-**On your machine**, for development: everything as you, no isolation.
+**In a container** is the default for a real deployment. **On your machine**, for development and fast debugging: everything as you, no isolation, the agent able to reach its own keys — an accepted trade while debugging, never the shape of production.
 
 ```bash
 bun .open-autonomy/mint-key.ts                                   # the developer's key → ~/.config/open-autonomy/agent.env
