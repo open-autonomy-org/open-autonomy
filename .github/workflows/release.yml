@@ -1,6 +1,6 @@
 name: Release the SDK and the kit
 # Publishes @open-autonomy/sdk and create-open-autonomy to npm, gated like the deploy: a human-cut
-# `release-v*` tag (agents cannot push tags) or a manual dispatch, and the `production` environment's required
+# `release-v<kit version>` tag (only an org admin can cut one), and the `production` environment's required
 # reviewer approves each run. The tag names the version both packages carry; a mismatch stops before publishing.
 # Egress is locked to npm, so the publish token cannot leave to any other host. The world proves the same
 # publish against the npm registry twin (bun world/run.ts kit) before any release is cut.
@@ -33,14 +33,12 @@ jobs:
           no-cache: true # no restored cache can poison a privileged publish
       - name: Install (frozen)
         run: bun install --frozen-lockfile
-      - name: The tag names the version both packages carry
+      - name: The tag names the kit's version (the SDK publishes whenever its own version is new)
         if: startsWith(github.ref, 'refs/tags/release-v')
         run: |
           tag="${GITHUB_REF#refs/tags/release-v}"
-          for p in packages/sdk packages/kit-hermes; do
-            v=$(bun -e "console.log(require('./$p/package.json').version)")
-            [ "$v" = "$tag" ] || { echo "$p is $v, the tag says $tag"; exit 1; }
-          done
+          v=$(bun -e "console.log(require('./packages/kit-hermes/package.json').version)")
+          [ "$v" = "$tag" ] || { echo "the kit is $v, the tag says $tag"; exit 1; }
       - name: Publish (the SDK first; the kit depends on it)
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
