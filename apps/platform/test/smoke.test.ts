@@ -36,6 +36,45 @@ describe('the platform, one smoke test per surface', () => {
     expect((await request(env, '/admin/status')).status).toBe(401);
   });
 
+  test('earmarked gifts pay only qualifying spends, name their envelope, and release when an item is done', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'root', 2000);
+    await requestJson(env, '/admin/accounts/acme%2Fapp/profile', { headers: admin, body: { profile: {} } });
+    const { token } = await mintKey(env, 'acme/app', ['zai/glm-5.3-flash', 'other/model']);
+    const auth = { authorization: `Bearer ${token}` };
+    const roadmap = (status: string) => ({ source: 'file', roadmap: { schema: 'open-autonomy.roadmap.v3', items: [{ id: 'add', title: 'todo add', status, acceptance: [] }, { id: 'other', title: 'other work', status: 'planned', acceptance: [] }] } });
+    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: auth, body: roadmap('active') })).status).toBe(200);
+    expect((await requestJson(env, '/admin/accounts/root/grant', { headers: admin, body: { to: 'acme/app', amount_usd_cents: 500, for: { item: 'missing' } } })).error).toBe('no_such_item');
+    expect((await requestJson(env, '/admin/accounts/root/grant', { headers: admin, body: { to: 'acme/app', amount_usd_cents: 500, key: 'item-gift', for: { item: 'add' } } })).ok).toBe(true);
+    const post = (subject: string, item_id: string) => request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce('session.started', subject, { session_kind: 'run', item_id }) });
+    await post('wrong-item', 'other');
+    const refused = await requestJson(env, '/v1/chat/completions', { headers: auth, body: { model: 'zai/glm-5.3-flash', session_id: 'wrong-item', messages: [] } });
+    expect(refused.error).toMatchObject({ code: 'insufficient_funds', earmarked_usd_cents: 500 });
+    expect(refused.error.message).toContain('$5.00 for roadmap item add');
+    expect(env.gateway.calls).toHaveLength(0);
+    await post('right-item', 'add');
+    expect((await request(env, '/v1/chat/completions', { headers: auth, body: { model: 'zai/glm-5.3-flash', session_id: 'right-item', messages: [] } })).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls[0].envelope).toEqual({ type: 'item', item: 'add' });
+    expect((await requestJson(env, '/admin/accounts/root/grant', { headers: admin, body: { to: 'acme/app', amount_usd_cents: 500, key: 'models-gift', for: { models: ['other/model'] } } })).ok).toBe(true);
+    const wrongModel = await requestJson(env, '/v1/chat/completions', { headers: auth, body: { model: 'zai/glm-5.3-flash', messages: [] } });
+    expect(wrongModel.error.code).toBe('insufficient_funds');
+    expect((await request(env, '/v1/chat/completions', { headers: auth, body: { model: 'other/model', messages: [] } })).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls[0].envelope).toEqual({ type: 'models', models: ['other/model'] });
+    const before = await requestJson(env, '/v1/accounts/acme%2Fapp');
+    expect(before.envelopes.map((e: any) => e.purpose)).toEqual(expect.arrayContaining([{ type: 'item', item: 'add' }, { type: 'models', models: ['other/model'] }]));
+    expect(before.usable_usd_cents).toBe(0);
+    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: auth, body: roadmap('done') })).status).toBe(200);
+    const after = await requestJson(env, '/v1/accounts/acme%2Fapp');
+    expect(after.balance_usd_cents).toBeCloseTo(before.balance_usd_cents, 6);
+    expect(after.usable_usd_cents).toBeGreaterThan(0);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/roadmap')).revision.roadmap.items[0].status).toBe('done');
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).envelopes.some((e: any) => e.purpose.type === 'unrestricted')).toBe(true);
+    const exported = await requestJson(env, '/admin/export', { headers: admin });
+    const state = exported.entries.find(([key]: [string, unknown]) => key === 'state')[1];
+    expect(state.flows.find((f: any) => f.kind === 'release')).toMatchObject({ item: 'add', amount_usd_cents: expect.any(Number) });
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBeCloseTo(after.envelopes.reduce((sum: number, e: any) => sum + e.balance_usd_cents, 0), 6);
+  });
+
   test('the stream: overlapping named sessions each hold their calls and settled cents; secrets never reach the books', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 100);

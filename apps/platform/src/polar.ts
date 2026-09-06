@@ -1,5 +1,5 @@
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
-import { LedgerClient, type Sponsor, type Tier } from './ledger.js';
+import { LedgerClient, type EnvelopePurpose, type Sponsor, type Tier } from './ledger.js';
 import { renderMessage } from './site.js';
 import { grantsAccount, isFunder, type Env } from './types.js';
 
@@ -51,7 +51,7 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
   if (req.method !== 'POST') return methodNotAllowed();
   if (!polarConfigured(env)) return error('patronage_not_configured', 503);
   const ct = req.headers.get('content-type') ?? '';
-  const input = ct.includes('json') ? parseJson<Record<string, string>>(await req.text()) ?? {} : Object.fromEntries((await req.formData()).entries()) as Record<string, string>;
+  const input = ct.includes('json') ? parseJson<Record<string, unknown>>(await req.text()) ?? {} : Object.fromEntries((await req.formData()).entries()) as Record<string, unknown>;
   const account = String(input.account ?? '');
   const tier = Number(input.tier);
   const interval = input.interval === 'once' ? 'once' : 'month';
@@ -62,17 +62,19 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
   const view = funder ? undefined : await ledger.project(account);
   const tiers = funder ? FUNDER_PACKS : view?.tiers ?? [];
   if (!(funder?.found || view?.found) || tier >= tiers.length) return error('no_such_tier', 404);
+  const marked = await ledger.earmark(account, input.for);
+  if (!marked.ok || !marked.purpose) return error(marked.error ?? 'invalid_earmark', marked.error === 'no_such_item' ? 404 : 400);
   const packs = funder ? 'once' : interval;
   const products = await ensureProducts(env, ledger, account, tiers, (funder ? funder.polar_products : view?.polar_products) ?? {});
   const origin = new URL(req.url).origin;
   const created = await polar<{ id?: string; url?: string }>(env, 'POST', '/v1/checkouts/', {
     products: [products[`${tier}:${packs}`]],
     success_url: `${origin}/p/${encodeURIComponent(account)}/thanks?checkout_id={CHECKOUT_ID}`,
-    metadata: { account, tier: String(tier), interval: packs },
+    metadata: { account, tier: String(tier), interval: packs, for: JSON.stringify(marked.purpose) },
   });
   if (!created.ok || !created.body.id || !created.body.url) return error('checkout_unavailable', 502);
-  await ledger.polarCheckoutPut({ id: created.body.id, account, tier, interval: packs, usd_cents: tiers[tier].usd_cents, created_at: new Date().toISOString() });
-  return ct.includes('json') ? json({ ok: true, checkout_id: created.body.id, url: created.body.url, usd_cents: tiers[tier].usd_cents, interval: packs }) : new Response(null, { status: 303, headers: { location: created.body.url } });
+  await ledger.polarCheckoutPut({ id: created.body.id, account, tier, interval: packs, usd_cents: tiers[tier].usd_cents, purpose: marked.purpose, created_at: new Date().toISOString() });
+  return ct.includes('json') ? json({ ok: true, checkout_id: created.body.id, url: created.body.url, usd_cents: tiers[tier].usd_cents, interval: packs, for: marked.purpose }) : new Response(null, { status: 303, headers: { location: created.body.url } });
 }
 
 interface PolarOrder { id: string; paid?: boolean; status?: string; total_amount?: number; net_amount?: number; amount?: number; checkout_id?: string | null; customer_id?: string | null; product_id?: string | null; billing_reason?: string; metadata?: Record<string, unknown>; customer?: { email?: string; name?: string | null } }
@@ -81,8 +83,8 @@ interface PolarOrder { id: string; paid?: boolean; status?: string; total_amount
 // opened, else from the order's metadata; the patron's name from Polar's customer, never their card.
 export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOrder): Promise<{ ok: boolean; minted?: boolean; account?: string; error?: string }> {
   if (!order?.id || order.paid === false) return { ok: true, minted: false };
-  let account = typeof order.metadata?.account === 'string' ? order.metadata.account : undefined;
-  if (!account && order.checkout_id) account = (await ledger.polarCheckout(order.checkout_id)).checkout?.account;
+  const stored = order.checkout_id ? (await ledger.polarCheckout(order.checkout_id)).checkout : undefined;
+  let account = typeof order.metadata?.account === 'string' ? order.metadata.account : stored?.account;
   if (!account) return { ok: false, error: 'order_without_account' };
   const amount = Number(order.net_amount ?? order.total_amount ?? order.amount ?? 0);
   if (!(amount > 0)) return { ok: false, error: 'order_without_amount' };
@@ -90,7 +92,9 @@ export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOr
   if (!customer && order.customer_id) customer = (await polar<{ email?: string; name?: string | null }>(env, 'GET', `/v1/customers/${order.customer_id}`)).body;
   const email = customer?.email ?? '';
   const sponsor: Sponsor = { login: (email.split('@')[0] || customer?.name || 'patron').slice(0, 60), name: customer?.name ?? undefined, monthly_usd_cents: order.billing_reason?.startsWith('subscription') ? amount : undefined };
-  const minted = await ledger.mint(account, amount, `polar:order:${order.id}`, sponsor);
+  let purpose: EnvelopePurpose | undefined = stored?.purpose;
+  if (!purpose && typeof order.metadata?.for === 'string') purpose = parseJson<EnvelopePurpose>(order.metadata.for) ?? undefined;
+  const minted = await ledger.mint(account, amount, `polar:order:${order.id}`, sponsor, purpose);
   // A funder who buys credits is matched by the org from its own grants account — only what it holds, and only
   // as bonus credits for other people's projects. That is how funding spreads.
   const percent = Number(env.GRANT_MATCH_PERCENT ?? 10);

@@ -121,7 +121,7 @@ export class OpenAutonomy {
   }
 
   // A grant: credits from this funder's books to a project's, once per idempotency key, with a word.
-  async give(g: { to: string; usd_cents: number; note?: string; key?: string }): Promise<{ ok: boolean; error?: string; from?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
+  async give(g: { to: string; usd_cents: number; note?: string; key?: string; for?: 'any' | 'model' | { models: string[] } | { item: string } }): Promise<{ ok: boolean; error?: string; from?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
     const res = await this.fetchImpl(`${this.base}/grants/give`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify(g) });
     return await res.json() as { ok: boolean; error?: string };
   }

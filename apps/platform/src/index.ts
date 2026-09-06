@@ -39,11 +39,11 @@ const NO_STORE = { 'cache-control': 'no-store' };
 const fundingAccount = (env: Env): string => env.DEFAULT_FUNDING_ACCOUNT || 'open-autonomy-org/open-autonomy';
 const sponsorAccount = (env: Env): string => env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
 // A funder gives grant credits from their own books to a project: money in for the project, once per key.
-async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
+async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string, purpose?: unknown): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
   if (typeof to !== 'string' || !/^[^/\s@]+\/[^/\s]+$/.test(to) || typeof usdCents !== 'number' || !Number.isFinite(usdCents) || usdCents < 1) return { ok: false, error: 'invalid_request' };
   const ledger = new LedgerClient(env.LIMITS);
   if (!(await ledger.project(to)).found) return { ok: false, error: 'no_such_project' };
-  return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined);
+  return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined, purpose);
 }
 const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
@@ -74,7 +74,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const form = await req.formData();
     const claims = await authedClaims(new Request(req.url, { headers: { authorization: `Bearer ${String(form.get('key') ?? '').trim()}` } }), env);
     if (!claims || !hasScope(claims, 'give')) return html(renderMessage(account, false, 'Not given', 'That is not a funder key. Prove your GitHub login with the claim file and mint one: GET /v1/keys/challenge?funder=<login>.'), 401);
-    const r = await give(env, claims.account, account, Number(form.get('usd_cents')), String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`);
+    const r = await give(env, claims.account, account, Number(form.get('usd_cents')), String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`, String(form.get('for') ?? '').trim() || undefined);
     return html(renderMessage(account, r.ok, r.ok ? 'Given' : 'Not given', r.ok ? `${claims.account} granted $${(Number(form.get('usd_cents')) / 100).toFixed(2)} to ${account}. It is on the books and on the page.` : r.error === 'insufficient_balance' ? `${claims.account} holds fewer credits than that.` : `Refused: ${r.error}.`), r.ok ? 200 : 400);
   }
   if ((m = path.match(/^\/p\/(.+)\/redeem$/))) {
@@ -157,8 +157,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       if (req.method !== 'POST') return methodNotAllowed();
       if (m[2] === 'sync') return json({ ok: await syncProfile(env, id), account: id });
       const body = parseJson<Record<string, unknown>>(await req.text()) ?? {};
-      if (m[2] === 'mint') { if (typeof body.amount_usd_cents !== 'number') return error('invalid_request'); return json(await ledger.mint(id, body.amount_usd_cents, body.key as string | undefined, body.sponsor as Sponsor | undefined)); }
-      if (m[2] === 'grant') { if (typeof body.to !== 'string' || typeof body.amount_usd_cents !== 'number') return error('invalid_request'); const r = await ledger.grant(id, body.to, body.amount_usd_cents, body.key as string | undefined); return json(r, { status: r.ok ? 200 : 400 }); }
+      if (m[2] === 'mint') { if (typeof body.amount_usd_cents !== 'number') return error('invalid_request'); return json(await ledger.mint(id, body.amount_usd_cents, body.key as string | undefined, body.sponsor as Sponsor | undefined, body.for)); }
+      if (m[2] === 'grant') { if (typeof body.to !== 'string' || typeof body.amount_usd_cents !== 'number') return error('invalid_request'); const r = await ledger.grant(id, body.to, body.amount_usd_cents, body.key as string | undefined, undefined, body.for); return json(r, { status: r.ok ? 200 : 400 }); }
       if (m[2] === 'accrue') { if (typeof body.key !== 'string') return error('invalid_request'); return json(await ledger.accrue(id, body.key)); }
       if (m[2] === 'profile') return json(await ledger.setProfile(id, (body.profile as Partial<AccountProfile>) ?? {}, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
       if (typeof body.status !== 'string') return error('invalid_request');
@@ -178,9 +178,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
     if (!hasScope(claims, 'give')) return error('scope_required', 403, { scope: 'give' });
-    const body = parseJson<{ to?: string; usd_cents?: number; note?: string; key?: string }>(await req.text()) ?? {};
-    const r = await give(env, claims.account, body.to, body.usd_cents, body.note, typeof body.key === 'string' ? `give:${claims.account}:${body.key}` : `give:${crypto.randomUUID()}`);
-    return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' ? 404 : 400 });
+    const body = parseJson<{ to?: string; usd_cents?: number; note?: string; key?: string; for?: unknown }>(await req.text()) ?? {};
+    const r = await give(env, claims.account, body.to, body.usd_cents, body.note, typeof body.key === 'string' ? `give:${claims.account}:${body.key}` : `give:${crypto.randomUUID()}`, body.for);
+    return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' || r.error === 'no_such_item' ? 404 : 400 });
   }
   if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
