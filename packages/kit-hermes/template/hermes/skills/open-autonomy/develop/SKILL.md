@@ -31,7 +31,9 @@ is not done.
    `bun run check` once, green, before every push.
 5. Commit small, signed as the agent, the task id first in the subject:
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
-6. Push the branch: `git push -u origin agent/<task id>`. The landing workflow opens the pull request and merges
+6. Push the branch once, when every acceptance line is true: `git push -u origin agent/<task id>`. The landing
+   merges whatever is pushed, so a push mid-task lands half a feature on main; commit as often as you like, push
+   at the handoff. The landing workflow opens the pull request and merges
    it when the checks pass. Never wait for it; never open a pull request; never push to `main`; never rewrite
    history. If the branch exists from an earlier attempt, push to `agent/<task id>-<YYYYMMDD-HHMM>`.
 7. Hand off: `kanban_request_review` naming the branch and the commit, and what is verified how. Name no reviewer:
