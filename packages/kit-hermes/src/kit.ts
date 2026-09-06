@@ -2,14 +2,14 @@
 // platform account — into a complete repository. Two kinds of files come out of it:
 //   kit-owned   the agent's home, the reporter, the container stack, the landing workflows: what the kit
 //               keeps current. `check` diffs them against a fresh render; `upgrade` rewrites them.
-//   seeded      README, the board's seed, STANDARDS.md, vision, changelog, AGENTS.md, license, the model config, the publish
+//   seeded      README, the board's seed, CONTRIBUTING.md, the constitution, changelog, AGENTS.md, license, the model config, the publish
 //               policy: the project's own files, written once as a courtesy and never touched again.
 // `.open-autonomy/kit.json` records which kit, which version and which parameters made the repo: the anchor
 // `check` and `upgrade` read, so neither needs to be told anything twice.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.3.3' } as const;
+export const KIT = { name: 'hermes', version: '2.3.4' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
