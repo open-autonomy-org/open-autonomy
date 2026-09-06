@@ -263,7 +263,7 @@ export interface CallRecord {
   outcome?: string;
   // Usually one envelope pays a call; a larger charge may span gifts, in draw order.
   envelope?: EnvelopePurpose;
-  envelopes?: Array<{ id: string; purpose: EnvelopePurpose; usd_cents: number }>;
+  envelopes?: Array<{ id: string; purpose: EnvelopePurpose; usd_cents: number; from?: string; gift_id?: string }>;
 }
 
 // ---- the development stream ------------------------------------------------------------------------
@@ -307,6 +307,8 @@ export interface SessionRecord {
   // Settled cents and metered calls attributed to this session (see attributeSpend).
   usd_cents: number;
   calls: number;
+  // Joined from the append-only call trail when a session is read; never stored twice.
+  receipts?: CallRecord[];
   updated_at: string;
 }
 export type SessionSummary = Omit<SessionRecord, 'turns'> & { tool_calls: number };
@@ -709,14 +711,14 @@ export class LimitLedger implements DurableObject {
       for (const envelope of a.envelopes.filter((e) => e.purpose.type === 'unrestricted')) { const take = Math.min(amount, envelope.balance_usd_cents); if (take > 0) reservation.allocations.push({ envelope_id: envelope.id, amount: take }); amount -= take; if (amount <= 0) break; }
     }
     let left = spent;
-    const drawn: Array<{ id: string; purpose: EnvelopePurpose; usd_cents: number }> = [];
+    const drawn: Array<{ id: string; purpose: EnvelopePurpose; usd_cents: number; from?: string; gift_id?: string }> = [];
     for (const allocation of reservation.allocations) {
       const envelope = a.envelopes.find((e) => e.id === allocation.envelope_id);
       if (!envelope || left <= 0) continue;
       const take = Math.min(left, allocation.amount, envelope.balance_usd_cents);
       envelope.balance_usd_cents = Number((envelope.balance_usd_cents - take).toFixed(6));
       left -= take;
-      if (take > 0) drawn.push({ id: envelope.id, purpose: envelope.purpose, usd_cents: take });
+      if (take > 0) drawn.push({ id: envelope.id, purpose: envelope.purpose, usd_cents: take, ...(envelope.from ? { from: envelope.from } : {}), ...(envelope.gift_id ? { gift_id: envelope.gift_id } : {}) });
     }
     recordUsage(a, { usd: spent, tokens: (event?.input_tokens ?? 0) + (event?.output_tokens ?? 0), model: event?.model });
     const rail: Rail = event?.rail ?? 'model';
@@ -823,13 +825,16 @@ export class LimitLedger implements DurableObject {
   private async listSessions(account: string, limit: number): Promise<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }> {
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 30;
     const page = await this.ctx.storage.list<SessionRecord>({ prefix: `session:${account}:`, reverse: true, limit: n });
-    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: [...page.values()].map(sessionSummary) };
+    const calls = (await this.listCalls(account, 200)).calls;
+    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: [...page.values()].map((s) => sessionSummary(s, calls.filter((c) => c.session === s.key))) };
   }
 
   private async getSession(account: string, key: string): Promise<{ ok: boolean; error?: string; session?: SessionRecord }> {
     const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${key}`);
     const session = storageKey ? await this.ctx.storage.get<SessionRecord>(storageKey) : undefined;
-    return session ? { ok: true, session } : { ok: false, error: 'session_not_found' };
+    if (!session) return { ok: false, error: 'session_not_found' };
+    const receipts = (await this.listCalls(account, 200)).calls.filter((c) => c.session === key);
+    return { ok: true, session: { ...session, ...(receipts.length ? { receipts } : {}) } };
   }
 
   // Operator repair: drop one session (a reporter that narrated the wrong transcript). The meter is untouched.
@@ -871,12 +876,13 @@ export class LimitLedger implements DurableObject {
     const item_id = itemId(item) ?? '';
     const pointers = await this.ctx.storage.list<string>({ prefix: `sessitem:${account}:${item_id}:`, reverse: true, limit: 100 });
     const records = await Promise.all([...pointers.values()].map((k) => this.ctx.storage.get<SessionRecord>(k)));
-    const sessions = records.filter((s): s is SessionRecord => !!s).map(sessionSummary);
+    const calls = (await this.listCalls(account, 300)).calls;
+    const sessions = records.filter((s): s is SessionRecord => !!s).map((s) => sessionSummary(s, calls.filter((c) => c.session === s.key)));
     const updates = [...(await this.ctx.storage.list<UpdateRecord>({ prefix: `update:${account}:${item_id}:`, reverse: true, limit: 100 })).values()];
     const usd_cents = Number(sessions.reduce((sum, s) => sum + (s.usd_cents ?? 0), 0).toFixed(6));
     const keys = new Set(sessions.map((s) => s.key));
     // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
-    const purchases = (await this.listCalls(account, 300)).calls.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session))));
+    const purchases = calls.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session))));
     const task = await this.ctx.storage.get<TaskRecord>(`task:${account}:${item_id}`);
     return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
   }
@@ -1135,10 +1141,13 @@ export class LimitLedger implements DurableObject {
   private projectView(account: string): ProjectView {
     const a = this.acct(account);
     const entry = this.entryFor(account);
-    const feed = this.state.flows.filter((flow) => (flow.to === account || flow.from === account) && flow.kind !== 'consume').slice(-FEED_LIMIT).reverse();
+    const funding = this.fundingSnapshot(account);
+    const flows = this.state.flows.filter((flow) => (flow.to === account || flow.from === account) && flow.kind !== 'consume');
+    const giftIds = new Set(funding.envelopes.map((envelope) => envelope.gift_id).filter((id): id is string => !!id));
+    const feed = flows.filter((flow, index) => index >= flows.length - FEED_LIMIT || (flow.id && giftIds.has(flow.id))).reverse();
     const sponsorPatrons: Patron[] = (a ? activeSponsors(a) : []).map((s) => ({ kind: 'sponsor', login: s.login, name: s.name, avatar_url: s.avatar_url, url: s.url, tagline: s.tagline, amount_label: s.monthly_usd_cents ? `$${(s.monthly_usd_cents / 100).toFixed(0)}/mo` : undefined }));
     const projectPatrons = projectPatronsOf(this.state.flows, account, (id) => displayProfile(this.acct(id)));
-    return { found: Boolean(a), ...entry, bounds: this.fundingSnapshot(account).bounds, tiers: a?.tiers ?? DEFAULT_TIERS, feed, patrons: [...projectPatrons, ...sponsorPatrons] };
+    return { found: Boolean(a), ...entry, bounds: funding.bounds, usable_usd_cents: funding.usable_usd_cents, envelopes: funding.envelopes, tiers: a?.tiers ?? DEFAULT_TIERS, feed, patrons: [...projectPatrons, ...sponsorPatrons] };
   }
 
   private snapshot() {
@@ -1337,9 +1346,9 @@ function generateCouponCode(): string {
 function dayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
-export function sessionSummary(s: SessionRecord): SessionSummary {
+export function sessionSummary(s: SessionRecord, receipts?: CallRecord[]): SessionSummary {
   const { turns, ...rest } = s;
-  return { ...rest, tool_calls: turns.filter((t) => t.role === 'assistant' && t.tool).length };
+  return { ...rest, tool_calls: turns.filter((t) => t.role === 'assistant' && t.tool).length, ...(receipts?.length ? { receipts } : {}) };
 }
 function clipText(v: unknown, max: number): string | undefined {
   if (typeof v !== 'string' || !v) return undefined;
@@ -1471,6 +1480,8 @@ export interface FunderView {
 export interface ProjectView extends DirectoryEntry {
   found: boolean;
   bounds: FundingSnapshot['bounds'];
+  usable_usd_cents: number;
+  envelopes: Envelope[];
   tiers: Tier[];
   feed: Flow[];
   patrons: Patron[];

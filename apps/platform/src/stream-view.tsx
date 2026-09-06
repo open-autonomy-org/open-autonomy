@@ -1,5 +1,5 @@
 import { itemState, phaseNumber, type Roadmap, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
-import type { ItemView, SessionRecord, SessionSummary, Turn, UpdateRecord } from './ledger.js';
+import type { CallRecord, EnvelopePurpose, ItemView, SessionRecord, SessionSummary, Turn, UpdateRecord } from './ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from './ui.js';
 import { parseSchedule } from './widgets.js';
 
@@ -13,6 +13,12 @@ const toolLine = (t: Turn): string => {
 };
 const outcomeWord = (s: SessionSummary): string => (s.status === 'live' ? 'live' : s.outcome === 'failed' ? 'failed' : s.outcome === 'done' ? 'done' : 'ended');
 const sessionCost = (s: Pick<SessionSummary, 'calls' | 'usd_cents' | 'model_provider'>): string => (s.calls === 0 && s.usd_cents === 0 && s.model_provider && s.model_provider !== 'open-autonomy' ? `owner subscription (${s.model_provider})` : usd(s.usd_cents));
+const envelopeName = (purpose: EnvelopePurpose): string => purpose.type === 'item' ? `the task '${purpose.item}'` : purpose.type === 'models' ? `model calls on ${purpose.models.join(', ')}` : purpose.type === 'model' ? 'model calls only' : purpose.type === 'any' ? 'anything the agent spends on' : 'whatever the project needs';
+const envelopeDraws = (call: CallRecord): string => call.envelopes?.length ? call.envelopes.map((part) => `${envelopeName(part.purpose)} (${usd(part.usd_cents)})`).join(' + ') : envelopeName(call.envelope ?? { type: 'unrestricted' });
+function CallReceipts({ calls }: { calls?: CallRecord[] }) {
+  if (!calls?.length) return null;
+  return <ul class="updates">{calls.map((call) => <li><span class="u-when">{fmtWhen(call.ts)}</span><div class="u-text">{call.model ?? call.rail} · {usd(call.usd_cents)} · paid from {envelopeDraws(call)}</div></li>)}</ul>;
+}
 
 export function Receipt({ s, enc, repoUrl, now }: { s: SessionSummary; enc: string; repoUrl?: string; now: number }) {
   const live = s.status === 'live';
@@ -25,6 +31,7 @@ export function Receipt({ s, enc, repoUrl, now }: { s: SessionSummary; enc: stri
         <span class="rc-stat">{s.turn_count} turns · {s.tool_calls} tools · {sessionCost(s)}</span>
         {s.outcome === 'failed' ? <span class="rc-fail">failed</span> : null}
       </div>
+      <CallReceipts calls={s.receipts} />
       {s.report ? <div class="rc-report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.report.length > 280 ? `${s.report.slice(0, 279)}…` : s.report) }} /> : null}
       <div class="rc-proofs">
         {s.commit_sha && repoUrl ? <a href={`${repoUrl}/commit/${s.commit_sha}`}>commit {shortSha(s.commit_sha)} ↗</a> : <span class="missing">no commit</span>}
@@ -150,6 +157,7 @@ export function SessionPage({ account, s, repoUrl, now }: { account: string; s: 
           <li>transcript · this page · {s.turns.length} of {s.turn_count} turns kept</li>
           <li>calls · <a href={`/v1/accounts/${enc}/calls`}>the audit trail ↗</a></li>
         </ul>
+        <CallReceipts calls={s.receipts} />
       </div>
       <div class="panel">
         <h3>Transcript</h3>
@@ -190,7 +198,7 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
       {view.purchases.length ? (
         <div class="panel">
           <h3>Purchases</h3>
-          <ul class="updates">{view.purchases.map((c) => <li><span class="u-when">{fmtAgo(c.ts, now)}</span><div class="u-text">{c.rail === 'card' ? <>{c.merchant ?? 'a merchant'}{c.category ? ` (${c.category})` : ''} on card ···{c.card_last4 ?? '????'}</> : <>{c.partner ?? 'a partner'}{c.unit ? ` · ${c.quantity ?? 1} ${c.unit}` : ''}</>} · {usd(c.usd_cents)}{c.session ? <> · <a href={`/p/${enc}/sessions/${encodeURIComponent(c.session)}`}>session</a></> : null}</div></li>)}</ul>
+          <ul class="updates">{view.purchases.map((c) => <li><span class="u-when">{fmtAgo(c.ts, now)}</span><div class="u-text">{c.rail === 'card' ? <>{c.merchant ?? 'a merchant'}{c.category ? ` (${c.category})` : ''} on card ···{c.card_last4 ?? '????'}</> : <>{c.partner ?? 'a partner'}{c.unit ? ` · ${c.quantity ?? 1} ${c.unit}` : ''}</>} · {usd(c.usd_cents)} · paid from {envelopeDraws(c)}{c.session ? <> · <a href={`/p/${enc}/sessions/${encodeURIComponent(c.session)}`}>session</a></> : null}</div></li>)}</ul>
         </div>
       ) : null}
       <div class="panel">
