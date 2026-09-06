@@ -54,7 +54,7 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   }
   if (!upstream.ok) {
     await ledger.release(requestId);
-    return sanitizeUpstream(upstream);
+    return sanitizeUpstream(upstream, await upstream.text().catch(() => ''));
   }
 
   const out = forwardedHeaders(upstream.headers, anthropic);
@@ -86,11 +86,16 @@ function boundOutputTokens(body: Record<string, unknown>, route: Route): number 
   return bounded;
 }
 
-function sanitizeUpstream(upstream: Response): Response {
+// A provider's rejection carries the provider's own message (an unknown model, a malformed request), which is what
+// an agent needs to fix its request; nothing else of the upstream's answer passes — its headers, its auth failures
+// and its outages are reduced to a code.
+function sanitizeUpstream(upstream: Response, text = ''): Response {
   if (upstream.status === 429) return error('provider_rate_limited', 429);
   if (upstream.status === 401 || upstream.status === 403) return error('upstream_auth_failed', 502);
   if (upstream.status >= 500) return error('upstream_unavailable', 502);
-  return error('provider_rejected_request', 400);
+  let message: string | undefined;
+  try { const j = JSON.parse(text) as { error?: { message?: string } | string; message?: string }; message = typeof j.error === 'string' ? j.error : j.error?.message ?? j.message; } catch { message = text || undefined; }
+  return error('provider_rejected_request', 400, message ? { provider_status: upstream.status, message: String(message).slice(0, 400) } : { provider_status: upstream.status });
 }
 
 function forwardedHeaders(source: Headers, anthropic: boolean): Headers {
