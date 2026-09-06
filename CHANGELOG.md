@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.5.1: a worker never completes, reclaims, unblocks or archives a task — one completed its own from the shell and skipped the review lane; the handoff is the only way a task ends.
 - **Kit 2.5.0: how a project ships.** `.open-autonomy/PRODUCTION.md` is the production door every kit project gets: the agent lands, the owner's `CODEOWNERS` line guards the workflows, and production runs only from a human-cut `deploy-v*` tag through a reviewed environment whose secret no machine holds. The worker pushes once, at the handoff — a push mid-task landed half a feature — and the default turn budget is 160.
 - Kit 2.4.10: the container is the stated default for a real deployment; bare is for development and fast debugging. The workflows are the owner's: `CODEOWNERS` on `.github/` with code-owner review required on `main`, so a landing that touches a workflow waits for the owner while everything else lands unreviewed.
 - Kit 2.4.9: a conversation's shell starts in the checkout — a question in the channel is answered from the project's files, not the agent's home.
