@@ -7,8 +7,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 
 - `apps/platform/` — the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
   partners planned), the key registry, the development stream (sessions, updates, items), the site, the
-  widgets, the docs sync. Deploys and admin ops go through GitHub only (`deploy.yml`, `admin.yml`, gated by
-  the `production` environment's reviewer); no machine holds a deploy or admin token.
+  widgets, the docs sync. Deploys and admin ops go through GitHub only, from human-cut tags (`deploy-v*` for `deploy.yml`, `release-v*`
+  for `release.yml`, `admin.yml` dispatched `--ref` the latest deploy tag), each gated by the `production`
+  environment's reviewer; the environment admits no branch, so the agent's `main` never runs with a secret. No
+  machine holds a deploy or admin token.
 - `packages/sdk/` — `@open-autonomy/sdk`: the roadmap codec, the stream client, the key helpers; its README
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
