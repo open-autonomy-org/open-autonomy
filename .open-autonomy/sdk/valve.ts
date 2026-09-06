@@ -48,7 +48,7 @@ const base = (file: string): string => (keyEnv(file).OPEN_AUTONOMY_BASE_URL || '
 const key = (file: string): string | undefined => keyEnv(file).OPEN_AUTONOMY_KEY;
 // The model routes, the narration routes (the stream and the roadmap), and the two other rails (a card, a partner charge): the platform
 // bounds each rail by the owner's config, and every settlement lands on the public audit trail.
-const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/agent/events', '/v1/agent/roadmap', '/v1/rails/card', '/v1/rails/partner']);
+const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/catalog', '/v1/agent/events', '/v1/agent/roadmap', '/v1/rails/card', '/v1/rails/partner']);
 // Public reads the reporter needs to resume where the platform is (its own account's sessions).
 const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+\/(sessions|items)(\/|$)/.test(path);
 
