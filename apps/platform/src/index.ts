@@ -263,8 +263,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!claims) return error('auth_failed', 401);
     const upstream = await fetch(`${gatewayBase(env)}/v1/models`, { headers: { authorization: `Bearer ${env.MODEL_GATEWAY_API_KEY ?? ''}` } }).catch(() => undefined);
     if (!upstream?.ok) return error('upstream_unavailable', 502);
-    const body = await upstream.json().catch(() => ({})) as { data?: Array<{ id?: string }> };
-    return json({ object: 'list', data: (body.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string').sort().map((id) => ({ id, object: 'model' })) });
+    type Listed = { id?: string; name?: string } | string;
+    const body = await upstream.json().catch(() => ({})) as { data?: Listed[]; models?: Listed[] };
+    const listed: Listed[] = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
+    const ids = listed.map((m) => (typeof m === 'string' ? m : m.id ?? m.name)).filter((id): id is string => typeof id === 'string').sort();
+    // The gateway's own shape when it is neither: passed through, so the catalog is never silently empty.
+    return ids.length ? json({ object: 'list', data: ids.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: body });
   }
   return error('not_found', 404);
 }
