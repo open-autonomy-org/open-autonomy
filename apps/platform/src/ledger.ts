@@ -110,6 +110,14 @@ export interface Account {
   tiers?: Tier[];
   moderation?: Moderation;
   moderation_reason?: string;
+  // Read with the owner's config: what the deployed service reports against the repository's default branch.
+  deployment?: LiveDeployment;
+}
+
+export interface LiveDeployment {
+  commit: string | null;
+  head: string | null;
+  ahead: number | null;
 }
 
 export type Moderation = 'listed' | 'hidden' | 'banned';
@@ -403,6 +411,7 @@ export class LimitLedger implements DurableObject {
       case 'polar_checkout_put': return json(await this.polarCheckoutPut(body.checkout as PolarCheckout));
       case 'polar_checkout': return json(await this.polarCheckoutGet(s('id')));
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
+      case 'set_deployment': return json(await this.setDeployment(s('account'), body.deployment as LiveDeployment | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
       case 'export_all': return json(await this.exportAll());
       case 'import_all': return json(await this.importAll(body.entries as Array<[string, unknown]>, body.replace === true));
@@ -1164,7 +1173,16 @@ export class LimitLedger implements DurableObject {
       daily_spend_usd_cents: daily,
       // The owner's bounds on the model rail, from the repository's .open-autonomy/config.yaml: what the funds may buy, and how much a day.
       bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), limits: parseSpendLimits(a?.profile?.config_yaml ?? '').map((l) => { const used = usedOver(a, l); return { window: l.window, ...(l.usd_cents !== undefined ? { usd_cents: l.usd_cents } : {}), ...(l.calls !== undefined ? { calls: l.calls } : {}), ...(l.tokens !== undefined ? { tokens: l.tokens } : {}), ...(l.model ? { model: l.model } : {}), used: { usd_cents: used.u, calls: used.c, tokens: used.t } }; }) },
+      ...(a?.deployment ? { live: { ...a.deployment } } : {}),
     };
+  }
+
+  private async setDeployment(account: string, deployment?: LiveDeployment): Promise<{ ok: true }> {
+    const a = this.ensureAcct(account);
+    if (deployment) a.deployment = { ...deployment };
+    else delete a.deployment;
+    await this.save();
+    return { ok: true };
   }
 
   private async setProfile(account: string, profile: Partial<AccountProfile> = {}, goalDays?: number, tiers?: Tier[]): Promise<Record<string, unknown>> {
@@ -1211,6 +1229,7 @@ export class LimitLedger implements DurableObject {
       patron_count: patronCount(a) + projectPatrons,
       monthly_usd_cents: monthlyTotal(a),
       live_sessions: [...(a?.live_sessions ?? [])],
+      ...(a?.deployment ? { live: { ...a.deployment } } : {}),
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
       status: fundingStatus(f),
@@ -1539,6 +1558,7 @@ export interface FundingSnapshot {
   last_call_at: string | null;
   daily_spend_usd_cents: number[];
   bounds: { models: string[]; limits: Array<{ window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }> };
+  live?: LiveDeployment;
 }
 
 export interface DirectoryEntry {
@@ -1560,6 +1580,7 @@ export interface DirectoryEntry {
   patron_count: number;
   monthly_usd_cents: number;
   live_sessions: string[];
+  live?: LiveDeployment;
   stripe_cardholder?: string;
   polar_products?: Record<string, string>;
   status: 'funded' | 'low' | 'unfunded';
@@ -1653,6 +1674,7 @@ export class LedgerClient {
   polarCheckoutPut(checkout: PolarCheckout) { return this.rpc<{ ok: boolean; error?: string }>('polar_checkout_put', { checkout }); }
   polarCheckout(id: string) { return this.rpc<{ ok: boolean; error?: string; checkout?: PolarCheckout }>('polar_checkout', { id }); }
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
+  setDeployment(account: string, deployment?: LiveDeployment) { return this.rpc<{ ok: true }>('set_deployment', { account, deployment }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
   exportAll() { return this.rpc<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
   importAll(entries: Array<[string, unknown]>, replace = false) { return this.rpc<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }

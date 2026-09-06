@@ -23,6 +23,9 @@ export interface Env {
   // Optional: raises the GitHub REST rate limit for the docs sync. With read access to the grants
   // organization's members, it also identifies pool admins without widening the funder OAuth scope.
   GITHUB_TOKEN?: string;
+  // The source commit baked into a deployment; the health check reports it so this platform can be used as
+  // another project's live service too.
+  DEPLOY_COMMIT?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
   // Grant credits: the org's own grants account (its funder identity on the books), default open-autonomy-org/grants;

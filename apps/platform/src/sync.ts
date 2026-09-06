@@ -1,6 +1,6 @@
 import { fromMilestones, parseRoadmapConfig, type Milestone } from '@open-autonomy/sdk/drivers';
 import { parseRoadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient } from './ledger.js';
+import { LedgerClient, type LiveDeployment } from './ledger.js';
 import type { Env } from './types.js';
 
 // The sync: what a project's page takes from its repository — its metadata (tagline, avatar, homepage), a
@@ -18,6 +18,65 @@ interface GitHubRepo {
   html_url?: string;
   private?: boolean;
   owner?: { avatar_url?: string };
+  default_branch?: string;
+}
+
+const shortSha = (value: unknown): string | undefined => typeof value === 'string' && /^[0-9a-f]{7,40}$/i.test(value) ? value.slice(0, 7).toLowerCase() : undefined;
+
+// `live` is one owner-controlled top-level URL. Keep this parser deliberately narrower than YAML rather than
+// accepting an indented rail or publish value by accident.
+export function parseLiveAddress(config: string): string | undefined {
+  const line = config.split('\n').find((candidate) => /^live\s*:/.test(candidate));
+  if (!line) return undefined;
+  const value = line.slice(line.indexOf(':') + 1).replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
+  try { const url = new URL(value); return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString().replace(/\/$/, '') : undefined; } catch { return undefined; }
+}
+
+async function liveDeployment(env: Env, account: string, repo: GitHubRepo | undefined, address: string): Promise<LiveDeployment> {
+  const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
+  const branch = repo?.default_branch ?? 'main';
+  const headResponse = await fetch(`${base}/repos/${account}/commits/${encodeURIComponent(branch)}`, { headers: ghHeaders(env) }).catch(() => undefined);
+  const headBody = headResponse?.ok ? await headResponse.json().catch(() => ({})) as GitHubCommit : {};
+  const head = shortSha(headBody.sha) ?? null;
+  let commit: string | undefined;
+  for (const path of ['/api', '/healthz']) {
+    try {
+      const response = await fetch(`${address}${path}`, { headers: { accept: 'application/json', 'user-agent': 'open-autonomy' }, signal: AbortSignal.timeout(5_000) });
+      if (!response.ok) continue;
+      const body = await response.json().catch(() => ({})) as { commit?: unknown; version?: unknown };
+      commit = shortSha(body.commit) ?? shortSha(body.version);
+      if (commit) break;
+    } catch { /* try the other conventional service endpoint */ }
+  }
+  if (!commit) return { commit: null, head, ahead: null };
+  const comparison = await fetch(`${base}/repos/${account}/compare/${commit}...${headBody.sha ?? branch}`, { headers: ghHeaders(env) }).catch(() => undefined);
+  const compared = comparison?.ok ? await comparison.json().catch(() => ({})) as { status?: string; ahead_by?: number } : {};
+  // GitHub's answer is authoritative. The twin's deliberately sparse compare returns `identical` for two real
+  // git-plane commits, so walk first parents only in that contradictory case; a missing ancestor stays unknown.
+  const ahead = compared.status === 'ahead' && Number.isInteger(compared.ahead_by)
+    ? compared.ahead_by!
+    : compared.status === 'identical' && commit === head
+      ? 0
+      : compared.status === 'identical'
+        ? await firstParentDistance(env, account, headBody, commit)
+        : null;
+  return { commit, head, ahead };
+}
+
+interface GitHubCommit { sha?: string; parents?: Array<{ sha?: string }> }
+
+async function firstParentDistance(env: Env, account: string, head: GitHubCommit, ancestor: string): Promise<number | null> {
+  const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
+  let current = head;
+  for (let distance = 0; distance <= 100; distance++) {
+    if (shortSha(current.sha) === ancestor) return distance;
+    const parent = current.parents?.[0]?.sha;
+    if (!parent) return null;
+    const response = await fetch(`${base}/repos/${account}/commits/${parent}`, { headers: ghHeaders(env) }).catch(() => undefined);
+    if (!response?.ok) return null;
+    current = await response.json().catch(() => ({})) as GitHubCommit;
+  }
+  return null;
 }
 
 export function isStale(syncedAt?: string): boolean {
@@ -48,6 +107,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     }
     const cover = repo ? (await firstReadmeImage(env, account)) ?? '' : undefined;
     const config = await fetchRepoText(env, account, '.open-autonomy/config.yaml', 8_000);
+    const liveAddress = parseLiveAddress(config ?? '');
     const profile: Record<string, string | undefined> = {
       tagline: repo?.description ?? undefined,
       avatar_url: repo?.owner?.avatar_url ?? undefined,
@@ -58,6 +118,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     };
     const ledger = new LedgerClient(env.LIMITS);
     await ledger.setProfile(account, profile);
+    await ledger.setDeployment(account, liveAddress ? await liveDeployment(env, account, repo, liveAddress) : undefined);
     // The roadmap arrives through the SDK: a substrate narrates the file it works, an owner-side driver pushes
     // its own revisions. The one platform-pulled driver is GitHub milestones, a public tracker with no credential.
     const roadmapCfg = parseRoadmapConfig(config ?? '');

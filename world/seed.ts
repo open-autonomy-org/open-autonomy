@@ -4,7 +4,7 @@
 // project's account is funded on the local books (an admin mint stands in for a sponsor); the agent's key
 // is minted THE ADOPTER WAY (the claim file committed on the twin, read back by the platform). The key
 // lands in <data>/agent.env: a world artifact, worthless anywhere else.
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, ROOT, api, git, need } from './lib.ts';
 
@@ -13,6 +13,7 @@ const platform = need('PLATFORM_URL');
 const gh = api(github);
 const admin = api(platform, { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin' });
 const pub = api(platform);
+const liveService = need('LIVE_SERVICE_URL');
 mkdirSync(DATA, { recursive: true });
 
 // The deterministic OAuth user is an admin of the organization whose Sponsors money enters the grants pool.
@@ -31,14 +32,19 @@ if (![201, 422].includes(created.status)) throw new Error(`github twin: create r
 const work = resolve(DATA, 'work');
 rmSync(work, { recursive: true, force: true });
 cpSync(COOKBOOK, work, { recursive: true, filter: (src) => !/\/(node_modules|\.git)(\/|$)/.test(src) });
+const configPath = resolve(work, '.open-autonomy', 'config.yaml');
 await git(work, 'init', '-q', '-b', 'main');
 await git(work, 'config', 'user.name', 'maintainer');
 await git(work, 'config', 'user.email', 'maintainer@example.test');
 await git(work, 'remote', 'add', 'origin', `${github}/${ACCOUNT}.git`);
+writeFileSync(configPath, `${readFileSync(configPath, 'utf8').trimEnd()}\n\n# The deployed service whose reported commit the project page compares with main.\nlive: ${liveService}\n`);
 await git(work, 'add', '-A');
 await git(work, 'commit', '-q', '-m', `${REPO_NAME}: the kit applied`);
 await git(work, 'push', '-q', '-f', 'origin', 'HEAD:refs/heads/main');
 console.log(`seed: ${ACCOUNT} on the GitHub twin at ${await git(work, 'rev-parse', '--short', 'HEAD')} (main), from ${COOKBOOK}`);
+const liveCommit = (await git(work, 'rev-parse', '--short', 'HEAD')).trim();
+const liveSet = await api(liveService).post('/_world/commit', { commit: liveCommit });
+if (liveSet.status !== 200) throw new Error(`world live service: set commit → ${liveSet.status} ${liveSet.text.slice(0, 200)}`);
 // The maintainer's rule on main: a pull request whose `ci` check is green, nobody bypasses.
 const protect = await gh.put(`/repos/${ACCOUNT}/branches/main/protection`, { required_status_checks: { strict: false, contexts: ['ci'] }, enforce_admins: true, required_pull_request_reviews: null, restrictions: null });
 if (protect.status !== 200) throw new Error(`github twin: protect main → ${protect.status} ${protect.text.slice(0, 200)}`);
