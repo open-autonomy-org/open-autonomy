@@ -3,7 +3,7 @@ import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
-import { handleModelCall } from './proxy.js';
+import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { renderDocPage, renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
@@ -255,6 +255,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
     return json({ object: 'list', data: claims.models.map((id) => ({ id, object: 'model', owned_by: 'open-autonomy' })) });
+  }
+  // The gateway's catalog, for an owner choosing a key's models: the model ids alone, read through the platform's
+  // own gateway key, for any holder of a valid key of the platform.
+  if (path === '/v1/catalog') {
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    const upstream = await fetch(`${gatewayBase(env)}/v1/models`, { headers: { authorization: `Bearer ${env.MODEL_GATEWAY_API_KEY ?? ''}` } }).catch(() => undefined);
+    if (!upstream?.ok) return error('upstream_unavailable', 502);
+    const body = await upstream.json().catch(() => ({})) as { data?: Array<{ id?: string }> };
+    return json({ object: 'list', data: (body.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string').sort().map((id) => ({ id, object: 'model' })) });
   }
   return error('not_found', 404);
 }
