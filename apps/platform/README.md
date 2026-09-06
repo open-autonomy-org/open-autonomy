@@ -69,9 +69,9 @@ thing that invalidates every key at once.**
 
 ## The development stream
 
-See `packages/sdk/README.md` for the wire. Sessions (kind, item, optional outcome), updates on items, spend
-attributed to the one live session at settle time; the page's item view shows everything that touched an
-item, live while a session runs.
+See `packages/sdk/README.md` for the wire. Sessions (kind, item, optional outcome), updates on items, and spend
+attributed to the session each model call names; the page's item view shows everything that touched an item,
+live while a session runs.
 
 ## Admin
 

@@ -36,19 +36,30 @@ describe('the platform, one smoke test per surface', () => {
     expect((await request(env, '/admin/status')).status).toBe(401);
   });
 
-  test('the stream: a session with turns and an update lands under its item with its cents, live then ended; secrets never reach the books', async () => {
+  test('the stream: overlapping named sessions each hold their calls and settled cents; secrets never reach the books', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 100);
     const { token } = await mintKey(env);
     const post = (body: unknown) => request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body });
     expect((await post(ce('session.started', 'run-1', { session_kind: 'run', source: 'board', item_id: 'add' }))).status).toBe(200);
-    await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } });
+    expect((await post(ce('session.started', 'run-2', { session_kind: 'run', source: 'review', item_id: 'add' }))).status).toBe(200);
+    await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token}` }, body: { model: 'zai/glm-5.3-flash', session_id: 'run-1', messages: [] } });
+    await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token}` }, body: { model: 'zai/glm-5.3-flash', session_id: 'run-2', messages: [] } });
+    // Hermes can finish its first call before the reporter has observed and announced the transcript.
+    await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${token}` }, body: { model: 'zai/glm-5.3-flash', session_id: 'run-3', messages: [] } });
+    expect((await post(ce('session.started', 'run-3', { session_kind: 'run', source: 'pm', item_id: 'add' }))).status).toBe(200);
+    expect(env.gateway.calls.every((call) => !Object.hasOwn(call.body, 'session_id'))).toBe(true);
     const bearer = ['eyJhbGciOiJIUzI1NiJ9', 'a'.repeat(42)].join('.');
     expect((await post([ce('session.turns', 'run-1', { seq: 0, turns: [{ role: 'assistant', tool: 'terminal', args: `curl -H "authorization: Bearer ${bearer}"` }, { role: 'tool', tool: 'terminal', result: 'ok' }] }), ce('item.update', 'add', { text: 'halfway', session: 'run-1' })])).status).toBe(200);
-    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/sessions')).live).toEqual(['run-1']);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/sessions')).live).toEqual(['run-1', 'run-2', 'run-3']);
     expect((await post(ce('session.ended', 'run-1', { outcome: 'done', report: 'Done.', commit_sha: 'abcdef1' }))).status).toBe(200);
+    expect((await post(ce('session.ended', 'run-2', { outcome: 'done' }))).status).toBe(200);
+    expect((await post(ce('session.ended', 'run-3', { outcome: 'done' }))).status).toBe(200);
     const item = await requestJson(env, '/v1/accounts/acme%2Fapp/items/add');
-    expect(item.sessions[0]).toMatchObject({ key: 'run-1', status: 'ended', outcome: 'done', turn_count: 2 });
+    expect(item.sessions.find((session: any) => session.key === 'run-1')).toMatchObject({ status: 'ended', outcome: 'done', turn_count: 2, calls: 1 });
+    expect(item.sessions.map((session: any) => session.calls)).toEqual([1, 1, 1]);
+    expect(item.sessions.reduce((sum: number, session: any) => sum + session.usd_cents, 0)).toBe((await requestJson(env, '/v1/accounts/acme%2Fapp')).consumed_usd_cents);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls.every((call: any) => call.session)).toBe(true);
     expect(item.updates.length).toBe(1);
     expect(item.usd_cents).toBeGreaterThan(0);
     expect(JSON.stringify(await requestJson(env, '/v1/accounts/acme%2Fapp/sessions/run-1'))).not.toContain(bearer);

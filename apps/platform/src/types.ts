@@ -63,6 +63,8 @@ export const hasScope = (claims: KeyClaims, scope: KeyScope): boolean => (claims
 export interface UsageEvent {
   request_id: string;
   rail?: 'model' | 'card' | 'partner';
+  // The Hermes conversation that made this model call, carried in the request body by its provider profile.
+  session?: string;
   model?: string;
   route?: string;
   reserved_usd_cents: number;
