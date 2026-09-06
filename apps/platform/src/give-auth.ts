@@ -67,10 +67,14 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
   const user = await userResponse.json().catch(() => ({})) as { login?: string };
   const login = user.login?.toLowerCase() ?? '';
   if (!userResponse.ok || !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(login)) return new Response('GitHub sign-in refused: no verified login was returned.', { status: 401 });
+  // A scope-free OAuth token proves identity but cannot read organization roles. The platform's
+  // server-side GitHub credential performs that separate check; without one the pool stays hidden.
   const org = grantsAccount(env).split('/')[0];
-  const membershipResponse = await fetch(`${env.GITHUB_API_BASE ?? 'https://api.github.com'}/orgs/${encodeURIComponent(org)}/memberships/${encodeURIComponent(login)}`, { headers });
-  const membership = await membershipResponse.json().catch(() => ({})) as { role?: string; state?: string };
-  const session: GiveSession = { login, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: membershipResponse.ok && membership.role === 'admin' && membership.state === 'active' };
+  const membershipResponse = env.GITHUB_TOKEN ? await fetch(`${env.GITHUB_API_BASE ?? 'https://api.github.com'}/orgs/${encodeURIComponent(org)}/memberships/${encodeURIComponent(login)}`, {
+    headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${env.GITHUB_TOKEN}`, 'user-agent': 'open-autonomy' },
+  }) : undefined;
+  const membership = await membershipResponse?.json().catch(() => ({})) as { role?: string; state?: string } | undefined;
+  const session: GiveSession = { login, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
   return redirect(new URL('/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/give', SESSION_SECONDS)}`);
 }
 

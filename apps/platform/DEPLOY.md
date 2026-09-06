@@ -30,6 +30,9 @@ and the money paths with `sync-secrets` (it installs whichever are set). The car
 unset the card rail refuses. `/admin/status` reports `owed_usd_cents`, every account's balance summed: what the
 Issuing balance and the gateway account must cover.
 
+The scope-free funder OAuth token proves only the login. The separate `GITHUB_TOKEN` Worker secret needs
+`read:org` when organization admins are to pass on the grants pool; it alone reads the signed-in login's role.
+
 ## The cutover to this worker
 
 The worker this replaces verified keys against per-key state that a deploy could lose, and issued keys
