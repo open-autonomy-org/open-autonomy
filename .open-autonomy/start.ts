@@ -29,7 +29,8 @@
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
 
@@ -85,6 +86,7 @@ if (existsSync(deployKey)) {
 } else say(`no ${deployKey}: pushes use your own git and keys`);
 
 // 2. The checkout.
+let committedFrom: string | undefined;
 if (!existsSync(resolve(project, '.git'))) {
   if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
   mkdirSync(project, { recursive: true }); own(project);
@@ -98,13 +100,19 @@ if (!existsSync(resolve(project, '.git'))) {
   // said and not fatal.
   const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
   const dirty = git('status', '--porcelain').stdout.toString().trim();
-  if (dirty) say(`checkout ${project} has uncommitted changes; left where it is`);
-  else if (git('fetch', '-q', 'origin').exitCode !== 0) say(`cannot fetch origin in ${project}; left where it is`);
-  else if (git('checkout', '-q', '--detach', 'origin/main').exitCode === 0) say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
+  if (git('fetch', '-q', 'origin').exitCode !== 0) say(`cannot fetch origin in ${project}; the checkout is left where it is`);
+  else if (dirty) {
+    // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
+    // origin/main directly, and the tree is left for the next attempt to carry over.
+    say(`checkout ${project} has uncommitted changes; left where it is, the home synced from origin/main`);
+    const dir = mkdtempSync(resolve(tmpdir(), 'open-autonomy-hermes-'));
+    const archive = Bun.spawnSync({ cmd: drop(['sh', '-c', `git archive --format=tar origin/main hermes | tar -x -C "${dir}"`]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+    if (archive.exitCode === 0 && existsSync(resolve(dir, 'hermes'))) committedFrom = resolve(dir, 'hermes');
+  } else if (git('checkout', '-q', '--detach', 'origin/main').exitCode === 0) say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
 }
 
-// 3. The home, from the checkout: everything under hermes/ except its .env, which is the home's own.
-const committed = resolve(project, 'hermes');
+// 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
+const committed = committedFrom ?? resolve(project, 'hermes');
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks']) rmSync(resolve(home, family), { recursive: true, force: true });
