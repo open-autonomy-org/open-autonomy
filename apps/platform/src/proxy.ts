@@ -44,8 +44,8 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   const reserved = worstCaseCents(price, outputTokens, estimateInputTokensFromBody(bodyText));
   const ledger = new LedgerClient(env.LIMITS);
   const requestId = crypto.randomUUID();
-  const reservation = await ledger.reserve(requestId, claims.account, claims.kid, reserved, Number(env.MAX_GLOBAL_DAILY_USD_CENTS ?? 5000));
-  if (!reservation.ok) return error(reservation.error, reservation.error === 'auth_failed' ? 401 : 402, { account: claims.account, balance_usd_cents: reservation.balance_usd_cents, reserved_usd_cents: reservation.reserved_usd_cents, available_usd_cents: reservation.available_usd_cents, needed_usd_cents: reservation.needed_usd_cents });
+  const reservation = await ledger.reserve(requestId, claims.account, claims.kid, reserved, Number(env.MAX_GLOBAL_DAILY_USD_CENTS ?? 5000), model, estimateInputTokensFromBody(bodyText) + outputTokens);
+  if (!reservation.ok) return error(reservation.error, reservation.error === 'auth_failed' ? 401 : reservation.error === 'rate_limit_reached' ? 429 : 402, { account: claims.account, balance_usd_cents: reservation.balance_usd_cents, reserved_usd_cents: reservation.reserved_usd_cents, available_usd_cents: reservation.available_usd_cents, needed_usd_cents: reservation.needed_usd_cents, ...(reservation.limit ? { limit: reservation.limit, used: reservation.used, needed: reservation.needed, current: reservation.current, retry_after_seconds: reservation.retry_after_seconds, how: reservation.how } : {}) });
 
   const headers: Record<string, string> = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
   if (anthropic) {
