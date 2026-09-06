@@ -19,6 +19,7 @@ import { resolve } from 'node:path';
 import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, STATE, WORK, git, need, twinCli } from './lib.ts';
 
 const stackDir = resolve(STATE, '.volter', 'stack');
+const VALVE_PORT = 18787;
 const home = resolve(stackDir, 'home');
 const project = resolve(stackDir, 'project');
 const pidFile = resolve(stackDir, 'start.pid');
@@ -93,7 +94,8 @@ function start(): void {
   // One appending descriptor for every process's output: separate opens would overwrite one another.
   const log = openSync(logFile, 'a');
   const child = Bun.spawn({
-    cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'start.ts'), '--project', project, '--home', home, '--secrets', DATA, '--origin', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`],
+    // The valve on 18787/18788: the world's agent must sit beside a real one on the same host (an agent's own container).
+    cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'start.ts'), '--project', project, '--home', home, '--secrets', DATA, '--origin', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`, '--valve', String(VALVE_PORT)],
     // The channel is open to anyone in it; the repository's issues and discussions are the GitHub twin's, on a token
     // it accepts (the community tool's door: GITHUB_API_URL and GITHUB_TOKEN).
     cwd: COOKBOOK, env: { ...agentEnv(bin), DISCORD_BOT_TOKEN: botToken, DISCORD_HOME_CHANNEL: HOME_CHANNEL, DISCORD_ALLOWED_CHANNELS: '*', DISCORD_ALLOWED_USERS: '*', GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot' }, stdout: log, stderr: log, stdin: 'ignore',
@@ -167,7 +169,7 @@ async function rotateKey(): Promise<void> {
   if ((listed.keys ?? []).length < 2) throw new Error(`stack: the registry does not list both keys after the rotation: ${JSON.stringify(listed).slice(0, 200)}`);
   const newKid = (JSON.parse(Buffer.from(after.split('.')[0], 'base64url').toString('utf8')) as { kid: string }).kid;
   let health = '';
-  for (let i = 0; i < 20 && !health.includes(newKid); i++) { await Bun.sleep(500); health = await fetch('http://127.0.0.1:8787/healthz').then((h) => h.text()).catch(() => ''); }
+  for (let i = 0; i < 20 && !health.includes(newKid); i++) { await Bun.sleep(500); health = await fetch(`http://127.0.0.1:${VALVE_PORT}/healthz`).then((h) => h.text()).catch(() => ''); }
   if (!health.includes(newKid)) throw new Error(`stack: the valve did not pick up the rotated key within ten seconds: ${health}`);
   await Bun.sleep(6500);
   if ((await api(before, '/v1/models')).status !== 401) throw new Error('stack: the old key still works after its grace');
