@@ -2,7 +2,7 @@
 // The platform as a world service: the REAL worker under `wrangler dev`, its upstreams pointed at the
 // twins the world injected. The worker takes those as ordinary configuration, so nothing in apps/platform
 // knows it is in a world. The world gives PORT and --persist-to (the local Durable Object storage).
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { MODEL_PRICES } from '../apps/platform/src/pricing.ts';
 
@@ -25,6 +25,7 @@ const vars: Record<string, string> = {
   GIVE_SESSION_HMAC_SECRET: 'world-give-session-secret',
   // Represents the platform operator's read:org credential; the funder's OAuth token remains scope-free.
   GITHUB_TOKEN: 'world-bot',
+  DEPLOY_COMMIT: execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: resolve(import.meta.dir, '..'), encoding: 'utf8' }).trim(),
   // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
   // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
   MODEL_PRICES_JSON: JSON.stringify({ [PREVIOUS_MODEL]: MODEL_PRICES[MODEL] }),

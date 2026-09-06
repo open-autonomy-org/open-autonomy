@@ -435,6 +435,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
               <StatusDot status={v.status} />
               {repoUrl ? <><span class="sep">|</span><a class="repo-pill" href={repoUrl} target="_blank" rel="noopener"><Icon name="github" size={15} />{v.account}<span class="ext"><Icon name="linkExternal" size={11} /></span></a></> : null}
             </div>
+            {v.live ? <p class="tag">{v.live.commit ? <>{`live: ${v.live.commit}`}{v.live.ahead === 0 ? ' · up to date' : v.live.ahead === null ? null : <> · <a href={`https://github.com/${v.account}/compare/${v.live.commit}...${v.live.head ?? 'main'}`} target="_blank" rel="noopener">{`main is ${v.live.ahead} changes ahead`}</a></>}</> : 'live: unreachable'}</p> : null}
           </div>
         </div>
         <div class="cols">

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "bunx wrangler dev",
-    "deploy": "bunx wrangler deploy",
+    "deploy": "bunx wrangler deploy --var DEPLOY_COMMIT:$(git rev-parse --short HEAD)",
     "test": "bun test test/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "check": "bun test test/*.test.ts && bunx tsc --noEmit"

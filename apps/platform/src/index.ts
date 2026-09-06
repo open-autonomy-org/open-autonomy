@@ -57,7 +57,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   const ledger = new LedgerClient(env.LIMITS);
   const get = (): Response | null => (req.method === 'GET' ? null : methodNotAllowed());
 
-  if (path === '/healthz') return new Response('ok');
+  if (path === '/healthz') return json({ ok: true, commit: env.DEPLOY_COMMIT ? env.DEPLOY_COMMIT.slice(0, 7) : null });
   if (path === '/favicon.svg') return new Response(LOGO_SVG, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=86400' } });
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
 
