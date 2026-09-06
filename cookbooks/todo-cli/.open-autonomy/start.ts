@@ -4,7 +4,7 @@
 //   in a container    the image's entrypoint, as root with the secrets mounted for root alone and `--as <user>`:
 //                     the gateway and the reporter run as that user and can reach no key (container/README.md)
 //
-//   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>]
+//   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -13,7 +13,8 @@
 //   the home    hermes/ in the checkout copied into <home> before every start — the repository is the source of
 //               truth for what the agent IS; the home keeps what it has since done (its .env is kept)
 //   valve       <secrets>/agent.env on :8787 (the developer's key), <secrets>/treasurer.env on :8788 (the
-//               treasurer's, the only one that pays) — the agent's .env names the valve and the word `valve`
+//               treasurer's, the only one that pays); --valve moves both (the second is the next port) for a second
+//               agent on one host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
@@ -28,6 +29,9 @@ const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
+const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
+const baseUrl = `http://127.0.0.1:${valvePort}/v1`;
+const payUrl = `http://127.0.0.1:${valvePort + 1}/v1`;
 const say = (m: string) => console.log(`start: ${m}`);
 const sock = resolve(home, 'ssh-agent.sock');
 
@@ -75,20 +79,20 @@ if (!existsSync(resolve(project, '.git'))) {
 const committed = resolve(project, 'hermes');
 // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
 if (existsSync(committed)) cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
+// The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
-if (!existsSync(envFile)) {
-  const lines = ['OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1', 'OPEN_AUTONOMY_KEY=valve'];
-  // What the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
-  for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
-  writeFileSync(envFile, `${lines.join('\n')}\n`);
-}
+const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)=/.test(l)) : [];
+const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...kept];
+// On the first start, what the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
+if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
+writeFileSync(envFile, `${lines.join('\n')}\n`);
 own(home);
 say(`home ${home} synced from ${committed}`);
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = [];
-if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:8787`);
-if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:8788`);
+if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:${valvePort}`);
+if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
 if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} — mint the developer's key: bun .open-autonomy/mint-key.ts`); process.exit(1); }
 if (user) {
   // The whole point of --as: the agent's user must not be able to read a key.
@@ -101,8 +105,8 @@ spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {}
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: 'http://127.0.0.1:8787/v1' } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :8787${keys.length > 2 ? ' and :8788' : ''}`);
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${keys.length > 2 ? ` and :${valvePort + 1}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

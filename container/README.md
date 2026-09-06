@@ -1,7 +1,7 @@
 # Running the agent
 
 The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
-developer's on :8787, the treasurer's on :8788, each re-read when its file changes), the keyless reporter, and
+developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
 the Hermes gateway. One script starts them, `.open-autonomy/start.ts`, and it is the only way they are started.
 
 **On your machine**, for development: everything as you, no isolation.
