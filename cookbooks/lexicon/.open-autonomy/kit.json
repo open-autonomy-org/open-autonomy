@@ -1,6 +1,6 @@
 {
   "kit": "hermes",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "params": {
     "project": "lexicon",
     "account": "cookbook/lexicon"
