@@ -55,8 +55,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   packages in node_modules; `TWINS_ROOT` names a checkout when developing the twins),
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
   world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
-- Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).
-  It never runs the agent leg.
+- Our own agent runs that same world inside its own container to verify a change (`WORLD_STATE_ROOT=/opt/data/world
+  bun world/run.ts up`, then its doors and curl; the world's agent takes the valve ports 18787/18788, beside the
+  real one on 8787/8788). It is that world's operator, never a second agent inside it.
 
 ## Live surfaces
 
