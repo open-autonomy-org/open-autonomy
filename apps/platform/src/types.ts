@@ -14,6 +14,12 @@ export interface Env {
   GITHUB_SPONSORS_WEBHOOK_SECRET?: string;
   GITHUB_API_BASE?: string;
   GITHUB_RAW_BASE?: string;
+  // The human giving page uses a registered GitHub OAuth app. Its session secret is dedicated to
+  // browser sessions and must not be the secret that signs agent keys.
+  GITHUB_OAUTH_BASE?: string;
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
+  GIVE_SESSION_HMAC_SECRET?: string;
   // Optional: raises the GitHub REST rate limit for the docs sync.
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).

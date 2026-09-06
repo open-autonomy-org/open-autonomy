@@ -242,7 +242,7 @@ function Nav() {
   return (
     <div class="nav"><div class="inner">
       <a href="/" class="brand">{raw(LOGO_SVG)}<span>open-autonomy</span></a>
-      <span class="links"><a href="/">Explore</a></span>
+      <span class="links"><a href="/">Explore</a> · <a href="/give">Give credits</a></span>
       <span class="spacer"></span>
       <a class="btn" href="https://github.com/sponsors/open-autonomy-org">Become a patron</a>
     </div></div>
@@ -359,7 +359,7 @@ function ChangelogPanel({ md, enc }: { md?: string; enc: string }) {
 
 function FundRow({ f, now, grants, account }: { f: Flow; now: number; grants: string; account: string }) {
   if (f.kind === 'release') return <li id={f.id ? `gift-${f.id}` : undefined}><span>task done; {usd(f.amount_usd_cents)} released to whatever {nameOf(account)} needs<span class="when"> · {fmtAgo(f.ts, now)}</span></span></li>;
-  const label = f.kind === 'grant' ? (f.from === grants ? 'Granted by Open Autonomy' : f.from?.startsWith('@') ? `Granted by ${f.from}` : `Granted from ${f.from ?? ''}`) + (f.note ? ` — ${f.note}` : '') : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
+  const label = f.kind === 'grant' ? (f.from === grants ? 'Granted by Open Autonomy' : f.from?.startsWith('@') ? `Granted by ${f.from}` : `Granted from ${f.from ?? ''}`) + (f.by ? ` · passed on by ${f.by}` : '') + (f.note ? ` — ${f.note}` : '') : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
   return <li id={f.id ? `gift-${f.id}` : undefined}><span>{label}<span class="when"> · {fmtAgo(f.ts, now)}</span></span><span class="amt">+{usd(f.amount_usd_cents)}</span></li>;
 }
 
@@ -555,6 +555,71 @@ export function renderFunder(f: FunderView, grants: string, polar = false): stri
               ) : <p class="note">Credits come from Open Autonomy for now; buying them opens with the platform's Polar account.</p>}
             </div>
             <div class="panel"><h3>Giving</h3><p class="note">Give from any project's page with your funder key, or <code>POST /v1/grants/give</code> with it. Every grant is public here and on the project's page.</p></div></div>
+        </div>
+      </div>
+    </Shell>,
+  );
+}
+
+export interface GivePageData {
+  login: string;
+  funder: FunderView;
+  projects: DirectoryEntry[];
+  grants?: { account: string; view: FunderView };
+  message?: { ok: boolean; text: string };
+  attempt: string;
+}
+
+// The second door onto grant giving: GitHub proves a human login, while this form moves money
+// through the same ledger grant operation as a give-scoped key.
+export function renderGivePage(data?: GivePageData): string {
+  if (!data) return render(
+    <Shell title="Give grant credits · open-autonomy">
+      <Nav />
+      <div class="wrap">
+        <div class="panel" style="max-width:680px;margin:56px auto;padding:40px">
+          <h1 style="font-size:32px;margin:0 0 12px">Give grant credits</h1>
+          <p class="lede">Grant credits are funds you hold on Open Autonomy's public books and can pass to a project you believe in. They can only be given, never spent by this page.</p>
+          <a class="btn" href="/give/login"><Icon name="github" /> Sign in with GitHub</a>
+          <p class="note">GitHub is used only to verify your login. The sign-in asks for no repository or organization scope.</p>
+        </div>
+      </div>
+    </Shell>,
+  );
+  const sourceOptions = [
+    { account: data.funder.account, label: `${data.funder.account} · ${usd(data.funder.credits_usd_cents)} available` },
+    ...(data.grants ? [{ account: data.grants.account, label: `Organization grants pool · ${usd(data.grants.view.credits_usd_cents)} available` }] : []),
+  ];
+  const GiftRows = ({ view, empty }: { view: FunderView; empty: string }) => view.given.length ? <ul class="feed">{view.given.map((gift) => <li><span>Granted to <a href={`/p/${encodeURIComponent(gift.to)}`}>{gift.to}</a>{gift.by ? ` · passed on by ${gift.by}` : ''}{gift.note ? ` — ${gift.note}` : ''}{gift.purpose ? <span class="when"> · for {purposeSentence(gift.to, gift.purpose)}</span> : null}<span class="when"> · {fmtAgo(gift.ts, Date.now())}</span></span><span class="amt">−{usd(gift.amount_usd_cents)}</span></li>)}</ul> : <p class="sub">{empty}</p>;
+  return render(
+    <Shell title="Give grant credits · open-autonomy">
+      <Nav />
+      <div class="wrap">
+        <div class="sectionhdr"><div><h1 style="margin:0">Give grant credits</h1><p class="sub">Signed in as @{data.login}. <a href="/give/logout">Sign out</a></p></div></div>
+        {data.message ? <div class="panel" style={`border-color:${data.message.ok ? C.green : C.accent}`}>{data.message.text}</div> : null}
+        <div class="cols">
+          <div class="main">
+            <div class="panel"><h3>Your gifts</h3><GiftRows view={data.funder} empty="You have not given any credits yet." /></div>
+            {data.grants ? <div class="panel"><h3>Organization grants pool history</h3><GiftRows view={data.grants.view} empty="The organization has not passed any Sponsors money on yet." /></div> : null}
+          </div>
+          <div class="side"><div class="panel">
+            <h3>Give once</h3>
+            <form class="pay" method="post" action="/give">
+              <input type="hidden" name="key" value={data.attempt} />
+              <label class="sub" for="give-source">Give from</label>
+              <select class="earmark" id="give-source" name="source">{sourceOptions.map((source) => <option value={source.account}>{source.label}</option>)}</select>
+              <label class="sub" for="give-project">Project</label>
+              <select class="earmark" id="give-project" name="to" required>{data.projects.map((project) => <option value={project.account}>{project.account}</option>)}</select>
+              <label class="sub" for="give-amount">Amount in cents</label>
+              <input class="earmark" id="give-amount" name="usd_cents" type="number" min={1} step={1} required />
+              <label class="sub" for="give-for">Earmark</label>
+              <select class="earmark" id="give-for" name="for"><option value="unrestricted">whatever the project needs</option><option value="model">model calls only</option><option value="any">anything the agent spends on</option></select>
+              <label class="sub" for="give-note">Why this project (optional)</label>
+              <input class="earmark" id="give-note" name="note" maxlength={280} />
+              <button class="btn block" type="submit" disabled={!data.projects.length}>Give</button>
+            </form>
+            {!data.projects.length ? <p class="note">There are no listed projects to give to.</p> : <p class="note">One submission, one public gift. Retrying this form cannot give twice.</p>}
+          </div></div>
         </div>
       </div>
     </Shell>,

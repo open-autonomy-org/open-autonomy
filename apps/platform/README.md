@@ -43,10 +43,11 @@ src/runway.ts     the Bayesian runway estimate
 - **The partner rail.** `POST /v1/rails/partner` settles a partner service's metered charge now, for a
   partner the owner listed and within the amount the owner set, as a `partner` audit record naming the
   partner, the unit and the quantity.
-- **Money in.** Three doors onto the same books. Grant credits: a funder (`@login`, proven by the claim file in a
-  repository they own; a key that can only give) holds credits the org gave them (or bought) and gives them to a
-  project they believe in — `POST /v1/grants/give`, or the form on the project's page; the org's own grants
-  account gives through `admin.yml`. On the project's books a grant is money in, `Granted by @login` on the page.
+- **Money in.** Three doors onto the same books. Grant credits: a funder (`@login`, proven either by a claim-file
+  key that can only give or by GitHub OAuth on `GET /give`) holds credits the org gave them (or bought) and gives
+  them to a project they believe in. An org admin passes Sponsors money on from the grants-pool source on that same
+  page; `POST /v1/grants/give` remains the key-based door. On the project's books a grant is money in,
+  `Granted by @login` on the page.
   A funder funds themself through the same Polar door (credit packs), and the org matches a share from its
   grants account as bonus credits that go only to projects the funder does not own (`GRANT_MATCH_PERCENT`).
   Then the two doors on every tier: GitHub Sponsors: its
@@ -82,7 +83,8 @@ profile,moderate,keys}`, `accounts/:id/sessions/:key` (DELETE), `coupons`, `keys
 ## Configuration
 
 `wrangler.toml` holds the vars; secrets are `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`,
-`MODEL_GATEWAY_API_KEY`, `GITHUB_SPONSORS_WEBHOOK_SECRET` and optionally `GITHUB_TOKEN`. The one Durable
+`MODEL_GATEWAY_API_KEY`, `GITHUB_SPONSORS_WEBHOOK_SECRET`, the giving page's `GITHUB_OAUTH_CLIENT_ID`,
+`GITHUB_OAUTH_CLIENT_SECRET` and dedicated `GIVE_SESSION_HMAC_SECRET`, and optionally `GITHUB_TOKEN`. The one Durable
 Object is `LIMITS` (class `LimitLedger`); its state record is normalized on load, so the books written by
 an earlier worker carry over. See `DEPLOY.md`.
 

@@ -2,6 +2,7 @@
 // vendors, plus one line for each security claim the working agreement holds to a higher bar. The world
 // gate (`bun world/run.ts check`) is the proof; these say a change broke a surface, not why.
 import { describe, expect, test } from 'bun:test';
+import { base64url, hmac } from '../src/http.ts';
 import { admin, fund, github, mintKey, polar, request, requestJson, stripe, testEnv, useEnv } from './env.ts';
 
 const ce = (type: string, subject: string, data: unknown) => ({ specversion: '1.0', id: crypto.randomUUID(), source: 'test', type: `org.open-autonomy.${type}`, subject, time: new Date().toISOString(), data });
@@ -153,6 +154,42 @@ describe('the platform, one smoke test per surface', () => {
     await fund(env, 'pat/app', 1);
     expect((await requestJson(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'pat/app', usd_cents: 1250 } })).error).toBe('bonus_only_for_others');
     expect((await requestJson(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 1300 } })).ok).toBe(true);
+  });
+
+  test('the giving session checks OAuth state and its signature and can only give once', async () => {
+    const env = useEnv(testEnv());
+    await requestJson(env, '/admin/accounts/acme%2Fapp/profile', { headers: admin, body: { profile: { synced_at: new Date().toISOString() } } });
+    await requestJson(env, '/admin/accounts/%40octocat/mint', { headers: admin, body: { amount_usd_cents: 500, key: 'oauth-credits' } });
+    expect(await (await request(env, '/give')).text()).toContain('Sign in with GitHub');
+    const login = await request(env, '/give/login');
+    const stateCookie = login.headers.get('set-cookie')!.split(';')[0];
+    const authorize = new URL(login.headers.get('location')!);
+    expect(authorize.searchParams.has('scope')).toBe(false);
+    expect((await request(env, '/give/callback?code=ok&state=wrong', { headers: { cookie: stateCookie } })).status).toBe(401);
+    const callback = await request(env, `/give/callback?code=ok&state=${authorize.searchParams.get('state')}`, { headers: { cookie: stateCookie } });
+    const sessionCookie = callback.headers.get('set-cookie')!.split(';')[0];
+    const page = await (await request(env, '/give', { headers: { cookie: sessionCookie } })).text();
+    const attempt = page.match(/name="key" value="([^"]+)"/)?.[1];
+    expect(page).toContain('Signed in as @octocat');
+    expect(attempt).toBeTruthy();
+    const form = new URLSearchParams({ key: attempt!, source: '@octocat', to: 'acme/app', usd_cents: '300', for: 'model', note: 'OAuth gift' }).toString();
+    const formHeaders = { cookie: sessionCookie, 'content-type': 'application/x-www-form-urlencoded' };
+    expect((await request(env, '/give', { method: 'POST', headers: formHeaders, body: form })).status).toBe(200);
+    expect((await request(env, '/give', { method: 'POST', headers: formHeaders, body: form })).status).toBe(200);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(300);
+    expect((await requestJson(env, '/v1/funders/octocat')).given).toHaveLength(1);
+    await requestJson(env, '/admin/accounts/open-autonomy-org%2Fgrants/mint', { headers: admin, body: { amount_usd_cents: 100, key: 'sponsors-pool' } });
+    const poolForm = new URLSearchParams({ key: crypto.randomUUID(), source: 'open-autonomy-org/grants', to: 'acme/app', usd_cents: '100', for: 'unrestricted' }).toString();
+    expect((await request(env, '/give', { method: 'POST', headers: formHeaders, body: poolForm })).status).toBe(200);
+    expect(await (await request(env, '/give', { headers: { cookie: sessionCookie } })).text()).toContain('passed on by @octocat');
+    expect((await request(env, '/v1/chat/completions', { headers: { cookie: sessionCookie }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(401);
+    expect((await request(env, '/v1/agent/roadmap', { headers: { cookie: sessionCookie }, body: { source: 'file', roadmap: { schema: 'open-autonomy.roadmap.v3', items: [] } } })).status).toBe(401);
+    const [cookieName, signed] = sessionCookie.split('=');
+    const forged = `${cookieName}=${signed.slice(0, -1)}${signed.endsWith('A') ? 'B' : 'A'}`;
+    expect(await (await request(env, '/give', { headers: { cookie: forged } })).text()).toContain('Sign in with GitHub');
+    const expiredBody = base64url(new TextEncoder().encode(JSON.stringify({ login: 'octocat', exp: 1, grants_admin: true })));
+    const expired = `oa_give_session=${expiredBody}.${await hmac(env.GIVE_SESSION_HMAC_SECRET!, expiredBody)}`;
+    expect((await request(env, '/give', { method: 'POST', headers: { cookie: expired, 'content-type': 'application/x-www-form-urlencoded' }, body: form })).status).toBe(401);
   });
 
   test('the board: a task published under its item shows on the item, lane, attempts and verdict', async () => {
