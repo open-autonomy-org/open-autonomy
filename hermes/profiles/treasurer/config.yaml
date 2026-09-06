@@ -4,11 +4,8 @@
 #   OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY  — inside the stack, the key valve's address and a dummy
 #   DISCORD_BOT_TOKEN / DISCORD_HOME_CHANNEL    — optional Discord delivery
 model:
-  default: zai/glm-5.3-flash
-  provider: custom
-  base_url: ${OPEN_AUTONOMY_PAY_URL} # the valve's second port (the start script writes it into the home's .env): the treasurer's key, the only one that pays
-  api_key: valve
-  api_mode: chat_completions
+  default: gpt-5.6-sol
+  provider: openai-codex # our own agent's model runs on the owner's Codex subscription, held by the valve; the platform key carries narration and pay
 
 terminal:
   backend: local
