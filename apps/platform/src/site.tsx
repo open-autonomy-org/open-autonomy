@@ -1,6 +1,6 @@
 import { raw } from 'hono/html';
-import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import type { DirectoryEntry, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
+import { itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
+import type { DirectoryEntry, Envelope, EnvelopePurpose, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
@@ -32,6 +32,13 @@ function goalLine(e: DirectoryEntry): { label: string; frac: number } {
   const days = e.runway_days !== null ? Math.max(0, Math.round(e.runway_days)) : 0;
   const shown = days > 9999 ? '9,999+' : days.toLocaleString('en-US');
   return { label: days >= e.goal_days ? `${shown} days funded · goal met` : `${shown} of ${e.goal_days} days funded`, frac: Math.min(1, days / Math.max(1, e.goal_days)) };
+}
+const itemTitle = (roadmap: Roadmap, id: string): string => roadmap.items.find((item) => item.id === id)?.title ?? id;
+export function purposeSentence(account: string, purpose: EnvelopePurpose, roadmap?: Roadmap): string {
+  if (purpose.type === 'item') return `the task '${roadmap ? itemTitle(roadmap, purpose.item) : purpose.item}'`;
+  if (purpose.type === 'models') return `model calls on ${purpose.models.join(', ')}`;
+  if (purpose.type === 'model') return 'model calls only';
+  return purpose.type === 'any' ? 'anything the agent spends on' : `whatever ${nameOf(account)} needs`;
 }
 const Progress = ({ frac, color }: { frac: number; color: string }) => <div class="track"><div class="fill" style={`width:${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%;background:${color}`} /></div>;
 const StatusDot = ({ status }: { status: keyof typeof STATUS }) => <span class="status"><span class="dot" style={`background:${STATUS[status].color}`} />{STATUS[status].label}</span>;
@@ -115,8 +122,12 @@ export const STYLES = `
   .tier .tp{font-weight:800;font-size:20px;letter-spacing:-.02em;}
   .tier .tp span{font-weight:500;font-size:13px;color:${C.muted};}
   .tier p{color:${C.body};font-size:14px;margin:0 0 14px;}
-  .tier .pay{display:flex;gap:8px;margin-bottom:8px;}
+  .tier .pay{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
   .tier .pay .btn{flex:1;padding:11px 12px;}
+  .earmark{display:block;width:100%;margin:0 0 10px;padding:10px 12px;border:1.5px solid ${C.line};border-radius:10px;background:${C.bg};color:${C.ink};font:14px Inter,sans-serif;}
+  .envelopes{list-style:none;margin:14px 0 0;padding:0;border-top:1px solid ${C.line};}
+  .envelopes li{display:flex;gap:8px;justify-content:space-between;padding:9px 0;border-bottom:1px solid ${C.line};font-size:13px;color:${C.body};}
+  .envelopes b{color:${C.ink};font-variant-numeric:tabular-nums;white-space:nowrap;}
   .coupon{display:flex;gap:10px;margin-top:6px;}
   .coupon input{flex:1;min-width:0;background:${C.bg};border:1.5px solid ${C.line};border-radius:12px;color:${C.ink};padding:11px 14px;font:14px 'Inter',ui-monospace,Menlo,monospace;letter-spacing:.04em;}
   .note{color:${C.faint};font-size:13px;line-height:1.5;margin-top:10px;}
@@ -346,15 +357,26 @@ function ChangelogPanel({ md, enc }: { md?: string; enc: string }) {
   );
 }
 
-function FundRow({ f, now, grants }: { f: Flow; now: number; grants: string }) {
+function FundRow({ f, now, grants, account }: { f: Flow; now: number; grants: string; account: string }) {
+  if (f.kind === 'release') return <li id={f.id ? `gift-${f.id}` : undefined}><span>task done; {usd(f.amount_usd_cents)} released to whatever {nameOf(account)} needs<span class="when"> · {fmtAgo(f.ts, now)}</span></span></li>;
   const label = f.kind === 'grant' ? (f.from === grants ? 'Granted by Open Autonomy' : f.from?.startsWith('@') ? `Granted by ${f.from}` : `Granted from ${f.from ?? ''}`) + (f.note ? ` — ${f.note}` : '') : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
-  return <li><span>{label}<span class="when"> · {fmtAgo(f.ts, now)}</span></span><span class="amt">+{usd(f.amount_usd_cents)}</span></li>;
+  return <li id={f.id ? `gift-${f.id}` : undefined}><span>{label}<span class="when"> · {fmtAgo(f.ts, now)}</span></span><span class="amt">+{usd(f.amount_usd_cents)}</span></li>;
+}
+
+function EarmarkPicker({ roadmap }: { roadmap: Roadmap }) {
+  const open = roadmap.items.filter((item) => itemState(item) !== 'done');
+  return <select class="earmark" name="for" aria-label="What this gift is for"><option value="unrestricted">whatever the project needs</option><option value="model">model calls only</option><optgroup label="a task chosen from the roadmap's open items">{open.map((item) => <option value={`item:${item.id}`}>the task '{item.title}'</option>)}</optgroup></select>;
+}
+
+function EnvelopeLine({ envelope, account, roadmap }: { envelope: Envelope; account: string; roadmap: Roadmap }) {
+  const giver = envelope.from ?? 'Open Autonomy';
+  return <li><span>{purposeSentence(account, envelope.purpose, roadmap)} · given by {envelope.gift_id ? <a href={`#gift-${envelope.gift_id}`}>{giver}</a> : giver}</span><b>{usd(envelope.balance_usd_cents)}</b></li>;
 }
 
 // A tier says what the platform delivers for it: the patrons wall, and the runway the amount buys at the
 // project's own burn. Two doors, side by side, onto the same books: Polar (monthly or once, when the
 // platform has it) and GitHub Sponsors.
-function TierCard({ t, i, feat, owner, burn, account, polar, sponsor }: { t: ProjectView['tiers'][number]; i: number; feat: boolean; owner: string; burn: number; account: string; polar: boolean; sponsor: string }) {
+function TierCard({ t, i, feat, owner, burn, account, polar, sponsor, roadmap }: { t: ProjectView['tiers'][number]; i: number; feat: boolean; owner: string; burn: number; account: string; polar: boolean; sponsor: string; roadmap: Roadmap }) {
   const days = burn > 0 ? Math.round(t.usd_cents / burn) : null;
   return (
     <div class={`tier${feat ? ' feat' : ''}`}>
@@ -363,6 +385,7 @@ function TierCard({ t, i, feat, owner, burn, account, polar, sponsor }: { t: Pro
       {polar ? (
         <form class="pay" method="post" action="/v1/patrons/checkout">
           <input type="hidden" name="account" value={account} /><input type="hidden" name="tier" value={String(i)} />
+          <EarmarkPicker roadmap={roadmap} />
           <button class={`btn block ${feat ? '' : 'outline'}`} type="submit" name="interval" value="month">{usd0(t.usd_cents)} monthly</button>
           <button class="btn block outline" type="submit" name="interval" value="once">{usd0(t.usd_cents)} once</button>
         </form>
@@ -425,7 +448,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
               <h3>Goal</h3>
               <div class="goalrow" style="margin-bottom:2px"><span style={`font-size:15px;color:${C.body};font-weight:600`}>{g.label}</span></div>
               <Progress frac={g.frac} color={STATUS[v.status].color} />
-              <p class="note">{`Keep ${v.goal_days} days of agent runway funded. Days remaining is a Bayesian estimate of daily spend.`}</p>
+              <p class="note">{`Keep ${v.goal_days} days of agent runway funded. Days remaining counts only the ${usd(v.usable_usd_cents)} the next model call could use${v.balance_usd_cents > v.usable_usd_cents ? `; ${usd(v.balance_usd_cents - v.usable_usd_cents)} earmarked for other work is excluded` : ''}, with a Bayesian estimate of daily spend.`}</p>
             </div>
             <div class="panel">
               <h3>Funding</h3>
@@ -436,8 +459,9 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
                 <div class="item"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
                 <div class="item"><div class="v" data-balance>{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
               </div>
+              <ul class="envelopes">{v.envelopes.map((envelope) => <EnvelopeLine envelope={envelope} account={v.account} roadmap={roadmap} />)}</ul>
               <FundingBounds bounds={v.bounds} />
-              {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.slice(0, 8).map((f) => <FundRow f={f} now={now} grants={grants} />)}</ul> : null}
+              {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.map((f) => <FundRow f={f} now={now} grants={grants} account={v.account} />)}</ul> : null}
               <a class="docmore" href={`/v1/accounts/${enc}/calls`}>Every metered call →</a>
             </div>
             <div class="panel"><h3>Patrons</h3>{v.patrons.length ? <div class="patrons">{v.patrons.map((p) => <PatronChip p={p} />)}</div> : <p class="sub">No patrons yet — be the first.</p>}</div>
@@ -445,7 +469,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
           <div class="side">
             <div class="panel">
               <h3>Become a patron</h3>
-              {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} sponsor={sponsor} />)}
+              {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} sponsor={sponsor} roadmap={roadmap} />)}
               <p class="note">When the balance reaches $0, the agent stops; nothing is lost — the balance and every receipt stay on this page, and the next gift starts it again.</p>
               <p class="note">To end or change a recurring gift, use GitHub Sponsors' own page for a GitHub sponsorship or Polar's customer portal for a Polar one; this platform never holds your card and cannot cancel for you.</p>
             </div>
@@ -456,6 +480,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
                 <input name="key" placeholder="your funder key" autocomplete="off" />
                 <input name="usd_cents" type="number" min={1} placeholder="cents" />
                 <input name="note" placeholder="a word, optional" maxlength={280} />
+                <EarmarkPicker roadmap={roadmap} />
                 <button class="btn" type="submit">Give</button>
               </form>
               <p class="note">A funder key proves your GitHub login with the claim file in a repository of yours: <code>GET /v1/keys/challenge?funder=&lt;login&gt;</code>, then <code>POST /v1/keys/mint</code>. It can only give.</p>
