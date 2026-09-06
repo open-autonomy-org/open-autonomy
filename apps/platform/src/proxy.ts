@@ -1,3 +1,4 @@
+import { parseModelsBound } from '@open-autonomy/sdk/rails';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './http.js';
 import { LedgerClient } from './ledger.js';
 import { estimateInputTokensFromBody, MAX_OUTPUT_TOKENS, priceTable, reservePrice, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
@@ -22,6 +23,9 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   if (!body) return error('invalid_json', 400);
   const model = typeof body.model === 'string' ? body.model : '';
   if (!claims.models.includes(model)) return error('model_not_allowed', 403);
+  // The owner's bound from the repository (models: in .open-autonomy/config.yaml) holds whatever the key was minted with.
+  const bound = parseModelsBound((await new LedgerClient(env.LIMITS).project(claims.account)).profile?.config_yaml ?? '');
+  if (bound.length && !bound.includes(model)) return error('model_not_allowed', 403, { bound: 'project', models: bound, how: "the project's .open-autonomy/config.yaml names the models its funds may buy" });
   const apiKey = env.MODEL_GATEWAY_API_KEY;
   if (!apiKey) return error('provider_not_configured', 503);
 
