@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.5: the desk tool treats a missing GitHub door as a fact, not a failure — `poll` notes it and finishes, so a doorless desk's quarter hour is a few turns and `[SILENT]`, not a report of being blocked.
 - Kit 2.4.4: a desk without a GitHub door is quiet, not blocked, and a worker never ends a task without handing it off for review.
 - Kit 2.4.3: the start script installs the reporter's dependencies on a bare checkout's first start, and names the default home by the project's account rather than the checkout's directory, so two projects checked out as `project` keep separate homes. This repository's own agent and Hookline's now run bare on their Mac under launchd; the container is the kit's secure option, not this install's lane.
 - Kit 2.4.2: the start script brings a clean checkout to origin/main before syncing the home from it, so a restart carries what landed since the agent's last task (a new skill, a job, the documents) instead of the commit its last worker left.

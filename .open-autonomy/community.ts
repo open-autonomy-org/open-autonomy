@@ -16,7 +16,9 @@ import { resolve } from 'node:path';
 
 const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
 const token = process.env.GITHUB_TOKEN ?? '';
-if (!token) { console.error('community: no GITHUB_TOKEN — the desk has no GitHub door (a github-app.json beside the keys gives it one through the valve)'); process.exit(3); }
+// No GITHUB_TOKEN: the desk has no GitHub door (a github-app.json beside the keys gives it one through the valve). That
+// is a fact, not a failure: a look finds nothing on GitHub and says so, and the channel alone is the desk's.
+const doorless = !token;
 const project = resolve(import.meta.dir, '..');
 const account = /^account:\s*(\S+)/m.exec(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'))?.[1] ?? '';
 if (!account) throw new Error('community: .open-autonomy/config.yaml names no account');
@@ -44,7 +46,13 @@ const after = (at: string | null | undefined, since: string): boolean => !at || 
 const firstLine = (s: string): string => (s ?? '').split('\n')[0]!.slice(0, 120);
 
 const [command, ...rest] = process.argv.slice(2);
-if (command === 'poll') {
+if (command === 'poll' && doorless) {
+  console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
+  console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
+} else if ((command === 'comment' || command === 'discuss') && doorless) {
+  console.error('community: no GitHub door (no GITHUB_TOKEN) — nothing can be posted on GitHub');
+  process.exit(3);
+} else if (command === 'poll') {
   const since = cursor();
   const issues = await github<Array<{ number: number; title: string; body: string | null; created_at: string; pull_request?: unknown; user?: { login?: string } }>>('GET', `/repos/${account}/issues?state=open&per_page=50&since=${encodeURIComponent(since)}`);
   for (const i of issues) if (!i.pull_request && after(i.created_at, since)) console.log(`NEW issue #${i.number} ${JSON.stringify(i.title)} by ${i.user?.login ?? 'someone'}: ${firstLine(i.body ?? '')}`);
