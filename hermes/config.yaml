@@ -2,12 +2,12 @@
 # the kit, never checked by it). Secrets live in hermes/.env (git-ignored):
 #   OPEN_AUTONOMY_BASE_URL / OPEN_AUTONOMY_KEY  — inside the stack, the key valve's address and a dummy
 #   DISCORD_BOT_TOKEN / DISCORD_HOME_CHANNEL    — optional Discord delivery
+# Our own agent's model runs on the owner's Codex subscription, held by the valve (secrets/codex.json; the start
+# script points HERMES_CODEX_BASE_URL at it and seeds the placeholder credential). The platform key still carries its
+# narration and its rails. The cookbooks and the world stay on the platform's model rail.
 model:
-  default: openai/gpt-5.6-sol
-  provider: custom
-  base_url: ${OPEN_AUTONOMY_BASE_URL}
-  api_key: ${OPEN_AUTONOMY_KEY}
-  api_mode: chat_completions
+  default: gpt-5.6-sol
+  provider: openai-codex
 
 terminal:
   backend: local
