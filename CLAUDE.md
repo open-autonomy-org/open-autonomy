@@ -31,8 +31,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
-- Nothing here develops against a real API: the cookbook and the platform run only in the world; our own
-  agent is the only thing that spends on the real platform. The cookbooks and the world run on `zai/glm-5.3-flash`;
+- Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend
+  on the real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform
+  key) and Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, on the platform's model
+  rail with its own grant and bounds), each in its own container on this Mac's VM, each started by the VM start script. The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
