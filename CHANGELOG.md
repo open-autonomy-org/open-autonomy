@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.3.4: the home sync mirrors the kit's own families (skills/open-autonomy, hooks) instead of merging over them, so a retired skill leaves the agent's home too; the notes-api scenario's reviewer reads the bar like todo-cli's.
 - Kit 2.3.3: the start script gives the agent an environment of its own — nothing Hermes set on the process that started it comes through, so a project's world brought up from inside a worker no longer files its work on the outer board.
 - **The agent's own world.** This repository's agent runs the world inside its own container (the twins from node_modules, the pinned Hermes already there, the world's agent on valve ports 18787/18788 beside the real one on 8787/8788): the start script's `--valve <port>` moves the valve, and the home's `.env` carries `OPEN_AUTONOMY_PAY_URL` beside `OPEN_AUTONOMY_BASE_URL`, which the treasurer's profile reads. Kit 2.3.2.
 - **The twins are packages.** `@volter/twin-world` and the twins the world needs (`@volter/twin-github`, `-discord`, `-openai`, `-stripe`, `-polar`, `-npm-registry`) are on npm; this repository's world runs from node_modules with no checkout beside it, and a project made by the kit keeps a world the same way (`bun add -d`, a `world/world.json`, `bunx volter-world up`). The develop skill's "verify in the project's own twin world" is no longer conditional on an unpublished checkout. Kit 2.3.1 says so in AGENTS.md.

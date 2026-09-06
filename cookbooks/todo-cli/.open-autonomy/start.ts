@@ -81,8 +81,12 @@ if (!existsSync(resolve(project, '.git'))) {
 
 // 3. The home, from the checkout: everything under hermes/ except its .env, which is the home's own.
 const committed = resolve(project, 'hermes');
-// force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
-if (existsSync(committed)) cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
+if (existsSync(committed)) {
+  // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
+  for (const family of ['skills/open-autonomy', 'hooks']) rmSync(resolve(home, family), { recursive: true, force: true });
+  // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
+  cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
+}
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
 const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)=/.test(l)) : [];
