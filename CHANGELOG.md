@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.7: the desk's quarter hour reads GitHub alone — the channel is answered as messages arrive — and a look is four commands, never a search of the home for messages; a doorless desk ends at once.
 - Kit 2.4.6: a start syncs the home from origin/main's hermes/ even when the checkout is dirty with a killed attempt's work, so what the agent is never waits on a worker's tree.
 - Kit 2.4.5: the desk tool treats a missing GitHub door as a fact, not a failure — `poll` notes it and finishes, so a doorless desk's quarter hour is a few turns and `[SILENT]`, not a report of being blocked.
 - Kit 2.4.4: a desk without a GitHub door is quiet, not blocked, and a worker never ends a task without handing it off for review.
