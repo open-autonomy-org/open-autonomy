@@ -2,7 +2,7 @@ import { raw } from 'hono/html';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { DirectoryEntry, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
-import { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, render, usd, usd0 } from './ui.js';
+import { Icon, LOGO_SVG, fmtAgo, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
 // The funding site, server-rendered from the books: the explore grid (GET /) and the project page
 // (GET /p/:account) with its session and item pages. No client JS beyond the coupon form and the live
@@ -125,6 +125,12 @@ export const STYLES = `
   .prose p:last-child{margin-bottom:0;}
   .prose strong{font-weight:700;color:${C.ink};}
   .prose code{background:${C.wash};border-radius:5px;padding:1px 5px;font:13px ui-monospace,Menlo,monospace;}
+  .prose a{color:${C.accent};text-decoration:underline;text-underline-offset:2px;}
+  .prose h1,.prose h2,.prose h3,.prose h4,.prose h5,.prose h6{color:${C.ink};line-height:1.3;margin:24px 0 10px;text-transform:none;letter-spacing:-.01em;}
+  .prose h1:first-child,.prose h2:first-child,.prose h3:first-child{margin-top:0;}
+  .prose h1{font-size:28px;}.prose h2{font-size:22px;}.prose h3{font-size:18px;}.prose h4,.prose h5,.prose h6{font-size:15px;}
+  .prose ul,.prose ol{margin:8px 0 14px;padding-left:24px;}
+  .prose li{margin:4px 0;}.prose li>ul,.prose li>ol{margin:4px 0;}
   .docmore{display:inline-block;margin-top:14px;color:${C.accent};font-weight:600;font-size:14px;}
   .spine h3{margin-top:22px;}
   .spine h3:first-child{margin-top:0;}
@@ -195,9 +201,8 @@ export const STYLES = `
   .rm-sstatus{flex:none;font-size:12px;font-weight:700;color:${C.muted};}
   .release{margin-bottom:18px;}
   .rel-head{font-weight:800;font-size:14px;color:${C.ink};margin-bottom:8px;}
-  .changelog{list-style:none;margin:0;padding:0;}
-  .changelog li{color:${C.body};font-size:14px;line-height:1.55;padding:5px 0 5px 18px;position:relative;}
-  .changelog li:before{content:'';position:absolute;left:2px;top:11px;width:5px;height:5px;border-radius:50%;background:${C.accent};}
+  .changelog{font-size:14px;line-height:1.55;}
+  .changelog>ul,.changelog>ol{margin:0 0 14px;}
   .empty{color:${C.muted};text-align:center;padding:72px 0;border:1px dashed ${C.line};border-radius:18px;}
   .legend{color:${C.faint};font-size:13px;margin-top:28px;}
   .live{display:inline-flex;align-items:center;gap:6px;color:${C.green};font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}
@@ -306,13 +311,36 @@ export function parseChangelog(md: string, maxSections = 2, maxLines = 6): Array
   if (cur) sections.push(cur);
   return sections.slice(0, maxSections).map((s) => ({ heading: s.heading, lines: s.lines.slice(0, maxLines) }));
 }
+
+function changelogMarkdown(md: string, maxSections = 2, maxLines = 6): Array<{ heading: string; markdown: string }> {
+  const sections: Array<{ heading: string; markdown: string[]; items: number }> = [];
+  let cur: { heading: string; markdown: string[]; items: number } | undefined;
+  let included = false;
+  for (const line of md.split('\n')) {
+    const heading = line.match(/^##\s+(.+?)\s*$/);
+    if (heading) {
+      if (cur) sections.push(cur);
+      cur = { heading: heading[1].trim(), markdown: [], items: 0 };
+      included = false;
+      continue;
+    }
+    if (!cur) continue;
+    if (/^\s*[-+*]\s+/.test(line)) {
+      included = cur.items < maxLines;
+      if (included) { cur.markdown.push(line); cur.items++; }
+    } else if (included && /^\s+\S/.test(line)) cur.markdown.push(line);
+  }
+  if (cur) sections.push(cur);
+  return sections.filter((s) => s.markdown.length).slice(0, maxSections).map((s) => ({ heading: s.heading, markdown: s.markdown.join('\n') }));
+}
+
 function ChangelogPanel({ md, enc }: { md?: string; enc: string }) {
-  const withLines = parseChangelog(md ?? '').filter((s) => s.lines.length);
-  if (!withLines.length) return null;
+  const sections = changelogMarkdown(md ?? '');
+  if (!sections.length) return null;
   return (
     <div class="panel">
       <h3>What's shipped</h3>
-      {withLines.map((s) => <div class="release"><div class="rel-head">{s.heading}</div><ul class="changelog">{s.lines.map((l) => <li>{l}</li>)}</ul></div>)}
+      {sections.map((s) => <div class="release"><div class="rel-head" dangerouslySetInnerHTML={{ __html: mdInlineToSafeHtml(s.heading) }} /><div class="changelog prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.markdown) }} /></div>)}
       <a class="docmore" href={`/p/${enc}/shipped`}>Everything shipped →</a>
     </div>
   );
