@@ -172,7 +172,9 @@ class Followed {
         const ready = msgs.slice(0, n);
         const turns = ready.flatMap(turnsOf);
         if (turns.length) {
-          this.item ??= itemIn(turns);
+          // Only a board run serves an item; a scheduled session (the PM over the whole board) mentions branches and
+          // tasks without being about one.
+          if (sourceOf(this.d) === 'board') this.item ??= itemIn(turns);
           this.sha ??= shaIn(turns);
           await this.session!.turns(turns, this.item);
           this.seq = this.session!.seq;
