@@ -1221,6 +1221,25 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
     state.accounts[id] = acct;
   }
+  // Reservations written by the previous worker shape did not name their source. Give those existing
+  // claims allocations before a new reserve can draw from the migrated unrestricted envelope.
+  const claimed = new Map<string, number>();
+  const claimKey = (account: string, envelope: string) => `${account}\0${envelope}`;
+  for (const r of Object.values(state.reservations)) for (const part of r.allocations) {
+    const key = claimKey(r.account, part.envelope_id);
+    claimed.set(key, (claimed.get(key) ?? 0) + part.amount);
+  }
+  for (const r of Object.values(state.reservations)) {
+    if (r.allocations.length) continue;
+    let remainder = r.amount;
+    for (const envelope of (state.accounts[r.account]?.envelopes ?? []).filter((e) => e.purpose.type === 'unrestricted')) {
+      const key = claimKey(r.account, envelope.id);
+      const take = Math.min(remainder, Math.max(0, envelope.balance_usd_cents - (claimed.get(key) ?? 0)));
+      if (take > 0) { r.allocations.push({ envelope_id: envelope.id, amount: take }); claimed.set(key, (claimed.get(key) ?? 0) + take); }
+      remainder -= take;
+      if (remainder <= 0) break;
+    }
+  }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
   state.coupons = stored.coupons && typeof stored.coupons === 'object' ? stored.coupons : {};
   state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release')) : [];

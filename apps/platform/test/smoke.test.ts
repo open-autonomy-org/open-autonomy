@@ -75,6 +75,27 @@ describe('the platform, one smoke test per surface', () => {
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBeCloseTo(after.envelopes.reduce((sum: number, e: any) => sum + e.balance_usd_cents, 0), 6);
   });
 
+  test('a reservation from before envelope migration keeps its claim while a new reservation settles beside it', async () => {
+    const env = useEnv(testEnv());
+    const expires = Date.now() + 60_000;
+    const state = {
+      day_key: new Date().toISOString().slice(0, 10), consumed_usd_cents: 0, reserved_usd_cents: 60,
+      reservations: { old: { amount: 60, expires_at_ms: expires, account: 'acme/app', kid: '' } },
+      accounts: { 'acme/app': { granted_in_usd_cents: 100, granted_out_usd_cents: 0, consumed_usd_cents: 0 } },
+    };
+    expect((await requestJson(env, '/admin/import', { headers: admin, body: { entries: [['state', state]] } })).ok).toBe(true);
+    const ledger = env.LIMITS.get(env.LIMITS.idFromName('global'));
+    const rpc = (body: Record<string, unknown>) => ledger.fetch('https://ledger.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    expect(await (await rpc({ op: 'reserve', request_id: 'too-big', account: 'acme/app', kid: '', amount_usd_cents: 50, daily_cap_usd_cents: 5000 })).json()).toMatchObject({ ok: false, error: 'insufficient_funds', available_usd_cents: 40 });
+    expect(await (await rpc({ op: 'reserve', request_id: 'new', account: 'acme/app', kid: '', amount_usd_cents: 40, daily_cap_usd_cents: 5000 })).json()).toMatchObject({ ok: true });
+    await rpc({ op: 'consume', request_id: 'old', actual_usd_cents: 60, event: { rail: 'model', model: 'legacy/model' } });
+    await rpc({ op: 'consume', request_id: 'new', actual_usd_cents: 40, event: { rail: 'model', model: 'new/model' } });
+    const account = await requestJson(env, '/v1/accounts/acme%2Fapp');
+    expect(account.balance_usd_cents).toBe(0);
+    expect(account.envelopes.reduce((sum: number, envelope: any) => sum + envelope.balance_usd_cents, 0)).toBe(0);
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp/calls')).calls.map((call: any) => call.envelope)).toEqual([{ type: 'unrestricted' }, { type: 'unrestricted' }]);
+  });
+
   test('the stream: overlapping named sessions each hold their calls and settled cents; secrets never reach the books', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 100);
