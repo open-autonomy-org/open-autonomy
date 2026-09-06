@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.9: a conversation's shell starts in the checkout — a question in the channel is answered from the project's files, not the agent's home.
 - Kit 2.4.8: the desk's report is `[SILENT]` or one paragraph, never a harness marker, and its tool has one path.
 - Kit 2.4.7: the desk's quarter hour reads GitHub alone — the channel is answered as messages arrive — and a look is four commands, never a search of the home for messages; a doorless desk ends at once.
 - Kit 2.4.6: a start syncs the home from origin/main's hermes/ even when the checkout is dirty with a killed attempt's work, so what the agent is never waits on a worker's tree.
