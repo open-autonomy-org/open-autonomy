@@ -24,7 +24,7 @@ crons = ["0 6 1 * *"]
 
 # One Durable Object: the books. The class name and binding are the deployed worker's, so the state carries
 # over. Secrets (never in this file): AGENT_PROXY_ADMIN_TOKEN, AGENT_PROXY_HMAC_SECRET, MODEL_GATEWAY_API_KEY,
-# GITHUB_SPONSORS_WEBHOOK_SECRET, GITHUB_TOKEN, the giving page's GITHUB_OAUTH_CLIENT_ID,
+# GITHUB_SPONSORS_WEBHOOK_SECRET, GITHUB_TOKEN (with read:org for grants-pool admins), the giving page's GITHUB_OAUTH_CLIENT_ID,
 # GITHUB_OAUTH_CLIENT_SECRET and GIVE_SESSION_HMAC_SECRET, and the money paths' POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET,
 # STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET. The money-path secrets are installed by admin.yml → sync-secrets.
 # ISSUING_BILLING_ADDRESS_JSON, the

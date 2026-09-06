@@ -19,6 +19,11 @@ mkdirSync(DATA, { recursive: true });
 // This is the same membership lookup the page performs after login, through the twin's GitHub API.
 const membership = await gh.put('/orgs/open-autonomy-org/memberships/octocat', { role: 'admin' });
 if (membership.status !== 200) throw new Error(`github twin: seed grants admin → ${membership.status} ${membership.text.slice(0, 200)}`);
+// The scope-free OAuth token cannot read organization roles. The page must use the platform's separate
+// members-reader credential for that lookup rather than silently relying on authority the login never granted.
+const oauth = await gh.post('/login/oauth/access_token', { client_id: 'world-open-autonomy', code: 'scope-probe', scope: '' });
+const denied = await gh.post('/_twin/oauth/call', { token: oauth.body?.access_token, required_scope: 'read:org' });
+if (oauth.status !== 200 || oauth.body?.scope !== '' || denied.status !== 403) throw new Error(`github twin: scope-free OAuth unexpectedly read org membership (${oauth.status}/${denied.status})`);
 
 // 1. The project under test: the cookbook, a repository of its own on the GitHub twin.
 const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME });

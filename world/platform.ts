@@ -23,6 +23,8 @@ const vars: Record<string, string> = {
   GITHUB_OAUTH_CLIENT_ID: 'world-open-autonomy',
   GITHUB_OAUTH_CLIENT_SECRET: 'world-oauth-secret',
   GIVE_SESSION_HMAC_SECRET: 'world-give-session-secret',
+  // Represents the platform operator's read:org credential; the funder's OAuth token remains scope-free.
+  GITHUB_TOKEN: 'world-bot',
   // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
   // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
   MODEL_PRICES_JSON: JSON.stringify({ [PREVIOUS_MODEL]: MODEL_PRICES[MODEL] }),

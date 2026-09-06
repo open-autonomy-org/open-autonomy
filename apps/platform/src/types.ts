@@ -20,7 +20,8 @@ export interface Env {
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
   GIVE_SESSION_HMAC_SECRET?: string;
-  // Optional: raises the GitHub REST rate limit for the docs sync.
+  // Optional: raises the GitHub REST rate limit for the docs sync. With read access to the grants
+  // organization's members, it also identifies pool admins without widening the funder OAuth scope.
   GITHUB_TOKEN?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;

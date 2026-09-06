@@ -84,7 +84,8 @@ profile,moderate,keys}`, `accounts/:id/sessions/:key` (DELETE), `coupons`, `keys
 
 `wrangler.toml` holds the vars; secrets are `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`,
 `MODEL_GATEWAY_API_KEY`, `GITHUB_SPONSORS_WEBHOOK_SECRET`, the giving page's `GITHUB_OAUTH_CLIENT_ID`,
-`GITHUB_OAUTH_CLIENT_SECRET` and dedicated `GIVE_SESSION_HMAC_SECRET`, and optionally `GITHUB_TOKEN`. The one Durable
+`GITHUB_OAUTH_CLIENT_SECRET` and dedicated `GIVE_SESSION_HMAC_SECRET`; `GITHUB_TOKEN` with `read:org` is required
+to expose the grants pool to signed-in organization admins (and is otherwise optional). The one Durable
 Object is `LIMITS` (class `LimitLedger`); its state record is normalized on load, so the books written by
 an earlier worker carry over. See `DEPLOY.md`.
 
