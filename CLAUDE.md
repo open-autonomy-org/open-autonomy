@@ -38,8 +38,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   rail with its own grant and bounds), each bare on this Mac as a launchd agent (org.open-autonomy.agent and
   org.open-autonomy.hookline in the user's LaunchAgents: the kit's start script from the agent's own checkout under the
   open-autonomy state directory in .local/state, its home beside it, its secrets in the open-autonomy and
-  open-autonomy-hookline config directories, the valves on 8787 and 8887, the pinned Hermes installed once under that
-  state directory). The cookbooks and the world run on `zai/glm-5.3-flash`;
+  open-autonomy-hookline config directories, the valves on 8787 and 8987, the pinned Hermes installed once under that
+  state directory). Hookline's agent is its own GitHub App, `hookline-agent`, installed on its repository alone, whose
+  key the valve holds (github-app.json beside its keys; the desk's door on 8990), and its own Discord bot, `Hookline`, in
+  the `#hookline` channel; ours stays the `Open Autonomy` bot in `#general`. The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
