@@ -1356,6 +1356,8 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (Array.isArray(a.tiers)) acct.tiers = a.tiers.filter((t) => t && typeof t.usd_cents === 'number' && typeof t.name === 'string').map((t) => ({ usd_cents: t.usd_cents, name: t.name }));
     if (a.moderation === 'listed' || a.moderation === 'hidden' || a.moderation === 'banned') acct.moderation = a.moderation;
     if (typeof a.moderation_reason === 'string') acct.moderation_reason = a.moderation_reason;
+    const deployment = normalizeDeployment(a.deployment);
+    if (deployment) acct.deployment = deployment;
     if (!acct.envelopes.length) {
       const legacy = acct.granted_in_usd_cents - acct.granted_out_usd_cents - acct.consumed_usd_cents;
       if (legacy > 0) acct.envelopes.push({ id: `legacy:${id}`, purpose: { type: 'unrestricted' }, balance_usd_cents: legacy, created_at: new Date(0).toISOString() });
@@ -1388,6 +1390,13 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
   return state;
 }
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+function normalizeDeployment(value: unknown): LiveDeployment | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const deployment = value as Record<string, unknown>;
+  const sha = (v: unknown): v is string | null => v === null || (typeof v === 'string' && /^[0-9a-f]{7}$/i.test(v));
+  if (!sha(deployment.commit) || !sha(deployment.head) || !(deployment.ahead === null || (Number.isInteger(deployment.ahead) && (deployment.ahead as number) >= 0))) return undefined;
+  return { commit: deployment.commit, head: deployment.head, ahead: deployment.ahead as number | null };
+}
 
 function emptyState(): LedgerState {
   return { day_key: dayKey(), consumed_usd_cents: 0, reserved_usd_cents: 0, reservations: {}, accounts: {}, applied_keys: [], coupons: {}, flows: [], keys: {} };
