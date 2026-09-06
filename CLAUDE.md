@@ -69,30 +69,22 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   and curl; the world's agent takes the valve ports 18787/18788, beside the real ones). It is that world's operator,
   never a second agent inside it.
 
-## The maintainer's loop (what no agent does for itself)
+## What a human does, and nothing else
 
-The projects build themselves to `main`; a maintainer ships. Every cycle, in this order:
+The projects build themselves: they land to `main`, review their own handoffs, take kit upgrades, and ask when a
+human must act (a blocked task, landed work not yet live). A human owns two acts, both irreversible, both explicit:
 
-- **Read the boards** (`HERMES_HOME=<home> hermes kanban list`, the homes under the open-autonomy state directory in
-  `.local/state`; ours and Hookline's). A task blocked for a human names its ask in the block reason. A task that gave
-  up twice on real work is split, not retried. Never do a task's work; fix world tooling on a `land/*` branch.
-- **Read every landed money or auth diff yourself** (ledger, proxy, keys, the give page's cookie and OAuth) before it
-  ships; the review lane is a cheap model. If unsure, do not ship it and say so.
-- **Ship from a tag, never from main.** Platform: `git tag -a deploy-v<date>[.n] <sha> && git push origin <tag>`,
-  approve the waiting `deploy.yml` run (environment 17202991607). Kit: bump the version stamps (package.json, kit.ts,
-  every kit.json), land, then `release-v<kit version>` on main's head, approve `release.yml` (same environment).
-  Hookline: `deploy-v<date>[.n]` on its main head, approve its run (environment 21364567303). Approval:
+- **Reading a money or auth diff before it ships** (ledger, proxy, keys, the give page's cookie and OAuth); the
+  review lane is a cheap model. Unsure means not shipped.
+- **Shipping and releasing, from a tag.** Platform: `git tag -a deploy-v<date>[.n] <sha> && git push origin <tag>`,
+  then approve the waiting run (environment 17202991607). Kit: `release-v<kit version>` on main's head, same
+  approval. Hookline: `deploy-v<date>[.n]`, approve its run (environment 21364567303). Approval:
   `gh api -X POST repos/<owner>/<repo>/actions/runs/<id>/pending_deployments --input -` with
   `{"environment_ids":[<id>],"state":"approved","comment":"..."}`. A landing that touches `.github/` waits for the
   code owner: `gh pr review <n> --approve`, then `gh pr merge <n> --merge --delete-branch`.
-- **Carry kit releases to Hookline** through its own landing (`bunx create-open-autonomy@<v> upgrade .` on a
-  `land/kit-<v>` branch), then restart its gateway when its board is idle
-  (`launchctl kickstart -k gui/$(id -u)/org.open-autonomy.hookline`; ours is `org.open-autonomy.agent`). A start
-  brings a clean checkout to origin/main and re-syncs the home.
-- **Verify on the page, as a visitor**: the project page, the sessions, the live inbox (`/api` reports the commit).
 
-Owner-gated, standing: a Polar organization (per-project patronage); the first real patron (money in has never been
-exercised). The "project reaches out" task (t_8d0834f4 on our board) moves the asking from this loop to the projects.
+Anything else a person finds themselves doing for a project is a task for the kit, not a habit to keep.
+Owner-gated, standing: a Polar organization (per-project patronage); the first real patron.
 
 ## Live surfaces
 
