@@ -58,7 +58,9 @@ const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `
 // through: a start from inside another agent's worker (a project's world, brought up by a task) would otherwise inherit
 // that worker's HERMES_KANBAN_DB, HERMES_KANBAN_HOME, its task and run, and file its work on the outer board.
 const inherited = (): Record<string, string> => { const env: Record<string, string> = {}; for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('HERMES_')) env[k] = v; return env; };
-const agentEnv = (): Record<string, string> => ({ ...inherited(), HERMES_HOME: home, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
+// TERMINAL_CWD: a conversation's shell (a channel message answered live) starts in the checkout, as a task's does —
+// Hermes would otherwise start it in the home, where the agent finds its own files and none of the project's.
+const agentEnv = (): Record<string, string> => ({ ...inherited(), HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
