@@ -6,6 +6,10 @@
 //
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //
+// <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
+// tokens): the valve serves it on the third port and Hermes's openai-codex provider is pointed there, with a
+// placeholder credential in the home's auth.json — the model runs on the subscription, the login never enters the agent.
+//
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
 //               and never holds the key (absent: pushes are your own git's business)
@@ -102,6 +106,22 @@ const keys: string[] = [];
 if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:${valvePort}`);
 if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
 if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} — mint the developer's key: bun .open-autonomy/mint-key.ts`); process.exit(1); }
+// The Codex subscription: the valve holds the login; Hermes gets a placeholder that never expires and names the account.
+const codexFile = resolve(secrets, 'codex.json');
+const codexPort = valvePort + 2;
+if (existsSync(codexFile)) {
+  keys.push('--codex', `${codexFile}:${codexPort}`);
+  const tokens = (JSON.parse(readFileSync(codexFile, 'utf8')) as { tokens?: { access_token?: string; account_id?: string } }).tokens ?? {};
+  const claims = (t: string): Record<string, any> => { try { const p = t.split('.')[1] ?? ''; return JSON.parse(Buffer.from(p + '='.repeat((4 - (p.length % 4)) % 4), 'base64url').toString('utf8')); } catch { return {}; } };
+  const account = tokens.account_id ?? claims(tokens.access_token ?? '')['https://api.openai.com/auth']?.chatgpt_account_id ?? '';
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const placeholder = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 10 * 365 * 86400, 'https://api.openai.com/auth': { chatgpt_account_id: account } })}.valve`;
+  const authFile = resolve(home, 'auth.json');
+  const auth = existsSync(authFile) ? JSON.parse(readFileSync(authFile, 'utf8')) as Record<string, any> : { version: 1, providers: {}, credential_pool: {} };
+  auth.providers = { ...(auth.providers ?? {}), 'openai-codex': { tokens: { access_token: placeholder, refresh_token: 'valve', id_token: placeholder, account_id: account }, last_refresh: new Date().toISOString() } };
+  writeFileSync(authFile, `${JSON.stringify(auth, null, 2)}\n`);
+  own(authFile);
+}
 if (user) {
   // The whole point of --as: the agent's user must not be able to read a key.
   const peek = Bun.spawnSync({ cmd: drop(['cat', resolve(secrets, 'agent.env')]), stdout: 'pipe', stderr: 'pipe' });
@@ -112,9 +132,9 @@ if (user) {
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent.
-const env = agentEnv();
+const env = { ...agentEnv(), ...(existsSync(codexFile) ? { HERMES_CODEX_BASE_URL: `http://127.0.0.1:${codexPort}/backend-api/codex` } : {}) };
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${keys.length > 2 ? ` and :${valvePort + 1}` : ''}`);
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});
