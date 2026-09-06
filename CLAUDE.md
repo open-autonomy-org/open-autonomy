@@ -71,20 +71,12 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 
 ## What a human does, and nothing else
 
-The projects build themselves: they land to `main`, review their own handoffs, take kit upgrades, and ask when a
-human must act (a blocked task, landed work not yet live). A human owns two acts, both irreversible, both explicit:
-
-- **Reading a money or auth diff before it ships** (ledger, proxy, keys, the give page's cookie and OAuth); the
-  review lane is a cheap model. Unsure means not shipped.
-- **Shipping and releasing, from a tag.** Platform: `git tag -a deploy-v<date>[.n] <sha> && git push origin <tag>`,
-  then approve the waiting run (environment 17202991607). Kit: `release-v<kit version>` on main's head, same
-  approval. Hookline: `deploy-v<date>[.n]`, approve its run (environment 21364567303). Approval:
-  `gh api -X POST repos/<owner>/<repo>/actions/runs/<id>/pending_deployments --input -` with
-  `{"environment_ids":[<id>],"state":"approved","comment":"..."}`. A landing that touches `.github/` waits for the
-  code owner: `gh pr review <n> --approve`, then `gh pr merge <n> --merge --delete-branch`.
-
-Anything else a person finds themselves doing for a project is a task for the kit, not a habit to keep.
-Owner-gated, standing: a Polar organization (per-project patronage); the first real patron.
+The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. A
+human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped), and
+shipping from a tag — `deploy-v<date>` on a commit they read, `release-v<kit version>` for the kit — then approving
+the run on its page. `apps/platform/DEPLOY.md` says how; a landing that touches `.github/` waits for the code owner's
+approval on its pull request. Anything else a person finds themselves doing for a project is a task for the kit, not
+a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
 
 ## Live surfaces
 
