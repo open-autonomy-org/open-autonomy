@@ -17,9 +17,9 @@ export interface KitParams { project: string; account: string }
 export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
 
 // What the kit keeps current. Everything else in the template is seeded once.
-// A project's own, seeded once: its config, its board seed, its schedule, and any skill of its own outside
-// hermes/skills/open-autonomy/ (the kit's two).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+// A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
+// its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's two).
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {

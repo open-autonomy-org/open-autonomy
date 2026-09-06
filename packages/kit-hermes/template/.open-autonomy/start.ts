@@ -22,7 +22,7 @@
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
 
@@ -93,8 +93,11 @@ if (existsSync(committed)) {
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
-const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)=/.test(l)) : [];
-const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...kept];
+const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !/^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL)=/.test(l)) : [];
+// The Codex subscription's address goes in the .env too: Hermes loads the home's .env into every process it starts,
+// including the scheduler's job runners, which do not inherit the gateway's environment.
+const codexBase = existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BASE_URL=http://127.0.0.1:${valvePort + 2}/backend-api/codex`] : [];
+const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...kept];
 // On the first start, what the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
 if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
@@ -116,11 +119,15 @@ if (existsSync(codexFile)) {
   const account = tokens.account_id ?? claims(tokens.access_token ?? '')['https://api.openai.com/auth']?.chatgpt_account_id ?? '';
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const placeholder = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 10 * 365 * 86400, 'https://api.openai.com/auth': { chatgpt_account_id: account } })}.valve`;
-  const authFile = resolve(home, 'auth.json');
-  const auth = existsSync(authFile) ? JSON.parse(readFileSync(authFile, 'utf8')) as Record<string, any> : { version: 1, providers: {}, credential_pool: {} };
-  auth.providers = { ...(auth.providers ?? {}), 'openai-codex': { tokens: { access_token: placeholder, refresh_token: 'valve', id_token: placeholder, account_id: account }, last_refresh: new Date().toISOString() } };
-  writeFileSync(authFile, `${JSON.stringify(auth, null, 2)}\n`);
-  own(authFile);
+  // The home's auth store, and every profile's (a profile is its own Hermes home: the treasurer's runs on the same subscription).
+  const profiles = existsSync(resolve(home, 'profiles')) ? readdirSync(resolve(home, 'profiles')).map((n) => resolve(home, 'profiles', n)).filter((d) => statSync(d).isDirectory()) : [];
+  for (const dir of [home, ...profiles]) {
+    const authFile = resolve(dir, 'auth.json');
+    const auth = existsSync(authFile) ? JSON.parse(readFileSync(authFile, 'utf8')) as Record<string, any> : { version: 1, providers: {}, credential_pool: {} };
+    auth.providers = { ...(auth.providers ?? {}), 'openai-codex': { tokens: { access_token: placeholder, refresh_token: 'valve', id_token: placeholder, account_id: account }, last_refresh: new Date().toISOString() } };
+    writeFileSync(authFile, `${JSON.stringify(auth, null, 2)}\n`);
+    own(authFile);
+  }
 }
 if (user) {
   // The whole point of --as: the agent's user must not be able to read a key.
