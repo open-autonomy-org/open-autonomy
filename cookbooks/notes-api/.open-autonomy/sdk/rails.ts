@@ -71,3 +71,22 @@ export function parseModelsBound(yaml: string): string[] {
   }
   return out;
 }
+
+// The most the project's funds may spend on the model rail in a day (UTC), from the same file:
+//   spend:
+//     daily_usd_cents: 500
+// 0 or absent: no bound of the project's own beyond the platform's global rail.
+export function parseSpendBound(yaml: string): { daily_usd_cents: number } {
+  let block = '';
+  let daily = 0;
+  for (const raw of yaml.split('\n')) {
+    const line = raw.replace(/\s+#.*$/, '').trimEnd();
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const top = /^([a-z_]+):\s*(.*)$/.exec(line);
+    if (top) { block = top[2] === '' ? top[1] : ''; continue; }
+    if (block !== 'spend') continue;
+    const kv = /^\s+daily_usd_cents:\s*(\d+)\s*$/.exec(line);
+    if (kv) daily = Math.max(0, Math.floor(Number(kv[1])));
+  }
+  return { daily_usd_cents: daily };
+}

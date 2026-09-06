@@ -1,3 +1,4 @@
+import { parseModelsBound, parseSpendBound } from '@open-autonomy/sdk/rails';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { ROADMAP_SCHEMA, ROADMAP_STATUSES, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';
@@ -551,6 +552,15 @@ export class LimitLedger implements DurableObject {
     if (amount > cap - this.state.consumed_usd_cents - this.state.reserved_usd_cents) {
       return { ok: false, error: 'global_daily_spend_limit_reached', consumed_usd_cents: this.state.consumed_usd_cents, reserved_usd_cents: this.state.reserved_usd_cents, max_global_daily_usd_cents: cap };
     }
+    // The project's own daily bound, from its .open-autonomy/config.yaml (spend.daily_usd_cents): today's settled spend
+    // plus what its calls in flight hold may not exceed it.
+    const dailyBound = parseSpendBound(this.acct(account)?.profile?.config_yaml ?? '').daily_usd_cents;
+    if (dailyBound > 0) {
+      const today = this.acct(account)?.daily_spend?.[dayKey()] ?? 0;
+      if (amount > dailyBound - today - this.reservedFor(account)) {
+        return { ok: false, error: 'project_daily_bound_reached', account, daily_usd_cents: dailyBound, spent_today_usd_cents: today, reserved_usd_cents: this.reservedFor(account), needed_usd_cents: amount, how: "the project's .open-autonomy/config.yaml sets spend.daily_usd_cents; the bound resets at 00:00 UTC" };
+      }
+    }
     this.state.reserved_usd_cents += amount;
     this.state.reservations[requestId] = { amount, expires_at_ms: Date.now() + 10 * 60_000, account, kid };
     this.ensureAcct(account);
@@ -876,6 +886,8 @@ export class LimitLedger implements DurableObject {
       calls_total: a?.calls_total ?? 0,
       last_call_at: a?.last_call_ms ? new Date(a.last_call_ms).toISOString() : null,
       daily_spend_usd_cents: daily,
+      // The owner's bounds on the model rail, from the repository's .open-autonomy/config.yaml: what the funds may buy, and how much a day.
+      bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), daily_usd_cents: parseSpendBound(a?.profile?.config_yaml ?? '').daily_usd_cents },
     };
   }
 
@@ -1185,6 +1197,7 @@ export interface FundingSnapshot {
   calls_total: number;
   last_call_at: string | null;
   daily_spend_usd_cents: number[];
+  bounds: { models: string[]; daily_usd_cents: number };
 }
 
 export interface DirectoryEntry {
@@ -1250,7 +1263,7 @@ export class LedgerClient {
     return await res.json() as T;
   }
   reserve(requestId: string, account: string, kid: string, amountUsdCents: number, dailyCapUsdCents: number) {
-    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents });
+    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number; daily_usd_cents?: number; spent_today_usd_cents?: number; how?: string }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents });
   }
   consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
   release(requestId: string) { return this.rpc<{ ok: true }>('release', { request_id: requestId }); }

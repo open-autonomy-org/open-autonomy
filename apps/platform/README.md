@@ -32,7 +32,8 @@ src/runway.ts     the Bayesian runway estimate
   (`/v1/accounts/:account/calls`).
 - **The card rail.** `POST /v1/rails/card` mints a single-use virtual card (Stripe Issuing) against the
   balance, bounded to the amount and the owner's merchant categories from `.open-autonomy/config.yaml`
-  (whose `models:` likewise bounds the model rail: the models the project's funds may buy, whatever a key names),
+  (whose `models:` and `spend.daily_usd_cents` likewise bound the model rail: the models the project's funds may
+  buy, whatever a key names, and the most they spend in a day; the account's `bounds` shows both),
   holding a reservation. The issuer's real-time `issuing_authorization.request` is decided at
   `/webhooks/stripe` (a card this platform minted, unused, within amount and category); a capture settles the
   reservation as a `card` audit record naming the merchant, the category and the card's last4, and retires
