@@ -54,13 +54,10 @@ function hermesBin(): string {
   }
   return resolve(dir, '.venv', 'bin');
 }
-// The world's agent gets a clean Hermes environment: whatever Hermes set on the process that runs the world (a worker's
-// HERMES_KANBAN_DB, HERMES_KANBAN_HOME, its task and run) would steer the world's agent onto the real board.
-const agentEnv = (bin: string): Record<string, string> => {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('HERMES_')) env[k] = v;
-  return { ...env, PATH: `${bin}:${process.env.PATH ?? ''}`, HERMES_HOME: home };
-};
+// The world's agent is started by the kit's start script, which gives it an environment of its own (nothing Hermes set
+// on this process comes through); the pinned Hermes goes first on its PATH, and the world's own doors (`hermes …` here)
+// address the world's home.
+const agentEnv = (bin: string): Record<string, string> => ({ ...process.env as Record<string, string>, PATH: `${bin}:${process.env.PATH ?? ''}`, HERMES_HOME: home });
 
 // A file on the twin's main, written the way an owner commits one: in the host checkout the seed made (WORK,
 // on main), committed as the owner and pushed. The twin's git and its API then agree.
