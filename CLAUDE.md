@@ -32,7 +32,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
 - Nothing here develops against a real API: the cookbook and the platform run only in the world; our own
-  agent is the only thing that spends on the real platform. Models are `zai/glm-5.3-flash`, everywhere.
+  agent is the only thing that spends on the real platform. The cookbooks and the world run on `zai/glm-5.3-flash`;
+  our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
+  work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
   the docs check); the pre-commit hook runs it. `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
 - **Thirty seconds, total, forever.** Every test and check together finish in under thirty seconds or they are
