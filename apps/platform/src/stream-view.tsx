@@ -12,6 +12,7 @@ const toolLine = (t: Turn): string => {
   try { const a = t.args ? JSON.parse(t.args) as Record<string, unknown> : {}; const v = a.path ?? a.command ?? a.pattern ?? a.query ?? Object.values(a)[0]; return typeof v === 'string' ? v.slice(0, 140) : (t.args ?? '').slice(0, 140); } catch { return (t.args ?? '').slice(0, 140); }
 };
 const outcomeWord = (s: SessionSummary): string => (s.status === 'live' ? 'live' : s.outcome === 'failed' ? 'failed' : s.outcome === 'done' ? 'done' : 'ended');
+const sessionCost = (s: Pick<SessionSummary, 'calls' | 'usd_cents' | 'model_provider'>): string => (s.calls === 0 && s.usd_cents === 0 && s.model_provider && s.model_provider !== 'open-autonomy' ? `owner subscription (${s.model_provider})` : usd(s.usd_cents));
 
 export function Receipt({ s, enc, repoUrl, now }: { s: SessionSummary; enc: string; repoUrl?: string; now: number }) {
   const live = s.status === 'live';
@@ -21,7 +22,7 @@ export function Receipt({ s, enc, repoUrl, now }: { s: SessionSummary; enc: stri
       <div class="rc-head">
         <span class="rc-when">{live ? `in progress · ${fmtDur(s.started_at, undefined, now)}` : `${fmtAgo(s.ended_at ?? s.started_at, now)} · ${fmtDur(s.started_at, s.ended_at, now)}`}</span>
         <span class="rc-kind">{s.source ?? s.kind}</span>
-        <span class="rc-stat">{s.turn_count} turns · {s.tool_calls} tools · {usd(s.usd_cents)}</span>
+        <span class="rc-stat">{s.turn_count} turns · {s.tool_calls} tools · {sessionCost(s)}</span>
         {s.outcome === 'failed' ? <span class="rc-fail">failed</span> : null}
       </div>
       {s.report ? <div class="rc-report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.report.length > 280 ? `${s.report.slice(0, 279)}…` : s.report) }} /> : null}
@@ -139,7 +140,7 @@ export function SessionPage({ account, s, repoUrl, now }: { account: string; s: 
       <p class="crumb"><a href={`/p/${enc}`}>← {account}</a>{s.item_id ? <> · <a href={`/p/${enc}/items/${encodeURIComponent(s.item_id)}`}>{s.item_id}</a></> : null}</p>
       <div class="panel jobhead">
         <h1>{s.source ?? s.kind}{s.item_id ? <> · <span class="item">{s.item_id}</span></> : null}</h1>
-        <p class="meta" data-session-meta>{live ? <><span class="live"><span class="pulse" /></span> in progress · {fmtDur(s.started_at, undefined, now)}</> : <>{s.outcome === 'failed' ? '✕ failed' : s.outcome === 'done' ? '✓ completed' : '· ended'} · {fmtDur(s.started_at, s.ended_at, now)}</>} · started {fmtAgo(s.started_at, now)} · <span data-turns>{s.turn_count}</span> turns · <span data-tools>{tools}</span> tool calls · <span data-cents>{usd(s.usd_cents)}</span> over {s.calls} calls</p>
+        <p class="meta" data-session-meta>{live ? <><span class="live"><span class="pulse" /></span> in progress · {fmtDur(s.started_at, undefined, now)}</> : <>{s.outcome === 'failed' ? '✕ failed' : s.outcome === 'done' ? '✓ completed' : '· ended'} · {fmtDur(s.started_at, s.ended_at, now)}</>} · started {fmtAgo(s.started_at, now)} · <span data-turns>{s.turn_count}</span> turns · <span data-tools>{tools}</span> tool calls · <span data-cents>{sessionCost(s)}</span>{s.calls ? ` over ${s.calls} calls` : ''}</p>
       </div>
       {s.report ? <div class="panel"><h3>Report (the agent's own words)</h3><div class="report prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.report) }} /></div> : null}
       <div class="panel">
@@ -219,7 +220,7 @@ export function SetupPanel({ setupMd, soulMd, model, provider, harness, skills, 
       <div class="facts">
         {harness ? <div class="fact"><span class="k">harness</span><span class="v">{harness}</span></div> : null}
         {model ? <div class="fact"><span class="k">model</span><span class="v">{model}{provider ? ` (${provider})` : ''}</span></div> : null}
-        <div class="fact"><span class="k">calls</span><span class="v">through the platform on the project's key, every one metered</span></div>
+        {provider ? <div class="fact"><span class="k">calls</span><span class="v">{provider === 'open-autonomy' ? "through the platform on the project's key, every one metered" : `on the owner's ${provider} subscription, outside the project's funds`}</span></div> : null}
         {jobs.length ? <div class="fact"><span class="k">schedule</span><span class="v">{jobs.map((j) => `${j.name ?? 'job'} · ${j.schedule ?? '?'}`).join(' · ')}</span></div> : null}
         {known.length ? <div class="fact"><span class="k">skills</span><span class="v">{known.join(' · ')}</span></div> : null}
       </div>

@@ -80,6 +80,22 @@ function jobName(id: string): string {
   return jobNames.get(id) ?? id;
 }
 const sourceOf = (d: SessionDescriptor): string => (d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d));
+// A provider id is safe to publish; an endpoint and credential are not. The kit's `custom` provider is the
+// platform only when its configured base URL names the valve. For any other configured provider, the owner's
+// provider account funds the session. An incomplete custom configuration stays unknown.
+function configuredProvider(home: string): string | undefined {
+  const config = readText(resolve(home, 'config.yaml')) ?? readText(resolve(cfg.hermes_home, 'config.yaml')) ?? '';
+  const provider = /^\s+provider:\s*["']?([^\s"']+)/m.exec(config)?.[1];
+  const endpoint = /^\s+base_url:\s*["']?([^\s"']+)/m.exec(config)?.[1];
+  if (!provider) return undefined;
+  if (endpoint === '${OPEN_AUTONOMY_BASE_URL}' || (endpoint && endpoint.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''))) return 'open-autonomy';
+  if (provider === 'custom' && !endpoint) return undefined;
+  return provider;
+}
+function modelProviderOf(d: SessionDescriptor): string | undefined {
+  const home = d.profile && d.profile !== 'default' ? resolve(cfg.hermes_home, 'profiles', d.profile) : cfg.hermes_home;
+  return configuredProvider(home);
+}
 function publishes(d: SessionDescriptor): boolean {
   const id = d.locator.session_id;
   if (cfg.publish.private.includes(id) || (d.recurrence?.job_id && cfg.publish.private.includes(d.recurrence.job_id))) return false;
@@ -127,7 +143,7 @@ class Followed {
   constructor(readonly d: SessionDescriptor) {}
   get key(): string { return this.d.locator.session_id; }
   async open(): Promise<void> {
-    const start = { key: this.key, kind: kindOf(this.d), source: sourceOf(this.d), title: this.d.title ?? undefined, startedAt: this.d.updated_at_ms ? new Date(this.d.updated_at_ms).toISOString() : undefined };
+    const start = { key: this.key, kind: kindOf(this.d), source: sourceOf(this.d), title: this.d.title ?? undefined, modelProvider: modelProviderOf(this.d), startedAt: this.d.updated_at_ms ? new Date(this.d.updated_at_ms).toISOString() : undefined };
     this.session = await oa.resume(this.key, cfg.account, start);
     this.seq = this.session.seq;
     // Resuming at the platform's turn offset: the message index it corresponds to.
@@ -302,7 +318,7 @@ async function setup(): Promise<void> {
   const home = cfg.hermes_home;
   const config = readText(resolve(home, 'config.yaml')) ?? '';
   const model = /^\s+default:\s*(\S+)/m.exec(config)?.[1];
-  const provider = /^\s+provider:\s*(\S+)/m.exec(config)?.[1];
+  const provider = configuredProvider(home);
   let schedule: Array<{ name: string; schedule: string; description?: string }> = [];
   try { const seed = JSON.parse(readText(resolve(home, 'cron', 'jobs.seed.json')) ?? '{}') as { jobs?: Array<{ name?: string; schedule?: string; prompt?: string; script?: string }> }; schedule = (seed.jobs ?? []).filter((j) => j.name && j.schedule).map((j) => ({ name: j.name!, schedule: j.schedule!, description: j.prompt ?? (j.script ? `runs ${j.script}` : undefined) })); } catch { /* no seed */ }
   const skills: string[] = [];

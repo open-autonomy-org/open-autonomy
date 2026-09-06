@@ -237,7 +237,7 @@ export interface CallRecord {
 // `source` what started it (the schedule job's name, a channel). It ends with an optional outcome: a run
 // has a verdict, a chat does not. Several can be live at once.
 export type SessionEvent =
-  | { kind: 'started'; key: string; session_kind?: string; title?: string; item_id?: string; source?: string; started_at?: string }
+  | { kind: 'started'; key: string; session_kind?: string; title?: string; item_id?: string; source?: string; model_provider?: string; started_at?: string }
   | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string; seq?: number }
   | { kind: 'ended'; key: string; outcome?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string; ended_at?: string };
 export interface Turn {
@@ -258,6 +258,9 @@ export interface SessionRecord {
   title?: string;
   item_id?: string;
   source?: string;
+  // The non-secret provider id observed for this session. `open-autonomy` means the project's metered rail;
+  // another value means the owner's provider account funded it.
+  model_provider?: string;
   started_at: string;
   ended_at?: string;
   report?: string;
@@ -668,7 +671,7 @@ export class LimitLedger implements DurableObject {
       const pending = await this.ctx.storage.get<{ usd_cents: number; calls: number }>(pendingKey);
       session = {
         key: ev.key, account, kind: sessionKind(ev.session_kind), status: 'live',
-        title: clipText(ev.title, 200), item_id: itemId(ev.item_id), source: clipText(ev.source, 80),
+        title: clipText(ev.title, 200), item_id: itemId(ev.item_id), source: clipText(ev.source, 80), model_provider: clipText(ev.model_provider, 80),
         started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, next_seq: 0,
         usd_cents: pending?.usd_cents ?? 0, calls: pending?.calls ?? 0, updated_at: new Date(now).toISOString(),
       };
@@ -1016,7 +1019,7 @@ export class LimitLedger implements DurableObject {
     const feed = this.state.flows.filter((flow) => (flow.to === account || flow.from === account) && flow.kind !== 'consume').slice(-FEED_LIMIT).reverse();
     const sponsorPatrons: Patron[] = (a ? activeSponsors(a) : []).map((s) => ({ kind: 'sponsor', login: s.login, name: s.name, avatar_url: s.avatar_url, url: s.url, tagline: s.tagline, amount_label: s.monthly_usd_cents ? `$${(s.monthly_usd_cents / 100).toFixed(0)}/mo` : undefined }));
     const projectPatrons = projectPatronsOf(this.state.flows, account, (id) => displayProfile(this.acct(id)));
-    return { found: Boolean(a), ...entry, tiers: a?.tiers ?? DEFAULT_TIERS, feed, patrons: [...projectPatrons, ...sponsorPatrons] };
+    return { found: Boolean(a), ...entry, bounds: this.fundingSnapshot(account).bounds, tiers: a?.tiers ?? DEFAULT_TIERS, feed, patrons: [...projectPatrons, ...sponsorPatrons] };
   }
 
   private snapshot() {
@@ -1297,6 +1300,7 @@ export interface FunderView {
 
 export interface ProjectView extends DirectoryEntry {
   found: boolean;
+  bounds: FundingSnapshot['bounds'];
   tiers: Tier[];
   feed: Flow[];
   patrons: Patron[];

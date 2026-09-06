@@ -19,7 +19,7 @@ export type TurnRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface Turn { ts?: string; role: TurnRole; text?: string; tool?: string; args?: string; result?: string }
 export type SessionOutcome = 'done' | 'failed';
 
-export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; startedAt?: string }
+export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; modelProvider?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
 export interface Update { item: string; text: string; session?: string; at?: string }
 // The board's state for a roadmap item, as the agent's harness keeps it: the task's lane, every attempt at
@@ -57,7 +57,7 @@ export const EVENT_TYPES = {
 } as const;
 
 export function sessionStartedEvent(s: SessionStart, source = 'open-autonomy-sdk'): CloudEvent {
-  return event(EVENT_TYPES.started, s.key, { session_kind: s.kind, title: s.title, item_id: s.item, source: s.source }, s.startedAt, source);
+  return event(EVENT_TYPES.started, s.key, { session_kind: s.kind, title: s.title, item_id: s.item, source: s.source, model_provider: s.modelProvider }, s.startedAt, source);
 }
 export function sessionTurnsEvent(key: string, seq: number, turns: Turn[], item?: string, source = 'open-autonomy-sdk'): CloudEvent {
   return event(EVENT_TYPES.turns, key, { seq, turns, item_id: item }, undefined, source);
@@ -76,7 +76,7 @@ function event(type: string, subject: string, data: Record<string, unknown>, tim
 export interface EventResult { id?: string; ok: boolean; error?: string; idempotent?: boolean; session?: SessionSummary; update?: UpdateRecord }
 export interface SessionSummary {
   key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string;
-  started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents: number; calls: number; updated_at: string;
+  model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents: number; calls: number; updated_at: string;
 }
 export interface SessionRecord extends Omit<SessionSummary, 'tool_calls'> { turns: Array<Turn & { seq?: number }> }
 export interface UpdateRecord { id: string; account: string; item_id: string; ts: string; text: string; session?: string }

@@ -101,6 +101,10 @@ export const STYLES = `
   .ledger{display:flex;flex-wrap:wrap;gap:18px 28px;margin-top:16px;}
   .ledger .item .v{font-weight:700;font-size:17px;font-variant-numeric:tabular-nums;}
   .ledger .item .l{color:${C.muted};font-size:13px;}
+  .bounds{margin-top:18px;padding-top:16px;border-top:1px solid ${C.line};}
+  .bounds .models{color:${C.body};font-size:14px;margin-bottom:8px;}
+  .bounds .limit{display:flex;justify-content:space-between;gap:14px;padding:6px 0;color:${C.body};font-size:13px;}
+  .bounds .limit .window{color:${C.faint};white-space:nowrap;}
   .patrons{display:flex;flex-wrap:wrap;gap:10px;}
   .patron{display:inline-flex;align-items:center;gap:9px;background:${C.wash};border-radius:999px;padding:6px 14px 6px 6px;font-size:14px;font-weight:600;color:${C.ink};}
   .patron .tag{color:${C.muted};font-weight:500;}
@@ -340,6 +344,23 @@ function TierCard({ t, i, feat, owner, burn, account, polar }: { t: ProjectView[
   );
 }
 
+function FundingBounds({ bounds }: { bounds: ProjectView['bounds'] }) {
+  const models = bounds.models.length ? bounds.models.join(' · ') : 'any model the gateway serves';
+  return (
+    <div class="bounds">
+      <div class="models"><b>Models funds may buy:</b> {models}</div>
+      {bounds.limits.map((l) => {
+        const uses = [
+          l.usd_cents !== undefined ? `${usd(l.used.usd_cents)} of ${usd(l.usd_cents)}` : '',
+          l.calls !== undefined ? `${l.used.calls.toLocaleString('en-US')} of ${l.calls.toLocaleString('en-US')} calls` : '',
+          l.tokens !== undefined ? `${l.used.tokens.toLocaleString('en-US')} of ${l.tokens.toLocaleString('en-US')} tokens` : '',
+        ].filter(Boolean).join(' · ');
+        return <div class="limit"><span>{uses}{l.model ? ` · ${l.model}` : ''}</span><span class="window">over {l.window}</span></div>;
+      })}
+    </div>
+  );
+}
+
 function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
@@ -385,6 +406,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
                 <div class="item"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
                 <div class="item"><div class="v" data-balance>{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div>
               </div>
+              <FundingBounds bounds={v.bounds} />
               {v.feed.length ? <ul class="feed" style="margin-top:14px">{v.feed.slice(0, 8).map((f) => <FundRow f={f} now={now} grants={grants} />)}</ul> : null}
               <a class="docmore" href={`/v1/accounts/${enc}/calls`}>Every metered call →</a>
             </div>
