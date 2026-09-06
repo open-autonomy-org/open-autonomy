@@ -25,6 +25,9 @@ const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'va
 const stateFile = resolve(cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
 const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 15_000);
+// The board's tasks with an attempt still running, as of its last read: a run session serving one of them is not over,
+// however long its transcript is silent.
+const runningItems = new Set<string>();
 const log = (m: string) => console.log(`reporter: ${m}`);
 // The valve holds the key; its health line says when the key expires. Logged once at start so a reader of
 // either log sees the expiry.
@@ -192,6 +195,9 @@ class Followed {
   }
   async end(why: string): Promise<void> {
     if (this.ended) return;
+    // Silence is not the end of a board run while the board still shows its attempt running: a world coming up or a
+    // long check is one tool call, minutes without a word. The board's own record says when the attempt is over.
+    if (why.startsWith('idle') && kindOf(this.d) === 'run' && this.item && runningItems.has(this.item)) { this.arm(); return; }
     this.ended = true;
     clearTimeout(this.timer);
     await this.sync(true);
@@ -282,6 +288,8 @@ async function board(): Promise<void> {
   const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
   // A read that found no board at all (the database mid-write) is not an empty board.
   if (!tasks.length) return;
+  runningItems.clear();
+  for (const t of tasks) if (t.lane === 'running') runningItems.add(t.id);
   const items: RoadmapItem[] = tasks.map((t) => ({ id: t.id, title: t.title ?? t.id, status: statusOf(t.lane), acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()) }));
   const digest = JSON.stringify(items);
   if (digest !== roadmapDigest) {

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.3.11: the reporter's idle fallback no longer ends a run whose task the board still shows running — a long tool call (a world coming up, a check) is not the session's end, so a live run no longer shows as failed.
 - Kit 2.3.10: the landing workflow retries a merge that races another landing, so two branches landing in the same minute both land.
 - **Every model call names its Hermes session.** The kit's provider plugin carries the active conversation through the valve; the platform strips that private field before the gateway and settles the call onto exactly that session, including calls that finish before the reporter announces it. Overlapping worker, reviewer and PM sessions no longer make spend unattributed. Kit 2.3.6.
 - **A project bounds what its funds may buy.** `models:` in `.open-autonomy/config.yaml`, read by the platform from the repository like the rail bounds, holds on every model call whatever a key was minted with; the refusal names the bound. This repository's own funds buy `zai/glm-5.3-flash` alone — its agent's model runs on the owner's Codex subscription, reached through the valve as a named custom provider speaking the Codex protocol, which the scheduler's jobs run on too.
