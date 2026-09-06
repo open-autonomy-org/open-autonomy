@@ -12,7 +12,7 @@
         "@volter/twin-openai": "0.1.2",
         "@volter/twin-polar": "0.1.2",
         "@volter/twin-stripe": "0.1.2",
-        "@volter/twin-world": "0.1.3",
+        "@volter/twin-world": "0.1.4",
       },
     },
     "apps/platform": {
@@ -219,7 +219,7 @@
 
     "@volter/twin-stripe": ["@volter/twin-stripe@0.1.2", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "world-stripe": "src/cli.ts" } }, "sha512-tXdTagWlU+W9TD8WQ3613uMw6pbheDeZ13PH2jhtdt4KhVxCwwr22YQ6zGq49+hAVe0hXyY2PXIrz3OHwYNaRw=="],
 
-    "@volter/twin-world": ["@volter/twin-world@0.1.3", "", { "dependencies": { "@electric-sql/pglite": "0.5.8", "pg-gateway": "0.3.0-beta.4" }, "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "volter-world": "src/cli.ts", "volter-world-browser-proxy": "src/browser-proxy-cli.ts", "volter-world-host": "src/host-cli.ts", "volter-world-managed-infra": "src/managed-infra-cli.ts" } }, "sha512-4i0bpr6vOd7iF2/ifNM+EPdck2Nal/oCNFcWE9hXZeMViYlaQbU3dAnx4FBfA2QT63azvGSWf2Z79nHdZERjWA=="],
+    "@volter/twin-world": ["@volter/twin-world@0.1.4", "", { "dependencies": { "@electric-sql/pglite": "0.5.8", "pg-gateway": "0.3.0-beta.4" }, "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "volter-world": "src/cli.ts", "volter-world-browser-proxy": "src/browser-proxy-cli.ts", "volter-world-host": "src/host-cli.ts", "volter-world-managed-infra": "src/managed-infra-cli.ts" } }, "sha512-1M+plM70x4o3UZU36XZulSEi2RCQEA/xebOy+vOa0cVhiJimI5qFbzn4G6KC/s3vDJmbnjwZ7/PB5D8+TFuJcQ=="],
 
     "blake3-wasm": ["blake3-wasm@2.1.5", "", {}, "sha512-F1+K8EbfOZE49dtoPtmxUQrpXaBIl3ICvasLh+nJta0xkz+9kF/7uet9fLnwKqhDrmj6g+6K3Tw9yQPUg2ka5g=="],
 
