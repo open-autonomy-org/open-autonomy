@@ -15,6 +15,20 @@ const steps: Array<[string, string[], string]> = [
   ['kit: cookbooks current', ['sh', '-c', 'bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check cookbooks/notes-api && bun packages/kit-hermes/src/cli.ts check .'], '.'],
   ['docs', ['bun', 'scripts/check-docs.ts'], '.'],
 ];
+// The lockfile names each workspace package's version, and `bun publish` writes that — not package.json's — in place
+// of a `workspace:*` dependency; bun never refreshes it on install, so a bumped package would publish depending on
+// the version before. The check keeps them equal, fixing and staging the lockfile as a pre-commit hook does.
+{
+  const lock = resolve(ROOT, 'bun.lock');
+  let text = await Bun.file(lock).text();
+  const before = text;
+  for (const pattern of (await Bun.file(resolve(ROOT, 'package.json')).json()).workspaces as string[]) for (const found of new Bun.Glob(`${pattern}/package.json`).scanSync(ROOT)) {
+    const dir = found.slice(0, -'/package.json'.length);
+    const version = (await Bun.file(resolve(ROOT, found)).json()).version as string;
+    text = text.replace(new RegExp(`("${dir.replace(/[/.]/g, '\\$&')}": \\{\\s*"name": "[^"]+",\\s*"version": ")[^"]+(")`), `$1${version}$2`);
+  }
+  if (text !== before) { await Bun.write(lock, text); Bun.spawnSync({ cmd: ['git', 'add', 'bun.lock'], cwd: ROOT }); console.log('check: bun.lock workspace versions refreshed'); }
+}
 const took: Array<[string, number]> = [];
 let failed = false;
 const t0 = Date.now();
