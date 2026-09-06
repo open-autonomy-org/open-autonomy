@@ -24,14 +24,87 @@ export const esc = (s: string): string => String(s).replace(/[<>&'"]/g, (c) => (
 export const usd = (cents: number): string => (cents > 0 && cents < 100 ? `${cents < 1 ? cents.toFixed(2) : cents.toFixed(1)}¢` : `$${(cents / 100).toFixed(2)}`);
 export const usd0 = (cents: number): string => (cents > 0 && cents < 100 ? `${Math.round(cents)}¢` : `$${Math.round(cents / 100).toLocaleString('en-US')}`);
 
-// Minimal, safe Markdown → HTML for short prose: escape first, then paragraphs, **bold**, `code`, bullets.
+// Small Markdown renderer for repository documents and published prose. It deliberately accepts no raw HTML:
+// every source character is escaped, and links get an explicit safe-protocol check before becoming attributes.
+const safeMarkdownHref = (href: string): string | undefined => {
+  const value = href.trim();
+  return /^(https?:\/\/|\/[^/]|#)[^\s<>]*$/i.test(value) ? value : undefined;
+};
+
+export function mdInlineToSafeHtml(source: string): string {
+  let out = '';
+  for (let i = 0; i < source.length;) {
+    if (source[i] === '`') {
+      const end = source.indexOf('`', i + 1);
+      if (end > i + 1) { out += `<code>${esc(source.slice(i + 1, end))}</code>`; i = end + 1; continue; }
+    }
+    if (source.startsWith('**', i)) {
+      const end = source.indexOf('**', i + 2);
+      if (end > i + 2) { out += `<strong>${mdInlineToSafeHtml(source.slice(i + 2, end))}</strong>`; i = end + 2; continue; }
+    }
+    if (source[i] === '[') {
+      const labelEnd = source.indexOf('](', i + 1);
+      const hrefEnd = labelEnd >= 0 ? source.indexOf(')', labelEnd + 2) : -1;
+      if (labelEnd > i + 1 && hrefEnd > labelEnd + 2) {
+        const label = mdInlineToSafeHtml(source.slice(i + 1, labelEnd));
+        const href = safeMarkdownHref(source.slice(labelEnd + 2, hrefEnd));
+        out += href ? `<a href="${esc(href)}">${label}</a>` : label;
+        i = hrefEnd + 1;
+        continue;
+      }
+    }
+    out += esc(source[i]);
+    i++;
+  }
+  return out;
+}
+
+type ListLine = { indent: number; ordered: boolean; text: string };
+const listLine = (line: string): ListLine | undefined => {
+  const match = line.match(/^(\s*)([-+*]|\d+\.)\s+(.+)$/);
+  return match ? { indent: match[1].replace(/\t/g, '    ').length, ordered: /\d/.test(match[2]), text: match[3] } : undefined;
+};
+
+function renderList(lines: string[], start: number, indent: number, ordered: boolean): { html: string; next: number } {
+  const tag = ordered ? 'ol' : 'ul';
+  let html = `<${tag}>`;
+  let i = start;
+  while (i < lines.length) {
+    const item = listLine(lines[i]);
+    if (!item || item.indent !== indent || item.ordered !== ordered) break;
+    html += `<li>${mdInlineToSafeHtml(item.text)}`;
+    i++;
+    while (i < lines.length) {
+      const nested = listLine(lines[i]);
+      if (nested && nested.indent > indent) {
+        const rendered = renderList(lines, i, nested.indent, nested.ordered);
+        html += rendered.html;
+        i = rendered.next;
+        continue;
+      }
+      if (nested || !lines[i].trim() || lines[i].search(/\S/) <= indent) break;
+      html += ` ${mdInlineToSafeHtml(lines[i].trim())}`;
+      i++;
+    }
+    html += '</li>';
+  }
+  return { html: `${html}</${tag}>`, next: i };
+}
+
 export function mdToSafeHtml(md: string): string {
-  const inline = (s: string): string => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
-  return md.trim().split(/\n{2,}/).map((block) => {
-    const lines = block.split('\n');
-    if (lines.every((l) => /^\s*-\s+/.test(l))) return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*-\s+/, ''))}</li>`).join('')}</ul>`;
-    return `<p>${inline(block).replace(/\n/g, ' ')}</p>`;
-  }).join('\n');
+  const lines = md.trim().replace(/\r\n?/g, '\n').split('\n');
+  const html: string[] = [];
+  for (let i = 0; i < lines.length;) {
+    if (!lines[i].trim()) { i++; continue; }
+    const heading = lines[i].match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (heading) { const level = heading[1].length; html.push(`<h${level}>${mdInlineToSafeHtml(heading[2])}</h${level}>`); i++; continue; }
+    const item = listLine(lines[i]);
+    if (item) { const rendered = renderList(lines, i, item.indent, item.ordered); html.push(rendered.html); i = rendered.next; continue; }
+    const paragraph: string[] = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6})\s+/.test(lines[i]) && !listLine(lines[i])) paragraph.push(lines[i++].trim());
+    html.push(`<p>${mdInlineToSafeHtml(paragraph.join(' '))}</p>`);
+  }
+  return html.join('\n');
 }
 
 export const fmtWhen = (iso: string | undefined): string => {
