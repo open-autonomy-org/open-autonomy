@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **A project bounds what its funds may buy.** `models:` in `.open-autonomy/config.yaml`, read by the platform from the repository like the rail bounds, holds on every model call whatever a key was minted with; the refusal names the bound. This repository's own funds buy `zai/glm-5.3-flash` alone — its agent's model runs on the owner's Codex subscription, reached through the valve as a named custom provider speaking the Codex protocol, which the scheduler's jobs run on too.
 - **The valve holds a Codex subscription too.** `open-autonomy-valve --codex <tokens.json>:<port>` serves the owner's ChatGPT/Codex login (the Codex CLI's tokens) under /backend-api/codex, refreshing the access token itself; the start script wires it when `codex.json` sits beside the keys and points Hermes's `openai-codex` provider at it with a placeholder credential, so an agent runs on a subscription without the login ever entering it. The platform's provider rejections carry the provider's message, and `GET /v1/catalog` lists the gateway's models. SDK 2.3.0, kit 2.3.5.
 - Kit 2.3.4: the home sync mirrors the kit's own families (skills/open-autonomy, hooks) instead of merging over them, so a retired skill leaves the agent's home too; the notes-api scenario's reviewer reads the bar like todo-cli's.
 - Kit 2.3.3: the start script gives the agent an environment of its own — nothing Hermes set on the process that started it comes through, so a project's world brought up from inside a worker no longer files its work on the outer board.

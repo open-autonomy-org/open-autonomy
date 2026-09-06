@@ -14,3 +14,7 @@ publish:
 # Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
 state_file: reporter-state.json
+
+# The models the project's funds may buy on the platform's model rail: a bound the platform reads from this file and
+# holds whatever a key was minted with. Empty: any model the gateway serves (`GET /v1/catalog` lists them).
+models: [zai/glm-5.3-flash]

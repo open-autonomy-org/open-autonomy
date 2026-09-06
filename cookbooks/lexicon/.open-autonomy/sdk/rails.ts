@@ -47,3 +47,27 @@ export function parseRailsConfig(yaml: string): RailsConfig {
   }
   return cfg;
 }
+
+// The models the project's funds may buy on the model rail, from the same `.open-autonomy/config.yaml`:
+//   models: [zai/glm-5.3-flash]      or a block list. Empty or absent: no bound beyond the key's own list.
+// The bound is the owner's, read by the platform from the repository, and holds whatever a key was minted with.
+export function parseModelsBound(yaml: string): string[] {
+  const out: string[] = [];
+  let inList = false;
+  for (const raw of yaml.split('\n')) {
+    const line = raw.replace(/\s+#.*$/, '').trimEnd();
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const top = /^([a-z_]+):\s*(.*)$/.exec(line);
+    if (top) {
+      inList = false;
+      if (top[1] !== 'models') continue;
+      const inline = /^\[(.*)\]$/.exec(top[2].trim());
+      if (inline) out.push(...inline[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean));
+      else if (top[2] === '') inList = true;
+      continue;
+    }
+    const item = inList ? /^\s+-\s+(.+)$/.exec(line) : null;
+    if (item) out.push(item[1].trim().replace(/^["']|["']$/g, ''));
+  }
+  return out;
+}
