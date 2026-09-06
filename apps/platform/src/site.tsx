@@ -446,6 +446,8 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
             <div class="panel">
               <h3>Become a patron</h3>
               {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} sponsor={sponsor} />)}
+              <p class="note">When the balance reaches $0, the agent stops; nothing is lost — the balance and every receipt stay on this page, and the next gift starts it again.</p>
+              <p class="note">To end or change a recurring gift, use GitHub Sponsors' own page for a GitHub sponsorship or Polar's customer portal for a Polar one; this platform never holds your card and cannot cancel for you.</p>
             </div>
             <div class="panel">
               <h3>Give grant credits</h3>
