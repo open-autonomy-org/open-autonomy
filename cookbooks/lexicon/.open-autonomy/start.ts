@@ -19,7 +19,8 @@
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
 //               and never holds the key (absent: pushes are your own git's business)
-//   the clone   <project> cloned from --origin when it is not a checkout yet (a container's first boot)
+//   the clone   <project> cloned from --origin when it is not a checkout yet (a container's first boot); a clean
+//               checkout is brought to origin/main on every start, so the agent is what the repository says today
 //   the home    hermes/ in the checkout copied into <home> before every start — the repository is the source of
 //               truth for what the agent IS; the home keeps what it has since done (its .env is kept)
 //   valve       <secrets>/agent.env on :8787 (the developer's key), <secrets>/treasurer.env on :8788 (the
@@ -87,6 +88,16 @@ if (!existsSync(resolve(project, '.git'))) {
   const clone = Bun.spawnSync({ cmd: drop(['git', 'clone', '-q', origin, project]), env: agentEnv(), stdout: 'inherit', stderr: 'inherit' });
   if (clone.exitCode !== 0) { console.error(`start: cannot clone ${origin}`); process.exit(1); }
   say(`cloned ${origin} → ${project}`);
+} else {
+  // What the agent IS is what main says: a clean checkout moves to origin/main before the home is synced from it
+  // (the skills, the schedule, the documents the reporter publishes). A dirty one — a killed attempt's work — is
+  // left as it is; the next attempt starts from a fresh main itself. A fetch that fails (no network, a world) is
+  // said and not fatal.
+  const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+  const dirty = git('status', '--porcelain').stdout.toString().trim();
+  if (dirty) say(`checkout ${project} has uncommitted changes; left where it is`);
+  else if (git('fetch', '-q', 'origin').exitCode !== 0) say(`cannot fetch origin in ${project}; left where it is`);
+  else if (git('checkout', '-q', '--detach', 'origin/main').exitCode === 0) say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
 }
 
 // 3. The home, from the checkout: everything under hermes/ except its .env, which is the home's own.
