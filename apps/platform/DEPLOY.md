@@ -4,7 +4,7 @@ Deploys and admin operations happen through GitHub only, and only from a human-c
 environment admits `deploy-v*` and `release-v*` tags and nothing else (never `main`), so the workflow that holds a
 secret is always the one a human tagged, never the one the agent last landed. `deploy.yml` runs on a `deploy-v*`
 tag, `release.yml` on a `release-v*` tag, and `admin.yml` (money and key operations) is dispatched with
-`--ref <the latest deploy-v* tag>`; each waits for the environment's required reviewer. Cutting a tag is the
+`--ref <the latest deploy-v* tag>`; each waits for the environment's required reviewer, who approves it on the run's page (Actions → the waiting run → Review deployments). Cutting a tag is the
 human's act (`git tag deploy-v<date> <sha> && git push origin deploy-v<date>`; the tag ruleset lets only an org
 admin create one), and the approval is the second. No machine holds a deploy or admin token, and no agent can
 cut a tag.
