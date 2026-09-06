@@ -7,6 +7,7 @@
 // or commits, which is the whole point: everything the agent produces is public.
 //
 //   open-autonomy-valve --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex /secrets/codex.json:8789]
+//                       [--github-app /secrets/github-app.json:8790]
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
 //
@@ -15,6 +16,14 @@
 // and forwarded to chatgpt.com's Codex backend with the bearer and the account header; the access token is refreshed
 // ahead of its expiry (auth.openai.com, the Codex client id) and written back. Hermes's `openai-codex` provider is
 // pointed at this port (HERMES_CODEX_BASE_URL) with a placeholder credential, so the login never enters the agent.
+//
+// --github-app: the agent's own GitHub identity for its community desk — a GitHub App installed on the project's
+// repository, its file `{app_id, installation_id, repository, private_key}` (the PEM the app's settings page issues).
+// Served on its own port as api.github.com is: the valve signs the app's JWT, mints an installation token scoped
+// to that one repository ahead of every expiry, and forwards the desk's routes (the repository's issues and
+// their comments, GraphQL for its discussions) with it. The agent is configured with GITHUB_API_URL at this port
+// and GITHUB_TOKEN=valve; every comment it posts is the app's, and the key never enters it.
+import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 
 // Each key file is served on its own port: `--key <file>:<port>`, repeatable. A file is re-read when it changes,
@@ -22,7 +31,8 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
-if (!keys.length && !codexArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <tokens.json>:<port>]'); process.exit(2); }
+const githubArg = process.argv.includes('--github-app') ? String(process.argv[process.argv.indexOf('--github-app') + 1]) : undefined;
+if (!keys.length && !codexArg && !githubArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <tokens.json>:<port>] [--github-app <app.json>:<port>]'); process.exit(2); }
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -141,4 +151,76 @@ if (codexArg) {
     },
   });
   try { const t = read().tokens; console.log(`codex: ${file} → ${CODEX_UPSTREAM} on :${port} (account ${accountOf(t) ?? '?'}, access token expires ${new Date(expiresAt(t)).toISOString()})`); } catch (e) { console.error(`codex: ${(e as Error).message}`); process.exit(2); }
+}
+
+// ── The GitHub App ─────────────────────────────────────────────────────────────────────────────────────────────
+interface GitHubApp { app_id: number | string; installation_id: number | string; repository: string; private_key: string; api?: string }
+if (githubArg) {
+  const [file, portRaw] = githubArg.split(':');
+  const port = Number(portRaw || 8790);
+  const read = (): GitHubApp => {
+    const doc = JSON.parse(readFileSync(file, 'utf8')) as Partial<GitHubApp>;
+    if (!doc.app_id || !doc.installation_id || !doc.repository || !doc.private_key) throw new Error(`${file}: needs app_id, installation_id, repository (owner/name) and private_key (the app's PEM)`);
+    return doc as GitHubApp;
+  };
+  const upstream = (): string => (read().api ?? 'https://api.github.com').replace(/\/$/, '');
+  const b64 = (v: string | Buffer): string => Buffer.from(v).toString('base64url');
+  // The app's JWT: RS256 over {iat, exp, iss}, ten minutes, the app id as the issuer.
+  const appJwt = (app: GitHubApp): string => {
+    const now = Math.floor(Date.now() / 1000);
+    const head = b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+    const body = b64(JSON.stringify({ iat: now - 60, exp: now + 9 * 60, iss: String(app.app_id) }));
+    return `${head}.${body}.${b64(sign('sha256', Buffer.from(`${head}.${body}`), createPrivateKey(app.private_key)))}`;
+  };
+  let token: { value: string; expiresAt: number } | undefined;
+  let minting: Promise<{ value: string; expiresAt: number }> | undefined;
+  // One installation token at a time, scoped to the one repository the file names, an hour long, renewed with five
+  // minutes to spare.
+  const mint = (): Promise<{ value: string; expiresAt: number }> => (minting ??= (async () => {
+    try {
+      const app = read();
+      const [, name] = app.repository.split('/');
+      const res = await fetch(`${upstream()}/app/installations/${app.installation_id}/access_tokens`, { method: 'POST', headers: { authorization: `Bearer ${appJwt(app)}`, accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy-valve', 'content-type': 'application/json' }, body: JSON.stringify({ repositories: [name] }) });
+      const body = await res.json().catch(() => ({})) as { token?: string; expires_at?: string; message?: string };
+      if (!res.ok || !body.token) throw new Error(`github-app: installation token refused (${res.status} ${body.message ?? ''})`);
+      token = { value: body.token, expiresAt: Date.parse(body.expires_at ?? '') || Date.now() + 55 * 60_000 };
+      console.log(`github-app: installation token minted for ${app.repository}, expires ${new Date(token.expiresAt).toISOString()}`);
+      return token;
+    } finally { minting = undefined; }
+  })());
+  const fresh = (): Promise<{ value: string; expiresAt: number }> => (token && token.expiresAt - Date.now() > 5 * 60_000 ? Promise.resolve(token) : mint());
+  // The desk's routes and no others: the repository's issues and their comments (read and comment), GraphQL (its
+  // discussions), and the repository itself. Nothing that changes code, settings or collaborators passes.
+  const allowed = (app: GitHubApp, method: string, path: string): boolean => {
+    const repo = `/repos/${app.repository}`;
+    if (path === '/graphql') return method === 'POST';
+    if (path === repo) return method === 'GET';
+    if (path.startsWith(`${repo}/issues`) || path.startsWith(`${repo}/discussions`)) return method === 'GET' || method === 'POST';
+    return false;
+  };
+  Bun.serve({
+    hostname: '127.0.0.1', port,
+    async fetch(req) {
+      const u = new URL(req.url);
+      if (u.pathname === '/healthz') { try { const app = read(); return new Response(`ok · github app ${app.app_id} on ${app.repository}${token ? ` · installation token expires ${new Date(token.expiresAt).toISOString()}` : ''}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
+      try {
+        const app = read();
+        if (!allowed(app, req.method, u.pathname)) return new Response(JSON.stringify({ message: `the valve forwards the community desk's routes of ${app.repository} only` }), { status: 403, headers: { 'content-type': 'application/json' } });
+        let t = await fresh();
+        const forward = async (tok: string): Promise<Response> => {
+          const headers = new Headers(req.headers);
+          for (const h of ['host', 'authorization', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
+          headers.set('authorization', `Bearer ${tok}`);
+          headers.set('user-agent', 'open-autonomy-valve');
+          if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json');
+          return fetch(`${upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body, redirect: 'manual' });
+        };
+        let res = await forward(t.value);
+        if (res.status === 401) { t = await mint(); res = await forward(t.value); }
+        const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
+        return new Response(res.body, { status: res.status, headers: out });
+      } catch (e) { return new Response(JSON.stringify({ message: (e as Error).message }), { status: 502, headers: { 'content-type': 'application/json' } }); }
+    },
+  });
+  try { const app = read(); console.log(`github-app: ${file} → ${upstream()} on :${port} (app ${app.app_id}, installation ${app.installation_id}, ${app.repository})`); } catch (e) { console.error(`github-app: ${(e as Error).message}`); process.exit(2); }
 }

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "lexicon": "bun src/lexicon.ts",
-    "community": "bun src/community.ts",
+    "community": "bun .open-autonomy/community.ts",
     "check": "bun test"
   }
 }

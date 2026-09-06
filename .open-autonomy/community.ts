@@ -1,20 +1,22 @@
 #!/usr/bin/env bun
-// The community's doors, from the shell: this repository's issues and discussions on GitHub, through the API the
-// environment names — GITHUB_API_URL (default https://api.github.com) and GITHUB_TOKEN, the bot's token, which can
-// only post as the bot. Issues over REST; discussions over GraphQL, the only API GitHub serves them on.
+// The community desk's doors, from the shell: this repository's issues and discussions on GitHub, through the API
+// the environment names — GITHUB_API_URL and GITHUB_TOKEN. In the running stack that is the valve's GitHub port and
+// the word `valve`: the agent's own GitHub App answers, its key never here. Issues over REST; discussions over
+// GraphQL, the only API GitHub serves them on.
 //
-//   bun src/community.ts poll                          # every issue, comment and discussion since the last look:
-//                                                      # NEW lines, then COMMUNITY_POLL_DONE
-//   bun src/community.ts comment <issue> <text…>       # a comment on an issue
-//   bun src/community.ts discuss <discussion> <text…>  # a comment on a discussion
-//   bun src/community.ts mark                          # the last look is now
+//   bun .open-autonomy/community.ts poll                          # every issue, comment and discussion since the
+//                                                                 # last look: NEW lines, then COMMUNITY_POLL_DONE
+//   bun .open-autonomy/community.ts comment <issue> <text…>       # a comment on an issue
+//   bun .open-autonomy/community.ts discuss <discussion> <text…>  # a comment on a discussion
+//   bun .open-autonomy/community.ts mark                          # the last look is now
 //
-// The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside this file's project.
+// The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
 const token = process.env.GITHUB_TOKEN ?? '';
+if (!token) { console.error('community: no GITHUB_TOKEN — the desk has no GitHub door (a github-app.json beside the keys gives it one through the valve)'); process.exit(3); }
 const project = resolve(import.meta.dir, '..');
 const account = /^account:\s*(\S+)/m.exec(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'))?.[1] ?? '';
 if (!account) throw new Error('community: .open-autonomy/config.yaml names no account');

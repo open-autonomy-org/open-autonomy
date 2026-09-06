@@ -6,6 +6,11 @@
 //
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //
+// <secrets>/github-app.json, when present, is the agent's own GitHub identity for its community desk (a GitHub App
+// installed on the repository: app_id, installation_id, repository, private_key): the valve serves it on the fourth
+// port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
+// desk posts is the app's, and the key never enters the agent.
+//
 // <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
 // tokens): the valve serves it on the third port, and the home's .env names it (HERMES_CODEX_BASE_URL) for a custom
 // provider in the project's config that speaks the Codex protocol — the model runs on the subscription, the login
@@ -94,11 +99,15 @@ if (existsSync(committed)) {
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
-const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !/^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL)=/.test(l)) : [];
+const githubApp = existsSync(resolve(secrets, 'github-app.json'));
+const managed = githubApp ? /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL|GITHUB_API_URL|GITHUB_TOKEN)=/ : /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL)=/;
+const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !managed.test(l)) : [];
 // The Codex subscription's address goes in the .env too: Hermes loads the home's .env into every process it starts,
 // including the scheduler's job runners, which do not inherit the gateway's environment.
 const codexBase = existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BASE_URL=http://127.0.0.1:${valvePort + 2}/backend-api/codex`] : [];
-const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...kept];
+// The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
+const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
+const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
 // On the first start, what the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
 if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
@@ -115,12 +124,15 @@ if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} �
 const codexFile = resolve(secrets, 'codex.json');
 const codexPort = valvePort + 2;
 if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
+// The agent's GitHub identity: the valve mints the app's installation tokens and serves the desk's routes on the fourth port.
+const githubFile = resolve(secrets, 'github-app.json');
+if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}`);
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});
