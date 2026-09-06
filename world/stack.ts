@@ -77,7 +77,12 @@ function previousConfig(): string {
 // is its environment, and the pinned Hermes is first on its PATH.
 function start(): void {
   const bin = hermesBin();
-  if (!existsSync(resolve(COOKBOOK, '.open-autonomy', 'node_modules'))) throw new Error(`stack: the reporter's dependencies are not installed — (cd ${resolve(COOKBOOK, '.open-autonomy')} && bun install)`);
+  // The reporter's two dependencies, installed once beside it — from the real registry: the machine's tooling, outside the world's proxy.
+  if (!existsSync(resolve(COOKBOOK, '.open-autonomy', 'node_modules'))) {
+    const outside: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !/^(https?_proxy|all_proxy|no_proxy|node_options|node_extra_ca_certs|ssl_cert_file|requests_ca_bundle|curl_ca_bundle)$/i.test(k)) outside[k] = v;
+    timed("the reporter's dependencies", () => sh(['bun', 'install'], { cwd: resolve(COOKBOOK, '.open-autonomy'), env: outside, quiet: true }));
+  }
   for (const f of ['agent.env', 'treasurer.env']) if (!existsSync(resolve(DATA, f))) throw new Error(`${resolve(DATA, f)} is missing — run \`bun world/run.ts seed\` first`);
   mkdirSync(stackDir, { recursive: true });
   // The agent's Discord: a bot token the twin accepts (a fake the twins mint) and its home channel, which the start
