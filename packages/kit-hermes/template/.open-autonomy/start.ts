@@ -134,8 +134,11 @@ const codexBase = existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BA
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
 const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
-// On the first start, what the environment says about the agent's channels comes along: Discord's, and GitHub's for a community desk.
-if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
+// The agent's channels: <secrets>/channels.env (the setup writes it: the Discord bot and its channel) is this start's truth
+// for every DISCORD_* line; on the first start without it, what the environment says comes along instead.
+const channelsFile = resolve(secrets, 'channels.env');
+if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => /^DISCORD_[A-Z_]+=/.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (/^DISCORD_[A-Z_]+=/.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
+else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
 own(home);
 say(`home ${home} synced from ${committed}`);

@@ -6,8 +6,7 @@
       "schedule": "every 60m",
       "skills": [
         "pm"
-      ],
-      "deliver": "discord"
+      ]
     },
     {
       "name": "community",
@@ -15,8 +14,7 @@
       "schedule": "every 15m",
       "skills": [
         "community"
-      ],
-      "deliver": "discord"
+      ]
     }
   ]
 }

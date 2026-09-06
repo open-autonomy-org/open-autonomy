@@ -9,6 +9,7 @@ bun create open-autonomy my-project --project my-project --account owner/my-proj
 create-open-autonomy adopt .   --project my-project --account owner/my-project   # into an existing repository
 create-open-autonomy check .     # the kit-owned files against the kit (exit 1 on drift)
 create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
+create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
 
 ## From npm
@@ -37,6 +38,21 @@ hermes/              the agent: SOUL.md, its three skills (develop, pm, communit
 container/           the default for a real deployment (bare is for development and fast debugging): one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
 .github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
 ```
+
+## The guided setup
+
+`create-open-autonomy setup <dir>` takes a kit repository to a running, gated, funded project on your own laptop, spending
+Open Autonomy's money. It reads the situation — what the repository deploys as, whether the owner is an org, whether a
+Sponsors listing, a Discord token or a Codex login is in sight — and recommends the doors that fit, each with its
+reason and what it will cost you in clicks. The core needs no questions: the repository on GitHub (the CLI's device
+flow), the deploy key, the platform keys the adopter way, and the owner's rules (nothing pushes `main`; `.github/` is
+yours). The doors are yours to take, decline or defer: a gated production door (Cloudflare token into a GitHub
+environment, a pre-filled token page), the agent's GitHub App (GitHub's manifest flow: one Create, one Install), a
+Discord channel (the portal, a token paste, one invite; the bot makes its own channel), your subscription for the
+model. What is never automated: creating your accounts, and any captcha or sudo prompt — the setup opens the exact
+page and continues when it comes back. `--plan` prints the situation and the recommendations and changes nothing;
+every step is idempotent, so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
+schedule promises no channel it does not have.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in

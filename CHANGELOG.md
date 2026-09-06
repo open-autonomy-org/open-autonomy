@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Kit 2.6.0: the guided setup.** `create-open-autonomy setup` reads a project's situation and recommends the doors that fit it — a gated production door, the agent's GitHub App by manifest flow, a Discord channel, the owner's subscription — does every step an API allows, and opens the exact page for the clicks only a person may make. A declined door leaves no trace: the template's schedule no longer presumes a Discord channel, the desk speaks of a channel only when the project has one, and the start script takes the channels from `channels.env` beside the keys.
 - **GitHub Sponsors funds the grants pool.** GitHub gives an org one listing, so a sponsorship cannot name a project; it now lands on the org's grants account and is given on to projects from there, and every project page but the pool's own says so on its button.
 - Kit 2.5.1: a worker never completes, reclaims, unblocks or archives a task — one completed its own from the shell and skipped the review lane; the handoff is the only way a task ends.
 - **Kit 2.5.0: how a project ships.** `.open-autonomy/PRODUCTION.md` is the production door every kit project gets: the agent lands, the owner's `CODEOWNERS` line guards the workflows, and production runs only from a human-cut `deploy-v*` tag through a reviewed environment whose secret no machine holds. The worker pushes once, at the handoff — a push mid-task landed half a feature — and the default turn budget is 160.
