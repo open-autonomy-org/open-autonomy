@@ -131,7 +131,19 @@ function waitSchedule(): void {
   console.log(`⏱ stack: gateway boot to schedule seeded: ${((Date.now() - booted) / 1000).toFixed(1)}s`);
 }
 
+// The cookbook's own bound names the model it ships with; the world's previous model is allowed on the twin's copy
+// alone, and the world's platform reads the copy back at once.
+async function allowPreviousModel(): Promise<void> {
+  const yaml = readFileSync(resolve(COOKBOOK, '.open-autonomy', 'config.yaml'), 'utf8');
+  if (!yaml.includes(`models: [${MODEL}]`)) throw new Error(`stack: the cookbook's .open-autonomy/config.yaml does not bound its funds to ${MODEL}`);
+  await putMain('.open-autonomy/config.yaml', yaml.replace(`models: [${MODEL}]`, `models: [${MODEL}, ${PREVIOUS_MODEL}]`), `.open-autonomy/config.yaml: the world's previous model allowed`);
+  const platform = need('PLATFORM_URL').replace(/\/$/, '');
+  const synced = await fetch(`${platform}/admin/accounts/${encodeURIComponent(ACCOUNT)}/sync`, { method: 'POST', headers: { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin' } });
+  if (!synced.ok) throw new Error(`stack: the platform did not sync the config (${synced.status})`);
+}
+
 async function up(): Promise<void> {
+  await allowPreviousModel();
   await putMain('hermes/config.yaml', previousConfig(), `hermes/config.yaml: the model before the owner moves it (${PREVIOUS_MODEL})`);
   down(true);
   timed('start', () => start());
