@@ -25,5 +25,10 @@ jobs:
               --body "Opened by the landing workflow for \`$BRANCH\`. It merges on its own when the required checks pass."
             existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           fi
-          gh pr merge -R "$REPO" "$existing" --merge
-          echo "pull request #$existing: merged"
+          # The merge races other landings ("base branch was modified") and GitHub's own mergeability check; try again a
+          # few times before giving up, so two branches landing in the same minute both land.
+          for attempt in 1 2 3 4 5 6; do
+            if gh pr merge -R "$REPO" "$existing" --merge; then echo "pull request #$existing: merged"; exit 0; fi
+            echo "merge attempt $attempt did not go through; retrying in 20s"; sleep 20
+          done
+          echo "pull request #$existing: could not be merged after six attempts"; exit 1
