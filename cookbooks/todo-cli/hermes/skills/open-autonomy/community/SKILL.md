@@ -35,4 +35,7 @@ what is new, and every word you say in public is a published session on the proj
    answered, what was filed (with ids), what was declined and why.
 
 In the channel you are simply yourself: answer a question when it is asked; when someone asks there for something
-that fits, file it the same way and say so. The desk without a GitHub door (`poll` says so) reads the channel alone.
+that fits, file it the same way and say so.
+
+A desk without a GitHub door (`poll` exits saying there is no `GITHUB_TOKEN`) is not blocked and not news: it reads
+the channel alone, answers there, and when nothing is new it reports `[SILENT]` like any other quiet look.

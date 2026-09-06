@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.4: a desk without a GitHub door is quiet, not blocked, and a worker never ends a task without handing it off for review.
 - Kit 2.4.3: the start script installs the reporter's dependencies on a bare checkout's first start, and names the default home by the project's account rather than the checkout's directory, so two projects checked out as `project` keep separate homes. This repository's own agent and Hookline's now run bare on their Mac under launchd; the container is the kit's secure option, not this install's lane.
 - Kit 2.4.2: the start script brings a clean checkout to origin/main before syncing the home from it, so a restart carries what landed since the agent's last task (a new skill, a job, the documents) instead of the commit its last worker left.
 - Kit 2.4.1: the check keeps the lockfile's workspace versions equal to each package's — `bun publish` writes the lockfile's version in place of `workspace:*`, so kit 2.4.0 on npm depended on SDK 2.3.3 and vendored a valve without the GitHub App; 2.4.1 carries SDK 2.4.0.

@@ -35,7 +35,9 @@ is not done.
    it when the checks pass. Never wait for it; never open a pull request; never push to `main`; never rewrite
    history. If the branch exists from an earlier attempt, push to `agent/<task id>-<YYYYMMDD-HHMM>`.
 7. Hand off: `kanban_request_review` naming the branch and the commit, and what is verified how. Name no reviewer:
-   the review lane takes the task itself, and a profile the home does not have would hold it forever.
+   the review lane takes the task itself, and a profile the home does not have would hold it forever. This call is
+   how a task ends; a turn that ends without it marks the task done with nothing reviewed, which is never right —
+   even when the work is already on main, hand it off.
 
 If a line cannot be made true from here, `kanban_block` with exactly what is missing, and stop. Never file,
 split or decompose tasks, and never create one: the board is the owner's. Do not loop on a failure you cannot
