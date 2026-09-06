@@ -1,6 +1,6 @@
 {
   "kit": "hermes",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "params": {
     "project": "todo-cli",
     "account": "cookbook/todo-cli"

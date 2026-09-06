@@ -18,9 +18,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   world runs.
 - `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook, an environment to
   drive, never a gate.
-- `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running in
-  containers on this Mac (`container/compose.yml`). It develops the product, and it is not special. Runtime
-  state is git-ignored.
+- `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
+  this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
+  `container/` is the kit's secure option (one image, one compose file; Docker or Podman) for a host where the
+  agent must not reach its keys; nothing on this Mac uses it.
 
 ## Working agreement
 
@@ -34,7 +35,11 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend
   on the real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform
   key) and Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, on the platform's model
-  rail with its own grant and bounds), each in its own container on this Mac's VM, each started by the VM start script. The cookbooks and the world run on `zai/glm-5.3-flash`;
+  rail with its own grant and bounds), each bare on this Mac as a launchd agent (org.open-autonomy.agent and
+  org.open-autonomy.hookline in the user's LaunchAgents: the kit's start script from the agent's own checkout under the
+  open-autonomy state directory in .local/state, its home beside it, its secrets in the open-autonomy and
+  open-autonomy-hookline config directories, the valves on 8787 and 8887, the pinned Hermes installed once under that
+  state directory). The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
@@ -50,18 +55,15 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
   root's free space). The world runs the cookbook's agent bare, as the kit's start script starts it on a laptop:
   no Docker, no isolation (nothing the world's agent reaches is worth protecting), the pinned Hermes installed once
-  under that root. Our own agent runs in the container lane on the colima VM `open-autonomy` (4 GiB, started at
-  login by a launch agent running the VM start script in the open-autonomy config directory), as the stack `oa`.
-  colima enforces no permissions on a bind mount, so on this Mac the secrets come from the root-owned volume
-  `oa-secrets` (the secrets-sync script beside the VM start script fills it from that directory: at every VM
-  start, and by hand after a key rotation) through the compose override in the same directory.
+  under that root. Each live agent has its own home (`HOME` too, so two gateways on one bot token never share a lock)
+  and a Discord channel of its own on the one bot: ours `#general`, Hookline `#hookline`.
 - **The world is where this runs without keys.** `bun world/run.ts up` brings the twins (the published `@volter/twin-*`
   packages in node_modules; `TWINS_ROOT` names a checkout when developing the twins),
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
   world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
-- Our own agent runs that same world inside its own container to verify a change (`WORLD_STATE_ROOT=/opt/data/world
-  bun world/run.ts up`, then its doors and curl; the world's agent takes the valve ports 18787/18788, beside the
-  real one on 8787/8788). It is that world's operator, never a second agent inside it.
+- Our own agent runs that same world from its own checkout to verify a change (`bun world/run.ts up`, then its doors
+  and curl; the world's agent takes the valve ports 18787/18788, beside the real ones). It is that world's operator,
+  never a second agent inside it.
 
 ## Live surfaces
 

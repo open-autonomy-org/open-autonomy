@@ -36,7 +36,10 @@ import { basename, resolve } from 'node:path';
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
-const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', basename(project), 'home'));
+// The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
+// checkout's directory name: two projects checked out as `project` must not share one home.
+const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
+const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
@@ -140,8 +143,14 @@ const githubFile = resolve(secrets, 'github-app.json');
 if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
-// 5. The reporter and the gateway, as the agent.
+// 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
+//    .open-autonomy/package.json) are installed on the first start of a bare checkout.
 const env = agentEnv();
+if (!existsSync(resolve(import.meta.dir, 'node_modules'))) {
+  const install = Bun.spawnSync({ cmd: drop(['bun', 'install']), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
+  if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }
+  say(`reporter dependencies installed in ${import.meta.dir}`);
+}
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
 say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
