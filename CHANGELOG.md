@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.3.12: a handoff names no reviewer (a profile the home lacks held a task in review for good); only a board run is filed under an item, so the PM's hourly pass no longer shows under whichever task it mentioned.
 - Kit 2.3.11: the reporter's idle fallback no longer ends a run whose task the board still shows running — a long tool call (a world coming up, a check) is not the session's end, so a live run no longer shows as failed.
 - Kit 2.3.10: the landing workflow retries a merge that races another landing, so two branches landing in the same minute both land.
 - **Every model call names its Hermes session.** The kit's provider plugin carries the active conversation through the valve; the platform strips that private field before the gateway and settles the call onto exactly that session, including calls that finish before the reporter announces it. Overlapping worker, reviewer and PM sessions no longer make spend unattributed. Kit 2.3.6.
