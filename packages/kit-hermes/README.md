@@ -68,6 +68,13 @@ and settled cent per item, live while a session runs.
 balance for a bounded amount at the owner's merchant categories, and a partner service's metered charge
 for a listed partner within a bound. Both leave records on the public audit trail naming the rail.
 
+## The world
+
+A project that talks to a vendor verifies against twins, never the vendor: `bun add -d @volter/twin-world @volter/twin-<vendor>`,
+a `world/world.json` naming them, `bunx volter-world up world/world.json`. The develop skill drives the running
+system in that world, one action at a time (this repository's own `world/` is the shape). Nothing an agent does
+reaches a real API.
+
 ## Nothing in the agent's reach is a secret that matters
 
 The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent the start script loads with

@@ -8,7 +8,6 @@ cookbook, started exactly as the kit starts it on a laptop (`.open-autonomy/star
 gateway carries the schedule and works the board itself. The world seeds, waits and audits.
 
 ```bash
-export TWINS_ROOT=/path/to/twin        # until the twin packages are published
 export WORLD_STATE_ROOT=/fast/disk     # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
 bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the cookbook's agent (seconds)
 open "$(bun world/run.ts env -- sh -c 'echo $PLATFORM_URL')/p/cookbook%2Ftodo-cli"   # the page: watch the board work

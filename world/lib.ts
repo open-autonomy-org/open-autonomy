@@ -4,6 +4,12 @@ import { resolve } from 'node:path';
 
 export const NAME = 'open-autonomy';
 export const ROOT = resolve(import.meta.dir, '..');
+// The twins: the published packages in this repository's node_modules (@volter/twin-world and one @volter/twin-<vendor>
+// per twin), or a checkout named by TWINS_ROOT when the twins themselves are being developed.
+export const TWINS_ROOT = process.env.TWINS_ROOT ? resolve(process.env.TWINS_ROOT) : undefined;
+export const twinCli = (name: string): string => (TWINS_ROOT
+  ? resolve(TWINS_ROOT, 'packages/twin', name === 'world' ? 'world-runtime' : name, 'src/cli.ts')
+  : resolve(ROOT, 'node_modules', '@volter', name === 'world' ? 'twin-world' : `twin-${name}`, 'src/cli.ts'));
 // Where the world's state lives (its instances, generated config, the platform's books, the stack's mounts): the
 // repository by default, or WORLD_STATE_ROOT — a disk with headroom, since the runtime admits a world only
 // against the free space of the root it is given.

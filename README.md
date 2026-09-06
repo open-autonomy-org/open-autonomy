@@ -49,5 +49,5 @@ hermes/ .open-autonomy/ container/   our own install: the kit applied to this re
 
 ```bash
 bun run check          # the whole check, under thirty seconds (the pre-commit hook runs it)
-bun world/run.ts up    # the world, to drive (needs TWINS_ROOT and WORLD_STATE_ROOT)
+bun world/run.ts up    # the world, to drive (the twins are npm packages; WORLD_STATE_ROOT for a disk with headroom)
 ```

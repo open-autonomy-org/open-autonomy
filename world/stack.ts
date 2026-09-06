@@ -16,7 +16,7 @@
 //                  `hermes cron run pm`: the PM's hour, now)
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, ROOT, STATE, WORK, git, need } from './lib.ts';
+import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, STATE, WORK, git, need, twinCli } from './lib.ts';
 
 const stackDir = resolve(STATE, '.volter', 'stack');
 const home = resolve(stackDir, 'home');
@@ -34,6 +34,9 @@ function sh(cmd: string[], opts: { quiet?: boolean; check?: boolean; env?: Recor
 // The pinned Hermes, from the cookbook's own pin, installed once under the world's state: the tag cloned, its
 // commit checked, `uv sync --frozen`. The world runs the Hermes a project ships with.
 function hermesBin(): string {
+  // Where a Hermes at the pin already lives (the agent's own container: /opt/hermes), use it.
+  const given = process.env.HERMES_BIN ?? (existsSync('/opt/hermes/.venv/bin/hermes') ? '/opt/hermes/.venv/bin' : undefined);
+  if (given) return given;
   const pin = Object.fromEntries(readFileSync(resolve(COOKBOOK, 'container', 'hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k && !k.startsWith('#')));
   const dir = resolve(STATE, '.volter', 'hermes', pin.HERMES_TAG);
   if (!existsSync(resolve(dir, '.venv', 'bin', 'hermes'))) {
@@ -80,7 +83,7 @@ function start(): void {
   // The agent's Discord: a bot token the twin accepts (a fake the twins mint) and its home channel, which the start
   // script writes into the home's .env on the first start. discord.py reaches the twin through the world's proxy
   // (HTTPS_PROXY, which Hermes's Discord platform honors) and the session CA.
-  const botToken = sh(['bun', resolve(process.env.TWINS_ROOT ?? resolve(ROOT, '..', 'twin'), 'packages/twin/world-runtime/src/cli.ts'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  const botToken = sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
   if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
   // One appending descriptor for every process's output: separate opens would overwrite one another.
   const log = openSync(logFile, 'a');
