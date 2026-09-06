@@ -15,7 +15,8 @@ MODEL_PRICES_JSON = "{}"
 # of any account's balance. The admin reset hatch clears it without waiting for midnight.
 MAX_GLOBAL_DAILY_USD_CENTS = "5000"
 DEFAULT_FUNDING_ACCOUNT = "open-autonomy-org/open-autonomy"
-DEFAULT_SPONSOR_ACCOUNT = "open-autonomy-org/open-autonomy"
+# GitHub Sponsors is one listing per org, so its money lands on the org's grants account and is given on from there.
+DEFAULT_SPONSOR_ACCOUNT = "open-autonomy-org/grants"
 
 # Monthly sponsorship accrual (credits active recurring sponsors; idempotent per month) and the docs sync.
 [triggers]
