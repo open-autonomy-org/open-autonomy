@@ -13,14 +13,13 @@
 //
 // --cookbook picks the project under test (default todo-cli; also WORLD_COOKBOOK). Its scenario is
 // world/handlers/<cookbook>/gateway.ts printing the twin's JSON, and it is the whole model: nothing in the
-// world calls a real API, ever. Needs the twins checkout (TWINS_ROOT, default ../twin).
+// world calls a real API, ever. The twins are the published packages in node_modules (TWINS_ROOT names a checkout instead).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { NAME, ROOT, STATE } from './lib.ts';
+import { NAME, ROOT, STATE, TWINS_ROOT, twinCli } from './lib.ts';
 
-const twins = resolve(process.env.TWINS_ROOT ?? resolve(ROOT, '..', 'twin'));
-if (!existsSync(resolve(twins, 'packages/twin/world-runtime/src/cli.ts'))) { console.error(`world/run.ts: no twins checkout at ${twins} — set TWINS_ROOT`); process.exit(2); }
-const cli = resolve(twins, 'packages/twin/world-runtime/src/cli.ts');
+const cli = twinCli('world');
+if (!existsSync(cli)) { console.error(`world/run.ts: no twins at ${cli} — bun install (or TWINS_ROOT for a checkout)`); process.exit(2); }
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -39,12 +38,12 @@ const r = Bun.spawnSync({ cmd: ['bun', handler], cwd: ROOT, stdout: 'pipe', stde
 if (r.exitCode !== 0) { console.error(`world/handlers/${cookbook}/gateway.ts failed (${r.exitCode})`); process.exit(r.exitCode || 1); }
 writeFileSync(scenario, r.stdout);
 writeFileSync(config, readFileSync(resolve(ROOT, 'world', 'world.json'), 'utf8')
-  .replaceAll('${TWINS_ROOT}', twins).replaceAll('${WORLD_DIR}', resolve(ROOT, 'world')).replaceAll('${SCENARIO}', scenario).replaceAll('${COOKBOOK}', cookbook));
+  .replace(/\$\{TWIN:([a-z-]+)\}/g, (_, name: string) => twinCli(name)).replaceAll('${WORLD_DIR}', resolve(ROOT, 'world')).replaceAll('${SCENARIO}', scenario).replaceAll('${COOKBOOK}', cookbook));
 
 // Every step reports how long it took, so the gate's cost stays visible: the loop itself is seconds.
 const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
 function world(args: string[], opts: { check?: boolean } = { check: true }): number {
-  const res = timed(`volter-world ${args[0]}`, () => Bun.spawnSync({ cmd: ['bun', cli, ...args], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, TWINS_ROOT: twins } }));
+  const res = timed(`volter-world ${args[0]}`, () => Bun.spawnSync({ cmd: ['bun', cli, ...args], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, ...(TWINS_ROOT ? { TWINS_ROOT } : {}) } }));
   if (opts.check && res.exitCode !== 0) { console.error(`volter-world ${args[0]} failed (${res.exitCode})`); process.exit(res.exitCode || 1); }
   return res.exitCode;
 }

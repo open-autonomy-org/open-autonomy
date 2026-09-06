@@ -51,7 +51,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   colima enforces no permissions on a bind mount, so on this Mac the secrets come from the root-owned volume
   `oa-secrets` (the secrets-sync script beside the VM start script fills it from that directory: at every VM
   start, and by hand after a key rotation) through the compose override in the same directory.
-- **The world is where this runs without keys.** `TWINS_ROOT=/path/to/twin bun world/run.ts up` brings the twins,
+- **The world is where this runs without keys.** `bun world/run.ts up` brings the twins (the published `@volter/twin-*`
+  packages in node_modules; `TWINS_ROOT` names a checkout when developing the twins),
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
   world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
 - Our own agent is that world's operator when it verifies a platform change (`up`, then `probe` and curl).

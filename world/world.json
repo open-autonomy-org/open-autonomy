@@ -1,6 +1,6 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWINS_ROOT}, ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWIN:<vendor>} (that twin's CLI, from node_modules or a checkout), ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
@@ -13,7 +13,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/openai/src/cli.ts",
+        "${TWIN:openai}",
         "serve"
       ],
       "port": 47611,
@@ -28,7 +28,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/github/src/cli.ts",
+        "${TWIN:github}",
         "serve"
       ],
       "port": 47612,
@@ -40,7 +40,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/discord/src/cli.ts",
+        "${TWIN:discord}",
         "serve"
       ],
       "port": 47615,
@@ -55,7 +55,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/stripe/src/cli.ts",
+        "${TWIN:stripe}",
         "serve"
       ],
       "port": 47616,
@@ -67,7 +67,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/polar/src/cli.ts",
+        "${TWIN:polar}",
         "serve"
       ],
       "port": 47617,
@@ -79,7 +79,7 @@
       "type": "twin",
       "command": "bun",
       "args": [
-        "${TWINS_ROOT}/packages/twin/npm-registry/src/cli.ts",
+        "${TWIN:npm-registry}",
         "serve"
       ],
       "port": 47618,
