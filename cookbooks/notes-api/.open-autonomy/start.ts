@@ -7,8 +7,9 @@
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //
 // <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
-// tokens): the valve serves it on the third port and Hermes's openai-codex provider is pointed there, with a
-// placeholder credential in the home's auth.json — the model runs on the subscription, the login never enters the agent.
+// tokens): the valve serves it on the third port, and the home's .env names it (HERMES_CODEX_BASE_URL) for a custom
+// provider in the project's config that speaks the Codex protocol — the model runs on the subscription, the login
+// never enters the agent.
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -22,7 +23,7 @@
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
 
@@ -109,37 +110,15 @@ const keys: string[] = [];
 if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:${valvePort}`);
 if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
 if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} — mint the developer's key: bun .open-autonomy/mint-key.ts`); process.exit(1); }
-// The Codex subscription: the valve holds the login; Hermes gets a placeholder that never expires and names the account.
+// The Codex subscription: the valve holds the login and serves it on the third port; Hermes reaches it as a named
+// custom provider speaking the Codex protocol (base_url ${HERMES_CODEX_BASE_URL}, api_key `valve`), which the home's .env names.
 const codexFile = resolve(secrets, 'codex.json');
 const codexPort = valvePort + 2;
-if (existsSync(codexFile)) {
-  keys.push('--codex', `${codexFile}:${codexPort}`);
-  const tokens = (JSON.parse(readFileSync(codexFile, 'utf8')) as { tokens?: { access_token?: string; account_id?: string } }).tokens ?? {};
-  const claims = (t: string): Record<string, any> => { try { const p = t.split('.')[1] ?? ''; return JSON.parse(Buffer.from(p + '='.repeat((4 - (p.length % 4)) % 4), 'base64url').toString('utf8')); } catch { return {}; } };
-  const account = tokens.account_id ?? claims(tokens.access_token ?? '')['https://api.openai.com/auth']?.chatgpt_account_id ?? '';
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const placeholder = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 10 * 365 * 86400, 'https://api.openai.com/auth': { chatgpt_account_id: account } })}.valve`;
-  // The home's auth store, and every profile's (a profile is its own Hermes home: the treasurer's runs on the same subscription).
-  const profiles = existsSync(resolve(home, 'profiles')) ? readdirSync(resolve(home, 'profiles')).map((n) => resolve(home, 'profiles', n)).filter((d) => statSync(d).isDirectory()) : [];
-  for (const dir of [home, ...profiles]) {
-    const authFile = resolve(dir, 'auth.json');
-    const auth = existsSync(authFile) ? JSON.parse(readFileSync(authFile, 'utf8')) as Record<string, any> : { version: 1, providers: {}, credential_pool: {} };
-    auth.providers = { ...(auth.providers ?? {}), 'openai-codex': { tokens: { access_token: placeholder, refresh_token: 'valve', id_token: placeholder, account_id: account }, last_refresh: new Date().toISOString() } };
-    writeFileSync(authFile, `${JSON.stringify(auth, null, 2)}\n`);
-    own(authFile);
-  }
-}
-if (user) {
-  // The whole point of --as: the agent's user must not be able to read a key.
-  const peek = Bun.spawnSync({ cmd: drop(['cat', resolve(secrets, 'agent.env')]), stdout: 'pipe', stderr: 'pipe' });
-  if (peek.exitCode === 0) { console.error(`start: ${resolve(secrets, 'agent.env')} is readable by ${user.name}; the secrets must belong to root alone`); process.exit(1); }
-}
-// The valve and the reporter run from this script's own directory (its node_modules, its vendored SDK): in a
-// container that is the image's copy, and the checkout only has to be the project.
+if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent.
-const env = { ...agentEnv(), ...(existsSync(codexFile) ? { HERMES_CODEX_BASE_URL: `http://127.0.0.1:${codexPort}/backend-api/codex` } : {}) };
+const env = agentEnv();
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
 say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}`);

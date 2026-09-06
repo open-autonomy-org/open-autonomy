@@ -5,7 +5,12 @@
 #   DISCORD_BOT_TOKEN / DISCORD_HOME_CHANNEL    — optional Discord delivery
 model:
   default: gpt-5.6-sol
-  provider: openai-codex # our own agent's model runs on the owner's Codex subscription, held by the valve; the platform key carries narration and pay
+  provider: codex-valve # our own agent's model runs on the owner's Codex subscription through the valve; the platform key carries narration and pay
+custom_providers:
+  - name: codex-valve
+    base_url: ${HERMES_CODEX_BASE_URL}
+    api_key: valve
+    api_mode: codex_responses
 
 terminal:
   backend: local
