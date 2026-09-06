@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.10: the container is the stated default for a real deployment; bare is for development and fast debugging. The workflows are the owner's: `CODEOWNERS` on `.github/` with code-owner review required on `main`, so a landing that touches a workflow waits for the owner while everything else lands unreviewed.
 - Kit 2.4.9: a conversation's shell starts in the checkout — a question in the channel is answered from the project's files, not the agent's home.
 - Kit 2.4.8: the desk's report is `[SILENT]` or one paragraph, never a harness marker, and its tool has one path.
 - Kit 2.4.7: the desk's quarter hour reads GitHub alone — the channel is answered as messages arrive — and a look is four commands, never a search of the home for messages; a doorless desk ends at once.

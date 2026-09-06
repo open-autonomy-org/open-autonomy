@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 // Start the agent. The same processes wherever it runs; only how this script is started differs:
-//   on your machine   `bun .open-autonomy/start.ts` — everything as you, no isolation, for development
-//   in a container    the image's entrypoint, as root with the secrets mounted for root alone and `--as <user>`:
-//                     the gateway and the reporter run as that user and can reach no key (container/README.md)
+//   in a container    the default for a real deployment: the image's entrypoint, as root with the secrets mounted for
+//                     root alone and `--as <user>`; the gateway and the reporter run as that user and can reach no
+//                     key (container/README.md)
+//   on your machine   `bun .open-autonomy/start.ts` — everything as you, no isolation: for development and fast
+//                     debugging, where the agent reaching its own keys is an accepted trade
 //
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //

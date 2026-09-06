@@ -22,8 +22,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   drive, never a gate.
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
   this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
-  `container/` is the kit's secure option (one image, one compose file; Docker or Podman) for a host where the
-  agent must not reach its keys; nothing on this Mac uses it.
+  `container/` is the kit's default for a real deployment (one image, one compose file; Docker or Podman): the
+  agent cannot reach its keys there. This Mac runs both agents bare for fast debugging, an accepted trade here.
 
 ## Working agreement
 
