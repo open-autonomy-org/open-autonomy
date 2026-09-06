@@ -261,14 +261,24 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/v1/catalog') {
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    const upstream = await fetch(`${gatewayBase(env)}/v1/models`, { headers: { authorization: `Bearer ${env.MODEL_GATEWAY_API_KEY ?? ''}` } }).catch(() => undefined);
-    if (!upstream?.ok) return error('upstream_unavailable', 502);
+    // The gateway pages its list (has_more, next_cursor); every page is read.
     type Listed = { id?: string; name?: string; model?: string } | string;
-    const body = await upstream.json().catch(() => ({})) as { data?: Listed[]; models?: Listed[] };
-    const listed: Listed[] = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
-    const ids = listed.map((m) => (typeof m === 'string' ? m : m.model ?? m.id ?? m.name)).filter((id): id is string => typeof id === 'string').sort();
-    // The gateway's own shape when it is neither: passed through, so the catalog is never silently empty.
-    return ids.length ? json({ object: 'list', data: ids.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: body });
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    let first: unknown;
+    for (let page = 0; page < 40; page++) {
+      const upstream = await fetch(`${gatewayBase(env)}/v1/models${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { authorization: `Bearer ${env.MODEL_GATEWAY_API_KEY ?? ''}` } }).catch(() => undefined);
+      if (!upstream?.ok) { if (page === 0) return error('upstream_unavailable', 502); break; }
+      const body = await upstream.json().catch(() => ({})) as { data?: Listed[]; models?: Listed[]; has_more?: boolean; next_cursor?: string };
+      if (page === 0) first = body;
+      const listed: Listed[] = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
+      for (const m of listed) { const id = typeof m === 'string' ? m : m.model ?? m.id ?? m.name; if (typeof id === 'string') ids.push(id); }
+      if (!body.has_more || !body.next_cursor || body.next_cursor === cursor) break;
+      cursor = body.next_cursor;
+    }
+    const unique = [...new Set(ids)].sort();
+    // The gateway's own shape when nothing was read from it: passed through, so the catalog is never silently empty.
+    return unique.length ? json({ object: 'list', data: unique.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: first });
   }
   return error('not_found', 404);
 }
