@@ -19,6 +19,11 @@ state_file: reporter-state.json
 # holds whatever a key was minted with. Empty: any model the gateway serves (`GET /v1/catalog` lists them).
 models: [zai/glm-5.3-flash]
 
+# The most the project's funds may spend on the platform's model rail in a day (UTC): a bound the platform holds at every
+# call, so a runaway stops at the owner's number. 0: no bound of the project's own beyond the platform's global rail.
+spend:
+  daily_usd_cents: 500
+
 # The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
 # bound is set. Every rail leaves a record on the public audit trail naming itself.
 rails:
