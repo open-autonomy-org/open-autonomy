@@ -653,6 +653,10 @@ export class LimitLedger implements DurableObject {
       spendItem = itemId(storageKey ? (await this.ctx.storage.get<SessionRecord>(storageKey))?.item_id : undefined);
     }
     const context = { rail, model, item: spendItem };
+    // The funding hard-stop stands above the envelopes: settled spend plus in-flight reservations may never exceed
+    // the balance the totals say, whatever the envelopes add up to (they can only drift by rounding or an overage).
+    const ceiling = this.balanceOf(account) - this.reservedFor(account);
+    if (amount > ceiling) return { ok: false, error: 'insufficient_funds', message: `This account has ${formatCents(Math.max(0, ceiling))} available and this ${rail} spend needs ${formatCents(amount)}.`, account, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: Math.max(0, ceiling), needed_usd_cents: amount };
     const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context)).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
     const allocations: ReservationAllocation[] = [];
     let remainder = amount;
@@ -717,6 +721,19 @@ export class LimitLedger implements DurableObject {
       envelope.balance_usd_cents = Number((envelope.balance_usd_cents - take).toFixed(6));
       left -= take;
       if (take > 0) drawn.push({ id: envelope.id, purpose: envelope.purpose, usd_cents: take });
+    }
+    // A call can cost more than it reserved (the reserve is an estimate, the charge is the gateway's truth). The
+    // overage is drawn from whatever still holds money, unrestricted first, so the envelopes never add up to more
+    // than the balance; the totals above already carry the full spend.
+    if (left > 0) {
+      for (const envelope of [...a.envelopes].filter((e) => e.balance_usd_cents > 0).sort((x, y) => specificity(x.purpose) - specificity(y.purpose))) {
+        const take = Math.min(left, envelope.balance_usd_cents);
+        if (take <= 0) continue;
+        envelope.balance_usd_cents = Number((envelope.balance_usd_cents - take).toFixed(6));
+        left -= take;
+        drawn.push({ id: envelope.id, purpose: envelope.purpose, usd_cents: take });
+        if (left <= 0) break;
+      }
     }
     recordUsage(a, { usd: spent, tokens: (event?.input_tokens ?? 0) + (event?.output_tokens ?? 0), model: event?.model });
     const rail: Rail = event?.rail ?? 'model';

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- The funding hard-stop stands above the envelopes: a reserve is refused when settled spend plus reservations would exceed the balance the totals say, whatever the envelopes add up to, and a call that cost more than it reserved draws the overage from whatever envelope still holds money.
 - **Kit 2.6.0: the guided setup.** `create-open-autonomy setup` reads a project's situation and recommends the doors that fit it — a gated production door, the agent's GitHub App by manifest flow, a Discord channel, the owner's subscription — does every step an API allows, and opens the exact page for the clicks only a person may make. A declined door leaves no trace: the template's schedule no longer presumes a Discord channel, the desk speaks of a channel only when the project has one, and the start script takes the channels from `channels.env` beside the keys.
 - **GitHub Sponsors funds the grants pool.** GitHub gives an org one listing, so a sponsorship cannot name a project; it now lands on the org's grants account and is given on to projects from there, and every project page but the pool's own says so on its button.
 - Kit 2.5.1: a worker never completes, reclaims, unblocks or archives a task — one completed its own from the shell and skipped the review lane; the handoff is the only way a task ends.
