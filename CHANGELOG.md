@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.4.2: the start script brings a clean checkout to origin/main before syncing the home from it, so a restart carries what landed since the agent's last task (a new skill, a job, the documents) instead of the commit its last worker left.
 - Kit 2.4.1: the check keeps the lockfile's workspace versions equal to each package's — `bun publish` writes the lockfile's version in place of `workspace:*`, so kit 2.4.0 on npm depended on SDK 2.3.3 and vendored a valve without the GitHub App; 2.4.1 carries SDK 2.4.0.
 - **Every project has a community desk.** The kit's `community` skill and `.open-autonomy/community.ts` (the lexicon's, now the kit's): every quarter hour the agent reads the repository's issues and discussions and its Discord channel, answers where it was asked, files what fits the constitution after the board's last open task, and declines the rest — every word a published session. The desk answers as the project's own GitHub App: `github-app.json` beside the keys (the app's id, its installation, the repository, its PEM) and the valve mints the installation token, serves the desk's routes on its fourth port (`--github-app`), and the start script points `GITHUB_API_URL` there with `GITHUB_TOKEN=valve`, so the key never enters the agent. SDK 2.4.0, kit 2.4.0.
 - Kit 2.3.12: a handoff names no reviewer (a profile the home lacks held a task in review for good); only a board run is filed under an item, so the PM's hourly pass no longer shows under whichever task it mentioned.
