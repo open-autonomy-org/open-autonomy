@@ -11,7 +11,8 @@ import type { KeyClaims, UsageEvent } from './types.js';
 // the gateway's reported cost. The balance is the hard-stop; a global daily rail bounds a runaway.
 //
 // Storage: the account tree and everything small lives in one `state` record; the audit trail, sessions and
-// updates are appended as their own keys (`call:`, `session:`, `update:`), never evicted.
+// updates are appended as their own keys (`call:`, `session:`, `update:`), never evicted. `sesscall:` and
+// `itemcall:` index each call under its session and explicit item while the call record itself remains stored once.
 
 const MAX_FLOWS = 200;
 const FEED_LIMIT = 24;
@@ -307,7 +308,7 @@ export interface SessionRecord {
   // Settled cents and metered calls attributed to this session (see attributeSpend).
   usd_cents: number;
   calls: number;
-  // Joined from the append-only call trail when a session is read; never stored twice.
+  // Joined through the session's durable call index when a session is read; never stored twice.
   receipts?: CallRecord[];
   updated_at: string;
 }
@@ -750,7 +751,11 @@ export class LimitLedger implements DurableObject {
     if (rail === 'model') Object.assign(record, { model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens });
     if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
     if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
-    await this.ctx.storage.put(`call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`, record);
+    const callKey = `call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`;
+    const writes: Record<string, CallRecord | string> = { [callKey]: record };
+    if (session) writes[this.sessionCallKey(reservation.account, session, callKey)] = callKey;
+    if (record.item) writes[this.itemCallKey(reservation.account, record.item, callKey)] = callKey;
+    await this.ctx.storage.put(writes);
     await this.save();
   }
 
@@ -773,6 +778,76 @@ export class LimitLedger implements DurableObject {
     const keys = [...page.keys()];
     const next = keys.length === n ? keys[keys.length - 1] : undefined;
     return { ok: true, account, calls_total: this.acct(account)?.calls_total ?? 0, calls: keys.map((k) => page.get(k) as CallRecord), ...(next ? { next } : {}) };
+  }
+
+  private sessionCallKey(account: string, session: string, callKey: string): string {
+    return `sesscall:${account}:${session}:${callKey.slice(`call:${account}:`.length)}`;
+  }
+
+  private itemCallKey(account: string, item: string, callKey: string): string {
+    return `itemcall:${account}:${item}:${callKey.slice(`call:${account}:`.length)}`;
+  }
+
+  private async putCallIndexes(writes: Record<string, string>): Promise<void> {
+    const entries = Object.entries(writes);
+    for (let i = 0; i < entries.length; i += 100) await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + 100)));
+  }
+
+  private async callsFromIndex(prefix: string): Promise<CallRecord[]> {
+    const calls: CallRecord[] = [];
+    let end: string | undefined;
+    while (true) {
+      const page = await this.ctx.storage.list<string>({ prefix, reverse: true, limit: 200, ...(end ? { end } : {}) });
+      const entries = [...page.entries()];
+      const records = await Promise.all(entries.map(([, callKey]) => this.ctx.storage.get<CallRecord>(callKey)));
+      calls.push(...records.filter((call): call is CallRecord => !!call));
+      if (entries.length < 200) return calls;
+      end = entries[entries.length - 1][0];
+    }
+  }
+
+  // Calls settled before this index existed are indexed on the first session read. The marker is written only
+  // after the complete account trail has been scanned, so a deploy or interrupted migration cannot hide calls.
+  private async callsForSessions(account: string, sessionKeys: string[]): Promise<Map<string, CallRecord[]>> {
+    const keys = [...new Set(sessionKeys)];
+    const result = new Map(keys.map((key) => [key, [] as CallRecord[]]));
+    const missing = (await Promise.all(keys.map(async (key) => ({ key, indexed: await this.ctx.storage.get<boolean>(`sesscallidx:${account}:${key}`) })))).filter(({ indexed }) => !indexed).map(({ key }) => key);
+    if (missing.length) {
+      const wanted = new Set(missing);
+      const prefix = `call:${account}:`;
+      let end: string | undefined;
+      while (true) {
+        const page = await this.ctx.storage.list<CallRecord>({ prefix, reverse: true, limit: 200, ...(end ? { end } : {}) });
+        const entries = [...page.entries()];
+        const writes: Record<string, string> = {};
+        for (const [callKey, call] of entries) if (call.session && wanted.has(call.session)) writes[this.sessionCallKey(account, call.session, callKey)] = callKey;
+        await this.putCallIndexes(writes);
+        if (entries.length < 200) break;
+        end = entries[entries.length - 1][0];
+      }
+      await this.ctx.storage.put(Object.fromEntries(missing.map((key) => [`sesscallidx:${account}:${key}`, true])));
+    }
+    await Promise.all(keys.map(async (key) => result.set(key, await this.callsFromIndex(`sesscall:${account}:${key}:`))));
+    return result;
+  }
+
+  private async callsForItem(account: string, item: string): Promise<CallRecord[]> {
+    const marker = `itemcallidx:${account}:${item}`;
+    if (!await this.ctx.storage.get<boolean>(marker)) {
+      const prefix = `call:${account}:`;
+      let end: string | undefined;
+      while (true) {
+        const page = await this.ctx.storage.list<CallRecord>({ prefix, reverse: true, limit: 200, ...(end ? { end } : {}) });
+        const entries = [...page.entries()];
+        const writes: Record<string, string> = {};
+        for (const [callKey, call] of entries) if (call.item === item) writes[this.itemCallKey(account, item, callKey)] = callKey;
+        await this.putCallIndexes(writes);
+        if (entries.length < 200) break;
+        end = entries[entries.length - 1][0];
+      }
+      await this.ctx.storage.put(marker, true);
+    }
+    return this.callsFromIndex(`itemcall:${account}:${item}:`);
   }
 
   // ---- the development stream ------------------------------------------------------------------------
@@ -842,15 +917,16 @@ export class LimitLedger implements DurableObject {
   private async listSessions(account: string, limit: number): Promise<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }> {
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 30;
     const page = await this.ctx.storage.list<SessionRecord>({ prefix: `session:${account}:`, reverse: true, limit: n });
-    const calls = (await this.listCalls(account, 200)).calls;
-    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: [...page.values()].map((s) => sessionSummary(s, calls.filter((c) => c.session === s.key))) };
+    const sessions = [...page.values()];
+    const calls = await this.callsForSessions(account, sessions.map((session) => session.key));
+    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: sessions.map((session) => sessionSummary(session, calls.get(session.key))) };
   }
 
   private async getSession(account: string, key: string): Promise<{ ok: boolean; error?: string; session?: SessionRecord }> {
     const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${key}`);
     const session = storageKey ? await this.ctx.storage.get<SessionRecord>(storageKey) : undefined;
     if (!session) return { ok: false, error: 'session_not_found' };
-    const receipts = (await this.listCalls(account, 200)).calls.filter((c) => c.session === key);
+    const receipts = (await this.callsForSessions(account, [key])).get(key) ?? [];
     return { ok: true, session: { ...session, ...(receipts.length ? { receipts } : {}) } };
   }
 
@@ -893,13 +969,15 @@ export class LimitLedger implements DurableObject {
     const item_id = itemId(item) ?? '';
     const pointers = await this.ctx.storage.list<string>({ prefix: `sessitem:${account}:${item_id}:`, reverse: true, limit: 100 });
     const records = await Promise.all([...pointers.values()].map((k) => this.ctx.storage.get<SessionRecord>(k)));
-    const calls = (await this.listCalls(account, 300)).calls;
-    const sessions = records.filter((s): s is SessionRecord => !!s).map((s) => sessionSummary(s, calls.filter((c) => c.session === s.key)));
+    const storedSessions = records.filter((s): s is SessionRecord => !!s);
+    const calls = await this.callsForSessions(account, storedSessions.map((session) => session.key));
+    const sessions = storedSessions.map((session) => sessionSummary(session, calls.get(session.key)));
     const updates = [...(await this.ctx.storage.list<UpdateRecord>({ prefix: `update:${account}:${item_id}:`, reverse: true, limit: 100 })).values()];
     const usd_cents = Number(sessions.reduce((sum, s) => sum + (s.usd_cents ?? 0), 0).toFixed(6));
     const keys = new Set(sessions.map((s) => s.key));
     // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
-    const purchases = calls.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session))));
+    const candidates = [[...calls.values()].flat(), await this.callsForItem(account, item_id)].flat();
+    const purchases = [...new Map(candidates.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session)))).map((c) => [c.request_id, c])).values()];
     const task = await this.ctx.storage.get<TaskRecord>(`task:${account}:${item_id}`);
     return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
   }
