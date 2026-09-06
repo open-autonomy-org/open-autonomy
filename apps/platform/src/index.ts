@@ -124,7 +124,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
     const [stream, road] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account)]);
-    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env), grantsAccount(env)));
+    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env), grantsAccount(env), sponsorAccount(env)));
   }
 
   // ---- admin: through the reviewed workflow only ----

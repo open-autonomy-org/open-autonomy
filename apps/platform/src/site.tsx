@@ -354,7 +354,7 @@ function FundRow({ f, now, grants }: { f: Flow; now: number; grants: string }) {
 // A tier says what the platform delivers for it: the patrons wall, and the runway the amount buys at the
 // project's own burn. Two doors, side by side, onto the same books: Polar (monthly or once, when the
 // platform has it) and GitHub Sponsors.
-function TierCard({ t, i, feat, owner, burn, account, polar }: { t: ProjectView['tiers'][number]; i: number; feat: boolean; owner: string; burn: number; account: string; polar: boolean }) {
+function TierCard({ t, i, feat, owner, burn, account, polar, sponsor }: { t: ProjectView['tiers'][number]; i: number; feat: boolean; owner: string; burn: number; account: string; polar: boolean; sponsor: string }) {
   const days = burn > 0 ? Math.round(t.usd_cents / burn) : null;
   return (
     <div class={`tier${feat ? ' feat' : ''}`}>
@@ -367,7 +367,9 @@ function TierCard({ t, i, feat, owner, burn, account, polar }: { t: ProjectView[
           <button class="btn block outline" type="submit" name="interval" value="once">{usd0(t.usd_cents)} once</button>
         </form>
       ) : null}
-      <a class={`btn block ${feat && !polar ? '' : 'outline'}`} href={`https://github.com/sponsors/${owner}`}><Icon name="github" /> Sponsor on GitHub</a>
+      {/* GitHub Sponsors is one listing per org: its money lands on the org's sponsor account (the grants pool) and is given on
+          to projects from there, so on every other project the button says so. */}
+      <a class={`btn block ${feat && !polar ? '' : 'outline'}`} href={`https://github.com/sponsors/${owner}`}><Icon name="github" /> {account === sponsor ? 'Sponsor on GitHub' : `Sponsor ${owner} on GitHub · grants reach projects`}</a>
     </div>
   );
 }
@@ -389,7 +391,7 @@ function FundingBounds({ bounds }: { bounds: ProjectView['bounds'] }) {
   );
 }
 
-function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string }) {
+function Project({ v, sessions, live, roadmap, revision, now, polar, grants, sponsor }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string; sponsor: string }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
   const enc = encodeURIComponent(v.account);
@@ -443,7 +445,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
           <div class="side">
             <div class="panel">
               <h3>Become a patron</h3>
-              {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} />)}
+              {v.tiers.map((t, i) => <TierCard t={t} i={i} feat={i === 1} owner={owner} burn={v.burn_per_day_usd_cents} account={v.account} polar={polar} sponsor={sponsor} />)}
             </div>
             <div class="panel">
               <h3>Give grant credits</h3>
@@ -471,8 +473,8 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants }: {
   );
 }
 
-export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants'): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} polar={polar} grants={grants} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
+export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants', sponsor = 'open-autonomy-org/grants'): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} sponsor={sponsor} polar={polar} grants={grants} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
 }
 
 // A project document in full: what it is, or everything shipped.
