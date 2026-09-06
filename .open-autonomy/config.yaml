@@ -19,7 +19,12 @@ state_file: reporter-state.json
 # holds whatever a key was minted with. Empty: any model the gateway serves (`GET /v1/catalog` lists them).
 models: [zai/glm-5.3-flash]
 
-# The most the project's funds may spend on the platform's model rail in a day (UTC): a bound the platform holds at every
-# call, so a runaway stops at the owner's number. 0: no bound of the project's own beyond the platform's global rail.
+# The limits the project's funds run under on the platform's model rail, each over its own rolling window, all held at
+# once, the call that would cross one refused with its name: the money (usd_cents), the pace (calls) or the volume
+# (tokens, in and out), for everything or for one model (`model:`). Windows: 1m…60m, 1h…24h, 1d…31d. The kit's
+# defaults: five dollars a day, sixty a month, and a pace no runaway loop keeps up.
 spend:
-  daily_usd_cents: 500
+  limits:
+    - { window: 1d, usd_cents: 500 }
+    - { window: 30d, usd_cents: 6000 }
+    - { window: 1m, calls: 60 }

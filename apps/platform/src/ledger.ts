@@ -1,4 +1,4 @@
-import { parseModelsBound, parseSpendBound } from '@open-autonomy/sdk/rails';
+import { parseModelsBound, parseSpendLimits, type SpendLimit } from '@open-autonomy/sdk/rails';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { ROADMAP_SCHEMA, ROADMAP_STATUSES, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';
@@ -48,6 +48,38 @@ interface LedgerState {
   keys: Record<string, KeyEntry>;
 }
 
+export type Tally = { u: number; c: number; t: number; m?: Record<string, [number, number, number]> };
+export interface Usage { minutes: Record<string, Tally>; hours: Record<string, Tally>; days: Record<string, Tally> }
+const emptyUsage = (): Usage => ({ minutes: {}, hours: {}, days: {} });
+const KEEP = { minutes: 60, hours: 24, days: 31 } as const;
+const bucketKey = (grain: keyof Usage, ms: number): string => (grain === 'minutes' ? String(Math.floor(ms / 60_000)) : grain === 'hours' ? String(Math.floor(ms / 3_600_000)) : new Date(ms).toISOString().slice(0, 10));
+function recordUsage(a: Account, add: { usd?: number; calls?: number; tokens?: number; model?: string }, now = Date.now()): void {
+  a.usage ??= emptyUsage();
+  for (const grain of ['minutes', 'hours', 'days'] as const) {
+    const key = bucketKey(grain, now);
+    const b = (a.usage[grain][key] ??= { u: 0, c: 0, t: 0 });
+    b.u += add.usd ?? 0; b.c += add.calls ?? 0; b.t += add.tokens ?? 0;
+    if (add.model) { const m = ((b.m ??= {})[add.model] ??= [0, 0, 0]); m[0] += add.usd ?? 0; m[1] += add.calls ?? 0; m[2] += add.tokens ?? 0; }
+    const keys = Object.keys(a.usage[grain]).sort();
+    while (keys.length > KEEP[grain]) delete a.usage[grain][keys.shift() as string];
+  }
+}
+// What was used over a limit's window: the newest buckets of the window's grain, the current one partial.
+function usedOver(a: Account | undefined, limit: SpendLimit, now = Date.now()): { u: number; c: number; t: number } {
+  const grain: keyof Usage = limit.window_seconds <= 3600 ? 'minutes' : limit.window_seconds <= 86400 ? 'hours' : 'days';
+  const size = grain === 'minutes' ? 60_000 : grain === 'hours' ? 3_600_000 : 86_400_000;
+  const n = Math.max(1, Math.round(limit.window_seconds * 1000 / size));
+  const sum = { u: 0, c: 0, t: 0 };
+  for (let i = 0; i < n; i++) {
+    const b = a?.usage?.[grain]?.[bucketKey(grain, now - i * size)];
+    if (!b) continue;
+    if (limit.model) { const m = b.m?.[limit.model]; if (m) { sum.u += m[0]; sum.c += m[1]; sum.t += m[2]; } }
+    else { sum.u += b.u; sum.c += b.c; sum.t += b.t; }
+  }
+  return sum;
+}
+const secondsToNextBucket = (limit: SpendLimit, now = Date.now()): number => { const size = limit.window_seconds <= 3600 ? 60_000 : limit.window_seconds <= 86400 ? 3_600_000 : 86_400_000; return Math.ceil((size - (now % size)) / 1000); };
+
 export interface Account {
   granted_in_usd_cents: number;
   granted_out_usd_cents: number;
@@ -64,7 +96,9 @@ export interface Account {
   polar_products?: Record<string, string>;
   // A funder's bonus credits (the org's match on what they bought): given only to projects they do not own.
   bonus_usd_cents?: number;
-  daily_spend: Record<string, number>;
+  // What the account's calls used, by the minute (the last hour), the hour (the last day) and the day (the last month):
+  // money, calls and tokens, and each model's share — what the project's spend limits are held against.
+  usage: Usage;
   sponsors: Sponsor[];
   sponsors_active: Record<string, Sponsor>;
   profile?: AccountProfile;
@@ -285,7 +319,7 @@ export class LimitLedger implements DurableObject {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const s = (k: string) => String(body[k] ?? '');
     switch (body.op) {
-      case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents)));
+      case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined));
@@ -536,7 +570,7 @@ export class LimitLedger implements DurableObject {
 
   // ---- the model rail: reserve, settle, release ------------------------------------------------------
 
-  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number): Promise<Record<string, unknown>> {
+  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
     if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid_amount' };
@@ -552,15 +586,17 @@ export class LimitLedger implements DurableObject {
     if (amount > cap - this.state.consumed_usd_cents - this.state.reserved_usd_cents) {
       return { ok: false, error: 'global_daily_spend_limit_reached', consumed_usd_cents: this.state.consumed_usd_cents, reserved_usd_cents: this.state.reserved_usd_cents, max_global_daily_usd_cents: cap };
     }
-    // The project's own daily bound, from its .open-autonomy/config.yaml (spend.daily_usd_cents): today's settled spend
-    // plus what its calls in flight hold may not exceed it.
-    const dailyBound = parseSpendBound(this.acct(account)?.profile?.config_yaml ?? '').daily_usd_cents;
-    if (dailyBound > 0) {
-      const today = this.acct(account)?.daily_spend?.[dayKey()] ?? 0;
-      if (amount > dailyBound - today - this.reservedFor(account)) {
-        return { ok: false, error: 'project_daily_bound_reached', account, daily_usd_cents: dailyBound, spent_today_usd_cents: today, reserved_usd_cents: this.reservedFor(account), needed_usd_cents: amount, how: "the project's .open-autonomy/config.yaml sets spend.daily_usd_cents; the bound resets at 00:00 UTC" };
-      }
+    // The project's own limits, from its .open-autonomy/config.yaml (spend.limits): each holds over its window, on the
+    // money (settled plus in flight plus this call), the calls (this one counted) and the tokens (this call's estimate).
+    for (const limit of parseSpendLimits(this.acct(account)?.profile?.config_yaml ?? '')) {
+      if (limit.model && limit.model !== model) continue;
+      const used = usedOver(this.acct(account), limit);
+      const refusal = (kind: 'usd_cents' | 'calls' | 'tokens', bound: number, current: number) => ({ ok: false, error: kind === 'usd_cents' ? 'spend_limit_reached' : 'rate_limit_reached', account, limit: { window: limit.window, [kind]: bound, ...(limit.model ? { model: limit.model } : {}) }, used: { usd_cents: used.u, calls: used.c, tokens: used.t }, needed: kind === 'usd_cents' ? amount : kind === 'calls' ? 1 : estimatedTokens, current, retry_after_seconds: secondsToNextBucket(limit), how: "the project's .open-autonomy/config.yaml sets spend.limits" });
+      if (limit.usd_cents !== undefined && used.u + this.reservedFor(account) + amount > limit.usd_cents) return refusal('usd_cents', limit.usd_cents, used.u + this.reservedFor(account));
+      if (limit.calls !== undefined && used.c + 1 > limit.calls) return refusal('calls', limit.calls, used.c);
+      if (limit.tokens !== undefined && used.t + estimatedTokens > limit.tokens) return refusal('tokens', limit.tokens, used.t);
     }
+    recordUsage(this.ensureAcct(account), { calls: 1, model: model || undefined });
     this.state.reserved_usd_cents += amount;
     this.state.reservations[requestId] = { amount, expires_at_ms: Date.now() + 10 * 60_000, account, kid };
     this.ensureAcct(account);
@@ -577,7 +613,7 @@ export class LimitLedger implements DurableObject {
     this.state.consumed_usd_cents += spent;
     const a = this.ensureAcct(reservation.account);
     a.consumed_usd_cents += spent;
-    recordDailySpend(a, spent);
+    recordUsage(a, { usd: spent, tokens: (event?.input_tokens ?? 0) + (event?.output_tokens ?? 0), model: event?.model });
     const rail: Rail = event?.rail ?? 'model';
     if (spent > 0) this.recordFlow({ kind: 'consume', to: reservation.account, amount_usd_cents: spent, rail });
     a.calls_total = (a.calls_total ?? 0) + 1;
@@ -873,7 +909,7 @@ export class LimitLedger implements DurableObject {
     const balance = grantedIn - grantedOut - consumed;
     const reserved = this.reservedFor(account);
     const funded = grantedIn > 0;
-    const daily = a ? dailySpendSeries(a.daily_spend) : [];
+    const daily = a ? dailySpendSeries(a.usage?.days ?? {}) : [];
     const est = estimateRunway(Math.max(0, balance), daily.slice(0, -1));
     return {
       account, funded, paused: funded && balance <= 0,
@@ -887,7 +923,7 @@ export class LimitLedger implements DurableObject {
       last_call_at: a?.last_call_ms ? new Date(a.last_call_ms).toISOString() : null,
       daily_spend_usd_cents: daily,
       // The owner's bounds on the model rail, from the repository's .open-autonomy/config.yaml: what the funds may buy, and how much a day.
-      bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), daily_usd_cents: parseSpendBound(a?.profile?.config_yaml ?? '').daily_usd_cents },
+      bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), limits: parseSpendLimits(a?.profile?.config_yaml ?? '').map((l) => { const used = usedOver(a, l); return { window: l.window, ...(l.usd_cents !== undefined ? { usd_cents: l.usd_cents } : {}), ...(l.calls !== undefined ? { calls: l.calls } : {}), ...(l.tokens !== undefined ? { tokens: l.tokens } : {}), ...(l.model ? { model: l.model } : {}), used: { usd_cents: used.u, calls: used.c, tokens: used.t } }; }) },
     };
   }
 
@@ -1033,7 +1069,11 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
     if (typeof a.bonus_usd_cents === 'number') acct.bonus_usd_cents = a.bonus_usd_cents;
     if (a.polar_products && typeof a.polar_products === 'object') acct.polar_products = Object.fromEntries(Object.entries(a.polar_products).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
-    acct.daily_spend = a.daily_spend && typeof a.daily_spend === 'object' ? a.daily_spend : {};
+    acct.usage = emptyUsage();
+    const u = (a as { usage?: Partial<Usage> }).usage;
+    for (const grain of ['minutes', 'hours', 'days'] as const) if (u?.[grain] && typeof u[grain] === 'object') acct.usage[grain] = u[grain] as Record<string, Tally>;
+    const old = (a as { daily_spend?: Record<string, number> }).daily_spend;
+    if (old && typeof old === 'object') for (const [day, usd] of Object.entries(old)) if (!acct.usage.days[day] && typeof usd === 'number') acct.usage.days[day] = { u: usd, c: 0, t: 0 };
     acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
     acct.sponsors_active = a.sponsors_active && typeof a.sponsors_active === 'object' ? a.sponsors_active : {};
     if (a.profile && typeof a.profile === 'object') { acct.profile = {}; for (const k of PROFILE_KEYS) if (typeof a.profile[k] === 'string') acct.profile[k] = a.profile[k]; }
@@ -1055,20 +1095,15 @@ function emptyState(): LedgerState {
   return { day_key: dayKey(), consumed_usd_cents: 0, reserved_usd_cents: 0, reservations: {}, accounts: {}, applied_keys: [], coupons: {}, flows: [], keys: {} };
 }
 function emptyAccount(): Account {
-  return { granted_in_usd_cents: 0, granted_out_usd_cents: 0, consumed_usd_cents: 0, daily_spend: {}, sponsors: [], sponsors_active: {} };
+  return { granted_in_usd_cents: 0, granted_out_usd_cents: 0, consumed_usd_cents: 0, usage: emptyUsage(), sponsors: [], sponsors_active: {} };
 }
 function upsertSponsor(list: Sponsor[], sponsor: Sponsor): void {
   const i = list.findIndex((s) => s.login === sponsor.login);
   if (i >= 0) list[i] = sponsor; else list.push(sponsor);
 }
-function recordDailySpend(a: Account, amount: number): void {
-  const today = dayKey();
-  a.daily_spend[today] = (a.daily_spend[today] ?? 0) + amount;
-  const days = Object.keys(a.daily_spend).sort();
-  while (days.length > 14) delete a.daily_spend[days.shift() as string];
-}
 // Daily spend (idle days as 0), oldest to today, over the trailing 14 days: the evidence for the runway estimate.
-function dailySpendSeries(daily: Record<string, number>): number[] {
+function dailySpendSeries(days: Record<string, Tally>): number[] {
+  const daily: Record<string, number> = Object.fromEntries(Object.entries(days).map(([d, t]) => [d, t.u]));
   const keys = Object.keys(daily).sort();
   if (!keys.length) return [];
   const today = dayKey();
@@ -1197,7 +1232,7 @@ export interface FundingSnapshot {
   calls_total: number;
   last_call_at: string | null;
   daily_spend_usd_cents: number[];
-  bounds: { models: string[]; daily_usd_cents: number };
+  bounds: { models: string[]; limits: Array<{ window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }> };
 }
 
 export interface DirectoryEntry {
@@ -1262,8 +1297,8 @@ export class LedgerClient {
     const res = await this.ns.get(this.ns.idFromName('global')).fetch('https://ledger.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op, ...args }) });
     return await res.json() as T;
   }
-  reserve(requestId: string, account: string, kid: string, amountUsdCents: number, dailyCapUsdCents: number) {
-    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number; daily_usd_cents?: number; spent_today_usd_cents?: number; how?: string }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents });
+  reserve(requestId: string, account: string, kid: string, amountUsdCents: number, dailyCapUsdCents: number, model = '', estimatedTokens = 0) {
+    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; balance_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number; limit?: Record<string, unknown>; used?: Record<string, number>; needed?: number; current?: number; retry_after_seconds?: number; how?: string }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents, model, estimated_tokens: estimatedTokens });
   }
   consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
   release(requestId: string) { return this.rpc<{ ok: true }>('release', { request_id: requestId }); }
