@@ -66,6 +66,10 @@ export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNames
     DEFAULT_FUNDING_ACCOUNT: 'acme/app',
     GITHUB_API_BASE: 'https://github.test',
     GITHUB_RAW_BASE: 'https://raw.test',
+    GITHUB_OAUTH_BASE: 'https://github.test',
+    GITHUB_OAUTH_CLIENT_ID: 'test-client',
+    GITHUB_OAUTH_CLIENT_SECRET: 'test-client-secret',
+    GIVE_SESSION_HMAC_SECRET: 'test-give-session-secret',
     STRIPE_API_BASE: 'https://stripe.test',
     STRIPE_SECRET_KEY: 'sk_test_fake',
     ISSUING_BILLING_ADDRESS_JSON: JSON.stringify({ line1: '1 Test Street', city: 'Testville', state: 'CA', postal_code: '00000', country: 'US' }),
@@ -125,6 +129,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response('{}', { status: 404 });
   }
   if (url.origin === 'https://github.test') {
+    if (url.pathname === '/login/oauth/access_token' && req.method === 'POST') return Response.json({ access_token: 'gho_test', token_type: 'bearer', scope: '' });
+    if (url.pathname === '/user') return Response.json({ login: 'octocat', id: 1 });
+    if (url.pathname === '/orgs/open-autonomy-org/memberships/octocat') return Response.json({ role: 'admin', state: 'active' });
     const repo = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)$/);
     if (repo) return github.repos[repo[1]] ? Response.json(github.repos[repo[1]]) : new Response('', { status: 404 });
     const ms = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/milestones$/);

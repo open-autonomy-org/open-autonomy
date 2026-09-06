@@ -1,11 +1,12 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
+import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.js';
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type Sponsor, type Tier } from './ledger.js';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderDocPage, renderExplore, renderFunder, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage } from './site.js';
+import { renderDocPage, renderExplore, renderFunder, renderGivePage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, type GivePageData } from './site.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -36,14 +37,15 @@ export default {
 
 const SVG = { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=300, s-maxage=300' };
 const NO_STORE = { 'cache-control': 'no-store' };
+const privateHtml = (body: string, status = 200): Response => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', ...NO_STORE } });
 const fundingAccount = (env: Env): string => env.DEFAULT_FUNDING_ACCOUNT || 'open-autonomy-org/open-autonomy';
 const sponsorAccount = (env: Env): string => env.DEFAULT_SPONSOR_ACCOUNT || fundingAccount(env);
 // A funder gives grant credits from their own books to a project: money in for the project, once per key.
-async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string, purpose?: unknown): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
+async function give(env: Env, from: string, to: unknown, usdCents: unknown, note: unknown, key?: string, purpose?: unknown, by?: string): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number; from_balance_usd_cents?: number }> {
   if (typeof to !== 'string' || !/^[^/\s@]+\/[^/\s]+$/.test(to) || typeof usdCents !== 'number' || !Number.isFinite(usdCents) || usdCents < 1) return { ok: false, error: 'invalid_request' };
   const ledger = new LedgerClient(env.LIMITS);
   if (!(await ledger.project(to)).found) return { ok: false, error: 'no_such_project' };
-  return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined, purpose);
+  return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined, purpose, by);
 }
 const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
@@ -60,6 +62,33 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
 
   // ---- the site ----
+  if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env); }
+  if (path === '/give/callback') { if (get()) return get()!; return finishGiveLogin(req, env); }
+  if (path === '/give/logout') { if (get()) return get()!; return endGiveLogin(req); }
+  if (path === '/give') {
+    const session = await giveSession(req, env);
+    if (!session) return req.method === 'GET' ? privateHtml(renderGivePage()) : privateHtml(renderGivePage(), 401);
+    let message: GivePageData['message'];
+    if (req.method === 'POST') {
+      const form = await req.formData();
+      const funder = `@${session.login}`;
+      const pool = grantsAccount(env);
+      const source = String(form.get('source') ?? '');
+      if (source !== funder && !(session.grants_admin && source === pool)) message = { ok: false, text: 'That source is not yours to give from.' };
+      else {
+        const attempt = String(form.get('key') ?? '');
+        if (!/^[0-9a-f-]{36}$/i.test(attempt)) message = { ok: false, text: 'This giving attempt is invalid. Reload the page and try again.' };
+        else {
+          const amount = Number(form.get('usd_cents'));
+          const result = await give(env, source, String(form.get('to') ?? ''), amount, String(form.get('note') ?? '').trim() || undefined, `give-page:${session.login}:${source}:${attempt}`, String(form.get('for') ?? 'unrestricted'), source === pool ? `@${session.login}` : undefined);
+          message = result.ok
+            ? { ok: true, text: `${source} granted $${(Math.floor(amount) / 100).toFixed(2)} to ${String(form.get('to'))}. It is on the project's books.` }
+            : { ok: false, text: result.error === 'insufficient_balance' ? `${source} holds fewer credits than that.` : `The gift was refused: ${result.error}.` };
+        }
+      }
+    } else if (req.method !== 'GET') return methodNotAllowed();
+    return privateHtml(renderGivePage(await givePageData(ledger, env, session, message)), message?.ok === false ? 400 : 200);
+  }
   if (path === '/') {
     if (get()) return get()!;
     const { entries } = await ledger.directory();
@@ -281,6 +310,23 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     return unique.length ? json({ object: 'list', data: unique.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: first });
   }
   return error('not_found', 404);
+}
+
+async function givePageData(ledger: LedgerClient, env: Env, session: GiveSession, message?: GivePageData['message']): Promise<GivePageData> {
+  const pool = grantsAccount(env);
+  const [directory, funder, poolView] = await Promise.all([
+    ledger.directory(),
+    ledger.funder(`@${session.login}`),
+    session.grants_admin ? ledger.funder(pool) : undefined,
+  ]);
+  return {
+    login: session.login,
+    funder,
+    projects: directory.entries.filter((entry) => entry.is_project && entry.listed && entry.account !== pool),
+    ...(poolView ? { grants: { account: pool, view: poolView } } : {}),
+    ...(message ? { message } : {}),
+    attempt: crypto.randomUUID(),
+  };
 }
 
 function redeemMessage(code?: string): string {

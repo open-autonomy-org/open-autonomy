@@ -15,6 +15,11 @@ const admin = api(platform, { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOK
 const pub = api(platform);
 mkdirSync(DATA, { recursive: true });
 
+// The deterministic OAuth user is an admin of the organization whose Sponsors money enters the grants pool.
+// This is the same membership lookup the page performs after login, through the twin's GitHub API.
+const membership = await gh.put('/orgs/open-autonomy-org/memberships/octocat', { role: 'admin' });
+if (membership.status !== 200) throw new Error(`github twin: seed grants admin → ${membership.status} ${membership.text.slice(0, 200)}`);
+
 // 1. The project under test: the cookbook, a repository of its own on the GitHub twin.
 const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME });
 if (![201, 422].includes(created.status)) throw new Error(`github twin: create repo → ${created.status} ${created.text.slice(0, 200)}`);
@@ -42,6 +47,10 @@ if (hello.status !== 200) throw new Error(`discord twin: seed channel → ${hell
 const minted = await admin.post(`/admin/accounts/${ENC}/mint`, { amount_usd_cents: 500, key: 'world-seed' });
 if (minted.status !== 200) throw new Error(`platform: mint → ${minted.status} ${minted.text.slice(0, 200)}`);
 console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${ENC}`)).body?.balance_usd_cents} cents`);
+const funderCredits = await admin.post('/admin/accounts/%40octocat/mint', { amount_usd_cents: 500, key: 'world-funder-credits' });
+if (funderCredits.status !== 200) throw new Error(`platform: funder credits → ${funderCredits.status} ${funderCredits.text.slice(0, 200)}`);
+const sponsorsPool = await admin.post('/admin/accounts/open-autonomy-org%2Fgrants/mint', { amount_usd_cents: 1000, key: 'world-sponsors-pool', sponsor: { login: 'world-sponsor' } });
+if (sponsorsPool.status !== 200) throw new Error(`platform: Sponsors grants pool → ${sponsorsPool.status} ${sponsorsPool.text.slice(0, 200)}`);
 
 // 4. The agent's key, the adopter way: challenge → claim file on main → mint.
 const challenge = await pub.get(`/v1/keys/challenge?account=${ENC}`);

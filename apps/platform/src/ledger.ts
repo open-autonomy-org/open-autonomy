@@ -152,6 +152,8 @@ export interface Flow {
   rail?: Rail;
   // A grant's word from the funder: what they believe in.
   note?: string;
+  // When an organization grants pool gives, the signed-in admin who passed it on.
+  by?: string;
   purpose?: EnvelopePurpose;
   envelope_id?: string;
   item?: string;
@@ -364,9 +366,9 @@ export class LimitLedger implements DurableObject {
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for));
-      case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for));
+      case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
-      case 'funder': return json(this.funderView(s('account')));
+      case 'funder': return json(await this.funderView(s('account')));
       case 'bonus_add': return json(await this.bonusAdd(s('account'), Number(body.amount_usd_cents)));
       case 'sponsor_upsert': return json(await this.sponsorUpsert(s('account'), body.sponsor as Sponsor));
       case 'sponsor_remove': return json(await this.sponsorRemove(s('account'), s('login')));
@@ -470,9 +472,11 @@ export class LimitLedger implements DurableObject {
     this.state.applied_keys = this.state.applied_keys.slice(-500);
     return false;
   }
-  private recordFlow(flow: Omit<Flow, 'ts'>): void {
-    this.state.flows.push({ ...flow, ts: new Date().toISOString() });
+  private recordFlow(flow: Omit<Flow, 'ts'>): Flow {
+    const recorded = { ...flow, ts: new Date().toISOString() };
+    this.state.flows.push(recorded);
     if (this.state.flows.length > MAX_FLOWS) this.state.flows = this.state.flows.slice(-MAX_FLOWS);
+    return recorded;
   }
 
   private async earmark(account: string, raw: unknown): Promise<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }> {
@@ -507,7 +511,7 @@ export class LimitLedger implements DurableObject {
   }
 
   // Money moves down the tree: conserves the total, refused if the source lacks the balance.
-  private async grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown): Promise<Record<string, unknown>> {
+  private async grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>> {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     const marked = await this.earmark(to, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
@@ -527,9 +531,11 @@ export class LimitLedger implements DurableObject {
     this.ensureAcct(from).granted_out_usd_cents += Math.floor(amount);
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(to, Math.floor(amount), marked.purpose, from, key);
-    this.recordFlow({ kind: 'grant', id: key ?? envelope.id, from, to, amount_usd_cents: Math.floor(amount), purpose: marked.purpose, envelope_id: envelope.id, ...(note ? { note: note.slice(0, 280) } : {}) });
+    const gift = this.recordFlow({ kind: 'grant', id: key ?? envelope.id, from, to, amount_usd_cents: Math.floor(amount), purpose: marked.purpose, envelope_id: envelope.id, ...(note ? { note: note.slice(0, 280) } : {}), ...(by ? { by } : {}) });
     if (from.startsWith('@') && to.split('/')[0].toLowerCase() !== from.slice(1).toLowerCase()) { const acct = this.ensureAcct(from); acct.bonus_usd_cents = Math.max(0, (acct.bonus_usd_cents ?? 0) - Math.floor(amount)); }
-    await this.save();
+    // The state feed is a quick trailing window; each gift also has one durable record so giver and
+    // organization-pool pages can show their complete flow history.
+    await this.ctx.storage.put({ state: this.state, [`gift:${gift.ts}:${crypto.randomUUID()}`]: gift });
     return { ok: true, from, to, amount_usd_cents: Math.floor(amount), from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
   }
 
@@ -1220,16 +1226,28 @@ export class LimitLedger implements DurableObject {
   }
 
   // A funder on the books: the credits they hold, what they were given, what they gave and to whom.
-  private funderView(account: string): FunderView {
+  private async funderView(account: string): Promise<FunderView> {
     const a = this.acct(account);
     const f = this.fundingSnapshot(account);
-    const flows = this.state.flows.filter((x) => x.to === account || x.from === account);
+    const durable: Flow[] = [];
+    let end: string | undefined;
+    while (true) {
+      const page = await this.ctx.storage.list<Flow>({ prefix: 'gift:', reverse: true, limit: 200, ...(end ? { end } : {}) });
+      const entries = [...page.entries()];
+      durable.push(...entries.map(([, gift]) => gift));
+      if (entries.length < 200) break;
+      end = entries.at(-1)![0];
+    }
+    const flows = [...durable, ...this.state.flows.filter((x) => x.kind === 'grant')]
+      .filter((x, index, all) => all.findIndex((candidate) => candidate.id === x.id && candidate.from === x.from && candidate.to === x.to) === index)
+      .filter((x) => x.to === account || x.from === account)
+      .sort((left, right) => right.ts.localeCompare(left.ts));
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
       credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
       ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
-      given: flows.filter((x) => x.kind === 'grant' && x.from === account).slice(-50).reverse(),
-      received: flows.filter((x) => x.to === account && x.kind !== 'consume').slice(-50).reverse(),
+      given: flows.filter((x) => x.from === account),
+      received: flows.filter((x) => x.to === account),
     };
   }
 
@@ -1596,8 +1614,8 @@ export class LedgerClient {
   mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown) {
     return this.rpc<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose });
   }
-  grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string, purpose?: unknown) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose });
+  grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string, purpose?: unknown, by?: string) {
+    return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
   }
   earmark(account: string, purpose?: unknown) { return this.rpc<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }>('earmark', { account, for: purpose }); }
   funder(account: string) { return this.rpc<FunderView>('funder', { account }); }

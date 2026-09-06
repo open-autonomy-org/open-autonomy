@@ -19,11 +19,16 @@ const vars: Record<string, string> = {
   AGENT_PROXY_HMAC_SECRET: process.env.AGENT_PROXY_HMAC_SECRET ?? 'world-hmac-secret',
   GITHUB_API_BASE: need('GITHUB_TWIN_URL'),
   GITHUB_RAW_BASE: 'http://127.0.0.1:9/raw', // dead on purpose: the docs sync falls back to the twin's contents API
+  GITHUB_OAUTH_BASE: need('GITHUB_TWIN_URL'),
+  GITHUB_OAUTH_CLIENT_ID: 'world-open-autonomy',
+  GITHUB_OAUTH_CLIENT_SECRET: 'world-oauth-secret',
+  GIVE_SESSION_HMAC_SECRET: 'world-give-session-secret',
   // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
   // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
   MODEL_PRICES_JSON: JSON.stringify({ [PREVIOUS_MODEL]: MODEL_PRICES[MODEL] }),
   DEFAULT_FUNDING_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
-  DEFAULT_SPONSOR_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
+  DEFAULT_SPONSOR_ACCOUNT: 'open-autonomy-org/grants',
+  GRANTS_ACCOUNT: 'open-autonomy-org/grants',
 };
 // The card rail's issuer is the Stripe twin. The platform's webhook endpoint is enrolled on it here, the
 // way an operator enrols one in the Stripe dashboard, and the twin's signing secret for it becomes the
