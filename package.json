@@ -30,6 +30,6 @@
     "@volter/twin-openai": "0.1.2",
     "@volter/twin-polar": "0.1.2",
     "@volter/twin-stripe": "0.1.2",
-    "@volter/twin-world": "0.1.3"
+    "@volter/twin-world": "0.1.4"
   }
 }

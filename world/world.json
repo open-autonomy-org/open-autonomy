@@ -1,12 +1,15 @@
 {
   "id": "open-autonomy",
-  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWIN:<vendor>} (that twin's CLI, from node_modules or a checkout), ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy.",
+  "description": "Open Autonomy's world: the platform built from this tree, metering against the model gateway (the openai twin playing the gateway's wire, scripted by the cookbook's scenario), the GitHub twin and the Discord twin, with the world playing GitHub Actions. The cookbook is the project under test, run as the kit runs it. Nothing in the world calls a real API. ${TWIN:<vendor>} (that twin's CLI, from node_modules or a checkout), ${WORLD_DIR}, ${SCENARIO} and ${COOKBOOK} are substituted by world/run.ts into an ignored generated copy. Nothing Hermes set on the process that runs the world enters it (stripEnv): the world's agent has a board and a home of its own, never the outer agent's.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
     "MODEL_GATEWAY_API_KEY": "world-gateway-key",
     "OPEN_AUTONOMY_MODEL": "zai/glm-5.3-flash"
   },
+  "stripEnv": [
+    "HERMES_*"
+  ],
   "services": [
     {
       "id": "gateway",
