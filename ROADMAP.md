@@ -1,47 +1,71 @@
 # open-autonomy roadmap
 
-Sourced working notes maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.
+Sourced planning memory maintained by the Hermes PM scrum. Completed work belongs in `CHANGELOG.md` and Git history; this file keeps only outstanding outcomes and the next release decision.
 
-## template-used-as-meant: The kit's template is used the way it is written
+## release-next: Publish the autonomy operating model and bring the platform forward
 
-Status: historical intention; reconcile with the live board and landed work.
+Status: fixed candidate ready for maintainer review; this is a proposal, not release authority.
+Dispatch: hold
+Release decision: request-review
+Target version: deploy-v2026.09.08.1; create-open-autonomy 2.8.1; @open-autonomy/sdk 2.4.1
+Target window: 2026-09-08 18:00–22:00 EDT
+Review by: 2026-09-08 12:00 EDT
+Candidate: 6e4a12ba6a0422066ef4e5ea8fb0f51763d64997
+Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; SDK 2.4.1. Real-money activation and the seven-day observation are excluded.
+Readiness: ready-for-review
+Readiness evidence: reviewed handoffs for `hermes:task/t_abe517c5`, `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`; `bun run check` passed in 4.2 seconds and dry-run tarballs contained SDK 2.4.1 (8 files) and kit 2.8.1 (48 files) in PM session `cron_79bdc4c063c4_20260907_002929`; exact source is the fixed [candidate](https://github.com/open-autonomy-org/open-autonomy/commit/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997).
+Rationale: these changes form one operating-model cut rather than a release per merge; main has accumulated beyond the latest platform candidate [`deploy-v2026.09.06.4`](https://github.com/open-autonomy-org/open-autonomy/tree/deploy-v2026.09.06.4) and the published kit 2.6.0, while the autonomy observation cannot begin until the new behavior is live.
+Version rationale: service tags use dated `deploy-v*` identifiers and the next unused September 8 sequence is `.1`; the kit manifest is 2.8.1 after the planning-model changes, and SDK 2.4.1 is the landed patch. Registry publication, tags and manifest bumps are evidence inputs, not authority to ship.
+
+Readiness criteria and release gates:
+- `bun run check` passes for the selected candidate and the package tarballs contain the intended 2.8.1/2.4.1 artifacts.
+- The review package names the exact candidate, versions, scope, risks and authorized tag commands.
+- A maintainer must still review the exact candidate and explicitly approve both human-cut tags and their production-environment runs.
+- The service deployment is verified separately from npm publication; neither is inferred from the other.
+
+Dependencies and risks:
+- The live `/healthz` response still does not name a commit, so production status for the latest deploy tag is not independently verifiable yet.
+- GitHub PR/review and workflow-run evidence is unavailable to this installation until its GitHub door is configured.
+- The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
+
+Sources: candidate [`6e4a12ba`](https://github.com/open-autonomy-org/open-autonomy/commit/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
+
+## give-auth-production: Activate and verify the signed-in giving page in production
+
+Status: implementation reviewed in the twin world; production configuration and verification are not evidenced.
 Dispatch: hold
 
-Source: [committed seed](hermes/kanban.seed.json), key `template-used-as-meant`. This is not evidence of current priority or completion.
-
-Existing hold: After the shape is simple (one start script, no Docker in the world). Release when the current cut has landed.
+Source: `hermes:task/t_abe517c5`, approved implementation `389ce3b1`, and the candidate's [`give-auth.ts`](https://github.com/open-autonomy-org/open-autonomy/blob/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997/apps/platform/src/give-auth.ts).
 
 Completion:
-- In the world, with the todo-cli cookbook, every part of the template is exercised and read back through the product's doors: the developer files a purchase and blocks with needs_input, the treasurer profile pays it on its own key and releases it with a receipt, the review lane checks the handoff against CONSTITUTION.md and CONTRIBUTING.md and its verdict names them, the PM's hour unsticks a transient block and leaves a needs_input block and a parked task alone, the reporter publishes the board, the sessions and the two documents to the page.
-- Anything the template says that the world shows is not happening is fixed in the template, never papered over in the cookbook.
+- A maintainer provisions the GitHub OAuth app and installs `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET` through a reviewed production authority path; no agent receives them.
+- On the deployed service, a funder signs in, sees credits, makes one idempotent earmarked gift, and the project's public books show the matching envelope.
 
-## community-cookbook: A second cookbook with a community gateway: Discord, GitHub issues and discussions, a GitHub Pages homepage
+Risk: the current `sync-secrets` workflow does not name these three secrets. No human implementation commitment is recorded, so this remains held rather than assigned.
 
-Status: historical intention; reconcile with the live board and landed work.
+## seven-day-autonomy: Run seven days with no human act but release review and shipping
+
+Status: owner-gated observation; its prerequisite implementations are reviewed, but current production and the start of the clock are not evidenced.
 Dispatch: hold
 
-Source: [committed seed](hermes/kanban.seed.json), key `community-cookbook`. This is not evidence of current priority or completion.
-
-Existing hold: After template-used-as-meant: the simple shape first, then the second, more comprehensive cookbook.
+Source: `hermes:task/t_f934d2a1`; prerequisite reviews `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`.
 
 Completion:
-- A cookbook whose agent takes work and questions from its community as well as its board: a Discord channel, the repository's issues and discussions; triage files board tasks, answers land where they were asked, and every conversation the agent has in public is a published session.
-- Its homepage is a GitHub Pages site the agent maintains from the repository, carrying the project's page widgets.
-- Proven only in the world, against twins of Discord and of GitHub's issues and discussions (the GitHub twin extended where it must be), with nothing in the cookbook calling a real API.
+- After live-versus-landed status, owner outreach and self-upgrade are live for this project and Hookline, the owner starts the clock.
+- Both projects then run for seven consecutive days in which the only human acts are cutting an approved tag and approving its run; every human block reaches the owner, every kit release is adopted by PM, and every landed change is requested rather than merely noticed.
+- A kit defect filed during the observation ends it and starts a new seven-day window after correction. Evidence is the published sessions, board history and release/deploy runs.
+
+Dependency: `release-next` must ship and be verified before the owner starts the observation.
 
 ## real-money-live: Real money flows on open-autonomy.org
 
-Status: historical intention; reconcile with the live board and landed work.
+Status: current owner-gated outcome; code paths are proven against twins, but no real transaction is evidenced.
 Dispatch: hold
 
-Source: [committed seed](hermes/kanban.seed.json), key `real-money-live`. This is not evidence of current priority or completion.
-
-Existing hold: Owner-gated: a Polar organization for Open Autonomy and the org's Stripe account with Issuing, their tokens and webhook secrets installed through the admin workflow. Release this task when they exist.
+Source: `hermes:task/t_33aac5e5`; the deferral from grant-credit v2 is recorded in commits [`8ad2a7fa`](https://github.com/open-autonomy-org/open-autonomy/commit/8ad2a7fa7c31782f16c57b445e168d29b33d70cd) and [`3075a32b`](https://github.com/open-autonomy-org/open-autonomy/commit/3075a32b952d4da0651dadb04c87089b9ca00c35).
 
 Completion:
-- Owner-gated (identity and a bank, not code): a Polar organization for Open Autonomy and the org's Stripe account with Issuing, their tokens and webhook secrets installed through the admin workflow's secret sync, the webhook endpoints enrolled; everything else is already proven against the twins.
-- One real patronage lands on this project's books through Polar, its payout reaches the org, the Issuing balance is funded from it, and this install's agent makes one real bounded purchase that shows on the audit trail.
+- The owner establishes a Polar organization and the org's live Stripe account with Issuing, installs the tokens and webhook secrets through the reviewed admin workflow, and enrolls the webhook endpoints.
+- One real patronage lands on this project's books through Polar, its payout reaches the org, the Issuing balance is funded from it, and this install's agent makes one real bounded purchase recorded on the public audit trail.
 
-## Questions and scrum notes
-
-No scrum has reconciled this import yet. Record decisions, human commitments, release review gates and evidence here.
+The owner has not committed to a date. Preserve this hold until the identity, bank and production evidence exist.

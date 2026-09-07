@@ -1,12 +1,18 @@
 # Changelog
 
-## Unreleased — roadmap scrum
-
-Hermes PM maintains sourced ROADMAP.md planning, reconciles outside contributions and accepted human commitments, and queues native kanban execution. Community intake is durable and independent of PM polling; release outcomes retain mandatory human review. Kit upgrades preserve existing plans and reconcile historical board seeds.
-
 ## Unreleased
+- **Kit 2.8.1: sourced scrum and release planning.** PM exhaustively reconciles paginated Git, sessions, community and board evidence into distilled `ROADMAP.md`/`CHANGELOG.md`, keeps bounded source gaps, plans a fixed candidate and version before requesting mandatory human release review, and withdraws stale proposals without treating them as complete.
+- **Kit 2.8.0: the roadmap becomes shared planning memory.** Notable intentions, dependencies and accepted commitments live in a sourced roadmap while native kanban remains fleet working memory; outside contributors need no handoff or planning edit for PM to discover their work.
+- Project communication now uses the project-owned `project-communications` skill, Hermes's native messaging and existing GitHub conversations instead of generated routing policy and a custom reminder hook. This repository records Discord `#general` as its agreed owner/release-review channel.
 - Kit 2.7.1: shipping requests follow main through board comments and refreshed owner issues without re-blocking a task; pending kit upgrades that change workflows create one owner-review request naming the pull request.
 - Kit 2.7.0: human blocks reach the owner through Discord or one assigned GitHub issue, with PM reminders and cleanup on release. The PM tracks landed work awaiting deployment, takes kit upgrades in an idle worktree, and requests a drained restart of the complete stack. SDK 2.4.1 lets the GitHub valve close the project's issues and lets the PM read public deployment status.
+- A signed-in `/give` page lets a GitHub user see grant credits and gifts, select a project and earmark, and make an idempotent gift; an org admin can pass Sponsors funds from the grants pool through the same books.
+- Project pages compare the commit reported by a configured live service with repository head, link the comparison, and distinguish up-to-date, ahead, divergent and unreachable states.
+
+## Released through deploy-v2026.09.06.4 and create-open-autonomy 2.6.0 — 2026-09-06
+
+Release evidence: [`deploy-v2026.09.06.4`](https://github.com/open-autonomy-org/open-autonomy/tree/deploy-v2026.09.06.4) and [`release-v2.6.0`](https://github.com/open-autonomy-org/open-autonomy/tree/release-v2.6.0). These sections record the latest verified tags; a tag is not post-release operational verification.
+
 - The funding hard-stop stands above the envelopes: a reserve is refused when settled spend plus reservations would exceed the balance the totals say, whatever the envelopes add up to, and a call that cost more than it reserved draws the overage from whatever envelope still holds money.
 - **Kit 2.6.0: the guided setup.** `create-open-autonomy setup` reads a project's situation and recommends the doors that fit it — a gated production door, the agent's GitHub App by manifest flow, a Discord channel, the owner's subscription — does every step an API allows, and opens the exact page for the clicks only a person may make. A declined door leaves no trace: the template's schedule no longer presumes a Discord channel, the desk speaks of a channel only when the project has one, and the start script takes the channels from `channels.env` beside the keys.
 - **GitHub Sponsors funds the grants pool.** GitHub gives an org one listing, so a sponsorship cannot name a project; it now lands on the org's grants account and is given on to projects from there, and every project page but the pool's own says so on its button.
