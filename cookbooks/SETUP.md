@@ -105,3 +105,11 @@ also cover origin/state rejection, overwrite refusal, repository/symlink destina
 of credentials naming a different project. These prove local handoff boundaries, not live provider
 authorization. The GitHub twin currently lacks the manifest conversion and repository installation
 lookup needed to prove the complete GitHub handoff; do not label that flow verified yet.
+
+A further replay put a rejecting commit hook in a disposable checkout. Owner-rule setup still reported
+prepared and wrote its completion marker despite that failed commit. The corrected flow stops at failed
+Git operations and waits for the intended CODEOWNERS file to land. Existing rulesets are preserved;
+the setup agent remains responsible for verifying effective human authority and review policy.
+The world then exercised staged-work refusal and a pending landing. After the failed hook was repaired,
+the world's normal landing workflow merged the owner-rules branch; setup then succeeded. An existing
+requirement to resolve review threads remained enabled across the rerun.
