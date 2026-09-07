@@ -53,6 +53,24 @@ const openUrl = (url: string, action: string): void => {
   spawnSync(opener, [url], { stdio: 'ignore' });
 };
 
+// owner: is runtime routing, written by setup into the project's own Hermes config (the kit never owns that file).
+function setOwner(dir: string, key: 'github' | 'discord', value: string): void {
+  const path = join(dir, 'hermes', 'config.yaml');
+  let text = readFileSync(path, 'utf8');
+  const values: Record<string, string> = {};
+  const inline = /^owner:\s*\{([^}]*)\}\s*$/m.exec(text);
+  const block = /^owner:\s*\n((?:  [^\n]*\n?)*)/m.exec(text);
+  if (inline) for (const part of inline[1].split(',')) { const [k, ...v] = part.split(':'); if (k?.trim() && v.length) values[k.trim()] = v.join(':').trim().replace(/^['"]|['"]$/g, ''); }
+  if (block) for (const line of block[1].split('\n')) { const m = /^  ([a-z-]+):\s*(.*?)\s*$/.exec(line); if (m) values[m[1]] = m[2].replace(/^['"]|['"]$/g, ''); }
+  values[key] = value;
+  const scalar = (v: string) => /^[A-Za-z0-9_.-]+$/.test(v) ? v : JSON.stringify(v);
+  const rendered = `owner:\n${Object.entries(values).sort().map(([k, v]) => `  ${k}: ${scalar(v)}`).join('\n')}\n`;
+  if (inline) text = text.slice(0, inline.index) + rendered.trimEnd() + text.slice(inline.index + inline[0].length);
+  else if (block) text = text.slice(0, block.index) + rendered + text.slice(block.index + block[0].length);
+  else text = `${text.trimEnd()}\n\n# The human the board reaches when a task needs an action only they can take.\n${rendered}`;
+  writeFileSync(path, text.endsWith('\n') ? text : `${text}\n`);
+}
+
 // ── The situation ────────────────────────────────────────────────────────────────────────────────────────────────
 export function readSituation(dir: string): Situation {
   const config = existsSync(join(dir, '.open-autonomy', 'config.yaml')) ? readFileSync(join(dir, '.open-autonomy', 'config.yaml'), 'utf8') : '';
@@ -260,7 +278,14 @@ function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
 const pending: Promise<void>[] = [];
 
 function stepDiscord(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'discord')) return;
+  if (done(st, 'discord')) {
+    const config = readFileSync(join(s.dir, 'hermes', 'config.yaml'), 'utf8');
+    if (/^owner:\s*\n(?:  .*\n)*  discord:\s*\S+/m.test(config) || /^owner:\s*\{[^}]*\bdiscord\s*:/m.test(config)) return;
+    const ownerId = process.env.DISCORD_OWNER_ID ?? prompt('Your Discord user id (User Settings → Advanced → Developer Mode, then right-click yourself → Copy User ID):')?.trim();
+    if (!ownerId || !/^\d+$/.test(ownerId)) throw new Error('Discord owner user id is required so a blocked task can address you in the project channel; set DISCORD_OWNER_ID or run setup again and paste Copy User ID');
+    setOwner(s.dir, 'discord', ownerId);
+    return;
+  }
   const file = join(opts.secrets, 'channels.env');
   say(`\nDiscord: no API creates a bot, so the portal opens; you make the application, turn on the three privileged intents under Bot, reset the token and paste it here. The bot is then invited to your server and makes its own #${s.project} channel.`);
   if (opts.plan) return;
@@ -288,9 +313,12 @@ function stepDiscord(s: Situation, opts: Opts, st: SetupState): void {
     channel = /"id":\s*"(\d+)"/.exec(made)?.[1];
   }
   if (!channel) throw new Error('could not find or make the channel; give the bot Manage Channels or make #' + s.project + ' yourself, then run setup again');
+  const ownerId = process.env.DISCORD_OWNER_ID ?? prompt('Your Discord user id (User Settings → Advanced → Developer Mode, then right-click yourself → Copy User ID):')?.trim();
+  if (!ownerId || !/^\d+$/.test(ownerId)) throw new Error('Discord owner user id is required so a blocked task can address you in the project channel; set DISCORD_OWNER_ID or run setup again and paste Copy User ID');
   mkdirSync(opts.secrets, { recursive: true, mode: 0o700 });
   writeFileSync(file, `DISCORD_BOT_TOKEN=${token}\nDISCORD_HOME_CHANNEL=${channel}\nDISCORD_ALLOWED_CHANNELS=${channel}\nDISCORD_FREE_RESPONSE_CHANNELS=${channel}\nDISCORD_ALLOWED_USERS=*\n`, { mode: 0o600 });
   setDeliver(s.dir, true);
+  setOwner(s.dir, 'discord', ownerId);
   mark(s.dir, st, 'discord', `#${s.project} (${channel}) → ${file}`);
 }
 
@@ -401,6 +429,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   }
   saveState(dir, st);
   stepGitHub(s, opts, st);
+  if (s.login) setOwner(s.dir, 'github', s.login);
   stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
   stepOwnerRules(s, opts, st);

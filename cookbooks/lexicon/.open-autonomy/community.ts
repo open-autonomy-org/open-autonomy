@@ -8,6 +8,8 @@
 //                                                                 # last look: NEW lines, then COMMUNITY_POLL_DONE
 //   bun .open-autonomy/community.ts comment <issue> <text…>       # a comment on an issue
 //   bun .open-autonomy/community.ts discuss <discussion> <text…>  # a comment on a discussion
+//   bun .open-autonomy/community.ts issue open <task> <title> <body> <assignee>
+//   bun .open-autonomy/community.ts issue close <issue>
 //   bun .open-autonomy/community.ts mark                          # the last look is now
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
@@ -38,6 +40,7 @@ async function graphql<T>(query: string, variables: Record<string, unknown>): Pr
   return out.data as T;
 }
 interface Discussion { id: string; number: number; title: string; body: string; createdAt: string | null; category: { name: string } | null; comments: { nodes: Array<{ id: string; body: string; createdAt: string | null }> } }
+interface Issue { number: number; title: string; body: string | null; state: string }
 const discussions = () => graphql<{ repository: { discussions: { nodes: Discussion[] } } }>(
   `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussions(first: 50) { nodes { id number title body createdAt category { name } comments(first: 50) { nodes { id body createdAt } } } } } }`,
   { owner, name },
@@ -49,7 +52,7 @@ const [command, ...rest] = process.argv.slice(2);
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if ((command === 'comment' || command === 'discuss') && doorless) {
+} else if ((command === 'comment' || command === 'discuss' || command === 'issue') && doorless) {
   console.error('community: no GitHub door (no GITHUB_TOKEN) — nothing can be posted on GitHub');
   process.exit(3);
 } else if (command === 'poll') {
@@ -76,10 +79,34 @@ if (command === 'poll' && doorless) {
   if (!d) throw new Error(`no discussion #${n}`);
   const out = await graphql<{ addDiscussionComment: { comment: { id: string } } }>(`mutation($discussionId: ID!, $body: String!) { addDiscussionComment(input: { discussionId: $discussionId, body: $body }) { comment { id } } }`, { discussionId: d.id, body: rest.slice(1).join(' ') });
   console.log(`replied on discussion #${n} (${out.addDiscussionComment.comment.id})`);
+} else if (command === 'issue' && rest[0] === 'open' && rest.length === 5) {
+  const [, task, title, body, assignee] = rest;
+  const marker = `<!-- open-autonomy-block:${task} -->`;
+  const all = await github<Issue[]>('GET', `/repos/${account}/issues?state=all&per_page=100`);
+  const existing = all.find((i) => !('pull_request' in i) && i.body?.includes(marker));
+  if (existing?.state === 'open') {
+    await github<Issue>('PATCH', `/repos/${account}/issues/${existing.number}`, { assignees: [assignee] });
+    console.log(`issue already open #${existing.number}`);
+  }
+  else if (existing) {
+    const reopened = await github<Issue>('PATCH', `/repos/${account}/issues/${existing.number}`, { state: 'open', title, body, assignees: [assignee] });
+    console.log(`reopened issue #${reopened.number}`);
+  }
+  else {
+    const opened = await github<Issue>('POST', `/repos/${account}/issues`, { title, body, assignees: [assignee] });
+    // GitHub accepts assignees on create; the second write also covers compatible
+    // GitHub doors that create first and apply assignment on the issue route.
+    await github<Issue>('PATCH', `/repos/${account}/issues/${opened.number}`, { assignees: [assignee] });
+    console.log(`opened issue #${opened.number}`);
+  }
+} else if (command === 'issue' && rest[0] === 'close' && rest.length === 2) {
+  const number = Number(rest[1]);
+  const closed = await github<Issue>('PATCH', `/repos/${account}/issues/${number}`, { state: 'closed' });
+  console.log(`closed issue #${closed.number}`);
 } else if (command === 'mark') {
   writeFileSync(cursorFile, `${JSON.stringify({ since: new Date().toISOString() })}\n`);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark');
+  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | issue open <task> <title> <body> <assignee> | issue close <issue> | mark');
   process.exit(2);
 }

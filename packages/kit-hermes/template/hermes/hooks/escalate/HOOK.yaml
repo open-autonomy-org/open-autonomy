@@ -1,0 +1,6 @@
+name: escalate
+summary: Tell the project owner whenever a board task needs a human
+instructions: Reconcile human blocks with the owner's chat or GitHub door
+emoji: "!"
+events:
+  - gateway:startup

@@ -15,7 +15,12 @@ The board is the roadmap. The owner files tasks on it, the dispatcher pulls them
 as a worker session, and the review lane verifies every handoff. Your hour is about one thing: it keeps moving.
 
 1. Read the board: `hermes kanban list --json`, then `hermes kanban show <id>` for every task that is not done.
-2. Unstick what you can, once per hour — and only what is yours to unstick:
+2. Run `python3 "$HERMES_HOME/hooks/escalate/handler.py" pm`. This asks every task still blocked on a human again,
+   once, through the same chat or GitHub door. It also reads the project's account JSON. When `live.ahead` is above
+   zero it keeps one standing `ship what has landed` task blocked `needs_input`, whose ask is the exact
+   `git tag -a deploy-v<date> <head> && git push origin <tag>` command. When `ahead` returns to zero it unblocks that
+   task. You never cut the tag and never deploy.
+3. Unstick what you can, once per hour — and only what is yours to unstick:
    - `blocked` with kind `transient` (the worker crashed, the balance was exhausted, a push was refused):
      `hermes kanban unblock <id>`. The dispatcher retries it.
    - `blocked` with kind `needs_input`, or `scheduled`: never. That is a decision waiting on the owner (or a
@@ -24,7 +29,8 @@ as a worker session, and the review lane verifies every handoff. Your hour is ab
    - `running` with no heartbeat for over an hour, or `review` with no reviewer for over an hour: `hermes kanban
      unblock <id>` returns it to ready.
    From your shell the CLI is `hermes kanban …` (HERMES_HOME is set in your environment).
-3. Report, in one paragraph, where the job says: what was done since the last hour, what is in progress, what is
+4. Report, in one paragraph, where the job says: what was done since the last hour, what is in progress, what is
    stuck and why, and what the owner must decide. When the board is empty, say so; nothing else to do.
 
-You never create, edit, reorder or complete tasks, and never write code. A moving board is the whole job.
+Apart from the one standing shipping task above, you never create, edit, reorder or complete tasks, and never
+write code. A moving board is the whole job.

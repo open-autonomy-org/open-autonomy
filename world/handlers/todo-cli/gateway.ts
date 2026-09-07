@@ -65,6 +65,9 @@ const handlers = [
   // Answers to a tool result come first: the text that triggered the call is still in the conversation.
   { id: 'worker-handed-off', on: { toolResultFor: 'kanban_request_review' }, respond: { text: 'Handed off to review: the agent branch is pushed, the landing workflow merges it when the checks pass.' } },
   { id: 'worker-stopped', on: { toolResultFor: 'kanban_block' }, respond: { text: 'Blocked, with the reason on the task.' } },
+  // A board notification wakes the agent in the owner's DM; it reads the card, then says the actionable ask in its own voice.
+  { id: 'owner-block-read', on: { userTextIncludes: 'blocked; needs attention', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'hermes kanban list --status blocked --json && for id in $(hermes kanban list --status blocked --json | sed -n \'s/^ *"id": *"\\([^"]*\\)".*/\\1/p\'); do hermes kanban show $id; done' } } } },
+  { id: 'owner-block-say', on: { userTextIncludes: 'automatic task-status notification', toolResultFor: 'terminal' }, respond: { text: 'I need the owner action printed on the blocked card. After taking it, run the exact `hermes kanban unblock <task id>` command printed there; that releases the worker.' } },
   // The developer, after filing its purchase request: block on it and stop.
   { id: 'worker-asked', on: { toolResultFor: 'kanban_create' }, respond: { toolCalls: { name: 'kanban_block', arguments: { reason: 'waiting on the treasurer: Purchase: domain todo-cli.example at Namecheap, at most $2.50', kind: 'needs_input' } } } },
   // The treasurer, after paying: complete its request with the receipt.
@@ -73,8 +76,9 @@ const handlers = [
   // The PM, hourly, as the pm skill says: read the board; release what is blocked `transient` and nothing else (a
   // `needs_input` block waits on the owner or the treasurer, a parked task on the owner); report. The pass after the
   // listing comes first, then the report after the pass, then the listing itself.
-  { id: 'pm-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal', anyTextIncludes: 'PM_PASS_DONE' }, respond: { text: 'PM: the board is moving. Released what was blocked transient (PM_UNSTUCK on the thread); left every needs_input block and parked task for the owner (PM_LEFT); nothing else is stuck.' } },
+  { id: 'pm-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal', anyTextIncludes: 'PM_PASS_DONE' }, respond: { text: 'PM: the board is moving. Asked every human-blocked task again through its owner door, released what was blocked transient, and left every needs_input block and parked task for the owner. The shipping reminder follows live.ahead; I did not tag or deploy.' } },
   { id: 'pm-unstick', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
+    `python3 "$HERMES_HOME/hooks/escalate/handler.py" pm || exit 1`,
     `for id in $(hermes kanban list --status blocked --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do`,
     `  if hermes kanban show $id 2>/dev/null | grep -q "'kind': 'transient'"; then hermes kanban unblock $id >/dev/null && echo "PM_""UNSTUCK $id (transient)"; else echo "PM_""LEFT $id (needs_input: the owner's or the treasurer's)"; fi; done`,
     `for id in $(hermes kanban list --status scheduled --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do echo "PM_""LEFT $id (parked: the owner's)"; done`,

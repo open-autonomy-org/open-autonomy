@@ -70,7 +70,11 @@ async function putMain(path: string, content: string, message: string): Promise<
   await git(WORK, '-c', 'user.name=owner', '-c', 'user.email=owner@example.com', 'commit', '-q', '-am', message);
   await git(WORK, 'push', '-q', 'origin', 'main');
 }
-const configYaml = (): string => readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8');
+const configYaml = (): string => {
+  const yaml = readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8').trimEnd();
+  const owner = JSON.parse(readFileSync(resolve(DATA, 'owner.json'), 'utf8')) as { github: string; discord: string };
+  return `${yaml}\n\nowner:\n  github: ${owner.github}\n  discord: ${owner.discord}\n`;
+};
 function previousConfig(): string {
   const yaml = configYaml();
   if (!yaml.includes(`default: ${MODEL}`)) throw new Error(`stack: the cookbook's hermes/config.yaml does not name ${MODEL} as its default model`);
