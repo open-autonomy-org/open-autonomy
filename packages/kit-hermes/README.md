@@ -94,6 +94,11 @@ permissions and guides the owner through GitHub's permission update and installa
 needed; a kit upgrade cannot grant those permissions. Read an actual PR's reviews/checks, workflow runs
 and release records through the installed door before declaring GitHub discovery ready.
 
+For Discord discovery, follow the native tool configuration in `project-communications`: chat and cron
+tool availability are separate from report delivery. The seed accepts native `enabled_toolsets` for new
+jobs; setup updates an existing job through native cron management and preserves its other settings.
+Verify a scheduled public-history read and the `discord.server_actions` restrictions before completion.
+
 Activation also verifies unattended operation: PM and community schedules, their actual delivery destination,
 and the host's existing restart supervisor (Docker restart policy or the chosen host service manager).
 Use native `hermes cron status`, `doctor`, `runs` and `incidents` to inspect failures and delivery, and
