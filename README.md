@@ -27,7 +27,8 @@ is funded by people who want the project to exist and metered on public books. F
 PM's hourly scrum reconciles contributions, conversations and fleet work into notable plans in `ROADMAP.md`
 and landed changes in `CHANGELOG.md`. Hermes kanban holds fleet execution. Contributors use ordinary commits,
 PRs and discussions; PM discovers them. PM also proposes release scope, version and a target window, then
-requests human review before shipping. Our agent communicates in Discord **#general** as **Open Autonomy**;
+requests human review before shipping. Our **Open Autonomy** bot coordinates publicly in Discord **#development**,
+with community conversation in **#general**, questions in **#help**, and project news in **#announcements**;
 the [project communication agreement](hermes/skills/project-communications/SKILL.md) guides its outreach.
 
 Three ways in:

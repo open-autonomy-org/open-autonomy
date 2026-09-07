@@ -289,7 +289,9 @@ function stepDiscord(s: Situation, opts: Opts, st: SetupState): void {
   }
   if (!channel) throw new Error('could not find or make the channel; give the bot Manage Channels or make #' + s.project + ' yourself, then run setup again');
   mkdirSync(opts.secrets, { recursive: true, mode: 0o700 });
-  writeFileSync(file, `DISCORD_BOT_TOKEN=${token}\nDISCORD_HOME_CHANNEL=${channel}\nDISCORD_ALLOWED_CHANNELS=${channel}\nDISCORD_FREE_RESPONSE_CHANNELS=${channel}\nDISCORD_ALLOWED_USERS=*\n`, { mode: 0o600 });
+  // The guild's @everyone role permits public participation without a user-wide DM grant.
+  writeFileSync(file, `DISCORD_BOT_TOKEN=${token}\nDISCORD_HOME_CHANNEL=${channel}\nDISCORD_ALLOWED_CHANNELS=${channel}\nDISCORD_FREE_RESPONSE_CHANNELS=${channel}\nDISCORD_ALLOWED_USERS=\nDISCORD_ALLOWED_ROLES=${guild}\n`, { mode: 0o600 });
+  say('  setup agent: remove the bot\'s temporary Manage Channels permission after arranging the public channels; verify confidential human spaces remain inaccessible.');
   setDeliver(s.dir, true);
   mark(s.dir, st, 'discord', `#${s.project} (${channel}) → ${file}`);
 }
@@ -383,7 +385,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(`${s.project} (${s.account}) — the situation:`);
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
-  say('  setup agent: agree with the owner how PM should contact people, including release review, and write those instructions in hermes/skills/project-communications/SKILL.md.');
+  say('  setup agent: agree public community, development and release-review spaces with the owner; record them in hermes/skills/project-communications/SKILL.md. Verify service permissions and native Hermes access settings keep confidential human spaces, DMs and private session history outside the publicly logged fleet.');
   say('\nThe core (no questions): the repository on GitHub, the deploy key, the platform keys, the owner\'s rules.');
   say('\nRecommended doors for this situation:');
   const recs = recommend(s);

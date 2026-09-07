@@ -1,7 +1,7 @@
 ---
 name: community
 description: Read and answer the project's community, preserve sourced input for the PM scrum, and acknowledge human commitments without assigning unsolicited work.
-version: 2.1.0
+version: 2.2.0
 metadata:
   hermes:
     tags: [open-autonomy, community, github, discord]
@@ -14,6 +14,13 @@ metadata:
 Answer people where they spoke. The project's plan lives in `ROADMAP.md`; the PM scrum reconciles input
 into that plan and queues fleet work. You don't create implementation tasks or promise that every request
 will be built. An older cron prompt saying "file what fits" means preserve the input for scrum.
+
+Load `project-communications` for the agreed public spaces and their purposes. Work only in that public
+context. Confidential human channels, DMs and private session history are outside the fleet's scope;
+do not retrieve them or forward them into PM's published runs. Humans can bring an appropriate public
+statement into the project. Help people find the relevant discussion and keep substantive topics in
+their existing threads. Server membership, permissions and moderation authority remain with the owner
+and moderators unless explicitly delegated.
 
 1. `bun .open-autonomy/community.ts poll` reads new and changed issues, PRs, comments and discussions.
    Read full content and its sources. No GitHub door means that source is unavailable; chat still works.

@@ -7,7 +7,7 @@
       "skills": [
         "pm"
       ],
-      "deliver": "discord"
+      "deliver": "discord:1546378402280382565"
     },
     {
       "name": "community",
@@ -16,7 +16,7 @@
       "skills": [
         "community"
       ],
-      "deliver": "discord"
+      "deliver": "discord:1546378402280382565"
     }
   ]
 }
