@@ -25,12 +25,15 @@ on 2026-09-07; the signed-in Discord server member list identifies this account 
 display name is only a label. The owner sets project direction and may review release proposals or
 authorize scoped delegation. No other human or role currently has delegated project or release authority.
 
-The owner's GitHub account ID and its link to this Discord identity have not yet been verified or recorded.
-`open-autonomy-org/open-autonomy` identifies the repository, not a human. Setup is incomplete for GitHub
-owner recognition: verify the human account's numeric ID and current login with authenticated API metadata,
-establish the cross-platform link from owner-authorized evidence, and record its source here. A helper's
-credentials or matching names cannot supply that link. Preserve established grants on setup reruns;
-verify actual release reviewers and the loaded agreement before reporting that this gap is resolved.
+The same owner's GitHub account is [yueranyuan](https://github.com/yueranyuan), numeric user ID `2255943`.
+Source: in the owner-led setup conversation on 2026-09-07, the owner answered "yes those are me" to the
+explicit question linking GitHub `yueranyuan` (`2255943`) and Discord `miamiviceroy` (`605505624226136074`).
+Authenticated GitHub `GET /user` independently returned that ID/login, and the repository's `production`
+environment names that same account as its required human reviewer. These checks establish the account
+metadata and actual review gate; the owner's confirmation establishes the cross-platform link.
+`open-autonomy-org/open-autonomy` identifies the repository, not a human. Preserve this sourced binding
+on setup reruns and recheck the actual release gate before shipping. This identity confirmation is not
+approval of any release candidate, and does not establish the agent's separate GitHub App connection.
 
 Before accepting direction or approval, verify the original author ID with native Discord `fetch_messages`
 and retain the exact message link. If future owner-authorized delegation uses roles, record the guild/role
