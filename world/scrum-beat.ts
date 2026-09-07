@@ -62,8 +62,12 @@ if (special && !draft.includes('scrum rehearsal')) {
   for (const item of seed.tasks.filter((t: { held?: string }) => !t.held)) {
     const re = new RegExp(`(## ${item.key}: [\\s\\S]*?Dispatch:) hold`);
     draft = draft.replace(re, '$1 fleet');
+    const status = new RegExp(`(## ${item.key}: [\\s\\S]*?Status:) historical intention; reconcile with the live board and landed work\\.`);
+    draft = draft.replace(status, '$1 planned');
   }
 }
+// This migration placeholder is stale after reconciliation, not shared knowledge to retain.
+draft = draft.replace(/\n## Questions and scrum notes\n[\s\S]*?(?=\n## |$)/, '\n');
 const termRequest = issues.find((i) => i.title?.includes('request: add the term'));
 if (!special && termRequest && !draft.includes('## community-twin:')) {
   draft += `\n## community-twin: add the term "twin" to the lexicon\n\nStatus: planned\nDispatch: fleet\n\nSource: [community request](${termRequest.html_url}). ${termRequest.body}\nCompletion: list the sourced definition and render it on the homepage.\n`;
@@ -82,7 +86,7 @@ if (outsideLanded) {
   const changelogFile = resolve(plan, 'CHANGELOG.md');
   let changelog = readFileSync(changelogFile, 'utf8');
   if (!changelog.includes(`commit/${commit}`)) {
-    const entry = `- Outside contributor supplied release notes; release review remains pending. [Landed change](https://github.com/cookbook/todo-cli/commit/${commit}).`;
+    const entry = `- Outside contributor supplied release notes. [Landed change](https://github.com/cookbook/todo-cli/commit/${commit}).`;
     if (!changelog.includes('## Unreleased')) changelog += '\n## Unreleased\n';
     changelog = changelog.replace('## Unreleased', `## Unreleased\n\n${entry}`);
     writeFileSync(changelogFile, changelog);
