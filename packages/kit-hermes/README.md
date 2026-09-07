@@ -63,13 +63,19 @@ release review in the public development channel; follow up in the same thread.â
 When scheduled PM reports are the agreed contact path, the setup agent sets their native Hermes cron
 delivery accordingly; the report must contain the actual human request.
 
-Setup also records verified owner/delegate account IDs and the scope and source of each grant in that
-skill. Discord role grants use guild/role IDs and current membership; moderation does not imply project
-direction or release authority. Use Hermes's native `discord.channel_skill_bindings` to load the agreement
-in project channels and `discord.group_allow_admin_from` for operator user IDs, with
-`group_user_allowed_commands: []`. An empty admin list disables command gating. This gates administrative
-slash commands; project decisions still require the skill's source/authority checks and releases require
-their actual human gate. No additional people database or permission plugin is needed.
+Setup records verified owner/delegate account IDs, authority scopes and their sources in the shared
+`team` section of `.open-autonomy/config.yaml`. The SDK's `parseTeamConfig` and `replaceTeamConfig`
+helpers read and update that JSON-valued YAML section without changing the rest of the file. After the
+first owner is established, the project's `/p/:account/team` page displays and edits the roster through
+owner-authorized draft GitHub PRs. GitHub IDs are resolved from usernames; Discord account links require
+explicit owner confirmation. No identity or role is inferred from a matching name. The skill keeps the
+communication policy, not a second roster. Kit upgrades preserve both project-owned records.
+
+Use Hermes's native `discord.channel_skill_bindings` to load the agreement in project channels and
+`discord.group_allow_admin_from` for verified operator IDs, with `group_user_allowed_commands: []`.
+An empty admin list disables command gating. Roster changes do not themselves change native permissions
+or release protection; the setup agent reconciles those controls under the owner's policy. Moderation,
+project direction and release review remain separate scopes, and release approval is candidate-specific.
 
 The setup sequence is part of the agent's work, not an optional handoff to the user:
 

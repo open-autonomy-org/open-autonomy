@@ -139,3 +139,33 @@ fresh request. The target
 window is intentionally separate from these decisions; there is no clock-triggered release mechanism.
 
 A renewed ready decision after deferral starts a new native review card; the withdrawn card stays held, preserving its history and dependencies.
+
+## Shared team roster rehearsal
+
+With an idle todo-cli world running, the manual `team-operator.ts` beats seed a confirmed human through
+GitHub's Contents API, submit the platform form, exchange a synthetic OAuth code, inspect the resulting
+draft PR and merge only as the world human. No real account, token or approval is used.
+
+```bash
+bun world/run.ts env -- bun world/team-operator.ts seed
+bun world/run.ts env -- bun world/team-operator.ts propose
+bun world/run.ts env -- bun world/team-operator.ts inspect  # main still has the original roster
+bun world/run.ts env -- bun world/team-operator.ts stale    # stale form refuses; no additional PR
+bun world/run.ts env -- bun world/team-operator.ts merge    # retry after the world's CI finishes
+bun world/run.ts env -- bun world/team-operator.ts inspect  # merged roster is now visible
+bun world/run.ts env -- bun world/team-operator.ts scrum    # needs WORLD_HERMES_BIN; native PM preparation
+bun world/run.ts env -- bun world/team-operator.ts non-owner
+bun world/run.ts env -- bun world/team-operator.ts propose  # revoked owner/moderator refuses
+bun world/run.ts env -- bun world/team-operator.ts scrum    # resumed snapshot, current authority
+```
+
+Inspect between beats. The twin has no GraphQL mark-ready mutation, so the merge beat closes the draft
+and opens an ordinary review PR for the identical branch through GitHub's real REST API. CI and merge
+remain real. Its synthetic OAuth exchange does not prove GitHub consent UI or real token permissions.
+
+Older GitHub twins keep REST file edits outside their Git object store, causing branch edits to shadow
+main and pinned revisions. That is a twin coverage gap, not a reason to change the app or fake a handler
+success. The retained [GitHub Contents fidelity patch](patches/github-contents.patch), against twin commit
+32b1b4ea, repairs Git-backed file writes and reads and reads current Git refs after merges. Apply it in an
+isolated twin checkout and select that checkout with WORLD_GITHUB_CLI before bringing the world up.
+The app under test remains unchanged. This patch is a rehearsal prerequisite until the twin incorporates it.

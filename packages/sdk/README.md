@@ -135,3 +135,28 @@ open-autonomy-valve --key ~/.config/open-autonomy/agent.env:8787 --key ~/.config
 ```
 
 One port per key file; each file re-read when it changes; `/healthz` on each port names the key's expiry.
+
+## Team roster
+
+The project's `team` section in `.open-autonomy/config.yaml` is the shared public roster.
+`parseTeamConfig(configText)` returns `{ members }`; `replaceTeamConfig(configText, team)` validates and
+updates only that section, preserving other configuration. Import them from `@open-autonomy/sdk/team`
+or the kit's vendored `.open-autonomy/sdk/team.ts`. The section contains a JSON value (valid YAML),
+written by these helpers; do not convert it into YAML block mappings.
+
+Each member has `id` (a stable record key), `name`, optional `github: { id, login }` and
+`discord: { id, name }`, `scopes` and `source`. Platform IDs are decimal strings. Scopes are `owner`,
+`direction`, `moderation` and `release-review`; an empty list is a contributor. Every record needs an
+account and a source for the identity links and authority. A populated roster needs an owner with a
+verified GitHub account. Empty seeded rosters grant nobody authority.
+
+The platform reads this owner configuration from the repository, just as it reads funding bounds; a
+narration key cannot replace it. `/p/:account/team` resolves it through this SDK model. Owners can edit
+one member at a time, sign in with GitHub and create a draft PR. The short-lived OAuth flow uses the
+human's token only during the callback, never stores it, and never merges or writes the default branch.
+GitHub asks for `public_repo` access for this action. The giving page retains its existing sign-in flow.
+Current owner IDs and the configuration revision are rechecked before any write. Failed or abandoned
+proposals leave the committed roster unchanged; inspect a partially created branch with the team prefix before retrying.
+
+Authority changes need owner-authorized provenance even after merging. Native Discord access and GitHub
+release protection are reconciled separately by the setup agent; a roster edit is not release approval.

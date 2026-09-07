@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.7.0
+version: 4.8.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -39,6 +39,16 @@ including through session search or tool output. A chat excluded from direct pub
 when another run reads it. If this home contains confidential history, have the owner isolate it before
 session discovery; continue with public Git and community sources. Intentional private exclusions are
 boundaries, not coverage gaps to overcome. Humans supply an appropriate public decision when needed.
+
+The shared human roster is `team` in the committed `.open-autonomy/config.yaml`, also shown by the
+platform's Team page. `prepare` supplies the current main roster and its commit even when resuming an
+older planning snapshot. Read it each scrum; never grant authority from a draft PR, local edits, a cached
+skill roster or the proposed replacement roster. An empty roster or `team.gap` leaves identity-dependent
+decisions unresolved. Resolve original author IDs against these records and preserve the decision source.
+Only owner-authorized roster changes may add or widen authority. Moderation, direction and release review
+are separate scopes; human implementation still needs a volunteer's commitment. After a roster change,
+reconcile agreed native operator IDs and actual review gates through the existing setup process; do not
+claim a data edit changed Discord permissions or GitHub protection. Release approval stays candidate-specific.
 
 1. Run `bun .open-autonomy/scrum.ts prepare`. It fetches main, creates/resumes an isolated planning
    worktree, pins an input snapshot and lists the board, changed main history, native Hermes session

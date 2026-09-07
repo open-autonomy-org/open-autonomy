@@ -3,6 +3,10 @@
 account: __ACCOUNT__
 platform: https://open-autonomy.org
 
+# Shared human roster, managed on the project's Team page after agent-led setup establishes the owner.
+# JSON is a YAML value; keep this section in the SDK Team editor's JSON format. IDs are strings.
+team: {"members": []}
+
 # What the reporter publishes. Work sessions (the scheduled runs, the funded work) publish by default; the
 # private exceptions are named here. Anything listed under `private` is never sent.
 publish:

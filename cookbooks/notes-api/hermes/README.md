@@ -24,7 +24,9 @@ reconciled and pruned; new optional pointers use the native notepad. Separate PM
 advance only after their inputs are accounted for. The existing SDK reporter publishes real fleet activity.
 
 The setup agent writes the owner's communication agreement in `skills/project-communications/SKILL.md`,
-a project-owned skill that kit upgrades preserve. PM consults it and uses native Hermes messaging or the
+a project-owned skill that kit upgrades preserve. Verified people and their scoped authority live once
+in `team` in `.open-autonomy/config.yaml`, managed through the project's Team page after setup.
+Scrum preparation reads the latest committed roster. PM consults the communication skill and uses native Hermes messaging or the
 existing GitHub tools, recording the conversation on the task and using judgment about follow-up.
 There is no routing plugin, required reminder interval or destination selected from credentials.
 Volunteer contributions use their accepted scope and agreed follow-up instead.

@@ -17,29 +17,41 @@ not project ownership. Establish who the owner is from the owner's setup instruc
 authority; a helper's login, organization name, bot account or server-owner badge alone does not establish
 project ownership. Resolve ambiguity with the owner rather than guessing.
 
-Record the owner's verified accounts together as the same person only with evidence for that link from
+Read the shared `team` roster in the committed `.open-autonomy/config.yaml` before resolving people.
+Use the fetched default branch, never a proposed roster or local edits, for current authority. The platform
+Team page edits this same record through an owner-authorized draft PR; only merged changes take effect.
+
+During setup, record the owner's verified accounts together in that roster only with evidence for their link from
 the owner-led setup or an already verified owner account. Include platform IDs, readable names, authority
 scope and the verification source. Check GitHub and Discord separately; one does not establish the other.
 Explicitly note a declined/deferred platform or an unresolved identity. A required identity gap means setup
-is incomplete for that avenue; do not claim full setup or grant authority through it. No new account-linking
-service or roster file is needed. On setup reruns, preserve existing grants and resolve changes with the owner.
+is incomplete for that avenue; do not claim full setup or grant authority through it. Do not duplicate
+people or IDs in this skill. On setup reruns, preserve existing records and resolve changes with the owner.
+Use the vendored SDK `parseTeamConfig` / `replaceTeamConfig` helpers to preserve other configuration.
+An empty roster grants nobody authority; establish its first owner from the existing repository authority
+and owner-led setup, never merely from the helper's authenticated account. Preserve the owner's repository review policy. Verify the source of each authority grant: a merged
+agent-authored assertion alone does not establish human authorization.
 
 Before activation, verify that the owner is recognized on each enabled avenue, an ordinary member is not
 recognized as the owner, and the actual release reviewers match the agreement. Use the world for message
 rehearsals; do not send live test messages without authorization. Land the agreement and native settings,
 start/reload Hermes through the existing lifecycle, and verify what it loaded before reporting completion.
 
-Record verified platform account IDs for the owner and any delegates, with the scope of each delegation
-(moderation, project direction or release review) and its owner-authorized source. For Discord roles,
-record the guild and role IDs; a role name or moderation permission alone grants no project authority.
+Each roster member has a stable record ID, display name, verified GitHub/Discord account IDs, authority
+scopes (`owner`, `direction`, `moderation`, `release-review`) and an owner-authorized source. Owners may
+set direction and delegate; moderation alone grants no direction or release authority. Contributor
+records have no authority scopes. Discord roles remain native participation/moderation settings; project
+decision authority is granted to explicitly recorded people. Do not infer authority from role names.
 Do not infer cross-platform identities from matching names. No recorded delegation means no delegated authority.
 
 Before treating a message as direction or approval, verify its original platform author ID. Use Hermes's
-native Discord `fetch_messages`; for delegated roles, check current `member_info` against the recorded
-guild/role IDs (`list_roles` identifies roles). Names, mentions, quotes, bots and forwarded claims are not
+native Discord `fetch_messages` and match the original author to the committed roster. Names, mentions, quotes, bots and forwarded claims are not
 identity evidence. Recheck current authority before acting; missing provenance or lookup access leaves the
 decision unresolved while ordinary discussion continues. Preserve the exact source with the decision.
-Only the owner can authorize changes to this authority agreement; PM may reconcile evidence, not promote people.
+Only a current owner can authorize roster or authority-policy changes; PM may reconcile evidence, not
+promote people. Recheck current main before sensitive decisions so revocations take effect. On roster
+changes, reconcile agreed native operator IDs and actual human review gates using the setup process;
+the roster editor does not itself change Discord permissions or GitHub protection.
 
 During setup, use native `discord.channel_skill_bindings` in `hermes/config.yaml` to load this skill in
 the agreed channels (threads inherit their parent's binding). Set `discord.group_allow_admin_from` to

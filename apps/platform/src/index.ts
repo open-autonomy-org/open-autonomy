@@ -6,7 +6,8 @@ import { LedgerClient, LimitLedger, type AccountProfile, type Moderation, type S
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderDocPage, renderExplore, renderFunder, renderGivePage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, type GivePageData } from './site.js';
+import { renderDocPage, renderExplore, renderFunder, renderGivePage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, renderTeamPage, type GivePageData } from './site.js';
+import { readTeamEdit, readTeamFile, validTeamAccount } from './team.js';
 import { handleSponsorsWebhook } from './sponsors.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -96,6 +97,23 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     return html(renderExplore(entries, grantsAccount(env)));
   }
   let m: RegExpMatchArray | null;
+  if ((m = path.match(/^\/p\/(.+)\/team$/))) {
+    const account = dec(m[1]);
+    if (!validTeamAccount(account)) return error('invalid_account', 400);
+    const view = await ledger.project(account);
+    if (!view.found) return privateHtml(renderMessage(account, false, 'No such project', 'This project is not listed.'), 404);
+    if (req.method === 'POST') {
+      if (req.headers.get('origin') !== url.origin) return error('invalid_origin', 403);
+      if (Number(req.headers.get('content-length')) > 16_000) return error('form_too_large', 413);
+      try { return await beginGiveLogin(req, env, readTeamEdit(account, await req.formData())); }
+      catch (e) { return privateHtml(renderMessage(account, false, 'Team change not started', (e as Error).message), 400); }
+    }
+    if (get()) return get()!;
+    try {
+      const file = await readTeamFile(env, account);
+      return privateHtml(renderTeamPage(account, file, url.searchParams.get('edit') ?? undefined, undefined, Boolean(env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET && env.GIVE_SESSION_HMAC_SECRET)));
+    } catch (e) { return privateHtml(renderTeamPage(account, undefined, undefined, (e as Error).message), 503); }
+  }
   // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
   if ((m = path.match(/^\/p\/(.+)\/give$/))) {
     if (req.method !== 'POST') return methodNotAllowed();

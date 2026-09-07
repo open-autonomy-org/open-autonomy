@@ -38,3 +38,6 @@ spend:
     - { window: 1d, usd_cents: 500 }
     - { window: 30d, usd_cents: 6000 }
     - { window: 1m, calls: 60 }
+
+# Shared roster: the setup agent establishes the first owner; later changes use the Team page.
+team: {"members": []}

@@ -1,5 +1,6 @@
 import { base64url, constantTimeEqual, fromBase64url, hmac } from './http.js';
 import { grantsAccount, type Env } from './types.js';
+import { proposeTeamEdit, type TeamEdit } from './team.js';
 
 // GitHub OAuth for the human giving page. Its short-lived cookie carries only the verified login,
 // expiry and whether that login administered the org grants pool when they signed in — never an API key.
@@ -37,7 +38,7 @@ export async function giveSession(req: Request, env: Env): Promise<GiveSession |
   return session && /^[a-z\d](?:[a-z\d-]{0,38})$/i.test(session.login) && typeof session.grants_admin === 'boolean' ? session : undefined;
 }
 
-export async function beginGiveLogin(req: Request, env: Env): Promise<Response> {
+export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const state = crypto.randomUUID();
   const exp = Math.floor(Date.now() / 1000) + STATE_SECONDS;
@@ -45,28 +46,41 @@ export async function beginGiveLogin(req: Request, env: Env): Promise<Response> 
   target.searchParams.set('client_id', env.GITHUB_OAUTH_CLIENT_ID);
   target.searchParams.set('redirect_uri', new URL('/give/callback', req.url).toString());
   target.searchParams.set('state', state);
-  return redirect(target.toString(), `${STATE_COOKIE}=${await signPayload(env, { state, exp })}; ${cookieAttrs(req, '/give/callback', STATE_SECONDS)}`);
+  if (team) target.searchParams.set('scope', 'public_repo');
+  const payload = await signPayload(env, { state, exp, ...(team ? { team } : {}) });
+  if (payload.length > 3800) return new Response('This team edit is too large. Shorten the source note and try again.', { status: 400 });
+  return redirect(target.toString(), `${STATE_COOKIE}=${payload}; ${cookieAttrs(req, '/give/callback', STATE_SECONDS)}`);
 }
 
 export async function finishGiveLogin(req: Request, env: Env): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const url = new URL(req.url);
-  const expected = await verifyPayload<{ state: string; exp: number }>(env, cookieValue(req, STATE_COOKIE));
+  const expected = await verifyPayload<{ state: string; exp: number; team?: TeamEdit }>(env, cookieValue(req, STATE_COOKIE));
   const supplied = url.searchParams.get('state') ?? '';
   if (!expected || !supplied || !constantTimeEqual(expected.state, supplied)) return new Response('GitHub sign-in refused: invalid or expired OAuth state.', { status: 401 });
   const redirectUri = new URL('/give/callback', req.url).toString();
   const tokenResponse = await fetch(new URL('/login/oauth/access_token', oauthBase(env)), {
     method: 'POST',
     headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'open-autonomy' },
-    body: JSON.stringify({ client_id: env.GITHUB_OAUTH_CLIENT_ID, client_secret: env.GITHUB_OAUTH_CLIENT_SECRET, code: url.searchParams.get('code') ?? '', redirect_uri: redirectUri, scope: '' }),
+    body: JSON.stringify({ client_id: env.GITHUB_OAUTH_CLIENT_ID, client_secret: env.GITHUB_OAUTH_CLIENT_SECRET, code: url.searchParams.get('code') ?? '', redirect_uri: redirectUri, ...(!expected.team ? { scope: '' } : {}) }),
   });
   const tokenBody = await tokenResponse.json().catch(() => ({})) as { access_token?: string };
   if (!tokenResponse.ok || !tokenBody.access_token) return new Response('GitHub sign-in refused: the authorization code was not accepted.', { status: 401 });
   const headers = { accept: 'application/vnd.github+json', authorization: `Bearer ${tokenBody.access_token}`, 'user-agent': 'open-autonomy' };
   const userResponse = await fetch(`${env.GITHUB_API_BASE ?? 'https://api.github.com'}/user`, { headers });
-  const user = await userResponse.json().catch(() => ({})) as { login?: string };
+  const user = await userResponse.json().catch(() => ({})) as { login?: string; id?: number; type?: string };
   const login = user.login?.toLowerCase() ?? '';
   if (!userResponse.ok || !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(login)) return new Response('GitHub sign-in refused: no verified login was returned.', { status: 401 });
+  if (expected.team) {
+    const headers = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-type': 'text/plain; charset=utf-8', 'set-cookie': `${STATE_COOKIE}=; ${cookieAttrs(req, '/give/callback', 0)}` };
+    if (user.type !== 'User' || !Number.isSafeInteger(user.id)) return new Response('Team edit refused: GitHub did not verify a human account ID.', { status: 401, headers });
+    try {
+      const location = await proposeTeamEdit(env, expected.team, tokenBody.access_token, { id: String(user.id), login }, expected.state);
+      return new Response(null, { status: 302, headers: { ...headers, location } });
+    } catch (e) {
+      return new Response(`Team change was not completed: ${(e as Error).message}\nReturn to /p/${encodeURIComponent(expected.team.account)}/team. If a branch was created, inspect it before retrying.`, { status: 409, headers });
+    }
+  }
   // A scope-free OAuth token proves identity but cannot read organization roles. The platform's
   // server-side GitHub credential performs that separate check; without one the pool stays hidden.
   const org = grantsAccount(env).split('/')[0];
