@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.3.0
+version: 4.4.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -116,8 +116,8 @@ accumulate for a subsequent release. Do not silently move a candidate already un
 
 Prepare `$HERMES_HOME/release-review.md` using the documented fields, including release ID, selected version,
 candidate SHA and the commit containing the landed plan. Keep it outside the checkout. Run `maintain.ts ship`
-to prepare the native human-review request, then deliver it according to the **Project outreach policy**
-below. The request must explain why this release now, its scope/version/window, verification, risks and exact
+to prepare the native human-review request, then contact the reviewer as agreed in the
+`project-communications` skill. The request must explain why this release now, its scope/version/window, verification, risks and exact
 human actions. Package/artifact releases without a live service use their documented procedure and this
 outreach policy with the same PM decision and human approval requirements; don't pretend live-service status
 proves publication. Record the request source in roadmap without changing the selected release merely to
@@ -126,7 +126,7 @@ record that receipt.
 Humans may approve, reject or redirect the proposal. Approval applies only to the stated version, scope and
 candidate. If those change, or PM defers the release, explicitly supersede the previous ask in that conversation
 and reconcile its native task; old approval cannot carry over. The helper parks obsolete unleased review
-requests as native scheduled holds, stopping human-input reminders. A renewed PM decision starts a new
+requests as native scheduled holds; you also reconcile the original conversation and any native reminders. A renewed PM decision starts a new
 review cycle, preserving the withdrawn card and its dependencies; never reset native retry counters to
 revive it. Local package errors do not revoke a pending review still authorized by the landed plan. PM
 resolves active handoffs and withdrawn dependencies explicitly without stealing a lease. Run it after a deferral as well as after preparing a request.
@@ -177,21 +177,27 @@ workers hand off to native review, which alone completes execution. PM coordinat
   PM decision. No eligible decision means no new review request. Confirmed deployment of the selected
   candidate can release its shipping hold even when newer main commits remain unreleased; native review
   still verifies execution acceptance. Unknown status completes nothing.
-- Follow the Project outreach policy below to deliver owner requests and follow up. The hook retries only
-  destinations you explicitly selected; it does not select from available credentials. A missing policy or
-  failed delivery stays an explicit scrum gap. Legacy receipts without a PM-selected destination require
-  reconciliation of the existing conversation before redispatch. Volunteer commitments follow their agreed follow-ups.
+- Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
+  link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
 - Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Workflow-changing
   upgrades await owner review; the supervisor drains and restarts after landing.
 
 Report notable changes, queue decisions, pending commitments/release gates, source gaps and installed/running
 kit versions. This report is operational output, not another permanent project journal.
 
-<!-- open-autonomy:outreach-policy:begin -->
-## Project outreach policy
+## Contact people
 
-Setup has not established this project’s outreach policy. Report this gap in your scrum result and
-ask the owner to run `create-open-autonomy setup . --outreach-only` to choose the reviewing owner,
-channel and follow-up interval. Keep human-review requests blocked until that decision is recorded.
-Available credentials and legacy `owner` identities in config do not authorize a destination.
-<!-- open-autonomy:outreach-policy:end -->
+Load the project-owned `project-communications` skill before reaching out. The setup agent writes the
+owner's agreement there. Use Hermes's native `send_message` for the agreed chat destination, or the
+existing GitHub tools when the agreement calls for an issue or PR conversation. Check the conversation
+before repeating an ask; use judgment about follow-up unless the owner specified timing. Keep successful
+delivery evidence in the native task, and keep failed delivery as an unresolved scrum gap. Available
+credentials do not authorize a different channel. If the agreement is missing or unclear, ask the owner
+in an active conversation and keep review-dependent work held.
+
+On scheduled runs, follow Hermes's cron delivery instructions. If the report is delivered to the agreed
+human contact channel, include the actual review request in that response; do not send a duplicate.
+Use native delivery history to distinguish a prepared message from a delivered one.
+
+When adopting this skill, reconcile any old escalation conversations, native subscriptions and reminder
+jobs before sending again. Their source history remains evidence; no separate notification ledger is needed.
