@@ -25,7 +25,6 @@ Readiness criteria and release gates:
 
 Dependencies and risks:
 - The live `/healthz` response still does not name a commit, so production status for the latest deploy tag is not independently verifiable yet.
-- This installed shell still resolves `/opt/homebrew/bin/bun` 1.2.20 before the available `~/.bun/bin/bun` 1.3.10; candidate checks and release reconciliation must use Bun 1.3.10, and the actual service/runtime path must be corrected before calling onboarding complete.
 - The installed GitHub App now exposes PR, review, workflow, tag and release evidence; no maintainer approval, release run or newer release tag was found for this candidate.
 - The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
 
