@@ -15,7 +15,7 @@
 // take, decline, or defer (`setup` again adds a deferred one). What is never automated: creating the accounts, and
 // any captcha or sudo prompt — those are named as the owner's up front.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { join, resolve } from 'node:path';
 import { readBranding, projectAppManifest } from './branding.ts';
@@ -56,6 +56,33 @@ const openUrl = (url: string, action: string): void => {
   const opener = osPlatform() === 'darwin' ? 'open' : osPlatform() === 'win32' ? 'start' : 'xdg-open';
   spawnSync(opener, [url], { stdio: 'ignore' });
 };
+
+// Setup may resume in a different checkout. A saved step never authorizes a different Git target.
+// Read configured URLs without printing them: a legacy URL may contain an embedded credential.
+function checkGitTarget(s: Situation): boolean {
+  const git = (...args: string[]) => run(['git', ...args], { cwd: s.dir });
+  const top = git('rev-parse', '--show-toplevel');
+  if (!top.ok) {
+    if (existsSync(join(s.dir, '.git'))) throw new Error('Cannot inspect this Git checkout; repair it before setup');
+    return false;
+  }
+  if (realpathSync(top.out) !== realpathSync(s.dir)) throw new Error('The setup directory is inside another Git repository. Use a separate project directory; setup will not stage the parent repository.');
+  const matches = (url: string) => {
+    const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|ssh:\/\/git@ssh\.github\.com:443\/)([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(url);
+    return match?.[1].toLowerCase() === s.account.toLowerCase();
+  };
+  for (const key of ['remote.origin.url', 'remote.origin.pushurl']) {
+    const urls = git('config', '--get-all', key).out.split('\n').filter(Boolean);
+    if (urls.some((url) => !matches(url))) throw new Error(`${key} does not name ${s.account} on GitHub. Reconcile the intended checkout before setup; no remote was changed.`);
+  }
+  return Boolean(git('config', '--get', 'remote.origin.url').out);
+}
+
+function setupGit(s: Situation, ...args: string[]): string {
+  const r = run(['git', ...args], { cwd: s.dir });
+  if (!r.ok) throw new Error(`Setup Git command failed (${args[0]}); the step is incomplete. Resolve the Git error and rerun setup.`);
+  return r.out;
+}
 
 // ── The situation ────────────────────────────────────────────────────────────────────────────────────────────────
 export function readSituation(dir: string): Situation {
@@ -110,22 +137,30 @@ const mark = (dir: string, st: SetupState, step: string, note?: string) => { st.
 
 // ── Steps ────────────────────────────────────────────────────────────────────────────────────────────────────────
 function stepGitHub(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'github')) return;
-  if (!run(['gh', 'auth', 'status']).ok) {
+  const hasOrigin = checkGitTarget(s);
+  if (!s.login && !run(['gh', 'auth', 'status']).ok) {
     say("\nGitHub sign-in: the GitHub CLI's device flow — a code appears here, the page opens, you approve it.");
     if (opts.plan) return;
     const r = spawnSync('gh', ['auth', 'login', '--web', '-h', 'github.com', '-p', 'https', '-s', 'repo,workflow,admin:public_key,read:org'], { stdio: 'inherit' });
     if (r.status !== 0) throw new Error('GitHub sign-in did not complete');
   }
-  s.login = run(['gh', 'api', 'user', '--jq', '.login']).out || null;
+  const identity = run(['gh', 'api', 'user', '--jq', '.login']);
+  s.login = identity.ok && identity.out ? identity.out : null;
+  if (!s.login) throw new Error('Cannot verify the current GitHub account. Resolve authentication or connectivity before setup; the GitHub step is incomplete.');
   if (opts.plan) return;
-  if (!gh(['api', `repos/${s.account}`]).ok) {
+  const repository = gh(['api', `repos/${s.account}`]);
+  if (!repository.ok) {
+    if (hasOrigin || !/HTTP 404/.test(repository.err)) throw new Error(`Cannot access ${s.account} on GitHub. Resolve repository access or connectivity before setup; no repository was created.`);
     say(`\nThe repository ${s.account} does not exist yet; creating it public, from this checkout.`);
-    if (!existsSync(join(s.dir, '.git'))) run(['git', 'init', '-q', '-b', 'main'], { cwd: s.dir });
-    run(['git', 'add', '-A'], { cwd: s.dir }); run(['git', 'commit', '-q', '-m', 'the kit'], { cwd: s.dir });
+    if (!existsSync(join(s.dir, '.git'))) setupGit(s, 'init', '-q', '-b', 'main');
+    setupGit(s, 'add', '-A');
+    if (setupGit(s, 'status', '--porcelain')) setupGit(s, 'commit', '-q', '-m', 'the kit');
     const r = run(['gh', 'repo', 'create', s.account, '--public', '--source=.', '--remote=origin', '--push'], { cwd: s.dir });
     if (!r.ok) throw new Error(`gh repo create: ${r.err}`);
+  } else if (!hasOrigin) {
+    throw new Error(`${s.account} already exists but this directory has no origin. Clone the existing repository or reconcile this checkout before setup; no remote was changed.`);
   }
+  setupGit(s, 'fetch', '-q', 'origin');
   mark(s.dir, st, 'github', `${s.account}, signed in as ${s.login}`);
 }
 
@@ -398,6 +433,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   }
   const s = readSituation(dir);
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
+  checkGitTarget(s);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
   const st = loadState(dir);
   say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
