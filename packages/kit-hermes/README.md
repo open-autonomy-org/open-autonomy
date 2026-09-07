@@ -30,7 +30,7 @@ ROADMAP.md           notable intentions and outstanding outcomes; PM-maintained,
 CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
-package.json, test/  the project's own check (`bun run check`), starting with one test
+package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (historical migration input),
                      cron/jobs.seed.json (the PM, hourly; the community desk, every quarter hour), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
@@ -42,95 +42,31 @@ container/           the default for a real deployment (bare is for development 
 
 ## The guided setup
 
-An agent leads setup from a kit repository to a running, gated, funded project on your own laptop, spending
-Open Autonomy's money. `create-open-autonomy setup <dir> --plan` reads the situation — what the repository deploys as, whether the owner is an org, whether a
-Sponsors listing, a Discord token or a Codex login is in sight — and recommends the doors that fit, each with its
-reason and what it will cost you in clicks. After establishing the owner, the command prepares the repository on GitHub (the CLI's device
-flow), the deploy key, the platform keys the adopter way, and the owner's rules (nothing pushes `main`; `.github/` is
-yours). The doors are yours to take, decline or defer: a gated production door (Cloudflare token into a GitHub
-environment, a pre-filled token page), the project's GitHub App (GitHub's manifest flow: one Create, one Install), a
-Discord channel (the portal, a token paste, one invite; the bot makes its own channel), your subscription for the
-model. What is never automated: creating your accounts, and any captcha or sudo prompt — the setup opens the exact
-page and continues when it comes back. `--plan` changes nothing; the infrastructure steps are resumable,
-so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
-schedule promises no channel it does not have.
-The agent helping with setup agrees with the owner how PM should contact people, including who reviews
-releases and where. It writes that agreement in plain language in
-`hermes/skills/project-communications/SKILL.md`, which uses the kit's existing project-owned skill support.
-There are no communication setup flags or required cadence. PM loads the skill, uses Hermes's native
-messaging or the existing GitHub tools, and uses judgment about follow-up. For example: “Ask Alice for
-release review in the public development channel; follow up in the same thread.”
-When scheduled PM reports are the agreed contact path, the setup agent sets their native Hermes cron
-delivery accordingly; the report must contain the actual human request.
+Understand the project first, then choose the starter. Hermes is currently the only kit; the cookbooks
+are working applications of it. Start a fresh repository with `create`, or preserve an existing one
+with `adopt`. The generated [setup guide](template/.open-autonomy/SETUP.md) is the setup agent's
+procedure and is kept current by kit upgrades, including in this repository and every cookbook.
 
-Setup records verified owner/delegate account IDs, authority scopes and their sources in the shared
-`team` section of `.open-autonomy/config.yaml`. The SDK's `parseTeamConfig` and `replaceTeamConfig`
-helpers read and update that JSON-valued YAML section without changing the rest of the file. After the
-first owner is established, the project's `/p/:account/team` page displays and edits the roster through
-owner-authorized draft GitHub PRs. GitHub IDs are resolved from usernames; Discord account links require
-explicit owner confirmation. No identity or role is inferred from a matching name. The skill keeps the
-communication policy, not a second roster. Kit upgrades preserve both project-owned records.
+Setup fills the product constitution from owner direction, preserves the brief/research as PM sources,
+and settles a few choices using the kit's operating defaults. It then completes real development
+connections, using the setup agent's browser skill and existing provider sessions where authorization
+is required. Provider credentials go through secure setup handoffs; the owner is involved at actual
+human-only steps, not handed a list of configuration chores.
 
-Use Hermes's native `discord.channel_skill_bindings` to load the agreement in project channels and
-`discord.group_allow_admin_from` for verified operator IDs, with `group_user_allowed_commands: []`.
-An empty admin list disables command gating. Roster changes do not themselves change native permissions
-or release protection; the setup agent reconciles those controls under the owner's policy. Moderation,
-project direction and release review remain separate scopes, and release approval is candidate-specific.
+`create-open-autonomy setup <dir> --plan` inspects the development connections. The agent uses the
+existing `--with` and `--without` choices to implement the agreed communication and model arrangement.
+Discord is optional regardless of token availability. GitHub can carry human questions and release
+review, but the agent must actually post requests and inspect replies there. The communication skill
+owns that policy; the shared team roster owns identities and authority.
 
-The setup sequence is part of the agent's work, not an optional handoff to the user:
-
-1. Complete the working branding pass described in the generated branding README: project name, short
-   blurb and reusable icon. Reuse existing assets and integrations; a provisional first pass is enough.
-   Apply it to every project integration, preserving provider IDs. Inspect `setup --plan`, the owner's instructions and existing repository authority. Verify the GitHub
-   human account's numeric ID and login with `gh api user`. The CLI defaults workflow ownership and a new
-   production reviewer to that authenticated account, so establish that it is the agreed human reviewer
-   before running those steps; a helper's credentials do not make them the project owner.
-2. Verify Bun 1.3.10 or newer in the actual host service and Hermes terminal environment, not only the setup shell. The kit uses `Bun.YAML`; an older Bun cannot run its planning helpers. Install the new project's dependencies, commit its generated lockfile, and run its own check before activation. A fresh template declares its TypeScript compiler so the check does not depend on a global install. Prepare the selected doors with `setup`. It prints the existing start command and leaves activation
-   to the setup agent; infrastructure completion is not completed project setup.
-3. Complete the identity, cross-platform linking, delegation and communication agreement using the
-   procedure in `project-communications`. Verify each enabled platform independently, including Discord
-   when selected. Record unsupported/deferred avenues and unresolved identities explicitly.
-4. Verify the permissions and actual release reviewers, land the project-owned agreement and native
-   settings, then start or gracefully reload the fleet and verify its loaded configuration. Report any
-   remaining gap instead of claiming full setup. Reuse established evidence on subsequent setup runs.
-
-Verify discovery through the agent's own GitHub App and valve, not the setup operator's `gh` login.
-The App needs Issues/Discussions write and Metadata, Pull requests, Contents, Checks, Commit statuses and
-Actions read. The latter permissions let PM inspect reviews, checks, workflow runs and release evidence;
-they grant no release or workflow execution. For an existing App, the setup agent checks its granted
-permissions and guides the owner through GitHub's permission update and installation acceptance when
-needed; a kit upgrade cannot grant those permissions. Read an actual PR's reviews/checks, workflow runs
-and release records through the installed door before declaring GitHub discovery ready.
-
-For Discord discovery, follow the native tool configuration in `project-communications`: chat and cron
-tool availability are separate from report delivery. The seed accepts native `enabled_toolsets` for new
-jobs; setup updates an existing job through native cron management and preserves its other settings.
-Verify a scheduled public-history read and the `discord.server_actions` restrictions before completion.
-
-Activation also verifies unattended operation: PM and community schedules, their actual delivery destination,
-and the host's existing restart supervisor (Docker restart policy or the chosen host service manager).
-Use native `hermes cron status`, `doctor`, `runs` and `incidents` to inspect failures and delivery, and
-rehearse interrupted planning and recovery in the world. Native cron can report a model failure without a
-successful model turn; it cannot notify through an unavailable chat service or while its host is down.
-Agree who operates the host and how they notice that failure, using existing host monitoring where available.
-Do not claim unattended readiness from a running PID or a successful single cron alone.
-
-For an open-source team and community, agree which public spaces serve conversation, help, development
-and announcements; reuse existing channels and use threads for individual proposals and release reviews.
-Maintainer authority does not require a private development channel. Any confidential human space stays
-outside the publicly logged fleet's access. The setup agent checks effective service permissions and native
-Hermes access settings, including DMs, and avoids administrative grants that bypass channel restrictions.
-Private human history must not share the fleet's searchable session store. `publish.chats: false` only
-controls direct publication; a published PM run can expose a chat it reads. This boundary belongs in the
-project communication skill and service permissions, not a new routing or redaction system.
-
-For an existing installation, the setup agent creates or updates that skill, carrying forward any
-previously agreed communication instructions before upgrading. PM reconciles existing conversations
-and native reminders when adopting it. The old routing hook/plugin is retired; no new delivery ledger
-or policy parser replaces it.
+Application dependencies run in the local world. Production provisioning is a later explicit
+`--with production` step for a Cloudflare Worker. Package release automation is not yet implemented;
+`--with release` refuses before mutation and points to the reviewed publication procedure. Other live
+application connections are established at deployment or customer activation. See the
+[fresh local application walkthrough](../../cookbooks/SETUP.md) for a concrete setup rehearsal.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
-the key tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in
+the key tool, the vendored SDK, `container/`, the landing workflow and setup/production guides. A project that takes one over names it in
 `kit.json`'s `divergences`. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 

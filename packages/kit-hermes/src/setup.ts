@@ -4,6 +4,8 @@
 // prompt, a captcha, a token page) it opens the exact page, says the one action, and continues when the page comes
 // back. Every step is idempotent and resumable: the choices live in .open-autonomy/setup.json (no secret ever does),
 // the secrets in the secrets directory the start script reads, the deploy credential in a GitHub environment.
+// Initial setup connects the development fleet. Product deployment is a later, explicit --with choice;
+// neither application files nor a previous production setup enroll a fresh development setup in it.
 //
 //   create-open-autonomy setup <dir> [--plan] [--yes] [--with a,b] [--without a,b] [--secrets <dir>] [--bare]
 //
@@ -50,7 +52,7 @@ const gh = (args: string[], input?: unknown): { ok: boolean; json: any; err: str
   return { ok: r.ok, json, err: r.err };
 };
 const openUrl = (url: string, action: string): void => {
-  say(`\n  → opening ${url}\n    your part: ${action}`);
+  say(`\n  → opening ${url}\n    browser setup step: ${action}`);
   const opener = osPlatform() === 'darwin' ? 'open' : osPlatform() === 'win32' ? 'start' : 'xdg-open';
   spawnSync(opener, [url], { stdio: 'ignore' });
 };
@@ -80,22 +82,20 @@ export function readSituation(dir: string): Situation {
 }
 
 // ── The recommendations: each door, a default for this situation, and the reason ─────────────────────────────────
-export function recommend(s: Situation): Recommendation[] {
+export function recommend(s: Situation, selected: Door[] = []): Recommendation[] {
   const out: Recommendation[] = [];
-  out.push(s.deploy === 'cloudflare-worker'
+  if (selected.includes('production')) out.push(s.deploy === 'cloudflare-worker'
     ? { door: 'production', suggested: 'yes', reason: 'the repository is a Cloudflare Worker (wrangler.toml): a gated production door lets a human ship it from a tag, with the token in a GitHub environment no machine holds', cost: 'one token page on Cloudflare (you paste it once) and your GitHub sign-in' }
     : s.deploy === 'container'
       ? { door: 'production', suggested: 'later', reason: 'the repository has a Dockerfile but names no host; the gated door is ready whenever it does (.open-autonomy/PRODUCTION.md)', cost: 'nothing now' }
       : { door: 'production', suggested: 'no', reason: 'the repository deploys nowhere that the setup recognizes; nothing to gate yet', cost: 'nothing' });
-  if (s.deploy === 'npm') out.push({ door: 'release', suggested: 'yes', reason: 'the package publishes to npm: a release door publishes from a human-cut tag with the npm token in a GitHub environment', cost: 'one npm token (you paste it once)' });
+  if (selected.includes('release')) out.push({ door: 'release', suggested: 'later', reason: 'artifact publication is a later owner-reviewed setup; this CLI does not yet scaffold its workflow', cost: 'no token collected; follow the project publication procedure' });
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'one Create button on GitHub (your sudo prompt or passkey), one Install click' });
-  out.push(s.discordToken
-    ? { door: 'discord', suggested: 'yes', reason: 'a Discord bot token is already in your environment, so the channel costs nothing more', cost: 'one invite click' }
-    : { door: 'discord', suggested: 'no', reason: 'no Discord in sight; issues and discussions are the community door to start with, and a channel can be added later with `setup` again', cost: 'a Discord application (captcha), a token paste, an invite click' });
+  out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push(s.codex
     ? { door: 'subscription', suggested: 'yes', reason: "a Codex login is on this machine: the agent's model can run on your subscription, outside the project's funds, with the page saying so; the grant then buys only the cookbook model", cost: 'nothing: the valve serves the login and the agent never sees it' }
     : { door: 'subscription', suggested: 'no', reason: "no subscription found; the project's grant funds the model, bounded by .open-autonomy/config.yaml", cost: 'nothing' });
-  out.push(s.sponsorsListing
+  if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
   return out;
@@ -391,27 +391,39 @@ jobs:
 // ── The walk ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const opts: Opts = { plan: false, yes: false, with: [], without: [], secrets: join(homedir(), '.config', 'open-autonomy'), bare: false, ...raw };
+  const doors: Door[] = ['production', 'release', 'github-app', 'discord', 'subscription', 'sponsors'];
+  for (const door of [...opts.with, ...opts.without]) {
+    if (!doors.includes(door)) throw new Error(`Unknown setup connection: ${door}. Supported: ${doors.join(', ')}`);
+    if (opts.with.includes(door) && opts.without.includes(door)) throw new Error(`${door} cannot be both selected and declined`);
+  }
   const s = readSituation(dir);
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
   const st = loadState(dir);
+  say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
   say(`${s.project} (${s.account}) — the situation:`);
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
   say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and run the project check before activation. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
   say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');
-  say('  setup agent: agree public community, development and release-review spaces with the owner; record them in hermes/skills/project-communications/SKILL.md. Verify service permissions and native Hermes access settings keep confidential human spaces, DMs and private session history outside the publicly logged fleet.');
-  say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml; keep communication practices in the skill. Preserve the owner\'s repository review policy and verify the source of each grant. Use native channel_skill_bindings and group_allow_admin_from for the agreed Discord channels/operators; group_user_allowed_commands: [] keeps administrative slash commands with those operators. An empty admin list disables the gate; chat admission does not grant project or release authority.');
+  say('  setup agent: follow the agreed communication policy in hermes/skills/project-communications/SKILL.md; configure only the selected platforms and verify actual human outreach and replies. Keep confidential spaces outside the publicly logged fleet.');
+  say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml. Follow the communication skill for native permissions and preserve the agreed repository review policy.');
   say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
   say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the deploy key, the platform keys and the owner\'s rules.');
-  say('\nRecommended doors for this situation:');
-  const recs = recommend(s);
+  say('\nDevelopment connections (plus any explicitly selected later setup):');
+  const recs = recommend(s, opts.with);
   for (const r of recs) {
     const forced = opts.with.includes(r.door) ? 'yes' : opts.without.includes(r.door) ? 'no' : undefined;
     const prior = st.doors[r.door];
     say(`  ${r.door.padEnd(12)} ${(forced ?? prior ?? r.suggested).padEnd(6)} ${r.reason}\n${' '.repeat(21)}costs you: ${r.cost}`);
   }
+  say(opts.with.includes('production') || opts.with.includes('release')
+    ? '\nLater activation setup explicitly selected. Verify the project target and owner authorization; this does not approve a release. Package release automation remains unsupported.'
+    : '\nApplication services: deferred. Develop against the world; select --with production or --with release only for a later, owner-authorized activation. Sponsorship setup is also optional, via --with sponsors.');
   if (opts.plan) { say('\n(--plan: nothing was changed)'); return; }
+  // Refuse unsupported later setup before creating any connection or collecting a credential.
+  if (opts.with.includes('release')) throw new Error('Package release setup is not implemented by this CLI. Prepare the reviewed publication workflow described in .open-autonomy/PRODUCTION.md; no release credential was collected.');
+  if (opts.with.includes('production') && s.deploy !== 'cloudflare-worker') throw new Error('Automatic production setup supports Cloudflare Workers only. Follow the project deployment procedure for this target; no production credential was collected.');
   for (const r of recs) {
     const forced = opts.with.includes(r.door) ? 'yes' : opts.without.includes(r.door) ? 'no' : undefined;
     if (forced) { st.doors[r.door] = forced; continue; }
@@ -426,12 +438,11 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
   stepOwnerRules(s, opts, st);
-  if (st.doors.production === 'yes') stepProduction(s, opts, st);
+  if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
-  if (st.doors.release === 'yes') say('\nRelease door: publish from a human-cut release-v* tag with NPM_TOKEN as a production environment secret — .open-autonomy/PRODUCTION.md has the workflow shape; the setup will scaffold it in a later version.');
-  if (st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
+  if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   await Promise.all(pending);
   printStart(s, opts);
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);

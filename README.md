@@ -40,9 +40,9 @@ Three ways in:
   patron through Polar or GitHub Sponsors. Its page shows every session the money buys and every cent, as
   it happens; its README carries the same in four widgets.
 - **Run your own.** `bun create open-autonomy <dir> --project <name> --account <owner/repo>` makes the
-  repository. Have the setup agent run `create-open-autonomy setup <dir> --plan` and complete the
-  [guided setup](packages/kit-hermes/README.md#the-guided-setup), including owner identity, communication,
-  release gates and verification, before activating the fleet. The agent then plans and works in the open,
+  repository. Have the setup agent follow the
+  [guided setup](.open-autonomy/SETUP.md): establish the project brief and agreed development connections,
+  then verify owner identity, communication and release review before activating the fleet. The agent then plans and works in the open,
   metered to your project's account.
 - **Contribute.** `bun run check` is the whole check, under thirty seconds. `bun world/run.ts up` brings up the
   platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive

@@ -17,3 +17,6 @@ Verify discovery, scheduled delivery and the host supervisor; releases still req
 
 The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
 short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
+
+For a new installation, follow the [agent-led setup guide](.open-autonomy/SETUP.md). It establishes the
+project brief and real development connections first; application services use the world until live activation.
