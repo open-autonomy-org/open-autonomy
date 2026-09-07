@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "steps": {
+    "github-app": "2026-09-07T07:56:43.401Z"
+  },
+  "doors": {
+    "github-app": "yes"
+  },
+  "notes": {
+    "github-app": "Open Autonomy Bot (open-autonomy-bot), owned by open-autonomy-org; app 4858225, installation 159703332. Installed only on open-autonomy-org/open-autonomy with read access to actions, checks, contents, statuses, metadata and pull requests, and write access to discussions and issues. Credential record is held by the installation supervisor; Hermes uses the existing GitHub valve.",
+    "github-app-branding": "Owner chose Open Autonomy Bot after GitHub reserved Open Autonomy for @open-autonomy. Verified name and shared branding/brand.json description in app settings; uploaded branding/icon.png (GitHub avatar hash 7d505e1f7aceb500d5740662c186251887660158). Settings: https://github.com/organizations/open-autonomy-org/settings/apps/open-autonomy-bot",
+    "github-app-verification": "2026-09-07: native graceful stack restart loaded the project app. Existing .open-autonomy/community.ts read returned HTTP success for pulls/463/reviews and actions/runs through the live GitHub valve; workflow evidence included run 34096539583 at b8751472f763f50f98c56b6c7307d443f5aa97f9. No release tag, deploy, publication or release approval performed."
+  }
+}
