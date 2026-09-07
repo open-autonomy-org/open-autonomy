@@ -16,7 +16,7 @@ const work = resolve(DATA, 'work');
 await git(work, 'checkout', '-b', 'contributor/release-notes');
 writeFileSync(resolve(work, 'OUTSIDE.md'), 'An outside contributor supplied release notes. This does not release the project.\n');
 await git(work, 'add', 'OUTSIDE.md');
-await git(work, 'commit', '-m', 'contributor: release notes');
+await git(work, 'commit', '--author', 'Outside contributor <contributor@example.test>', '-m', 'contributor: release notes');
 await git(work, 'push', 'origin', 'contributor/release-notes');
 const pr = await gh.post(`/repos/${ACCOUNT}/pulls`, { title: 'scrum: outside release notes', head: 'contributor/release-notes', base: 'main', body: 'Outside contribution overlaps planned release notes. Review and integrate; release review remains required.' });
 if (pr.status !== 201) throw new Error(`scrum seed PR: ${pr.status} ${pr.text}`);
