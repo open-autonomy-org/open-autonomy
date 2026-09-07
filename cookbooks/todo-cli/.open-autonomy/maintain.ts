@@ -9,7 +9,12 @@ const home = process.env.HERMES_HOME;
 if (!home) throw new Error('maintenance requires HERMES_HOME from the running stack');
 const command = process.argv[2] ?? 'status';
 const run = (cmd: string[], cwd = project): string => {
-  const result = Bun.spawnSync({ cmd, cwd, stdout: 'pipe', stderr: 'pipe' });
+  // Bun does not use the world's HTTP injector. Point bunx at the same registry
+  // npm queried so the rehearsal release, rather than a cached public package, is applied.
+  const env = cmd[0] === 'bunx' && process.env.NPM_REGISTRY_TWIN_URL
+    ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL }
+    : process.env;
+  const result = Bun.spawnSync({ cmd, cwd, env, stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed: ${result.stderr.toString().trim()}`);
   return result.stdout.toString().trim();
 };
