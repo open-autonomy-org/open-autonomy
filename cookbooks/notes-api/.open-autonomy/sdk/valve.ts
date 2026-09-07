@@ -67,7 +67,7 @@ const key = (file: string): string | undefined => keyEnv(file).OPEN_AUTONOMY_KEY
 // bounds each rail by the owner's config, and every settlement lands on the public audit trail.
 const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/catalog', '/v1/agent/events', '/v1/agent/roadmap', '/v1/rails/card', '/v1/rails/partner']);
 // Public reads the reporter needs to resume where the platform is (its own account's sessions).
-const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+\/(sessions|items)(\/|$)/.test(path);
+const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+(?:$|\/(sessions|items)(\/|$))/.test(path);
 
 for (const { file, port } of keys) Bun.serve({
   hostname: '0.0.0.0',
@@ -195,6 +195,7 @@ if (githubArg) {
     const repo = `/repos/${app.repository}`;
     if (path === '/graphql') return method === 'POST';
     if (path === repo) return method === 'GET';
+    if (method === 'PATCH' && path.startsWith(`${repo}/issues/`) && /^[0-9]+$/.test(path.slice(`${repo}/issues/`.length))) return true;
     if (path.startsWith(`${repo}/issues`) || path.startsWith(`${repo}/discussions`)) return method === 'GET' || method === 'POST';
     return false;
   };
