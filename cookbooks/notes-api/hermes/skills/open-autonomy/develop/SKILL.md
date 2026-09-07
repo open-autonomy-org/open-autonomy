@@ -44,7 +44,11 @@ is not done.
    how a task ends; a turn that ends without it marks the task done with nothing reviewed, which is never right —
    even when the work is already on main, hand it off.
 
-If a line cannot be made true from here, `kanban_block` with exactly what is missing, and stop. Never file,
+If a line cannot be made true from here, `kanban_block` with exactly what is missing, and stop. For a human
+decision use `kind: "needs_input"`; for a permission you cannot obtain use `kind: "capability"`. State the
+ask as an action: the exact command, page or secret name, and how the owner releases the task afterward.
+Never include a secret value. The escalation hook delivers that ask through the owner's configured door.
+Never file,
 split or decompose tasks, and never create one: the board is the owner's. Do not loop on a failure you cannot
 explain.
 

@@ -53,6 +53,8 @@ model. What is never automated: creating your accounts, and any captcha or sudo 
 page and continues when it comes back. `--plan` prints the situation and the recommendations and changes nothing;
 every step is idempotent, so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
 schedule promises no channel it does not have.
+Setup also records the signed-in GitHub owner and, when supplied, their Discord user ID in
+`hermes/config.yaml`. Human-blocked tasks reach that owner through Discord or an assigned GitHub issue.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in
@@ -69,6 +71,11 @@ a worker session (the `develop` skill) that builds it, verifies it where `AGENTS
 verified, lands it on an `agent/<task id>` branch the landing workflow merges when the checks pass, and hands
 off; the review lane, Hermes's own, verifies the handoff against the constitution and `CONTRIBUTING.md` in a session of its own; once an hour the PM job reads the whole board and unsticks what is stuck (the `pm` skill). Every
 session shows on the project's page with its cost.
+
+The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
+worktree only while idle, and requests a complete stack restart after the upgrade merges. It also keeps
+one owner request when the configured live service is behind main. The escalation hook repeats human
+asks hourly and closes their notifications when resolved; tags and deployment approvals remain human acts.
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
 (`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve

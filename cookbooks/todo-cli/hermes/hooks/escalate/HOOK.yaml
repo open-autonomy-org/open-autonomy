@@ -1,0 +1,5 @@
+name: escalate
+description: Reconcile owner notifications at boot and after board changes.
+events:
+  - gateway:startup
+  - on_kanban_task_updated

@@ -7,7 +7,7 @@ export const ROOT = resolve(import.meta.dir, '..');
 // The twins: the published packages in this repository's node_modules (@volter/twin-world and one @volter/twin-<vendor>
 // per twin), or a checkout named by TWINS_ROOT when the twins themselves are being developed.
 export const TWINS_ROOT = process.env.TWINS_ROOT ? resolve(process.env.TWINS_ROOT) : undefined;
-export const twinCli = (name: string): string => (TWINS_ROOT
+export const twinCli = (name: string): string => process.env[`WORLD_${name.toUpperCase().replaceAll('-', '_')}_CLI`] ? resolve(process.env[`WORLD_${name.toUpperCase().replaceAll('-', '_')}_CLI`]!) : (TWINS_ROOT
   ? resolve(TWINS_ROOT, 'packages/twin', name === 'world' ? 'world-runtime' : name, 'src/cli.ts')
   : resolve(ROOT, 'node_modules', '@volter', name === 'world' ? 'twin-world' : `twin-${name}`, 'src/cli.ts'));
 // Where the world's state lives (its instances, generated config, the platform's books, the stack's mounts): the

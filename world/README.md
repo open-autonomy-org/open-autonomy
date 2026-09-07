@@ -19,6 +19,17 @@ bun world/run.ts stack between-tasks   # what an owner does between two tasks: m
 bun world/run.ts down --purge          # forget it (the agent's home and checkout too)
 ```
 
+For a second world on the same machine, use a separate `WORLD_STATE_ROOT` and set `WORLD_PORT_OFFSET=1000`
+on every command. This moves all service ports and the cookbook's valve ports together.
+`WORLD_HERMES_BIN` names an existing pinned Hermes bin directory without inheriting an outer agent's
+`HERMES_*` settings. `WORLD_OWNER_DOOR=github` seeds the owner with a GitHub destination alone;
+the default seeds a Discord owner too, for blocked-task notifications.
+`WORLD_IDLE=1` starts with an empty board for owner-notification and upgrade exercises. Publish a
+rehearsal kit through the registry twin with `bun world/run.ts env -- bun world/kit-release.ts 2.7.2`,
+then fire the PM. Choose a fresh version when the packed source changes: npm versions are immutable.
+`WORLD_<VENDOR>_CLI` (for example `WORLD_DISCORD_CLI` or `WORLD_GITHUB_CLI`) can point at one pack's
+CLI in a checkout when verifying a fix before its release.
+
 The world is an environment, not a test. Nothing in it asserts and nothing runs unattended: whoever brings it up
 drives it one action at a time — the page, the books, the board, the twins' ledgers (`volter-world tail`) — and
 reads what the product says. That is the repository's standing rule on tests: everything that runs by itself finishes

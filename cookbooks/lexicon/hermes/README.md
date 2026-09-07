@@ -18,3 +18,10 @@ and the project's documents (`CONSTITUTION.md` as what it is, `CHANGELOG.md` as 
 page as they happen. The platform reads none of these files itself.
 
 How it runs, and how to run it yourself: `container/README.md`.
+
+The owner is named in `config.yaml` under `owner: {github: <login>, discord: "<user id>"}`; either
+destination may be omitted. The escalation hook subscribes the Discord owner to human-blocked tasks
+with notification and wake, or opens one assigned GitHub issue when there is no Discord destination.
+Unblocking ends the subscription and closes the issue. The PM asks again each hour, keeps a shipping
+request when the live service is behind main, and takes newer kit releases while the board is idle.
+The start script drains active work before restarting the complete stack on a landed kit upgrade.

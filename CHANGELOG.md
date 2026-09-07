@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Kit 2.7.0: human blocks reach the owner through Discord or one assigned GitHub issue, with PM reminders and cleanup on release. The PM tracks landed work awaiting deployment, takes kit upgrades in an idle worktree, and requests a drained restart of the complete stack. SDK 2.4.1 lets the GitHub valve close the project's issues and lets the PM read public deployment status.
 - The funding hard-stop stands above the envelopes: a reserve is refused when settled spend plus reservations would exceed the balance the totals say, whatever the envelopes add up to, and a call that cost more than it reserved draws the overage from whatever envelope still holds money.
 - **Kit 2.6.0: the guided setup.** `create-open-autonomy setup` reads a project's situation and recommends the doors that fit it — a gated production door, the agent's GitHub App by manifest flow, a Discord channel, the owner's subscription — does every step an API allows, and opens the exact page for the clicks only a person may make. A declined door leaves no trace: the template's schedule no longer presumes a Discord channel, the desk speaks of a channel only when the project has one, and the start script takes the channels from `channels.env` beside the keys.
 - **GitHub Sponsors funds the grants pool.** GitHub gives an org one listing, so a sponsorship cannot name a project; it now lands on the org's grants account and is given on to projects from there, and every project page but the pool's own says so on its button.

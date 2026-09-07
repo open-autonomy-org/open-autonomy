@@ -32,6 +32,10 @@ if (![201, 422].includes(created.status)) throw new Error(`github twin: create r
 const work = resolve(DATA, 'work');
 rmSync(work, { recursive: true, force: true });
 cpSync(COOKBOOK, work, { recursive: true, filter: (src) => !/\/(node_modules|\.git)(\/|$)/.test(src) });
+if (process.env.WORLD_IDLE === '1') writeFileSync(resolve(work, 'hermes/kanban.seed.json'), JSON.stringify({ tasks: [] }));
+const ownerConfig = resolve(work, 'hermes', 'config.yaml');
+const ownerDoor = process.env.WORLD_OWNER_DOOR ?? 'discord';
+writeFileSync(ownerConfig, `${readFileSync(ownerConfig, 'utf8').trimEnd()}\nowner:\n  github: octocat\n${ownerDoor === 'discord' ? '  discord: "1000000000000000002"\n' : ''}`);
 const configPath = resolve(work, '.open-autonomy', 'config.yaml');
 await git(work, 'init', '-q', '-b', 'main');
 await git(work, 'config', 'user.name', 'maintainer');

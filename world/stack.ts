@@ -14,12 +14,13 @@
 //                  the old key is refused after its grace)
 //   hermes …       the pinned Hermes against the world's home, in the checkout (`hermes kanban list`,
 //                  `hermes cron run pm`: the PM's hour, now)
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import { ACCOUNT, COOKBOOK, DATA, HOME_CHANNEL, MODEL, PREVIOUS_MODEL, STATE, WORK, git, need, twinCli } from './lib.ts';
 
 const stackDir = resolve(STATE, '.volter', 'stack');
-const VALVE_PORT = 18787;
+const VALVE_PORT = 18787 + Number(process.env.WORLD_PORT_OFFSET ?? 0);
 const home = resolve(stackDir, 'home');
 const project = resolve(stackDir, 'project');
 const pidFile = resolve(stackDir, 'start.pid');
@@ -36,7 +37,7 @@ function sh(cmd: string[], opts: { quiet?: boolean; check?: boolean; env?: Recor
 // commit checked, `uv sync --frozen`. The world runs the Hermes a project ships with.
 function hermesBin(): string {
   // Where a Hermes at the pin already lives (the agent's own container: /opt/hermes), use it.
-  const given = process.env.HERMES_BIN ?? (existsSync('/opt/hermes/.venv/bin/hermes') ? '/opt/hermes/.venv/bin' : undefined);
+  const given = process.env.WORLD_HERMES_BIN ?? process.env.HERMES_BIN ?? (existsSync('/opt/hermes/.venv/bin/hermes') ? '/opt/hermes/.venv/bin' : undefined);
   if (given) return given;
   const pin = Object.fromEntries(readFileSync(resolve(COOKBOOK, 'container', 'hermes.pin'), 'utf8').split('\n').map((l) => l.trim().split('=') as [string, string]).filter(([k]) => k && !k.startsWith('#')));
   const dir = resolve(STATE, '.volter', 'hermes', pin.HERMES_TAG);
@@ -70,7 +71,7 @@ async function putMain(path: string, content: string, message: string): Promise<
   await git(WORK, '-c', 'user.name=owner', '-c', 'user.email=owner@example.com', 'commit', '-q', '-am', message);
   await git(WORK, 'push', '-q', 'origin', 'main');
 }
-const configYaml = (): string => readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8');
+const configYaml = (): string => `${readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8').trimEnd()}\nowner:\n  github: octocat\n${process.env.WORLD_OWNER_DOOR !== 'github' ? '  discord: "1000000000000000002"\n' : ''}`;
 function previousConfig(): string {
   const yaml = configYaml();
   if (!yaml.includes(`default: ${MODEL}`)) throw new Error(`stack: the cookbook's hermes/config.yaml does not name ${MODEL} as its default model`);
@@ -89,6 +90,10 @@ function start(): void {
   }
   for (const f of ['agent.env', 'treasurer.env']) if (!existsSync(resolve(DATA, f))) throw new Error(`${resolve(DATA, f)} is missing — run \`bun world/run.ts seed\` first`);
   mkdirSync(stackDir, { recursive: true });
+  // A self-upgrade re-enters the cloned entrypoint. Give that checkout the same
+  // installed reporter dependencies as the initial entrypoint, without registry egress.
+  if (!existsSync(resolve(project, '.git'))) sh(['git', 'clone', '-q', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`, project]);
+  cpSync(resolve(COOKBOOK, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules'), { recursive: true });
   // The agent's Discord: a bot token the twin accepts (a fake the twins mint) and its home channel, which the start
   // script writes into the home's .env on the first start. discord.py reaches the twin through the world's proxy
   // (HTTPS_PROXY, which Hermes's Discord platform honors) and the session CA.
@@ -96,12 +101,11 @@ function start(): void {
   if (!botToken) throw new Error('stack: volter-world fake-env DISCORD_BOT_TOKEN gave nothing');
   // One appending descriptor for every process's output: separate opens would overwrite one another.
   const log = openSync(logFile, 'a');
-  const child = Bun.spawn({
+  const child = spawn('bun', [resolve(COOKBOOK, '.open-autonomy', 'start.ts'), '--project', project, '--home', home, '--secrets', DATA, '--origin', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`, '--valve', String(VALVE_PORT)], {
     // The valve on 18787/18788: the world's agent must sit beside a real one on the same host (an agent's own container).
-    cmd: ['bun', resolve(COOKBOOK, '.open-autonomy', 'start.ts'), '--project', project, '--home', home, '--secrets', DATA, '--origin', `${need('GITHUB_TWIN_URL')}/${ACCOUNT}.git`, '--valve', String(VALVE_PORT)],
     // The channel is open to anyone in it; the repository's issues and discussions are the GitHub twin's, on a token
     // it accepts (the community tool's door: GITHUB_API_URL and GITHUB_TOKEN).
-    cwd: COOKBOOK, env: { ...agentEnv(bin), DISCORD_BOT_TOKEN: botToken, DISCORD_HOME_CHANNEL: HOME_CHANNEL, DISCORD_ALLOWED_CHANNELS: '*', DISCORD_ALLOWED_USERS: '*', GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot' }, stdout: log, stderr: log, stdin: 'ignore',
+    cwd: COOKBOOK, env: { ...agentEnv(bin), DISCORD_BOT_TOKEN: botToken, DISCORD_HOME_CHANNEL: HOME_CHANNEL, DISCORD_ALLOWED_CHANNELS: '*', DISCORD_ALLOWED_USERS: '*', GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', npm_config_registry: need('NPM_REGISTRY_TWIN_URL') }, stdio: ['ignore', log, log], detached: true,
   });
   child.unref();
   writeFileSync(pidFile, `${child.pid}\n`);
@@ -110,7 +114,8 @@ function stop(): void {
   if (!existsSync(pidFile)) return;
   const pid = Number(readFileSync(pidFile, 'utf8').trim());
   if (pid) {
-    try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ }
+    // start() owns a detached process group, including children of a failed boot.
+    try { process.kill(-pid, 'SIGTERM'); } catch { /* gone */ }
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) { try { process.kill(pid, 0); Bun.sleepSync(200); } catch { break; } }
   }
