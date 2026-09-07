@@ -49,9 +49,23 @@ const [command, ...rest] = process.argv.slice(2);
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if ((command === 'comment' || command === 'discuss' || command === 'issue') && doorless) {
+} else if ((command === 'comment' || command === 'discuss' || command === 'issue' || command === 'pull-request') && doorless) {
   console.error('community: no GitHub door (no GITHUB_TOKEN) — nothing can be posted on GitHub');
   process.exit(3);
+} else if (command === 'pull-request' && /^land\/kit-\d+\.\d+\.\d+$/.test(rest[0] ?? '')) {
+  // Landing-created PRs carry the branch in their title or their fixed body. The
+  // issues endpoint includes PRs and uses the App's existing issues-read permission.
+  let found: { number: number; url: string } | null = null;
+  for (let page = 1; ; page++) {
+    const issues = await github<Array<{ number: number; title: string; body?: string; html_url: string; pull_request?: { html_url?: string } }>>('GET', `/repos/${account}/issues?state=open&per_page=100&page=${page}`);
+    const match = issues.find((i) => i.pull_request && (i.title === rest[0] || i.body?.includes(`Opened by the landing workflow for \`${rest[0]}\``)));
+    if (match) found = { number: match.number, url: match.pull_request?.html_url ?? match.html_url };
+    if (found || issues.length < 100) break;
+  }
+  console.log(JSON.stringify(found));
+} else if (command === 'issue' && rest[0] === 'update' && /^\d+$/.test(rest[1] ?? '') && rest[2] && rest[3]) {
+  if (!/^[a-z0-9_-]+$/i.test(rest[2])) throw new Error('issue update: invalid task id');
+  console.log(JSON.stringify(await github('PATCH', `/repos/${account}/issues/${rest[1]}`, { body: `<!-- open-autonomy:blocked:${rest[2]} -->\n${rest[3]}` })));
 } else if (command === 'issue' && rest[0] === 'open' && rest.length === 5) {
   const [, task, title, body, assignee] = rest;
   if (!/^[a-z0-9_-]+$/i.test(task!)) throw new Error('issue open: invalid task id');
@@ -97,6 +111,6 @@ if (command === 'poll' && doorless) {
   writeFileSync(cursorFile, `${JSON.stringify({ since: new Date().toISOString() })}\n`);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body>');
+  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }

@@ -64,6 +64,12 @@ def reconcile(*, board=None, remind=False, **kwargs):
                     events = kb.list_events(conn, task_id)
                     event = next((e for e in reversed(events) if e.kind == "blocked"), None)
                     reason = (event.payload or {}).get("reason", "") if event else ""
+                    if (task.body or "").startswith(("<!-- open-autonomy:ship -->", "<!-- open-autonomy:kit-review:")):
+                        marker = "<!-- open-autonomy:owner-request -->"
+                        comments = sorted(kb.list_comments(conn, task_id), key=lambda c: c.id)
+                        latest = next((c for c in reversed(comments) if c.author == "pm" and c.body.startswith(marker)), None)
+                        if latest:
+                            reason = latest.body[len(marker):].strip()
                     ask = f"{task.title}\n\n{reason}\n\nAfter resolving this request: `hermes kanban unblock {task_id}`."
                     if owner.get("discord") and os.environ.get("DISCORD_BOT_TOKEN"):
                         if not entry.get("chat"):
@@ -88,7 +94,10 @@ def reconcile(*, board=None, remind=False, **kwargs):
                         if not entry.get("issue"):
                             issue = community(project, "issue", "open", task_id, task.title, ask, str(owner["github"]))
                             entry["issue"] = issue["number"]
-                        elif remind:
+                        if entry.get("ask") != ask:
+                            community(project, "issue", "update", str(entry["issue"]), task_id, ask)
+                            entry["ask"] = ask
+                        if remind:
                             community(project, "issue", "remind", str(entry["issue"]), ask)
                     else:
                         raise RuntimeError("owner has no reachable door; run create-open-autonomy setup to configure Discord or the GitHub App")
@@ -125,4 +134,7 @@ if __name__ == "__main__":
     for name in ("GITHUB_TOKEN", "GITHUB_API_URL", "DISCORD_BOT_TOKEN", "DISCORD_API_BASE"):
         if saved.get(name):
             os.environ.setdefault(name, saved[name])
-    reconcile(remind="remind" in sys.argv[1:])
+    if len(sys.argv) == 3 and sys.argv[1] == "pull-request":
+        print(json.dumps(community(Path.cwd(), "pull-request", sys.argv[2])))
+    else:
+        reconcile(remind="remind" in sys.argv[1:])

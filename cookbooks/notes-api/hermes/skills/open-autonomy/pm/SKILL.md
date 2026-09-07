@@ -27,16 +27,18 @@ as a worker session, and the review lane verifies every handoff. Your hour is ab
 3. Run `bun .open-autonomy/maintain.ts ship`. It reads this project's public live status and keeps one
    `ship what has landed` task with the exact tag command and approval page as the owner's ask. It releases
    only its own shipping task, and only when the service reports `ahead: 0`; an unreachable service is no proof.
-   You never cut a tag or deploy. A resumed shipping task verifies the live status and hands off for review.
+   It updates the existing task's request when main advances, without re-blocking it. You never cut a tag
+   or deploy. A resumed shipping task verifies the live status and hands off for review.
 4. Run `python "$HERMES_HOME/hooks/escalate/handler.py" remind`. The hook reconciles each human block with
    its owner subscription or GitHub issue and asks again through that same door. For Discord it schedules
    one combined message in the agent's voice; on GitHub it comments on the existing issue. Never re-block
    or unblock a task just to send a reminder. If no owner door is configured, report the required setup.
 5. Run `bun .open-autonomy/maintain.ts upgrade`. It compares the installed kit with npm, works only while
    the board is idle, and lands the released kit on `land/kit-<version>` from a fresh main in a separate
-   worktree. It never edits kit-owned files by hand. If the upgrade pull request is waiting for code-owner
-   review of `.github/`, file one `needs_input` task naming the pull request URL and the owner's Approve
-   action, so the same escalation mechanism reaches the owner. Reuse the existing task on later passes.
+   worktree. It never edits kit-owned files by hand. For an upgrade changing `.github/`, it finds the
+   landing pull request and files one `needs_input` task with its URL and the owner's Approve action.
+   The escalation hook carries that request through the owner's door. A PR that has not opened yet is
+   retried next hour; report that state. Never file a duplicate review task.
 6. Run `bun .open-autonomy/maintain.ts restart`. Once the upgrade lands, it requests an idle restart from
    the kit supervisor. The supervisor asks Hermes to drain active work, then re-runs the complete start
    script, fetching main and syncing the home. Do not run `hermes gateway restart` from a supervised PM:
