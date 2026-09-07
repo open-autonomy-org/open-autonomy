@@ -386,6 +386,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
   say('  setup agent: agree public community, development and release-review spaces with the owner; record them in hermes/skills/project-communications/SKILL.md. Verify service permissions and native Hermes access settings keep confidential human spaces, DMs and private session history outside the publicly logged fleet.');
+  say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in that skill. Use native channel_skill_bindings and group_allow_admin_from for the agreed Discord channels/operators; group_user_allowed_commands: [] keeps administrative slash commands with those operators. An empty admin list disables the gate; chat admission does not grant project or release authority.');
   say('\nThe core (no questions): the repository on GitHub, the deploy key, the platform keys, the owner\'s rules.');
   say('\nRecommended doors for this situation:');
   const recs = recommend(s);

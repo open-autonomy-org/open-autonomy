@@ -36,3 +36,18 @@ agent:
 kanban:
   dispatch_interval_seconds: 15
   review_dispatch: true
+
+# Verified identities and delegation live in skills/project-communications/SKILL.md.
+# Native command access is separate from the public guild participation gate.
+discord:
+  group_allow_admin_from: ["605505624226136074"]
+  group_user_allowed_commands: []
+  channel_skill_bindings:
+    - id: "1544906155422257215" # general
+      skills: [project-communications]
+    - id: "1546378794057728021" # help; forum posts inherit this binding
+      skills: [project-communications]
+    - id: "1546378402280382565" # development
+      skills: [project-communications]
+    - id: "1546379008697172019" # announcements
+      skills: [project-communications]
