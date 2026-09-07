@@ -42,17 +42,17 @@ container/           the default for a real deployment (bare is for development 
 
 ## The guided setup
 
-`create-open-autonomy setup <dir>` takes a kit repository to a running, gated, funded project on your own laptop, spending
-Open Autonomy's money. It reads the situation — what the repository deploys as, whether the owner is an org, whether a
+An agent leads setup from a kit repository to a running, gated, funded project on your own laptop, spending
+Open Autonomy's money. `create-open-autonomy setup <dir> --plan` reads the situation — what the repository deploys as, whether the owner is an org, whether a
 Sponsors listing, a Discord token or a Codex login is in sight — and recommends the doors that fit, each with its
-reason and what it will cost you in clicks. The core needs no questions: the repository on GitHub (the CLI's device
+reason and what it will cost you in clicks. After establishing the owner, the command prepares the repository on GitHub (the CLI's device
 flow), the deploy key, the platform keys the adopter way, and the owner's rules (nothing pushes `main`; `.github/` is
 yours). The doors are yours to take, decline or defer: a gated production door (Cloudflare token into a GitHub
 environment, a pre-filled token page), the agent's GitHub App (GitHub's manifest flow: one Create, one Install), a
 Discord channel (the portal, a token paste, one invite; the bot makes its own channel), your subscription for the
 model. What is never automated: creating your accounts, and any captcha or sudo prompt — the setup opens the exact
-page and continues when it comes back. `--plan` prints the situation and the recommendations and changes nothing;
-every step is idempotent, so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
+page and continues when it comes back. `--plan` changes nothing; the infrastructure steps are resumable,
+so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
 schedule promises no channel it does not have.
 The agent helping with setup agrees with the owner how PM should contact people, including who reviews
 releases and where. It writes that agreement in plain language in
@@ -70,6 +70,21 @@ in project channels and `discord.group_allow_admin_from` for operator user IDs, 
 `group_user_allowed_commands: []`. An empty admin list disables command gating. This gates administrative
 slash commands; project decisions still require the skill's source/authority checks and releases require
 their actual human gate. No additional people database or permission plugin is needed.
+
+The setup sequence is part of the agent's work, not an optional handoff to the user:
+
+1. Inspect `setup --plan`, the owner's instructions and existing repository authority. Verify the GitHub
+   human account's numeric ID and login with `gh api user`. The CLI defaults workflow ownership and a new
+   production reviewer to that authenticated account, so establish that it is the agreed human reviewer
+   before running those steps; a helper's credentials do not make them the project owner.
+2. Prepare the selected doors with `setup`. It prints the existing start command and leaves activation
+   to the setup agent; infrastructure completion is not completed project setup.
+3. Complete the identity, cross-platform linking, delegation and communication agreement using the
+   procedure in `project-communications`. Verify each enabled platform independently, including Discord
+   when selected. Record unsupported/deferred avenues and unresolved identities explicitly.
+4. Verify the permissions and actual release reviewers, land the project-owned agreement and native
+   settings, then start or gracefully reload the fleet and verify its loaded configuration. Report any
+   remaining gap instead of claiming full setup. Reuse established evidence on subsequent setup runs.
 
 For an open-source team and community, agree which public spaces serve conversation, help, development
 and announcements; reuse existing channels and use threads for individual proposals and release reviews.
