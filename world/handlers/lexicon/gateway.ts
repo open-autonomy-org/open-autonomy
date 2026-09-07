@@ -9,6 +9,7 @@
 //
 // stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage
 // green on its own.
+import { scrumHandlers } from '../scrum.ts';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
@@ -43,6 +44,7 @@ function implement(item: { id: string; title: string }): string {
 }
 
 const handlers = [
+  ...scrumHandlers,
   {
     id: 'clamped-output-cap',
     $comment: 'The failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which the harness retries and then fails. The run only succeeds when the platform forwards a roomy cap.',
@@ -56,31 +58,17 @@ const handlers = [
   // The community desk (the community job, the community skill). Most specific first: the report after the look
   // is marked done; the filing and the answers (one shell, the board's CLI: a scheduled job has no board tools)
   // after the poll that shows a request; the poll itself. Stateless, keyed on the conversation's own text.
-  { id: 'community-report', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; filed the request in issue #2 on the board as a task (its id is on the issue), which lands as a pull request; nothing declined.' } },
+  { id: 'community-report', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; preserved the request in issue #2 for roadmap scrum; nothing declined.' } },
   { id: 'community-act', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'request: add the term' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
-    `last=$(hermes kanban list 2>/dev/null | grep -v '✓' | sed -n 's/.*\\(t_[0-9a-f]*\\).*/\\1/p' | tail -1); parent=$([ -n "$last" ] && echo "--parent $last")`,
-    `id=$(hermes kanban create 'add the term "twin" to the lexicon' $parent --body '- \`lexicon list\` shows twin: a local stand-in for a vendor'"'"'s API that a program talks to unmodified — the same SDK, the same wire, no key, no spend; a world is a set of them (source https://github.com/volter-ai/twin)\n- the homepage renders it (docs/index.html re-rendered, the test green)\n- from issue #2 (a community request)' --assignee default --workspace dir:$PWD --skill develop --created-by community --json 2>/dev/null | sed -n 's/^ *"id": *"\\(t_[0-9a-f]*\\)".*/\\1/p' | head -1)`,
-    `[ -n "$id" ] || { echo "COMMUNITY_""FAILED could not file the task: $(hermes kanban create --help 2>&1 | head -3)"; exit 1; }`,
-    `bun .open-autonomy/community.ts comment 2 "Filed on the board as $id — it lands as a pull request when done, and its session is on the project page." || { echo "COMMUNITY_""FAILED comment 2"; exit 1; }`,
+    `bun .open-autonomy/scrum.ts note https://github.com/cookbook/lexicon/issues/2 octocat 'Request: add the term twin to the lexicon, with the definition and source in issue #2' || exit 1`,
+    `bun .open-autonomy/community.ts comment 2 "Captured for the PM scrum to consider in ROADMAP.md." || exit 1`,
     `bun .open-autonomy/community.ts comment 1 "A lexicon is this project's shared glossary: terms the community defines, rendered to the homepage. Propose one in an issue titled 'request: add the term …' with a definition and a source." || { echo "COMMUNITY_""FAILED comment 1"; exit 1; }`,
     `bun .open-autonomy/community.ts discuss 1 "A term of the week fits the constitution: a term is defined once and the homepage renders from the glossary alone, so the week's term is whichever was added last. I will keep it in mind when the glossary is larger." || { echo "COMMUNITY_""FAILED discuss 1"; exit 1; }`,
-    `bun .open-autonomy/community.ts mark && echo "COMMUNITY_""DONE filed $id"`].join('\n') } } } },
+    `bun .open-autonomy/community.ts mark && echo "COMMUNITY_""DONE captured request"`].join('\n') } } } },
   { id: 'community-quiet', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_POLL_DONE' }, respond: { text: 'Community: nothing new since the last look.' } },
   { id: 'community-poll', on: { userTextIncludes: 'Run the community skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'bun .open-autonomy/community.ts poll' } } } },
   // A person in the channel: answered as the agent itself.
   { id: 'channel-what-is', on: { userTextIncludes: 'what is a lexicon' }, respond: { text: 'A lexicon is this project\'s shared glossary: terms its community defines, added by me, rendered to the homepage. Propose one in an issue titled "request: add the term …" with a definition and a source, or just say it here.' } },
-  // The PM, hourly, as the pm skill says: read the board; release what is blocked `transient` and nothing else (a
-  // `needs_input` block waits on the owner or the treasurer, a parked task on the owner); report. The pass after the
-  // listing comes first, then the report after the pass, then the listing itself.
-  { id: 'pm-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal', anyTextIncludes: 'PM_PASS_DONE' }, respond: { text: 'PM: the board is moving. Released what was blocked transient (PM_UNSTUCK on the thread); left every needs_input block and parked task for the owner (PM_LEFT); nothing else is stuck.' } },
-  { id: 'pm-unstick', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
-    `for id in $(hermes kanban list --status blocked --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do`,
-    `  if hermes kanban show $id 2>/dev/null | grep -q "'kind': 'transient'"; then hermes kanban unblock $id >/dev/null && echo "PM_""UNSTUCK $id (transient)"; else echo "PM_""LEFT $id (needs_input: the owner's or the treasurer's)"; fi; done`,
-    `for id in $(hermes kanban list --status scheduled --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do echo "PM_""LEFT $id (parked: the owner's)"; done`,
-    `echo PM_PASS_""DONE`].join('\n') } } } },
-  { id: 'pm-look', on: { userTextIncludes: 'Run the pm skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'hermes kanban list --json' } } } },
-  { id: 'reviewer-done', on: { toolResultFor: 'kanban_complete' }, respond: { text: 'Approved.' } },
-  // The worker, after its push: hand the task to review, then stop. The thread names the branch and the commit.
   { id: 'handoff', on: { anyTextIncludes: 'PUSHED_BRANCH=agent/', hasTool: 'kanban_request_review' }, respond: { toolCalls: { name: 'kanban_request_review', arguments: { summary: 'HANDOFF pushed the agent branch named on the thread (PUSHED_BRANCH, with its commit): implemented with the check green; the landing workflow merges it when the checks pass.' } } } },
   { id: 'worker-blocked', on: { anyTextIncludes: 'IMPLEMENTATION_RAN', hasTool: 'kanban_block' }, respond: { toolCalls: { name: 'kanban_block', arguments: { reason: 'the implementation ran but did not push; its output is on the thread', kind: 'transient' } } } },
   // The reviewer (the review lane, sdlc-review loaded), as SOUL.md says the bar is: read CONSTITUTION.md and

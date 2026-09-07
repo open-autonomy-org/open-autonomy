@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — roadmap scrum
+
+Hermes PM maintains sourced ROADMAP.md planning, reconciles outside contributions and accepted human commitments, and queues native kanban execution. Community intake is durable and independent of PM polling; release outcomes retain mandatory human review. Kit upgrades preserve existing plans and reconcile historical board seeds.
+
 ## Unreleased
 - Kit 2.7.1: shipping requests follow main through board comments and refreshed owner issues without re-blocking a task; pending kit upgrades that change workflows create one owner-review request naming the pull request.
 - Kit 2.7.0: human blocks reach the owner through Discord or one assigned GitHub issue, with PM reminders and cleanup on release. The PM tracks landed work awaiting deployment, takes kit upgrades in an idle worktree, and requests a drained restart of the complete stack. SDK 2.4.1 lets the GitHub valve close the project's issues and lets the PM read public deployment status.

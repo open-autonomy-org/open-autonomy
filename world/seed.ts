@@ -32,7 +32,7 @@ if (![201, 422].includes(created.status)) throw new Error(`github twin: create r
 const work = resolve(DATA, 'work');
 rmSync(work, { recursive: true, force: true });
 cpSync(COOKBOOK, work, { recursive: true, filter: (src) => !/\/(node_modules|\.git)(\/|$)/.test(src) });
-if (process.env.WORLD_IDLE === '1') writeFileSync(resolve(work, 'hermes/kanban.seed.json'), JSON.stringify({ tasks: [] }));
+if (process.env.WORLD_IDLE === '1' && process.env.WORLD_SCRUM !== '1') writeFileSync(resolve(work, 'hermes/kanban.seed.json'), JSON.stringify({ tasks: [] }));
 const ownerConfig = resolve(work, 'hermes', 'config.yaml');
 const ownerDoor = process.env.WORLD_OWNER_DOOR ?? 'discord';
 writeFileSync(ownerConfig, `${readFileSync(ownerConfig, 'utf8').trimEnd()}\nowner:\n  github: octocat\n${ownerDoor === 'discord' ? '  discord: "1000000000000000002"\n' : ''}`);
@@ -89,3 +89,5 @@ console.log(`seed: docs synced from the twin → ${synced.body?.ok}`);
 // What this cookbook's world seeds beyond the project itself (its community, say): world/handlers/<cookbook>/seed.ts.
 const extra = resolve(ROOT, 'world', 'handlers', COOKBOOK_NAME, 'seed.ts');
 if (existsSync(extra)) await import(extra);
+
+if (process.env.WORLD_SCRUM === '1') await import('./scrum-seed.ts');

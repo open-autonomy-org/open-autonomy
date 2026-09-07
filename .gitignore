@@ -69,3 +69,11 @@ cookbooks/*/hermes/logs/
 cookbooks/*/hermes/state.db*
 cookbooks/*/.open-autonomy/reporter-state.json
 cookbooks/*/.open-autonomy/node_modules/
+
+# Hermes scrum runtime
+hermes/scrum-intake/
+hermes/scrum-plan/
+hermes/scrum-queue.lock
+hermes/pm-cursor.json*
+hermes/community-cursor.json*
+hermes/release-review.md

@@ -74,8 +74,15 @@ if (command === 'ship') {
     if (task?.status === 'blocked') run(['hermes', 'kanban', 'unblock', task.id]);
     console.log('The deployed service is up to date.');
   } else if (live && typeof live.ahead === 'number' && live.ahead > 0 && /^[a-f0-9]{7,40}$/i.test(live.head ?? '')) {
-    const tag = `deploy-v${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
-    const ask = `Read the money/auth diff, then choose an unused deploy tag (add .1, .2 if needed): git tag -a ${tag} ${live.head} -m "Deploy ${live.head}" && git push origin ${tag}. Approve the waiting production run at https://github.com/${config.account}/actions. ${live.ahead} commits have landed since ${live.commit}.`;
+    const packagePath = resolve(home, 'release-review.md');
+    const review = existsSync(packagePath) ? readFileSync(packagePath, 'utf8') : '';
+    // Preparing this outside the checkout avoids changing the very candidate being
+    // reviewed. PM records the delivered request and evidence in the roadmap.
+    if (!review.includes(`Candidate: ${live.head}`) || !['Verification:', 'Risks:', 'Human action:'].every((field) => review.includes(field)) || !/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(review)) {
+      console.log(`Candidate ${live.head} needs a sourced review package at ${packagePath}: Candidate, Verification, Risks and Human action. No new release request sent.`);
+      process.exit(0);
+    }
+    const ask = `${review.trim()}\n\nCandidate diff: https://github.com/${config.account}/compare/${live.commit}...${live.head}. ${live.ahead} commits have landed since ${live.commit}. Only a maintainer may cut the project's release tag and approve the production run at https://github.com/${config.account}/actions. Approval does not cover a later candidate.`;
     ownerRequest(marker, 'ship what has landed', `${ask}\nWhen resumed, read the live status; hand off only when ahead is zero. Never deploy.`, `pm:ship:${live.head}`);
     console.log(ask);
   } else console.log('Live deployment status is unknown; no shipping task is released.');

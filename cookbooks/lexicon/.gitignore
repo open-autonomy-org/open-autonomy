@@ -69,3 +69,11 @@ hermes/.skills_prompt_snapshot.json
 .open-autonomy/reporter-state.json
 .open-autonomy/bun.lock
 .community-cursor.json
+
+# Hermes scrum runtime
+hermes/scrum-intake/
+hermes/scrum-plan/
+hermes/scrum-queue.lock
+hermes/pm-cursor.json*
+hermes/community-cursor.json*
+hermes/release-review.md
