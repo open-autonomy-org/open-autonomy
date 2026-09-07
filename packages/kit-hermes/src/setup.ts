@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { join, resolve } from 'node:path';
+import { OUTREACH_PENDING, outreachSection, PM_SKILL, writeOutreach } from './outreach.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
 type Choice = 'yes' | 'no' | 'later';
@@ -24,7 +25,7 @@ export interface Situation {
   deploy: 'cloudflare-worker' | 'npm' | 'container' | 'none'; sponsorsListing: boolean; discordToken: boolean; codex: boolean; docker: boolean;
 }
 export interface Recommendation { door: Door; suggested: Choice; reason: string; cost: string }
-interface Opts { plan: boolean; yes: boolean; with: Door[]; without: Door[]; secrets: string; bare: boolean; accountId?: string }
+interface Opts { plan: boolean; yes: boolean; with: Door[]; without: Door[]; secrets: string; bare: boolean; accountId?: string; outreachChannel?: string; outreachRecipient?: string; outreachReminderHours?: string; outreachOnly?: boolean }
 
 const say = (m: string) => console.log(m);
 const ask = (q: string, def: boolean, opts: Opts): boolean => {
@@ -303,23 +304,21 @@ function setDeliver(dir: string, discord: boolean): void {
   writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
-// Owner identity is project configuration, never a credential or a kit-owned default.
-function setOwner(s: Situation, opts: Opts, st: SetupState): void {
-  const file = join(s.dir, 'hermes', 'config.yaml');
-  const text = readFileSync(file, 'utf8');
-  const config = Bun.YAML.parse(text) as Record<string, any>;
-  const owner = { ...(config.owner ?? {}) };
-  if (st.doors['github-app'] === 'yes' && s.login) owner.github ??= s.login;
-  if (st.doors.discord === 'yes' && !owner.discord && !opts.yes) {
-    const id = prompt('Your Discord user ID for owner notifications (Copy User ID with Developer Mode enabled; blank uses GitHub)')?.trim();
-    if (id && !/^\d{17,20}$/.test(id)) throw new Error('owner.discord needs your Discord user ID, not a channel or bot ID');
-    if (id) owner.discord = id;
+// A setup decision written as PM instructions, not a runtime credential preference.
+function setOutreach(dir: string, opts: Opts): void {
+  const current = outreachSection(readFileSync(join(dir, PM_SKILL), 'utf8'));
+  const explicit = opts.outreachChannel !== undefined || opts.outreachRecipient !== undefined || opts.outreachReminderHours !== undefined;
+  if (current && !current.includes(OUTREACH_PENDING) && !explicit && !opts.outreachOnly) {
+    say('  preserving the project outreach policy in the PM skill');
+    return;
   }
-  if (Object.keys(owner).length && JSON.stringify(owner) !== JSON.stringify(config.owner)) {
-    config.owner = owner;
-    writeFileSync(file, Bun.YAML.stringify(config, null, 2));
-    say('  owner notification destinations saved in hermes/config.yaml');
-  }
+  say('\nChoose where PM requests release review and other owner input. Available credentials do not choose this policy. No automatic fallback is authorized.');
+  const channel = opts.outreachChannel ?? (opts.yes ? '' : prompt('Owner outreach channel (github issue or discord DM; enter github or discord)')?.trim());
+  const recipient = opts.outreachRecipient ?? (opts.yes ? '' : prompt(channel === 'discord' ? 'Reviewing owner’s Discord user ID' : 'Reviewing owner’s GitHub username')?.trim());
+  const hours = opts.outreachReminderHours ?? (opts.yes ? '' : prompt('Follow up after how many hours without a response?')?.trim());
+  if (!channel || !recipient || !hours) throw new Error('outreach policy is incomplete: choose --outreach-channel, --outreach-recipient and --outreach-reminder-hours during setup; --yes does not choose for you');
+  writeOutreach(dir, { channel, recipient, reminderHours: Number(hours) });
+  say(`  saved owner outreach policy in ${PM_SKILL}; commit it so the running agent receives it`);
 }
 
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
@@ -395,6 +394,11 @@ jobs:
 // ── The walk ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const opts: Opts = { plan: false, yes: false, with: [], without: [], secrets: join(homedir(), '.config', 'open-autonomy'), bare: false, ...raw };
+  if (opts.outreachOnly) {
+    if (opts.plan) { say('Setup will establish owner outreach in the PM skill (--plan: nothing was changed).'); return; }
+    setOutreach(dir, opts);
+    return;
+  }
   const s = readSituation(dir);
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
@@ -411,6 +415,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     say(`  ${r.door.padEnd(12)} ${(forced ?? prior ?? r.suggested).padEnd(6)} ${r.reason}\n${' '.repeat(21)}costs you: ${r.cost}`);
   }
   if (opts.plan) { say('\n(--plan: nothing was changed)'); return; }
+  setOutreach(dir, opts);
   for (const r of recs) {
     const forced = opts.with.includes(r.door) ? 'yes' : opts.without.includes(r.door) ? 'no' : undefined;
     if (forced) { st.doors[r.door] = forced; continue; }
@@ -426,7 +431,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
   if (st.doors.discord === 'yes') stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
-  setOwner(s, opts, st);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (st.doors.release === 'yes') say('\nRelease door: publish from a human-cut release-v* tag with NPM_TOKEN as a production environment secret — .open-autonomy/PRODUCTION.md has the workflow shape; the setup will scaffold it in a later version.');
   if (st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);

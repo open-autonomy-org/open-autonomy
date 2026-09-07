@@ -26,7 +26,7 @@ try {
     console.log(`next: commit it; mint the key (bun .open-autonomy/mint-key.ts); run the stack (container/README.md)`);
   } else if (verb === 'setup') {
     const doors = (name: string): Door[] => (flag(name) ?? '').split(',').map((d) => d.trim()).filter(Boolean) as Door[];
-    await setup(target, { plan: argv.includes('--plan'), yes: argv.includes('--yes'), with: doors('--with'), without: doors('--without'), secrets: flag('--secrets') ? resolve(flag('--secrets')!) : undefined, bare: argv.includes('--bare'), accountId: flag('--account-id') });
+    await setup(target, { plan: argv.includes('--plan'), yes: argv.includes('--yes'), with: doors('--with'), without: doors('--without'), secrets: flag('--secrets') ? resolve(flag('--secrets')!) : undefined, bare: argv.includes('--bare'), accountId: flag('--account-id'), outreachOnly: argv.includes('--outreach-only'), outreachChannel: flag('--outreach-channel'), outreachRecipient: flag('--outreach-recipient'), outreachReminderHours: flag('--outreach-reminder-hours') });
   } else if (verb === 'check') {
     const out = check(target);
     if (out.drift.length) { for (const d of out.drift) console.error(d); console.error(`kit drift: ${out.drift.length} file(s). Run \`create-open-autonomy upgrade ${dir}\`; the kit is the source and its files are never edited in place (name a file in .open-autonomy/kit.json divergences to take it over).`); process.exit(1); }

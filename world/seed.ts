@@ -7,6 +7,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, ROOT, api, git, need } from './lib.ts';
+import { setup } from '../packages/kit-hermes/src/setup.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL');
@@ -35,7 +36,10 @@ cpSync(COOKBOOK, work, { recursive: true, filter: (src) => !/\/(node_modules|\.g
 if (process.env.WORLD_IDLE === '1' && process.env.WORLD_SCRUM !== '1') writeFileSync(resolve(work, 'hermes/kanban.seed.json'), JSON.stringify({ tasks: [] }));
 const ownerConfig = resolve(work, 'hermes', 'config.yaml');
 const ownerDoor = process.env.WORLD_OWNER_DOOR ?? 'discord';
-writeFileSync(ownerConfig, `${readFileSync(ownerConfig, 'utf8').trimEnd()}\nowner:\n  github: octocat\n${ownerDoor === 'discord' ? '  discord: "1000000000000000002"\n' : ''}`);
+// Both legacy identities remain available: only the setup-written policy chooses delivery.
+writeFileSync(ownerConfig, `${readFileSync(ownerConfig, 'utf8').trimEnd()}\nowner:\n  github: octocat\n  discord: "1000000000000000002"\n`);
+await setup(work, { outreachOnly: true, yes: true, outreachChannel: ownerDoor,
+  outreachRecipient: ownerDoor === 'github' ? 'octocat' : '1000000000000000002', outreachReminderHours: '24' });
 const configPath = resolve(work, '.open-autonomy', 'config.yaml');
 await git(work, 'init', '-q', '-b', 'main');
 await git(work, 'config', 'user.name', 'maintainer');

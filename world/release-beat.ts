@@ -2,6 +2,7 @@
 // kanban and owner doors; the phase comes from ordinary sourced GitHub activity.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { outreachCommand } from './outreach-policy.ts';
 const project = process.cwd();
 const home = process.env.HERMES_HOME!;
 const run = (cmd: string[], cwd = project) => {
@@ -28,7 +29,7 @@ function review() {
     if (field(previous, 'Plan') !== planCommit) writeFileSync(packageFile, `Release: release-next\nPlan: ${planCommit}\nCandidate: ${candidate}\nVersion: ${version}\nVerification: Cookbook checks passed for the selected candidate; [candidate](https://github.com/${account}/commit/${candidate}).\nRisks: Production is not yet verified; human review and post-release checks remain required.\nHuman action: Review this version and candidate, then follow [the release procedure](https://github.com/${account}/blob/${planCommit}/.open-autonomy/PRODUCTION.md) to cut its deploy-v date tag and approve its production run.\n`);
   }
   console.log(run(['bun', '.open-autonomy/maintain.ts', 'ship']));
-  run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']);
+  run(outreachCommand(home));
 }
 const planHead = run(['git', 'rev-parse', 'HEAD'], plan);
 if (snapshot.resumed && planHead !== snapshot.snapshot.main &&

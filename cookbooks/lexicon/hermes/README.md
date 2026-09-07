@@ -23,10 +23,12 @@ landing. Later arrivals remain for the next batch. Legacy `scrum-intake/` notes 
 reconciled and pruned; new optional pointers use the native notepad. Separate PM/community GitHub cursors
 advance only after their inputs are accounted for. The existing SDK reporter publishes real fleet activity.
 
-The owner is configured under `owner: {github: <login>, discord: "<user id>"}`. The escalation hook routes
-human authority blocks through Discord subscriptions or an assigned GitHub issue and closes them when
-resolved. `owner.reminder_hours` controls unchanged reminders (default 24, minimum 1); materially changed
-asks can be sent sooner. Volunteer contributions use their accepted scope and agreed follow-up instead.
+Setup writes the reviewing owner, contact channel and follow-up interval into the Project outreach policy
+in `skills/open-autonomy/pm/SKILL.md`. That section is project-owned and survives kit upgrades. PM explicitly
+selects delivery from those instructions; the escalation hook carries out the choice and reconciles its
+receipts through native Discord subscriptions or GitHub issues. Credentials and legacy `owner` config
+fields do not select a channel or authorize fallback. Missing policy or failed delivery stays a scrum gap.
+Volunteer contributions use their accepted scope and agreed follow-up instead.
 Maintainers alone review releases, cut tags and approve production. The PM prepares the review package and
 keeps release-dependent outcomes open through verification. See `.open-autonomy/PRODUCTION.md`.
 
