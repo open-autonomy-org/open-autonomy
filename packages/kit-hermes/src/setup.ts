@@ -192,27 +192,36 @@ function stepPlatformKey(s: Situation, opts: Opts, st: SetupState): void {
 }
 
 const bypassAdmin = (s: Situation) => (s.ownerIsOrg ? [{ actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }] : [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }]);
-function upsertRuleset(s: Situation, body: Record<string, unknown>): void {
-  const existing = (gh(['api', `repos/${s.account}/rulesets`]).json as Array<{ id: number; name: string }> | null)?.find((r) => r.name === body.name);
-  const r = existing ? gh(['api', '-X', 'PUT', `repos/${s.account}/rulesets/${existing.id}`], body) : gh(['api', '-X', 'POST', `repos/${s.account}/rulesets`], body);
+function ensureRuleset(s: Situation, body: Record<string, unknown>): void {
+  const listed = gh(['api', `repos/${s.account}/rulesets`]);
+  if (!listed.ok || !Array.isArray(listed.json)) throw new Error('Cannot inspect repository rulesets; resolve access before changing repository policy.');
+  // Existing policy belongs to the owner. Setup must not weaken it by replaying template defaults.
+  if (listed.json.some((r: { name: string }) => r.name === body.name)) return;
+  const r = gh(['api', '-X', 'POST', `repos/${s.account}/rulesets`], body);
   if (!r.ok) throw new Error(`ruleset ${body.name}: ${r.err}`);
 }
 
 function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'owner-rules')) return;
-  say(`\nThe owner's rules: nothing pushes main (a pull request, no bypass); .github/ is yours (CODEOWNERS, code-owner review), so a landing that touches a workflow waits for you and everything else lands unreviewed.`);
+  say('\nRepository policy: preserve existing rulesets, prepare absent kit defaults, and land CODEOWNERS. The setup agent verifies the actual owner and effective review policy before activation.');
   if (opts.plan) return;
+  if (setupGit(s, 'diff', '--cached', '--name-only')) throw new Error('Finish or preserve the staged work before owner-rule setup; setup will not include it in its commit.');
   mkdirSync(join(s.dir, '.github'), { recursive: true });
   const co = join(s.dir, '.github', 'CODEOWNERS');
   if (!existsSync(co)) writeFileSync(co, `# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a\n# secret is never changed by the agent. Everything else lands with no review.\n/.github/ @${s.login}\n`);
-  upsertRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
-  if (run(['git', 'status', '--porcelain', '--', '.github/CODEOWNERS'], { cwd: s.dir }).out) {
+  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
+  if (setupGit(s, 'status', '--porcelain', '--', '.github/CODEOWNERS')) {
     // The rule requires a pull request from now on, so the CODEOWNERS file itself lands the kit's way: a land/ branch.
-    run(['git', 'checkout', '-q', '-B', 'land/owner-rules'], { cwd: s.dir }); run(['git', 'add', '.github/CODEOWNERS'], { cwd: s.dir });
-    run(['git', 'commit', '-q', '-m', 'The workflows are the owner\'s: CODEOWNERS on .github/'], { cwd: s.dir });
-    run(['git', 'push', '-q', '-u', 'origin', 'land/owner-rules'], { cwd: s.dir }); run(['git', 'checkout', '-q', 'main'], { cwd: s.dir });
+    const branch = setupGit(s, 'symbolic-ref', '--short', 'HEAD');
+    setupGit(s, 'checkout', '-q', '-b', 'land/owner-rules');
+    setupGit(s, 'add', '.github/CODEOWNERS');
+    setupGit(s, 'commit', '-q', '-m', 'The workflows are the owner\'s: CODEOWNERS on .github/');
+    setupGit(s, 'push', '-q', '-u', 'origin', 'land/owner-rules');
+    setupGit(s, 'checkout', '-q', branch);
   }
-  mark(s.dir, st, 'owner-rules', 'main-protected, CODEOWNERS');
+  setupGit(s, 'fetch', '-q', 'origin');
+  const landed = run(['git', 'show', 'origin/main:.github/CODEOWNERS'], { cwd: s.dir });
+  if (!landed.ok || landed.out !== readFileSync(co, 'utf8').trim()) throw new Error('The intended CODEOWNERS file is not on origin/main yet. Complete or reconcile its existing pull request, then rerun setup; owner-rule setup remains incomplete.');
+  mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; CODEOWNERS landed; effective owner policy requires setup-agent verification');
 }
 
 function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
@@ -224,7 +233,7 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   if (!env.ok) throw new Error(`environment: ${env.err}`);
   const pols = gh(['api', `repos/${s.account}/environments/production/deployment-branch-policies`]).json?.branch_policies as Array<{ name: string; type: string }> | undefined;
   if (!pols?.some((p) => p.name === 'deploy-v*')) gh(['api', '-X', 'POST', `repos/${s.account}/environments/production/deployment-branch-policies`], { name: 'deploy-v*', type: 'tag' });
-  upsertRuleset(s, { name: 'deploy-tags-admin-only', target: 'tag', enforcement: 'active', bypass_actors: bypassAdmin(s), conditions: { ref_name: { include: ['refs/tags/deploy-v*'], exclude: [] } }, rules: [{ type: 'creation' }, { type: 'update' }, { type: 'deletion' }] });
+  ensureRuleset(s, { name: 'deploy-tags-admin-only', target: 'tag', enforcement: 'active', bypass_actors: bypassAdmin(s), conditions: { ref_name: { include: ['refs/tags/deploy-v*'], exclude: [] } }, rules: [{ type: 'creation' }, { type: 'update' }, { type: 'deletion' }] });
   if (s.deploy === 'cloudflare-worker') {
     const accountId = opts.accountId ?? prompt('Cloudflare account id (dash.cloudflare.com → the account → Workers & Pages → Account ID):')?.trim();
     if (accountId) run(['gh', 'variable', 'set', 'CLOUDFLARE_ACCOUNT_ID', '--repo', s.account, '--body', accountId]);

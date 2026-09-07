@@ -154,6 +154,13 @@ remote, inaccessible repository or failed command stops setup. The setup agent d
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
 
+Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
+and staged work, never resets an existing owner-rules branch, and checks that the intended CODEOWNERS
+file has landed on origin/main before marking that preparation complete. Resolve an interrupted commit
+or an outstanding pull request through the normal Git/browser tools, then rerun setup. A matching file
+and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
+the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
+
 Land the project-owned agreement and configuration before activation. Verify the loaded Hermes home,
 native schedules, actual human contact path and host restart supervision. Rehearse ordinary-member
 versus owner authority, interruption and recovery in the world. When GitHub is the chosen contact path,
