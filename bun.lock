@@ -30,7 +30,7 @@
     },
     "packages/kit-hermes": {
       "name": "create-open-autonomy",
-      "version": "2.7.1",
+      "version": "2.8.0",
       "bin": {
         "create-open-autonomy": "./src/cli.ts",
       },

@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.7.1' } as const;
+export const KIT = { name: 'hermes', version: '2.8.0' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
@@ -19,7 +19,7 @@ export interface KitRecord { kit: string; version: string; params: KitParams; di
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's three).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|PRODUCTION\.md|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|scrum\.ts|PRODUCTION\.md|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -116,7 +116,17 @@ export function upgrade(dir: string): Outcome {
   const rec = readKit(dir);
   const rendered = render(rec.params);
   const before = check(dir);
-  const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE);
+  // Migrate only missing planning notes, using this project's seed rather than
+  // the template's hello task. The live board is reconciled by PM, never by upgrade.
+  if (!existsSync(join(dir, 'ROADMAP.md'))) {
+    const seedFile = join(dir, 'hermes/kanban.seed.json');
+    if (existsSync(seedFile)) {
+      const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };
+      const notes = seed.tasks.map((t) => `## ${t.key}: ${t.title}\n\nStatus: historical intention; reconcile with the live board and landed work.\nDispatch: hold\n\nSource: [committed seed](hermes/kanban.seed.json), key \`${t.key}\`. This is not evidence of current priority or completion.\n${t.held ? `\nExisting hold: ${t.held}\n` : ''}\nCompletion:\n${(t.acceptance ?? []).map((a) => `- ${a}`).join('\n')}\n`).join('\n');
+      rendered.set('ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nSourced working notes maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.\n\n${notes}\n## Questions and scrum notes\n\nNo scrum has reconciled this import yet. Record decisions, human commitments, release review gates and evidence here.\n`));
+    }
+  }
+  const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE || (rel === 'ROADMAP.md' && !existsSync(join(dir, rel))));
   const gone = retired(dir, rendered, rec);
   for (const rel of gone) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
   // A directory the retirement emptied goes too.
