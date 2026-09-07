@@ -32,13 +32,29 @@
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
+const loadedSource = readFileSync(import.meta.path, 'utf8');
+// Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
+// kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
+if (!argv.includes('--stack-child')) {
+  let child: ReturnType<typeof Bun.spawn> | undefined;
+  let stopping = false;
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { stopping = true; child?.kill(signal); });
+  let entry = import.meta.path;
+  while (!stopping) {
+    child = Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] });
+    const code = await child.exited;
+    if (stopping || code !== 75) process.exit(stopping ? 0 : code);
+    entry = resolve(project, '.open-autonomy/start.ts');
+  }
+  process.exit(0);
+}
 // The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
 // checkout's directory name: two projects checked out as `project` must not share one home.
 const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
@@ -66,10 +82,20 @@ const agentEnv = (): Record<string, string> => ({ ...inherited(), HERMES_HOME: h
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
+process.on('exit', () => {
+  for (const child of children) { try { child.proc.kill(); } catch { /* already gone */ } }
+});
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean }) {
   const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' });
   children.push({ name, proc });
-  proc.exited.then((code) => { if (ending) return; ending = true; say(`${name} ended (${code}); stopping the rest`); for (const c of children) if (c.proc !== proc) c.proc.kill(); setTimeout(() => process.exit(1), 500); });
+  proc.exited.then(async (code) => {
+    if (ending) return;
+    ending = true;
+    say(`${name} ended (${code}); stopping the rest`);
+    for (const c of children) if (c.proc !== proc) c.proc.kill();
+    await Promise.all(children.map((c) => c.proc.exited));
+    process.exit(name === 'gateway' && code === 75 ? 75 : 1);
+  });
   return proc;
 }
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { ending = true; for (const c of children) c.proc.kill(); setTimeout(() => process.exit(0), 300); });
@@ -115,6 +141,15 @@ if (!existsSync(resolve(project, '.git'))) {
   } else if (git('checkout', '-q', '--detach', 'origin/main').exitCode === 0) say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
 }
 
+// Fetching can replace this very entrypoint. Load the landed code before claiming its
+// version is running, rather than continuing the previous script with a new kit record.
+if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loadedSource) {
+  ending = true;
+  for (const child of children) child.proc.kill();
+  await Promise.all(children.map((child) => child.proc.exited));
+  process.exit(75);
+}
+
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, 'hermes');
 if (existsSync(committed)) {
@@ -142,6 +177,16 @@ else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) 
 writeFileSync(envFile, `${lines.join('\n')}\n`);
 own(home);
 say(`home ${home} synced from ${committed}`);
+// The lifecycle bridge is kit-owned; existing projects keep their own model and owner config.
+const runtimeConfigFile = resolve(home, 'config.yaml');
+const runtimeConfig = Bun.YAML.parse(readFileSync(runtimeConfigFile, 'utf8')) as Record<string, any>;
+runtimeConfig.plugins ??= {};
+runtimeConfig.plugins.enabled = [...new Set([...(runtimeConfig.plugins.enabled ?? []), 'escalate'])];
+writeFileSync(runtimeConfigFile, Bun.YAML.stringify(runtimeConfig, null, 2));
+const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
+writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
+const homeReadme = resolve(home, 'README.md');
+writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8') + `\nRunning Hermes kit ${runningKit.version}.\n`);
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = [];
@@ -167,7 +212,28 @@ if (!existsSync(resolve(import.meta.dir, 'node_modules'))) {
   say(`reporter dependencies installed in ${import.meta.dir}`);
 }
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
-spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env });
+const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
+let restarting = false;
+const restartRequest = resolve(home, 'kit-restart.json');
+setInterval(() => {
+  if (ending || restarting || !existsSync(restartRequest)) return;
+  let request: { version?: string };
+  try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
+  catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
+  if (!request.version || request.version === runningKit.version) { rmSync(restartRequest, { force: true }); return; }
+  const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
+  if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
+  try {
+    const tasks = JSON.parse(board.stdout.toString());
+    if (!Array.isArray(tasks) || tasks.some((task: { status: string }) => ['running', 'review'].includes(task.status))) return;
+  } catch { say('cannot decode the board; kit restart waits'); return; }
+  restarting = true;
+  rmSync(restartRequest, { force: true });
+  say(`kit ${request.version} landed; asking Hermes to drain before restarting the stack`);
+  // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
+  // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
+  process.kill(gateway.pid, constants.signals.SIGUSR1);
+}, 5000);
 say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

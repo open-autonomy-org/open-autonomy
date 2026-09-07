@@ -17,6 +17,13 @@ hermes/hooks/*
 !hermes/hooks/seed/
 !hermes/hooks/seed/HOOK.yaml
 !hermes/hooks/seed/handler.py
+!hermes/hooks/escalate/
+!hermes/hooks/escalate/HOOK.yaml
+!hermes/hooks/escalate/handler.py
+hermes/escalations.json
+hermes/kit-upgrades/
+hermes/kit-restart.json
+hermes/running-kit.json
 hermes/cron/output/
 hermes/cron/*.lock
 hermes/cron/jobs.json

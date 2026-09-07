@@ -303,6 +303,25 @@ function setDeliver(dir: string, discord: boolean): void {
   writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
+// Owner identity is project configuration, never a credential or a kit-owned default.
+function setOwner(s: Situation, opts: Opts, st: SetupState): void {
+  const file = join(s.dir, 'hermes', 'config.yaml');
+  const text = readFileSync(file, 'utf8');
+  const config = Bun.YAML.parse(text) as Record<string, any>;
+  const owner = { ...(config.owner ?? {}) };
+  if (st.doors['github-app'] === 'yes' && s.login) owner.github ??= s.login;
+  if (st.doors.discord === 'yes' && !owner.discord && !opts.yes) {
+    const id = prompt('Your Discord user ID for owner notifications (Copy User ID with Developer Mode enabled; blank uses GitHub)')?.trim();
+    if (id && !/^\d{17,20}$/.test(id)) throw new Error('owner.discord needs your Discord user ID, not a channel or bot ID');
+    if (id) owner.discord = id;
+  }
+  if (Object.keys(owner).length && JSON.stringify(owner) !== JSON.stringify(config.owner)) {
+    config.owner = owner;
+    writeFileSync(file, Bun.YAML.stringify(config, null, 2));
+    say('  owner notification destinations saved in hermes/config.yaml');
+  }
+}
+
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
   if (done(st, 'subscription')) return;
   const src = join(homedir(), '.codex', 'auth.json'); const dst = join(opts.secrets, 'codex.json');
@@ -407,6 +426,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
   if (st.doors.discord === 'yes') stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
+  setOwner(s, opts, st);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (st.doors.release === 'yes') say('\nRelease door: publish from a human-cut release-v* tag with NPM_TOKEN as a production environment secret — .open-autonomy/PRODUCTION.md has the workflow shape; the setup will scaffold it in a later version.');
   if (st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);

@@ -49,9 +49,26 @@ const [command, ...rest] = process.argv.slice(2);
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if ((command === 'comment' || command === 'discuss') && doorless) {
+} else if ((command === 'comment' || command === 'discuss' || command === 'issue') && doorless) {
   console.error('community: no GitHub door (no GITHUB_TOKEN) — nothing can be posted on GitHub');
   process.exit(3);
+} else if (command === 'issue' && rest[0] === 'open' && rest.length === 5) {
+  const [, task, title, body, assignee] = rest;
+  if (!/^[a-z0-9_-]+$/i.test(task!)) throw new Error('issue open: invalid task id');
+  const marker = `<!-- open-autonomy:blocked:${task} -->`;
+  // Reconcile against GitHub too: a crash after POST must not create a second issue.
+  let existing: { number: number; body?: string } | undefined;
+  for (let page = 1; ; page++) {
+    const issues = await github<Array<{ number: number; body?: string; pull_request?: unknown }>>('GET', `/repos/${account}/issues?state=open&per_page=100&page=${page}`);
+    existing = issues.find((i) => !i.pull_request && i.body?.includes(marker));
+    if (existing || issues.length < 100) break;
+  }
+  const issue = existing ?? await github('POST', `/repos/${account}/issues`, { title, body: `${marker}\n${body}`, assignees: [assignee] });
+  console.log(JSON.stringify(issue));
+} else if (command === 'issue' && rest[0] === 'close' && /^\d+$/.test(rest[1] ?? '')) {
+  console.log(JSON.stringify(await github('PATCH', `/repos/${account}/issues/${rest[1]}`, { state: 'closed' })));
+} else if (command === 'issue' && rest[0] === 'remind' && /^\d+$/.test(rest[1] ?? '') && rest[2]) {
+  console.log(JSON.stringify(await github('POST', `/repos/${account}/issues/${rest[1]}/comments`, { body: rest[2] })));
 } else if (command === 'poll') {
   const since = cursor();
   const issues = await github<Array<{ number: number; title: string; body: string | null; created_at: string; pull_request?: unknown; user?: { login?: string } }>>('GET', `/repos/${account}/issues?state=open&per_page=50&since=${encodeURIComponent(since)}`);
@@ -80,6 +97,6 @@ if (command === 'poll' && doorless) {
   writeFileSync(cursorFile, `${JSON.stringify({ since: new Date().toISOString() })}\n`);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark');
+  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body>');
   process.exit(2);
 }
