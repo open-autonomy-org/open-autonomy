@@ -26,7 +26,7 @@ open-autonomy` from it against the npm registry twin (`bun world/run.ts kit`) be
 README.md            the project's front page, with the account's four widgets
 CONSTITUTION.md      what the project is and must remain; its first paragraph leads the page, its invariants bind every task
 CONTRIBUTING.md      how code is written here, the bar every diff is reviewed against
-ROADMAP.md           sourced working notes, maintained by the PM scrum; project-owned
+ROADMAP.md           notable intentions and outstanding outcomes; PM-maintained, project-owned
 CHANGELOG.md         what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
@@ -116,6 +116,13 @@ all task creation to the owner, the PM proposes a concrete amendment for human r
 dispatch until that authority is granted; upgrades never rewrite an adopter's constitution. Update project-owned AGENTS.md wording that
 still equates the board and roadmap. No production or release permission changes with this upgrade.
 
-`.open-autonomy/scrum.ts` handles durable intake, an isolated planning worktree, and native idempotent
+`.open-autonomy/scrum.ts` handles automatic main/session discovery, bounded native cron checkpoints, an isolated planning worktree, and native idempotent
 kanban creation from a sourced, landed roadmap section marked `Dispatch: fleet`. Decisions, priorities,
 human commitments and release review stay with the Hermes skills, not a scheduler implemented by the kit.
+
+PM owns careful distillation: ROADMAP.md holds notable present/future intentions; CHANGELOG.md holds notable
+changes consolidated into main, separating Unreleased from released. Contributors need no special handoff
+or shared-document edit. Routine activity remains in source history. The native PM cron notepad carries
+bounded cursors, coverage gaps and pending pointers; no permanent scrum journal is required. Legacy intake
+is preserved until acknowledged, then pruned. An unavailable source retains its checkpoint. Release review
+and outstanding operational acceptance remain on roadmap even after implementation enters changelog.

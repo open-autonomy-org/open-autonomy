@@ -1,6 +1,6 @@
 # __PROJECT__ roadmap
 
-Working notes maintained by the Hermes PM scrum. The owner sets direction; the fleet builds by default.
+Notable present/future intentions and outstanding outcomes, carefully maintained by the Hermes PM scrum. The owner sets direction; the fleet builds by default.
 Sources support decisions and claims. Ideas and unanswered requests are not commitments or dispatch orders.
 See the [PM skill](hermes/skills/open-autonomy/pm/SKILL.md) for the reconciliation cycle.
 
@@ -15,7 +15,6 @@ Completion:
 - `bun run check` passes on a fresh clone.
 - README.md describes what this project is for in one paragraph.
 
-## Questions and scrum notes
-
-No scrum has reconciled these initial intentions yet. Record dated decisions and evidence here.
-Human release review remains required for any release; see [production instructions](.open-autonomy/PRODUCTION.md).
+Human release review remains required; see [production instructions](.open-autonomy/PRODUCTION.md).
+Completed intentions leave this plan once their criteria are evidenced. PM distills notable landed changes
+into [CHANGELOG.md](CHANGELOG.md); routine activity stays in its source history, not a scrum journal.

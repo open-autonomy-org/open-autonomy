@@ -20,6 +20,35 @@ if (command === 'inspect') {
   const rows = await gh.get(`/repos/${ACCOUNT}/issues?state=all&per_page=100`);
   console.log(JSON.stringify(rows.body, null, 2));
   console.log(run(['git', 'show', 'origin/main:ROADMAP.md']).out);
+  console.log(run(['git', 'show', 'origin/main:CHANGELOG.md']).out);
+  console.log(run(['python', '-c', 'from cron.jobs import resolve_job_ref; from cron import notepad; import json; print(json.dumps(notepad.list_notes(resolve_job_ref("pm")["id"])))']).out);
+} else if (command === 'outside') {
+  const result = await gh.put(`/repos/${ACCOUNT}/pulls/5/merge`, { merge_method: 'merge' });
+  if (result.status !== 200 || !result.body?.merged) throw new Error(result.text);
+  console.log({ outsideMerge: result.body });
+  // No roadmap/changelog edit, Hermes note, special label or notification.
+  const noise = await gh.post(`/repos/${ACCOUNT}/issues/4/comments`, { body: 'Routine update: retried a local command; all fine now. No change in direction.' });
+  console.log({ routineComment: noise.body?.html_url });
+} else if (command === 'checkpoint') {
+  const snapshot = JSON.parse(scrum('prepare').out);
+  console.log({ snapshot: snapshot.snapshot, checkpoint: snapshot.checkpoint, mainChanges: snapshot.mainChanges, sessions: snapshot.sessions });
+  console.log({ wrongSnapshot: run(['bun', '.open-autonomy/scrum.ts', 'finish', 'wrong-id', 'main'], true) });
+  console.log({ repeat: JSON.parse(scrum('prepare').out).snapshot });
+} else if (command === 'gap') {
+  const snapshot = JSON.parse(scrum('prepare').out);
+  console.log({ before: snapshot.checkpoint });
+  // An unavailable GitHub door cannot create a successful poll acknowledgment.
+  const unavailable = Bun.spawnSync({ cmd: ['bun', '.open-autonomy/community.ts', 'poll', 'pm'], cwd: project,
+    env: { ...env, GITHUB_TOKEN: '', OA_COMMUNITY_DOOR_LOADED: '1' }, stdout: 'pipe', stderr: 'pipe' });
+  console.log({ unavailable: unavailable.stdout.toString(), mark: run(['bun', '.open-autonomy/community.ts', 'mark', 'pm'], true) });
+  // Omit incomplete source reviews: no main/session acknowledgment.
+  console.log(scrum('finish', snapshot.snapshot.id));
+  const next = JSON.parse(scrum('prepare').out);
+  console.log({ after: next.checkpoint, repeatedHistory: next.mainChanges });
+} else if (command === 'notepad') {
+  console.log(scrum('note', 'hermes:message/world-routine', 'operator', 'Routine check succeeded; no change to the plan.'));
+  console.log(scrum('note', 'hermes:message/world-routine', 'operator', 'Routine check succeeded; no change to the plan.'));
+  console.log({ oversized: run(['bun', '.open-autonomy/scrum.ts', 'note', 'hermes:message/world-too-large', 'operator', 'x'.repeat(17 * 1024)], true) });
 } else if (command === 'guards') {
   for (const outcome of ['documentation', 'translation', 'release']) console.log({ outcome, ...run(['bun', '.open-autonomy/scrum.ts', 'queue', outcome, 'accidental', 'Must stay held', '- No human work may dispatch'], true) });
   const hold = JSON.parse(run(['hermes', 'kanban', 'create', 'World verification hold', '--initial-status', 'blocked', '--idempotency-key', 'world:hold', '--json']).out);
@@ -47,7 +76,7 @@ if (command === 'inspect') {
   if (sync.status !== 200) throw new Error(sync.text);
   const status = (await api(need('PLATFORM_URL')).get(`/v1/accounts/${ENC}`)).body.live;
   console.log({ live: status, withoutPackage: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
-  writeFileSync(resolve(home, 'release-review.md'), `Candidate: ${status.head}\n\nVerification: [landed work and checks](https://github.com/${ACCOUNT}/commits/${status.head}); cookbook add command exercised in the twin world.\n\nRisks: outside release notes PR still awaits review; production has not been verified.\n\nHuman action: review this candidate, choose an unused deploy-v tag per [.open-autonomy/PRODUCTION.md](https://github.com/${ACCOUNT}/blob/${status.head}/.open-autonomy/PRODUCTION.md), then approve its production environment run.\n`);
+  writeFileSync(resolve(home, 'release-review.md'), `Candidate: ${status.head}\n\nVerification: [landed work and checks](https://github.com/${ACCOUNT}/commits/${status.head}); cookbook add command exercised in the twin world.\n\nRisks: production has not been verified; review the candidate diff and outstanding roadmap gates.\n\nHuman action: review this candidate, choose an unused deploy-v tag per [.open-autonomy/PRODUCTION.md](https://github.com/${ACCOUNT}/blob/${status.head}/.open-autonomy/PRODUCTION.md), then approve its production environment run.\n`);
   console.log({ prepared: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
   console.log(run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']));
   console.log(run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']));
@@ -60,4 +89,4 @@ if (command === 'inspect') {
 } else if (command === 'resume') {
   console.log(scrum('prepare').out);
   console.log({ pmCursor: existsSync(resolve(home, 'pm-cursor.json')) ? JSON.parse(readFileSync(resolve(home, 'pm-cursor.json'), 'utf8')) : null });
-} else throw new Error('usage: scrum-operator.ts inspect | guards | intake | release | archive | resume');
+} else throw new Error('usage: scrum-operator.ts inspect | outside | checkpoint | gap | notepad | guards | intake | release | archive | resume');

@@ -38,7 +38,7 @@ in under thirty seconds (`bun run check`), and behavior is verified by driving t
 The cookbook is `todo-cli` (`--cookbook <name>` picks another): nine historical seed intentions, each one command. Fire the PM to reconcile them into ROADMAP.md;
 a subsequent scrum queues ready work after the planning PR lands. `--cookbook lexicon` is the community
 cookbook: the seed files a question and a request as issues and an idea as a discussion on the GitHub twin; the
-community job (fire it with `hermes cron run community`) answers them, captures the request as sourced intake for the PM scrum; `say` puts a person in the channel and the agent answers there. The world stays up between edits; the
+community job (fire it with `hermes cron run community`) answers them, leaves the request in ordinary source history for PM to discover; `say` puts a person in the channel and the agent answers there. The world stays up between edits; the
 platform reloads on its own under `wrangler dev`; a kit change is `stack down --purge` and `stack up`.
 
 ## What is real and what is a twin
@@ -85,7 +85,7 @@ bun world/run.ts hermes cron run pm                         # after landing: que
 bun world/run.ts env -- bun world/scrum-operator.ts inspect  # read roadmap, board, issues and PRs
 bun world/run.ts env -- bun world/scrum-operator.ts guards   # held human work refuses; concurrent creates share one native task
 bun world/run.ts env -- bun world/scrum-operator.ts intake   # duplicate chat capture and a late GitHub reply, independent desk cursors
-bun world/run.ts stack restart                             # preserve home, board, intake and unfinished planning worktree
+bun world/run.ts stack restart                             # preserve native notepad and unfinished planning worktree
 bun world/run.ts hermes cron run pm                         # reconcile the late reply and preserved intake
 bun world/run.ts env -- bun world/scrum-operator.ts release  # missing package holds; prepared candidate reaches the owner door
 bun world/run.ts env -- bun world/scrum-operator.ts archive  # after native review: archived work is not recreated
@@ -94,3 +94,13 @@ bun world/run.ts env -- bun world/scrum-operator.ts archive  # after native revi
 Read the resulting records between beats; a cron exit alone is no proof. `release` leaves human approval
 pending and sends only to the twin. No production approval, release or deployment is performed. A needed
 model beat outside this script remains an unauthored scenario, not evidence of reasoning quality.
+
+The distillation follow-up uses the same world. After the initial planning PR lands, run another scrum to
+retire that batch. `env -- bun world/scrum-operator.ts outside` merges the ordinary outside PR and adds a
+routine comment, without a Hermes handoff or shared-document edit. Subsequent PM scrums must discover the
+landed commit, source one Unreleased changelog entry, and retain human release review in roadmap. Repeat
+scrums should add no journal entries or duplicate changes. `inspect` prints both documents and native PM
+notepad state. `checkpoint` shows a stable interrupted batch and refusal of a wrong snapshot ID; `gap`
+retires a batch without acknowledging incomplete sources so the next one repeats their history. `notepad`
+exercises deduplication and the native size limit; acknowledged routine pointers should be pruned without
+entering shared documents. These are manual operator beats, not assertions of unscripted model judgment.

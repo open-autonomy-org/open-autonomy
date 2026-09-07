@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.8.0' } as const;
+export const KIT = { name: 'hermes', version: '2.8.1' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
@@ -123,7 +123,7 @@ export function upgrade(dir: string): Outcome {
     if (existsSync(seedFile)) {
       const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };
       const notes = seed.tasks.map((t) => `## ${t.key}: ${t.title}\n\nStatus: historical intention; reconcile with the live board and landed work.\nDispatch: hold\n\nSource: [committed seed](hermes/kanban.seed.json), key \`${t.key}\`. This is not evidence of current priority or completion.\n${t.held ? `\nExisting hold: ${t.held}\n` : ''}\nCompletion:\n${(t.acceptance ?? []).map((a) => `- ${a}`).join('\n')}\n`).join('\n');
-      rendered.set('ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nSourced working notes maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.\n\n${notes}\n## Questions and scrum notes\n\nNo scrum has reconciled this import yet. Record decisions, human commitments, release review gates and evidence here.\n`));
+      rendered.set('ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nNotable intentions maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.\n\n${notes}\nPM must reconcile this import against landed history and the live board before dispatch. Distill notable landed changes into CHANGELOG.md; retain outstanding release and verification outcomes here. Routine activity stays in source history.\n`));
     }
   }
   const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE || (rel === 'ROADMAP.md' && !existsSync(join(dir, rel))));

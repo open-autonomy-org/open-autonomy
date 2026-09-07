@@ -60,7 +60,6 @@ const handlers = [
   // after the poll that shows a request; the poll itself. Stateless, keyed on the conversation's own text.
   { id: 'community-report', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; preserved the request in issue #2 for roadmap scrum; nothing declined.' } },
   { id: 'community-act', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'request: add the term' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
-    `bun .open-autonomy/scrum.ts note https://github.com/cookbook/lexicon/issues/2 octocat 'Request: add the term twin to the lexicon, with the definition and source in issue #2' || exit 1`,
     `bun .open-autonomy/community.ts comment 2 "Captured for the PM scrum to consider in ROADMAP.md." || exit 1`,
     `bun .open-autonomy/community.ts comment 1 "A lexicon is this project's shared glossary: terms the community defines, rendered to the homepage. Propose one in an issue titled 'request: add the term …' with a definition and a source." || { echo "COMMUNITY_""FAILED comment 1"; exit 1; }`,
     `bun .open-autonomy/community.ts discuss 1 "A term of the week fits the constitution: a term is defined once and the homepage renders from the glossary alone, so the week's term is whichever was added last. I will keep it in mind when the glossary is larger." || { echo "COMMUNITY_""FAILED discuss 1"; exit 1; }`,
