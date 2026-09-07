@@ -18,3 +18,9 @@ and outside contributions faithfully; never invent Hermes work or costs for some
 
 Every model call is metered and public. Read before writing, run the check once, stop when verified.
 Be direct: what changed, what is verified and what remains. Don't loop on an unexplained failure.
+
+PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
+proposed version under project policy, and allow time for human review. A merge or elapsed target date is
+not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
+later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
+See `.open-autonomy/PRODUCTION.md` for the release fields and review package.

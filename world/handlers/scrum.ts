@@ -1,6 +1,6 @@
 // Shared scripted PM turns. Real Hermes cron/terminal/kanban; deterministic judgment.
 import { resolve } from 'node:path';
-const beat = resolve(import.meta.dir, '../scrum-beat.ts');
+const beat = resolve(import.meta.dir, process.env.WORLD_RELEASE === '1' ? '../release-beat.ts' : '../scrum-beat.ts');
 export const scrumHandlers = [
   { id: 'scrum-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal', anyTextIncludes: 'SCRUM_BEAT_DONE' }, respond: { text: 'Scrum reconciled the sourced roadmap and fleet work. The terminal output records the landing or dispatch result. Human commitments and release gates remain explicit.' } },
   { id: 'scrum-act', on: { userTextIncludes: 'Run the pm skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: `bun '${beat}'` } } } },

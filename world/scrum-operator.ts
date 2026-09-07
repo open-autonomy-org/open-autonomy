@@ -1,6 +1,6 @@
 // Manual rehearsal controls. Every vendor mutation uses its ordinary API; board
 // mutations use the pinned Hermes CLI. Invoke one beat at a time through world attach.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, ENC, STATE, api, need } from './lib.ts';
 const project = resolve(STATE, '.volter/stack/project');
@@ -76,9 +76,7 @@ if (command === 'inspect') {
   if (sync.status !== 200) throw new Error(sync.text);
   const status = (await api(need('PLATFORM_URL')).get(`/v1/accounts/${ENC}`)).body.live;
   console.log({ live: status, withoutPackage: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
-  writeFileSync(resolve(home, 'release-review.md'), `Candidate: ${status.head}\n\nVerification: [landed work and checks](https://github.com/${ACCOUNT}/commits/${status.head}); cookbook add command exercised in the twin world.\n\nRisks: production has not been verified; review the candidate diff and outstanding roadmap gates.\n\nHuman action: review this candidate, choose an unused deploy-v tag per [.open-autonomy/PRODUCTION.md](https://github.com/${ACCOUNT}/blob/${status.head}/.open-autonomy/PRODUCTION.md), then approve its production environment run.\n`);
-  console.log({ prepared: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
-  console.log(run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']));
+  // PM now selects the release and prepares its package in the release-planning beat.
   console.log(run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']));
 } else if (command === 'archive') {
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--json']).out);

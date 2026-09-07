@@ -87,7 +87,7 @@ bun world/run.ts env -- bun world/scrum-operator.ts guards   # held human work r
 bun world/run.ts env -- bun world/scrum-operator.ts intake   # duplicate chat capture and a late GitHub reply, independent desk cursors
 bun world/run.ts stack restart                             # preserve native notepad and unfinished planning worktree
 bun world/run.ts hermes cron run pm                         # reconcile the late reply and preserved intake
-bun world/run.ts env -- bun world/scrum-operator.ts release  # missing package holds; prepared candidate reaches the owner door
+bun world/run.ts env -- bun world/scrum-operator.ts release  # reconcile an existing PM release proposal; no proposal means no request
 bun world/run.ts env -- bun world/scrum-operator.ts archive  # after native review: archived work is not recreated
 ```
 
@@ -104,3 +104,34 @@ notepad state. `checkpoint` shows a stable interrupted batch and refusal of a wr
 retires a batch without acknowledging incomplete sources so the next one repeats their history. `notepad`
 exercises deduplication and the native size limit; acknowledged routine pointers should be pruned without
 entering shared documents. These are manual operator beats, not assertions of unscripted model judgment.
+
+## Target release schedule rehearsal
+
+Set `WORLD_RELEASE=1 WORLD_IDLE=1` (without WORLD_SCRUM) when bringing up todo-cli. This selects
+`release-beat.ts` as the scripted PM judgment; all planning PRs, notepad checkpoints, kanban transitions and
+owner requests still use the running kit and native Hermes. Keep the usual state, port and Hermes-bin options.
+
+```bash
+bun world/run.ts env -- bun world/release-operator.ts accumulate
+bun world/run.ts hermes cron run pm  # land a sourced target schedule, without asking for release
+bun world/run.ts hermes cron run pm  # after landing: reconcile; main can be ahead with no shipping request
+bun world/run.ts env -- bun world/release-operator.ts prepare
+# Repeat the two PM beats: preparation still requires no human release request.
+bun world/run.ts env -- bun world/release-operator.ts request-review
+# Repeat the PM beats after landing: a ready PM decision produces the version/candidate-specific request.
+bun world/run.ts env -- bun world/release-operator.ts inspect
+bun world/run.ts env -- bun world/release-operator.ts later
+bun world/run.ts env -- bun world/release-operator.ts finish-later # after landing; request/candidate stay fixed
+bun world/run.ts env -- bun world/release-operator.ts invalid-package # mismatched version cannot create/change a request
+bun world/run.ts env -- bun world/release-operator.ts reconcile # restored package keeps the authorized request unchanged
+bun world/run.ts env -- bun world/release-operator.ts defer
+# Repeat PM beats: the changed plan parks the previous request and stops human-input reminders.
+```
+
+Inspect state between beats; a successful cron return alone is not proof of landing. The `landed` operator command waits up to 30 seconds for the current planning branch to reach main before the next PM beat. `unknown` simulates an
+unreachable live service. `deployed`, after a valid ready plan, changes only the world's live-observation fixture
+to the selected candidate: its shipping hold can release while later main commits remain unreleased. This is
+not a deploy, tag or human approval. Repeated `reconcile` calls must not duplicate owner requests. The target
+window is intentionally separate from these decisions; there is no clock-triggered release mechanism.
+
+A renewed ready decision after deferral starts a new native review card; the withdrawn card stays held, preserving its history and dependencies.
