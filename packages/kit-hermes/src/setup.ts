@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { join, resolve } from 'node:path';
+import { readBranding, projectAppManifest } from './branding.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
 type Choice = 'yes' | 'no' | 'later';
@@ -217,11 +218,12 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
 function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
   if (done(st, 'github-app')) return;
   const file = join(opts.secrets, 'github-app.json');
-  say(`\nThe agent's GitHub identity: a GitHub App made by GitHub's manifest flow — the page opens with the app described, you press Create (your sudo prompt or passkey), then Install on this repository; the key comes back here and goes to ${file}, which the valve serves.`);
+  say(`\nThe project's GitHub identity: its GitHub App made by GitHub's manifest flow — the page opens with the app described, you press Create (your sudo prompt or passkey), then Install on this repository; the key comes back here and goes to ${file}, which the valve serves.`);
   if (opts.plan || existsSync(file)) { if (existsSync(file)) mark(s.dir, st, 'github-app', file); return; }
   const port = 47000 + Math.floor(Math.random() * 2000);
   const state = Math.random().toString(36).slice(2);
-  const manifest = { name: `${s.project}-agent`, url: `https://open-autonomy.org/p/${encodeURIComponent(s.account)}`, hook_attributes: { active: false }, redirect_url: `http://127.0.0.1:${port}/created`, setup_url: `http://127.0.0.1:${port}/installed`, setup_on_update: false, public: false, default_permissions: { issues: 'write', discussions: 'write', metadata: 'read', pull_requests: 'read', contents: 'read', checks: 'read', statuses: 'read', actions: 'read' }, default_events: [] };
+  const brand = readBranding(s.dir);
+  const manifest = projectAppManifest(brand, s.account, port);
   const target = s.ownerIsOrg ? `https://github.com/organizations/${s.owner}/settings/apps/new?state=${state}` : `https://github.com/settings/apps/new?state=${state}`;
   const created: { app: { id: number; slug: string; pem: string } | null } = { app: null };
   const finished = new Promise<number>((resolveInstall, reject) => {
@@ -229,7 +231,7 @@ function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
       hostname: '127.0.0.1', port,
       async fetch(req) {
         const u = new URL(req.url);
-        if (u.pathname === '/') return new Response(`<!doctype html><body onload="document.forms[0].submit()"><form method="post" action="${target}"><input type="hidden" name="manifest" value='${JSON.stringify(manifest).replaceAll("'", '&#39;')}'><noscript><button>Create the GitHub App</button></noscript></form></body>`, { headers: { 'content-type': 'text/html' } });
+        if (u.pathname === '/') return new Response(`<!doctype html><body onload="document.forms[0].submit()"><form method="post" action="${target}"><input type="hidden" name="manifest" value='${JSON.stringify(manifest).replaceAll('&', '&amp;').replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}'><noscript><button>Create the GitHub App</button></noscript></form></body>`, { headers: { 'content-type': 'text/html' } });
         if (u.pathname === '/created') {
           if (u.searchParams.get('state') !== state) return new Response('state mismatch', { status: 400 });
           const code = u.searchParams.get('code') ?? '';
@@ -256,23 +258,33 @@ function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
     if (!app) throw new Error('the app was not created');
     writeFileSync(file, `${JSON.stringify({ app_id: app.id, installation_id: inst, repository: s.account, private_key: app.pem }, null, 2)}\n`, { mode: 0o600 });
     mark(s.dir, st, 'github-app', `${app.slug} (app ${app.id}, installation ${inst}) → ${file}`);
+    say(`  setup agent: upload ${brand.icon} as ${brand.name}'s GitHub App logo in its existing app settings. Verify the name and blurb, and record any incomplete branding in setup notes. Keep app ${app.id} and installation ${inst} on later branding changes.`);
   })());
 }
 const pending: Promise<void>[] = [];
 
-function stepDiscord(s: Situation, opts: Opts, st: SetupState): void {
+async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<void> {
   if (done(st, 'discord')) return;
   const file = join(opts.secrets, 'channels.env');
   say(`\nDiscord: no API creates a bot, so the portal opens; you make the application, turn on the three privileged intents under Bot, reset the token and paste it here. The bot is then invited to your server and makes its own #${s.project} channel.`);
   if (opts.plan) return;
+  const brand = readBranding(s.dir);
+  say(`  Project identity: ${brand.name} — ${brand.description}. Icon: ${brand.icon}. Apply it to both the Discord application and bot profile; preserve their IDs on reruns.`);
   let token = process.env.DISCORD_BOT_TOKEN ?? '';
   if (!token) {
-    openUrl('https://discord.com/developers/applications', `New Application (name it ${s.project}; the captcha is yours) → Bot → enable Presence, Server Members and Message Content intents → Reset Token → copy it`);
+    openUrl('https://discord.com/developers/applications', `Reuse this project's application if present; otherwise New Application (name it ${brand.name}; the captcha is yours) → Bot → enable Presence, Server Members and Message Content intents → Reset Token → copy it`);
     token = secretPrompt('Discord bot token');
   }
   const me = run(['curl', '-s', '-H', `Authorization: Bot ${token}`, 'https://discord.com/api/v10/oauth2/applications/@me']).out;
   const appId = /"id":\s*"(\d+)"/.exec(me)?.[1];
   if (!appId) throw new Error('Discord did not accept that token; run setup again to retry');
+  say(`  setup agent: verify application ${appId} belongs to this project. In https://discord.com/developers/applications/${appId}/information use ${brand.name}, the shared blurb and ${brand.icon}; under Bot use the same name and avatar. Do not replace the application to change its branding.`);
+  if (JSON.parse(me).name !== brand.name) throw new Error(`Discord application ${appId} has a different name. Verify that it belongs to this project, then set its name to ${brand.name} in the developer portal and rerun setup. Preserve the application ID.`);
+  const icon = `data:image/png;base64,${readFileSync(brand.icon).toString('base64')}`;
+  for (const [path, body] of [['applications/@me', { description: brand.description, icon }], ['users/@me', { username: brand.name, avatar: icon }]] as const) {
+    const result = await fetch(`https://discord.com/api/v10/${path}`, { method: 'PATCH', headers: { Authorization: `Bot ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!result.ok) throw new Error(`Discord ${path} branding update returned ${result.status}; preserve this application and retry the unfinished setup step.`);
+  }
   openUrl(`https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=68624`, 'pick your server and Authorize (view, send, read history, manage channels — the last only so it can make its own channel)');
   let guild: string | undefined;
   const t0 = Date.now();
@@ -285,7 +297,7 @@ function stepDiscord(s: Situation, opts: Opts, st: SetupState): void {
   const channels = JSON.parse(run(['curl', '-s', '-H', `Authorization: Bot ${token}`, `https://discord.com/api/v10/guilds/${guild}/channels`]).out || '[]') as Array<{ id: string; name: string; type: number }>;
   let channel = channels.find((c) => c.type === 0 && c.name === s.project)?.id;
   if (!channel) {
-    const made = run(['curl', '-s', '-X', 'POST', '-H', `Authorization: Bot ${token}`, '-H', 'content-type: application/json', '-d', JSON.stringify({ name: s.project, type: 0, topic: `${s.project}, built in the open by its agent` }), `https://discord.com/api/v10/guilds/${guild}/channels`]).out;
+    const made = run(['curl', '-s', '-X', 'POST', '-H', `Authorization: Bot ${token}`, '-H', 'content-type: application/json', '-d', JSON.stringify({ name: s.project, type: 0, topic: brand.description }), `https://discord.com/api/v10/guilds/${guild}/channels`]).out;
     channel = /"id":\s*"(\d+)"/.exec(made)?.[1];
   }
   if (!channel) throw new Error('could not find or make the channel; give the bot Manage Channels or make #' + s.project + ' yourself, then run setup again');
@@ -325,7 +337,7 @@ function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
 function printStart(s: Situation, opts: Opts): void {
   // Identity and delegation are established by the setup agent in the project-owned skill. Do not race
   // that work by starting the fleet here, or mark a printed command as a completed activation.
-  say('\nInfrastructure prepared; project setup still needs the setup agent to finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
+  say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
   say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
   if (opts.bare) {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
@@ -386,6 +398,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(`${s.project} (${s.account}) — the situation:`);
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
+  say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');
   say('  setup agent: agree public community, development and release-review spaces with the owner; record them in hermes/skills/project-communications/SKILL.md. Verify service permissions and native Hermes access settings keep confidential human spaces, DMs and private session history outside the publicly logged fleet.');
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml; keep communication practices in the skill. Preserve the owner\'s repository review policy and verify the source of each grant. Use native channel_skill_bindings and group_allow_admin_from for the agreed Discord channels/operators; group_user_allowed_commands: [] keeps administrative slash commands with those operators. An empty admin list disables the gate; chat admission does not grant project or release authority.');
   say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
@@ -405,6 +418,8 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     if (r.suggested === 'later' && !ask(`Take the ${r.door} door now?`, false, opts)) { st.doors[r.door] = 'later'; continue; }
     st.doors[r.door] = ask(`${r.door}: take it?`, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
+  // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
+  if ((st.doors['github-app'] === 'yes' && !done(st, 'github-app') && !existsSync(join(opts.secrets, 'github-app.json'))) || (st.doors.discord === 'yes' && !done(st, 'discord'))) readBranding(dir);
   saveState(dir, st);
   stepGitHub(s, opts, st);
   stepDeployKey(s, opts, st);
@@ -412,7 +427,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   stepOwnerRules(s, opts, st);
   if (st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
-  if (st.doors.discord === 'yes') stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
+  if (st.doors.discord === 'yes') await stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (st.doors.release === 'yes') say('\nRelease door: publish from a human-cut release-v* tag with NPM_TOKEN as a production environment secret — .open-autonomy/PRODUCTION.md has the workflow shape; the setup will scaffold it in a later version.');
   if (st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);

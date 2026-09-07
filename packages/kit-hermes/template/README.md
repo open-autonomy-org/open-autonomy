@@ -27,3 +27,6 @@ delivery and the host supervisor before activating the fleet with the existing s
 Human release review remains required. The setup command alone does not complete activation.
 
 Made with the Open Autonomy Hermes kit; `create-open-autonomy check .` says whether the kit's files are current.
+
+The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
+short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
