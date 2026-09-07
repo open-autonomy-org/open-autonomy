@@ -130,6 +130,7 @@ async def handle(event_type: str, context: dict) -> None:
                 schedule=spec.get("schedule"),
                 name=name,
                 deliver=_deliver_target(name, spec.get("deliver")),
+                enabled_toolsets=spec.get("enabled_toolsets") or None,
                 skills=spec.get("skills") or None,
                 skill=spec.get("skill"),
                 workdir=os.getcwd(),

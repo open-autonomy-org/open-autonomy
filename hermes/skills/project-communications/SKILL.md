@@ -48,6 +48,12 @@ slash commands for the owner; other admitted members retain `/help` and `/whoami
 commands, not natural-language requests or tools. Project authority is applied through this skill;
 the public `@everyone` chat-access role grants participation only.
 
+The PM/community jobs explicitly enable native Discord discovery tools as well as their usual cron tools;
+Discord chat uses the native `hermes-discord` toolset. `discord.server_actions` permits public history,
+channel/member/role lookup and thread creation, while rejecting role changes, deletion and pinning.
+Delivery configuration alone does not supply those tools. Setup verifies the scheduled tool catalog and
+public history access; existing job IDs, schedules and delivery targets are preserved when repairing it.
+
 ## Communication practice
 
 Reach the owner or maintainers in #development for decisions and release review, using native Hermes

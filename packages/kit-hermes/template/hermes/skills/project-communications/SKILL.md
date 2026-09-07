@@ -48,6 +48,18 @@ An empty admin list disables that command gate, so it is not a deny-all setting.
 slash commands, not natural-language requests or tools. The skill governs project decisions; release
 protection remains the actual human gate. Chat access roles are participation, not decision authority.
 
+Discord delivery alone does not enable Discord history tools. When Discord is an agreed source, enable
+its native tools for chat with `platform_toolsets.discord: [hermes-discord]`. For PM/community cron,
+use the native job's `enabled_toolsets` override, preserving its existing tools and adding `discord`
+and `discord_admin` (the latter contains channel and member/role lookups). Fresh default jobs can use
+`[hermes-cron, discord, discord_admin]` in their cron seed; existing jobs are updated through native
+cron management, not by replacing the job table. Seeding preserves existing job overrides.
+Limit `discord.server_actions` to the agreed discovery and coordination actions: normally list_guilds,
+server_info, list_channels, channel_info, list_roles, member_info, search_members, fetch_messages and
+create_thread. This native allowlist applies at invocation too; no role assignment, deletion or pinning
+is needed for PM discovery. Preserve explicit owner tool restrictions. Verify the actual scheduled
+tool catalog and a public history read; a connected gateway or delivered report is insufficient.
+
 The fleet works in public. Any confidential human space stays outside its access, including private
 channels, DMs and stored session history. During setup, enforce this with service permissions and native
 Hermes access settings; do not grant administrative access that bypasses the boundary. Verify the bot's

@@ -37,9 +37,14 @@ kanban:
   dispatch_interval_seconds: 15
   review_dispatch: true
 
+# Discord conversation tools are opt-in even when the gateway is connected.
+platform_toolsets:
+  discord: [hermes-discord]
+
 # Verified identities and delegation live in skills/project-communications/SKILL.md.
 # Native command access is separate from the public guild participation gate.
 discord:
+  server_actions: [list_guilds, server_info, list_channels, channel_info, list_roles, member_info, search_members, fetch_messages, create_thread]
   group_allow_admin_from: ["605505624226136074"]
   group_user_allowed_commands: []
   channel_skill_bindings:
