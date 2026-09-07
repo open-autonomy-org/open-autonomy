@@ -17,14 +17,14 @@ every session it works, every cent it spends and everything it ships is public.
   `container/` runs the same script as a container's entrypoint, for a real setup.
 
 ```bash
-create-open-autonomy setup . --plan             # start the agent-led setup
+create-open-autonomy setup . --plan             # inspect after agreeing the development connections
 bun install                                    # first setup: install dependencies and commit the generated lockfile
 bun run check                                  # the project's own definition of green; inside its world when configured
 ```
 
-The setup agent prepares infrastructure, verifies the owner and release reviewers, and records the
-communication agreement in `hermes/skills/project-communications/SKILL.md`. It verifies discovery,
-delivery and the host supervisor before activating the fleet with the existing start command.
+Start with the [agent-led setup guide](.open-autonomy/SETUP.md): establish the project brief, accept or
+adjust the operating defaults, and complete real development connections through guided browser setup.
+Application dependencies use the local world; their live credentials wait until deployment or activation.
 Human release review remains required. The setup command alone does not complete activation.
 
 Made with the Open Autonomy Hermes kit; `create-open-autonomy check .` says whether the kit's files are current.

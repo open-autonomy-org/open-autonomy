@@ -23,7 +23,7 @@ try {
     const params = validateParams({ project: flag('--project') ?? dir.split('/').filter(Boolean).pop(), account: flag('--account') });
     const out = (verb === 'create' ? create : adopt)(target, params);
     console.log(`${verb}: ${params.project} (${params.account}) → ${target}: ${out.written.length} file(s) written${out.skipped.length ? `, ${out.skipped.length} kept` : ''}`);
-    console.log(`next: have the setup agent run \`create-open-autonomy setup ${dir} --plan\`, then complete the guided setup before activating the fleet (hermes/skills/project-communications/SKILL.md).`);
+    console.log(`next: have the setup agent follow .open-autonomy/SETUP.md, then run \`create-open-autonomy setup ${dir} --plan\` with the agreed development connections. Complete the guided setup before activating the fleet.`);
   } else if (verb === 'setup') {
     const doors = (name: string): Door[] => (flag(name) ?? '').split(',').map((d) => d.trim()).filter(Boolean) as Door[];
     await setup(target, { plan: argv.includes('--plan'), yes: argv.includes('--yes'), with: doors('--with'), without: doors('--without'), secrets: flag('--secrets') ? resolve(flag('--secrets')!) : undefined, bare: argv.includes('--bare'), accountId: flag('--account-id') });
