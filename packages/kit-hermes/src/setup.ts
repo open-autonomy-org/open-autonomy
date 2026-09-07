@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { join, resolve } from 'node:path';
-import { readBranding, projectAppManifest } from './branding.ts';
+import { readBranding } from './branding.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
 type Choice = 'yes' | 'no' | 'later';
@@ -117,7 +117,7 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
       ? { door: 'production', suggested: 'later', reason: 'the repository has a Dockerfile but names no host; the gated door is ready whenever it does (.open-autonomy/PRODUCTION.md)', cost: 'nothing now' }
       : { door: 'production', suggested: 'no', reason: 'the repository deploys nowhere that the setup recognizes; nothing to gate yet', cost: 'nothing' });
   if (selected.includes('release')) out.push({ door: 'release', suggested: 'later', reason: 'artifact publication is a later owner-reviewed setup; this CLI does not yet scaffold its workflow', cost: 'no token collected; follow the project publication procedure' });
-  out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'one Create button on GitHub (your sudo prompt or passkey), one Install click' });
+  out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push(s.codex
     ? { door: 'subscription', suggested: 'yes', reason: "a Codex login is on this machine: the agent's model can run on your subscription, outside the project's funds, with the page saying so; the grant then buys only the cookbook model", cost: 'nothing: the valve serves the login and the agent never sees it' }
@@ -251,52 +251,13 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
 }
 
 function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'github-app')) return;
+  if (opts.plan) return;
   const file = join(opts.secrets, 'github-app.json');
-  say(`\nThe project's GitHub identity: its GitHub App made by GitHub's manifest flow — the page opens with the app described, you press Create (your sudo prompt or passkey), then Install on this repository; the key comes back here and goes to ${file}, which the valve serves.`);
-  if (opts.plan || existsSync(file)) { if (existsSync(file)) mark(s.dir, st, 'github-app', file); return; }
-  const port = 47000 + Math.floor(Math.random() * 2000);
-  const state = Math.random().toString(36).slice(2);
-  const brand = readBranding(s.dir);
-  const manifest = projectAppManifest(brand, s.account, port);
-  const target = s.ownerIsOrg ? `https://github.com/organizations/${s.owner}/settings/apps/new?state=${state}` : `https://github.com/settings/apps/new?state=${state}`;
-  const created: { app: { id: number; slug: string; pem: string } | null } = { app: null };
-  const finished = new Promise<number>((resolveInstall, reject) => {
-    const server = Bun.serve({
-      hostname: '127.0.0.1', port,
-      async fetch(req) {
-        const u = new URL(req.url);
-        if (u.pathname === '/') return new Response(`<!doctype html><body onload="document.forms[0].submit()"><form method="post" action="${target}"><input type="hidden" name="manifest" value='${JSON.stringify(manifest).replaceAll('&', '&amp;').replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}'><noscript><button>Create the GitHub App</button></noscript></form></body>`, { headers: { 'content-type': 'text/html' } });
-        if (u.pathname === '/created') {
-          if (u.searchParams.get('state') !== state) return new Response('state mismatch', { status: 400 });
-          const code = u.searchParams.get('code') ?? '';
-          const res = await fetch(`https://api.github.com/app-manifests/${code}/conversions`, { method: 'POST', headers: { accept: 'application/vnd.github+json', 'user-agent': 'create-open-autonomy' } });
-          if (!res.ok) { reject(new Error(`manifest conversion: ${res.status}`)); return new Response('conversion failed', { status: 502 }); }
-          created.app = await res.json() as { id: number; slug: string; pem: string };
-          return Response.redirect(`https://github.com/apps/${created.app.slug}/installations/new`, 302);
-        }
-        if (u.pathname === '/installed') {
-          const id = Number(u.searchParams.get('installation_id'));
-          if (id) { setTimeout(() => server.stop(true), 500); resolveInstall(id); }
-          return new Response('<!doctype html><body><p>Installed. You can close this tab; the setup continues in your terminal.</p></body>', { headers: { 'content-type': 'text/html' } });
-        }
-        return new Response('not found', { status: 404 });
-      },
-    });
-    setTimeout(() => { server.stop(true); reject(new Error('the GitHub App flow did not complete in ten minutes; run setup again')); }, 10 * 60_000);
-  });
-  openUrl(`http://127.0.0.1:${port}/`, 'press "Create GitHub App" (GitHub may ask for your passkey), then on the next page choose "Only select repositories", pick this one, Install');
-  // The flow completes in the browser; the walk awaits it (with the other doors) before the start.
-  pending.push((async () => {
-    const inst = await finished;
-    const app = created.app;
-    if (!app) throw new Error('the app was not created');
-    writeFileSync(file, `${JSON.stringify({ app_id: app.id, installation_id: inst, repository: s.account, private_key: app.pem }, null, 2)}\n`, { mode: 0o600 });
-    mark(s.dir, st, 'github-app', `${app.slug} (app ${app.id}, installation ${inst}) → ${file}`);
-    say(`  setup agent: upload ${brand.icon} as ${brand.name}'s GitHub App logo in its existing app settings. Verify the name and blurb, and record any incomplete branding in setup notes. Keep app ${app.id} and installation ${inst} on later branding changes.`);
-  })());
+  if (!existsSync(file)) throw new Error('The project GitHub App credential is missing. Follow .open-autonomy/SETUP.md: use the standalone credential receiver and the browser skill, then rerun setup.');
+  const r = run(['bun', join(s.dir, '.open-autonomy', 'sdk', 'credentials.ts'), 'verify-github', '--out', file, '--repository', s.account]);
+  if (!r.ok) throw new Error(r.err || 'The project GitHub App installation could not be verified.');
+  mark(s.dir, st, 'github-app', `${s.account} installation verified; credential outside the repository`);
 }
-const pending: Promise<void>[] = [];
 
 async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<void> {
   if (done(st, 'discord')) return;
@@ -468,7 +429,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     st.doors[r.door] = ask(`${r.door}: take it?`, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
-  if ((st.doors['github-app'] === 'yes' && !done(st, 'github-app') && !existsSync(join(opts.secrets, 'github-app.json'))) || (st.doors.discord === 'yes' && !done(st, 'discord'))) readBranding(dir);
+  if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
   saveState(dir, st);
   stepGitHub(s, opts, st);
   stepDeployKey(s, opts, st);
@@ -479,7 +440,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
-  await Promise.all(pending);
   printStart(s, opts);
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
 }

@@ -34,6 +34,7 @@
     "typescript": "^5.9.0"
   },
   "bin": {
-    "open-autonomy-valve": "src/valve.ts"
+    "open-autonomy-valve": "src/valve.ts",
+    "open-autonomy-credentials": "src/credentials.ts"
   }
 }

@@ -67,7 +67,7 @@ the setup helper's protected destination or secure prompt, never chat, screensho
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
 | GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
-| Project GitHub App | Guide branded manifest creation and installation in the browser; the local callback stores the generated key and installation ID | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
+| Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver saves the key, then verifies the installation | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
 | Open Autonomy platform | The helper commits a repository-control claim and provisions the developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use secure credential entry where no callback exists | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
@@ -81,6 +81,44 @@ The shared roster records verified human account IDs and the source of their aut
 operator's login is not automatically the owner or release reviewer. Browser identity, app ownership,
 repository access and the human authority agreement must all match. Verify through the installed
 connections, not merely the setup operator's broader credentials.
+
+### GitHub credential handoff
+
+The project GitHub App is the normal identity for this template's GitHub API work. Its setup is browser-led,
+not a headless registration script. Use the standalone OA credential tool on the runtime host, outside
+the development agent's access. It needs no checkout; the kit also bundles the same tool for convenience:
+
+```sh
+bun .open-autonomy/sdk/credentials.ts receive --out /protected/project/github-app.json --github-app owner/repo
+```
+
+Replace the example destination and repository with the agreed runtime credential directory and account.
+The receiver prints a callback URL and state. Author the manifest from the project branding and GitHub's
+[documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
+use that callback as redirect_url, and pass the state on the registration URL.
+For this template, request issues/discussions write and metadata, pull_requests, contents, checks,
+statuses and actions read; no webhook or subscribed events are needed. Use the project page as the app
+homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
+The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
+
+The callback exchanges GitHub's temporary code and saves the app credential immediately. After installing,
+perform the bounded verification operation (the setup CLI also calls it on reruns):
+
+```sh
+bun .open-autonomy/sdk/credentials.ts verify-github --out /protected/project/github-app.json --repository owner/repo
+```
+
+It discovers the installation with the saved app key and records its ID for the existing valve. On
+interruption, reuse the app ID/slug from the non-secret receipt and complete the existing installation;
+do not start another creation flow. A saved credential is not proof of installation. If creation was
+interrupted before a receipt arrived, inspect the provider's existing apps before deciding what to retry.
+The receiver does not overwrite credentials. The setup agent handles recovery using provider evidence.
+
+For providers that display a token, the general receiver without --github-app gives the owner a protected
+password input and saves that text directly. Do not read the provider token into the agent's context.
+It does not yet import browser downloads, transfer browser-only secrets, or convert a token into every
+runtime's provider configuration. Keep those handoff gaps explicit. If the browser and runtime host differ,
+use an authorized SSH tunnel to the receiver's loopback port; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 

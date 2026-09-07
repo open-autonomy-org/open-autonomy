@@ -16,11 +16,3 @@ export function readBranding(dir: string): Branding {
     return { name: raw.name.trim(), description: raw.description.trim(), icon };
   } catch (e) { throw new Error(`${(e as Error).message}\n${instruction}`); }
 }
-
-export function projectAppManifest(brand: Branding, account: string, port: number) {
-  return { name: brand.name, description: brand.description, url: `https://open-autonomy.org/p/${encodeURIComponent(account)}`,
-    redirect_url: `http://127.0.0.1:${port}/created`, setup_url: `http://127.0.0.1:${port}/installed`, setup_on_update: false, public: false,
-    default_permissions: { issues: 'write', discussions: 'write', metadata: 'read', pull_requests: 'read', contents: 'read', checks: 'read', statuses: 'read', actions: 'read' }, default_events: [] };
-  // No webhook is used: omit the optional hook_attributes object, which requires a URL when present.
-  // GitHub's manifest has no icon field. The setup agent uploads the same PNG in the app's settings.
-}

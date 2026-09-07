@@ -53,6 +53,12 @@ connections, using the setup agent's browser skill and existing provider session
 is required. Provider credentials go through secure setup handoffs; the owner is involved at actual
 human-only steps, not handed a list of configuration chores.
 
+GitHub registration and installation stay with that browser agent. The SDK's standalone
+`open-autonomy-credentials` command receives the secret handoff into protected host storage; it does
+not need a repository or generate provider configuration. The kit bundles the same receiver under
+`.open-autonomy/sdk/credentials.ts`. The setup CLI verifies the resulting GitHub installation, including
+on reruns. Follow the setup guide for the manifest permissions and the exact handoff.
+
 `create-open-autonomy setup <dir> --plan` inspects the development connections. The agent uses the
 existing `--with` and `--without` choices to implement the agreed communication and model arrangement.
 Discord is optional regardless of token availability. GitHub can carry human questions and release
