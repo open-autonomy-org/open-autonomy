@@ -136,6 +136,8 @@ if (codexArg) {
   };
   Bun.serve({
     hostname: '127.0.0.1', port,
+    // Match the model valve: reasoning streams can be quiet beyond Bun's 10-second default.
+    idleTimeout: 255,
     async fetch(req) {
       const u = new URL(req.url);
       if (u.pathname === '/healthz') { try { const t = read().tokens; return new Response(`ok · codex account ${accountOf(t) ?? '?'} · access token expires ${new Date(expiresAt(t)).toISOString()}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
