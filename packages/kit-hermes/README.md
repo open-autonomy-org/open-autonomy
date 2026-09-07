@@ -48,7 +48,7 @@ Sponsors listing, a Discord token or a Codex login is in sight — and recommend
 reason and what it will cost you in clicks. After establishing the owner, the command prepares the repository on GitHub (the CLI's device
 flow), the deploy key, the platform keys the adopter way, and the owner's rules (nothing pushes `main`; `.github/` is
 yours). The doors are yours to take, decline or defer: a gated production door (Cloudflare token into a GitHub
-environment, a pre-filled token page), the agent's GitHub App (GitHub's manifest flow: one Create, one Install), a
+environment, a pre-filled token page), the project's GitHub App (GitHub's manifest flow: one Create, one Install), a
 Discord channel (the portal, a token paste, one invite; the bot makes its own channel), your subscription for the
 model. What is never automated: creating your accounts, and any captcha or sudo prompt — the setup opens the exact
 page and continues when it comes back. `--plan` changes nothing; the infrastructure steps are resumable,
@@ -79,7 +79,9 @@ project direction and release review remain separate scopes, and release approva
 
 The setup sequence is part of the agent's work, not an optional handoff to the user:
 
-1. Inspect `setup --plan`, the owner's instructions and existing repository authority. Verify the GitHub
+1. Complete the working branding pass described in the generated branding README: project name, short
+   blurb and reusable icon. Reuse existing assets and integrations; a provisional first pass is enough.
+   Apply it to every project integration, preserving provider IDs. Inspect `setup --plan`, the owner's instructions and existing repository authority. Verify the GitHub
    human account's numeric ID and login with `gh api user`. The CLI defaults workflow ownership and a new
    production reviewer to that authenticated account, so establish that it is the agreed human reviewer
    before running those steps; a helper's credentials do not make them the project owner.

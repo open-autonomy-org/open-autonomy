@@ -62,3 +62,6 @@ hermes/ .open-autonomy/ container/   our own install: the kit applied to this re
 bun run check          # the whole check, under thirty seconds (the pre-commit hook runs it)
 bun world/run.ts up    # the world, to drive (the twins are npm packages; WORLD_STATE_ROOT for a disk with headroom)
 ```
+
+The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
+short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.

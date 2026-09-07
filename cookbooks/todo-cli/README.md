@@ -14,3 +14,6 @@ To run this as an autonomous project, have the setup agent begin with
 `create-open-autonomy setup . --plan` and complete the agreement in
 [project-communications](hermes/skills/project-communications/SKILL.md) before activating the fleet.
 Verify discovery, scheduled delivery and the host supervisor; releases still require human review.
+
+The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
+short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.

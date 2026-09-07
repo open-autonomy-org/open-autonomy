@@ -5,6 +5,13 @@ description: This project's agreed human contacts and communication practices, i
 
 # Project communications
 
+Project integrations belong to the project. Use its shared branding bundle for application names,
+descriptions and icons, including both Discord application and bot profiles. Human identities and
+authority remain in the team roster; Hermes is the runtime using those integrations. During setup,
+inspect existing project applications before creating any, record their IDs in existing setup notes,
+and reuse them. A new runtime or revised branding does not warrant replacement applications.
+A provisional branding pass is enough; reconcile unfinished provider fields before declaring setup done.
+
 The setup agent writes the owner's agreed communication practices here in plain language: who to
 contact and where, including human release review. Add timing or escalation instructions only when
 the owner wants them. Identify the public spaces for community conversation, development coordination
