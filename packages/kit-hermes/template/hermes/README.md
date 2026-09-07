@@ -33,3 +33,9 @@ keeps release-dependent outcomes open through verification. See `.open-autonomy/
 The start script runs the stack, drains active work before kit restarts, and keeps calls metered through
 the platform. The reporter publishes real Hermes activity through the SDK; outside contributions are never
 represented as fabricated fleet sessions. Running instructions: `container/README.md`.
+
+PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
+proposed version under project policy, and allow time for human review. A merge or elapsed target date is
+not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
+later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
+See `.open-autonomy/PRODUCTION.md` for the release fields and review package.

@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.1.0
+version: 4.2.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -87,11 +87,54 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
-Required maintainer release review is an established responsibility. Prepare the exact candidate commit,
-changes/diff links, verification, remaining risks and required actions from the project's release procedure.
-Request review through the configured owner door; record the material pending gate and request source in
-roadmap. Approval applies only to the reviewed candidate. Merged, approved, released and verified are distinct
-facts. Never tag, approve or deploy. Missing live access leaves verification pending.
+## Plan releases deliberately
+
+Every merge is an input to scrum, not a reason to ship. PM decides whether to keep accumulating changes,
+prepare a coherent release, defer it, or expedite an urgent fix, within owner priorities and release policy.
+Consider delivered value, completed outcomes, compatibility, verification, operational risk and review lead
+time. Being ahead of production or reaching a calendar date grants no release authority.
+
+Maintain a sourced **target release schedule in ROADMAP.md**: intended scope/outcomes, proposed version,
+target date/window, a review-by target allowing human review time, readiness criteria, dependencies and risks.
+Use stable release outcome IDs (`## release-next: ...`, `Dispatch: hold`). At scrum reassess the target;
+material scope/date/version changes need evidence and reasoning. Targets are forecasts, not commitments from
+humans who have not accepted them. If the owner has no cadence, propose one with rationale; don't invent a
+binding deadline or release every commit. Quiet scrums leave the schedule unchanged.
+
+PM chooses versions under the project's actual policy (including separate artifacts in a monorepo). Check
+published versions/tags, compatibility and included changes; explain the version choice. Contributor bumps
+are proposals to reconcile, not release decisions. Queue needed version/changelog/artifact preparation through
+native fleet work. Do not publish or mark an Unreleased entry released merely because a version was bumped.
+
+For service review through `maintain.ts ship`, the landed release section uses the single-line fields
+specified in [.open-autonomy/PRODUCTION.md](../../../../.open-autonomy/PRODUCTION.md). Start with
+`Release decision: accumulate` or `prepare` and `Readiness: pending`; use `defer` when postponing.
+Only set `Release decision: request-review` and `Readiness: ready-for-review` after verifying scope,
+artifact/version consistency and the review evidence. Select a **full candidate SHA** that has landed,
+then land that sourced decision. The candidate can precede the planning commit; later main commits can
+accumulate for a subsequent release. Do not silently move a candidate already under review.
+
+Prepare `$HERMES_HOME/release-review.md` using the documented fields, including release ID, selected version,
+candidate SHA and the commit containing the landed plan. Keep it outside the checkout. Run `maintain.ts ship`
+to request human review through the configured owner door, then reconcile owner doors via the escalation
+hook. The request must explain why this release now, its scope/version/window, verification, risks and exact
+human actions. Package/artifact releases without a live service use their documented procedure and configured
+owner door with the same PM decision and human approval requirements; don't pretend live-service status
+proves publication. Record the request source in roadmap without changing the selected release merely to
+record that receipt.
+
+Humans may approve, reject or redirect the proposal. Approval applies only to the stated version, scope and
+candidate. If those change, or PM defers the release, explicitly supersede the previous ask in that conversation
+and reconcile its native task; old approval cannot carry over. The helper parks obsolete unleased review
+requests as native scheduled holds, stopping human-input reminders. A renewed PM decision starts a new
+review cycle, preserving the withdrawn card and its dependencies; never reset native retry counters to
+revive it. Local package errors do not revoke a pending review still authorized by the landed plan. PM
+resolves active handoffs and withdrawn dependencies explicitly without stealing a lease. Run it after a deferral as well as after preparing a request.
+
+Never tag, approve, publish or deploy. Merged, approved, released and post-release verified are distinct facts.
+Confirm the selected candidate/artifact actually shipped, update changelog with the real version/date and
+sources, and retire fulfilled roadmap outcomes while retaining unresolved verification/adoption work. A later
+main commit does not reopen that completed release. Missing live access leaves verification pending.
 
 Use the existing conversation (`community.ts comment` / `discuss`, or Hermes's configured messaging tools).
 Read before posting; follow up when agreed or when evidence changes. Don't repeat unchanged asks every scrum
@@ -130,11 +173,10 @@ workers hand off to native review, which alone completes execution. PM coordinat
 
 - Retry explained transient blocks once per scrum. Preserve human, capability and scheduled holds until
   their evidence arrives. Inspect stale running/review tasks; don't blindly release live work.
-- Prepare `$HERMES_HOME/release-review.md` with `Candidate: <full commit>`, `Verification:`, `Risks:`,
-  `Human action:` and source links. Keep it outside the checkout so preparation doesn't change the candidate.
-  Run `bun .open-autonomy/maintain.ts ship` to maintain the release request. It requires a package matching
-  that candidate. Request delivery is not approval. Only confirmed live `ahead: 0` releases its shipping task;
-  unknown status releases nothing. Reconcile the remaining release criteria in roadmap separately.
+- Reassess the target release schedule and run `bun .open-autonomy/maintain.ts ship` to reconcile the current
+  PM decision. No eligible decision means no new review request. Confirmed deployment of the selected
+  candidate can release its shipping hold even when newer main commits remain unreleased; native review
+  still verifies execution acceptance. Unknown status completes nothing.
 - Run `python "$HERMES_HOME/hooks/escalate/handler.py" remind` for established owner doors, respecting the
   configured interval. Volunteer commitments follow their agreed follow-ups.
 - Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Workflow-changing
