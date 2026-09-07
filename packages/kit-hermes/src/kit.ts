@@ -8,6 +8,7 @@
 // `check` and `upgrade` read, so neither needs to be told anything twice.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { outreachSection, PM_SKILL, withOutreach } from './outreach.ts';
 
 export const KIT = { name: 'hermes', version: '2.8.1' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
@@ -69,6 +70,15 @@ export function readKit(dir: string): KitRecord {
 
 export interface Outcome { written: string[]; skipped: string[]; drift: string[] }
 
+function projectRender(dir: string, rec: KitRecord): Map<string, Buffer> {
+  const rendered = render(rec.params);
+  if (rec.divergences.includes(PM_SKILL)) return rendered;
+  const file = join(dir, PM_SKILL);
+  const policy = existsSync(file) ? outreachSection(readFileSync(file, 'utf8')) : undefined;
+  if (policy) rendered.set(PM_SKILL, Buffer.from(withOutreach(rendered.get(PM_SKILL)!.toString('utf8'), policy)));
+  return rendered;
+}
+
 // create: every file, into an empty or new directory.
 export function create(dir: string, params: KitParams): Outcome {
   if (existsSync(dir) && readdirSync(dir).filter((n) => n !== '.git').length) throw new Error(`${dir} is not empty: use adopt for an existing repository`);
@@ -85,7 +95,7 @@ export function adopt(dir: string, params: KitParams): Outcome {
 // deliberately taken over is named in kit.json's `divergences` and is left out.
 export function check(dir: string): Outcome {
   const rec = readKit(dir);
-  const rendered = render(rec.params);
+  const rendered = projectRender(dir, rec);
   const drift: string[] = [];
   for (const [rel, want] of rendered) {
     if (!isOwned(rel) || rec.divergences.includes(rel)) continue;
@@ -114,7 +124,7 @@ function retired(dir: string, rendered: Map<string, Buffer>, rec: KitRecord): st
 // upgrade: check, then rewrite the drifted kit-owned files and stamp the kit version.
 export function upgrade(dir: string): Outcome {
   const rec = readKit(dir);
-  const rendered = render(rec.params);
+  const rendered = projectRender(dir, rec);
   const before = check(dir);
   // Migrate only missing planning notes, using this project's seed rather than
   // the template's hello task. The live board is reconciled by PM, never by upgrade.

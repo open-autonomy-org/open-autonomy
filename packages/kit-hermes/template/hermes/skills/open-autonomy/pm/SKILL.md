@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.2.0
+version: 4.3.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -116,10 +116,10 @@ accumulate for a subsequent release. Do not silently move a candidate already un
 
 Prepare `$HERMES_HOME/release-review.md` using the documented fields, including release ID, selected version,
 candidate SHA and the commit containing the landed plan. Keep it outside the checkout. Run `maintain.ts ship`
-to request human review through the configured owner door, then reconcile owner doors via the escalation
-hook. The request must explain why this release now, its scope/version/window, verification, risks and exact
-human actions. Package/artifact releases without a live service use their documented procedure and configured
-owner door with the same PM decision and human approval requirements; don't pretend live-service status
+to prepare the native human-review request, then deliver it according to the **Project outreach policy**
+below. The request must explain why this release now, its scope/version/window, verification, risks and exact
+human actions. Package/artifact releases without a live service use their documented procedure and this
+outreach policy with the same PM decision and human approval requirements; don't pretend live-service status
 proves publication. Record the request source in roadmap without changing the selected release merely to
 record that receipt.
 
@@ -177,10 +177,21 @@ workers hand off to native review, which alone completes execution. PM coordinat
   PM decision. No eligible decision means no new review request. Confirmed deployment of the selected
   candidate can release its shipping hold even when newer main commits remain unreleased; native review
   still verifies execution acceptance. Unknown status completes nothing.
-- Run `python "$HERMES_HOME/hooks/escalate/handler.py" remind` for established owner doors, respecting the
-  configured interval. Volunteer commitments follow their agreed follow-ups.
+- Follow the Project outreach policy below to deliver owner requests and follow up. The hook retries only
+  destinations you explicitly selected; it does not select from available credentials. A missing policy or
+  failed delivery stays an explicit scrum gap. Legacy receipts without a PM-selected destination require
+  reconciliation of the existing conversation before redispatch. Volunteer commitments follow their agreed follow-ups.
 - Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Workflow-changing
   upgrades await owner review; the supervisor drains and restarts after landing.
 
 Report notable changes, queue decisions, pending commitments/release gates, source gaps and installed/running
 kit versions. This report is operational output, not another permanent project journal.
+
+<!-- open-autonomy:outreach-policy:begin -->
+## Project outreach policy
+
+Setup has not established this project’s outreach policy. Report this gap in your scrum result and
+ask the owner to run `create-open-autonomy setup . --outreach-only` to choose the reviewing owner,
+channel and follow-up interval. Keep human-review requests blocked until that decision is recorded.
+Available credentials and legacy `owner` identities in config do not authorize a destination.
+<!-- open-autonomy:outreach-policy:end -->
