@@ -32,7 +32,9 @@ def reconcile(*, board=None, remind=False, **kwargs):
         if remind:
             log.warning("no owner configured; run create-open-autonomy setup to choose an owner notification door")
         return
-    project = Path(os.environ.get("TERMINAL_CWD") or os.getcwd())
+    project = Path.cwd()
+    if not (project / ".open-autonomy/community.ts").is_file():
+        project = Path(os.environ.get("TERMINAL_CWD") or project)
     state_path = home / "escalations.json"
     with (home / "escalations.lock").open("a") as lock:
         try:

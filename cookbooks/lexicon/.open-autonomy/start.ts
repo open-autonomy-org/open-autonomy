@@ -186,7 +186,8 @@ writeFileSync(runtimeConfigFile, Bun.YAML.stringify(runtimeConfig, null, 2));
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
 const homeReadme = resolve(home, 'README.md');
-writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8') + `\nRunning Hermes kit ${runningKit.version}.\n`);
+// The site renders the setup's opening paragraphs; put the running version there.
+writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning Hermes kit ${runningKit.version}. `));
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = [];
