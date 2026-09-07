@@ -63,6 +63,14 @@ release review in the public development channel; follow up in the same thread.â
 When scheduled PM reports are the agreed contact path, the setup agent sets their native Hermes cron
 delivery accordingly; the report must contain the actual human request.
 
+Setup also records verified owner/delegate account IDs and the scope and source of each grant in that
+skill. Discord role grants use guild/role IDs and current membership; moderation does not imply project
+direction or release authority. Use Hermes's native `discord.channel_skill_bindings` to load the agreement
+in project channels and `discord.group_allow_admin_from` for operator user IDs, with
+`group_user_allowed_commands: []`. An empty admin list disables command gating. This gates administrative
+slash commands; project decisions still require the skill's source/authority checks and releases require
+their actual human gate. No additional people database or permission plugin is needed.
+
 For an open-source team and community, agree which public spaces serve conversation, help, development
 and announcements; reuse existing channels and use threads for individual proposals and release reviews.
 Maintainer authority does not require a private development channel. Any confidential human space stays
