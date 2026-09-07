@@ -38,3 +38,6 @@ rails:
   partner:                    # a partner service settling a metered charge against the balance
     max_usd_cents: 0          # the most one charge may be
     partners: []              # the partner ids allowed to settle
+
+# Shared roster: the setup agent establishes the first owner; later changes use the Team page.
+team: {"members": []}

@@ -1,5 +1,7 @@
 import { raw } from 'hono/html';
 import { itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
+import { TEAM_SCOPES, type TeamMember } from '@open-autonomy/sdk/team';
+import type { TeamFile } from './team.js';
 import type { DirectoryEntry, Envelope, EnvelopePurpose, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
@@ -430,6 +432,7 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
             <h1>{nameOf(v.account)}</h1>
             <p class="tag">{v.profile.tagline ?? `${owner}/${nameOf(v.account)}`}</p>
             <div class="metarow">
+              <a href={`/p/${enc}/team`}>Team</a><span class="sep">|</span>
               <span><b>{v.patron_count}</b> patrons</span><span class="sep">|</span>
               <span><b>{v.monthly_usd_cents ? `${usd0(v.monthly_usd_cents)}/mo` : '$0/mo'}</b></span><span class="sep">|</span>
               <StatusDot status={v.status} />
@@ -625,6 +628,51 @@ export function renderGivePage(data?: GivePageData): string {
       </div>
     </Shell>,
   );
+}
+
+const TEAM_LABELS = { owner: 'Owner', direction: 'Project direction', moderation: 'Moderation', 'release-review': 'Release review' };
+
+export function renderTeamPage(account: string, file?: TeamFile, editing?: string, failure?: string, configured = true): string {
+  const base = `/p/${encodeURIComponent(account)}/team`;
+  const member = file?.team.members.find(m => m.id === editing);
+  const edit = Boolean(file?.team.members.length && (editing === 'new' || member));
+  const input = (name: string, title: string, value = '', required = false, max = 80) => <label style="display:block;margin:12px 0">{title}<input class="earmark" style="display:block;width:100%;margin-top:5px" name={name} value={value} required={required} maxlength={max} /></label>;
+  return render(<Shell title={`Team · ${account}`}><Nav /><main class="wrap" style="max-width:880px;padding-bottom:64px">
+    <p style="margin-top:32px"><a href={`/p/${encodeURIComponent(account)}`}>← {account}</a></p>
+    <h1>Team</h1><p class="tag">The people behind the project and the decisions they can make.</p>
+    {failure ? <p role="alert">{failure}</p> : null}
+    {file ? <>
+      <p class="note">From the <a href={`https://github.com/${account}/blob/${file.head}/.open-autonomy/config.yaml`}>committed roster</a>. Release authority still requires human review of the specific release.</p>
+      {!file.team.members.length ? <div class="panel"><h3>No team recorded yet</h3><p>The setup agent needs to establish the first owner's verified accounts and authority. Then owners can manage the team here.</p></div> : <>
+        <div>{file.team.members.map((m: TeamMember) => <article class="panel">
+          <h3>{m.name}</h3><p>{m.scopes.length ? m.scopes.map(s => TEAM_LABELS[s]).join(' · ') : 'Contributor'}</p>
+          {m.github ? <p><a href={`https://github.com/${m.github.login}`}>GitHub · @{m.github.login}</a> <span class="note">ID {m.github.id}</span></p> : null}
+          {m.discord ? <p><a href={`https://discord.com/users/${m.discord.id}`}>Discord · {m.discord.name}</a> <span class="note">ID {m.discord.id}</span></p> : null}
+          <details><summary>Identity and authority source</summary><p style="overflow-wrap:anywhere">{m.source}</p></details>
+          <p><a href={`${base}?edit=${encodeURIComponent(m.id)}`}>Edit {m.name}</a></p>
+        </article>)}</div>
+        {!edit ? <p><a class="btn" href={`${base}?edit=new`}>Add teammate</a></p> : null}
+      </>}
+      {edit ? <section class="panel" id="editor"><h2>{member ? `Edit ${member.name}` : 'Add teammate'}</h2>
+        <form method="post" action={base}>
+          <input type="hidden" name="sha" value={file.sha} /><input type="hidden" name="id" value={member?.id ?? ''} />
+          {input('name', 'Name', member?.name, true)}
+          {input('github_login', 'GitHub username', member?.github?.login)}
+          <details><summary>GitHub account ID</summary>{input('github_id', 'Verified ID', member?.github?.id, false, 20)}<p class="note">New accounts are resolved from GitHub. Keep this ID for a renamed account; clear it only to link a different account.</p></details>
+          {input('discord_id', 'Discord user ID or profile link', member?.discord?.id)}
+          {input('discord_name', 'Discord name', member?.discord?.name)}
+          <fieldset><legend>Authority</legend>{TEAM_SCOPES.map(scope => <label style="display:block;margin:8px 0"><input type="checkbox" name="scopes" value={scope} checked={member?.scopes.includes(scope)} /> {TEAM_LABELS[scope]}</label>)}</fieldset>
+          <label style="display:block;margin:16px 0">Identity and authority source<textarea class="earmark" style="display:block;width:100%;min-height:100px" name="source" required maxlength={500}>{member?.source ?? ''}</textarea></label>
+          <p class="note">Include a public source link or a specific owner confirmation establishing whose accounts these are and what they may decide.</p>
+          <label style="display:block;margin:16px 0"><input type="checkbox" name="attest" value="yes" required /> I confirm these account links and permissions, or the removal of this person.</label>
+          <p>Continue with GitHub to create a draft pull request. Only a recorded owner can authorize this change. Review and merge it on GitHub before it takes effect.</p>
+          <p class="note">GitHub will ask for public repository access to create the change using your account.</p>
+          {configured ? <><button class="btn" name="operation" value="save">Continue with GitHub</button>{member ? <button class="btn outline" style="margin-left:12px" name="operation" value="remove">Remove teammate</button> : null}</> : <p role="status">GitHub sign-in is not configured on this platform yet.</p>}
+          <p><a href={base}>Cancel</a></p>
+        </form>
+      </section> : null}
+    </> : <p>The committed roster is unavailable. Changes are disabled until it can be read.</p>}
+  </main></Shell>);
 }
 
 export function renderMessage(account: string, ok: boolean, title: string, message: string): string {

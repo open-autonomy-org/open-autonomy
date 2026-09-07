@@ -4,6 +4,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+// The kit places its vendored SDK beside this helper when rendering a project.
+const { parseTeamConfig } = await import(resolve(import.meta.dir, 'sdk/team.ts'));
 
 const location = resolve(import.meta.dir, '..');
 // A PM may invoke this from its planning worktree. Always bind fleet tasks and
@@ -102,8 +104,11 @@ if (command === 'note') {
   let sessions;
   try { sessions = native('sessions', String(state.sessionsSince ?? 0), '0'); }
   catch (error) { sessions = { gap: String(error) }; }
+  let team;
+  try { team = { commit: git('rev-parse', 'origin/main'), ...parseTeamConfig(git('show', 'origin/main:.open-autonomy/config.yaml')) }; }
+  catch (error) { team = { gap: String(error) }; }
   console.log(JSON.stringify({ worktree: plan, branch, job, resumed, snapshot: state.pending, checkpoint: state,
-    main: git('rev-parse', 'origin/main'), mainChanges: changes(state), sessions,
+    main: git('rev-parse', 'origin/main'), mainChanges: changes(state), sessions, team,
     changes: run(['git', 'status', '--short'], plan), board: JSON.parse(run(['hermes', 'kanban', 'list', '--archived', '--json'])), intake: notes() }, null, 2));
 } else if (command === 'changes') {
   console.log(JSON.stringify(changes(memory().state, offset(args[0])), null, 2));

@@ -30,6 +30,9 @@ PRs and discussions; PM discovers them. PM also proposes release scope, version 
 requests human review before shipping. Our **Open Autonomy** bot coordinates publicly in Discord **#development**,
 with community conversation in **#general**, questions in **#help**, and project news in **#announcements**;
 the [project communication agreement](hermes/skills/project-communications/SKILL.md) guides its outreach.
+People and their verified account IDs live in the shared `team` section of
+[project configuration](.open-autonomy/config.yaml). The project's Team page displays the roster and
+lets owners propose changes through GitHub; setup and PM use the same records.
 
 Three ways in:
 

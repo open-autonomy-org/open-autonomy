@@ -28,3 +28,26 @@ spend:
     - { window: 1d, usd_cents: 500 }
     - { window: 30d, usd_cents: 6000 }
     - { window: 1m, calls: 60 }
+
+team: {
+    "members": [
+      {
+        "id": "owner",
+        "name": "miamiviceroy",
+        "github": {
+          "id": "2255943",
+          "login": "yueranyuan"
+        },
+        "discord": {
+          "id": "605505624226136074",
+          "name": "miamiviceroy"
+        },
+        "scopes": [
+          "owner",
+          "direction",
+          "release-review"
+        ],
+        "source": "Owner-led setup, 2026-09-07: \"yes those are me\" explicitly linked GitHub yueranyuan (2255943) and Discord miamiviceroy (605505624226136074). GitHub GET /user verified ID/login; production names the same human reviewer. Original sourced binding: https://github.com/open-autonomy-org/open-autonomy/pull/460. Owner authorized migration to the shared roster in this setup conversation."
+      }
+    ]
+  }
