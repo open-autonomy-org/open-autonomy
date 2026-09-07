@@ -34,6 +34,65 @@ the reference project (`open-autonomy-org/hookline`) runs exactly this.
    contents: read`; `environment: production`; egress allow-listed to GitHub, npm and the deploy target; actions
    pinned by SHA; no restored caches.
 
+## PM release planning and human review
+
+PM maintains the target release schedule in `ROADMAP.md`: scope, proposed version, target window, review
+lead time, readiness criteria, dependencies and risks, with sources. It decides whether to accumulate changes,
+prepare, defer or request review. Neither a merge, a version bump, main being ahead nor the target date triggers
+production. Human review remains mandatory even for urgent fixes. PM follows the project's version policy;
+a contributor's package version is a proposal until reconciled against the selected release.
+
+For the kit's service review helper, use a stable `## <release-id>: <title>` section. Keep each of these
+fields on one line; prose, completion criteria, dependencies, risks and citations can follow:
+
+```text
+Dispatch: hold
+Release decision: accumulate | prepare | defer | request-review
+Target version: <version under this project's release policy>
+Target window: <target date or window, with timezone where relevant>
+Review by: <review target leaving time before release>
+Candidate: <full landed commit SHA once selected>
+Scope: <included outcomes and any explicit exclusions>
+Readiness: pending | ready-for-review
+Readiness evidence: <links to scope completion, artifact/version consistency and checks>
+Rationale: <why this release and timing, with sources>
+Version rationale: <why this version, based on policy and published versions>
+```
+
+The alternatives above are choices, not literal field values. Early targets may be provisional; the PM must
+resolve missing scope, version and review targets before requesting review. `request-review` requires
+`ready-for-review` and a full candidate SHA already on main. Land the decision through the ordinary planning
+PR. Keep the candidate fixed: the planning commit and later work may remain outside that release.
+
+Then prepare `$HERMES_HOME/release-review.md` outside the checkout, with single-line fields and supporting
+prose/links as needed:
+
+```text
+Release: <release-id in ROADMAP.md>
+Plan: <full landed commit SHA containing that release decision>
+Candidate: <same full candidate SHA as the plan>
+Version: <same target version as the plan>
+Verification: <candidate-specific results and source links>
+Risks: <remaining risks and mitigations>
+Human action: <review this proposal, then the exact authorized tag/publish/approval steps>
+```
+
+`bun .open-autonomy/maintain.ts ship` checks the pinned plan against the current release fields on main.
+Accumulating, deferred, unready, missing or stale proposals cannot request review. Receipt/status notes and
+unrelated later commits don't change the selected candidate or repeat an unchanged ask. Material release
+field changes require a refreshed package and human review; prior approval does not extend to them. The
+helper parks unleased requests superseded by the landed plan; a later PM decision starts a new review cycle
+without treating a withdrawn card as completed or resetting native retry counters. Local package errors
+prevent new requests but do not revoke a pending review still authorized by the plan. PM explains changes
+in the original conversation and reconciles active execution. Existing reminders use the configured owner interval.
+
+For a live service, the helper verifies that the selected candidate descends from the deployed commit. It
+releases that candidate's shipping hold when live reports that exact commit, even if main is now ahead.
+Unknown or divergent live history requires reconciliation. Native review still checks the task's acceptance;
+PM updates changelog only with actual release evidence and preserves outstanding verification in roadmap.
+For packages or other artifacts without a live service, PM uses their documented publication/review procedure
+and the configured owner door; the live-service helper does not claim those artifacts have been published.
+
 ## Shipping
 
 ```bash

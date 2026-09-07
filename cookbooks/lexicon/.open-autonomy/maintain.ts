@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // The PM's bounded maintenance: inspect releases, land an idle kit upgrade, request a
-// drained restart, and keep one owner task for code awaiting deployment. Never deploys.
+// drained restart, and request review of a PM-selected release candidate. Never deploys.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -22,9 +22,9 @@ const git = (...args: string[]) => run(['git', ...args]);
 type Task = { id: string; title: string; status: string; body?: string };
 const board = () => JSON.parse(run(['hermes', 'kanban', 'list', '--json'])) as Task[];
 const requestMarker = '<!-- open-autonomy:owner-request -->';
-function ownerRequest(marker: string, title: string, ask: string, key: string): void {
+function ownerRequest(marker: string, title: string, ask: string, key: string, renewedReview = false): void {
   const matches = board().filter((t) => t.body?.startsWith(marker));
-  let task = matches.find((t) => !['done', 'archived'].includes(t.status));
+  let task = matches.find((t) => !['done', 'archived', ...(renewedReview ? ['scheduled'] : [])].includes(t.status));
   if (!task) {
     task = JSON.parse(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\n${ask}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--idempotency-key', `${key}:${matches.at(-1)?.id ?? 'first'}`, '--json'])) as Task;
   }
@@ -35,6 +35,7 @@ function ownerRequest(marker: string, title: string, ask: string, key: string): 
     run(['hermes', 'kanban', 'comment', task.id, `${requestMarker}\n${ask}`, '--author', 'pm']);
   }
   if (['ready', 'running'].includes(task.status)) run(['hermes', 'kanban', 'block', task.id, ask, '--kind', 'needs_input']);
+  if (board().find((t) => t.id === task.id)?.status !== 'blocked') throw new Error(`owner request ${task.id} needs native triage/dependency reconciliation before outreach`);
 }
 function reviewUpgrade(branch: string): void {
   git('fetch', '-q', 'origin', branch);
@@ -59,33 +60,121 @@ const newer = (a: string, b: string) => {
   return false;
 };
 
+// The roadmap is the release plan; this package is only its candidate-specific
+// review evidence. Single-line fields make the authority-bearing values unambiguous.
+function field(text: string, name: string): string {
+  const values = text.split('\n').filter((line) => line.startsWith(`${name}:`)).map((line) => line.slice(name.length + 1).trim());
+  if (values.length !== 1 || !values[0]) throw new Error(`release requires one nonempty ${name}: field`);
+  return values[0];
+}
+function releaseSection(roadmap: string, id: string): string {
+  const sections = roadmap.split(/^## /m).filter((section) => section.startsWith(`${id}: `));
+  if (sections.length !== 1) throw new Error(`roadmap requires one release outcome ${id}`);
+  return sections[0];
+}
+const fullCommit = (value: string) => /^[a-f0-9]{40}$/.test(value);
+const releaseFields = ['Release decision', 'Target version', 'Target window', 'Review by', 'Candidate', 'Scope', 'Readiness', 'Readiness evidence', 'Rationale', 'Version rationale'];
+
 if (command === 'ship') {
   const config = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8')) as { account: string; live?: string };
-  if (!config.live) { console.log('No live address configured.'); process.exit(0); }
+  const shippingTasks = () => board().filter((t) => /^<!-- open-autonomy:ship(?::[a-z0-9-]+)? -->/.test(t.body ?? '') && !['done', 'archived'].includes(t.status));
+  let shipping = shippingTasks();
+  const park = (reason: string, except?: string) => {
+    for (const task of shipping.filter((t) => t.id !== except)) {
+      // Scheduled is a native planning hold, not a human-input block or completion.
+      // Leave leased/review work intact for PM to reconcile through its handoff.
+      if (['blocked', 'ready', 'todo'].includes(task.status)) run(['hermes', 'kanban', 'schedule', task.id, reason]);
+    }
+  };
+  if (!config.live) { console.log('No live address configured; use the project release procedure for non-service artifacts.'); process.exit(0); }
+  git('fetch', '-q', 'origin', 'main');
+  const roadmap = git('show', 'origin/main:ROADMAP.md');
+  // The landed plan, not a transient local package error, withdraws authority.
+  // Inspect each request's original/latest proposal before stopping its reminders.
+  for (const request of shipping) {
+    if (!['blocked', 'ready', 'todo'].includes(request.status)) continue;
+    const detail = JSON.parse(run(['hermes', 'kanban', 'show', request.id, '--json'])) as { comments: Array<{ author: string; body: string }> };
+    const proposal = detail.comments.filter((c) => c.author === 'pm' && c.body.startsWith(requestMarker)).at(-1)?.body ?? request.body ?? '';
+    let id: string, priorPlan: string;
+    try {
+      id = field(proposal, 'Release');
+      priorPlan = field(proposal, 'Plan');
+      if (!fullCommit(priorPlan)) throw new Error('legacy or invalid release plan');
+    } catch {
+      run(['hermes', 'kanban', 'schedule', request.id, 'This legacy review request has no pinned PM release decision. Hold it for PM reconciliation; no approval or release is implied.']);
+      continue;
+    }
+    // Missing history or a failed native read is a source gap, not revocation.
+    const priorRoadmap = git('show', `${priorPlan}:ROADMAP.md`);
+    let withdrawn = false;
+    try {
+      const before = releaseSection(priorRoadmap, id);
+      const current = releaseSection(roadmap, id);
+      withdrawn = field(current, 'Release decision') !== 'request-review' || field(current, 'Readiness') !== 'ready-for-review' ||
+        field(proposal, 'Candidate') !== field(current, 'Candidate') || field(proposal, 'Version') !== field(current, 'Target version') ||
+        releaseFields.some((name) => field(before, name) !== field(current, name));
+    } catch { withdrawn = true; }
+    if (withdrawn) run(['hermes', 'kanban', 'schedule', request.id, 'The current landed PM plan no longer authorizes this review proposal. Hold it for reconciliation; no approval or release is implied.']);
+  }
+  shipping = shippingTasks();
+  const packagePath = resolve(home, 'release-review.md');
+  const review = existsSync(packagePath) ? readFileSync(packagePath, 'utf8') : '';
+  let release: string, candidate: string, version: string, plan: string, section: string;
+  try {
+    release = field(review, 'Release');
+    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(release)) throw new Error('Release must name a roadmap outcome ID');
+    candidate = field(review, 'Candidate');
+    plan = field(review, 'Plan');
+    if (!fullCommit(candidate) || !fullCommit(plan)) throw new Error('Candidate and Plan must be full commit SHAs');
+    // Both the selected candidate and the decision must already be consolidated.
+    git('merge-base', '--is-ancestor', candidate, plan);
+    git('merge-base', '--is-ancestor', plan, 'origin/main');
+    section = releaseSection(git('show', `${plan}:ROADMAP.md`), release);
+    const current = releaseSection(roadmap, release);
+    for (const name of releaseFields) if (field(section, name) !== field(current, name)) throw new Error(`${name} changed; PM must reconcile the release package`);
+    if (field(current, 'Release decision') !== 'request-review') throw new Error('PM has not decided to request release review');
+    if (field(current, 'Readiness') !== 'ready-for-review') throw new Error('release readiness is not established');
+    if (field(current, 'Candidate') !== candidate) throw new Error('Candidate does not match the landed PM decision');
+    version = field(review, 'Version');
+    if (version !== field(current, 'Target version')) throw new Error('Version does not match the landed PM decision');
+    for (const name of ['Verification', 'Risks', 'Human action']) field(review, name);
+    if (!/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(section) || !/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(review)) throw new Error('release decision and verification require source links');
+  } catch (error) {
+    const reason = `Release review is on hold: ${(error as Error).message}. Continue PM planning; this is not an approval or a release.`;
+    console.log(`${reason} No release request sent.`);
+    process.exit(0);
+  }
+  const marker = `<!-- open-autonomy:ship:${release} -->`;
+  const task = shipping.find((t) => t.body?.startsWith(marker) && t.status !== 'scheduled');
+  park('PM is reviewing a different release proposal; reconcile this superseded request before resuming.', task?.id);
+  if (task && ['ready', 'running', 'review', 'todo', 'triage'].includes(task.status)) {
+    console.log(`Release task ${task.id} has an active handoff; PM must reconcile it without replacing its lease or review scope.`);
+    process.exit(0);
+  }
   const base = process.env.OPEN_AUTONOMY_BASE_URL;
   if (!base) throw new Error('OPEN_AUTONOMY_BASE_URL is required to read deployment status');
   const response = await fetch(`${base.replace(/\/$/, '')}/accounts/${encodeURIComponent(config.account)}`);
   if (!response.ok) throw new Error(`deployment status returned ${response.status}`);
   const { live } = await response.json() as { live?: { ahead: number | null; head?: string; commit?: string } };
-  const tasks = board();
-  const marker = '<!-- open-autonomy:ship -->';
-  const task = tasks.find((t) => t.body?.startsWith(marker) && !['done', 'archived'].includes(t.status));
-  if (live?.ahead === 0) {
+  // Main may have advanced since candidate selection. Never move the human's
+  // review target just because another commit landed, or require all of main to ship.
+  if (!live || !/^[a-f0-9]{7,40}$/i.test(live.commit ?? '')) {
+    console.log('Live deployment status is unknown; no request is sent or shipping task released.');
+    process.exit(0);
+  }
+  const deployed = git('rev-parse', '--verify', `${live.commit}^{commit}`);
+  if (deployed === candidate) {
     if (task?.status === 'blocked') run(['hermes', 'kanban', 'unblock', task.id]);
-    console.log('The deployed service is up to date.');
-  } else if (live && typeof live.ahead === 'number' && live.ahead > 0 && /^[a-f0-9]{7,40}$/i.test(live.head ?? '')) {
-    const packagePath = resolve(home, 'release-review.md');
-    const review = existsSync(packagePath) ? readFileSync(packagePath, 'utf8') : '';
-    // Preparing this outside the checkout avoids changing the very candidate being
-    // reviewed. PM records the delivered request and evidence in the roadmap.
-    if (!review.includes(`Candidate: ${live.head}`) || !['Verification:', 'Risks:', 'Human action:'].every((field) => review.includes(field)) || !/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(review)) {
-      console.log(`Candidate ${live.head} needs a sourced review package at ${packagePath}: Candidate, Verification, Risks and Human action. No new release request sent.`);
-      process.exit(0);
-    }
-    const ask = `${review.trim()}\n\nCandidate diff: https://github.com/${config.account}/compare/${live.commit}...${live.head}. ${live.ahead} commits have landed since ${live.commit}. Only a maintainer may cut the project's release tag and approve the production run at https://github.com/${config.account}/actions. Approval does not cover a later candidate.`;
-    ownerRequest(marker, 'ship what has landed', `${ask}\nWhen resumed, read the live status; hand off only when ahead is zero. Never deploy.`, `pm:ship:${live.head}`);
+    console.log(`Release ${version} candidate ${candidate} is deployed; later main commits remain unreleased. Native review must verify the remaining acceptance.`);
+  } else {
+    // An already newer/different deployed line needs reconciliation, not a request
+    // to roll it back. A normal release candidate must descend from deployed code.
+    const forward = Bun.spawnSync({ cmd: ['git', 'merge-base', '--is-ancestor', deployed, candidate], cwd: project, stdout: 'pipe', stderr: 'pipe' });
+    if (forward.exitCode) { park('Live code is outside this release range; PM must reconcile the candidate before requesting review.'); console.log('Live code is outside the selected release range; review held.'); process.exit(0); }
+    const ask = `${review.trim()}\n\nPM release plan: https://github.com/${config.account}/blob/${plan}/ROADMAP.md (${release}).\nTarget window: ${field(section, 'Target window')}\nReview by: ${field(section, 'Review by')}\nScope: ${field(section, 'Scope')}\nReadiness: ${field(section, 'Readiness')}\nReadiness evidence: ${field(section, 'Readiness evidence')}\nWhy release: ${field(section, 'Rationale')}\nWhy this version: ${field(section, 'Version rationale')}\nCandidate diff: https://github.com/${config.account}/compare/${deployed}...${candidate}. Only a maintainer may approve this proposal, cut its release tag and approve the production run at https://github.com/${config.account}/actions. Approval is for version ${version} at ${candidate}, never later main commits. The target window is not permission to deploy.`;
+    ownerRequest(marker, `Review release ${release}`, `${ask}\nWhen resumed, verify live reports candidate ${candidate} and hand off evidence to native review. Never deploy.`, `pm:ship:${release}:${version}:${candidate}:${plan}`, true);
     console.log(ask);
-  } else console.log('Live deployment status is unknown; no shipping task is released.');
+  }
 } else if (command === 'restart') {
   if (!idle()) { console.log('A task is running or under review; restart waits for an idle hour.'); process.exit(0); }
   git('fetch', '-q', 'origin', 'main');
