@@ -45,6 +45,11 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    Verify the initial development flow does not re-enter production. Preserve unrelated setup notes.
 7. Upgrade this repository and the three cookbooks with the normal kit upgrade. Verify the shared guide
    arrives while project-owned constitution, roadmap, communication policy and model settings remain intact.
+8. Resume with a saved GitHub completion marker after changing the checkout's origin or push URL to
+   another repository. Setup must stop before writing state or changing the remote. Also try a project
+   nested inside another checkout, a missing origin for an existing repository, inaccessible GitHub
+   access, and failed Git commit/fetch commands. Restore the intended origin and verify a real fetch
+   from the twin succeeds; the saved marker alone must never bypass these checks.
 
 Use the existing world scenarios for real Git landing, PM source reconciliation, native review, and
 human outreach through the chosen skill. A setup plan proves choice handling, not installed credentials,
@@ -78,3 +83,12 @@ published only to the registry twin as version 2.8.3, then used to create and in
 project outside the monorepo. That version is a world fixture, not a proposed production release.
 These observations cover setup behavior and artifact delivery; no real credential authorization,
 new live project, or new end-to-end PM cycle is claimed by this rehearsal.
+
+A subsequent Git rehearsal reproduced false success after a completed setup's origin was replaced
+with an unrelated repository. The corrected helper rejected wrong fetch/push targets and a nested
+checkout before state writes. It also stopped on a missing origin, inaccessible repository, rejected
+commit hook and failed fetch; the rejected commit did not create a repository. A valid resumed setup
+fetched the seeded main branch successfully. These checks used native Git and GitHub CLI against the
+GitHub twin. A temporary host-side URL adapter routed CLI API calls to the twin because the native
+macOS CLI did not trust the world's HTTPS certificate; no provider responses were fabricated. Other
+completed setup steps were simulated, so this verifies the Git step, not the entire credential flow.

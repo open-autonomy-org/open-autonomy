@@ -6,6 +6,12 @@ agent instructions and runtime describe how it is built. Setup connects its deve
 services. Application dependencies run against twins during development; their live provisioning
 belongs to deployment or customer activation.
 
+The setup agent interprets the brief, recommends defaults, chooses provider-specific steps, and resolves
+interruptions with the owner when needed. Keep that judgment in these instructions and the browser
+workflow. Deterministic helpers perform bounded operations and check facts: the intended Git target,
+command success, credential storage and access. Do not turn this guide into a configuration framework
+or treat discovered credentials as decisions.
+
 ## Establish the brief and the few choices
 
 For a new project, write its purpose, users, enduring constraints and exclusions into the constitution
@@ -102,6 +108,13 @@ Record non-secret application IDs, completed steps and remaining gaps in the exi
 `.open-autonomy/setup.json` notes. Reuse completed connections and verify their current access on a
 rerun; a saved completion marker is not proof that a credential remains valid. Initial reruns do not
 repeat production setup just because an earlier run selected it.
+
+The Git helper checks the checkout root and configured origin fetch/push URLs against the project
+account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.
+These checks do not establish human authority or prove the fleet's scoped push key works. An unexpected
+remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
+reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
+lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
 
 Land the project-owned agreement and configuration before activation. Verify the loaded Hermes home,
 native schedules, actual human contact path and host restart supervision. Rehearse ordinary-member
