@@ -40,8 +40,7 @@ function ownerRequest(marker: string, title: string, ask: string, key: string, r
 function reviewUpgrade(branch: string): void {
   git('fetch', '-q', 'origin', branch);
   if (!git('diff', '--name-only', 'origin/main...FETCH_HEAD').split('\n').some((p) => p.startsWith('.github/'))) return;
-  // The hook supplies the configured GitHub door even when Hermes strips it from a PM shell.
-  const pr = JSON.parse(run(['python', resolve(home!, 'hooks/escalate/handler.py'), 'pull-request', branch])) as { url: string; number: number } | null;
+  const pr = JSON.parse(run(['bun', '.open-autonomy/community.ts', 'pull-request', branch])) as { url: string; number: number } | null;
   if (!pr) { console.log(`${branch} changes .github/; waiting for the landing workflow to open its pull request. The next PM pass will ask the owner.`); return; }
   const ask = `Review the workflow changes in ${pr.url}/files, then choose Review changes → Approve on pull request #${pr.number}. The kit upgrade waits for your review.`;
   ownerRequest(`<!-- open-autonomy:kit-review:${branch} -->`, `Review kit upgrade ${branch}`, ask, `pm:review:${branch}`);

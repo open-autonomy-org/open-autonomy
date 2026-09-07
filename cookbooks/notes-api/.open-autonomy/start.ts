@@ -154,7 +154,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 const committed = committedFrom ?? resolve(project, 'hermes');
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
-  for (const family of ['skills/open-autonomy', 'hooks']) rmSync(resolve(home, family), { recursive: true, force: true });
+  for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
   cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
 }
@@ -177,12 +177,6 @@ else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) 
 writeFileSync(envFile, `${lines.join('\n')}\n`);
 own(home);
 say(`home ${home} synced from ${committed}`);
-// The lifecycle bridge is kit-owned; existing projects keep their own model and owner config.
-const runtimeConfigFile = resolve(home, 'config.yaml');
-const runtimeConfig = Bun.YAML.parse(readFileSync(runtimeConfigFile, 'utf8')) as Record<string, any>;
-runtimeConfig.plugins ??= {};
-runtimeConfig.plugins.enabled = [...new Set([...(runtimeConfig.plugins.enabled ?? []), 'escalate'])];
-writeFileSync(runtimeConfigFile, Bun.YAML.stringify(runtimeConfig, null, 2));
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
 const homeReadme = resolve(home, 'README.md');
