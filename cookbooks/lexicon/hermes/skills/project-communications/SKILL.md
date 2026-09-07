@@ -10,6 +10,25 @@ contact and where, including human release review. Add timing or escalation inst
 the owner wants them. Identify the public spaces for community conversation, development coordination
 and release review, reusing the server's structure. This is a project-owned skill; kit upgrades leave it alone.
 
+Setup establishes the owner across every enabled human communication platform before starting the fleet.
+Use existing authenticated sessions and API metadata: GitHub `gh api user` supplies the account's numeric
+`id` and current `login`; Discord supplies its user ID and guild membership. These identify accounts,
+not project ownership. Establish who the owner is from the owner's setup instructions and repository
+authority; a helper's login, organization name, bot account or server-owner badge alone does not establish
+project ownership. Resolve ambiguity with the owner rather than guessing.
+
+Record the owner's verified accounts together as the same person only with evidence for that link from
+the owner-led setup or an already verified owner account. Include platform IDs, readable names, authority
+scope and the verification source. Check GitHub and Discord separately; one does not establish the other.
+Explicitly note a declined/deferred platform or an unresolved identity. A required identity gap means setup
+is incomplete for that avenue; do not claim full setup or grant authority through it. No new account-linking
+service or roster file is needed. On setup reruns, preserve existing grants and resolve changes with the owner.
+
+Before activation, verify that the owner is recognized on each enabled avenue, an ordinary member is not
+recognized as the owner, and the actual release reviewers match the agreement. Use the world for message
+rehearsals; do not send live test messages without authorization. Land the agreement and native settings,
+start/reload Hermes through the existing lifecycle, and verify what it loaded before reporting completion.
+
 Record verified platform account IDs for the owner and any delegates, with the scope of each delegation
 (moderation, project direction or release review) and its owner-authorized source. For Discord roles,
 record the guild and role IDs; a role name or moderation permission alone grants no project authority.

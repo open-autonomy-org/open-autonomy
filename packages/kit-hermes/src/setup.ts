@@ -1,4 +1,4 @@
-// create-open-autonomy setup: the guided walk from a kit repository to a running, funded, gated project — the owner's
+// create-open-autonomy setup: prepare the infrastructure for an agent-led, funded, gated project — the owner's
 // own laptop, their own accounts, Open Autonomy's money. It reads the project's situation, recommends the doors that
 // fit it with the reason for each, does every step an API allows, and for the steps only a person may take (a sudo
 // prompt, a captcha, a token page) it opens the exact page, says the one action, and continues when the page comes
@@ -7,7 +7,8 @@
 //
 //   create-open-autonomy setup <dir> [--plan] [--yes] [--with a,b] [--without a,b] [--secrets <dir>] [--bare]
 //
-// The core needs no questions: the repository on GitHub, the landing, the deploy key, the platform key, the owner's
+// After the setup agent establishes the owner and reviewer, the core prepares the repository on GitHub,
+// the landing, the deploy key, the platform key, the owner's
 // rulesets. The doors are recommended from what the repository and the accounts show, and each is the owner's to
 // take, decline, or defer (`setup` again adds a deferred one). What is never automated: creating the accounts, and
 // any captcha or sudo prompt — those are named as the owner's up front.
@@ -321,18 +322,18 @@ function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
   mark(s.dir, st, 'subscription', dst);
 }
 
-function stepStart(s: Situation, opts: Opts, st: SetupState): void {
-  say(`\nStart: ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}.`);
-  if (opts.plan) return;
+function printStart(s: Situation, opts: Opts): void {
+  // Identity and delegation are established by the setup agent in the project-owned skill. Do not race
+  // that work by starting the fleet here, or mark a printed command as a completed activation.
+  say('\nInfrastructure prepared; project setup still needs the setup agent to finish the identity and communication agreement in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
+  say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
   if (opts.bare) {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
-  } else if (s.docker) {
-    const r = spawnSync('docker', ['compose', '-p', s.project, '-f', 'container/compose.yml', 'up', '-d', '--build'], { cwd: s.dir, stdio: 'inherit', env: { ...process.env, AGENT_SECRETS: opts.secrets, STACK: s.project } });
-    if (r.status !== 0) throw new Error('docker compose up failed');
   } else {
-    say(`  Docker is not here. When it is: AGENT_SECRETS=${opts.secrets} STACK=${s.project} docker compose -p ${s.project} -f container/compose.yml up -d --build`);
+    if (!s.docker) say('  Docker is not here; install it before starting the container.');
+    say(`  AGENT_SECRETS=${opts.secrets} STACK=${s.project} docker compose -p ${s.project} -f container/compose.yml up -d --build`);
   }
-  mark(s.dir, st, 'start', opts.bare ? 'bare' : s.docker ? 'container' : 'printed');
+  say('  An existing fleet uses its supported graceful reload after the changes land. Verify the loaded skill/config and connected platforms before reporting setup complete.');
 }
 
 const DEPLOY_YML = `name: Deploy __PROJECT__
@@ -387,7 +388,8 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
   say('  setup agent: agree public community, development and release-review spaces with the owner; record them in hermes/skills/project-communications/SKILL.md. Verify service permissions and native Hermes access settings keep confidential human spaces, DMs and private session history outside the publicly logged fleet.');
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in that skill. Use native channel_skill_bindings and group_allow_admin_from for the agreed Discord channels/operators; group_user_allowed_commands: [] keeps administrative slash commands with those operators. An empty admin list disables the gate; chat admission does not grant project or release authority.');
-  say('\nThe core (no questions): the repository on GitHub, the deploy key, the platform keys, the owner\'s rules.');
+  say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
+  say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the deploy key, the platform keys and the owner\'s rules.');
   say('\nRecommended doors for this situation:');
   const recs = recommend(s);
   for (const r of recs) {
@@ -415,6 +417,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.release === 'yes') say('\nRelease door: publish from a human-cut release-v* tag with NPM_TOKEN as a production environment secret — .open-autonomy/PRODUCTION.md has the workflow shape; the setup will scaffold it in a later version.');
   if (st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   await Promise.all(pending);
-  stepStart(s, opts, st);
-  say(`\nDone. The page: https://open-autonomy.org/p/${encodeURIComponent(s.account)} — it fills as the agent's first session runs. \`create-open-autonomy setup\` again adds a deferred door or repairs a step.`);
+  printStart(s, opts);
+  say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
 }
