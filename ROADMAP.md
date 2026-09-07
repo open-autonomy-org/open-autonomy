@@ -26,6 +26,7 @@ Readiness criteria and release gates:
 Dependencies and risks:
 - The live `/healthz` response still does not name a commit, so production status for the latest deploy tag is not independently verifiable yet.
 - GitHub PR/review and workflow-run evidence is unavailable to this installation until its GitHub door is configured.
+- The verified Discord owner is recorded, but the owner's GitHub numeric account ID and its link to that Discord identity remain unresolved; GitHub release-review actions cannot be attributed to project authority until owner-authorized evidence establishes that link ([setup identity change](https://github.com/open-autonomy-org/open-autonomy/commit/76b60c7e29ded450fec29c2dc345b3e3b472f705)).
 - The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
 
 Sources: candidate [`6e4a12ba`](https://github.com/open-autonomy-org/open-autonomy/commit/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
