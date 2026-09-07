@@ -14,7 +14,33 @@ const run = (cmd: string[], cwd = project): string => {
   return result.stdout.toString().trim();
 };
 const git = (...args: string[]) => run(['git', ...args]);
-const board = () => JSON.parse(run(['hermes', 'kanban', 'list', '--json'])) as Array<{ id: string; title: string; status: string; body?: string }>;
+type Task = { id: string; title: string; status: string; body?: string };
+const board = () => JSON.parse(run(['hermes', 'kanban', 'list', '--json'])) as Task[];
+const requestMarker = '<!-- open-autonomy:owner-request -->';
+function ownerRequest(marker: string, title: string, ask: string, key: string): void {
+  const matches = board().filter((t) => t.body?.startsWith(marker));
+  let task = matches.find((t) => !['done', 'archived'].includes(t.status));
+  if (!task) {
+    task = JSON.parse(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\n${ask}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--idempotency-key', `${key}:${matches.at(-1)?.id ?? 'first'}`, '--json'])) as Task;
+  }
+  const detail = JSON.parse(run(['hermes', 'kanban', 'show', task.id, '--json'])) as { comments: Array<{ author: string; body: string }> };
+  const latest = detail.comments.filter((c) => c.author === 'pm' && c.body.startsWith(requestMarker)).at(-1)?.body;
+  if (latest ? latest !== `${requestMarker}\n${ask}` : !task.body?.includes(ask)) {
+    // Keep the new ask on the board without toggling blocked or incrementing retries.
+    run(['hermes', 'kanban', 'comment', task.id, `${requestMarker}\n${ask}`, '--author', 'pm']);
+  }
+  if (['ready', 'running'].includes(task.status)) run(['hermes', 'kanban', 'block', task.id, ask, '--kind', 'needs_input']);
+}
+function reviewUpgrade(branch: string): void {
+  git('fetch', '-q', 'origin', branch);
+  if (!git('diff', '--name-only', 'origin/main...FETCH_HEAD').split('\n').some((p) => p.startsWith('.github/'))) return;
+  // The hook supplies the configured GitHub door even when Hermes strips it from a PM shell.
+  const pr = JSON.parse(run(['python', resolve(home!, 'hooks/escalate/handler.py'), 'pull-request', branch])) as { url: string; number: number } | null;
+  if (!pr) { console.log(`${branch} changes .github/; waiting for the landing workflow to open its pull request. The next PM pass will ask the owner.`); return; }
+  const ask = `Review the workflow changes in ${pr.url}/files, then choose Review changes → Approve on pull request #${pr.number}. The kit upgrade waits for your review.`;
+  ownerRequest(`<!-- open-autonomy:kit-review:${branch} -->`, `Review kit upgrade ${branch}`, ask, `pm:review:${branch}`);
+  console.log(ask);
+}
 const idle = () => !board().some((t) => ['running', 'review'].includes(t.status));
 const record = (text: string) => JSON.parse(text) as { version: string };
 const installed = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8')).version;
@@ -37,17 +63,15 @@ if (command === 'ship') {
   if (!response.ok) throw new Error(`deployment status returned ${response.status}`);
   const { live } = await response.json() as { live?: { ahead: number | null; head?: string; commit?: string } };
   const tasks = board();
-  let task = tasks.find((t) => t.title === 'ship what has landed' && t.body?.includes('<!-- open-autonomy:ship -->') && t.status !== 'archived');
+  const marker = '<!-- open-autonomy:ship -->';
+  const task = tasks.find((t) => t.body?.startsWith(marker) && !['done', 'archived'].includes(t.status));
   if (live?.ahead === 0) {
     if (task?.status === 'blocked') run(['hermes', 'kanban', 'unblock', task.id]);
     console.log('The deployed service is up to date.');
   } else if (live && typeof live.ahead === 'number' && live.ahead > 0 && /^[a-f0-9]{7,40}$/i.test(live.head ?? '')) {
     const tag = `deploy-v${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
     const ask = `Read the money/auth diff, then choose an unused deploy tag (add .1, .2 if needed): git tag -a ${tag} ${live.head} -m "Deploy ${live.head}" && git push origin ${tag}. Approve the waiting production run at https://github.com/${config.account}/actions. ${live.ahead} commits have landed since ${live.commit}.`;
-    if (!task || task.status === 'done') {
-      task = JSON.parse(run(['hermes', 'kanban', 'create', 'ship what has landed', '--body', `<!-- open-autonomy:ship -->\n${ask}\nWhen resumed, read the live status; hand off only when ahead is zero. Never deploy.`, '--assignee', 'default', '--workspace', `dir:${project}`, '--idempotency-key', `pm:ship:${live.head}`, '--json']));
-    }
-    if (task && ['ready', 'running'].includes(task.status)) run(['hermes', 'kanban', 'block', task.id, ask, '--kind', 'needs_input']);
+    ownerRequest(marker, 'ship what has landed', `${ask}\nWhen resumed, read the live status; hand off only when ahead is zero. Never deploy.`, `pm:ship:${live.head}`);
     console.log(ask);
   } else console.log('Live deployment status is unknown; no shipping task is released.');
 } else if (command === 'restart') {
@@ -69,7 +93,8 @@ if (command === 'ship') {
   if (!newer(latest, landed)) { console.log(`Kit ${landed} already landed; request a restart.`); process.exit(0); }
   const branch = `land/kit-${latest}`;
   if (git('ls-remote', '--heads', 'origin', branch)) {
-    console.log(`Upgrade ${branch} is already pushed. If its pull request changes .github/, ask the owner to approve that pull request through the escalation hook.`);
+    console.log(`Upgrade ${branch} is already pushed.`);
+    reviewUpgrade(branch);
     process.exit(0);
   }
   const parent = resolve(home, 'kit-upgrades');
@@ -90,5 +115,6 @@ if (command === 'ship') {
   if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
   run(['git', 'push', '-u', 'origin', branch], worktree);
   git('worktree', 'remove', worktree);
+  reviewUpgrade(branch);
   console.log(`Pushed ${branch}; the landing workflow opens its pull request. Workflow changes need the owner's review.`);
 } else throw new Error('usage: maintain.ts status | upgrade | restart | ship');

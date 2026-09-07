@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-export const KIT = { name: 'hermes', version: '2.7.0' } as const;
+export const KIT = { name: 'hermes', version: '2.7.1' } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 const TEMPLATE = resolve(import.meta.dir, '..', 'template');
 
