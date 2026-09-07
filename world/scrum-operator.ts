@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, ENC, STATE, api, need } from './lib.ts';
+import { outreachCommand } from './outreach-policy.ts';
 const project = resolve(STATE, '.volter/stack/project');
 const home = resolve(STATE, '.volter/stack/home');
 const bin = need('WORLD_HERMES_BIN');
@@ -77,7 +78,7 @@ if (command === 'inspect') {
   const status = (await api(need('PLATFORM_URL')).get(`/v1/accounts/${ENC}`)).body.live;
   console.log({ live: status, withoutPackage: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
   // PM now selects the release and prepares its package in the release-planning beat.
-  console.log(run(['python', resolve(home, 'hooks/escalate/handler.py'), 'remind']));
+  console.log(run(outreachCommand(home)));
 } else if (command === 'archive') {
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--json']).out);
   const task = tasks.find((t: { title: string; status: string }) => t.title.startsWith('todo add') && t.status === 'done');

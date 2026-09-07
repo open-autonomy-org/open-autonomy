@@ -84,14 +84,16 @@ field changes require a refreshed package and human review; prior approval does 
 helper parks unleased requests superseded by the landed plan; a later PM decision starts a new review cycle
 without treating a withdrawn card as completed or resetting native retry counters. Local package errors
 prevent new requests but do not revoke a pending review still authorized by the plan. PM explains changes
-in the original conversation and reconciles active execution. Existing reminders use the configured owner interval.
+in the original conversation and reconciles active execution. The setup-written Project outreach policy
+in the PM skill specifies the reviewing owner, channel and follow-up interval. PM passes that destination
+explicitly to the delivery helper; available credentials never choose it or authorize a fallback.
 
 For a live service, the helper verifies that the selected candidate descends from the deployed commit. It
 releases that candidate's shipping hold when live reports that exact commit, even if main is now ahead.
 Unknown or divergent live history requires reconciliation. Native review still checks the task's acceptance;
 PM updates changelog only with actual release evidence and preserves outstanding verification in roadmap.
 For packages or other artifacts without a live service, PM uses their documented publication/review procedure
-and the configured owner door; the live-service helper does not claim those artifacts have been published.
+and that outreach policy; the live-service helper does not claim those artifacts have been published.
 
 ## Shipping
 

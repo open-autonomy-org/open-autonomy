@@ -22,8 +22,10 @@ bun world/run.ts down --purge          # forget it (the agent's home and checkou
 For a second world on the same machine, use a separate `WORLD_STATE_ROOT` and set `WORLD_PORT_OFFSET=1000`
 on every command. This moves all service ports and the cookbook's valve ports together.
 `WORLD_HERMES_BIN` names an existing pinned Hermes bin directory without inheriting an outer agent's
-`HERMES_*` settings. `WORLD_OWNER_DOOR=github` seeds the owner with a GitHub destination alone;
-the default seeds a Discord owner too, for blocked-task notifications.
+`HERMES_*` settings. `WORLD_OWNER_DOOR=github` explicitly selects a GitHub-issue outreach policy during
+setup; the default selects Discord DM. Both transports and legacy owner identities are available in
+either case, so the selected policy must determine delivery. The scripted PM reads the setup-written
+command from its real skill. Credential availability never chooses a channel.
 `WORLD_IDLE=1` starts with an empty board for owner-notification and upgrade exercises. Publish a
 rehearsal kit through the registry twin with `bun world/run.ts env -- bun world/kit-release.ts 2.7.2`,
 then fire the PM. Choose a fresh version when the packed source changes: npm versions are immutable.
@@ -34,6 +36,17 @@ The world is an environment, not a test. Nothing in it asserts and nothing runs 
 drives it one action at a time — the page, the books, the board, the twins' ledgers (`volter-world tail`) — and
 reads what the product says. That is the repository's standing rule on tests: everything that runs by itself finishes
 in under thirty seconds (`bun run check`), and behavior is verified by driving the running product.
+
+For the setup/outreach rehearsal, `env -- bun world/outreach-operator.ts setup` exercises explicit setup,
+missing choices, plan-only mode and preservation through upgrade in a disposable kit project. After a
+release PM beat, `inspect` shows the selected route, native holds/subscriptions and assigned issues.
+Stop the app stack (`stack down`, leaving the world services up) before the delivery-fault beats so its
+background retry cannot race the deliberately missing credential. Run `block`, then `pending`: a new
+owner hold has no destination until PM explicitly selects it. `unavailable` removes only the selected
+transport's credential inside that invocation; the other transport remains available, but receives no
+fallback. `deliver` follows the actual skill's command; repeat it and `inspect` to check that the same
+conversation is reused without an early reminder. Repeat with the Discord setup choice to inspect native
+DM subscriptions. These are manual observations, not assertions of unscripted PM judgment.
 
 The cookbook is `todo-cli` (`--cookbook <name>` picks another): nine historical seed intentions, each one command. Fire the PM to reconcile them into ROADMAP.md;
 a subsequent scrum queues ready work after the planning PR lands. `--cookbook lexicon` is the community
