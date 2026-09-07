@@ -37,8 +37,15 @@ if (!existsSync(handler)) { console.error(`no world/handlers/${cookbook}/gateway
 const r = Bun.spawnSync({ cmd: ['bun', handler], cwd: ROOT, stdout: 'pipe', stderr: 'inherit', env: { ...process.env, WORLD_PROJECT_DIR: resolve(STATE, '.volter', 'stack', 'project') } });
 if (r.exitCode !== 0) { console.error(`world/handlers/${cookbook}/gateway.ts failed (${r.exitCode})`); process.exit(r.exitCode || 1); }
 writeFileSync(scenario, r.stdout);
-writeFileSync(config, readFileSync(resolve(ROOT, 'world', 'world.json'), 'utf8')
+const portOffset = Number(process.env.WORLD_PORT_OFFSET ?? 0);
+if (!Number.isInteger(portOffset) || portOffset < 0 || portOffset > 17000) throw new Error('WORLD_PORT_OFFSET must be an integer from 0 to 17000');
+const worldConfig = JSON.parse(readFileSync(resolve(ROOT, 'world', 'world.json'), 'utf8')
   .replace(/\$\{TWIN:([a-z-]+)\}/g, (_, name: string) => twinCli(name)).replaceAll('${WORLD_DIR}', resolve(ROOT, 'world')).replaceAll('${SCENARIO}', scenario).replaceAll('${COOKBOOK}', cookbook));
+for (const service of worldConfig.services) {
+  service.port += portOffset;
+  if (service.id === 'discord') service.env.TWIN_DISCORD_GATEWAY_URL = `ws://127.0.0.1:${service.port}/gateway`;
+}
+writeFileSync(config, JSON.stringify(worldConfig, null, 2));
 
 // Every step reports how long it took, so the gate's cost stays visible: the loop itself is seconds.
 const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
@@ -47,7 +54,7 @@ function world(args: string[], opts: { check?: boolean } = { check: true }): num
   if (opts.check && res.exitCode !== 0) { console.error(`volter-world ${args[0]} failed (${res.exitCode})`); process.exit(res.exitCode || 1); }
   return res.exitCode;
 }
-const inWorld = (cmd: string[]) => world(['env', NAME, '--root', STATE, '--', 'env', `WORLD_COOKBOOK=${cookbook}`, ...cmd]);
+const inWorld = (cmd: string[]) => world(['attach', NAME, '--root', STATE, '--', 'env', `VOLTER_WORLD=${NAME}`, `WORLD_COOKBOOK=${cookbook}`, ...cmd]);
 const step = (name: string, ...args: string[]) => timed(`${name}${args.length ? ` ${args.join(' ')}` : ''}`, () => inWorld(['bun', resolve(ROOT, 'world', `${name}.ts`), ...args]));
 const mode = process.env.WORLD_MODE ?? 'sealed';
 const verb = argv.filter((a, i) => !a.startsWith('--') && a !== cookbook && argv[i - 1] !== '--timeout')[0];
@@ -56,7 +63,11 @@ const hasStack = existsSync(resolve(ROOT, 'world', 'stack.ts'));
 const stack = (...args: string[]) => (hasStack ? step('stack', ...args) : 0);
 const stackDown = (purge: boolean) => { if (hasStack) Bun.spawnSync({ cmd: ['bun', resolve(ROOT, 'world', 'stack.ts'), 'down', ...(purge ? ['--purge'] : [])], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, WORLD_COOKBOOK: cookbook } }); };
 const purge = argv.includes('--purge');
-const platformUrl = () => (readFileSync(envFile, 'utf8').match(/PLATFORM_URL=(\S+)/)?.[1] ?? '?').replace(/^'|'$/g, '');
+const platformUrl = () => {
+  const result = Bun.spawnSync({ cmd: ['bun', cli, 'url', NAME, 'platform', '--root', STATE], cwd: ROOT, stdout: 'pipe', stderr: 'inherit' });
+  if (result.exitCode !== 0) throw new Error('world: cannot resolve the platform URL');
+  return result.stdout.toString().trim();
+};
 switch (verb) {
   case 'up': {
     stackDown(true);
@@ -64,6 +75,7 @@ switch (verb) {
     world(['up', config, '--env-file', envFile, '--name', NAME, '--mode', mode, '--root', STATE]);
     step('seed');
     stack('up');
+    world(['app-url', NAME, '--set', platformUrl(), '--root', STATE]);
     console.log(`\nworld up, cookbook ${cookbook}: the board is working its seed tasks. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts hermes kanban list     hermes cron run pm (the PM's hour)     stack between-tasks     down --purge`);
     break;
   }
