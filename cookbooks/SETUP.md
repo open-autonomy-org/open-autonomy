@@ -50,6 +50,11 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    nested inside another checkout, a missing origin for an existing repository, inaccessible GitHub
    access, and failed Git commit/fetch commands. Restore the intended origin and verify a real fetch
    from the twin succeeds; the saved marker alone must never bypass these checks.
+9. Exercise the standalone credential receiver from outside a project. Use only a synthetic token in
+   normal Chrome. Verify the destination is outside Git, the saved file is owner-only, and the receipt
+   contains no credential. Reject cross-origin entry and an existing destination. For GitHub, prepare
+   the manifest with the browser agent and use the receiver's callback; creation and installation are
+   separate steps, and a rerun must reuse the saved app. Report missing twin endpoints explicitly.
 
 Use the existing world scenarios for real Git landing, PM source reconciliation, native review, and
 human outreach through the chosen skill. A setup plan proves choice handling, not installed credentials,
@@ -92,3 +97,11 @@ fetched the seeded main branch successfully. These checks used native Git and Gi
 GitHub twin. A temporary host-side URL adapter routed CLI API calls to the twin because the native
 macOS CLI did not trust the world's HTTPS certificate; no provider responses were fabricated. Other
 completed setup steps were simulated, so this verifies the Git step, not the entire credential flow.
+
+The credential receiver was then exercised in normal Chrome inside the world. The first form submission
+exposed a referrer-policy/Origin mismatch that HTTP-only tests did not reveal. After correction, a
+synthetic token was saved with mode 0600 and only its destination was printed. Credential-boundary tests
+also cover origin/state rejection, overwrite refusal, repository/symlink destinations, and rejection
+of credentials naming a different project. These prove local handoff boundaries, not live provider
+authorization. The GitHub twin currently lacks the manifest conversion and repository installation
+lookup needed to prove the complete GitHub handoff; do not label that flow verified yet.
