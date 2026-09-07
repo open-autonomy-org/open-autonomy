@@ -2,19 +2,19 @@
 
 Sourced planning memory maintained by the Hermes PM scrum. Completed work belongs in `CHANGELOG.md` and Git history; this file keeps only outstanding outcomes and the next release decision.
 
-## release-next: Publish the autonomy operating model and bring the platform forward
+## release-next: Publish the onboarding-ready autonomy operating model
 
-Status: fixed candidate ready for maintainer review; this is a proposal, not release authority.
+Status: replacement candidate ready for maintainer review; this is a proposal, not release authority.
 Dispatch: hold
 Release decision: request-review
 Target version: deploy-v2026.09.08.1; create-open-autonomy 2.8.1; @open-autonomy/sdk 2.4.1
 Target window: 2026-09-08 18:00–22:00 EDT
 Review by: 2026-09-08 12:00 EDT
-Candidate: 6e4a12ba6a0422066ef4e5ea8fb0f51763d64997
-Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; SDK 2.4.1. Real-money activation and the seven-day observation are excluded.
+Candidate: 2df3ed92ccfa72d0cfcc09eaddfedf58df36c952
+Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; the repository-owned team roster and Team editor, shared integration branding and installed project GitHub App needed for real-project onboarding; and the SDK 2.4.1 subscription-proxy reliability repair. Giving-secret activation, real-money activation and the seven-day observation are excluded.
 Readiness: ready-for-review
-Readiness evidence: reviewed handoffs for `hermes:task/t_abe517c5`, `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`; `bun run check` passed in 4.2 seconds and dry-run tarballs contained SDK 2.4.1 (8 files) and kit 2.8.1 (48 files) in PM session `cron_79bdc4c063c4_20260907_002929`; exact source is the fixed [candidate](https://github.com/open-autonomy-org/open-autonomy/commit/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997).
-Rationale: these changes form one operating-model cut rather than a release per merge; main has accumulated beyond the latest platform candidate [`deploy-v2026.09.06.4`](https://github.com/open-autonomy-org/open-autonomy/tree/deploy-v2026.09.06.4) and the published kit 2.6.0, while the autonomy observation cannot begin until the new behavior is live.
+Readiness evidence: reviewed handoffs for `hermes:task/t_abe517c5`, `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`; onboarding changes and their twin/live setup evidence in [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463) and [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464); the reproduced 20-second quiet-stream repair and successful landing/security runs in [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465); candidate-specific `bun run check` passed in 7.7 seconds; dry-run packages contained SDK 2.4.1 (9 files) and kit 2.8.1 (51 files). Exact source is the fixed [candidate](https://github.com/open-autonomy-org/open-autonomy/commit/2df3ed92ccfa72d0cfcc09eaddfedf58df36c952).
+Rationale: the prior candidate omitted the identity, branding, project GitHub App and verified subscription-proxy reliability needed for the next real-project onboarding. Replacing it now keeps one coherent operating-model cut rather than asking a new adopter to begin on known-older setup and runtime behavior; main remains beyond [`deploy-v2026.09.06.4`](https://github.com/open-autonomy-org/open-autonomy/tree/deploy-v2026.09.06.4) and the published kit 2.6.0, while the autonomy observation cannot begin until the new behavior is live.
 Version rationale: service tags use dated `deploy-v*` identifiers and the next unused September 8 sequence is `.1`; the kit manifest is 2.8.1 after the planning-model changes, and SDK 2.4.1 is the landed patch. Registry publication, tags and manifest bumps are evidence inputs, not authority to ship.
 
 Readiness criteria and release gates:
@@ -25,10 +25,10 @@ Readiness criteria and release gates:
 
 Dependencies and risks:
 - The live `/healthz` response still does not name a commit, so production status for the latest deploy tag is not independently verifiable yet.
-- GitHub PR/review and workflow-run evidence is unavailable to this installation until its GitHub door is configured.
+- The installed GitHub App now exposes PR, review, workflow, tag and release evidence; no maintainer approval, release run or newer release tag was found for this candidate.
 - The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
 
-Sources: candidate [`6e4a12ba`](https://github.com/open-autonomy-org/open-autonomy/commit/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
+Sources: candidate [`2df3ed92`](https://github.com/open-autonomy-org/open-autonomy/commit/2df3ed92ccfa72d0cfcc09eaddfedf58df36c952), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
 
 ## give-auth-production: Activate and verify the signed-in giving page in production
 
