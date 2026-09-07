@@ -169,3 +169,25 @@ success. The retained [GitHub Contents fidelity patch](patches/github-contents.p
 32b1b4ea, repairs Git-backed file writes and reads and reads current Git refs after merges. Apply it in an
 isolated twin checkout and select that checkout with WORLD_GITHUB_CLI before bringing the world up.
 The app under test remains unchanged. This patch is a rehearsal prerequisite until the twin incorporates it.
+
+## Install the packed kit into a fresh project
+
+Publish only to the world's registry, then run the actual package CLI outside this monorepo. Choose a
+fresh rehearsal version when source changes; this number does not choose the production release version.
+The registry must also contain the generated project's development dependencies. Seed those through its
+ordinary publish API from cached package artifacts; missing metadata is a twin coverage gap.
+
+```bash
+bun world/run.ts env -- bun world/kit-release.ts 2.8.2
+bun world/run.ts env -- sh -c 'npm_config_registry="$NPM_REGISTRY_TWIN_URL" bunx create-open-autonomy@2.8.2 create /tmp/oa-onboarding --project oa-onboarding --account cookbook/oa-onboarding'
+bun world/run.ts env -- sh -c 'npm_config_registry="$NPM_REGISTRY_TWIN_URL" bun install --cwd /tmp/oa-onboarding'
+bun world/run.ts env -- bun run --cwd /tmp/oa-onboarding check
+bun world/run.ts env -- sh -c 'npm_config_registry="$NPM_REGISTRY_TWIN_URL" bun install --frozen-lockfile --cwd /tmp/oa-onboarding'
+```
+
+Inspect the generated branding, team/setup instructions, runtime and compiler versions, and kit record.
+Check with a PATH that contains Bun and Node but no global TypeScript compiler, so this machine's installed
+tools cannot hide an undeclared project dependency. Initial installation creates the project's lockfile;
+subsequent installs must preserve it. This proves packaging and bootstrap mechanics, while the scrum,
+implementation/review, and release-schedule rehearsals above exercise the running fleet. Provider consent,
+real project requirements, and production activation still need their own setup evidence.

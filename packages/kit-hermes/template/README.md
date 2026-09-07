@@ -18,6 +18,7 @@ every session it works, every cent it spends and everything it ships is public.
 
 ```bash
 create-open-autonomy setup . --plan             # start the agent-led setup
+bun install                                    # first setup: install dependencies and commit the generated lockfile
 bun run check                                  # the project's own definition of green; inside its world when configured
 ```
 

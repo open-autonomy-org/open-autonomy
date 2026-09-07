@@ -14,11 +14,11 @@ create-open-autonomy setup .     # the guided walk: what this project's situatio
 
 ## From npm
 
-Both packages publish from this repository: `@open-autonomy/sdk` and `create-open-autonomy`, at one version.
+Both packages publish from this repository: `@open-autonomy/sdk` and `create-open-autonomy`, each at its own version.
 `.github/workflows/release.yml` publishes them on a human-cut `release-v<version>` tag (or a manual dispatch)
 after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
 (`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
-open-autonomy` from it against the npm registry twin (`bun world/run.ts kit`) before any release is cut.
+open-autonomy` from it against the npm registry twin (`bun world/run.ts env -- bun world/kit-release.ts <kit-version>`) before any release is cut.
 
 ## What a generated repository contains
 
@@ -37,7 +37,7 @@ hermes/              the agent: SOUL.md, its three skills (develop, pm, communit
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the agent's four
                      processes, the one way it starts), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the default for a real deployment (bare is for development and fast debugging): one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
-.github/workflows/   ci.yml (the project's check on every branch), land.yml (the landing convention)
+.github/workflows/   land.yml (the landing convention; contributors run the project check before pushing)
 ```
 
 ## The guided setup
@@ -85,7 +85,7 @@ The setup sequence is part of the agent's work, not an optional handoff to the u
    human account's numeric ID and login with `gh api user`. The CLI defaults workflow ownership and a new
    production reviewer to that authenticated account, so establish that it is the agreed human reviewer
    before running those steps; a helper's credentials do not make them the project owner.
-2. Prepare the selected doors with `setup`. It prints the existing start command and leaves activation
+2. Verify Bun 1.3.10 or newer in the actual host service and Hermes terminal environment, not only the setup shell. The kit uses `Bun.YAML`; an older Bun cannot run its planning helpers. Install the new project's dependencies, commit its generated lockfile, and run its own check before activation. A fresh template declares its TypeScript compiler so the check does not depend on a global install. Prepare the selected doors with `setup`. It prints the existing start command and leaves activation
    to the setup agent; infrastructure completion is not completed project setup.
 3. Complete the identity, cross-platform linking, delegation and communication agreement using the
    procedure in `project-communications`. Verify each enabled platform independently, including Discord
