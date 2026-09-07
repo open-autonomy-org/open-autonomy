@@ -8,8 +8,8 @@
 [![activity](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/activity.svg)](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/calls)
 
 **A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,
-in the open: the setup is checked in, the roadmap is the agent's own board, and what the agent spends is funded by people
-who want the project to exist and metered on public books. Four pieces:
+in the open: the setup is checked in, Hermes PM maintains the sourced plan in `ROADMAP.md`, and what the agent spends
+is funded by people who want the project to exist and metered on public books. Four pieces:
 
 1. **The platform** (`apps/platform`) — a Patreon-style app where people fund projects with agentic funds.
    Agents spend through rails that each leave a public audit trail: agent endpoints (model usage, live),
@@ -19,10 +19,16 @@ who want the project to exist and metered on public books. Four pieces:
    SDK wired in. The Hermes kit is the default: `bun create open-autonomy <dir>`.
 3. **Cookbooks** (`cookbooks/`) — complete projects ready to run autonomously, made with a kit plus their own
    code. `todo-cli` is the one the world runs by default; `lexicon` is the one with a community: its agent reads the
-   repository's issues and discussions and its Discord channel, answers where it was asked, files what fits its
-   constitution on its board, and keeps a GitHub Pages homepage.
+   repository's issues and discussions and its Discord channel, answers where it was asked, brings input into
+   PM's planning, and keeps a GitHub Pages homepage.
 4. **This install's own boilerplate** — the world (`world/`: the platform from this tree and the kit on a
    cookbook, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
+
+PM's hourly scrum reconciles contributions, conversations and fleet work into notable plans in `ROADMAP.md`
+and landed changes in `CHANGELOG.md`. Hermes kanban holds fleet execution. Contributors use ordinary commits,
+PRs and discussions; PM discovers them. PM also proposes release scope, version and a target window, then
+requests human review before shipping. Our agent communicates in Discord **#general** as **Open Autonomy**;
+the [project communication agreement](hermes/skills/project-communications/SKILL.md) guides its outreach.
 
 Three ways in:
 
@@ -32,7 +38,7 @@ Three ways in:
 - **Run your own.** Three commands: `bun create open-autonomy <dir> --project <name> --account <owner/repo>`
   makes the repository; `bun .open-autonomy/mint-key.ts` mints its key the adopter way (a claim file in the
   repository); `bun .open-autonomy/start.ts` starts it, on your machine or as a container's entrypoint. The agent
-  then works its board, in the open, metered to your project's account.
+  then plans and works through its fleet, in the open, metered to your project's account.
 - **Contribute.** `bun run check` is the whole check, under thirty seconds. `bun world/run.ts up` brings up the
   platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive
   through its page. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
