@@ -11,8 +11,22 @@
 //   bun .open-autonomy/community.ts mark                          # the last look is now
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+// Hermes removes credentials from terminal tools. Re-enter with only its configured
+// GitHub door; values remain inside the child environment and are never printed.
+if (!process.env.GITHUB_TOKEN && process.env.HERMES_HOME && !process.env.OA_COMMUNITY_DOOR_LOADED) {
+  const script = `import os, sys
+from hermes_cli.config import load_env
+saved = load_env()
+for name in ("GITHUB_TOKEN", "GITHUB_API_URL"):
+    if saved.get(name): os.environ.setdefault(name, saved[name])
+os.environ["OA_COMMUNITY_DOOR_LOADED"] = "1"
+os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
+  const child = Bun.spawnSync({ cmd: ['python', '-c', script, process.execPath, ...process.argv.slice(1)], stdio: ['inherit', 'inherit', 'inherit'] });
+  process.exit(child.exitCode);
+}
 
 const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
 const token = process.env.GITHUB_TOKEN ?? '';
@@ -23,7 +37,13 @@ const project = resolve(import.meta.dir, '..');
 const account = /^account:\s*(\S+)/m.exec(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'))?.[1] ?? '';
 if (!account) throw new Error('community: .open-autonomy/config.yaml names no account');
 const [owner, name] = account.split('/');
-const cursorFile = resolve(process.env.HERMES_HOME ?? project, process.env.HERMES_HOME ? 'community-cursor.json' : '.community-cursor.json');
+const [command, ...rest] = process.argv.slice(2);
+const desk = (command === 'poll' || command === 'mark') ? (rest[0] ?? 'community') : 'community';
+if (!['community', 'pm'].includes(desk)) throw new Error('cursor desk must be community or pm');
+const cursorFile = resolve(process.env.HERMES_HOME ?? project, `${desk}-cursor.json`);
+const pendingFile = `${cursorFile}.pending`;
+if (command === 'poll') rmSync(pendingFile, { force: true });
+const pollStarted = new Date().toISOString();
 const cursor = (): string => (existsSync(cursorFile) ? (JSON.parse(readFileSync(cursorFile, 'utf8')) as { since: string }).since : '1970-01-01T00:00:00Z');
 const headers = { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' };
 async function github<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -37,15 +57,51 @@ async function graphql<T>(query: string, variables: Record<string, unknown>): Pr
   if (!res.ok || out.errors?.length) throw new Error(`graphql → ${res.status} ${out.errors?.map((e) => e.message).join('; ') ?? ''}`);
   return out.data as T;
 }
-interface Discussion { id: string; number: number; title: string; body: string; createdAt: string | null; category: { name: string } | null; comments: { nodes: Array<{ id: string; body: string; createdAt: string | null }> } }
-const discussions = () => graphql<{ repository: { discussions: { nodes: Discussion[] } } }>(
-  `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussions(first: 50) { nodes { id number title body createdAt category { name } comments(first: 50) { nodes { id body createdAt } } } } } }`,
-  { owner, name },
-).then((d) => d.repository.discussions.nodes);
-const after = (at: string | null | undefined, since: string): boolean => !at || at > since;
-const firstLine = (s: string): string => (s ?? '').split('\n')[0]!.slice(0, 120);
+interface Page<T> { nodes: T[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }
+interface Reply { id: string; body: string; createdAt: string | null; updatedAt?: string; url?: string; author?: { login: string } }
+interface Discussion { id: string; number: number; title: string; body: string; createdAt: string | null; updatedAt?: string; url?: string; author?: { login: string }; comments: Page<Reply> }
+const replyFields = 'id body createdAt updatedAt url author { login }';
+const pageFields = 'pageInfo { hasNextPage endCursor }';
+async function discussions(): Promise<Discussion[]> {
+  const all: Discussion[] = [];
+  let next: string | null = null;
+  do {
+    const data: { repository: { discussions: Page<Discussion> } } = await graphql(
+      `query($owner: String!, $name: String!, $after: String) { repository(owner: $owner, name: $name) { discussions(first: 50, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { id number title body createdAt updatedAt url author { login } comments(first: 50) { nodes { ${replyFields} } ${pageFields} } } ${pageFields} } } }`,
+      { owner, name, after: next });
+    const page = data.repository.discussions;
+    if (!page.pageInfo) throw new Error('GitHub discussions returned no pagination information');
+    for (const d of page.nodes) {
+      let comments = d.comments;
+      if (!comments.pageInfo) throw new Error('GitHub discussion comments returned no pagination information');
+      while (comments.pageInfo.hasNextPage) {
+        const cursor = comments.pageInfo.endCursor;
+        if (!cursor) throw new Error('GitHub discussion comments omitted the next cursor');
+        const more: { repository: { discussion: { comments: Page<Reply> } } } = await graphql(
+          `query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { discussion(number: $number) { comments(first: 50, after: $after) { nodes { ${replyFields} } ${pageFields} } } } }`,
+          { owner, name, number: d.number, after: cursor });
+        comments = more.repository.discussion.comments;
+        if (comments.pageInfo.hasNextPage && comments.pageInfo.endCursor === cursor) throw new Error('GitHub discussion comment cursor did not advance');
+        d.comments.nodes.push(...comments.nodes);
+      }
+      all.push(d);
+    }
+    const previous: string | null = next;
+    next = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    if (page.pageInfo.hasNextPage && (!next || next === previous)) throw new Error('GitHub discussion cursor did not advance');
+  } while (next);
+  return all;
+}
+const after = (at: string | null | undefined, since: string): boolean => !at || at >= since;
+async function pages<T>(path: string): Promise<T[]> {
+  const all: T[] = [];
+  for (let page = 1; ; page++) {
+    const rows = await github<T[]>('GET', `${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+    all.push(...rows);
+    if (rows.length < 100) return all;
+  }
+}
 
-const [command, ...rest] = process.argv.slice(2);
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
@@ -85,18 +141,21 @@ if (command === 'poll' && doorless) {
   console.log(JSON.stringify(await github('POST', `/repos/${account}/issues/${rest[1]}/comments`, { body: rest[2] })));
 } else if (command === 'poll') {
   const since = cursor();
-  const issues = await github<Array<{ number: number; title: string; body: string | null; created_at: string; pull_request?: unknown; user?: { login?: string } }>>('GET', `/repos/${account}/issues?state=open&per_page=50&since=${encodeURIComponent(since)}`);
-  for (const i of issues) if (!i.pull_request && after(i.created_at, since)) console.log(`NEW issue #${i.number} ${JSON.stringify(i.title)} by ${i.user?.login ?? 'someone'}: ${firstLine(i.body ?? '')}`);
+  type Issue = { number: number; title: string; body: string | null; state: string; html_url: string; updated_at: string; pull_request?: unknown; user?: { login?: string } };
+  const issues = await pages<Issue>(`/repos/${account}/issues?state=all&since=${encodeURIComponent(since)}`);
   for (const i of issues) {
-    if (i.pull_request) continue;
-    const comments = await github<Array<{ body: string; created_at: string; user?: { login?: string } }>>('GET', `/repos/${account}/issues/${i.number}/comments?per_page=50&since=${encodeURIComponent(since)}`);
-    for (const c of comments) if (after(c.created_at, since)) console.log(`NEW comment on #${i.number} by ${c.user?.login ?? 'someone'}: ${firstLine(c.body)}`);
+    console.log(`NEW ${i.pull_request ? 'pull request' : 'issue'} ${JSON.stringify(i)}`);
+    const comments = await pages<{ body: string; html_url: string; created_at: string; updated_at: string; user?: { login?: string } }>(`/repos/${account}/issues/${i.number}/comments?since=${encodeURIComponent(since)}`);
+    for (const c of comments) if (after(c.updated_at ?? c.created_at, since)) console.log(`NEW comment on #${i.number} ${JSON.stringify(c)}`);
   }
   for (const d of await discussions()) {
-    if (after(d.createdAt, since)) console.log(`NEW discussion #${d.number} ${JSON.stringify(d.title)} (${d.category?.name ?? 'general'}): ${firstLine(d.body)}`);
-    for (const c of d.comments.nodes) if (after(c.createdAt, since)) console.log(`NEW reply on discussion #${d.number}: ${firstLine(c.body)}`);
+    if (after(d.updatedAt ?? d.createdAt, since)) console.log(`NEW discussion ${JSON.stringify(d)}`);
+    else for (const c of d.comments.nodes) if (after(c.updatedAt ?? c.createdAt, since)) console.log(`NEW reply on discussion #${d.number} ${JSON.stringify(c)}`);
   }
-  console.log(`COMMUNITY_POLL_DONE since ${since}`);
+  // Acknowledge the beginning of the successful poll, not the later mark time:
+  // arrivals while the agent reads and replies must remain visible next time.
+  writeFileSync(pendingFile, `${JSON.stringify({ since: pollStarted })}\n`);
+  console.log(`COMMUNITY_POLL_DONE desk ${desk} since ${since}`);
 } else if (command === 'comment' && rest.length >= 2) {
   const n = Number(rest[0]);
   const c = await github<{ id: number }>('POST', `/repos/${account}/issues/${n}/comments`, { body: rest.slice(1).join(' ') });
@@ -108,9 +167,11 @@ if (command === 'poll' && doorless) {
   const out = await graphql<{ addDiscussionComment: { comment: { id: string } } }>(`mutation($discussionId: ID!, $body: String!) { addDiscussionComment(input: { discussionId: $discussionId, body: $body }) { comment { id } } }`, { discussionId: d.id, body: rest.slice(1).join(' ') });
   console.log(`replied on discussion #${n} (${out.addDiscussionComment.comment.id})`);
 } else if (command === 'mark') {
-  writeFileSync(cursorFile, `${JSON.stringify({ since: new Date().toISOString() })}\n`);
+  if (!existsSync(pendingFile)) throw new Error('mark requires a successful poll for this desk');
+  writeFileSync(cursorFile, readFileSync(pendingFile, 'utf8'));
+  rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll | comment <issue> <text…> | discuss <discussion> <text…> | mark | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | comment <issue> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }

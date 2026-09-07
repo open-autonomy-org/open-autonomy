@@ -76,7 +76,7 @@ switch (verb) {
     step('seed');
     stack('up');
     world(['app-url', NAME, '--set', platformUrl(), '--root', STATE]);
-    console.log(`\nworld up, cookbook ${cookbook}: the board is working its seed tasks. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts hermes kanban list     hermes cron run pm (the PM's hour)     stack between-tasks     down --purge`);
+    console.log(`\nworld up, cookbook ${cookbook}: the PM scrum is ready to reconcile ROADMAP.md and queue fleet work. platform: ${platformUrl()}\n  page: ${platformUrl()}/p/cookbook%2F${cookbook}\n  bun world/run.ts hermes kanban list     hermes cron run pm (the PM's hour)     stack between-tasks     down --purge`);
     break;
   }
   case 'seed': step('seed'); break;

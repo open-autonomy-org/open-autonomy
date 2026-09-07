@@ -58,3 +58,11 @@ hermes/.skills_prompt_snapshot.json
 
 # the todo store
 todo.json
+
+# Hermes scrum runtime
+hermes/scrum-intake/
+hermes/scrum-plan/
+hermes/scrum-queue.lock
+hermes/pm-cursor.json*
+hermes/community-cursor.json*
+hermes/release-review.md

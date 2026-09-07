@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. No tests for their own sake.
-version: 3.0.0
+version: 4.0.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -12,14 +12,16 @@ metadata:
 # Develop
 
 You work one task from the board. `kanban_show` gives it to you: a title, and acceptance lines in its body.
-Those lines are the whole definition of done. You make every one true in the running system; code existing
+Read its roadmap reference for purpose, dependencies, human commitments and release gates.
+Those lines define the execution handoff; the roadmap outcome can remain open after this task. You make every one true in the running system; code existing
 is not done.
 
 ## The work
 
 1. Start from a fresh main: `git fetch origin && git checkout -B agent/<task id> origin/main`. If you already
    changed files, do this first and carry the changes over.
-2. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
+2. Read `ROADMAP.md` and any newer landed changes to your outcome. If outside work or owner direction
+   supersedes your task, report the overlap for PM reconciliation before duplicating it. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
    what is out of scope is blocked, not built), `CONTRIBUTING.md` (how code is written here) and `AGENTS.md`.
    Read the code an acceptance line touches before you write.
 3. Build it. Match `CONTRIBUTING.md`. Write no test unless the acceptance line guards an invariant of the
@@ -49,7 +51,7 @@ decision use `kind: "needs_input"`; for a permission you cannot obtain use `kind
 ask as an action: the exact command, page or secret name, and how the owner releases the task afterward.
 Never include a secret value. The escalation hook delivers that ask through the owner's configured door.
 Never file,
-split or decompose tasks, and never create one: the board is the owner's. Do not loop on a failure you cannot
+split or decompose implementation tasks: send discovered work and source evidence to the PM scrum. Do not loop on a failure you cannot
 explain.
 
 ## When an acceptance line needs a purchase

@@ -1,27 +1,8 @@
-"""Seed the schedule and the board from the committed seeds on gateway startup.
+"""Seed the project-owned schedule on startup, preserving runtime job state.
 
-Two seeds, both in the agent's home: cron/jobs.seed.json (the schedule) and kanban.seed.json (the board's
-starting tasks, in order, each waiting on the one before it). Both are idempotent: a job is matched by name, a
-task by its idempotency key `seed:<key>`, so a boot never files twice and the owner's own tasks are untouched.
-
-The Open Autonomy repository commits the schedule definition in
-hermes/cron/jobs.seed.json (byte-stable) and git-ignores the runtime store
-hermes/cron/jobs.json, which Hermes rewrites on every tick with next_run_at /
-last_run_at / fire_claim etc. This hook reconciles the runtime store to the
-seed on every gateway boot so the committed definition stays the source of
-truth and no scheduler run-state ever churns the commit.
-
-Every seeded job is pinned to the provider and model hermes/config.yaml names,
-at creation and again on every boot the config moved: an unpinned job snapshots
-the global model when created and Hermes's drift guard skips its fires once the
-owner changes the model, stranding the schedule. Pinned, the job runs on the
-config's model, and the next boot after a change re-pins it.
-
-Idempotent: it only creates jobs that are in the seed and missing from the
-live store (matched by name). It never deletes, pauses, or edits existing
-jobs, so runtime state (completed runs, next_run_at) is preserved across
-restarts and an operator can still add jobs by hand without the seed
-clobbering them.
+The PM scrum reads ROADMAP.md and queues fleet work. kanban.seed.json is retained
+as historical migration input, never replayed into the board. Jobs remain pinned
+to the configured model/provider; owner-customized schedule definitions are preserved.
 """
 
 import json
@@ -105,65 +86,8 @@ def _seed_jobs() -> list:
     return [j for j in jobs if isinstance(j, dict)]
 
 
-# ---- the board -------------------------------------------------------------------------------------------------
-
-def _seed_tasks() -> tuple:
-    import os
-    # Every seed task works in the project checkout: the directory the gateway runs in.
-    workspace = f"dir:{os.getcwd()}"
-    seed_file = _hermes_home() / "kanban.seed.json"
-    if not seed_file.exists():
-        return workspace, []
-    try:
-        data = json.loads(seed_file.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        logger.error("seed: failed to read %s: %s", seed_file, e)
-        return workspace, []
-    tasks = [t for t in data.get("tasks", []) if isinstance(t, dict) and t.get("key") and t.get("title")]
-    return workspace, tasks
-
-
-def _seed_board() -> None:
-    """File every seed task that is not on the board yet, each a child of the one before it, so the dispatcher
-    pulls them down one at a time in the seed's order. `hermes kanban create --idempotency-key` returns the
-    existing task for a key it has seen, so a second boot changes nothing."""
-    import subprocess
-    workspace, tasks = _seed_tasks()
-    if not tasks:
-        return
-    subprocess.run(["hermes", "kanban", "init"], capture_output=True, text=True)
-    previous = None
-    for spec in tasks:
-        body = "\n".join(f"- {line}" for line in spec.get("acceptance", []) if isinstance(line, str))
-        cmd = ["hermes", "kanban", "create", str(spec["title"]), "--body", body, "--assignee", "default",
-               "--workspace", workspace, "--idempotency-key", f"seed:{spec['key']}", "--created-by", "seed",
-               "--skill", "develop", "--json"]
-        if previous:
-            cmd += ["--parent", previous]
-
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0:
-            logger.error("seed: cannot file task '%s': %s", spec["key"], (r.stderr or r.stdout).strip()[-400:])
-            return
-        m = re.search(r'"id":\s*"([^"]+)"', r.stdout)
-        if not m:
-            logger.error("seed: no task id in the board's answer for '%s'", spec["key"])
-            return
-        previous = m.group(1)
-        # A task the seed holds (`"held": "<why>"`) is filed and parked in the board's Scheduled lane at once, for the
-        # owner to release with `hermes kanban unblock`; only at filing, so a release is never undone by the next
-        # boot. Parked, not blocked: the board escalates repeated blocks into triage and decomposition, and the
-        # PM never touches Scheduled.
-        held = spec.get("held")
-        created_at = re.search(r'"created_at":\s*(\d+)', r.stdout)
-        if held and created_at and time.time() - int(created_at.group(1)) < 120:
-            subprocess.run(["hermes", "kanban", "schedule", previous, str(held)], capture_output=True, text=True)
-    logger.info("seed: the board holds the %d seed task(s)", len(tasks))
-
-
 async def handle(event_type: str, context: dict) -> None:
     import os
-    _seed_board()
     try:
         from cron.jobs import create_job, load_jobs, update_job
     except Exception as e:  # pragma: no cover - import path depends on runtime

@@ -1,4 +1,4 @@
 name: seed
-description: Seed the schedule from cron/jobs.seed.json and the board from kanban.seed.json on gateway startup
+description: Seed the schedule on gateway startup; the PM scrum plans fleet dispatch from ROADMAP.md
 events:
   - gateway:startup

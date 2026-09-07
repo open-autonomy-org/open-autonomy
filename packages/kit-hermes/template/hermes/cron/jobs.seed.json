@@ -2,7 +2,7 @@
   "jobs": [
     {
       "name": "pm",
-      "prompt": "You are this project's PM for the hour. Run the pm skill: read the board, unstick what is stuck, report.",
+      "prompt": "Run the pm skill: reconcile the sourced ROADMAP.md with developments, coordinate people and human release review, and queue ready fleet work.",
       "schedule": "every 60m",
       "skills": [
         "pm"
@@ -10,7 +10,7 @@
     },
     {
       "name": "community",
-      "prompt": "You are this project's community desk for the quarter hour. Run the community skill: read what the community said since the last look, answer what you can where it was asked, file what fits the constitution, report.",
+      "prompt": "Run the community skill: answer people and preserve sourced input for roadmap scrum.",
       "schedule": "every 15m",
       "skills": [
         "community"

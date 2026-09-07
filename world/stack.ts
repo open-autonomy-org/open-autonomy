@@ -154,7 +154,7 @@ async function up(): Promise<void> {
   down(true);
   timed('start', () => start());
   waitSchedule();
-  console.log(`stack: up — the board holds the seed tasks and its dispatcher is pulling them down; the PM job is seeded (\`bun world/run.ts hermes cron run pm\` fires its hour now). log: ${logFile}`);
+  console.log(`stack: up — the PM scrum plans dispatch from ROADMAP.md; the PM job is seeded (\`bun world/run.ts hermes cron run pm\` fires its hour now). log: ${logFile}`);
 }
 
 // The owner moves the model: hermes/config.yaml on main now names the cookbook's model, the agent's checkout
@@ -207,6 +207,7 @@ function down(purge: boolean): void {
 const [verb, ...rest] = process.argv.slice(2);
 if (verb === 'up') await up();
 else if (verb === 'down') down(rest.includes('--purge'));
+else if (verb === 'restart') { stop(); timed('restart', () => start()); waitSchedule(); }
 else if (verb === 'between-tasks') await betweenTasks();
 else if (verb === 'hermes') { const bin = hermesBin(); process.exit(Bun.spawnSync({ cmd: [resolve(bin, 'hermes'), ...rest], cwd: existsSync(project) ? project : STATE, env: agentEnv(bin), stdio: ['inherit', 'inherit', 'inherit'] }).exitCode); }
-else { console.error('usage: stack.ts up | down [--purge] | between-tasks | hermes <args…>'); process.exit(2); }
+else { console.error('usage: stack.ts up | down [--purge] | restart | between-tasks | hermes <args…>'); process.exit(2); }

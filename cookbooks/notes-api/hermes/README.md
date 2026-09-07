@@ -1,27 +1,28 @@
 # This project's agent
 
-This directory is a complete Hermes home (`HERMES_HOME`), from the Open Autonomy Hermes kit. Everything the
-agent is lives here and is committed: `SOUL.md` (identity), `skills/` (the three things it does beyond what Hermes
-brings: `develop`, `pm`, `community`), `kanban.seed.json` (the board's first tasks, in order; one with a `held` reason is filed parked, the owner's to release with `hermes kanban unblock`), `cron/jobs.seed.json` (its jobs: the
-PM, hourly; the community desk, every quarter hour), `config.yaml` (which model, through the platform; a worker takes it at dispatch, so a model change
-never strands anything), `hooks/` (the seed: the schedule and the board, on every boot, idempotent). Its runtime
-state (sessions, logs, caches, `.env`, the board's database) is git-ignored.
+This is a Hermes home: persona, skills (`pm`, `develop`, `community`), profiles, configuration and cron seeds.
+The PM runs an hourly scrum over `ROADMAP.md`, the project's sourced working notes. It consolidates owner
+direction, community input, outside contributions and fleet activity, coordinates human commitments and
+required release review, and queues executable work through Hermes's native kanban. The community desk
+runs every quarter hour and captures input; the dispatcher and review lane handle fleet execution.
 
-The agent's model calls go through the Open Autonomy platform on the project's key, so every call is metered
-to this project's account and paid for by its patrons. The board is the roadmap: the owner files tasks
-(`hermes kanban create`), the gateway's dispatcher pulls them down in order and runs each as a worker session
-that builds it and lands it on an `agent/<task id>` branch, the review lane (Hermes's own) verifies the handoff
-against `CONSTITUTION.md` and `CONTRIBUTING.md` in a session of its own, and once an hour the PM job reads the whole board and unsticks what is
-stuck. Beside it the valve holds the keys, an ssh-agent holds the deploy key, and the reporter
-(`.open-autonomy/reporter.ts`) publishes the board, every session, the agent's setup,
-and the project's documents (`CONSTITUTION.md` as what it is, `CHANGELOG.md` as what shipped) to the project's
-page as they happen. The platform reads none of these files itself.
+`kanban.seed.json` is historical input for migration, no longer replayed at startup. A kit upgrade creates
+missing roadmap notes from that seed without changing an existing roadmap or live board. The first scrum
+reconciles those intentions with actual tasks and commits. The project owns its roadmap and cron schedule;
+kit upgrades maintain the skills and hooks. Existing cron prompts still load the updated skills.
 
-How it runs, and how to run it yourself: `container/README.md`.
+Runtime state is in the Hermes home: the native board, sessions and cron state, `scrum-intake/` (durable
+sourced messages), `scrum-plan/` (an unfinished Git planning worktree), and separate PM/community cursors.
+A scrum never advances the PM cursor before the plan lands. The platform's board and sessions continue
+through the existing SDK reporter; repository planning notes live in ROADMAP.md.
 
-The owner is named in `config.yaml` under `owner: {github: <login>, discord: "<user id>"}`; either
-destination may be omitted. The escalation hook subscribes the Discord owner to human-blocked tasks
-with notification and wake, or opens one assigned GitHub issue when there is no Discord destination.
-Unblocking ends the subscription and closes the issue. The PM asks again each hour, keeps a shipping
-request when the live service is behind main, and takes newer kit releases while the board is idle.
-The start script drains active work before restarting the complete stack on a landed kit upgrade.
+The owner is configured under `owner: {github: <login>, discord: "<user id>"}`. The escalation hook routes
+human authority blocks through Discord subscriptions or an assigned GitHub issue and closes them when
+resolved. `owner.reminder_hours` controls unchanged reminders (default 24, minimum 1); materially changed
+asks can be sent sooner. Volunteer contributions use their accepted scope and agreed follow-up instead.
+Maintainers alone review releases, cut tags and approve production. The PM prepares the review package and
+keeps release-dependent outcomes open through verification. See `.open-autonomy/PRODUCTION.md`.
+
+The start script runs the stack, drains active work before kit restarts, and keeps calls metered through
+the platform. The reporter publishes real Hermes activity through the SDK; outside contributions are never
+represented as fabricated fleet sessions. Running instructions: `container/README.md`.

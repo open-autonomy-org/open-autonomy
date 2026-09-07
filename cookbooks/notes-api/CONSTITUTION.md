@@ -10,8 +10,9 @@ else it got right. Changing this file is the owner's act, never a task's.
 
 ## Invariants
 
-- **The board is the promise.** What will be built, in what order, is filed by the owner. The agent works it and
-  never invents work.
+- **The roadmap holds the plan.** The owner sets direction and constraints. The Hermes PM maintains sourced
+  working notes in `ROADMAP.md`, reconciles contributions and decisions, and queues fleet work on kanban.
+  Human implementation commitments require acceptance; human release review is mandatory.
 - **The agent is readable.** Its identity, skills and schedule live in `hermes/`; changing what it does is a
   commit anyone can read.
 - **Every spend is on the books.** Every model call and every purchase is metered to this project's account on

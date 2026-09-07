@@ -5,6 +5,7 @@ board state; retries read the board again. The plugin supplies board lifecycle e
 """
 import fcntl
 import json
+import time
 import logging
 import os
 import subprocess
@@ -71,6 +72,8 @@ def reconcile(*, board=None, remind=False, **kwargs):
                         if latest:
                             reason = latest.body[len(marker):].strip()
                     ask = f"{task.title}\n\n{reason}\n\nAfter resolving this request: `hermes kanban unblock {task_id}`."
+                    interval = max(3600, float(owner.get("reminder_hours", 24)) * 3600)
+                    due = remind and (entry.get("reminded_ask") != ask or time.time() - entry.get("reminded_at", 0) >= interval)
                     if owner.get("discord") and os.environ.get("DISCORD_BOT_TOKEN"):
                         if not entry.get("chat"):
                             base = os.environ.get("DISCORD_API_BASE", "https://discord.com/api/v10").rstrip("/")
@@ -87,7 +90,7 @@ def reconcile(*, board=None, remind=False, **kwargs):
                             sub = next(s for s in kb.list_notify_subs(conn, task_id) if s["platform"] == "discord" and s["chat_id"] == chat)
                             kb.rewind_notify_cursor(conn, task_id=task_id, platform="discord", chat_id=chat,
                                                     claimed_cursor=sub["last_event_id"], old_cursor=event.id - 1)
-                        if remind:
+                        if due:
                             reminders.append(ask)
                             reminder_chat = chat
                     elif owner.get("github") and os.environ.get("GITHUB_TOKEN"):
@@ -97,10 +100,13 @@ def reconcile(*, board=None, remind=False, **kwargs):
                         if entry.get("ask") != ask:
                             community(project, "issue", "update", str(entry["issue"]), task_id, ask)
                             entry["ask"] = ask
-                        if remind:
+                        if due:
                             community(project, "issue", "remind", str(entry["issue"]), ask)
                     else:
                         raise RuntimeError("owner has no reachable door; run create-open-autonomy setup to configure Discord or the GitHub App")
+                    if due:
+                        entry["reminded_at"] = time.time()
+                        entry["reminded_ask"] = ask
                     state[key] = entry
                 except Exception:
                     log.exception("cannot deliver owner escalation for %s", task_id)

@@ -10,9 +10,9 @@ gateway carries the schedule and works the board itself. The world seeds, waits 
 ```bash
 export WORLD_STATE_ROOT=/fast/disk     # the world's state on a disk with headroom (the runtime admits a world against the root's free space)
 bun world/run.ts up                    # twins + the real platform + the Actions runner, seeded; then the cookbook's agent (seconds)
-open "$(bun world/run.ts env -- sh -c 'echo $PLATFORM_URL')/p/cookbook%2Ftodo-cli"   # the page: watch the board work
+open "$(bun world/run.ts env -- sh -c 'echo $PLATFORM_URL')/p/cookbook%2Ftodo-cli"   # the page: watch the fleet work
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world: the books, the sessions, the twins' ledgers
-bun world/run.ts hermes kanban list    # the board, through the pinned Hermes against the world's home
+bun world/run.ts hermes kanban list    # the fleet board, through the pinned Hermes against the world's home
 bun world/run.ts hermes cron run pm    # the PM's hour, now (`cron run community`: the lexicon cookbook's community desk)
 bun world/run.ts say "what is a lexicon?"   # a person speaks in the agent's channel on the Discord twin; the agent answers
 bun world/run.ts stack between-tasks   # what an owner does between two tasks: move the model, rotate the key, restart the agent
@@ -35,11 +35,10 @@ drives it one action at a time — the page, the books, the board, the twins' le
 reads what the product says. That is the repository's standing rule on tests: everything that runs by itself finishes
 in under thirty seconds (`bun run check`), and behavior is verified by driving the running product.
 
-The cookbook is `todo-cli` (`--cookbook <name>` picks another): nine seed tasks, each one command, which the
-board's dispatcher pulls down in order from the moment the agent is up. `--cookbook lexicon` is the community
+The cookbook is `todo-cli` (`--cookbook <name>` picks another): nine historical seed intentions, each one command. Fire the PM to reconcile them into ROADMAP.md;
+a subsequent scrum queues ready work after the planning PR lands. `--cookbook lexicon` is the community
 cookbook: the seed files a question and a request as issues and an idea as a discussion on the GitHub twin; the
-community job (fire it with `hermes cron run community`) answers them, files the request on the board after the
-board's last open task, and a worker lands it; `say` puts a person in the channel and the agent answers there. The world stays up between edits; the
+community job (fire it with `hermes cron run community`) answers them, captures the request as sourced intake for the PM scrum; `say` puts a person in the channel and the agent answers there. The world stays up between edits; the
 platform reloads on its own under `wrangler dev`; a kit change is `stack down --purge` and `stack up`.
 
 ## What is real and what is a twin
@@ -70,3 +69,28 @@ commits the claim file to the repository on the twin, the platform reads it back
 | `seed.ts` | the seed, run with the world's env: the cookbook on the GitHub twin, the books funded, the keys minted the adopter way; `handlers/<cookbook>/seed.ts` what its world seeds beyond that (lexicon: its community) |
 | `say.ts` | a person speaks in the agent's channel on the Discord twin |
 | `run.ts` | the runner |
+
+## Roadmap scrum rehearsal
+
+Set `WORLD_SCRUM=1` when bringing up the todo-cli world to seed owner direction, a documentation volunteer,
+an unanswered suggestion, a conflicting proposal and an outside PR through GitHub's ordinary APIs.
+The shared model handlers invoke `scrum-beat.ts`: explicitly scripted judgment, with real Hermes cron,
+kit helpers, Git landing, kanban dispatch and native review. It proves mechanics, not unscripted judgment.
+Keep WORLD_STATE_ROOT, WORLD_PORT_OFFSET and WORLD_HERMES_BIN consistent across commands.
+
+```bash
+bun world/run.ts env -- bun world/scrum-operator.ts overlap   # existing integration work awaiting the outside PR
+bun world/run.ts hermes cron run pm                         # consolidate and push sourced planning notes
+bun world/run.ts hermes cron run pm                         # after landing: queue fleet implementation
+bun world/run.ts env -- bun world/scrum-operator.ts inspect  # read roadmap, board, issues and PRs
+bun world/run.ts env -- bun world/scrum-operator.ts guards   # held human work refuses; concurrent creates share one native task
+bun world/run.ts env -- bun world/scrum-operator.ts intake   # duplicate chat capture and a late GitHub reply, independent desk cursors
+bun world/run.ts stack restart                             # preserve home, board, intake and unfinished planning worktree
+bun world/run.ts hermes cron run pm                         # reconcile the late reply and preserved intake
+bun world/run.ts env -- bun world/scrum-operator.ts release  # missing package holds; prepared candidate reaches the owner door
+bun world/run.ts env -- bun world/scrum-operator.ts archive  # after native review: archived work is not recreated
+```
+
+Read the resulting records between beats; a cron exit alone is no proof. `release` leaves human approval
+pending and sends only to the twin. No production approval, release or deployment is performed. A needed
+model beat outside this script remains an unauthored scenario, not evidence of reasoning quality.

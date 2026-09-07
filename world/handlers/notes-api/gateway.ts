@@ -2,6 +2,7 @@
 // The model's side of a board task on cookbooks/notes-api, printed as the openai twin's scenario. The shape
 // is the todo-cli scenario's (a worker per task, a reviewer, the hourly PM, stateless rules keyed on the
 // conversation's own text) with this cookbook's own seed tasks and stages; the two share no code beyond the runner.
+import { scrumHandlers } from '../scrum.ts';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
@@ -33,13 +34,12 @@ function implement(item: { id: string; title: string }): string {
 }
 
 const handlers = [
+  ...scrumHandlers,
   { id: 'clamped-output-cap', on: { maxTokensBelow: 16384 }, respond: { text: '', finishReason: 'length' } },
   { id: 'probe', on: { anyTextIncludes: 'probe:' }, respond: { text: 'ok' } },
   // Answers to a tool result come first: the text that triggered the call is still in the conversation.
   { id: 'worker-handed-off', on: { toolResultFor: 'kanban_request_review' }, respond: { text: 'Handed off to review: the agent branch is pushed, the landing workflow merges it when the checks pass.' } },
   { id: 'worker-stopped', on: { toolResultFor: 'kanban_block' }, respond: { text: 'Stopped: the implementation ran but did not push. The task is blocked with what happened.' } },
-  { id: 'pm-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal' }, respond: { text: 'PM: the board is moving — every task is done, in progress or waiting its turn; nothing is stuck and nothing needs the owner.' } },
-  { id: 'pm-look', on: { userTextIncludes: 'Run the pm skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'hermes kanban list' } } } },
   { id: 'reviewer-done', on: { toolResultFor: 'kanban_complete' }, respond: { text: 'Approved.' } },
   { id: 'handoff', on: { anyTextIncludes: 'PUSHED_BRANCH=agent/', hasTool: 'kanban_request_review' }, respond: { toolCalls: { name: 'kanban_request_review', arguments: { summary: 'HANDOFF pushed the agent branch named on the thread (PUSHED_BRANCH, with its commit): implemented with its test, the check starts the server and passes; the landing workflow merges it when the checks pass.' } } } },
   { id: 'worker-blocked', on: { anyTextIncludes: 'IMPLEMENTATION_RAN', hasTool: 'kanban_block' }, respond: { toolCalls: { name: 'kanban_block', arguments: { reason: 'the implementation ran but did not push; its output is on the thread', kind: 'transient' } } } },

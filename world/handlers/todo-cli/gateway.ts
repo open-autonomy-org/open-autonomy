@@ -8,6 +8,7 @@
 //
 // stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage
 // green on its own.
+import { scrumHandlers } from '../scrum.ts';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
@@ -55,6 +56,7 @@ const payDomain = [
   ].join('\n');
 
 const handlers = [
+  ...scrumHandlers,
   {
     id: 'clamped-output-cap',
     $comment: 'The failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which the harness retries and then fails. The run only succeeds when the platform forwards a roomy cap.',
@@ -72,20 +74,6 @@ const handlers = [
   // The treasurer, after paying: complete its request with the receipt.
   { id: 'treasurer-paid', on: { toolResultFor: 'terminal', anyTextIncludes: 'PAYMENT_RAN PAID' }, respond: { toolCalls: { name: 'kanban_complete', arguments: { summary: 'Paid: domain todo-cli.example at Namecheap, $2.00 on a single-use card; the receipt is on the developer task, which is released.' } } } },
   { id: 'treasurer-failed', on: { toolResultFor: 'terminal', anyTextIncludes: 'PAYMENT_RAN', hasTool: 'kanban_block' }, respond: { toolCalls: { name: 'kanban_block', arguments: { reason: 'the payment did not go through; its output is on the thread', kind: 'transient' } } } },
-  // The PM, hourly, as the pm skill says: read the board; release what is blocked `transient` and nothing else (a
-  // `needs_input` block waits on the owner or the treasurer, a parked task on the owner); report. The pass after the
-  // listing comes first, then the report after the pass, then the listing itself.
-  { id: 'pm-report', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal', anyTextIncludes: 'PM_PASS_DONE' }, respond: { text: 'PM: the board is moving. Released what was blocked transient (PM_UNSTUCK on the thread); left every needs_input block and parked task for the owner (PM_LEFT); nothing else is stuck.' } },
-  { id: 'pm-unstick', on: { userTextIncludes: 'Run the pm skill', toolResultFor: 'terminal' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
-    `for id in $(hermes kanban list --status blocked --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do`,
-    `  if hermes kanban show $id 2>/dev/null | grep -q "'kind': 'transient'"; then hermes kanban unblock $id >/dev/null && echo "PM_""UNSTUCK $id (transient)"; else echo "PM_""LEFT $id (needs_input: the owner's or the treasurer's)"; fi; done`,
-    `for id in $(hermes kanban list --status scheduled --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p'); do echo "PM_""LEFT $id (parked: the owner's)"; done`,
-    `bun .open-autonomy/maintain.ts ship`,
-    `python "$HERMES_HOME/hooks/escalate/handler.py" remind`,
-    `bun .open-autonomy/maintain.ts upgrade`,
-    `bun .open-autonomy/maintain.ts restart`,
-    `echo PM_PASS_""DONE`].join('\n') } } } },
-  { id: 'pm-look', on: { userTextIncludes: 'Run the pm skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'hermes kanban list --json' } } } },
   { id: 'reviewer-done', on: { toolResultFor: 'kanban_complete' }, respond: { text: 'Approved.' } },
   // The worker, after its push: hand the task to review, then stop. The thread names the branch and the commit.
   { id: 'handoff', on: { anyTextIncludes: 'PUSHED_BRANCH=agent/', hasTool: 'kanban_request_review' }, respond: { toolCalls: { name: 'kanban_request_review', arguments: { summary: 'HANDOFF pushed the agent branch named on the thread (PUSHED_BRANCH, with its commit): implemented with the check green; the landing workflow merges it when the checks pass.' } } } },

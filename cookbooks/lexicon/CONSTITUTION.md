@@ -14,8 +14,9 @@ a community can grow a vocabulary together without anyone but the agent touching
 - A term is defined once. A second definition of a term is a correction to the first, never a duplicate.
 - Every term carries its definition and, when one was given, its source.
 - The homepage is rendered from `lexicon.json` and nothing else; `docs/index.html` is never edited by hand.
-- A community request becomes a board task only when it fits this file; the agent tells the requester what it
-  filed or why it did not, where they asked.
+- Community requests are sourced input to `ROADMAP.md`. The owner sets direction; Hermes PM reconciles
+  the plan and queues fleet work within this constitution. Human implementation commitments require
+  acceptance, and releases require human review.
 - Everything the agent says in public is a published session. It never speaks for the owner, never promises a
   date, never asks for money or keys.
 - `bun run check` finishes in under thirty seconds, and a test guards an invariant of this file or is not written.
