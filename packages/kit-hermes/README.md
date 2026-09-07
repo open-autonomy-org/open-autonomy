@@ -86,6 +86,22 @@ The setup sequence is part of the agent's work, not an optional handoff to the u
    settings, then start or gracefully reload the fleet and verify its loaded configuration. Report any
    remaining gap instead of claiming full setup. Reuse established evidence on subsequent setup runs.
 
+Verify discovery through the agent's own GitHub App and valve, not the setup operator's `gh` login.
+The App needs Issues/Discussions write and Metadata, Pull requests, Contents, Checks, Commit statuses and
+Actions read. The latter permissions let PM inspect reviews, checks, workflow runs and release evidence;
+they grant no release or workflow execution. For an existing App, the setup agent checks its granted
+permissions and guides the owner through GitHub's permission update and installation acceptance when
+needed; a kit upgrade cannot grant those permissions. Read an actual PR's reviews/checks, workflow runs
+and release records through the installed door before declaring GitHub discovery ready.
+
+Activation also verifies unattended operation: PM and community schedules, their actual delivery destination,
+and the host's existing restart supervisor (Docker restart policy or the chosen host service manager).
+Use native `hermes cron status`, `doctor`, `runs` and `incidents` to inspect failures and delivery, and
+rehearse interrupted planning and recovery in the world. Native cron can report a model failure without a
+successful model turn; it cannot notify through an unavailable chat service or while its host is down.
+Agree who operates the host and how they notice that failure, using existing host monitoring where available.
+Do not claim unattended readiness from a running PID or a successful single cron alone.
+
 For an open-source team and community, agree which public spaces serve conversation, help, development
 and announcements; reuse existing channels and use threads for individual proposals and release reviews.
 Maintainer authority does not require a private development channel. Any confidential human space stays

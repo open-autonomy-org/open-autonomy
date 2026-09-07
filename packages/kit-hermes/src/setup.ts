@@ -221,7 +221,7 @@ function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
   if (opts.plan || existsSync(file)) { if (existsSync(file)) mark(s.dir, st, 'github-app', file); return; }
   const port = 47000 + Math.floor(Math.random() * 2000);
   const state = Math.random().toString(36).slice(2);
-  const manifest = { name: `${s.project}-agent`, url: `https://open-autonomy.org/p/${encodeURIComponent(s.account)}`, hook_attributes: { active: false }, redirect_url: `http://127.0.0.1:${port}/created`, setup_url: `http://127.0.0.1:${port}/installed`, setup_on_update: false, public: false, default_permissions: { issues: 'write', discussions: 'write', metadata: 'read' }, default_events: [] };
+  const manifest = { name: `${s.project}-agent`, url: `https://open-autonomy.org/p/${encodeURIComponent(s.account)}`, hook_attributes: { active: false }, redirect_url: `http://127.0.0.1:${port}/created`, setup_url: `http://127.0.0.1:${port}/installed`, setup_on_update: false, public: false, default_permissions: { issues: 'write', discussions: 'write', metadata: 'read', pull_requests: 'read', contents: 'read', checks: 'read', statuses: 'read', actions: 'read' }, default_events: [] };
   const target = s.ownerIsOrg ? `https://github.com/organizations/${s.owner}/settings/apps/new?state=${state}` : `https://github.com/settings/apps/new?state=${state}`;
   const created: { app: { id: number; slug: string; pem: string } | null } = { app: null };
   const finished = new Promise<number>((resolveInstall, reject) => {

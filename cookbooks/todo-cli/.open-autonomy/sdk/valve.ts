@@ -189,14 +189,17 @@ if (githubArg) {
     } finally { minting = undefined; }
   })());
   const fresh = (): Promise<{ value: string; expiresAt: number }> => (token && token.expiresAt - Date.now() > 5 * 60_000 ? Promise.resolve(token) : mint());
-  // The desk's routes and no others: the repository's issues and their comments (read and comment), GraphQL (its
-  // discussions), and the repository itself. Nothing that changes code, settings or collaborators passes.
+  // Community conversations can be written; PM can read the same repository's review, check and release
+  // evidence. Reading an Actions run or a release never grants its mutation routes.
   const allowed = (app: GitHubApp, method: string, path: string): boolean => {
     const repo = `/repos/${app.repository}`;
     if (path === '/graphql') return method === 'POST';
     if (path === repo) return method === 'GET';
+    if (!path.startsWith(`${repo}/`)) return false;
+    const resource = path.slice(repo.length);
+    if (method === 'GET' && /^\/(pulls|actions|releases|tags|commits|compare|check-runs|check-suites|statuses)(\/|$)/.test(resource)) return true;
     if (method === 'PATCH' && path.startsWith(`${repo}/issues/`) && /^[0-9]+$/.test(path.slice(`${repo}/issues/`.length))) return true;
-    if (path.startsWith(`${repo}/issues`) || path.startsWith(`${repo}/discussions`)) return method === 'GET' || method === 'POST';
+    if (/^\/(issues|discussions)(\/|$)/.test(resource)) return method === 'GET' || method === 'POST';
     return false;
   };
   Bun.serve({

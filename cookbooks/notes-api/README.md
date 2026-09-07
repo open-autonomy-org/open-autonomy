@@ -9,3 +9,8 @@ project page.
 bun run serve          # http://127.0.0.1:8080
 bun run check
 ```
+
+To run this as an autonomous project, have the setup agent begin with
+`create-open-autonomy setup . --plan` and complete the agreement in
+[project-communications](hermes/skills/project-communications/SKILL.md) before activating the fleet.
+Verify discovery, scheduled delivery and the host supervisor; releases still require human review.
