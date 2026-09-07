@@ -43,7 +43,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   open-autonomy-hookline config directories, the valves on 8787 and 8987, the pinned Hermes installed once under that
   state directory). Hookline's agent is its own GitHub App, `hookline-agent`, installed on its repository alone, whose
   key the valve holds (github-app.json beside its keys; the desk's door on 8990), and its own Discord bot, `Hookline`, in
-  the `#hookline` channel; ours stays the `Open Autonomy` bot in `#general`. The cookbooks and the world run on `zai/glm-5.3-flash`;
+  the `#hookline` channel; ours is the `Open Autonomy` bot, coordinating in public `#development`, with `#general`,
+  the `#help` forum and `#announcements` serving the community. The project communication skill records the
+  destinations and public-only access boundary; confidential human spaces and DMs are outside this fleet.
+  The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
@@ -60,7 +63,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   root's free space). The world runs the cookbook's agent bare, as the kit's start script starts it on a laptop:
   no Docker, no isolation (nothing the world's agent reaches is worth protecting), the pinned Hermes installed once
   under that root. Each live agent has its own home (`HOME` too, so two gateways on one bot token never share a lock)
-  and a Discord channel of its own on the one bot: ours `#general`, Hookline `#hookline`.
+  and its own Discord bot: Open Autonomy and Hookline. Their project conversations follow each install's
+  communication agreement.
 - **The world is where this runs without keys.** `bun world/run.ts up` brings the twins (the published `@volter/twin-*`
   packages in node_modules; `TWINS_ROOT` names a checkout when developing the twins),
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun

@@ -59,9 +59,18 @@ releases and where. It writes that agreement in plain language in
 `hermes/skills/project-communications/SKILL.md`, which uses the kit's existing project-owned skill support.
 There are no communication setup flags or required cadence. PM loads the skill, uses Hermes's native
 messaging or the existing GitHub tools, and uses judgment about follow-up. For example: “Ask Alice for
-release review in the maintainers' channel; follow up in the same thread.”
+release review in the public development channel; follow up in the same thread.”
 When scheduled PM reports are the agreed contact path, the setup agent sets their native Hermes cron
 delivery accordingly; the report must contain the actual human request.
+
+For an open-source team and community, agree which public spaces serve conversation, help, development
+and announcements; reuse existing channels and use threads for individual proposals and release reviews.
+Maintainer authority does not require a private development channel. Any confidential human space stays
+outside the publicly logged fleet's access. The setup agent checks effective service permissions and native
+Hermes access settings, including DMs, and avoids administrative grants that bypass channel restrictions.
+Private human history must not share the fleet's searchable session store. `publish.chats: false` only
+controls direct publication; a published PM run can expose a chat it reads. This boundary belongs in the
+project communication skill and service permissions, not a new routing or redaction system.
 
 For an existing installation, the setup agent creates or updates that skill, carrying forward any
 previously agreed communication instructions before upgrading. PM reconciles existing conversations
