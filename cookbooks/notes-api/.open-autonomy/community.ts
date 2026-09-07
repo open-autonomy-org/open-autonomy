@@ -40,13 +40,21 @@ async function graphql<T>(query: string, variables: Record<string, unknown>): Pr
   return out.data as T;
 }
 interface Discussion { id: string; number: number; title: string; body: string; createdAt: string | null; category: { name: string } | null; comments: { nodes: Array<{ id: string; body: string; createdAt: string | null }> } }
-interface Issue { number: number; title: string; body: string | null; state: string }
+interface Issue { number: number; title: string; body: string | null; state: string; pull_request?: unknown }
 const discussions = () => graphql<{ repository: { discussions: { nodes: Discussion[] } } }>(
   `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussions(first: 50) { nodes { id number title body createdAt category { name } comments(first: 50) { nodes { id body createdAt } } } } } }`,
   { owner, name },
 ).then((d) => d.repository.discussions.nodes);
 const after = (at: string | null | undefined, since: string): boolean => !at || at > since;
 const firstLine = (s: string): string => (s ?? '').split('\n')[0]!.slice(0, 120);
+async function allIssues(): Promise<Issue[]> {
+  const out: Issue[] = [];
+  for (let page = 1; ; page++) {
+    const batch = await github<Issue[]>('GET', `/repos/${account}/issues?state=all&per_page=100&page=${page}`);
+    out.push(...batch);
+    if (batch.length < 100) return out;
+  }
+}
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'poll' && doorless) {
@@ -82,7 +90,7 @@ if (command === 'poll' && doorless) {
 } else if (command === 'issue' && rest[0] === 'open' && rest.length === 5) {
   const [, task, title, body, assignee] = rest;
   const marker = `<!-- open-autonomy-block:${task} -->`;
-  const all = await github<Issue[]>('GET', `/repos/${account}/issues?state=all&per_page=100`);
+  const all = await allIssues();
   const existing = all.find((i) => !('pull_request' in i) && i.body?.includes(marker));
   if (existing?.state === 'open') {
     await github<Issue>('PATCH', `/repos/${account}/issues/${existing.number}`, { assignees: [assignee] });

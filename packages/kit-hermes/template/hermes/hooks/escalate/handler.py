@@ -29,7 +29,7 @@ def _home() -> Path:
 
 
 def _state_path() -> Path:
-    return _home() / "escalations.json"
+    return _home() / "state" / "escalations.json"
 
 
 def _load_state() -> dict:
@@ -163,10 +163,12 @@ def _open_issue(task_id: str, block: dict, login: str, message: str) -> int | No
     return int(match.group(1)) if match else None
 
 
-def _close_issue(number: int) -> None:
+def _close_issue(number: int) -> bool:
     result = _community("issue", "close", str(number))
     if result.returncode:
         logger.error("escalate: cannot close issue #%s: %s", number, (result.stderr or result.stdout).strip())
+        return False
+    return True
 
 
 def _reconcile(board: str | None = None) -> set[str]:
@@ -205,7 +207,8 @@ def _reconcile(board: str | None = None) -> set[str]:
             if item.get("door") == "discord":
                 _unsubscribe(board, str(item["task"]), str(item["target"]))
             elif item.get("door") == "github" and item.get("issue"):
-                _close_issue(int(item["issue"]))
+                if not _close_issue(int(item["issue"])):
+                    continue
             del tasks[key]
 
         _save_state(state)
@@ -270,7 +273,7 @@ def _shipping(board: str | None) -> None:
     ahead = live.get("ahead")
     with kb.connect_closing(board=board) as conn:
         standing = conn.execute(
-            "SELECT id, status FROM tasks WHERE title = ? ORDER BY created_at DESC",
+            "SELECT id, status FROM tasks WHERE title = ? AND created_by = 'pm' AND idempotency_key LIKE 'pm:ship:%' ORDER BY created_at DESC",
             (_SHIP_TITLE,),
         ).fetchall()
     if ahead == 0:
