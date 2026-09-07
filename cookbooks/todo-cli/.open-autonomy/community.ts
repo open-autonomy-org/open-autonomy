@@ -9,6 +9,7 @@
 //   bun .open-autonomy/community.ts comment <issue> <text…>       # a comment on an issue
 //   bun .open-autonomy/community.ts discuss <discussion> <text…>  # a comment on a discussion
 //   bun .open-autonomy/community.ts mark                          # the last look is now
+//   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -105,9 +106,15 @@ async function pages<T>(path: string): Promise<T[]> {
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if ((command === 'comment' || command === 'discuss' || command === 'issue' || command === 'pull-request') && doorless) {
-  console.error('community: no GitHub door (no GITHUB_TOKEN) — nothing can be posted on GitHub');
+} else if (['comment', 'discuss', 'issue', 'pull-request', 'read'].includes(command) && doorless) {
+  console.error('community: no GitHub door (no GITHUB_TOKEN) — this GitHub operation is unavailable');
   process.exit(3);
+} else if (command === 'read') {
+  if (rest.length !== 1 || !rest[0]) throw new Error('read requires one repository-relative API path, including pagination when needed');
+  const base = new URL(`${api}/repos/${account}/`);
+  const target = new URL(rest[0], base);
+  if (target.origin !== base.origin || !target.pathname.startsWith(base.pathname) || target.hash || target.username || target.password) throw new Error('read must stay within this repository');
+  console.log(JSON.stringify(await github('GET', target.pathname.slice(new URL(api).pathname.replace(/\/$/, '').length) + target.search)));
 } else if (command === 'pull-request' && /^land\/kit-\d+\.\d+\.\d+$/.test(rest[0] ?? '')) {
   // Landing-created PRs carry the branch in their title or their fixed body. The
   // issues endpoint includes PRs and uses the App's existing issues-read permission.
@@ -172,6 +179,6 @@ if (command === 'poll' && doorless) {
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | comment <issue> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }

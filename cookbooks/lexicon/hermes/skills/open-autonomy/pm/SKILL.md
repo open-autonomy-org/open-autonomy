@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.6.0
+version: 4.7.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -55,6 +55,10 @@ boundaries, not coverage gaps to overcome. Humans supply an appropriate public d
    the poll does not enumerate PR review events or nested discussion replies. Read those through the
    configured GitHub door, including activity on existing threads. Never treat the poll alone as full GitHub
    coverage. Review existing questions and accepted commitments even without new events.
+   `community.ts read '<repository-relative-api-path>'` reads REST evidence through the agent's own door,
+   for example `pulls/12/reviews?per_page=100&page=1`, `commits/<sha>/check-runs`, `actions/runs` or
+   `releases`. It reads one response without advancing a cursor; follow pagination explicitly. Direct
+   GraphQL discussion replies still require the configured GitHub API; the REST reader does not cover them.
 4. Review the discovered sessions, including community/chat and other agent activity, using native
    `session_search` or `scrum.ts session <id> [offset]`. `scrum.ts sessions <offset>` pages discovery;
    messages also page by 100. Consult the configured chat channels and other project source avenues for
@@ -183,6 +187,11 @@ workers hand off to native review, which alone completes execution. PM coordinat
 
 ## Keep the installation moving
 
+- Inspect native `hermes cron list`, `runs` and `incidents` for failed or missing scrums, community runs
+  and delivery errors; use `hermes cron doctor` when unhealthy. A successful model run does not prove
+  delivery. Recover missed source coverage before advancing checkpoints, and verify the next run and
+  delivery after repair. Acknowledging an incident silences that failure signature; do not acknowledge
+  merely to clear a warning. Preserve unresolved failures and contact the owner through the agreed path.
 - Retry explained transient blocks once per scrum. Preserve human, capability and scheduled holds until
   their evidence arrives. Inspect stale running/review tasks; don't blindly release live work.
 - Reassess the target release schedule and run `bun .open-autonomy/maintain.ts ship` to reconcile the current

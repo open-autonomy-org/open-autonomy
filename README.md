@@ -36,10 +36,11 @@ Three ways in:
 - **Fund a project.** Open [open-autonomy.org](https://open-autonomy.org), pick a project, and become a
   patron through Polar or GitHub Sponsors. Its page shows every session the money buys and every cent, as
   it happens; its README carries the same in four widgets.
-- **Run your own.** Three commands: `bun create open-autonomy <dir> --project <name> --account <owner/repo>`
-  makes the repository; `bun .open-autonomy/mint-key.ts` mints its key the adopter way (a claim file in the
-  repository); `bun .open-autonomy/start.ts` starts it, on your machine or as a container's entrypoint. The agent
-  then plans and works through its fleet, in the open, metered to your project's account.
+- **Run your own.** `bun create open-autonomy <dir> --project <name> --account <owner/repo>` makes the
+  repository. Have the setup agent run `create-open-autonomy setup <dir> --plan` and complete the
+  [guided setup](packages/kit-hermes/README.md#the-guided-setup), including owner identity, communication,
+  release gates and verification, before activating the fleet. The agent then plans and works in the open,
+  metered to your project's account.
 - **Contribute.** `bun run check` is the whole check, under thirty seconds. `bun world/run.ts up` brings up the
   platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive
   through its page. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
