@@ -23,11 +23,10 @@ landing. Later arrivals remain for the next batch. Legacy `scrum-intake/` notes 
 reconciled and pruned; new optional pointers use the native notepad. Separate PM/community GitHub cursors
 advance only after their inputs are accounted for. The existing SDK reporter publishes real fleet activity.
 
-Setup writes the reviewing owner, contact channel and follow-up interval into the Project outreach policy
-in `skills/open-autonomy/pm/SKILL.md`. That section is project-owned and survives kit upgrades. PM explicitly
-selects delivery from those instructions; the escalation hook carries out the choice and reconciles its
-receipts through native Discord subscriptions or GitHub issues. Credentials and legacy `owner` config
-fields do not select a channel or authorize fallback. Missing policy or failed delivery stays a scrum gap.
+The setup agent writes the owner's communication agreement in `skills/project-communications/SKILL.md`,
+a project-owned skill that kit upgrades preserve. PM consults it and uses native Hermes messaging or the
+existing GitHub tools, recording the conversation on the task and using judgment about follow-up.
+There is no routing plugin, required reminder interval or destination selected from credentials.
 Volunteer contributions use their accepted scope and agreed follow-up instead.
 Maintainers alone review releases, cut tags and approve production. The PM prepares the review package and
 keeps release-dependent outcomes open through verification. See `.open-autonomy/PRODUCTION.md`.

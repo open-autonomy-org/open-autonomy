@@ -71,7 +71,7 @@ async function putMain(path: string, content: string, message: string): Promise<
   await git(WORK, '-c', 'user.name=owner', '-c', 'user.email=owner@example.com', 'commit', '-q', '-am', message);
   await git(WORK, 'push', '-q', 'origin', 'main');
 }
-const configYaml = (): string => `${readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8').trimEnd()}\nowner:\n  github: octocat\n${process.env.WORLD_OWNER_DOOR !== 'github' ? '  discord: "1000000000000000002"\n' : ''}`;
+const configYaml = (): string => readFileSync(resolve(COOKBOOK, 'hermes', 'config.yaml'), 'utf8');
 function previousConfig(): string {
   const yaml = configYaml();
   if (!yaml.includes(`default: ${MODEL}`)) throw new Error(`stack: the cookbook's hermes/config.yaml does not name ${MODEL} as its default model`);

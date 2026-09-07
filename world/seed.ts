@@ -7,7 +7,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, COOKBOOK, COOKBOOK_NAME, DATA, ENC, HOME_CHANNEL, MODEL, OWNER, PREVIOUS_MODEL, REPO_NAME, ROOT, api, git, need } from './lib.ts';
-import { setup } from '../packages/kit-hermes/src/setup.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL');
@@ -34,12 +33,18 @@ const work = resolve(DATA, 'work');
 rmSync(work, { recursive: true, force: true });
 cpSync(COOKBOOK, work, { recursive: true, filter: (src) => !/\/(node_modules|\.git)(\/|$)/.test(src) });
 if (process.env.WORLD_IDLE === '1' && process.env.WORLD_SCRUM !== '1') writeFileSync(resolve(work, 'hermes/kanban.seed.json'), JSON.stringify({ tasks: [] }));
-const ownerConfig = resolve(work, 'hermes', 'config.yaml');
 const ownerDoor = process.env.WORLD_OWNER_DOOR ?? 'discord';
-// Both legacy identities remain available: only the setup-written policy chooses delivery.
-writeFileSync(ownerConfig, `${readFileSync(ownerConfig, 'utf8').trimEnd()}\nowner:\n  github: octocat\n  discord: "1000000000000000002"\n`);
-await setup(work, { outreachOnly: true, yes: true, outreachChannel: ownerDoor,
-  outreachRecipient: ownerDoor === 'github' ? 'octocat' : '1000000000000000002', outreachReminderHours: '24' });
+// The setup agent's authored instructions, ordinary skill text rather than configuration.
+const communicationDir = resolve(work, 'hermes/skills/project-communications');
+mkdirSync(communicationDir, { recursive: true });
+writeFileSync(resolve(communicationDir, 'SKILL.md'), `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${ownerDoor === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${HOME_CHANNEL}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`);
+if (process.env.WORLD_RELEASE === '1') {
+  // Exercise explicit outreach; the cron's routine report stays local in this story.
+  const schedule = resolve(work, 'hermes/cron/jobs.seed.json');
+  const seed = JSON.parse(readFileSync(schedule, 'utf8'));
+  for (const job of seed.jobs) if (job.name === 'pm') job.deliver = 'local';
+  writeFileSync(schedule, `${JSON.stringify(seed, null, 2)}\n`);
+}
 const configPath = resolve(work, '.open-autonomy', 'config.yaml');
 await git(work, 'init', '-q', '-b', 'main');
 await git(work, 'config', 'user.name', 'maintainer');

@@ -54,18 +54,19 @@ model. What is never automated: creating your accounts, and any captcha or sudo 
 page and continues when it comes back. `--plan` prints the situation and the recommendations and changes nothing;
 every step is idempotent, so `setup` again adds a deferred door or repairs one. A declined door leaves no trace: the
 schedule promises no channel it does not have.
-Setup explicitly asks who reviews releases, where PM contacts them (an assigned GitHub issue or a
-Discord DM), and when to follow up. It writes that policy and the concrete delivery command into
-`hermes/skills/open-autonomy/pm/SKILL.md`. PM follows those instructions; credentials never select a
-channel, and delivery failures never authorize a fallback. The marked policy section is project-owned
-and survives kit upgrades; the rest of the skill stays current.
+The agent helping with setup agrees with the owner how PM should contact people, including who reviews
+releases and where. It writes that agreement in plain language in
+`hermes/skills/project-communications/SKILL.md`, which uses the kit's existing project-owned skill support.
+There are no communication setup flags or required cadence. PM loads the skill, uses Hermes's native
+messaging or the existing GitHub tools, and uses judgment about follow-up. For example: “Ask Alice for
+release review in the maintainers' channel; follow up in the same thread.”
+When scheduled PM reports are the agreed contact path, the setup agent sets their native Hermes cron
+delivery accordingly; the report must contain the actual human request.
 
-Existing installations establish or change just this policy with `setup . --outreach-only`. For an
-explicit noninteractive choice, pass `--yes --outreach-channel github --outreach-recipient <username>
---outreach-reminder-hours 24` (or `discord` and a Discord user ID). `--yes` alone cannot invent a policy.
-Setup preserves an existing policy on ordinary reruns. Legacy `owner` config fields no longer choose
-delivery; upgrades leave the policy pending until setup records the owner's choice. Existing delivery
-receipts without an explicit PM destination need reconciliation before redispatch.
+For an existing installation, the setup agent creates or updates that skill, carrying forward any
+previously agreed communication instructions before upgrading. PM reconciles existing conversations
+and native reminders when adopting it. The old routing hook/plugin is retired; no new delivery ledger
+or policy parser replaces it.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the two workflows. A project that takes one over names it in
@@ -86,9 +87,8 @@ session shows on the project's page with its cost.
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
 worktree only while idle, and requests a complete stack restart after the upgrade merges. It prepares
 human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
-PM delivers that request according to its setup-written outreach policy. The escalation hook retries the
-explicitly selected destination, follows the chosen reminder interval and closes notifications when
-resolved; tags and deployment approvals remain human acts.
+PM contacts the reviewer using the project communication skill and tracks the conversation on the
+native task. Tags and deployment approvals remain human acts.
 
 The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
 (`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve

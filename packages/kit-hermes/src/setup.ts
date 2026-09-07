@@ -15,7 +15,6 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { join, resolve } from 'node:path';
-import { OUTREACH_PENDING, outreachSection, PM_SKILL, writeOutreach } from './outreach.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
 type Choice = 'yes' | 'no' | 'later';
@@ -25,7 +24,7 @@ export interface Situation {
   deploy: 'cloudflare-worker' | 'npm' | 'container' | 'none'; sponsorsListing: boolean; discordToken: boolean; codex: boolean; docker: boolean;
 }
 export interface Recommendation { door: Door; suggested: Choice; reason: string; cost: string }
-interface Opts { plan: boolean; yes: boolean; with: Door[]; without: Door[]; secrets: string; bare: boolean; accountId?: string; outreachChannel?: string; outreachRecipient?: string; outreachReminderHours?: string; outreachOnly?: boolean }
+interface Opts { plan: boolean; yes: boolean; with: Door[]; without: Door[]; secrets: string; bare: boolean; accountId?: string }
 
 const say = (m: string) => console.log(m);
 const ask = (q: string, def: boolean, opts: Opts): boolean => {
@@ -304,23 +303,6 @@ function setDeliver(dir: string, discord: boolean): void {
   writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
-// A setup decision written as PM instructions, not a runtime credential preference.
-function setOutreach(dir: string, opts: Opts): void {
-  const current = outreachSection(readFileSync(join(dir, PM_SKILL), 'utf8'));
-  const explicit = opts.outreachChannel !== undefined || opts.outreachRecipient !== undefined || opts.outreachReminderHours !== undefined;
-  if (current && !current.includes(OUTREACH_PENDING) && !explicit && !opts.outreachOnly) {
-    say('  preserving the project outreach policy in the PM skill');
-    return;
-  }
-  say('\nChoose where PM requests release review and other owner input. Available credentials do not choose this policy. No automatic fallback is authorized.');
-  const channel = opts.outreachChannel ?? (opts.yes ? '' : prompt('Owner outreach channel (github issue or discord DM; enter github or discord)')?.trim());
-  const recipient = opts.outreachRecipient ?? (opts.yes ? '' : prompt(channel === 'discord' ? 'Reviewing owner’s Discord user ID' : 'Reviewing owner’s GitHub username')?.trim());
-  const hours = opts.outreachReminderHours ?? (opts.yes ? '' : prompt('Follow up after how many hours without a response?')?.trim());
-  if (!channel || !recipient || !hours) throw new Error('outreach policy is incomplete: choose --outreach-channel, --outreach-recipient and --outreach-reminder-hours during setup; --yes does not choose for you');
-  writeOutreach(dir, { channel, recipient, reminderHours: Number(hours) });
-  say(`  saved owner outreach policy in ${PM_SKILL}; commit it so the running agent receives it`);
-}
-
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
   if (done(st, 'subscription')) return;
   const src = join(homedir(), '.codex', 'auth.json'); const dst = join(opts.secrets, 'codex.json');
@@ -394,11 +376,6 @@ jobs:
 // ── The walk ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const opts: Opts = { plan: false, yes: false, with: [], without: [], secrets: join(homedir(), '.config', 'open-autonomy'), bare: false, ...raw };
-  if (opts.outreachOnly) {
-    if (opts.plan) { say('Setup will establish owner outreach in the PM skill (--plan: nothing was changed).'); return; }
-    setOutreach(dir, opts);
-    return;
-  }
   const s = readSituation(dir);
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
@@ -406,6 +383,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(`${s.project} (${s.account}) — the situation:`);
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
+  say('  setup agent: agree with the owner how PM should contact people, including release review, and write those instructions in hermes/skills/project-communications/SKILL.md.');
   say('\nThe core (no questions): the repository on GitHub, the deploy key, the platform keys, the owner\'s rules.');
   say('\nRecommended doors for this situation:');
   const recs = recommend(s);
@@ -415,7 +393,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     say(`  ${r.door.padEnd(12)} ${(forced ?? prior ?? r.suggested).padEnd(6)} ${r.reason}\n${' '.repeat(21)}costs you: ${r.cost}`);
   }
   if (opts.plan) { say('\n(--plan: nothing was changed)'); return; }
-  setOutreach(dir, opts);
   for (const r of recs) {
     const forced = opts.with.includes(r.door) ? 'yes' : opts.without.includes(r.door) ? 'no' : undefined;
     if (forced) { st.doors[r.door] = forced; continue; }

@@ -3,7 +3,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACCOUNT, ENC, STATE, api, need } from './lib.ts';
-import { outreachCommand } from './outreach-policy.ts';
 const project = resolve(STATE, '.volter/stack/project');
 const home = resolve(STATE, '.volter/stack/home');
 const env = { ...process.env, HERMES_HOME: home, PATH: `${need('WORLD_HERMES_BIN')}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };
@@ -20,7 +19,7 @@ const sync = async () => {
 };
 const reconcile = () => {
   console.log(run(['bun', '.open-autonomy/maintain.ts', 'ship']));
-  console.log(run(outreachCommand(home)));
+  console.log('PM checks the review conversation on its next scrum.');
 };
 const field = (text: string, name: string) => text.split('\n').find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1).trim();
 const packageFile = resolve(home, 'release-review.md');

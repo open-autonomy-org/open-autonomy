@@ -2,7 +2,6 @@
 // kanban and owner doors; the phase comes from ordinary sourced GitHub activity.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { outreachCommand } from './outreach-policy.ts';
 const project = process.cwd();
 const home = process.env.HERMES_HOME!;
 const run = (cmd: string[], cwd = project) => {
@@ -14,6 +13,48 @@ const scrum = (...args: string[]) => run(['bun', '.open-autonomy/scrum.ts', ...a
 const community = (...args: string[]) => run(['bun', '.open-autonomy/community.ts', ...args]);
 const account = /^account:\s*(\S+)/m.exec(readFileSync('.open-autonomy/config.yaml', 'utf8'))![1];
 const field = (text: string, name: string) => text.split('\n').find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1).trim();
+function contactReviewer() {
+  // Scripted judgment for the two authored setup stories. Production PM interprets
+  // its skill directly; there is no application policy parser or routing service.
+  const instructions = run(['python', '-c', 'from tools.skills_tool import skill_view; print(skill_view("project-communications"))']);
+  console.log(instructions);
+  const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--json']));
+  const send = (message: string) => {
+    // The terminal subprocess is credential-scrubbed; restore the native gateway
+    // environment before exercising its send implementation. Never print credentials.
+    const result = JSON.parse(run(['python', '-c', `import os, sys
+from hermes_cli.config import load_env
+for key, value in load_env().items():
+    if key.startswith("DISCORD_"): os.environ.setdefault(key, value)
+from tools.send_message_tool import send_message_tool
+print(send_message_tool({"target": "discord:1000000000000000001", "message": sys.argv[1]}))`, message]));
+    if (!result.success || result.skipped) throw new Error(`Native message was not sent: ${JSON.stringify(result)}`);
+    return result;
+  };
+  for (const task of tasks.filter((t: { body?: string }) => t.body?.startsWith('<!-- open-autonomy:ship:'))) {
+    const comments = JSON.parse(run(['hermes', 'kanban', 'show', task.id, '--json'])).comments as Array<{ author: string; body: string }>;
+    const receipt = comments.find((c) => c.author === 'pm' && c.body.startsWith('Review conversation: '))?.body;
+    if (task.status === 'scheduled' && receipt && !comments.some((c) => c.body.startsWith('Review withdrawn: '))) {
+      const issue = /\/issues\/(\d+)/.exec(receipt)?.[1];
+      if (issue) {
+        community('comment', issue, 'PM withdrew this release proposal; it is no longer awaiting approval.');
+        community('issue', 'close', issue);
+      } else send(`PM withdrew this release proposal; it is no longer awaiting approval. ${receipt}`);
+      run(['hermes', 'kanban', 'comment', task.id, `Review withdrawn: ${receipt}`, '--author', 'pm']);
+    }
+    if (task.status !== 'blocked' || receipt) continue; // no new information warrants another ask in this story
+    const request = comments.filter((c) => c.author === 'pm' && c.body.startsWith('<!-- open-autonomy:owner-request -->')).at(-1)?.body ?? task.body;
+    let link: string;
+    if (instructions.includes('assigned GitHub issue')) {
+      const issue = JSON.parse(community('issue', 'open', task.id, task.title, request, 'octocat'));
+      link = issue.html_url ?? `https://github.com/${account}/issues/${issue.number}`;
+    } else if (instructions.includes('discord:1000000000000000001')) {
+      const message = send(`${task.title}\n\n${request}`);
+      link = `discord:1000000000000000001 message ${message.message_id}`;
+    } else throw new Error('No scripted judgment authored for these communication instructions');
+    run(['hermes', 'kanban', 'comment', task.id, `Review conversation: ${link}`, '--author', 'pm']);
+  }
+}
 const snapshot = JSON.parse(scrum('prepare'));
 const plan = snapshot.worktree;
 const file = resolve(plan, 'ROADMAP.md');
@@ -29,7 +70,7 @@ function review() {
     if (field(previous, 'Plan') !== planCommit) writeFileSync(packageFile, `Release: release-next\nPlan: ${planCommit}\nCandidate: ${candidate}\nVersion: ${version}\nVerification: Cookbook checks passed for the selected candidate; [candidate](https://github.com/${account}/commit/${candidate}).\nRisks: Production is not yet verified; human review and post-release checks remain required.\nHuman action: Review this version and candidate, then follow [the release procedure](https://github.com/${account}/blob/${planCommit}/.open-autonomy/PRODUCTION.md) to cut its deploy-v date tag and approve its production run.\n`);
   }
   console.log(run(['bun', '.open-autonomy/maintain.ts', 'ship']));
-  run(outreachCommand(home));
+  contactReviewer();
 }
 const planHead = run(['git', 'rev-parse', 'HEAD'], plan);
 if (snapshot.resumed && planHead !== snapshot.snapshot.main &&

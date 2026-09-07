@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. No tests for their own sake.
-version: 4.0.0
+version: 4.1.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -49,7 +49,7 @@ is not done.
 If a line cannot be made true from here, `kanban_block` with exactly what is missing, and stop. For a human
 decision use `kind: "needs_input"`; for a permission you cannot obtain use `kind: "capability"`. State the
 ask as an action: the exact command, page or secret name, and how the owner releases the task afterward.
-Never include a secret value. The escalation hook delivers that ask through the owner's configured door.
+Never include a secret value. PM reviews these blocks and contacts the human using the project's agreed communication practices.
 Never file,
 split or decompose implementation tasks: send discovered work and source evidence to the PM scrum. Do not loop on a failure you cannot
 explain.
