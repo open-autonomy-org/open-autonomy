@@ -73,9 +73,18 @@ the setup helper's protected destination or secure prompt, never chat, screensho
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
 For Discord specifically, use its developer portal to create/reuse the project application, configure
-the needed intents and bot identity, securely enter its token, and authorize the agreed server. Finish
-the channel policy and remove temporary setup permissions. Read the communication skill for the native
-tool/cron settings and authority checks; a delivered message alone does not prove discovery works.
+the needed intents and bot identity, and authorize the agreed server. Arrange the agreed public channels
+with the browser/native tools, reusing their existing structure. Receive the token with the standalone
+credential tool into discord.token in the runtime credential directory, then set the existing native
+DISCORD_HOME_CHANNEL variable to the agreed destination when running setup. An established destination
+in channels.env is reused on reruns. The helper verifies that exact channel; it never chooses the first
+server, creates channels, changes application branding, or grants participation permissions.
+
+Finish the channel policy and remove any temporary setup permissions. The helper preserves existing
+native allowlists in channels.env and never rewrites cron delivery. Use the communication skill and
+native Hermes tools to configure access, history tools and each job's delivery according to the owner
+agreement. A delivered message alone does not prove discovery works. Declining a setup step does not
+disconnect an established provider; an agreed removal uses native configuration and lifecycle tools.
 
 The shared roster records verified human account IDs and the source of their authority. A setup
 operator's login is not automatically the owner or release reviewer. Browser identity, app ownership,
