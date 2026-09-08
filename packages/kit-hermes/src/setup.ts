@@ -260,13 +260,11 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   mark(s.dir, st, 'production', 'environment, tag ruleset' + (s.deploy === 'cloudflare-worker' ? ', Cloudflare token, deploy.yml' : ''));
 }
 
-function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
+function stepGitHubApp(opts: Opts): void {
   if (opts.plan) return;
   const file = join(opts.secrets, 'github-app.json');
   if (!existsSync(file)) throw new Error('The project GitHub App credential is missing. Follow .open-autonomy/SETUP.md: use the standalone credential receiver and the browser skill, then rerun setup.');
-  const r = run(['bun', join(s.dir, '.open-autonomy', 'sdk', 'credentials.ts'), 'verify-github', '--out', file, '--repository', s.account]);
-  if (!r.ok) throw new Error(r.err || 'The project GitHub App installation could not be verified.');
-  mark(s.dir, st, 'github-app', `${s.account} installation verified; credential outside the repository`);
+  say('  GitHub App credential is present. The setup agent completes installation in the browser and verifies repository access through the running valve before activation.');
 }
 
 async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<void> {
@@ -423,7 +421,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   stepPlatformKey(s, opts, st);
   stepOwnerRules(s, opts, st);
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
-  if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
+  if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);

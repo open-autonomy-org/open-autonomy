@@ -56,8 +56,8 @@ human-only steps, not handed a list of configuration chores.
 GitHub registration and installation stay with that browser agent. The SDK's standalone
 `open-autonomy-credentials` command receives the secret handoff into protected host storage; it does
 not need a repository or generate provider configuration. The kit bundles the same receiver under
-`.open-autonomy/sdk/credentials.ts`. The setup CLI verifies the resulting GitHub installation, including
-on reruns. Follow the setup guide for the manifest permissions and the exact handoff.
+`.open-autonomy/sdk/credentials.ts`. The browser agent completes installation and verifies access through the running valve.
+Follow the setup guide for the manifest permissions and the exact handoff.
 
 `create-open-autonomy setup <dir> --plan` inspects the development connections. The agent uses the
 existing `--with` and `--without` choices to implement the agreed communication and model arrangement.

@@ -67,7 +67,7 @@ the setup helper's protected destination or secure prompt, never chat, screensho
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
 | GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
-| Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver saves the key, then verifies the installation | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
+| Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver only saves the key; verify access through the running valve | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
 | Open Autonomy platform | The helper commits a repository-control claim and provisions the developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use secure credential entry where no callback exists | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
@@ -110,18 +110,17 @@ statuses and actions read; no webhook or subscribed events are needed. Use the p
 homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
 
-The callback exchanges GitHub's temporary code and saves the app credential immediately. After installing,
-perform the bounded verification operation (the setup CLI also calls it on reruns):
+The callback exchanges GitHub's temporary code and saves the app credential immediately. That is the
+end of the credential helper's responsibility. The browser agent installs the existing app, then verifies
+an actual repository read through the running valve as part of activation. The valve discovers a missing
+installation ID when it uses the app key; credentials that already include the ID remain supported.
+A health endpoint or a saved credential alone does not prove repository access.
 
-```sh
-bun .open-autonomy/sdk/credentials.ts verify-github --out /protected/project/github-app.json --repository owner/repo
-```
-
-It discovers the installation with the saved app key and records its ID for the existing valve. On
-interruption, reuse the app ID/slug from the non-secret receipt and complete the existing installation;
-do not start another creation flow. A saved credential is not proof of installation. If creation was
-interrupted before a receipt arrived, inspect the provider's existing apps before deciding what to retry.
-The receiver does not overwrite credentials. The setup agent handles recovery using provider evidence.
+On interruption, reuse the app ID/slug from the non-secret receipt and complete the existing installation;
+do not start another creation flow. If creation was interrupted before a receipt arrived, inspect the
+provider's existing apps before deciding what to retry. The receiver does not overwrite credentials.
+The setup agent handles recovery using provider evidence. No manifest generation, browser navigation,
+installation, Git operation, policy decision or runtime configuration belongs in the credential saver.
 
 For providers that display a token, the general receiver without --github-app gives the owner a protected
 password input and saves that text directly. Do not read the provider token into the agent's context.
