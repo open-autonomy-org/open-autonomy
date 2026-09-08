@@ -28,19 +28,19 @@ command arguments or inspect the entry page after a person has filled it.
 ```sh
 open-autonomy-credentials receive --out /protected/project/provider-token
 open-autonomy-credentials receive --out /protected/project/github-app.json --github-app owner/repo
-open-autonomy-credentials verify-github --out /protected/project/github-app.json --repository owner/repo
 ```
 
 The default receiver serves a password input in the normal browser and saves its text verbatim.
 The GitHub adapter instead receives a manifest callback and exchanges its temporary code for the app
 credential. Give the printed callback URL and state to the browser agent for GitHub registration.
-Creation saves the credential immediately, before installation. After the browser agent installs the
-existing app, `verify-github` performs one authenticated repository-installation lookup and records the
-installation ID for the valve. It neither generates manifests nor creates apps, chooses repositories,
-opens browsers or polls for completion. An interrupted setup reuses the saved app.
+Creation saves the credential immediately, before installation. That completes the saver’s job. It
+does not generate manifests, create or install apps, configure integrations, or verify installation.
+The browser agent completes the existing app’s installation. When the valve uses an app key without an
+installation ID, it discovers that repository’s installation through GitHub and obtains its scoped
+access token. Existing credentials with an installation ID remain supported. No key-file editing is needed.
 
 Use a destination outside every Git checkout. New files are owner-only and never overwrite an existing
-file; verification preserves the credential on failure. The receiver binds only to loopback and expires
+file. The receiver binds only to loopback and expires
 after ten minutes. If the browser is on another machine, the operator must establish an authorized SSH
 tunnel to that loopback port. Do not expose the receiver publicly. A token only displayed by a provider
 requires direct human entry; browser-to-secret-store transfer is not implemented.

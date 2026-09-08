@@ -18,7 +18,7 @@
 // pointed at this port (HERMES_CODEX_BASE_URL) with a placeholder credential, so the login never enters the agent.
 //
 // --github-app: the agent's own GitHub identity for its community desk — a GitHub App installed on the project's
-// repository, its file `{app_id, installation_id, repository, private_key}` (the PEM the app's settings page issues).
+// repository, its file `{app_id, repository, private_key, installation_id?}` (the app's PEM).
 // Served on its own port as api.github.com is: the valve signs the app's JWT, mints an installation token scoped
 // to that one repository ahead of every expiry, and forwards the desk's routes (the repository's issues and
 // their comments, GraphQL for its discussions) with it. The agent is configured with GITHUB_API_URL at this port
@@ -156,13 +156,13 @@ if (codexArg) {
 }
 
 // ── The GitHub App ─────────────────────────────────────────────────────────────────────────────────────────────
-interface GitHubApp { app_id: number | string; installation_id: number | string; repository: string; private_key: string; api?: string }
+interface GitHubApp { app_id: number | string; installation_id?: number | string; repository: string; private_key: string; api?: string }
 if (githubArg) {
   const [file, portRaw] = githubArg.split(':');
   const port = Number(portRaw || 8790);
   const read = (): GitHubApp => {
     const doc = JSON.parse(readFileSync(file, 'utf8')) as Partial<GitHubApp>;
-    if (!doc.app_id || !doc.installation_id || !doc.repository || !doc.private_key) throw new Error(`${file}: needs app_id, installation_id, repository (owner/name) and private_key (the app's PEM)`);
+    if (!doc.app_id || !doc.repository || !doc.private_key) throw new Error(`${file}: needs app_id, repository (owner/name) and private_key (the app's PEM)`);
     return doc as GitHubApp;
   };
   const upstream = (): string => (read().api ?? 'https://api.github.com').replace(/\/$/, '');
@@ -182,7 +182,18 @@ if (githubArg) {
     try {
       const app = read();
       const [, name] = app.repository.split('/');
-      const res = await fetch(`${upstream()}/app/installations/${app.installation_id}/access_tokens`, { method: 'POST', headers: { authorization: `Bearer ${appJwt(app)}`, accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy-valve', 'content-type': 'application/json' }, body: JSON.stringify({ repositories: [name] }) });
+      const headers = { authorization: `Bearer ${appJwt(app)}`, accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy-valve', 'content-type': 'application/json' };
+      let installationId = app.installation_id;
+      if (!installationId) {
+        // Manifest handoff saves the app key before installation. Credential use discovers the
+        // installed app through GitHub; neither the saver nor the browser agent needs to edit a key file.
+        const lookup = await fetch(`${upstream()}/repos/${app.repository}/installation`, { headers, signal: AbortSignal.timeout(30_000) });
+        if (!lookup.ok) throw new Error(`github-app: repository installation unavailable (${lookup.status}); complete installation in the browser`);
+        const installation = await lookup.json() as { id: number; app_id: number; suspended_at?: string | null };
+        if (!Number.isSafeInteger(installation.id) || installation.id <= 0 || String(installation.app_id) !== String(app.app_id) || installation.suspended_at) throw new Error('github-app: repository installation does not identify an active installation of this app');
+        installationId = installation.id;
+      }
+      const res = await fetch(`${upstream()}/app/installations/${installationId}/access_tokens`, { method: 'POST', headers, body: JSON.stringify({ repositories: [name] }) });
       const body = await res.json().catch(() => ({})) as { token?: string; expires_at?: string; message?: string };
       if (!res.ok || !body.token) throw new Error(`github-app: installation token refused (${res.status} ${body.message ?? ''})`);
       token = { value: body.token, expiresAt: Date.parse(body.expires_at ?? '') || Date.now() + 55 * 60_000 };
@@ -228,5 +239,5 @@ if (githubArg) {
       } catch (e) { return new Response(JSON.stringify({ message: (e as Error).message }), { status: 502, headers: { 'content-type': 'application/json' } }); }
     },
   });
-  try { const app = read(); console.log(`github-app: ${file} → ${upstream()} on :${port} (app ${app.app_id}, installation ${app.installation_id}, ${app.repository})`); } catch (e) { console.error(`github-app: ${(e as Error).message}`); process.exit(2); }
+  try { const app = read(); console.log(`github-app: ${file} → ${upstream()} on :${port} (app ${app.app_id}, installation ${app.installation_id ?? 'discovered on use'}, ${app.repository})`); } catch (e) { console.error(`github-app: ${(e as Error).message}`); process.exit(2); }
 }

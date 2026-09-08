@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { receiveCredential, verifyGitHubCredential } from '../src/credentials.ts';
+import { receiveCredential } from '../src/credentials.ts';
 const roots: string[] = [];
 const receivers: ReturnType<typeof receiveCredential>[] = [];
 const root = () => { const dir = mkdtempSync(join(tmpdir(), 'oa-credential-test-')); roots.push(dir); return dir; };
@@ -57,10 +57,15 @@ test('GitHub handoff rejects callbacks without the receiver state before exchang
   expect(existsSync(file)).toBe(false);
 });
 
-test('GitHub verification refuses a different project and does not disclose malformed credentials', async () => {
-  const file = join(root(), 'app.json');
-  writeFileSync(file, JSON.stringify({ app_id: 1, repository: 'someone/else', private_key: 'synthetic-private-value' }), { mode: 0o600 });
-  await expect(verifyGitHubCredential(file, 'example/project')).rejects.toThrow('intended project');
-  writeFileSync(file, 'invalid-json-synthetic-private-value');
-  await expect(verifyGitHubCredential(file, 'example/project')).rejects.toThrow('Cannot decode the saved GitHub App credential.');
+test('a receiver cannot overwrite an existing or dangling symlink destination', () => {
+  const dir = root();
+  const target = join(dir, 'existing');
+  writeFileSync(target, 'synthetic-original');
+  for (const [name, destination] of [['linked', target], ['dangling', join(dir, 'missing')]]) {
+    const link = join(dir, name);
+    symlinkSync(destination, link);
+    expect(() => receiveCredential(link)).toThrow('already exists');
+  }
+  expect(readFileSync(target, 'utf8')).toBe('synthetic-original');
+  expect(existsSync(join(dir, 'missing'))).toBe(false);
 });

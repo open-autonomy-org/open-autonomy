@@ -54,7 +54,9 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    normal Chrome. Verify the destination is outside Git, the saved file is owner-only, and the receipt
    contains no credential. Reject cross-origin entry and an existing destination. For GitHub, prepare
    the manifest with the browser agent and use the receiver's callback; creation and installation are
-   separate steps, and a rerun must reuse the saved app. Report missing twin endpoints explicitly.
+   separate steps, and a rerun must reuse the saved app. The receiver ends at saving the credential;
+   the browser agent completes installation and verifies repository access through the running valve.
+   A saved file or structural health response is not proof of access. Report missing twin endpoints explicitly.
 10. With Discord selected, provide an explicitly agreed existing channel and a synthetic token in the
     protected credential directory. Verify that setup uses that channel, preserves native participation
     settings and per-job delivery, and refuses a missing or inaccessible destination. Declining Discord
@@ -105,8 +107,10 @@ completed setup steps were simulated, so this verifies the Git step, not the ent
 The credential receiver was then exercised in normal Chrome inside the world. The first form submission
 exposed a referrer-policy/Origin mismatch that HTTP-only tests did not reveal. After correction, a
 synthetic token was saved with mode 0600 and only its destination was printed. Credential-boundary tests
-also cover origin/state rejection, overwrite refusal, repository/symlink destinations, and rejection
-of credentials naming a different project. These prove local handoff boundaries, not live provider
+also cover origin/state rejection, overwrite refusal and repository/symlink destinations. The receiver
+only receives, exchanges and saves credentials; installation lookup now belongs to the valve when it
+uses the app key. A world request without an available installation failed safely, and requests for a
+different repository were refused. These prove local handoff and isolation boundaries, not live provider
 authorization. The GitHub twin currently lacks the manifest conversion and repository installation
 lookup needed to prove the complete GitHub handoff; do not label that flow verified yet.
 
