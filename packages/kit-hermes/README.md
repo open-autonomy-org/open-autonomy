@@ -69,7 +69,7 @@ Application dependencies run in the local world. Production provisioning is a la
 `--with production` step for a Cloudflare Worker. Package release automation is not yet implemented;
 `--with release` refuses before mutation and points to the reviewed publication procedure. Other live
 application connections are established at deployment or customer activation. See the
-[fresh local application walkthrough](../../cookbooks/SETUP.md) for a concrete setup rehearsal.
+[local setup rehearsal](../../world/setup-rehearsal.md) for contributor verification cases.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the landing workflow and setup/production guides. A project that takes one over names it in
