@@ -121,9 +121,10 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   if (selected.includes('release')) out.push({ door: 'release', suggested: 'later', reason: 'artifact publication is a later owner-reviewed setup; this CLI does not yet scaffold its workflow', cost: 'no token collected; follow the project publication procedure' });
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
-  out.push(s.codex
-    ? { door: 'subscription', suggested: 'yes', reason: "a Codex login is on this machine: the agent's model can run on your subscription, outside the project's funds, with the page saying so; the grant then buys only the cookbook model", cost: 'nothing: the valve serves the login and the agent never sees it' }
-    : { door: 'subscription', suggested: 'no', reason: "no subscription found; the project's grant funds the model, bounded by .open-autonomy/config.yaml", cost: 'nothing' });
+  out.push({ door: 'subscription', suggested: 'no', reason: s.codex
+    ? 'a subscription login is available; select only after agreeing its operator and use for this project'
+    : 'no subscription found; platform model calls require a funded project balance within .open-autonomy/config.yaml bounds',
+    cost: 'an explicitly selected subscription uses its operator’s allowance; otherwise model calls use the project balance' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
@@ -333,6 +334,7 @@ function printStart(s: Situation, opts: Opts): void {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
     if (!s.docker) say('  Docker is not here; install it before starting the container.');
+    say('  sh container/build-hermes.sh   # build the pinned base image if absent');
     say(`  AGENT_SECRETS=${opts.secrets} STACK=${s.project} docker compose -p ${s.project} -f container/compose.yml up -d --build`);
   }
   say('  An existing fleet uses its supported graceful reload after the changes land. Verify the loaded skill/config and connected platforms before reporting setup complete.');
@@ -438,6 +440,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   stepGitHub(s, opts, st);
   stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
+  say('\nFunding: minting keys and setting spending limits do not fund the project. Before activation, the setup agent verifies usable balance on the configured platform’s project page and completes an owner-authorized gift or coupon redemption if needed. The /give flow transfers existing credits; do not assume a grant. Then verify a bounded model call with the agreed model. An explicitly selected subscription uses its operator’s allowance instead.');
   stepOwnerRules(s, opts, st);
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);

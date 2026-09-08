@@ -23,7 +23,8 @@ services:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_HOME_CHANNEL=${DISCORD_HOME_CHANNEL:-}
     volumes:
-      - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:ro
+      # The root valve persists refreshed subscription tokens; filesystem permissions keep the agent out.
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:rw
       - home:/opt/data
       - repo:/work/project
 volumes:

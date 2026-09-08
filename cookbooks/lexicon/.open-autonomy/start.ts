@@ -73,6 +73,19 @@ const sock = resolve(home, 'ssh-agent.sock');
 // Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
 const user = as ? (() => { const r = Bun.spawnSync({ cmd: ['id', '-u', as], stdout: 'pipe', stderr: 'pipe' }); const g = Bun.spawnSync({ cmd: ['id', '-g', as], stdout: 'pipe' }); if (r.exitCode !== 0) throw new Error(`start: no such user ${as}`); return { name: as, uid: Number(r.stdout.toString().trim()), gid: Number(g.stdout.toString().trim()) }; })() : null;
 const drop = (cmd: string[]): string[] => (user ? ['setpriv', `--reuid=${user.uid}`, `--regid=${user.gid}`, '--clear-groups', ...cmd] : cmd);
+// The valve needs owner write access for token refresh. A writable mount must still be inaccessible
+// to the agent UID: refuse before starting children, including when host/container UIDs happen to match.
+if (user) {
+  let isolated = false;
+  try {
+    isolated = Bun.spawnSync({ cmd: drop(['sh', '-c', 'for path do if [ -r "$path" ] || [ -w "$path" ]; then exit 1; fi; done', 'credential-isolation', secrets,
+      ...['agent.env', 'treasurer.env', 'deploy_key', 'github-app.json', 'codex.json'].map((name) => resolve(secrets, name))]), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
+  } catch { /* An unavailable privilege-drop tool cannot establish isolation. */ }
+  if (!isolated) {
+    console.error('start: cannot establish credential isolation from the agent user. Use owner-only storage owned by a different UID; verify setpriv is available. No services were started.');
+    process.exit(1);
+  }
+}
 const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `${user.uid}:${user.gid}`, path] }); };
 // The agent's environment is what this script says. Nothing Hermes set on the process that started this one comes
 // through: a start from inside another agent's worker (a project's world, brought up by a task) would otherwise inherit

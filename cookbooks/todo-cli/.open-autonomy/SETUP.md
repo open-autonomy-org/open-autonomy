@@ -61,9 +61,22 @@ chooses another supported native Hermes channel, the setup agent follows that in
 instructions and verifies it; this CLI does not provision it. Report unsupported choices explicitly.
 
 Model selection and bounds are the owner's operating choice. Verify an available subscription belongs
-to the agreed operator before using it. The platform-funded defaults and optional subscription path
+to the agreed operator before explicitly selecting it; discovery alone leaves subscription use declined.
+The key tool reads the project's nonempty `models` list unless `--models` supplies an explicit key bound.
+If the project permits any model with an empty list, choose the key's allowed models explicitly before
+minting. Keep those key bounds and the native Hermes model configuration consistent with the agreement.
+The platform-funded defaults and optional subscription path
 are different arrangements; record the one actually used. Application AI features, if any, are separate
 from the model used by Hermes to develop the product.
+
+Spending limits and minted credentials do not supply money. For platform-funded development, inspect
+the project's usable balance on the configured platform before activation. If it is insufficient, complete
+the owner's agreed funding through the existing project funding page, coupon redemption or `/give` flow;
+`/give` transfers credits already held by an authorized funder. Do not promise or assume a grant, transfer
+someone else's funds, or treat a proposed budget as payment authorization. Verify the credit reached this
+project and covers the chosen model before the bounded connection check. A declined funding step leaves
+platform-funded activation incomplete. An agreed subscription uses its operator's allowance instead;
+any remaining platform-funded profiles or product calls still require their own usable project balance.
 
 ## Complete credentials with the owner
 
@@ -204,6 +217,15 @@ file has landed on origin/main before marking that preparation complete. Resolve
 or an outstanding pull request through the normal Git/browser tools, then rerun setup. A matching file
 and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
 the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
+
+Before exercising landing, enable the repository's native auto-merge setting (`gh repo edit --enable-auto-merge`)
+and verify that its Actions settings permit the landing workflow to create pull requests. Inspect
+`repos/<owner>/<repo>/actions/permissions/workflow` through `gh api`; the GitHub setting named
+`can_approve_pull_request_reviews` governs Actions creating and approving PRs. Configure the agreed setting
+through the owner's repository administration, preserving other workflow permissions and organization policy.
+The landing workflow never submits approvals: required human reviews and existing protection still apply.
+If organization policy prevents these settings, resolve that with the owner before claiming landing works.
+The workflow arms native auto-merge so a required review can arrive after its run has finished.
 
 Land the completed project-owned agreement and configuration before starting Hermes. Start it as the final
 setup action, then verify the loaded home, native schedules, actual human contact path and host restart
