@@ -24,6 +24,8 @@ The bar every diff is reviewed against, beside the constitution's invariants. Sh
   cruft is the one kind of debt that compounds, because every agent that follows writes more of it.
 - **Errors.** Fail loudly with the cause in the message, and say what was needed against what was available. No silent fallbacks.
 - **Money.** The ledger's settled cents are the only cost; never a client-side estimate. Security-critical paths get the higher bar.
-- **Docs.** Nothing documented twice; `bun scripts/check-docs.ts` holds every doc to paths and routes that exist.
+- **Docs.** Keep only durable project documentation, maintained in place; no rehearsal journals, session reports
+  or temporary planning documents. Put change-specific verification evidence in the PR. Nothing documented twice;
+  `bun scripts/check-docs.ts` holds every doc to paths and routes that exist.
 - **Dependencies.** Add one only when writing it would be more code than reading it. Pin what you add.
 - **History.** One change per commit, the task id first in the subject, signed as the agent.
