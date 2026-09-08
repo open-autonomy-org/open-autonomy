@@ -43,6 +43,10 @@ cookbook: the seed files a question and a request as issues and an idea as a dis
 community job (fire it with `hermes cron run community`) answers them, leaves the request in ordinary source history for PM to discover; `say` puts a person in the channel and the agent answers there. The world stays up between edits; the
 platform reloads on its own under `wrangler dev`; a kit change is `stack down --purge` and `stack up`.
 
+For kit onboarding changes, use the [setup rehearsal](setup-rehearsal.md). It covers fresh setup,
+interruption, credential handoff and activation against this world; project setup instructions live in
+the kit template.
+
 ## What is real and what is a twin
 
 Real: the worker (under `wrangler dev`, its Durable Object holding the books), the cookbook's agent (the pinned
