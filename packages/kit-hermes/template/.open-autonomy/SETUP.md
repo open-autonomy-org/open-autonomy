@@ -17,6 +17,28 @@ workflow. Deterministic helpers perform bounded operations and check facts: the 
 command success, credential storage and access. Do not turn this guide into a configuration framework
 or treat discovered credentials as decisions.
 
+## Orient before presenting setup
+
+Start with read-only discovery of the supplied conversation and the intended project directory. Determine
+whether this is a new project, an adoption or a resumption. If the directory exists, read its applicable
+agent instructions, constitution, README, kit identity, operating configuration, team roster,
+communication policy, branding and existing setup record. Inspect Git status and the configured target
+without exposing credential-bearing URLs. Preserve unrelated work and reuse recorded application IDs.
+Inspect credential presence and access through the protected helpers, never by printing secret files.
+
+Separate what the owner already agreed, what is independently verified, what is merely recorded and
+what remains missing. Check current provider access before marking a connection complete; a saved step,
+local login or existing container is only a clue. If evidence conflicts, identify the specific mismatch
+and reconcile it before dependent changes. If the intended directory or account is unknown, ask for that
+target instead of assuming the current repository is the new project. Do not provision anything during
+orientation or restart an existing fleet merely to discover its state.
+
+Use this inventory to tailor the opening below: show existing work, the unresolved items and the next
+action. Reuse earlier answers instead of presenting every default again. Initial orientation need not
+wait for every remote check to finish: label those checks pending and update them as evidence arrives.
+Keep the inventory in the conversation; durable decisions and connection progress belong in the existing
+project documents and setup record, not a new orientation report.
+
 ## Present a guided setup
 
 Make the conversation feel like a guided setup. Use the compact ASCII cards below in fenced `text`
@@ -39,10 +61,31 @@ file or extra approval gates. Reuse prior answers, accept free-text corrections,
 work without asking the owner to press Next. If the chat supplies a question UI, put the focused question
 there once, keeping enough context in it to answer without rereading the card.
 
-**Opening: reflect the brief before asking for missing choices.** Show the proposed starter and a short
-route through setup. For this example, the owner has already established the product constraints:
+**Opening: lead with the Open Autonomy logo, then reflect the brief.** Use the ASCII open-loop mark
+below, with its gap at the upper right, once at the start of setup. Its depth and shading were rendered
+from the Open Autonomy SVG using [Three.js AsciiEffect](https://threejs.org/docs/pages/AsciiEffect.html).
+Reuse this literal text; setup does not install a renderer or generate the logo on each run. This is the
+setup's Open Autonomy identity; the new project's own branding is prepared separately. Follow it with the proposed starter
+and a short route through setup. For this example, the owner has already established the product constraints:
 
 ```text
+             #@%%%%%%=
+         @@@%+=========*#
+       @@%================ #
+     @@#=========::===== :@==+
+    %%======            @+=====
+   %%=====.              =======
+  +%=====.                ======     OPEN AUTONOMY
+  ##=====                 #=====:
+  ##=====                 #=====.    Project setup
+  **=====                %======
+   *======              @======-
+    +=======          @+=======
+     ===========+#*+=========
+       ====================:
+         ================
+              .-==-
+
 +----------------------------------------------------------+
 | OPEN AUTONOMY / PROJECT SETUP                             |
 | Brief                                                    |
@@ -56,6 +99,23 @@ route through setup. For this example, the owner has already established the pro
   [ ] Connections [ ] Verify       [ ] Activate
 
   Next: settle the working name and repository owner.
+```
+
+When resuming, keep the opening logo and replace the fresh-start card with the discovered state. For
+example, where the product agreement is sourced and the repository read has succeeded, but the app
+registration is only recorded and the model arrangement is undecided:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Resuming / Connections                    |
++----------------------------------------------------------+
+  [x] Existing product agreement and repository verified
+  [>] Rechecking the recorded project GitHub App
+  [ ] Model arrangement still needs a choice
+  [ ] Activation remains pending
+
+  Keeping the agreed name, owner and contact destination.
+  Next: verify app access, then present the model options.
 ```
 
 **Choices: separate recommendations, established answers and missing facts.** Ask only for what is still
