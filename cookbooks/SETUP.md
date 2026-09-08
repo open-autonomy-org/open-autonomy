@@ -131,6 +131,13 @@ the receiver's directory check and also excludes the project before Git initiali
 replay refused those destinations, including a symlink alias, before state or credential writes;
 an external destination still passed the plan. Existing setup markers cannot bypass this check.
 
+Direct platform-key minting then reproduced a successful issuance followed by a save failure: --out
+named a new nested directory, but the tool created its default directory instead. Destination checks
+and parent creation now happen before issuance or rotation. A fresh synthetic project minted and rotated
+successfully, saving mode-0600 files and printing only receipt metadata. Repository and symlink outputs
+were refused. A separate account at the three-active-key limit refused rotation; capacity during rotation
+remains a follow-up gap, distinct from credential storage. These calls used the running local platform.
+
 A further replay put a rejecting commit hook in a disposable checkout. Owner-rule setup still reported
 prepared and wrote its completion marker despite that failed commit. The corrected flow stops at failed
 Git operations and waits for the intended CODEOWNERS file to land. Existing rulesets are preserved;

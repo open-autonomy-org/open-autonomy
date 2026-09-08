@@ -9,11 +9,12 @@
 //
 // The key is written to ~/.config/open-autonomy/agent.env (the file the key valve reads; created if
 // absent), with OPEN_AUTONOMY_BASE_URL. The agent itself never sees it.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { keyChallenge, keyMint, keyRotate } from './sdk/client.ts';
+import { checkCredentialDirectory } from './sdk/credentials.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const config = readFileSync(resolve(import.meta.dir, 'config.yaml'), 'utf8');
@@ -24,9 +25,20 @@ const models = (arg('--models') ?? 'zai/glm-5.3-flash').split(',').map((m) => m.
 // The developer's key spends and narrates; the treasurer's adds `pay` (--scopes spend,narrate,pay --out …/treasurer.env).
 const scopes = arg('--scopes')?.split(',').map((x) => x.trim()).filter(Boolean);
 const dir = join(homedir(), '.config', 'open-autonomy');
-const envPath = arg('--out') ?? join(dir, 'agent.env');
+const envPath = resolve(arg('--out') ?? join(dir, 'agent.env'));
 const git = (...args: string[]) => { const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'inherit'] }); if (r.status !== 0) { console.error(`git ${args.join(' ')} failed`); process.exit(1); } return r.stdout.toString().trim(); };
 if (!account) { console.error('no account: set it in .open-autonomy/config.yaml or pass --account owner/repo'); process.exit(2); }
+
+// Prepare the actual destination before asking the platform to issue or rotate a key.
+// Rotation can update a regular protected file, but must never follow a symlink into another location.
+try {
+  checkCredentialDirectory(dirname(envPath));
+  let existing;
+  try { existing = lstatSync(envPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error('Choose a regular credential file, not a symlink or directory.');
+  mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
+  if (existing) chmodSync(envPath, 0o600);
+} catch (error) { console.error(`credential destination: ${(error as Error).message}`); process.exit(2); }
 
 let minted;
 if (process.argv.includes('--rotate')) {
@@ -43,7 +55,6 @@ if (process.argv.includes('--rotate')) {
   minted = await keyMint(base, account, models, scopes);
 }
 if (!minted.ok || !minted.token) { console.error(`mint failed: ${JSON.stringify(minted)}`); process.exit(1); }
-mkdirSync(dir, { recursive: true });
 const keep = existsSync(envPath) ? readFileSync(envPath, 'utf8').split('\n').filter((l) => !/^(OPEN_AUTONOMY_KEY|OPEN_AUTONOMY_BASE_URL)=/.test(l) && l.trim()) : [];
 writeFileSync(envPath, `${[...keep, `OPEN_AUTONOMY_BASE_URL=${base}`, `OPEN_AUTONOMY_KEY=${minted.token}`].join('\n')}\n`, { mode: 0o600 });
 console.log(`key ${minted.key.kid} for ${minted.key.account} (models: ${minted.key.models.join(', ')}; expires ${minted.key.exp}) → ${envPath}`);
