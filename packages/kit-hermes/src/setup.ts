@@ -21,6 +21,7 @@ import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
 import { readBranding } from './branding.ts';
+import { validateParams } from './kit.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
 type Choice = 'yes' | 'no' | 'later';
@@ -92,7 +93,7 @@ export function readSituation(dir: string): Situation {
   const account = /^account:\s*(\S+)/m.exec(config)?.[1] ?? '';
   const [owner = '', repo = ''] = account.split('/');
   const kit = existsSync(join(dir, '.open-autonomy', 'kit.json')) ? JSON.parse(readFileSync(join(dir, '.open-autonomy', 'kit.json'), 'utf8')) : {};
-  const project = kit.params?.project ?? repo;
+  const project = validateParams({ project: kit.params?.project ?? repo, account }).project;
   const pkg = existsSync(join(dir, 'package.json')) ? JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) : {};
   const deploy: Situation['deploy'] = existsSync(join(dir, 'wrangler.toml')) || existsSync(join(dir, 'wrangler.jsonc')) ? 'cloudflare-worker'
     : pkg.name && pkg.private !== true && (pkg.publishConfig || pkg.main || pkg.exports || pkg.bin) ? 'npm'
