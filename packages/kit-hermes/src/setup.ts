@@ -167,15 +167,23 @@ function stepGitHub(s: Situation, opts: Opts, st: SetupState): void {
 }
 
 function stepDeployKey(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'deploy-key')) return;
   const file = join(opts.secrets, 'deploy_key');
   say(`\nDeploy key: a repository-scoped key the ssh-agent holds and the gateway pushes through; it never touches another repository.`);
   if (opts.plan) return;
   mkdirSync(opts.secrets, { recursive: true, mode: 0o700 });
   if (!existsSync(file)) { const r = run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', `${s.project} agent`, '-f', file]); if (!r.ok) throw new Error(`ssh-keygen: ${r.err}`); }
   const pub = readFileSync(`${file}.pub`, 'utf8').trim();
-  const existing = gh(['api', `repos/${s.account}/keys`]).json as Array<{ key: string }> | null;
-  if (!existing?.some((k) => pub.startsWith(k.key))) { const r = run(['gh', 'repo', 'deploy-key', 'add', `${file}.pub`, '--repo', s.account, '--allow-write', '--title', `${s.project} agent`]); if (!r.ok) throw new Error(`deploy key: ${r.err}`); }
+  const listed = gh(['api', `repos/${s.account}/keys?per_page=100`, '--paginate', '--slurp']);
+  if (!listed.ok || !Array.isArray(listed.json) || !listed.json.every(Array.isArray)) throw new Error('Cannot inspect repository deploy keys. Resolve GitHub access before continuing; no key was registered.');
+  const keyIdentity = (key: string) => key.trim().split(/\s+/).slice(0, 2).join(' ');
+  const registered = (listed.json.flat() as Array<{ key: string; read_only: boolean; enabled?: boolean }>).find((key) => typeof key.key === 'string' && keyIdentity(key.key) === keyIdentity(pub));
+  if (registered) {
+    if (registered.read_only !== false || registered.enabled === false) throw new Error('The registered deploy key does not permit writes. Reconcile its access with the owner before resuming; its permissions were not changed.');
+  } else {
+    if (done(st, 'deploy-key')) throw new Error('The saved deploy key is no longer registered for this repository. Reconcile its revocation or the intended credential with the owner before resuming; it was not re-registered.');
+    const r = run(['gh', 'repo', 'deploy-key', 'add', `${file}.pub`, '--repo', s.account, '--allow-write', '--title', `${s.project} agent`]);
+    if (!r.ok) throw new Error(`deploy key: ${r.err}`);
+  }
   mark(s.dir, st, 'deploy-key', file);
 }
 

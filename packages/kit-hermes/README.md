@@ -68,8 +68,7 @@ owns that policy; the shared team roster owns identities and authority.
 Application dependencies run in the local world. Production provisioning is a later explicit
 `--with production` step for a Cloudflare Worker. Package release automation is not yet implemented;
 `--with release` refuses before mutation and points to the reviewed publication procedure. Other live
-application connections are established at deployment or customer activation. See the
-[local setup rehearsal](../../world/setup-rehearsal.md) for contributor verification cases.
+application connections are established at deployment or customer activation.
 
 **Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the landing workflow and setup/production guides. A project that takes one over names it in
