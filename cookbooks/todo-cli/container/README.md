@@ -2,7 +2,10 @@
 
 The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
 developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
-the Hermes gateway. One script starts them, `.open-autonomy/start.ts`, and it is the only way they are started.
+the Hermes gateway. For normal fleet operation, `.open-autonomy/start.ts` manages the complete stack.
+Before activation, the setup agent can run the SDK valve alone in a one-off container with its entrypoint
+overridden to verify the configured connections; see [setup](../.open-autonomy/SETUP.md). Keep those ports
+unpublished and stop that process before starting the fleet through the normal entrypoint.
 
 **In a container** is the default for a real deployment. **On your machine**, for development and fast debugging: everything as you, no isolation, the agent able to reach its own keys — an accepted trade while debugging, never the shape of production.
 

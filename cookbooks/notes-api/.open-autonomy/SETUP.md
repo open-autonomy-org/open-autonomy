@@ -86,6 +86,17 @@ directory with owner-only permissions. Existing credential files must be regular
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use secure credential entry where no callback exists | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
+Verify these connections before starting Hermes. Use the existing vendored SDK valve CLI directly in the
+prepared runtime, supplying the selected `--key`, `--github-app` and optional `--codex` credential-file
+arguments; this starts only the valve. In a container, use a one-off command with the entrypoint overridden,
+keeping its ports inside the runtime network with no published ports. The valve listens on all interfaces;
+its placeholder bearer is not an access boundary. Make the checks from inside that protected environment.
+Use actual repository reads and a bounded model request under the agreed funding arrangement; a health
+response alone is insufficient. Stop the temporary valve before the normal stack takes its ports.
+The setup agent verifies the scoped push key and selected communication provider through their native
+tools as well. Reporter delivery and the loaded Hermes configuration are checked on the final startup;
+those checks do not require PM to finish credentials or policy.
+
 For Discord specifically, use its developer portal to create/reuse the project application, configure
 the needed intents and bot identity, and authorize the agreed server. Arrange the agreed public channels
 with the browser/native tools, reusing their existing structure. Receive the token with the standalone
@@ -126,7 +137,7 @@ The browser agent handles the form and logo upload; the tool does not generate t
 
 The callback exchanges GitHub's temporary code and saves the app credential immediately. That is the
 end of the credential helper's responsibility. The browser agent installs the existing app, then verifies
-an actual repository read through the running valve as part of activation. The valve discovers a missing
+an actual repository read through the standalone valve before starting Hermes. The valve discovers a missing
 installation ID when it uses the app key; credentials that already include the ID remain supported.
 A health endpoint or a saved credential alone does not prove repository access.
 
