@@ -66,6 +66,8 @@ the setup helper's protected destination or secure prompt, never chat, screensho
 The setup CLI checks its credential directory before writing setup state, including on reruns. It must
 be outside every Git repository and outside the new project's directory even before Git initialization;
 symlink aliases do not bypass this boundary. An ignored directory inside the project is not suitable.
+The platform key tool also checks --out before minting or rotation and creates that file's parent
+directory with owner-only permissions. Existing credential files must be regular files, not symlinks.
 
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
