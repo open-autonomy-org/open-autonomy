@@ -135,8 +135,10 @@ Direct platform-key minting then reproduced a successful issuance followed by a 
 named a new nested directory, but the tool created its default directory instead. Destination checks
 and parent creation now happen before issuance or rotation. A fresh synthetic project minted and rotated
 successfully, saving mode-0600 files and printing only receipt metadata. Repository and symlink outputs
-were refused. A separate account at the three-active-key limit refused rotation; capacity during rotation
-remains a follow-up gap, distinct from credential storage. These calls used the running local platform.
+were refused. A separate account at the three-active-key limit initially refused rotation. Rotation now
+replaces a credential slot atomically, with one retiring predecessor during grace. The running local
+platform then accepted rotation at capacity while still refusing a fourth independent key. Concurrent
+retry, bounded grace, revocation and registry restart are covered by credential-authority tests.
 
 A further replay put a rejecting commit hook in a disposable checkout. Owner-rule setup still reported
 prepared and wrote its completion marker despite that failed commit. The corrected flow stops at failed

@@ -66,10 +66,14 @@ export async function authedClaims(req: Request, env: Env): Promise<KeyClaims | 
   return check.ok ? claims : null;
 }
 
-export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES): Promise<Response> {
+function newKeyClaims(env: Env, account: string, models: string[], scopes: KeyScope[]): KeyClaims {
   const ttl = Number(env.KEY_EXPIRES_SECONDS ?? 90 * 24 * 3600);
   const now = Date.now();
-  const claims: KeyClaims = { kid: `key_${crypto.randomUUID()}`, account, models, scopes, iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
+  return { kid: `key_${crypto.randomUUID()}`, account, models, scopes, iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
+}
+
+export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES): Promise<Response> {
+  const claims = newKeyClaims(env, account, models, scopes);
   const registered = await new LedgerClient(env.LIMITS).keyRegister(claims);
   if (!registered.ok) return error(registered.error ?? 'key_limit_reached', 429, { account });
   return json({ ok: true, key: claims, token: await signKey(env, claims) });
@@ -134,14 +138,18 @@ export async function handleKeyRotate(req: Request, env: Env): Promise<Response>
   if (req.method !== 'POST') return methodNotAllowed();
   const claims = await authedClaims(req, env);
   if (!claims) return error('auth_failed', 401);
-  const minted = await mintKey(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES);
-  if (!minted.ok) return minted;
   let graceMs = ROTATE_GRACE_MS;
   try { const body = JSON.parse(await req.text() || '{}') as { grace_seconds?: unknown }; if (typeof body.grace_seconds === 'number' && Number.isFinite(body.grace_seconds)) graceMs = Math.min(ROTATE_GRACE_MS, Math.max(0, body.grace_seconds) * 1000); } catch { /* no body: the full grace */ }
   const graceUntil = new Date(Date.now() + graceMs).toISOString();
-  await new LedgerClient(env.LIMITS).keyExpire(claims.kid, graceUntil);
-  const payload = await minted.json() as { ok: true; key: KeyClaims; token: string };
-  return json({ ...payload, previous: { kid: claims.kid, exp: graceUntil } });
+  const successor = newKeyClaims(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES);
+  const token = await signKey(env, successor);
+  const rotated = await new LedgerClient(env.LIMITS).keyRotate(claims, successor, graceUntil);
+  if (!rotated.ok) {
+    const code = rotated.error ?? 'rotation_failed';
+    const status = code === 'key_limit_reached' ? 429 : ['key_revoked', 'key_expired', 'account_banned'].includes(code) ? 401 : 409;
+    return error(code, status, { account: claims.account });
+  }
+  return json({ ok: true, key: successor, token, previous: { kid: claims.kid, exp: rotated.exp } });
 }
 
 // GET /v1/keys (Authorization: Bearer <key>) → the account's keys as the registry lists them; the caller's

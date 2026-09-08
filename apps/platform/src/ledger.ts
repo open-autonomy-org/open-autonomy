@@ -16,7 +16,7 @@ import type { KeyClaims, UsageEvent } from './types.js';
 
 const MAX_FLOWS = 200;
 const FEED_LIMIT = 24;
-const MAX_ACTIVE_KEYS_PER_ACCOUNT = 3;
+const MAX_KEY_SLOTS_PER_ACCOUNT = 3;
 const MAX_TURNS = 400;
 const MAX_TURNS_PER_EVENT = 100;
 const MAX_TURN_TEXT = 2000;
@@ -247,6 +247,7 @@ export interface KeyEntry {
   created_at: string;
   exp: string;
   revoked_at?: string;
+  replaced_by?: string;
 }
 
 // One metered spend, as appended to the account's audit trail.
@@ -385,6 +386,7 @@ export class LimitLedger implements DurableObject {
       case 'coupon_list': return json({ ok: true, coupons: Object.values(this.state.coupons) });
       case 'coupon_redeem': return json(await this.couponRedeem(s('code'), s('account')));
       case 'key_register': return json(await this.keyRegister(body.claims as KeyClaims));
+      case 'key_rotate': return json(await this.keyRotate(body.previous as KeyClaims, body.claims as KeyClaims, s('grace_until')));
       case 'key_check': return json(this.keyCheck(s('kid')));
       case 'key_expire': return json(await this.keyExpire(s('kid'), s('exp')));
       case 'key_revoke': return json(await this.keyRevoke(s('kid')));
@@ -613,15 +615,45 @@ export class LimitLedger implements DurableObject {
     return Object.values(this.state.keys).filter((k) => k.account === account && !k.revoked_at && Date.parse(k.exp) > now);
   }
 
+  // A retiring key and its live successor occupy one slot. If the successor is revoked or expires,
+  // the still-live predecessor keeps that slot until its grace ends; revocation cannot free extra slots.
+  private keySlots(account: string): number {
+    const active = this.activeKeys(account);
+    const ids = new Set(active.map((k) => k.kid));
+    return active.filter((k) => !k.replaced_by || !ids.has(k.replaced_by)).length;
+  }
+
   private async keyRegister(claims: KeyClaims): Promise<Record<string, unknown>> {
     if (!claims?.kid || !claims.account) return { ok: false, error: 'invalid_key' };
     if (this.acct(claims.account)?.moderation === 'banned') return { ok: false, error: 'account_banned' };
-    if (this.activeKeys(claims.account).length >= MAX_ACTIVE_KEYS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
+    if (this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
     this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
     // The account exists from its first key, so its page and funding gate work before any money arrives.
     this.ensureAcct(claims.account);
     await this.save();
     return { ok: true };
+  }
+
+  private async keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string): Promise<{ ok: boolean; error?: string; exp?: string }> {
+    if (!previous?.kid || !claims?.kid || previous.kid === claims.kid || !previous.account || previous.account !== claims.account || this.state.keys[claims.kid] || !Number.isFinite(Date.parse(graceUntil))) return { ok: false, error: 'invalid_key' };
+    // Recheck in the same ledger operation as replacement: authentication may have raced revocation.
+    const allowed = this.keyCheck(previous.kid);
+    if (!allowed.ok) return allowed;
+    if (Date.parse(previous.exp) <= Date.now()) return { ok: false, error: 'key_expired' };
+    if (this.acct(previous.account)?.moderation === 'banned') return { ok: false, error: 'account_banned' };
+    const old = this.state.keys[previous.kid];
+    if (old && old.account !== previous.account) return { ok: false, error: 'invalid_key' };
+    if (old?.replaced_by) return { ok: false, error: 'key_already_rotated' };
+    if (this.activeKeys(previous.account).some((k) => k.replaced_by === previous.kid)) return { ok: false, error: 'rotation_grace_pending' };
+    // A legacy signed key absent from the registry has no reserved slot. Preserve its supported
+    // rotation path only when a slot is available, and register its shortened life as well.
+    if (!old && this.keySlots(previous.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
+    const exp = new Date(Math.min(Date.parse(previous.exp), old ? Date.parse(old.exp) : Infinity, Date.parse(graceUntil))).toISOString();
+    this.state.keys[previous.kid] = { ...(old ?? { kid: previous.kid, account: previous.account, models: previous.models, created_at: previous.iat }), exp, replaced_by: claims.kid };
+    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
+    this.ensureAcct(claims.account);
+    await this.save();
+    return { ok: true, exp };
   }
 
   // A key the registry knows must not be revoked or past its (possibly shortened) expiry. A key the
@@ -1657,6 +1689,7 @@ export class LedgerClient {
   couponList() { return this.rpc<{ ok: boolean; coupons: Coupon[] }>('coupon_list'); }
   couponRedeem(code: string, account: string) { return this.rpc<{ ok: boolean; amount_usd_cents?: number; account?: string; sponsor?: Sponsor | null; error?: string }>('coupon_redeem', { code, account }); }
   keyRegister(claims: KeyClaims) { return this.rpc<{ ok: boolean; error?: string }>('key_register', { claims }); }
+  keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string) { return this.rpc<{ ok: boolean; error?: string; exp?: string }>('key_rotate', { previous, claims, grace_until: graceUntil }); }
   keyCheck(kid: string) { return this.rpc<{ ok: boolean; error?: string }>('key_check', { kid }); }
   keyExpire(kid: string, exp: string) { return this.rpc<{ ok: boolean; error?: string; exp?: string }>('key_expire', { kid, exp }); }
   keyRevoke(kid: string) { return this.rpc<{ ok: boolean; error?: string }>('key_revoke', { kid }); }
