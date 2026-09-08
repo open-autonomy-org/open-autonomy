@@ -21,7 +21,14 @@ const config = readFileSync(resolve(import.meta.dir, 'config.yaml'), 'utf8');
 const account = arg('--account') ?? /^account:\s*(\S+)/m.exec(config)?.[1] ?? '';
 const platform = (process.env.OPEN_AUTONOMY_URL ?? /^platform:\s*(\S+)/m.exec(config)?.[1] ?? 'https://open-autonomy.org').replace(/\/$/, '');
 const base = `${platform}/v1`;
-const models = (arg('--models') ?? 'zai/glm-5.3-flash').split(',').map((m) => m.trim()).filter(Boolean);
+const selectedModels = arg('--models');
+const models: unknown = process.argv.includes('--rotate') ? undefined : selectedModels === undefined
+  ? (Bun.YAML.parse(config) as { models?: unknown }).models
+  : selectedModels.split(',').map((m) => m.trim());
+if (!process.argv.includes('--rotate') && (!Array.isArray(models) || !models.length || models.some((m) => typeof m !== 'string' || !m.trim()))) {
+  console.error('Choose key models with --models or a nonempty models list in .open-autonomy/config.yaml. An unrestricted project policy still needs explicitly bounded keys.');
+  process.exit(2);
+}
 // The developer's key spends and narrates; the treasurer's adds `pay` (--scopes spend,narrate,pay --out …/treasurer.env).
 const scopes = arg('--scopes')?.split(',').map((x) => x.trim()).filter(Boolean);
 const dir = join(homedir(), '.config', 'open-autonomy');
@@ -52,7 +59,7 @@ if (process.argv.includes('--rotate')) {
   writeFileSync(challenge.file, `${challenge.claim}\n`);
   git('add', challenge.file);
   if (git('status', '--porcelain', '--', challenge.file)) { git('commit', '-q', '-m', `claim: ${account} key`, '--', challenge.file); git('push', '-q'); }
-  minted = await keyMint(base, account, models, scopes);
+  minted = await keyMint(base, account, models as string[], scopes);
 }
 if (!minted.ok || !minted.token) { console.error(`mint failed: ${JSON.stringify(minted)}`); process.exit(1); }
 const keep = existsSync(envPath) ? readFileSync(envPath, 'utf8').split('\n').filter((l) => !/^(OPEN_AUTONOMY_KEY|OPEN_AUTONOMY_BASE_URL)=/.test(l) && l.trim()) : [];

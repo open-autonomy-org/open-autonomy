@@ -22,6 +22,12 @@ mounted for root alone; the gateway and the reporter run as the image's `hermes`
 holds nothing whose leak matters: its `.env` says `OPEN_AUTONOMY_KEY=valve`; pushes sign through the
 ssh-agent's socket; delivery uses at most a Discord bot token, which can only post as the bot.
 
+The credential directory is mounted read/write so the root valve can persist refreshed subscription tokens
+across restarts. Keep it owner-only (directory mode 700, credential files 600), owned by a UID different from
+the container's `hermes` user. Startup checks access as that user before starting services and refuses if it
+can read or write the credential storage. Do not solve a permission failure by making credentials readable
+to the agent. Existing installations need their container recreated with the updated Compose mount.
+
 - `~/.config/open-autonomy/agent.env` and `treasurer.env`: the keys, as above (rotate with `--rotate`; the
   valve takes the new key from the file without a restart).
 - `~/.config/open-autonomy/deploy_key`: a deploy key for this one repository, write access:
