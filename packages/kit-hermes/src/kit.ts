@@ -23,7 +23,7 @@ const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
-  if (!p.project || !/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(p.project)) throw new Error('project: a short name (letters, digits, . _ -)');
+  if (!p.project || p.project.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.project)) throw new Error('project: use a lowercase runtime slug of at most 64 characters (letters and digits separated by hyphens), such as audit-desk; put the display name in branding/brand.json');
   if (!p.account || !/^[^/\s]+\/[^/\s]+$/.test(p.account)) throw new Error('account: owner/repo, the GitHub repository the platform funds');
   return { project: p.project, account: p.account };
 }
@@ -45,6 +45,7 @@ const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts', 'valve.t
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
 // the account as a URL path segment); binary-looking files pass through untouched.
 export function render(params: KitParams): Map<string, Buffer> {
+  validateParams(params);
   const out = new Map<string, Buffer>();
   for (const rel of walk(TEMPLATE)) {
     const raw = readFileSync(join(TEMPLATE, rel));

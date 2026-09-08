@@ -35,6 +35,12 @@ development conventions and native schedules unless the project requires a chang
 feature questions can remain for PM; credentials or directories found on the machine are availability
 evidence, not permission to use them for this project.
 
+Use a lowercase runtime slug such as `audit-desk` for `--project`: letters and digits separated by
+hyphens, at most 64 characters. It names Docker images, the Compose project and default credential
+storage. The display name in `branding/brand.json` can be `AuditDesk` or another human-facing name.
+For an older install with an incompatible slug, reconcile its kit identity and existing host resources
+before rerunning setup; do not silently rename its containers, volumes or credential directory.
+
 Fill the project-owned README, constitution, contributing instructions and verification instructions.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.
