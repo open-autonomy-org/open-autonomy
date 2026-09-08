@@ -57,6 +57,8 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    separate steps, and a rerun must reuse the saved app. The receiver ends at saving the credential;
    the browser agent completes installation and verifies repository access through the running valve.
    A saved file or structural health response is not proof of access. Report missing twin endpoints explicitly.
+   Also exercise setup without --secrets in a uniquely named disposable project, then with an explicit
+   protected directory. Verify owner-only key creation at the intended path and key reuse after interruption.
 10. With Discord selected, provide an explicitly agreed existing channel and a synthetic token in the
     protected credential directory. Verify that setup uses that channel, preserves native participation
     settings and per-job delivery, and refuses a missing or inaccessible destination. Declining Discord
@@ -113,6 +115,13 @@ uses the app key. A world request without an available installation failed safel
 different repository were refused. These prove local handoff and isolation boundaries, not live provider
 authorization. The GitHub twin currently lacks the manifest conversion and repository installation
 lookup needed to prove the complete GitHub handoff; do not label that flow verified yet.
+
+The default-directory replay found that the CLI's undefined --secrets option erased the default.
+After correcting option precedence, setup generated an owner-only key in the project-specific default
+directory and preserved it on resume; an explicit destination was also respected. Native gh's world
+certificate error interrupted registration, so the generated public key was registered through the twin's
+GitHub API. The resumed CLI then completed that step and stopped at the intentionally absent GitHub App
+credential. Platform minting was skipped in this fixture; this was not a complete setup rehearsal.
 
 A further replay put a rejecting commit hook in a disposable checkout. Owner-rule setup still reported
 prepared and wrote its completion marker despite that failed commit. The corrected flow stops at failed
