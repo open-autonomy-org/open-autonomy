@@ -171,6 +171,9 @@ These checks do not establish human authority or prove the fleet's scoped push k
 remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
+On reruns, setup also checks that the deploy key remains registered with write access. A revoked,
+disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
+restore a revoked registration or expand existing permissions automatically.
 
 Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
 and staged work, never resets an existing owner-rules branch, and checks that the intended CODEOWNERS
