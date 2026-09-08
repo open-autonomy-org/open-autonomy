@@ -17,6 +17,205 @@ workflow. Deterministic helpers perform bounded operations and check facts: the 
 command success, credential storage and access. Do not turn this guide into a configuration framework
 or treat discovered credentials as decisions.
 
+## Orient before presenting setup
+
+Start with read-only discovery of the supplied conversation and the intended project directory. Determine
+whether this is a new project, an adoption or a resumption. If the directory exists, read its applicable
+agent instructions, constitution, README, kit identity, operating configuration, team roster,
+communication policy, branding and existing setup record. Inspect Git status and the configured target
+without exposing credential-bearing URLs. Preserve unrelated work and reuse recorded application IDs.
+Inspect credential presence and access through the protected helpers, never by printing secret files.
+
+Separate what the owner already agreed, what is independently verified, what is merely recorded and
+what remains missing. Check current provider access before marking a connection complete; a saved step,
+local login or existing container is only a clue. If evidence conflicts, identify the specific mismatch
+and reconcile it before dependent changes. If the intended directory or account is unknown, ask for that
+target instead of assuming the current repository is the new project. Do not provision anything during
+orientation or restart an existing fleet merely to discover its state.
+
+Use this inventory to tailor the opening below: show existing work, the unresolved items and the next
+action. Reuse earlier answers instead of presenting every default again. Initial orientation need not
+wait for every remote check to finish: label those checks pending and update them as evidence arrives.
+Keep the inventory in the conversation; durable decisions and connection progress belong in the existing
+project documents and setup record, not a new orientation report.
+
+## Present a guided setup
+
+Make the conversation feel like a guided setup. Use the compact ASCII cards below in fenced `text`
+blocks, with ordinary prose for explanations and one focused question outside the card when an answer
+is needed. Keep cards roughly 60 columns wide, wrapping long values. Put clickable links outside the
+block. Use a card at a stage change, a meaningful result or a human handoff; routine tool activity needs
+only a short update. Do not repeat the whole checklist with every message.
+
+Use these six stages as navigation: Brief, Identity, Models, Connections, Verify, Activate. They describe
+the conversation, not a rigid execution order: connections may be needed to discover models. Show the
+current stage and actual next action, without invented percentages, timers or checks. `[x]` means verified
+complete, `[>]` means in progress, `[ ]` means pending, and `[!]` means blocked. Label a declined optional
+connection `Off` instead of leaving it looking unfinished. Proposed values stay visibly proposed until
+agreed; a discovered login is not a selected model arrangement.
+
+These examples illustrate the format, not decisions for the current project. Replace their names,
+values and outcomes with the owner's context and observed facts. The agent renders the conversation;
+the CLI remains the bounded helper. Do not add a wizard engine, presentation configuration, transcript
+file or extra approval gates. Reuse prior answers, accept free-text corrections, and continue authorized
+work without asking the owner to press Next. If the chat supplies a question UI, put the focused question
+there once, keeping enough context in it to answer without rereading the card.
+
+**Opening: lead with the Open Autonomy logo, then reflect the brief.** Use the ASCII open-loop mark
+below, with its gap at the upper right, once at the start of setup. Its depth and shading were rendered
+from the Open Autonomy SVG using [Three.js AsciiEffect](https://threejs.org/docs/pages/AsciiEffect.html).
+Reuse this literal text; setup does not install a renderer or generate the logo on each run. This is the
+setup's Open Autonomy identity; the new project's own branding is prepared separately. Follow it with the proposed starter
+and a short route through setup. For this example, the owner has already established the product constraints:
+
+```text
+             #@%%%%%%=
+         @@@%+=========*#
+       @@%================ #
+     @@#=========::===== :@==+
+    %%======            @+=====
+   %%=====.              =======
+  +%=====.                ======     OPEN AUTONOMY
+  ##=====                 #=====:
+  ##=====                 #=====.    Project setup
+  **=====                %======
+   *======              @======-
+    +=======          @+=======
+     ===========+#*+=========
+       ====================:
+         ================
+              .-==-
+
++----------------------------------------------------------+
+| OPEN AUTONOMY / PROJECT SETUP                             |
+| Brief                                                    |
++----------------------------------------------------------+
+  Product   Local SOC2 readiness for firms and clients
+  Data      An owned folder: JSON, CSV, Markdown, evidence
+  AI        Customers can use their own local coding agents
+  Starter   Hermes (recommended; the available kit)
+
+  [>] Brief       [ ] Identity     [ ] Models
+  [ ] Connections [ ] Verify       [ ] Activate
+
+  Next: settle the working name and repository owner.
+```
+
+When resuming, keep the opening logo and replace the fresh-start card with the discovered state. For
+example, where the product agreement is sourced and the repository read has succeeded, but the app
+registration is only recorded and the model arrangement is undecided:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Resuming / Connections                    |
++----------------------------------------------------------+
+  [x] Existing product agreement and repository verified
+  [>] Rechecking the recorded project GitHub App
+  [ ] Model arrangement still needs a choice
+  [ ] Activation remains pending
+
+  Keeping the agreed name, owner and contact destination.
+  Next: verify app access, then present the model options.
+```
+
+**Choices: separate recommendations, established answers and missing facts.** Ask only for what is still
+needed, with recommended defaults together. For example, after public development is already agreed:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Identity                                 |
++----------------------------------------------------------+
+  Working name  Evidence Desk              Proposed
+  Repository    <owner>/evidence-desk       Owner needed
+  Visibility    Public source + dev logs   Agreed
+  Fleet host    Not selected               Needed
+  Contact       GitHub issues              Recommended
+  Reviewer      You                        Agreed
+
+  Next: choose the GitHub owner and fleet host.
+```
+
+For the Models stage, use the same format to show the verified subscription option and suitable live
+catalog models, their exact IDs and relevant limits. State which uses subscription allowance and which
+uses metered project funds. If only a login file is found, display `Login found; access unverified`.
+If catalog access is unavailable, display that gap and the action to resolve it. Show budget proposals
+separately from the verified balance; follow the model-choice and funding procedure below.
+
+**Working: report an observed result and the action underway.** For example, after the agreed repository
+and branding exist, while the browser agent is registering the project application:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Connections                              |
++----------------------------------------------------------+
+  [x] GitHub repository and owner access verified
+  [x] Provisional project name, blurb and icon prepared
+  [>] Registering Evidence Desk's GitHub App
+  [ ] Install on the project repository and verify access
+  Off Discord (GitHub selected for coordination)
+
+  Working in your signed-in browser. No action needed yet.
+```
+
+**Human handoff: name the precise action and where to take it.** Only use this when the browser reaches
+an actual human-only step. For a passkey challenge observed during registration:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Connections / Your action                |
++----------------------------------------------------------+
+  [!] GitHub is waiting for your passkey confirmation
+
+  Where   The GitHub verification dialog in Chrome
+  Action  Complete the passkey prompt there
+  Next    I will resume registration after it clears
+```
+
+For a secret-entry handoff, identify the protected credential receiver's input instead. Never ask for
+credentials in chat or include them in a card, screenshot or link. Display only safe provider names and
+public identifiers; callback codes, state values and credential-bearing URLs do not belong in the card.
+Verify completion in the provider before advancing, rather than treating a reply of "done" as proof.
+
+**Interruption: show what survived and what is required to resume.** For example, when the saved app
+registration exists but the selected host has no corresponding credential file:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Connections / Paused                     |
++----------------------------------------------------------+
+  [x] Existing project app registration verified
+  [!] Its credential is missing from the selected host
+  [ ] Fleet activation
+
+  Next: reconcile the credential location or recover access.
+  Setup is incomplete. Hermes has not started.
+```
+
+Explain the concrete recovery action in prose; continue independent work where possible. On resumption,
+recheck the relevant connection and update this card instead of restarting the questionnaire.
+
+**Completion: distinguish prepared setup from proven operation.** Before startup, show `Ready to activate`
+only when the checks below are complete. Continue with already authorized activation. Show the following
+outcome only after observing every listed result; otherwise keep the outstanding item visible:
+
+```text
++----------------------------------------------------------+
+| PROJECT SETUP / Autonomous development running            |
++----------------------------------------------------------+
+  [x] Project agreement and configuration landed
+  [x] Connections, model access and required funding verified
+  [x] Hermes, schedules and host supervision verified
+  [x] PM contacted you and read your reply on GitHub
+  [x] First bounded task landed and PM reconciled it
+
+  Planning       PM maintains ROADMAP.md and CHANGELOG.md
+  Human contact  GitHub issues
+  Releases       Candidate-specific human review required
+```
+
+Follow the completion card with links to the real repository, development stream and agreed contact
+destination. A helper exit, saved setup marker or successful startup alone never warrants this card.
+
 ## Establish the brief and the few choices
 
 For a new project, write its purpose, users, enduring constraints and exclusions into the constitution
