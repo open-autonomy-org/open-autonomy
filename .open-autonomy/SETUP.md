@@ -15,9 +15,11 @@ or treat discovered credentials as decisions.
 ## Establish the brief and the few choices
 
 For a new project, write its purpose, users, enduring constraints and exclusions into the constitution
-from owner direction. Preserve the initial brief and research as source material in the repository,
-distinguishing decisions, suggestions and unanswered questions. Cite the actual supplied source or
-identify an owner-confirmed setup summary; never invent conversation links. For an existing project,
+from owner direction. Keep source references beside those decisions. Use the existing
+`.open-autonomy/setup.json` notes for unresolved setup questions and pointers to relevant research;
+do not create a separate brief, research dump, rehearsal log or handoff document. Cite the actual supplied
+source; when a conversation has no accessible reference, label its summary and whether the owner has
+confirmed it. An agent-written summary is not independent evidence of owner approval. For an existing project,
 read and preserve its established constitution and working conventions before proposing changes.
 PM owns the sourced roadmap and changelog after handoff. Do not invent a backlog during setup.
 
@@ -31,6 +33,8 @@ evidence, not permission to use them for this project.
 Fill the project-owned README, constitution, contributing instructions and verification instructions.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.
+Maintain durable documentation in place. Setup notes hold current gaps and connection facts, not a
+chronological journal; replace resolved entries with their outcome or source pointer.
 
 The setup CLI creates a missing GitHub repository as public. Establish that this is the agreed target
 before running it. A private existing repository does not make published development sessions private.
@@ -145,6 +149,9 @@ through the vendor APIs and script judgments/faults with world handlers. Add twi
 dependencies emerge. A local folder application can begin with synthetic files and no external
 application services. Keep the fleet's real repository/model connections separate from synthetic
 customer integrations, even when both happen to use the same vendor.
+For a product that operates on user-owned folders, the development checkout and the customer's data
+folder are different boundaries. Verify with synthetic workspaces; optional customer Git or storage sync
+does not authorize the fleet to read those accounts or require their credentials during development setup.
 
 No production credential is needed to prove application behavior locally. Initial setup does not
 recommend production provisioning merely because it finds a deployment manifest. At a later authorized
@@ -189,9 +196,13 @@ PM must post the human request there and read the reply; a locally saved cron re
 Live test messages require owner authorization. Record genuine source-coverage gaps instead of claiming
 that a connected bot sees every thread. Consult native cron status, doctor, runs and incidents.
 
-Run the first PM scrum with the brief, research and setup evidence available. PM reconciles the generic
+At handoff, land the constitution, setup notes and their accessible source references. The PM skill reads
+these during discovery; it does not depend on the setup agent's chat being visible in Hermes. PM resolves material unconfirmed
+direction through the agreed human contact path and distills accepted planning into the roadmap, leaving
+source pointers in setup notes rather than maintaining a second plan there. PM reconciles the generic
 starter intention into a sourced initial roadmap and queues only ready work. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
 landing and subsequent PM reconciliation before claiming the development loop works. The actual first
-release still needs candidate-specific human review; later production provisioning is not an initial
-development-setup blocker.
+release still needs candidate-specific human review. Local applications and packages follow the artifact
+procedure in `.open-autonomy/PRODUCTION.md`; a missing live-service address does not prevent their release
+planning. Later production provisioning is not an initial development-setup blocker.

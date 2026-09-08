@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 4.8.0
+version: 4.8.1
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -53,7 +53,10 @@ claim a data edit changed Discord permissions or GitHub protection. Release appr
 1. Run `bun .open-autonomy/scrum.ts prepare`. It fetches main, creates/resumes an isolated planning
    worktree, pins an input snapshot and lists the board, changed main history, native Hermes session
    references and pending internal notes. Edit only in that worktree; never switch or clean a worker's
-   checkout. Read roadmap, changelog, constitution and contributing rules. A pending planning branch must
+   checkout. Read roadmap, changelog, constitution and contributing rules. When present, read the committed
+   `.open-autonomy/setup.json` notes for the initial brief's sources, operating choices and unresolved questions;
+   setup may have happened outside Hermes. A summary or completion marker proves neither human approval nor
+   current access. Reconcile material intentions into the roadmap without creating a second plan. A pending planning branch must
    land or be resolved before retiring this batch. On resume, keep its original snapshot and checkpoints.
 2. Read the actual commits/diffs in `mainChanges`, regardless of author or PR/handoff presence. The first
    scrum has no baseline: reconcile historical intentions and existing changelog against available main
