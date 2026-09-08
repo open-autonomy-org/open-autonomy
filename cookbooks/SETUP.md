@@ -55,6 +55,10 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    contains no credential. Reject cross-origin entry and an existing destination. For GitHub, prepare
    the manifest with the browser agent and use the receiver's callback; creation and installation are
    separate steps, and a rerun must reuse the saved app. Report missing twin endpoints explicitly.
+10. With Discord selected, provide an explicitly agreed existing channel and a synthetic token in the
+    protected credential directory. Verify that setup uses that channel, preserves native participation
+    settings and per-job delivery, and refuses a missing or inaccessible destination. Declining Discord
+    must also preserve previously authored cron delivery rather than deleting it.
 
 Use the existing world scenarios for real Git landing, PM source reconciliation, native review, and
 human outreach through the chosen skill. A setup plan proves choice handling, not installed credentials,
@@ -113,3 +117,9 @@ the setup agent remains responsible for verifying effective human authority and 
 The world then exercised staged-work refusal and a pending landing. After the failed hook was repaired,
 the world's normal landing workflow merged the owner-rules branch; setup then succeeded. An existing
 requirement to resolve review threads remained enabled across the rerun.
+
+The Discord replay then used the synthetic bot and an explicitly selected existing channel. A missing
+destination stopped setup; the selected destination and a subsequent saved-destination rerun succeeded.
+An inaccessible replacement channel was refused while the prior destination remained intact. Native
+allowed-user and free-response settings and an explicitly local PM report stayed unchanged, including
+when Discord setup was declined. No channel creation or provider-branding mutation was needed.

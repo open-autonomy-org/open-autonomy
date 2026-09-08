@@ -17,6 +17,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
+import { parseEnv } from 'node:util';
 import { join, resolve } from 'node:path';
 import { readBranding } from './branding.ts';
 
@@ -269,58 +270,35 @@ function stepGitHubApp(s: Situation, opts: Opts, st: SetupState): void {
 }
 
 async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<void> {
-  if (done(st, 'discord')) return;
-  const file = join(opts.secrets, 'channels.env');
-  say(`\nDiscord: no API creates a bot, so the portal opens; you make the application, turn on the three privileged intents under Bot, reset the token and paste it here. The bot is then invited to your server and makes its own #${s.project} channel.`);
   if (opts.plan) return;
+  const file = join(opts.secrets, 'channels.env');
+  const prior = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const saved = parseEnv(prior) as Record<string, string>;
+  const channel = process.env.DISCORD_HOME_CHANNEL ?? saved.DISCORD_HOME_CHANNEL;
+  if (!channel || !/^\d+$/.test(channel)) throw new Error('The setup agent must select the agreed Discord destination first, using DISCORD_HOME_CHANNEL. No server or channel was chosen automatically.');
+  const tokenFile = join(opts.secrets, 'discord.token');
+  const token = process.env.DISCORD_BOT_TOKEN ?? (existsSync(tokenFile) ? readFileSync(tokenFile, 'utf8').trim() : saved.DISCORD_BOT_TOKEN);
+  if (!token) throw new Error('Receive the project Discord token into discord.token in the protected credential directory, then rerun setup. Follow .open-autonomy/SETUP.md; do not paste the token into chat.');
+  const read = async (path: string): Promise<any> => {
+    let response: Response;
+    try { response = await fetch(`https://discord.com/api/v10/${path}`, { signal: AbortSignal.timeout(30_000), headers: { Authorization: `Bot ${token}` } }); }
+    catch { throw new Error('Cannot reach Discord with the saved credential; resolve the connection before rerunning setup.'); }
+    if (!response.ok) throw new Error(`Discord ${path} returned ${response.status}; verify the project app and agreed destination before rerunning setup.`);
+    return response.json();
+  };
+  const me = await read('oauth2/applications/@me');
   const brand = readBranding(s.dir);
-  say(`  Project identity: ${brand.name} — ${brand.description}. Icon: ${brand.icon}. Apply it to both the Discord application and bot profile; preserve their IDs on reruns.`);
-  let token = process.env.DISCORD_BOT_TOKEN ?? '';
-  if (!token) {
-    openUrl('https://discord.com/developers/applications', `Reuse this project's application if present; otherwise New Application (name it ${brand.name}; the captcha is yours) → Bot → enable Presence, Server Members and Message Content intents → Reset Token → copy it`);
-    token = secretPrompt('Discord bot token');
-  }
-  const me = run(['curl', '-s', '-H', `Authorization: Bot ${token}`, 'https://discord.com/api/v10/oauth2/applications/@me']).out;
-  const appId = /"id":\s*"(\d+)"/.exec(me)?.[1];
-  if (!appId) throw new Error('Discord did not accept that token; run setup again to retry');
-  say(`  setup agent: verify application ${appId} belongs to this project. In https://discord.com/developers/applications/${appId}/information use ${brand.name}, the shared blurb and ${brand.icon}; under Bot use the same name and avatar. Do not replace the application to change its branding.`);
-  if (JSON.parse(me).name !== brand.name) throw new Error(`Discord application ${appId} has a different name. Verify that it belongs to this project, then set its name to ${brand.name} in the developer portal and rerun setup. Preserve the application ID.`);
-  const icon = `data:image/png;base64,${readFileSync(brand.icon).toString('base64')}`;
-  for (const [path, body] of [['applications/@me', { description: brand.description, icon }], ['users/@me', { username: brand.name, avatar: icon }]] as const) {
-    const result = await fetch(`https://discord.com/api/v10/${path}`, { method: 'PATCH', headers: { Authorization: `Bot ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    if (!result.ok) throw new Error(`Discord ${path} branding update returned ${result.status}; preserve this application and retry the unfinished setup step.`);
-  }
-  openUrl(`https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot&permissions=68624`, 'pick your server and Authorize (view, send, read history, manage channels — the last only so it can make its own channel)');
-  let guild: string | undefined;
-  const t0 = Date.now();
-  while (!guild && Date.now() - t0 < 5 * 60_000) {
-    const g = run(['curl', '-s', '-H', `Authorization: Bot ${token}`, 'https://discord.com/api/v10/users/@me/guilds']).out;
-    guild = /"id":\s*"(\d+)"/.exec(g)?.[1];
-    if (!guild) Bun.sleepSync(3000);
-  }
-  if (!guild) throw new Error('the bot joined no server in five minutes; run setup again after inviting it');
-  const channels = JSON.parse(run(['curl', '-s', '-H', `Authorization: Bot ${token}`, `https://discord.com/api/v10/guilds/${guild}/channels`]).out || '[]') as Array<{ id: string; name: string; type: number }>;
-  let channel = channels.find((c) => c.type === 0 && c.name === s.project)?.id;
-  if (!channel) {
-    const made = run(['curl', '-s', '-X', 'POST', '-H', `Authorization: Bot ${token}`, '-H', 'content-type: application/json', '-d', JSON.stringify({ name: s.project, type: 0, topic: brand.description }), `https://discord.com/api/v10/guilds/${guild}/channels`]).out;
-    channel = /"id":\s*"(\d+)"/.exec(made)?.[1];
-  }
-  if (!channel) throw new Error('could not find or make the channel; give the bot Manage Channels or make #' + s.project + ' yourself, then run setup again');
+  if (me.name !== brand.name || typeof me.id !== 'string' || !/^\d+$/.test(me.id)) throw new Error('Discord application identity does not match the project branding. The setup agent must verify the existing application and reconcile its branding in the browser.');
+  const destination = await read(`channels/${channel}`);
+  if (destination.id !== channel || !destination.guild_id) throw new Error('The chosen Discord destination is not an accessible server channel. Verify the agreed public destination; direct messages are not a fleet workspace.');
   mkdirSync(opts.secrets, { recursive: true, mode: 0o700 });
-  // The guild's @everyone role permits public participation without a user-wide DM grant.
-  writeFileSync(file, `DISCORD_BOT_TOKEN=${token}\nDISCORD_HOME_CHANNEL=${channel}\nDISCORD_ALLOWED_CHANNELS=${channel}\nDISCORD_FREE_RESPONSE_CHANNELS=${channel}\nDISCORD_ALLOWED_USERS=\nDISCORD_ALLOWED_ROLES=${guild}\n`, { mode: 0o600 });
-  say('  setup agent: remove the bot\'s temporary Manage Channels permission after arranging the public channels; verify confidential human spaces remain inaccessible.');
-  setDeliver(s.dir, true);
-  mark(s.dir, st, 'discord', `#${s.project} (${channel}) → ${file}`);
-}
-
-// The schedule's reports go to the channel only when there is one; without it the template promises nothing.
-function setDeliver(dir: string, discord: boolean): void {
-  const p = join(dir, 'hermes', 'cron', 'jobs.seed.json');
-  if (!existsSync(p)) return;
-  const doc = JSON.parse(readFileSync(p, 'utf8')) as { jobs: Array<Record<string, unknown>> };
-  for (const j of doc.jobs) { if (discord) j.deliver = 'discord'; else delete j.deliver; }
-  writeFileSync(p, `${JSON.stringify(doc, null, 2)}\n`);
+  // Only connection values change. Participation, tool access and report delivery belong to native
+  // Hermes configuration and the project communication skill, not this credential verification step.
+  const kept = prior.split('\n').filter((line) => !/^\s*(?:export\s+)?DISCORD_(BOT_TOKEN|HOME_CHANNEL)\s*=/.test(line) && line.trim());
+  writeFileSync(file, `${[...kept, `DISCORD_BOT_TOKEN=${JSON.stringify(token)}`, `DISCORD_HOME_CHANNEL=${channel}`].join('\n')}\n`, { mode: 0o600 });
+  chmodSync(file, 0o600);
+  mark(s.dir, st, 'discord', `app ${me.id}, guild ${destination.guild_id}, channel ${channel}; native permissions and delivery require setup-agent verification`);
+  say(`  Discord app ${me.id} can reach channel ${channel}. The setup agent verifies the agreed public access, branding and per-job delivery through the project communication skill.`);
 }
 
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
@@ -446,7 +424,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   stepOwnerRules(s, opts, st);
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(s, opts, st);
-  if (st.doors.discord === 'yes') await stepDiscord(s, opts, st); else if (st.doors.discord === 'no') setDeliver(dir, false);
+  if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   printStart(s, opts);
