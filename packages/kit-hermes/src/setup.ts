@@ -99,8 +99,11 @@ export function readSituation(dir: string): Situation {
     : pkg.name && pkg.private !== true && (pkg.publishConfig || pkg.main || pkg.exports || pkg.bin) ? 'npm'
     : existsSync(join(dir, 'Dockerfile')) ? 'container' : 'none';
   const login = run(['gh', 'api', 'user', '--jq', '.login']).out || null;
-  const ownerType = owner ? run(['gh', 'api', `users/${owner}`, '--jq', '.type']).out : '';
-  const ownerIsOrg = ownerType ? ownerType === 'Organization' : null;
+  const organization = owner ? run(['gh', 'api', `orgs/${owner}`, '--jq', '.type']) : null;
+  const personal = organization && !organization.ok && /HTTP 404/.test(organization.err)
+    ? run(['gh', 'api', `users/${owner}`, '--jq', '.type']) : null;
+  const ownerIsOrg = organization?.ok && organization.out === 'Organization' ? true
+    : personal?.ok && personal.out === 'User' ? false : null;
   let sponsorsListing = false;
   if (owner) { try { const r = spawnSync('curl', ['-sL', '--max-time', '8', `https://github.com/sponsors/${owner}`], { encoding: 'utf8' }); sponsorsListing = /Select a tier/.test(r.stdout ?? ''); } catch { /* offline: no recommendation */ } }
   return {
@@ -399,6 +402,9 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const s = readSituation(dir);
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
   checkGitTarget(s);
+  if (!opts.plan && s.ownerIsOrg !== true) throw new Error(s.ownerIsOrg === false
+    ? 'Open Autonomy project setup requires a GitHub organization-owned repository. Agree an organization with the owner and reconcile the intended repository before provisioning; no repository transfer or credential changes were made.'
+    : 'Cannot verify the GitHub organization. Resolve GitHub sign-in, lookup access or the organization name before provisioning; no repository or credential changes were made.');
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
   const credentialDir = checkCredentialDirectory(opts.secrets);
   for (const name of ['agent.env', 'treasurer.env', 'deploy_key', 'deploy_key.pub', 'github-app.json', 'codex.json', 'channels.env', 'discord.token']) {
@@ -418,6 +424,9 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   }
   say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
   say(`${s.project} (${s.account}) — the situation:`);
+  say(s.ownerIsOrg === true
+    ? `  organization: ${s.owner}. Discover its existing project setup and communication space before choosing new connections; use a project-branded bot and project channels in an agreed shared server/workspace.`
+    : '  organization: unresolved. Setup requires a verified GitHub organization; personal repositories need an owner-agreed organization target before provisioning.');
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
   say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and run the project check before activation. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
