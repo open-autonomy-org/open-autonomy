@@ -2,10 +2,10 @@
 // handoff, and no secret in receipts or error messages. No live provider credential is used.
 import { afterEach, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { receiveCredential } from '../src/credentials.ts';
+import { checkCredentialDirectory, receiveCredential } from '../src/credentials.ts';
 const roots: string[] = [];
 const receivers: ReturnType<typeof receiveCredential>[] = [];
 const root = () => { const dir = mkdtempSync(join(tmpdir(), 'oa-credential-test-')); roots.push(dir); return dir; };
@@ -48,6 +48,18 @@ test('repository destinations and symlinks to them are refused before writing', 
   const alias = join(dir, 'alias'); symlinkSync(repo, alias);
   for (const at of [repo, alias]) expect(() => receiveCredential(join(at, 'new-directory', 'token'))).toThrow('inside a repository');
   expect(existsSync(join(repo, 'new-directory'))).toBe(false);
+});
+
+test('credential directory validation permits existing storage but rejects Git metadata and bare repositories', () => {
+  const dir = root(); const protectedDir = join(dir, 'protected'); mkdirSync(protectedDir);
+  const alias = join(dir, 'alias'); symlinkSync(protectedDir, alias);
+  expect(checkCredentialDirectory(protectedDir)).toBe(realpathSync(protectedDir));
+  expect(checkCredentialDirectory(join(alias, 'new'))).toBe(join(realpathSync(protectedDir), 'new'));
+  const repo = join(dir, 'repo'); const bare = join(dir, 'bare');
+  expect(spawnSync('git', ['init', '-q', repo]).status).toBe(0);
+  expect(spawnSync('git', ['init', '-q', '--bare', bare]).status).toBe(0);
+  for (const at of [repo, join(repo, '.git'), bare]) expect(() => checkCredentialDirectory(join(at, 'credentials'))).toThrow('inside a repository');
+  expect(() => checkCredentialDirectory('relative')).toThrow('absolute path');
 });
 
 test('GitHub handoff rejects callbacks without the receiver state before exchanging any code', async () => {

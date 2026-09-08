@@ -15,7 +15,8 @@
     "./client": "./src/client.ts",
     "./drivers": "./src/drivers.ts",
     "./rails": "./src/rails.ts",
-    "./team": "./src/team.ts"
+    "./team": "./src/team.ts",
+    "./credentials": "./src/credentials.ts"
   },
   "files": [
     "src",

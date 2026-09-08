@@ -45,6 +45,9 @@ after ten minutes. If the browser is on another machine, the operator must estab
 tunnel to that loopback port. Do not expose the receiver publicly. A token only displayed by a provider
 requires direct human entry; browser-to-secret-store transfer is not implemented.
 
+Secret-producing host tools can share `checkCredentialDirectory` from `@open-autonomy/sdk/credentials`.
+It validates an absolute directory outside Git and returns its resolved path without creating it.
+
 The Hermes kit also vendors the same command as `.open-autonomy/sdk/credentials.ts`; invoke it with Bun
 when using a checkout's bundled tools. The credential destination remains outside the checkout.
 

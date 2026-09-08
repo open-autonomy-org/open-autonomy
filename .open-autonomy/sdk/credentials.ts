@@ -4,16 +4,24 @@
 import { spawnSync } from 'node:child_process';
 import { createPrivateKey, randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 
-function credentialPath(out: string): void {
-  if (!isAbsolute(out)) throw new Error('Credential destination must be an absolute path outside a repository.');
-  let parent = dirname(out);
+// Shared by secret producers. Resolve existing symlink ancestors before checking the Git boundary;
+// return the canonical directory so setup can also exclude a project not yet initialized with Git.
+export function checkCredentialDirectory(directory: string): string {
+  if (!isAbsolute(directory)) throw new Error('Credential destination must be an absolute path outside a repository.');
+  let parent = directory;
   while (!existsSync(parent)) parent = dirname(parent);
   const git = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: realpathSync(parent), encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
   if (git.error) throw new Error('Git must be available to verify that the credential destination is outside a repository.');
   if (git.status === 0) throw new Error('Credentials cannot be saved inside a repository. Choose the runtime host’s protected credential directory.');
   if (!git.stderr.includes('not a git repository')) throw new Error('Cannot verify the credential destination’s Git boundary. Resolve the Git error before receiving a secret.');
+  return join(realpathSync(parent), relative(parent, directory));
+}
+
+function credentialPath(out: string): void {
+  if (!isAbsolute(out)) throw new Error('Credential destination must be an absolute path outside a repository.');
+  checkCredentialDirectory(dirname(out));
   try { lstatSync(out); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw new Error('Cannot inspect the credential destination.'); }
   throw new Error('Credential destination already exists; no credential was replaced.');

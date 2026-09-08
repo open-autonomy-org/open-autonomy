@@ -59,6 +59,8 @@ directory so the scenario does not depend on the setup operator's real GitHub ac
    A saved file or structural health response is not proof of access. Report missing twin endpoints explicitly.
    Also exercise setup without --secrets in a uniquely named disposable project, then with an explicit
    protected directory. Verify owner-only key creation at the intended path and key reuse after interruption.
+   Reject a directory inside the project before Git initialization, a symlink into it, and a directory
+   in another checkout. Saved completion markers must not bypass this check or allow state writes.
 10. With Discord selected, provide an explicitly agreed existing channel and a synthetic token in the
     protected credential directory. Verify that setup uses that channel, preserves native participation
     settings and per-job delivery, and refuses a missing or inaccessible destination. Declining Discord
@@ -122,6 +124,12 @@ directory and preserved it on resume; an explicit destination was also respected
 certificate error interrupted registration, so the generated public key was registered through the twin's
 GitHub API. The resumed CLI then completed that step and stopped at the intentionally absent GitHub App
 credential. Platform minting was skipped in this fixture; this was not a complete setup rehearsal.
+
+A subsequent directory-boundary replay found that setup accepted --secrets inside a new project or
+another checkout, although the standalone receiver already refused Git destinations. Setup now shares
+the receiver's directory check and also excludes the project before Git initialization. The world
+replay refused those destinations, including a symlink alias, before state or credential writes;
+an external destination still passed the plan. Existing setup markers cannot bypass this check.
 
 A further replay put a rejecting commit hook in a disposable checkout. Owner-rule setup still reported
 prepared and wrote its completion marker despite that failed commit. The corrected flow stops at failed
