@@ -153,7 +153,11 @@ Public reads, no key:
 Keys, the adopter way: `GET /v1/keys/challenge?account=owner/repo` names a claim to commit to
 `.open-autonomy-claim` on the default branch; `POST /v1/keys/mint {account, models?}` mints once the file
 is at HEAD; `POST /v1/keys/rotate` with the current key mints a successor and leaves the old one a day of
-grace. A key is verified by its signature and expiry alone, so it survives every redeploy; the platform's
+grace, capped by its existing expiry. Rotation works with all three independent credential slots occupied.
+Each slot permits one retiring predecessor: another rotation using that old key returns
+`key_already_rotated` (409), and rotating its successor before the predecessor expires or is revoked
+returns `rotation_grace_pending` (409). Normal minting still refuses a fourth independent credential.
+A key is verified by its signature and expiry alone, so it survives every redeploy; the platform's
 registry can only revoke it or shorten it.
 
 ## The valve

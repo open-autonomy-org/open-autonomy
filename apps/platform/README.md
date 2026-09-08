@@ -65,7 +65,12 @@ names to `.open-autonomy-claim`; `POST /v1/keys/mint` reads it back and mints. T
 `base64url(claims).hmac` with `{kid, account, models, iat, exp}`; verification is the signature and the
 expiry, so a key survives every redeploy and even a lost registry. The registry on the books lists keys,
 revokes them (`POST /admin/keys/:kid/revoke`) and holds a rotated key's one-day grace; an entry can only
-shorten a key's life. Three active keys per account. **Rotating `AGENT_PROXY_HMAC_SECRET` is the one
+shorten a key's life. Three independent credential slots per account. Rotation atomically replaces a
+slot and permits one predecessor during its grace period, without consuming a fourth slot. The old
+key cannot rotate again; its successor can rotate after the predecessor expires or is revoked.
+Revoking a successor does not free a slot while its predecessor remains usable. A legacy signed key
+missing from the registry can rotate only when a slot is available; its grace is then registered too.
+**Rotating `AGENT_PROXY_HMAC_SECRET` is the one
 thing that invalidates every key at once.**
 
 ## The development stream
