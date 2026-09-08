@@ -371,7 +371,7 @@ jobs:
 
 // ── The walk ─────────────────────────────────────────────────────────────────────────────────────────────────────
 export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
-  const opts: Opts = { plan: false, yes: false, with: [], without: [], secrets: join(homedir(), '.config', 'open-autonomy'), bare: false, ...raw };
+  const opts: Opts = { plan: false, yes: false, with: [], without: [], bare: false, ...raw, secrets: raw.secrets ?? join(homedir(), '.config', 'open-autonomy') };
   const doors: Door[] = ['production', 'release', 'github-app', 'discord', 'subscription', 'sponsors'];
   for (const door of [...opts.with, ...opts.without]) {
     if (!doors.includes(door)) throw new Error(`Unknown setup connection: ${door}. Supported: ${doors.join(', ')}`);
