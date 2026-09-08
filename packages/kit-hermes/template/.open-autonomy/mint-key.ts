@@ -4,7 +4,7 @@
 // is the ability to push, which the maintainer running it already has. The key spends the project's balance
 // and nothing else, and stops at zero.
 //
-//   bun .open-autonomy/mint-key.ts [--models a,b] [--scopes spend,narrate,pay] [--out <file>]   # commit the claim, mint
+//   bun .open-autonomy/mint-key.ts [--models a,b] [--scopes spend,narrate,pay] [--out <file>]   # mint, or prepare a claim to land
 //   bun .open-autonomy/mint-key.ts --rotate [--grace <seconds>]            # with the current key; no commit
 //
 // The key is written to ~/.config/open-autonomy/agent.env (the file the key valve reads; created if
@@ -33,7 +33,6 @@ if (!process.argv.includes('--rotate') && (!Array.isArray(models) || !models.len
 const scopes = arg('--scopes')?.split(',').map((x) => x.trim()).filter(Boolean);
 const dir = join(homedir(), '.config', 'open-autonomy');
 const envPath = resolve(arg('--out') ?? join(dir, 'agent.env'));
-const git = (...args: string[]) => { const r = spawnSync('git', args, { stdio: ['ignore', 'pipe', 'inherit'] }); if (r.status !== 0) { console.error(`git ${args.join(' ')} failed`); process.exit(1); } return r.stdout.toString().trim(); };
 if (!account) { console.error('no account: set it in .open-autonomy/config.yaml or pass --account owner/repo'); process.exit(2); }
 
 // Prepare the actual destination before asking the platform to issue or rotate a key.
@@ -42,7 +41,7 @@ try {
   checkCredentialDirectory(dirname(envPath));
   let existing;
   try { existing = lstatSync(envPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error('Choose a regular credential file, not a symlink or directory.');
+  if (existing && (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1)) throw new Error('Choose a regular credential file, not a symlink, hard link or directory.');
   mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
   if (existing) chmodSync(envPath, 0o600);
 } catch (error) { console.error(`credential destination: ${(error as Error).message}`); process.exit(2); }
@@ -54,12 +53,25 @@ if (process.argv.includes('--rotate')) {
   const grace = arg('--grace');
   minted = await keyRotate(base, current, grace === undefined ? {} : { graceSeconds: Number(grace) });
 } else {
-  const challenge = await keyChallenge(base, account);
-  if (!challenge.ok) { console.error(`challenge failed: ${JSON.stringify(challenge)}`); process.exit(1); }
-  writeFileSync(challenge.file, `${challenge.claim}\n`);
-  git('add', challenge.file);
-  if (git('status', '--porcelain', '--', challenge.file)) { git('commit', '-q', '-m', `claim: ${account} key`, '--', challenge.file); git('push', '-q'); }
+  // A valid claim already on the default branch needs no local commit, including on a stale checkout.
   minted = await keyMint(base, account, models as string[], scopes);
+  const code = (minted as { error?: { code?: string } }).error?.code;
+  if (code === 'claim_file_missing' || code === 'claim_mismatch') {
+    const challenge = await keyChallenge(base, account);
+    if (!challenge.ok || challenge.file !== '.open-autonomy-claim') { console.error('Could not obtain the expected repository claim from the platform.'); process.exit(1); }
+    const project = resolve(import.meta.dir, '..');
+    const path = resolve(project, challenge.file);
+    let existing;
+    try { existing = lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (existing && (!existing.isFile() || existing.isSymbolicLink())) { console.error('The claim must be a regular file, not a symlink or directory.'); process.exit(1); }
+    if (!existing || readFileSync(path, 'utf8').trim() !== challenge.claim) {
+      const status = spawnSync('git', ['status', '--porcelain', '--', challenge.file], { cwd: project, encoding: 'utf8' });
+      if (status.status !== 0 || status.stdout.trim()) { console.error('Reconcile the existing claim changes in the project checkout before preparing a new claim.'); process.exit(1); }
+      writeFileSync(path, `${challenge.claim}\n`);
+    }
+    console.error(`Claim prepared at ${path}. Land it on ${account}'s default branch through the normal Git/PR process, then rerun this command. Reuse any pending claim PR; no commit, push or credential issuance was performed.`);
+    process.exit(1);
+  }
 }
 if (!minted.ok || !minted.token) { console.error(`mint failed: ${JSON.stringify(minted)}`); process.exit(1); }
 const keep = existsSync(envPath) ? readFileSync(envPath, 'utf8').split('\n').filter((l) => !/^(OPEN_AUTONOMY_KEY|OPEN_AUTONOMY_BASE_URL)=/.test(l) && l.trim()) : [];
