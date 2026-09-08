@@ -4,7 +4,7 @@ Sourced planning memory maintained by the Hermes PM scrum. Completed work belong
 
 ## release-next: Publish the onboarding-ready autonomy operating model
 
-Status: the 2.8.2 proposal is withdrawn after its unchanged lockfile began failing the required supply-chain scan; replacement hardening is in progress.
+Status: the 2.8.2 proposal is withdrawn after its unchanged lockfile began failing the required supply-chain scan; replacement hardening is blocked on a patched Cloudflare dependency release.
 Dispatch: hold
 Release decision: prepare
 Target version: deploy-v2026.09.10.1; create-open-autonomy 2.8.3; @open-autonomy/sdk 2.4.2
@@ -13,8 +13,8 @@ Review by: 2026-09-10 12:00 EDT
 Candidate: pending
 Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; the repository-owned team roster and Team editor, shared integration branding and installed project GitHub App; reproducible fresh-project bootstrap, container-compatible runtime slugs, explicit model/funding choice and protected-branch-safe owner-policy/key setup; the installed local Codex runtime path; and the SDK subscription-stream and local-runtime repairs. Giving-secret activation, real-money activation and the seven-day observation are excluded.
 Readiness: pending
-Readiness evidence: the previously reviewed feature handoffs and onboarding evidence remain applicable, and `hermes:task/t_71c39b4b` established the superseded 2.8.2/2.4.1 artifact baseline. [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506) replaced setup's copied Codex OAuth credential with the installed native runtime, but its signed-in-home activation timed out and its Security check failed because the unchanged lockfile now audits one high-severity `sharp` advisory, `GHSA-rgj7-g3m4-5g8c`. A replacement candidate needs a green supply-chain scan, coherent package versions and renewed artifact/runtime verification.
-Rationale: do not ask a maintainer to approve an artifact whose dependency lock now fails the repository's required security gate, or publish 2.8.2 after its setup behavior was materially replaced on main. The September 10 window leaves one bounded fleet cycle for remediation and fresh review evidence; it remains a forecast, not a shipping trigger.
+Readiness evidence: the previously reviewed feature handoffs and onboarding evidence remain applicable, and `hermes:task/t_71c39b4b` established the superseded 2.8.2/2.4.1 artifact baseline. [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506) replaced setup's copied Codex OAuth credential with the installed native runtime, but its signed-in-home activation timed out and its Security check failed because the unchanged lockfile now audits one high-severity `sharp` advisory, `GHSA-rgj7-g3m4-5g8c`. `hermes:task/t_85106ace` confirmed that current `wrangler@4.130.0` resolves `miniflare@5.20260908.0-alpha`, which still pins vulnerable `sharp@0.35.2`; no currently published owning dependency can supply the required `sharp >=0.35.4`. A replacement candidate needs that upstream release, a green supply-chain scan, coherent package versions and renewed artifact/runtime verification.
+Rationale: do not ask a maintainer to approve an artifact whose dependency lock now fails the repository's required security gate, or publish 2.8.2 after its setup behavior was materially replaced on main. The September 10 window remains a forecast, not a shipping trigger, and is at risk until Cloudflare publishes the patched dependency chain with enough time for remediation and fresh review.
 Version rationale: service tags use dated `deploy-v*` identifiers, so the replacement forecast moves to the next unused September 10 sequence. The unpublished kit and SDK each need a patch increment because PR #506 changed both the setup artifact and the SDK's exported runtime support after the reviewed 2.8.2/2.4.1 candidate. Registry publication, tags and manifest bumps remain evidence inputs, not authority to ship.
 
 Readiness criteria and release gates:
@@ -34,10 +34,10 @@ Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/
 
 ## release-hardening: Prepare the replacement onboarding artifacts
 
-Status: ready for bounded fleet remediation and candidate verification.
-Dispatch: fleet
+Status: blocked upstream until a published Wrangler/Miniflare dependency chain uses `sharp >=0.35.4`; recheck before releasing the existing fleet task.
+Dispatch: hold
 
-Source: [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), its failed [Security run](https://github.com/open-autonomy-org/open-autonomy/actions/runs/34285712444), `GHSA-rgj7-g3m4-5g8c`, and the superseded artifact review `hermes:task/t_71c39b4b`.
+Source: [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), its failed [Security run](https://github.com/open-autonomy-org/open-autonomy/actions/runs/34285712444), `GHSA-rgj7-g3m4-5g8c`, the superseded artifact review `hermes:task/t_71c39b4b`, and the upstream dependency finding in `hermes:task/t_85106ace`.
 
 Completion:
 - Update the transitive `sharp` dependency through its owning package so `bun scripts/check-supply-chain.ts` is green without weakening or editing the protected security workflow.
