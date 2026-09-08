@@ -63,6 +63,9 @@ administration and authorization. Complete authorized actions yourself; involve 
 human-only step such as a passkey, CAPTCHA, new account or unavailable secret. Do not hand over a list
 of portals and stop. Do not extract browser cookies or session tokens. Provider credentials belong in
 the setup helper's protected destination or secure prompt, never chat, screenshots or committed files.
+The setup CLI checks its credential directory before writing setup state, including on reruns. It must
+be outside every Git repository and outside the new project's directory even before Git initialization;
+symlink aliases do not bypass this boundary. An ignored directory inside the project is not suitable.
 
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|

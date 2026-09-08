@@ -18,7 +18,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
 import { readBranding } from './branding.ts';
 
 export type Door = 'production' | 'release' | 'github-app' | 'discord' | 'subscription' | 'sponsors';
@@ -381,6 +382,9 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (!s.account) throw new Error(`${dir} is not a kit project (.open-autonomy/config.yaml names no account); run create or adopt first`);
   checkGitTarget(s);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
+  const credentialDir = checkCredentialDirectory(opts.secrets);
+  const withinProject = relative(realpathSync(s.dir), credentialDir);
+  if (!withinProject || (!isAbsolute(withinProject) && withinProject !== '..' && !withinProject.startsWith(`..${sep}`))) throw new Error('Credentials cannot be saved inside the project, including before Git initialization. Choose protected storage outside the project.');
   const st = loadState(dir);
   say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
   say(`${s.project} (${s.account}) — the situation:`);
