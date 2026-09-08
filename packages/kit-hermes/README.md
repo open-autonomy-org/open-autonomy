@@ -47,7 +47,7 @@ are working applications of it. Start a fresh repository with `create`, or prese
 with `adopt`. The generated [setup guide](template/.open-autonomy/SETUP.md) is the setup agent's
 procedure and is kept current by kit upgrades, including in this repository and every cookbook.
 
-Setup fills the product constitution from owner direction, preserves the brief/research as PM sources,
+Setup fills the product constitution from owner direction, keeps sources beside the established decisions,
 and settles a few choices using the kit's operating defaults. It then completes real development
 connections, using the setup agent's browser skill and existing provider sessions where authorization
 is required. Provider credentials go through secure setup handoffs; the owner is involved at actual
@@ -56,7 +56,8 @@ human-only steps, not handed a list of configuration chores.
 GitHub registration and installation stay with that browser agent. The SDK's standalone
 `open-autonomy-credentials` command receives the secret handoff into protected host storage; it does
 not need a repository or generate provider configuration. The kit bundles the same receiver under
-`.open-autonomy/sdk/credentials.ts`. The browser agent completes installation and verifies access through the running valve.
+`.open-autonomy/sdk/credentials.ts`. The browser agent completes installation and verifies access through
+the standalone valve before Hermes starts. The normal stack is started only after setup is complete.
 Follow the setup guide for the manifest permissions and the exact handoff.
 
 `create-open-autonomy setup <dir> --plan` inspects the development connections. The agent uses the
