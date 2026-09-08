@@ -154,3 +154,7 @@ proposed version under project policy, and allow time for human review. A merge 
 not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
 later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
 See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
+
+The local Codex setup choice runs the installed CLI through Hermes’s native app-server transport on
+the operator’s computer. It does not copy a subscription login into the fleet or provision remote hosting.
+Follow the generated `.open-autonomy/SETUP.md` for model selection, native tool setup and activation checks.

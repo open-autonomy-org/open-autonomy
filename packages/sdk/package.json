@@ -16,7 +16,8 @@
     "./drivers": "./src/drivers.ts",
     "./rails": "./src/rails.ts",
     "./team": "./src/team.ts",
-    "./credentials": "./src/credentials.ts"
+    "./credentials": "./src/credentials.ts",
+    "./local-codex": "./src/local-codex.ts"
   },
   "files": [
     "src",

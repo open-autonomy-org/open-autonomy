@@ -20,6 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
+import { localCodexLogin, checkLocalCodexProfiles } from '@open-autonomy/sdk/local-codex';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -109,7 +110,7 @@ export function readSituation(dir: string): Situation {
   return {
     dir, project, account, owner, repo, ownerIsOrg, login, deploy, sponsorsListing,
     discordToken: Boolean(process.env.DISCORD_BOT_TOKEN),
-    codex: existsSync(join(homedir(), '.codex', 'auth.json')),
+    codex: localCodexLogin(),
     docker: run(['docker', 'compose', 'version']).ok,
   };
 }
@@ -126,9 +127,9 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push({ door: 'subscription', suggested: 'no', reason: s.codex
-    ? 'a local Codex login was found: offer its verified subscription alongside the available Open Autonomy models and ask which to use'
-    : 'no local Codex login was found: offer the available Open Autonomy models and explain the project funding required',
-    cost: 'an explicitly selected subscription uses its operator’s allowance; otherwise model calls use the project balance' });
+    ? 'the installed local Codex reports a ChatGPT login: offer this computer’s Codex runtime alongside Open Autonomy models; verify model access separately'
+    : 'local Codex is unavailable or has no verified ChatGPT login: offer Open Autonomy models or guided local Codex sign-in',
+    cost: 'local Codex uses this computer and its operator’s allowance; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
@@ -321,28 +322,18 @@ async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<vo
 }
 
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'subscription')) return;
-  const src = join(homedir(), '.codex', 'auth.json'); const dst = join(opts.secrets, 'codex.json');
-  say(`\nSubscription: the Codex login is copied once to ${dst}; the valve serves it on its third port and refreshes it, the home's .env names it, and hermes/config.yaml points the model at it as a named custom provider. The page labels those sessions as the owner's subscription, outside the project's funds.`);
-  if (opts.plan) return;
-  if (!existsSync(dst)) { mkdirSync(opts.secrets, { recursive: true, mode: 0o700 }); writeFileSync(dst, readFileSync(src), { mode: 0o600 }); }
-  const cfg = join(s.dir, 'hermes', 'config.yaml');
-  let text = readFileSync(cfg, 'utf8');
-  if (!/codex-valve/.test(text)) {
-    text = text.replace(/^model:\n(?:  .*\n)+/m, `model:\n  default: gpt-5.6-sol\n  provider: codex-valve\n\ncustom_providers:\n  - name: codex-valve\n    base_url: \${HERMES_CODEX_BASE_URL}\n    api_key: valve\n    api_mode: codex_responses\n\n`);
-    writeFileSync(cfg, text);
-    say('  hermes/config.yaml now names the subscription; commit it with the rest.');
-  }
-  mark(s.dir, st, 'subscription', dst);
+  // Verified before any provisioning, including on reruns. No auth-file copying,
+  // no OAuth refresh implementation, and no hosted substitute for this computer.
+  mark(s.dir, st, 'subscription', 'local Codex CLI via Hermes codex_app_server; authentication stays with Codex on this computer');
 }
 
-function printStart(s: Situation, opts: Opts): void {
+function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
   // Identity and delegation are established by the setup agent in the project-owned skill. Do not race
   // that work by starting the fleet here, or mark a printed command as a completed activation.
   say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
-  say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
-  if (opts.bare) {
-    say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
+  say(`\nAfter that verification, start ${localCodex ? 'locally, as the operator signed into Codex; this computer must remain awake and the service has this user’s filesystem access' : opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
+  if (opts.bare || localCodex) {
+    say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}${localCodex ? ' --local-codex' : ''}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
     if (!s.docker) say('  Docker is not here; install it before starting the container.');
     say('  sh container/build-hermes.sh   # build the pinned base image if absent');
@@ -418,7 +409,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   // Completion markers describe an earlier run, not the contents of the currently selected host.
   // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
   const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
-  if (opts.with.includes('subscription') || (!opts.without.includes('subscription') && st.doors.subscription === 'yes')) savedCredentials.push(['subscription', ['codex.json']]);
   for (const [step, files] of savedCredentials) {
     if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
   }
@@ -456,12 +446,16 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     if (st.doors[r.door] === 'yes' || st.doors[r.door] === 'no') continue;
     if (r.suggested === 'later' && !ask(`Take the ${r.door} door now?`, false, opts)) { st.doors[r.door] = 'later'; continue; }
     const question = r.door === 'subscription'
-      ? 'Use the agreed Codex subscription for development instead of project-funded Open Autonomy models?'
+      ? 'Use the installed Codex on this computer for development, under its ChatGPT allowance?'
       : `${r.door}: take it?`;
     st.doors[r.door] = ask(question, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
   if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
+  if (st.doors.subscription === 'yes') {
+    checkLocalCodexProfiles(join(s.dir, 'hermes'));
+    if (!s.codex) throw new Error('Local Codex needs the installed codex CLI signed in with ChatGPT as this operator. Complete codex login locally and rerun setup; no credentials were copied.');
+  }
   saveState(dir, st);
   stepGitHub(s, opts, st);
   stepDeployKey(s, opts, st);
@@ -473,6 +467,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
   if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
-  printStart(s, opts);
+  printStart(s, opts, st.doors.subscription === 'yes');
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
 }
