@@ -15,7 +15,7 @@
 // take, decline, or defer (`setup` again adds a deferred one). What is never automated: creating the accounts, and
 // any captcha or sudo prompt — those are named as the owner's up front.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync, lstatSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -152,8 +152,10 @@ function stepGitHub(s: Situation, opts: Opts, st: SetupState): void {
   if (!s.login) throw new Error('Cannot verify the current GitHub account. Resolve authentication or connectivity before setup; the GitHub step is incomplete.');
   if (opts.plan) return;
   const repository = gh(['api', `repos/${s.account}`]);
+  if (repository.ok && repository.json?.default_branch !== 'main') throw new Error('This Hermes kit requires main as the default branch for its runtime and landing. Agree and complete a repository migration with the owner before setup, or use a compatible kit; no Git, policy or credential changes were made.');
   if (!repository.ok) {
     if (hasOrigin || !/HTTP 404/.test(repository.err)) throw new Error(`Cannot access ${s.account} on GitHub. Resolve repository access or connectivity before setup; no repository was created.`);
+    if (existsSync(join(s.dir, '.git')) && setupGit(s, 'symbolic-ref', '--short', 'HEAD') !== 'main') throw new Error('Create the project from an agreed main checkout before setup. The existing local branch was preserved; no repository or credentials were created.');
     say(`\nThe repository ${s.account} does not exist yet; creating it public, from this checkout.`);
     if (!existsSync(join(s.dir, '.git'))) setupGit(s, 'init', '-q', '-b', 'main');
     setupGit(s, 'add', '-A');
@@ -190,7 +192,7 @@ function stepDeployKey(s: Situation, opts: Opts, st: SetupState): void {
 
 function stepPlatformKey(s: Situation, opts: Opts, st: SetupState): void {
   if (done(st, 'platform-key')) return;
-  say(`\nPlatform keys: the adopter way — a claim file committed to prove the repository is yours, then the developer's key and the treasurer's, into ${opts.secrets}. The agent never sees either.`);
+  say(`\nPlatform keys: the adopter way — the key tool prepares a public claim when needed; the setup agent lands it through the normal Git/PR process, then reruns setup to mint the developer's key and the treasurer's into ${opts.secrets}. The agent never sees either.`);
   if (opts.plan) return;
   for (const [file, extra] of [['agent.env', []], ['treasurer.env', ['--scopes', 'spend,narrate,pay']]] as const) {
     const out = join(opts.secrets, file);
@@ -216,22 +218,27 @@ function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
   say('\nRepository policy: preserve existing rulesets, prepare absent kit defaults, and land CODEOWNERS. The setup agent verifies the actual owner and effective review policy before activation.');
   if (opts.plan) return;
   if (setupGit(s, 'diff', '--cached', '--name-only')) throw new Error('Finish or preserve the staged work before owner-rule setup; setup will not include it in its commit.');
-  mkdirSync(join(s.dir, '.github'), { recursive: true });
-  const co = join(s.dir, '.github', 'CODEOWNERS');
-  if (!existsSync(co)) writeFileSync(co, `# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a\n# secret is never changed by the agent. Everything else lands with no review.\n/.github/ @${s.login}\n`);
-  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
-  if (setupGit(s, 'status', '--porcelain', '--', '.github/CODEOWNERS')) {
-    // The rule requires a pull request from now on, so the CODEOWNERS file itself lands the kit's way: a land/ branch.
-    const branch = setupGit(s, 'symbolic-ref', '--short', 'HEAD');
-    setupGit(s, 'checkout', '-q', '-b', 'land/owner-rules');
-    setupGit(s, 'add', '.github/CODEOWNERS');
-    setupGit(s, 'commit', '-q', '-m', 'The workflows are the owner\'s: CODEOWNERS on .github/');
-    setupGit(s, 'push', '-q', '-u', 'origin', 'land/owner-rules');
-    setupGit(s, 'checkout', '-q', branch);
-  }
   setupGit(s, 'fetch', '-q', 'origin');
-  const landed = run(['git', 'show', 'origin/main:.github/CODEOWNERS'], { cwd: s.dir });
-  if (!landed.ok || landed.out !== readFileSync(co, 'utf8').trim()) throw new Error('The intended CODEOWNERS file is not on origin/main yet. Complete or reconcile its existing pull request, then rerun setup; owner-rule setup remains incomplete.');
+  const co = join(s.dir, '.github', 'CODEOWNERS');
+  const remote = run(['git', 'show', 'origin/main:.github/CODEOWNERS'], { cwd: s.dir });
+  const pending = run(['git', 'show', 'refs/heads/land/owner-rules:.github/CODEOWNERS'], { cwd: s.dir });
+  if (pending.ok && remote.ok && pending.out !== remote.out && !run(['git', 'merge-base', '--is-ancestor', 'refs/heads/land/owner-rules', 'origin/main'], { cwd: s.dir }).ok) {
+    throw new Error('The existing owner-rules branch differs from the landed policy and has not merged. Reconcile that pending change through normal Git/PR tools before completing owner-rule setup.');
+  }
+  // An unchanged file on stale default-branch history is not a request to revert a landed policy change.
+  const unchanged = !setupGit(s, 'status', '--porcelain', '--', '.github/CODEOWNERS');
+  const onDefaultHistory = run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], { cwd: s.dir }).ok;
+  const intended = remote.ok && unchanged && onDefaultHistory ? remote.out
+    : existsSync(co) ? readFileSync(co, 'utf8').trim() : pending.ok ? pending.out : remote.ok ? remote.out
+    : `# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a\n# secret is never changed by the agent. Everything else lands with no review.\n/.github/ @${s.login}`;
+  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
+  if (!remote.ok || remote.out !== intended) {
+    if (!existsSync(co) && !pending.ok) {
+      mkdirSync(join(s.dir, '.github'), { recursive: true });
+      writeFileSync(co, `${intended}\n`);
+    }
+    throw new Error('Reconcile the intended CODEOWNERS with the agreed owner policy and land it on main through normal Git/PR tools, then rerun setup. Reuse an existing owner-rules branch/PR and exclude unrelated feature work; setup does not commit, switch branches or push it.');
+  }
   mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; CODEOWNERS landed; effective owner policy requires setup-agent verification');
 }
 
@@ -393,6 +400,11 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   checkGitTarget(s);
   if (s.project !== 'open-autonomy' && opts.secrets === join(homedir(), '.config', 'open-autonomy') && !raw.secrets) opts.secrets = join(homedir(), '.config', `open-autonomy-${s.project}`);
   const credentialDir = checkCredentialDirectory(opts.secrets);
+  for (const name of ['agent.env', 'treasurer.env', 'deploy_key', 'deploy_key.pub', 'github-app.json', 'codex.json', 'channels.env', 'discord.token']) {
+    let entry;
+    try { entry = lstatSync(join(credentialDir, name)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (entry && (!entry.isFile() || entry.isSymbolicLink() || entry.nlink !== 1)) throw new Error(`${name} must be a regular credential file, not a symlink, hard link or directory. Reconcile protected storage before setup; no credential was read or written.`);
+  }
   const withinProject = relative(realpathSync(s.dir), credentialDir);
   if (!withinProject || (!isAbsolute(withinProject) && withinProject !== '..' && !withinProject.startsWith(`..${sep}`))) throw new Error('Credentials cannot be saved inside the project, including before Git initialization. Choose protected storage outside the project.');
   const st = loadState(dir);

@@ -44,6 +44,9 @@ resuming setup; it is not a product brief, research store or planning surface fo
 The setup CLI creates a missing GitHub repository as public. Establish that this is the agreed target
 before running it. A private existing repository does not make published development sessions private.
 Keep confidential customer workspaces, human channels and credentials outside the development fleet.
+The current Hermes kit requires `main` as the default branch for its runtime, maintenance and landing.
+For an existing repository using another default, agree and complete a migration before setup or select
+a compatible starter; setup refuses that target before changing Git, policy or credentials.
 
 ## Select development connections
 
@@ -106,13 +109,13 @@ The setup CLI checks its credential directory before writing setup state, includ
 be outside every Git repository and outside the new project's directory even before Git initialization;
 symlink aliases do not bypass this boundary. An ignored directory inside the project is not suitable.
 The platform key tool also checks --out before minting or rotation and creates that file's parent
-directory with owner-only permissions. Existing credential files must be regular files, not symlinks.
+directory with owner-only permissions. Existing credential files must be regular files, not symbolic or hard links.
 
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
 | GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
 | Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver only saves the key; verify access through the running valve | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
-| Open Autonomy platform | The helper commits a repository-control claim and provisions the developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
+| Open Autonomy platform | The key tool prepares a repository-control claim; the setup agent lands it through normal Git/PR tools, then reruns setup to provision developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use secure credential entry where no callback exists | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
@@ -126,6 +129,12 @@ response alone is insufficient. Stop the temporary valve before the normal stack
 The setup agent verifies the scoped push key and selected communication provider through their native
 tools as well. Reporter delivery and the loaded Hermes configuration are checked on the final startup;
 those checks do not require PM to finish credentials or policy.
+
+When key minting reports a pending claim, land the prepared `.open-autonomy-claim` on the repository's
+default branch through its existing contribution and review process, then rerun the same command or setup.
+Reuse an existing claim branch/PR and preserve unrelated work. The key tool neither commits nor pushes;
+a claim on a feature branch alone cannot authorize minting. A still-valid landed claim is reused even from
+a stale checkout. If review outlasts the claim's validity, reconcile the refreshed claim in the same PR.
 
 For Discord specifically, use its developer portal to create/reuse the project application, configure
 the needed intents and bot identity, and authorize the agreed server. Arrange the agreed public channels
@@ -229,9 +238,12 @@ disabled or read-only key requires the setup agent to reconcile the intended acc
 restore a revoked registration or expand existing permissions automatically.
 
 Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
-and staged work, never resets an existing owner-rules branch, and checks that the intended CODEOWNERS
+and staged work, prepares a missing CODEOWNERS without committing or pushing, and checks that the intended
 file has landed on origin/main before marking that preparation complete. Resolve an interrupted commit
-or an outstanding pull request through the normal Git/browser tools, then rerun setup. A matching file
+or an outstanding pull request through the normal Git/browser tools, then rerun setup. Reuse an existing
+owner-rules branch/PR, based on the fetched default branch; do not include unrelated feature commits.
+The helper recognizes a landed owner-rules branch even if local main has not caught up; it does not create,
+reset or push a branch. Reconcile local main through normal Git tools before activation. A matching file
 and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
 the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
 
