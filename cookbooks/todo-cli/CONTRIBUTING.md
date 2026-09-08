@@ -8,6 +8,8 @@ the constitution's invariants. Short on purpose; the reviewer reads it whole.
 - **Tests.** A test proves an acceptance line or guards a bug that happened. No tests for their own sake, no
   mocks of our own code, no fixtures larger than the thing they test.
 - **Errors.** Fail loudly with the cause in the message. No silent fallbacks.
-- **Docs.** A file's header says what it is for. The README says how to run it. Nothing else is documented twice.
+- **Docs.** Keep durable project documentation, maintained in place; no rehearsal journals, session reports
+  or temporary planning documents. Put change-specific verification evidence in the PR. A file's header says
+  what it is for. The README says how to run it. Nothing else is documented twice.
 - **Dependencies.** Add one only when writing it would be more code than reading it. Pin what you add.
 - **History.** One change per commit, the task id first in the subject, signed as the agent.
