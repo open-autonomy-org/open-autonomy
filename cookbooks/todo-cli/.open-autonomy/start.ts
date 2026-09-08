@@ -141,19 +141,26 @@ if (!existsSync(resolve(project, '.git'))) {
 } else {
   // What the agent IS is what main says: a clean checkout moves to origin/main before the home is synced from it
   // (the skills, the schedule, the documents the reporter publishes). A dirty one — a killed attempt's work — is
-  // left as it is; the next attempt starts from a fresh main itself. A fetch that fails (no network, a world) is
-  // said and not fatal.
+  // left as it is; the next attempt starts from a fresh main itself. A failed fetch or snapshot stops startup:
+  // the supervisor can retry, but unlanded configuration must not become the running home.
   const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
-  const dirty = git('status', '--porcelain').stdout.toString().trim();
-  if (git('fetch', '-q', 'origin').exitCode !== 0) say(`cannot fetch origin in ${project}; the checkout is left where it is`);
-  else if (dirty) {
+  const status = git('status', '--porcelain');
+  if (status.exitCode !== 0 || git('fetch', '-q', 'origin').exitCode !== 0) { console.error('start: cannot inspect and fetch the committed configuration; startup stopped, retry when Git access is restored'); process.exit(1); }
+  if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
     // origin/main directly, and the tree is left for the next attempt to carry over.
-    say(`checkout ${project} has uncommitted changes; left where it is, the home synced from origin/main`);
     const dir = mkdtempSync(resolve(tmpdir(), 'open-autonomy-hermes-'));
-    const archive = Bun.spawnSync({ cmd: drop(['sh', '-c', `git archive --format=tar origin/main hermes | tar -x -C "${dir}"`]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
-    if (archive.exitCode === 0 && existsSync(resolve(dir, 'hermes'))) committedFrom = resolve(dir, 'hermes');
-  } else if (git('checkout', '-q', '--detach', 'origin/main').exitCode === 0) say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
+    process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
+    own(dir);
+    const archive = git('archive', '--format=tar', 'origin/main', 'hermes');
+    const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
+    if (!extracted || !existsSync(resolve(dir, 'hermes'))) { console.error('start: cannot extract committed Hermes configuration; startup stopped, repair snapshot permissions or the committed hermes directory'); process.exit(1); }
+    committedFrom = resolve(dir, 'hermes');
+    say(`checkout ${project} has uncommitted changes; preserved, using Hermes configuration from origin/main`);
+  } else {
+    if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); process.exit(1); }
+    say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
+  }
 }
 
 // Fetching can replace this very entrypoint. Load the landed code before claiming its
