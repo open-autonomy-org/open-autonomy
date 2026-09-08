@@ -159,6 +159,11 @@ Record non-secret application IDs, completed steps and remaining gaps in the exi
 `.open-autonomy/setup.json` notes. Reuse completed connections and verify their current access on a
 rerun; a saved completion marker is not proof that a credential remains valid. Initial reruns do not
 repeat production setup just because an earlier run selected it.
+If a completed credential step has missing files in the selected directory, setup stops before changing
+its record or issuing replacements. Reconcile the intended host/directory and restore credentials or
+prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
+Startup requires the developer's agent.env before it starts services or writes the runtime home;
+a treasurer credential alone cannot activate the fleet.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.

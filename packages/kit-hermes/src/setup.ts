@@ -386,6 +386,13 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const withinProject = relative(realpathSync(s.dir), credentialDir);
   if (!withinProject || (!isAbsolute(withinProject) && withinProject !== '..' && !withinProject.startsWith(`..${sep}`))) throw new Error('Credentials cannot be saved inside the project, including before Git initialization. Choose protected storage outside the project.');
   const st = loadState(dir);
+  // Completion markers describe an earlier run, not the contents of the currently selected host.
+  // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
+  const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
+  if (opts.with.includes('subscription') || (!opts.without.includes('subscription') && st.doors.subscription === 'yes')) savedCredentials.push(['subscription', ['codex.json']]);
+  for (const [step, files] of savedCredentials) {
+    if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
+  }
   say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
   say(`${s.project} (${s.account}) — the situation:`);
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);

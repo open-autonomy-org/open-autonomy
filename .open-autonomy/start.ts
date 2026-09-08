@@ -60,6 +60,8 @@ if (!argv.includes('--stack-child')) {
 const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
 const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
+const developerKey = resolve(secrets, 'agent.env');
+if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
 const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
@@ -184,10 +186,8 @@ const homeReadme = resolve(home, 'README.md');
 writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning Hermes kit ${runningKit.version}. `));
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
-const keys: string[] = [];
-if (existsSync(resolve(secrets, 'agent.env'))) keys.push('--key', `${resolve(secrets, 'agent.env')}:${valvePort}`);
+const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
 if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
-if (!keys.length) { console.error(`start: no ${resolve(secrets, 'agent.env')} — mint the developer's key: bun .open-autonomy/mint-key.ts`); process.exit(1); }
 // The Codex subscription: the valve holds the login and serves it on the third port; Hermes reaches it as a named
 // custom provider speaking the Codex protocol (base_url ${HERMES_CODEX_BASE_URL}, api_key `valve`), which the home's .env names.
 const codexFile = resolve(secrets, 'codex.json');
