@@ -7,6 +7,11 @@ Before activation, the setup agent can run the SDK valve alone in a one-off cont
 overridden to verify the configured connections; see [setup](../.open-autonomy/SETUP.md). Keep those ports
 unpublished and stop that process before starting the fleet through the normal entrypoint.
 
+On restart, the stack fetches `origin/main` before loading the Hermes home. It preserves an interrupted
+task's dirty checkout and extracts the committed `hermes/` configuration separately. If Git access or
+snapshot extraction fails, startup stops for the supervisor to retry; it does not load the dirty home
+configuration as a fallback.
+
 **In a container** is the default for a real deployment. **On your machine**, for development and fast debugging: everything as you, no isolation, the agent able to reach its own keys — an accepted trade while debugging, never the shape of production.
 
 ```bash
