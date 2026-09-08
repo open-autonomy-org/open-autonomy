@@ -6,6 +6,11 @@ agent instructions and runtime describe how it is built. Setup connects its deve
 services. Application dependencies run against twins during development; their live provisioning
 belongs to deployment or customer activation.
 
+Complete setup before starting Hermes. The setup agent establishes the product agreement, verified human
+roster, communication policy, operating configuration and required development connections. Resolve missing
+setup requirements here; do not start the fleet so PM can finish them. PM begins product planning from the
+established project, not from the setup agent's working notes.
+
 The setup agent interprets the brief, recommends defaults, chooses provider-specific steps, and resolves
 interruptions with the owner when needed. Keep that judgment in these instructions and the browser
 workflow. Deterministic helpers perform bounded operations and check facts: the intended Git target,
@@ -15,11 +20,11 @@ or treat discovered credentials as decisions.
 ## Establish the brief and the few choices
 
 For a new project, write its purpose, users, enduring constraints and exclusions into the constitution
-from owner direction. Keep source references beside those decisions. Use the existing
-`.open-autonomy/setup.json` notes for unresolved setup questions and pointers to relevant research;
-do not create a separate brief, research dump, rehearsal log or handoff document. Cite the actual supplied
-source; when a conversation has no accessible reference, label its summary and whether the owner has
-confirmed it. An agent-written summary is not independent evidence of owner approval. For an existing project,
+from owner direction. Keep accessible source references beside those decisions in the existing project
+documents; do not create a separate brief, research dump, rehearsal log or handoff document. When a supplied
+conversation has no accessible reference, identify the setup summary and establish the owner's agreement
+before activation, reusing direction already given. An agent-written summary alone is not evidence of owner
+approval. For an existing project,
 read and preserve its established constitution and working conventions before proposing changes.
 PM owns the sourced roadmap and changelog after handoff. Do not invent a backlog during setup.
 
@@ -33,8 +38,8 @@ evidence, not permission to use them for this project.
 Fill the project-owned README, constitution, contributing instructions and verification instructions.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.
-Maintain durable documentation in place. Setup notes hold current gaps and connection facts, not a
-chronological journal; replace resolved entries with their outcome or source pointer.
+Maintain durable documentation in place. The helper's setup record holds connection IDs and progress for
+resuming setup; it is not a product brief, research store or planning surface for PM.
 
 The setup CLI creates a missing GitHub repository as public. Establish that this is the agreed target
 before running it. A private existing repository does not make published development sessions private.
@@ -162,7 +167,7 @@ documented setup. Optional sponsorship setup is also separate, explicitly select
 
 ## Verify, resume and hand off
 
-Record non-secret application IDs, completed steps and remaining gaps in the existing
+Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing
 `.open-autonomy/setup.json` notes. Reuse completed connections and verify their current access on a
 rerun; a saved completion marker is not proof that a credential remains valid. Initial reruns do not
 repeat production setup just because an earlier run selected it.
@@ -189,17 +194,18 @@ or an outstanding pull request through the normal Git/browser tools, then rerun 
 and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
 the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
 
-Land the project-owned agreement and configuration before activation. Verify the loaded Hermes home,
-native schedules, actual human contact path and host restart supervision. Rehearse ordinary-member
+Land the completed project-owned agreement and configuration before starting Hermes. Start it as the final
+setup action, then verify the loaded home, native schedules, actual human contact path and host restart
+supervision. A failed startup check remains the setup agent's responsibility; repair it before handing
+over autonomous operation. Rehearse ordinary-member
 versus owner authority, interruption and recovery in the world. When GitHub is the chosen contact path,
 PM must post the human request there and read the reply; a locally saved cron report is insufficient.
 Live test messages require owner authorization. Record genuine source-coverage gaps instead of claiming
 that a connected bot sees every thread. Consult native cron status, doctor, runs and incidents.
 
-At handoff, land the constitution, setup notes and their accessible source references. The PM skill reads
-these during discovery; it does not depend on the setup agent's chat being visible in Hermes. PM resolves material unconfirmed
-direction through the agreed human contact path and distills accepted planning into the roadmap, leaving
-source pointers in setup notes rather than maintaining a second plan there. PM reconciles the generic
+PM starts with the established constitution, roster, communication policy and operating configuration,
+plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
+Future product scope, architecture and release proposals are PM work; unfinished setup is not. PM reconciles the generic
 starter intention into a sourced initial roadmap and queues only ready work. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
 landing and subsequent PM reconciliation before claiming the development loop works. The actual first
