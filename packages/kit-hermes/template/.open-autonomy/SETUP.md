@@ -60,8 +60,25 @@ contact agreement, establish the shared team roster and configure native permiss
 chooses another supported native Hermes channel, the setup agent follows that integration's own setup
 instructions and verifies it; this CLI does not provision it. Report unsupported choices explicitly.
 
-Model selection and bounds are the owner's operating choice. Verify an available subscription belongs
-to the agreed operator before explicitly selecting it; discovery alone leaves subscription use declined.
+The setup AI actively offers the development model choice. Check for a local Codex login and verify
+whether it provides a usable subscription for the agreed operator; finding a login file alone is not
+proof. Alongside that option, present suitable models from the configured Open Autonomy platform's live
+catalog, explaining subscription allowance versus metered project funds and the limits of each. Ask the
+owner which arrangement and model to use, or honor an already explicit choice. Do not silently pick
+platform funding because the helper defaults subscription enrollment to `no`; that default only prevents
+unattended enrollment. Apply the agreement with `--with subscription` or `--without subscription`.
+
+Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
+lists only the current key's bounds, not the platform's available choices. If no authorized platform
+connection exists yet, establish that connection with the existing key tool and standalone valve before
+finalizing the model choice. Initial key bounds are provisional, not proof of availability or permission to
+spend. If catalog access fails, report the unavailable lookup and resolve it rather than presenting the
+template's default as a verified catalog. This discovery does not require starting Hermes or funding a
+model call. A missing or unusable subscription should be stated plainly when offering the platform options.
+
+After applying the helper, reconcile `hermes/config.yaml` with the agreed provider and exact model;
+the helper's seeded provider defaults are not the owner's model selection. For platform-funded profiles,
+set the project policy and mint credentials with the agreed model bounds before the bounded connection check.
 The key tool reads the project's nonempty `models` list unless `--models` supplies an explicit key bound.
 If the project permits any model with an empty list, choose the key's allowed models explicitly before
 minting. Keep those key bounds and the native Hermes model configuration consistent with the agreement.

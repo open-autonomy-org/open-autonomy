@@ -122,8 +122,8 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push({ door: 'subscription', suggested: 'no', reason: s.codex
-    ? 'a subscription login is available; select only after agreeing its operator and use for this project'
-    : 'no subscription found; platform model calls require a funded project balance within .open-autonomy/config.yaml bounds',
+    ? 'a local Codex login was found: offer its verified subscription alongside the available Open Autonomy models and ask which to use'
+    : 'no local Codex login was found: offer the available Open Autonomy models and explain the project funding required',
     cost: 'an explicitly selected subscription uses its operator’s allowance; otherwise model calls use the project balance' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
@@ -411,6 +411,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');
   say('  setup agent: follow the agreed communication policy in hermes/skills/project-communications/SKILL.md; configure only the selected platforms and verify actual human outreach and replies. Keep confidential spaces outside the publicly logged fleet.');
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml. Follow the communication skill for native permissions and preserve the agreed repository review policy.');
+  say('  setup agent: compare the detected Codex subscription with the configured platform’s live /v1/catalog through an authorized standalone valve; /v1/models lists only that key’s bounds. Present the available options and costs, ask for the model arrangement, then apply --with subscription or --without subscription. A default of no prevents unattended enrollment; it does not replace this offer. Follow SETUP.md when the platform connection is not ready yet.');
   say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
   say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the deploy key, the platform keys and the owner\'s rules.');
   say('\nDevelopment connections (plus any explicitly selected later setup):');
@@ -432,7 +433,10 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     if (forced) { st.doors[r.door] = forced; continue; }
     if (st.doors[r.door] === 'yes' || st.doors[r.door] === 'no') continue;
     if (r.suggested === 'later' && !ask(`Take the ${r.door} door now?`, false, opts)) { st.doors[r.door] = 'later'; continue; }
-    st.doors[r.door] = ask(`${r.door}: take it?`, r.suggested === 'yes', opts) ? 'yes' : 'no';
+    const question = r.door === 'subscription'
+      ? 'Use the agreed Codex subscription for development instead of project-funded Open Autonomy models?'
+      : `${r.door}: take it?`;
+    st.doors[r.door] = ask(question, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
   if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
