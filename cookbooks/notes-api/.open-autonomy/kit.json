@@ -1,6 +1,6 @@
 {
   "kit": "hermes",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "params": {
     "project": "notes-api",
     "account": "cookbook/notes-api"
