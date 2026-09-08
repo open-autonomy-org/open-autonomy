@@ -306,13 +306,74 @@ contact agreement, establish the shared team roster and configure native permiss
 chooses another supported native Hermes channel, the setup agent follows that integration's own setup
 instructions and verifies it; this CLI does not provision it. Report unsupported choices explicitly.
 
-The setup AI actively offers the development model choice. Check for a local Codex login and verify
-whether it provides a usable subscription for the agreed operator; finding a login file alone is not
-proof. Alongside that option, present suitable models from the configured Open Autonomy platform's live
+The setup AI actively offers the development model choice. Run the installed `codex login status`
+as the intended operator; verify ChatGPT sign-in and model access through Codex itself without reading
+its auth files. File presence alone is not proof, and an API-key login is a different funding choice. Alongside that option, present suitable models from the configured Open Autonomy platform's live
 catalog, explaining subscription allowance versus metered project funds and the limits of each. Ask the
 owner which arrangement and model to use, or honor an already explicit choice. Do not silently pick
 platform funding because the helper defaults subscription enrollment to `no`; that default only prevents
-unattended enrollment. Apply the agreement with `--with subscription` or `--without subscription`.
+unattended enrollment. Apply the agreement with `--with subscription` (local Codex) or
+`--without subscription` (Open Autonomy models).
+
+Present model funding and fleet location together, using the guided setup format:
+
+```text
+  MODELS + FLEET
+  ────────────────────────────────────────────────────────
+  Local Codex     Uses your installed Codex and ChatGPT allowance
+                  Runs here; this computer must stay awake
+  Open Autonomy   Uses the project's funded model allowance
+                  Runs here or on an agreed, verified host
+
+  Recommended: local Codex, if its access is verified here
+  Next: confirm the arrangement and available model
+```
+
+Adapt that recommendation to actual discovery. Never recommend a server the user has not got, assume
+Docker is running because its CLI exists, or offer remote hosting under the local Codex choice.
+Open Autonomy funding for a host is a separate metered spend requiring an available provider and agreed
+budget; the platform is not itself a hosting service. Product hosting is a later, separate decision.
+
+For local Codex, use Hermes's existing `codex_app_server` transport. The setup agent edits both
+`hermes/config.yaml` and `hermes/profiles/treasurer/config.yaml` before applying the helper:
+
+```yaml
+model:
+  default: <exact model verified in local Codex>
+  provider: local-codex
+custom_providers:
+  - name: local-codex
+    base_url: http://127.0.0.1:1/v1
+    api_key: local-codex
+    api_mode: codex_app_server
+```
+
+This selects Hermes’s existing [Codex app-server](https://learn.chatgpt.com/docs/app-server) transport, not a new server. The non-secret key and unused loopback
+address satisfy Hermes's provider resolver without invoking its OAuth importer; the transport launches
+`codex app-server` over stdio. A mistaken HTTP path fails locally instead of spending through another
+provider. Preserve unrelated config and use `terminal.backend: local` with `home_mode: auto` or `real`.
+The pinned Hermes app-server runtime inherits Codex's model and permissions; it does not pass the Hermes
+model field to `thread/start`. Configure and verify the agreed model in Codex's project configuration,
+and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
+
+Use Hermes's native Codex runtime tool migration to establish the Hermes MCP callback; inspect its
+preview first, preserve existing Codex plugins and permissions, and verify skills, Kanban access and
+project communication tools through the resulting local runtime. Setting a YAML field alone does not
+establish that callback. Do not import credentials, mount/copy `~/.codex` into a container, or add an
+OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools need an
+explicitly agreed connection or must be disabled; do not infer permission to use another discovered key.
+
+Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning;
+it never rewrites model choices or exports authentication. Start with the existing entrypoint and
+`--local-codex`, under a local user supervisor with the same PATH, HOME and any existing CODEX_HOME as the
+verified Codex installation. This mode has the operator's filesystem access, rather than container UID
+isolation. Verify that tradeoff during the choice. A missing login stops startup without fallback. Before activation, prove `initialize`,
+`account/read` and one bounded turn through native Hermes using this actual Codex home, then verify PM
+and worker tools and reporting. A successful CLI login status or a test with a clean, unauthenticated
+Codex home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
+Existing `codex-valve` fleets are legacy installations, not evidence of local Codex readiness: migrate
+only after arranging and verifying their new local host. Old secret files are never imported or deleted
+by this selection, and the local start ignores them.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
 lists only the current key's bounds, not the platform's available choices. If no authorized platform
@@ -363,7 +424,7 @@ directory with owner-only permissions. Existing credential files must be regular
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
 Verify these connections before starting Hermes. Use the existing vendored SDK valve CLI directly in the
-prepared runtime, supplying the selected `--key`, `--github-app` and optional `--codex` credential-file
+prepared runtime, supplying the selected `--key`, `--github-app` credential-file
 arguments; this starts only the valve. In a container, use a one-off command with the entrypoint overridden,
 keeping its ports inside the runtime network with no published ports. The valve listens on all interfaces;
 its placeholder bearer is not an access boundary. Make the checks from inside that protected environment.
@@ -437,8 +498,9 @@ use an authorized SSH tunnel to the receiver's loopback port; never expose it as
 
 ## Prepare the host and application's world
 
-Use the kit's container deployment for a real fleet and its existing start script and supervisor;
-bare mode is for development/debugging. Verify Bun 1.3.10 or newer in the actual service and native
+For Open Autonomy models, use the kit's container deployment and its existing start script and
+supervisor. For local Codex, run the same start script directly on this computer with `--local-codex`
+and a user supervisor; no fleet container or hosted credential transfer. Other bare mode is for debugging. Verify Bun 1.3.10 or newer in the actual service and native
 Hermes terminal. Install the project's locked dependencies and run its own check in its verification
 environment. A fresh template includes its compiler; an existing project keeps its own working tooling.
 

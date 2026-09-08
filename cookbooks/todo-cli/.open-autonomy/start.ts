@@ -13,10 +13,11 @@
 // port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
 // desk posts is the app's, and the key never enters the agent.
 //
-// <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
+// Legacy installations only: <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
 // tokens): the valve serves it on the third port, and the home's .env names it (HERMES_CODEX_BASE_URL) for a custom
 // provider in the project's config that speaks the Codex protocol — the model runs on the subscription, the login
-// never enters the agent.
+// never enters the agent. New setup never copies this file. With --local-codex it is ignored: Hermes
+// launches the installed Codex app-server, whose own login and refresh remain local.
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -35,6 +36,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
+import { localCodexLogin, usesLocalCodex, checkLocalCodexProfiles } from './sdk/local-codex.ts';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -64,6 +66,20 @@ const developerKey = resolve(secrets, 'agent.env');
 if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
+const localCodex = argv.includes('--local-codex');
+// Local Codex runs as its signed-in operator, on the operator's machine. The
+// container entrypoint drops to a separate UID and cannot reuse that session.
+function checkCodexRuntime(source: string): void {
+  const configs = ['config.yaml', 'profiles/treasurer/config.yaml'].map((file) => resolve(source, file));
+  const selected = configs.some((file) => existsSync(file) && usesLocalCodex(Bun.YAML.parse(readFileSync(file, 'utf8'))));
+  if (selected && !localCodex) throw new Error('start: this project uses local Codex; run on the signed-in operator’s computer with --local-codex. Hosted/container startup is not this arrangement.');
+  if (localCodex) {
+    if (as || existsSync('/.dockerenv') || process.env.CONTAINER) throw new Error('start: local Codex must run directly as its signed-in operator, not in the fleet container or under --as.');
+    checkLocalCodexProfiles(source);
+    if (!localCodexLogin()) throw new Error('start: local Codex ChatGPT login is unavailable. Restore it with codex login as the service operator; no proxy or funded-model fallback was started.');
+  }
+}
+checkCodexRuntime(resolve(project, 'hermes'));
 const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
 const baseUrl = `http://127.0.0.1:${valvePort}/v1`;
 const payUrl = `http://127.0.0.1:${valvePort + 1}/v1`;
@@ -174,6 +190,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, 'hermes');
+checkCodexRuntime(committed);
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -187,7 +204,7 @@ const managed = githubApp ? /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX
 const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !managed.test(l)) : [];
 // The Codex subscription's address goes in the .env too: Hermes loads the home's .env into every process it starts,
 // including the scheduler's job runners, which do not inherit the gateway's environment.
-const codexBase = existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BASE_URL=http://127.0.0.1:${valvePort + 2}/backend-api/codex`] : [];
+const codexBase = !localCodex && existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BASE_URL=http://127.0.0.1:${valvePort + 2}/backend-api/codex`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
 const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
@@ -212,7 +229,7 @@ if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve
 // custom provider speaking the Codex protocol (base_url ${HERMES_CODEX_BASE_URL}, api_key `valve`), which the home's .env names.
 const codexFile = resolve(secrets, 'codex.json');
 const codexPort = valvePort + 2;
-if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
+if (!localCodex && existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
 // The agent's GitHub identity: the valve mints the app's installation tokens and serves the desk's routes on the fourth port.
 const githubFile = resolve(secrets, 'github-app.json');
 if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
@@ -249,6 +266,6 @@ setInterval(() => {
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, constants.signals.SIGUSR1);
 }, 5000);
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${existsSync(codexFile) ? `; the Codex subscription on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${localCodex ? '; installed local Codex (native app-server)' : existsSync(codexFile) ? `; legacy Codex proxy on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});
