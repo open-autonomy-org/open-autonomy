@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { checkLocalCodexConfig, usesLocalCodex } from '../src/local-codex.ts';
+import { checkLocalCodexActivation, checkLocalCodexConfig, usesLocalCodex } from '../src/local-codex.ts';
 
 const local = () => ({
   model: { default: 'verified-model', provider: 'local-codex' },
@@ -26,4 +26,14 @@ test('native runtime opt-ins cannot be mistaken for a hosted fleet', () => {
     expect(usesLocalCodex(config)).toBe(true);
   }
   expect(usesLocalCodex({ model: { provider: 'custom', api_mode: 'chat_completions' } })).toBe(false);
+});
+
+test('unverified local activation cannot expose the host through a flag or either profile', () => {
+  const funded = { model: { provider: 'custom', api_mode: 'chat_completions' } };
+  expect(() => checkLocalCodexActivation([funded, funded], false)).not.toThrow();
+  expect(() => checkLocalCodexActivation([funded, funded], true)).toThrow('Keep the fleet stopped');
+  for (const config of [local(), { model: { api_mode: 'codex_app_server' } }, { model: { openai_runtime: 'codex_app_server' } }]) {
+    expect(() => checkLocalCodexActivation([config, funded], false)).toThrow('Keep the fleet stopped');
+    expect(() => checkLocalCodexActivation([funded, config], false)).toThrow('Keep the fleet stopped');
+  }
 });

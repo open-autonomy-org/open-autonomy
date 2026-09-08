@@ -3,6 +3,9 @@
 The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
 developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
 the Hermes gateway. For normal fleet operation, `.open-autonomy/start.ts` manages the complete stack.
+This is the current container stack; it does not yet implement a host sidecar. Local Codex activation
+is blocked until that integration is verified. See [setup](../.open-autonomy/SETUP.md); starting the whole
+fleet as the host operator is not a supported local Codex substitute.
 Before activation, the setup agent can run the SDK valve alone in a one-off container with its entrypoint
 overridden to verify the configured connections; see [setup](../.open-autonomy/SETUP.md). Keep those ports
 unpublished and stop that process before starting the fleet through the normal entrypoint.

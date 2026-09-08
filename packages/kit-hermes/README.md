@@ -155,6 +155,7 @@ not a release trigger. Only a landed, ready PM decision with a fixed candidate w
 later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
 See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
 
-The local Codex setup choice runs the installed CLI through Hermes’s native app-server transport on
-the operator’s computer. It does not copy a subscription login into the fleet or provision remote hosting.
-Follow the generated `.open-autonomy/SETUP.md` for model selection, native tool setup and activation checks.
+The local Codex setup choice uses the operator's installed CLI and allowance, without copying its login
+or provisioning remote hosting. Activation is blocked until the host sidecar and container executor are
+integrated and verified; native app-server transport alone does not isolate agent tools. Follow the
+generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks.

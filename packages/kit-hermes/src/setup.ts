@@ -20,7 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
-import { localCodexLogin, checkLocalCodexProfiles } from '@open-autonomy/sdk/local-codex';
+import { localCodexLogin, checkLocalCodexProfiles, LOCAL_CODEX_ACTIVATION_BLOCKED } from '@open-autonomy/sdk/local-codex';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -127,9 +127,9 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push({ door: 'subscription', suggested: 'no', reason: s.codex
-    ? 'the installed local Codex reports a ChatGPT login: offer this computer’s Codex runtime alongside Open Autonomy models; verify model access separately'
+    ? 'the installed local Codex reports a ChatGPT login: offer this choice alongside Open Autonomy models, explaining that isolated local activation is not implemented yet; verify model access separately'
     : 'local Codex is unavailable or has no verified ChatGPT login: offer Open Autonomy models or guided local Codex sign-in',
-    cost: 'local Codex uses this computer and its operator’s allowance; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
+    cost: 'local Codex uses this computer and its operator’s allowance, with activation currently blocked; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
@@ -324,16 +324,20 @@ async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<vo
 function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
   // Verified before any provisioning, including on reruns. No auth-file copying,
   // no OAuth refresh implementation, and no hosted substitute for this computer.
-  mark(s.dir, st, 'subscription', 'local Codex CLI via Hermes codex_app_server; authentication stays with Codex on this computer');
+  mark(s.dir, st, 'subscription', 'local Codex selected; login/configuration checked; activation blocked pending the isolated host sidecar and container executor');
 }
 
 function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
   // Identity and delegation are established by the setup agent in the project-owned skill. Do not race
   // that work by starting the fleet here, or mark a printed command as a completed activation.
   say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
-  say(`\nAfter that verification, start ${localCodex ? 'locally, as the operator signed into Codex; this computer must remain awake and the service has this user’s filesystem access' : opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
-  if (opts.bare || localCodex) {
-    say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}${localCodex ? ' --local-codex' : ''}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
+  if (localCodex) {
+    say(`\n${LOCAL_CODEX_ACTIVATION_BLOCKED}`);
+    return;
+  }
+  say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
+  if (opts.bare) {
+    say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
     if (!s.docker) say('  Docker is not here; install it before starting the container.');
     say('  sh container/build-hermes.sh   # build the pinned base image if absent');
