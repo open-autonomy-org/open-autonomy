@@ -1,8 +1,9 @@
 # Production: how a kit project ships
 
-The agent lands code. A human decides what goes live. The platform never holds a deploy credential, and neither
-does any machine an agent runs on. This is how that is arranged on GitHub, with nothing but GitHub's own features;
-the reference project (`open-autonomy-org/hookline`) runs exactly this.
+The agent lands code. PM proposes releases; a human reviews and authorizes publication. The platform never
+holds a deploy credential, and neither does any machine an agent runs on. The service flow below uses
+GitHub's own gates. Packages and local applications use the [artifact procedure](#packages-and-local-applications)
+without requiring a hosted service.
 
 ## The shape
 
@@ -96,7 +97,33 @@ PM updates changelog only with actual release evidence and preserves outstanding
 For packages or other artifacts without a live service, PM uses their documented publication/review procedure
 and that outreach policy; the live-service helper does not claim those artifacts have been published.
 
-## Shipping
+## Packages and local applications
+
+A downloadable or local application need not have a hosted service. Do not add a live address or provision
+production merely to use the service helper. `maintain.ts ship` reports that no live address is configured;
+PM still owns release planning and reviewer outreach through the agreed communication skill.
+
+1. Establish the artifact, version policy and distribution destination in the project's existing
+   contributing instructions. Reuse its established policy; for a new product, PM proposes the missing
+   choices and queues preparation work. The setup agent need not choose packaging before development.
+2. Prepare the intended artifact from the selected landed candidate. Verify installation and the promised
+   user workflow in the project's verification environment, using synthetic data. Record the exact build,
+   checks and remaining risks in the release PR; inspect what the artifact contains before review.
+3. Land the sourced roadmap release decision with scope, version, target window and candidate. PM contacts
+   the agreed human reviewer with the exact artifact/candidate, verification, risks and publication steps.
+   Keep the request and reply in that conversation; use native PM notes for pending follow-up. An absent
+   service-review task does not remove the human gate or justify a second release ledger.
+4. A human reviews and publishes the approved candidate through the agreed distribution channel, or
+   approves its gated publication workflow. Configure any required publishing credential at that later
+   step. A changed artifact, version or candidate needs renewed review; merging code does not publish it.
+5. PM verifies the published version and artifact correspond to the approved candidate, citing the actual
+   release record. Only then move its changelog entry out of Unreleased. Keep unresolved installation or
+   adoption outcomes in the roadmap; lack of publication access leaves verification pending.
+
+The CLI does not scaffold artifact publication workflows yet. Use this procedure with the existing
+provider tools and the project's agreed policy; never substitute live-service status for release evidence.
+
+## Shipping a service
 
 ```bash
 git tag -a deploy-v<date> <sha> -m "<what ships>" && git push origin deploy-v<date>   # the owner, on a commit they read
