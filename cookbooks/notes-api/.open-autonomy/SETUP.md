@@ -19,12 +19,30 @@ or treat discovered credentials as decisions.
 
 ## Orient before presenting setup
 
+Open Autonomy follows GitHub's organization structure: an OA organization is the GitHub organization,
+and each project is a repository in that organization. An organization can contain multiple projects.
+Use the existing `account: organization/repository` identity; do not invent a separate OA organization
+name or registration flow. New project setup requires an organization-owned repository. For a personal
+repository, establish the intended organization and an owner-agreed creation or transfer before
+provisioning. Never transfer a repository, remap an existing project's funds or rewrite its credentials
+as an automatic migration. Existing runtime accounts are not changed by this setup requirement.
+
 Start with read-only discovery of the supplied conversation and the intended project directory. Determine
 whether this is a new project, an adoption or a resumption. If the directory exists, read its applicable
 agent instructions, constitution, README, kit identity, operating configuration, team roster,
 communication policy, branding and existing setup record. Inspect Git status and the configured target
 without exposing credential-bearing URLs. Preserve unrelated work and reuse recorded application IDs.
 Inspect credential presence and access through the protected helpers, never by printing secret files.
+
+Verify the GitHub organization's login and numeric ID through its API. Read its public profile and
+relevant existing projects' committed setup and communication policies to discover the organization's
+established server/workspace, human contacts and operating conventions. Follow the source links and
+verify the intended provider space in the signed-in browser before using it. Record the verified
+organization ID and source links with connection identifiers in the existing setup record; keep human
+authority in the project roster. A matching display name or mere organization membership is not an
+authority grant. Missing or contradictory evidence is a specific discovery gap, not a reason to create
+a duplicate organization, server or workspace. Reconcile repository renames or transfers against GitHub
+identity and the existing account before making dependent changes.
 
 Separate what the owner already agreed, what is independently verified, what is merely recorded and
 what remains missing. Check current provider access before marking a connection complete; a saved step,
@@ -126,13 +144,14 @@ needed, with recommended defaults together. For example, after public developmen
 | PROJECT SETUP / Identity                                 |
 +----------------------------------------------------------+
   Working name  Evidence Desk              Proposed
-  Repository    <owner>/evidence-desk       Owner needed
+  Organization  <github-organization>      Needed
+  Repository    evidence-desk              Proposed
   Visibility    Public source + dev logs   Agreed
   Fleet host    Not selected               Needed
-  Contact       GitHub issues              Recommended
+  Contact       Existing org space         Discover first
   Reviewer      You                        Agreed
 
-  Next: choose the GitHub owner and fleet host.
+  Next: choose the GitHub organization and fleet host.
 ```
 
 For the Models stage, use the same format to show the verified subscription option and suitable live
@@ -255,13 +274,32 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 ## Select development connections
 
+Recommend reuse of the organization's established communication space when available: for example,
+one Discord server or Slack workspace can serve several projects. Show the discovered space and its
+source, then propose the new project's own branded application/bot and a project channel or category.
+Reuse any existing project bot and channels on resumption. Choose the number of channels from the
+project's needs and the organization's existing conventions; do not clone every sibling's channels or
+rename the organization's shared spaces after the new project. An agreed shared server is not a shared
+project credential: each project's bot, permissions, funds, planning and release authority remain scoped
+to that project. Use provider-native installation and permission rules; Slack and other platforms are
+not provisioned by the Discord helper.
+
+The setup agent records the agreed server/workspace, project channels, source coverage and human contact
+practice in the existing project communication skill, with public provider IDs and discovery sources in
+the existing setup record. Keep the organization-level directory in its existing public profile or
+established documentation when it has one; do not introduce another registry or copy sibling project
+policies wholesale. Reuse organization defaults as recommendations, not silent authority grants. The
+project owner selects its enabled connections and reviewer. Shared space does not authorize access to
+another project's private channels or to confidential human spaces.
+
 Run `create-open-autonomy setup . --plan` and reconcile its output with the agreed choices before
 running the mutating command. The CLI prepares GitHub repository access, a scoped push key, the platform
 connection and owner rules. Its optional development connections are the project's GitHub App, Discord,
 and an existing model subscription. Apply the decisions using the existing `--with` and `--without`
 options; `--yes` accepts the displayed defaults and is not a substitute for establishing owner authority.
 
-GitHub issues/discussions can be the human coordination channel. Discord is optional, selected only
+If no shared organization space is established, GitHub issues/discussions are a sufficient recommended
+human coordination channel. Discord is optional, selected only
 when agreed, even when a token exists. Do not assume a particular server, channel or application from
 the available credential. Follow `hermes/skills/project-communications/SKILL.md` to record the actual
 contact agreement, establish the shared team roster and configure native permissions. If the owner

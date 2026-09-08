@@ -53,6 +53,13 @@ connections, using the setup agent's browser skill and existing provider session
 is required. Provider credentials go through secure setup handoffs; the owner is involved at actual
 human-only steps, not handed a list of configuration chores.
 
+Projects follow GitHub's organization structure: `account` names `organization/repository`, with many
+projects per organization. Setup verifies the GitHub organization before provisioning and discovers its
+existing communication space from sourced organization/project documentation. An agreed Discord server
+or Slack workspace can be reused with a separately branded bot and appropriate channels for each project.
+The agent records this in the existing communication policy and setup record; no second organization
+registry is required. Personal repositories need an owner-agreed organization target before setup proceeds.
+
 GitHub registration and installation stay with that browser agent. The SDK's standalone
 `open-autonomy-credentials` command receives the secret handoff into protected host storage; it does
 not need a repository or generate provider configuration. The kit bundles the same receiver under

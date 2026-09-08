@@ -5,6 +5,15 @@ description: This project's agreed human contacts and communication practices, i
 
 # Project communications
 
+The project's GitHub organization is its Open Autonomy organization. Several projects may use the same
+organization Discord server, Slack workspace or other agreed communication space. During setup, discover
+that space from the organization's existing profile and sourced project policies before proposing a new
+one. Use this project's branded bot and designated channels there, preserving sibling projects' identities
+and access. Record the agreed shared space and this project's actual contact practice here; keep public
+provider IDs and source links in the existing setup record. Organization membership and a shared server
+do not automatically grant project direction or release authority. Native provider permissions and the
+committed project roster govern those decisions.
+
 Project integrations belong to the project. Use its shared branding bundle for application names,
 descriptions and icons, including both Discord application and bot profiles. Human identities and
 authority remain in the team roster; Hermes is the runtime using those integrations. During setup,
