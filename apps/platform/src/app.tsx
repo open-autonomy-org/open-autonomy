@@ -3,7 +3,7 @@
 // GitHub login that lets an owner edit a roster on the page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
 import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, authedClaims, configurePage, error, hasScope, html, isStale, json, methodNotAllowed, parseJson, renderMessage, syncProfile, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
+import { LedgerClient, authedClaims, configurePage, configureSync, error, hasScope, html, isStale, json, methodNotAllowed, parseJson, renderMessage, syncProfile, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
@@ -12,6 +12,8 @@ import { handleSponsorsWebhook } from './sponsors.ts';
 import { sponsorAccount, type Env } from './types.ts';
 
 configurePage({ brand: 'open-autonomy', nav, styles: PATRON_STYLES });
+// Every page here is public: a private repository's front page is never served by it.
+configureSync({ privateRepositories: 'refuse' });
 const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 const NO_STORE = { 'cache-control': 'no-store' };
 

@@ -21,7 +21,8 @@ bun run deploy
 ```
 
 Optional secrets: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `ISSUING_BILLING_ADDRESS_JSON` turn the card
-rail on; `GITHUB_TOKEN` reads private repositories and raises the sync's rate limit. `GITHUB_API_BASE` and
+rail on; `GITHUB_TOKEN` reads private repositories (the backend admits them; only the public platform refuses
+them) and raises the sync's rate limit. `GITHUB_API_BASE` and
 `GITHUB_RAW_BASE` point the claim-file proof and the sync at a GitHub Enterprise; the proof of control is a file
 in the project's repository and needs a GitHub of some kind.
 

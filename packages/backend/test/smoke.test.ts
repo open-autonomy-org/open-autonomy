@@ -238,4 +238,11 @@ describe('the backend, one smoke test per surface', () => {
     expect(state.accounts['acme/app'].sponsors_active.pat.login).toBe('pat');
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(100);
   });
+  test('the backend admits a private repository it can read; its page is the deployment\'s to guard', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/secret', 100);
+    github.repos['acme/secret'] = { description: 'Ours alone', html_url: 'https://github.com/acme/secret', private: true };
+    expect((await requestJson(env, '/admin/accounts/acme%2Fsecret/sync', { headers: admin, method: 'POST' })).ok).toBe(true);
+    expect(await (await request(env, '/')).text()).toContain('Ours alone');
+  });
 });

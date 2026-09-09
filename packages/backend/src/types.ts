@@ -21,9 +21,6 @@ export interface Env {
   KEY_EXPIRES_SECONDS?: string;
   // The organization's own grants account: its giver identity on the books, the pool an operator gives from.
   GRANTS_ACCOUNT?: string;
-  // Whether sync reads a private repository's README and config onto a page. Off by default: on a public deployment
-  // the page is public, and a private repository's front page must not be served by it. A private deployment sets it.
-  ALLOW_PRIVATE_REPOSITORIES?: string;
   // The card rail: Stripe Issuing. Absent → the rail refuses with rail_not_configured. The cardholder every card is
   // minted under carries the org's own billing address, a JSON object {line1, city, state, postal_code, country}.
   ISSUING_BILLING_ADDRESS_JSON?: string;

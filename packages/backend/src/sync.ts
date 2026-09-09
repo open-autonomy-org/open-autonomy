@@ -78,6 +78,12 @@ async function firstParentDistance(env: Env, account: string, head: GitHubCommit
   return null;
 }
 
+// What the deployment admits: the backend reads any repository it can, private ones through GITHUB_TOKEN. An app
+// whose pages are public refuses private repositories at load (`configureSync`), so nothing private is served by it.
+export interface SyncPolicy { privateRepositories: 'allow' | 'refuse' }
+let sync: SyncPolicy = { privateRepositories: 'allow' };
+export function configureSync(policy: Partial<SyncPolicy>): void { sync = { ...sync, ...policy }; }
+
 export function isStale(syncedAt?: string): boolean {
   if (!syncedAt) return true;
   const t = Date.parse(syncedAt);
@@ -98,7 +104,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     let repo: GitHubRepo | undefined;
     if (res.ok) {
       repo = await res.json() as GitHubRepo;
-      if (repo.private && env.ALLOW_PRIVATE_REPOSITORIES !== '1') return false;
+      if (repo.private && sync.privateRepositories === 'refuse') return false;
     } else if (res.status === 404) {
       return false;
     } else {

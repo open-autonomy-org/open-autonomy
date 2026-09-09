@@ -9,8 +9,6 @@ MODEL_GATEWAY_URL = "https://api-gateway.merge.dev"
 MAX_BODY_BYTES = "1048576"
 MODEL_PRICES_JSON = "{}"
 MAX_GLOBAL_DAILY_USD_CENTS = "5000"
-# A private deployment reads private repositories' README and config onto their pages.
-ALLOW_PRIVATE_REPOSITORIES = "1"
 
 [triggers]
 crons = ["0 6 * * *"]

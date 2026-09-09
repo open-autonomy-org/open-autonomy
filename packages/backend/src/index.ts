@@ -10,6 +10,6 @@ export { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, mdInlineToSafeHtml, render, usd, 
 export { error, html, json, methodNotAllowed, parseJson, base64url, fromBase64url, hmac, constantTimeEqual } from './http.ts';
 export { authedClaims, signKey } from './keys.ts';
 export { readTeamFile, readTeamEdit, proposeTeamEdit, validTeamAccount, type TeamFile, type TeamEdit } from './team.ts';
-export { isStale, syncProfile, syncAllStale } from './sync.ts';
+export { configureSync, isStale, syncProfile, syncAllStale, type SyncPolicy } from './sync.ts';
 export { grantsAccount, hasScope, isFunder, DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope, type UsageEvent } from './types.ts';
 export { MODEL_PRICES } from './pricing.ts';

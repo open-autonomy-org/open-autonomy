@@ -112,4 +112,11 @@ describe('the open platform, one smoke test per door', () => {
     expect(page).toContain('Become a patron');
     expect(page).toContain('patrons');
   });
+  test('a private repository never reaches a page here: sync refuses it, the backend alone admits it', async () => {
+    const env = useEnv(testEnv());
+    await fund(env, 'acme/secret', 100);
+    github.repos['acme/secret'] = { description: 'Not for the public', html_url: 'https://github.com/acme/secret', private: true };
+    expect((await requestJson(env, '/admin/accounts/acme%2Fsecret/sync', { headers: admin, method: 'POST' })).ok).toBe(false);
+    expect(await (await request(env, '/')).text()).not.toContain('Not for the public');
+  });
 });
