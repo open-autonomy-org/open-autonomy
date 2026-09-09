@@ -84,4 +84,10 @@ Its entrypoint runs only the executor as `hermes`; the ordinary default and Comp
 Codex bridge, loopback valves and reporter. Keep that host installation outside the agent-writable
 checkout. For Git, follow the native URL mappings in `.open-autonomy/SETUP.md`: the host GitHub valve serves
 HTTPS Git for the project App, whose Contents permission must allow writes. Setup must verify that
-connection and finish communication and committed configuration refresh before installing the persistent service; local activation remains guarded.
+connection and finish communication before installing the persistent service; local activation remains guarded.
+
+Local startup fetches `origin/main` before syncing the native home. Unfinished checkout changes and
+runtime state are preserved; configuration and reporter policy come from the fetched commit. The
+setup-selected `channels.env` is loaded into the native home for gateway and cron delivery, matching
+the managed runtime. Messaging bot credentials are available to Hermes; App, platform and Codex
+authentication remain with the host sidecar.

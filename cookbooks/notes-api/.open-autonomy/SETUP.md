@@ -356,7 +356,9 @@ build. Reuse an existing working local context; CLI availability alone does not 
 
 Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
 and every agent tool inside the container. A host sidecar connects the installed Codex, external
-services and reporting, with authentication retained by the host. A successful isolated executor test
+services and reporting, with model, GitHub App and platform authentication retained by the host.
+Native messaging uses the same explicit `channels.env` settings as the managed runtime; its
+project bot credential is available to Hermes for delivery, as described in the container guide. A successful isolated executor test
 does not complete this integration. The vendored
 `.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
 and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
@@ -364,12 +366,16 @@ Hermes session, with native container MCP configuration and separate worker cont
 `.open-autonomy/local-runtime.ts` supervises the host bridge, loopback valves and reporter alongside
 a prepared container gateway. Before starting Hermes, it checks the container's resolved origin fetch
 and push URLs against the project valve and requires authenticated Git read and write advertisements.
-This check changes no refs and rejects a missing mapping or read-only installation. It then waits for
+This check changes no refs and rejects a missing mapping or read-only installation. It then fetches
+`main`, preserves a dirty checkout and native runtime state, and loads Hermes configuration and the
+reporter policy from the fetched commit. A clean checkout advances to that commit. The host reads only
+the explicitly prepared `channels.env` for messaging settings and writes those settings and current host
+routes into the native home environment so cron workers see them too. It waits for
 the reader, forwards native restart
 requests and stops the gateway when its host connection ends. The container image has an explicit
 `local` target with the native executor and Hermes stdio adapter; the default remains the managed stack.
 Before replacing the activation guard, verify the project App Git connection below and finish the selected
-communication connection, committed configuration refresh and host service installation. Then verify the complete fleet loop. Use ordinary Docker networking as described in
+communication connection and host service installation. Then verify the complete fleet loop. Use ordinary Docker networking as described in
 [the container guide](../container/README.md#local-host-connection): the container reaches the existing
 authenticated host bridge, and the native executor is published only on host loopback. Setup verifies
 that path in the selected Docker context before Hermes starts.
