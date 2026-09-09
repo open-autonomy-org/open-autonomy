@@ -16,6 +16,14 @@ export function usesLocalCodex(config: any): boolean {
     || config?.model?.openai_runtime === 'codex_app_server';
 }
 
+export const LOCAL_CODEX_ACTIVATION_BLOCKED = 'Local Codex activation is unavailable: the host sidecar and container executor are not integrated and verified yet. Keep the fleet stopped; running Hermes as the host operator is not a supported substitute.';
+
+// Fail before starting any fleet process. Native transport selection alone does
+// not isolate agent tools from the operator's filesystem and credentials.
+export function checkLocalCodexActivation(configs: any[], requested: boolean): void {
+  if (requested || configs.some(usesLocalCodex)) throw new Error(LOCAL_CODEX_ACTIVATION_BLOCKED);
+}
+
 export function checkLocalCodexConfig(config: any): void {
   const provider = Array.isArray(config?.custom_providers) ? config.custom_providers.find((entry: any) => entry?.name === 'local-codex') : undefined;
   if (config?.model?.provider !== 'local-codex' || typeof config.model.default !== 'string' || !config.model.default.trim()

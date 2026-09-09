@@ -322,10 +322,11 @@ Present model funding and fleet location together, using the guided setup format
   ────────────────────────────────────────────────────────
   Local Codex     Uses your installed Codex and ChatGPT allowance
                   Runs here; this computer must stay awake
+                  Activation pending the isolated runtime
   Open Autonomy   Uses the project's funded model allowance
                   Runs here or on an agreed, verified host
 
-  Recommended: local Codex, if its access is verified here
+  Readiness: distinguish an available login from a working fleet
   Next: confirm the arrangement and available model
 ```
 
@@ -334,8 +335,15 @@ Docker is running because its CLI exists, or offer remote hosting under the loca
 Open Autonomy funding for a host is a separate metered spend requiring an available provider and agreed
 budget; the platform is not itself a hosting service. Product hosting is a later, separate decision.
 
-For local Codex, use Hermes's existing `codex_app_server` transport. The setup agent edits both
-`hermes/config.yaml` and `hermes/profiles/treasurer/config.yaml` before applying the helper:
+Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
+and every agent tool inside the container. A host sidecar connects the installed Codex, external
+services and reporting, with authentication retained by the host. The native remote executor prototype
+does not establish Docker isolation or complete this integration. Do not run the fleet as the operator,
+offer bare execution as a substitute, or silently switch an agreed local choice to project-funded models.
+
+An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup
+agent edits both `hermes/config.yaml` and `hermes/profiles/treasurer/config.yaml` before applying the helper;
+these settings record the choice and do not authorize activation:
 
 ```yaml
 model:
@@ -356,24 +364,25 @@ The pinned Hermes app-server runtime inherits Codex's model and permissions; it 
 model field to `thread/start`. Configure and verify the agreed model in Codex's project configuration,
 and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
 
-Use Hermes's native Codex runtime tool migration to establish the Hermes MCP callback; inspect its
-preview first, preserve existing Codex plugins and permissions, and verify skills, Kanban access and
-project communication tools through the resulting local runtime. Setting a YAML field alone does not
-establish that callback. Do not import credentials, mount/copy `~/.codex` into a container, or add an
-OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools need an
-explicitly agreed connection or must be disabled; do not infer permission to use another discovered key.
+The runtime integration must establish the native Hermes MCP callback inside the container and verify
+skills, Kanban access and project communication tools there. A YAML field or a remote shell endpoint
+alone does not establish that boundary: inspect all tool paths, including plugins, hooks and MCP tools.
+Do not migrate agent tools onto the host, import credentials, mount/copy `~/.codex` into a container, or
+add an OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools
+need an explicitly agreed connection or must be disabled; do not infer permission to use another
+discovered key.
 
 Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning;
-it never rewrites model choices or exports authentication. Start with the existing entrypoint and
-`--local-codex`, under a local user supervisor with the same PATH, HOME and any existing CODEX_HOME as the
-verified Codex installation. This mode has the operator's filesystem access, rather than container UID
-isolation. Verify that tradeoff during the choice. A missing login stops startup without fallback. Before activation, prove `initialize`,
-`account/read` and one bounded turn through native Hermes using this actual Codex home, then verify PM
-and worker tools and reporting. A successful CLI login status or a test with a clean, unauthenticated
-Codex home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
+it never rewrites model choices or exports authentication. Setup reports activation as blocked, and the
+start script rejects `--local-codex` or a local Codex profile until the isolated integration is available.
+Before enabling that path, prove container execution, denial of host files and credentials, and failure
+without host fallback when the executor disconnects. Then prove `initialize`, `account/read` and one
+bounded turn through native Hermes with the operator's actual Codex, followed by PM and worker tools
+and host-side reporting. A successful CLI login status or a synthetic-provider test with a clean Codex
+home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
 Existing `codex-valve` fleets are legacy installations, not evidence of local Codex readiness: migrate
-only after arranging and verifying their new local host. Old secret files are never imported or deleted
-by this selection, and the local start ignores them.
+only after the isolated runtime is implemented and verified. Old secret files are never imported or
+deleted by this selection.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
 lists only the current key's bounds, not the platform's available choices. If no authorized platform
@@ -499,8 +508,9 @@ use an authorized SSH tunnel to the receiver's loopback port; never expose it as
 ## Prepare the host and application's world
 
 For Open Autonomy models, use the kit's container deployment and its existing start script and
-supervisor. For local Codex, run the same start script directly on this computer with `--local-codex`
-and a user supervisor; no fleet container or hosted credential transfer. Other bare mode is for debugging. Verify Bun 1.3.10 or newer in the actual service and native
+supervisor. For local Codex, keep activation blocked until the host sidecar and container runtime above
+are implemented and verified; the current container entrypoint does not implement that split. Bare mode
+is for debugging, not a local Codex activation path. Verify Bun 1.3.10 or newer in the actual service and native
 Hermes terminal. Install the project's locked dependencies and run its own check in its verification
 environment. A fresh template includes its compiler; an existing project keeps its own working tooling.
 

@@ -16,8 +16,8 @@
 // Legacy installations only: <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
 // tokens): the valve serves it on the third port, and the home's .env names it (HERMES_CODEX_BASE_URL) for a custom
 // provider in the project's config that speaks the Codex protocol — the model runs on the subscription, the login
-// never enters the agent. New setup never copies this file. With --local-codex it is ignored: Hermes
-// launches the installed Codex app-server, whose own login and refresh remain local.
+// never enters the agent. New setup never copies this file. Local Codex activation is blocked until
+// the host sidecar and container executor are integrated; it must not start the fleet as the operator.
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -36,7 +36,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
-import { localCodexLogin, usesLocalCodex, checkLocalCodexProfiles } from './sdk/local-codex.ts';
+import { checkLocalCodexActivation } from './sdk/local-codex.ts';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -67,17 +67,12 @@ if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — re
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
 const localCodex = argv.includes('--local-codex');
-// Local Codex runs as its signed-in operator, on the operator's machine. The
-// container entrypoint drops to a separate UID and cannot reuse that session.
+// Check both the checkout and the committed home loaded below. Neither an
+// explicit flag nor a profile may activate the unisolated host runtime.
 function checkCodexRuntime(source: string): void {
-  const configs = ['config.yaml', 'profiles/treasurer/config.yaml'].map((file) => resolve(source, file));
-  const selected = configs.some((file) => existsSync(file) && usesLocalCodex(Bun.YAML.parse(readFileSync(file, 'utf8'))));
-  if (selected && !localCodex) throw new Error('start: this project uses local Codex; run on the signed-in operator’s computer with --local-codex. Hosted/container startup is not this arrangement.');
-  if (localCodex) {
-    if (as || existsSync('/.dockerenv') || process.env.CONTAINER) throw new Error('start: local Codex must run directly as its signed-in operator, not in the fleet container or under --as.');
-    checkLocalCodexProfiles(source);
-    if (!localCodexLogin()) throw new Error('start: local Codex ChatGPT login is unavailable. Restore it with codex login as the service operator; no proxy or funded-model fallback was started.');
-  }
+  const configs = ['config.yaml', 'profiles/treasurer/config.yaml'].map((file) => resolve(source, file))
+    .filter((file) => existsSync(file)).map((file) => Bun.YAML.parse(readFileSync(file, 'utf8')));
+  checkLocalCodexActivation(configs, localCodex);
 }
 checkCodexRuntime(resolve(project, 'hermes'));
 const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
