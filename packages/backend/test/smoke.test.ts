@@ -209,7 +209,7 @@ describe('the backend, one smoke test per surface', () => {
     await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', phase: '1', status: 'active', title: 'todo add appends an item', acceptance: ['It appends.'] }, { id: 'shipped-1', tense: 'past', status: 'done', title: 'todo init makes a store', release: 'v0.1.0', done_at: '2026-09-01T00:00:00Z', commit: 'abcdef1234567', home: 'changelog', acceptance: [] }] } } });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('session.started', 'run-1', { session_kind: 'run', item_id: 'add' }) });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('project.docs', 'project', { about_md: '# acme\n\nA todo list built by its own agent.' }) });
-    expect((await request(env, '/')).status).toBe(302);
+    expect(await (await request(env, '/')).text()).toContain('acme/app');
     for (const [path, expected] of [['/p/acme%2Fapp', 'todo add appends an item'], ['/p/acme%2Fapp', 'built by its own agent'], ['/p/acme%2Fapp/about', 'built by its own agent'], ['/p/acme%2Fapp', 'todo init makes a store'], ['/p/acme%2Fapp?view=list&sort=title', 'abcdef1'], ['/p/acme%2Fapp?view=releases', 'v0.1.0'], ['/p/acme%2Fapp?view=timeline', 'September 2026'], ['/p/acme%2Fapp/sessions', '/sessions/run-1'], ['/p/acme%2Fapp/sessions/run-1', 'new EventSource('], ['/p/acme%2Fapp/items/add', 'It appends.']]) {
       const res = await request(env, path);
       expect(res.status).toBe(200);

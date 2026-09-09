@@ -1,0 +1,21 @@
+{
+  "name": "@open-autonomy/self-host",
+  "version": "0.1.0",
+  "description": "The Open Autonomy backend deployed bare: the books, the keys, the rails, the stream, the timeline and each project's page, in your own Cloudflare account. No patronage, no public explore page; money in is the operator's mint.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx wrangler dev",
+    "deploy": "bunx wrangler deploy --var DEPLOY_COMMIT:$(git rev-parse --short HEAD)",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@open-autonomy/backend": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "typescript": "^5.9.0",
+    "wrangler": "4.114.0"
+  }
+}

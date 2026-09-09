@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '..');
-const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/backend/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
+const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/backend/README.md', 'apps/self-host/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
 const router = ['packages/backend/src/routes.ts', 'packages/backend/src/keys.ts', 'packages/backend/src/stream.ts', 'apps/platform/src/app.tsx'].map((f) => readFileSync(resolve(ROOT, f), 'utf8')).join('\n');
 const runner = readFileSync(resolve(ROOT, 'world/run.ts'), 'utf8');
 const verbs = new Set([...runner.matchAll(/case '([a-z-]+)'/g)].map((m) => m[1]));

@@ -4,7 +4,7 @@ import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleK
 import { LedgerClient, type AccountProfile, type FunderView, type Moderation, type ProjectView, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderDocPage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, renderTeamPage, type ProjectSlots } from './site.js';
+import { renderDirectory, renderDocPage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, renderTeamPage, type ProjectSlots } from './site.js';
 import { readTeamEdit, readTeamFile, validTeamAccount } from './team.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { isStale, syncAllStale, syncProfile } from './sync.js';
@@ -90,8 +90,13 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const answered = await app.route?.(req, env, ctx, tools);
   if (answered) return answered;
 
-  // ---- the site ----
-  if (path === '/') { if (get()) return get()!; return Response.redirect(`${url.origin}/p/${encodeURIComponent(fundingAccount(env))}`, 302); }
+  // ---- the site: the deployment's projects, each on its page ----
+  if (path === '/') {
+    if (get()) return get()!;
+    const { entries } = await ledger.directory();
+    for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
+    return html(renderDirectory(entries));
+  }
   let m: RegExpMatchArray | null;
   if ((m = path.match(/^\/p\/(.+)\/team$/))) {
     const account = dec(m[1]);

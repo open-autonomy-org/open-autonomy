@@ -98,7 +98,7 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     let repo: GitHubRepo | undefined;
     if (res.ok) {
       repo = await res.json() as GitHubRepo;
-      if (repo.private) return false;
+      if (repo.private && env.ALLOW_PRIVATE_REPOSITORIES !== '1') return false;
     } else if (res.status === 404) {
       return false;
     } else {
