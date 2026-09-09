@@ -30,6 +30,7 @@
     "@volter/twin-openai": "0.1.2",
     "@volter/twin-polar": "0.1.2",
     "@volter/twin-stripe": "0.1.2",
-    "@volter/twin-world": "0.1.4"
+    "@volter/twin-world": "0.1.4",
+    "@volter-ai-dev/supercode-harness-sdk": "^0.3.26"
   }
 }

@@ -177,6 +177,13 @@ offsets already applied is ignored (`idempotent: true` in that event's result), 
 reads the session back and continues from its `next_seq`. The response is `{ ok, results: [{ id, ok,
 session | update, idempotent?, error? }] }`; the first failing event stops the batch.
 
+`Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
+acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
+The `./reporting` adapter consumes Supercode's message windows and explicit completion records, verifies
+the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence.
+History changes that conflict with the append-only destination require reconciliation; they are not
+silently treated as new offsets. Privacy policy accepts standard YAML lists and rejects malformed values.
+
 Public reads, no key:
 
 | Route | What |
