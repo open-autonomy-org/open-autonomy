@@ -55,3 +55,33 @@ Several stacks on one Docker host: `STACK=<name> docker compose -p <name> …`; 
 the name (`<name>-agent`, `<name>-home`, `<name>-repo`). The default is `oa`.
 
 The kit owns this directory and `.open-autonomy/start.ts`; `create-open-autonomy upgrade .` brings them forward.
+
+## Local host connection
+
+The image includes OpenSSH for a host sidecar's persistent transport. Its
+[inetd mode](https://man.openbsd.org/sshd#i) carries the SSH connection over
+`docker exec -i --user hermes <container> /usr/sbin/sshd -i -e -f /opt/agent/sshd_config`.
+It runs as `hermes`, needs no additional capabilities and publishes no Docker ports.
+The host's ordinary SSH client supplies local and remote port forwards on that connection.
+
+Before starting the gateway, the setup agent prepares native SSH authentication: create a dedicated
+client key in the protected host runtime directory, and a host key in
+`/opt/data/.open-autonomy-transport/host_key` inside the container. Install the client's public key
+as `authorized_keys` beside that host key, and record the container's public host key in the host's
+project-specific `known_hosts`. Keep the home and transport directory owner-only (700), and private
+keys 600. These keys authenticate this local transport.
+
+Write a native SSH client configuration in the host runtime directory with `ProxyCommand` set to
+that Docker command, `IdentityFile` and `UserKnownHostsFile` pointing at those files, and
+`BatchMode yes`, `IdentitiesOnly yes`, `StrictHostKeyChecking yes` and `ExitOnForwardFailure yes`.
+Use `ssh -F <that config> -N -T <configured host>` under the existing supervisor. A local forward
+binds a host loopback port to the container's native Codex executor on `127.0.0.1:51216`.
+Remote forwards bind container loopback ports 8787–8790 to the host's developer valve, treasurer
+valve, restricted Codex bridge and GitHub valve respectively. Setup chooses unused host ports;
+container port numbers are private to each container. `sshd_config` permits just those endpoints
+and disables shell sessions and agent forwarding.
+
+Verify both directions, concurrent sessions and disconnect handling before starting Hermes. The
+native transport supplies the connection; the host still owns the Codex bridge, reporter and
+service supervision described in [setup](../.open-autonomy/SETUP.md). Local fleet activation remains
+guarded until the complete arrangement is verified.
