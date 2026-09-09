@@ -14,8 +14,8 @@ create-open-autonomy setup .     # the guided walk: what this project's situatio
 
 ## From npm
 
-Both packages publish from this repository: `@open-autonomy/sdk` and `create-open-autonomy`, each at its own version.
-`.github/workflows/release.yml` publishes them on a human-cut `release-v<version>` tag (or a manual dispatch)
+Three packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend` and `create-open-autonomy`, each at its own version.
+`.github/workflows/release.yml` publishes them on a human-cut `release-v<kit version>` tag (or a manual dispatch)
 after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
 (`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
 open-autonomy` from it against the npm registry twin (`bun world/run.ts env -- bun world/kit-release.ts <kit-version>`) before any release is cut.
