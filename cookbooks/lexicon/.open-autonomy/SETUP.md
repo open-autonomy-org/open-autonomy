@@ -482,8 +482,20 @@ server, creates channels, changes application branding, or grants participation 
 Finish the channel policy and remove any temporary setup permissions. The helper preserves existing
 native allowlists in channels.env and never rewrites cron delivery. Use the communication skill and
 native Hermes tools to configure access, history tools and each job's delivery according to the owner
-agreement. A delivered message alone does not prove discovery works. Declining a setup step does not
-disconnect an established provider; an agreed removal uses native configuration and lifecycle tools.
+agreement. `DISCORD_HOME_CHANNEL` selects a destination; it does not admit inbound messages. For
+agreed public project channels, set native `DISCORD_ALLOWED_CHANNELS` in the protected channels.env
+to those channel IDs (comma-separated), and set `discord.group_allow_from: ["*"]` in the existing
+Hermes config.yaml Discord block. The adapter restricts channels; the gateway separately admits
+group senders. Check these settings against the installed Hermes version, then reload through the
+runtime's existing lifecycle.
+Use the narrower agreed native role/user policy when that is the project policy; do not grant
+server-wide or DM access to make a channel test pass. Participation does not grant project authority.
+Verify a real inbound mention and thread reply from the confirmed account in the agreed channel,
+including native sender metadata and the agent's response, before enabling recurring jobs.
+A browser-driven test may use an
+authorized existing session; label it as an operator test rather than independent human approval.
+A delivered message alone does not prove discovery works. Declining a setup step does not disconnect
+an established provider; an agreed removal uses native configuration and lifecycle tools.
 
 The shared roster records verified human account IDs and the source of their authority. A setup
 operator's login is not automatically the owner or release reviewer. Browser identity, app ownership,
