@@ -46,7 +46,8 @@ def _configured(var: str) -> bool:
 
 
 def _deliver_target(name: str, deliver) -> object:
-    platform = str(deliver).strip().lower() if isinstance(deliver, str) else ""
+    # `slack:<channel>` / `discord:<channel>`: the platform is the word before the colon.
+    platform = str(deliver).strip().lower().split(":", 1)[0] if isinstance(deliver, str) else ""
     needs = _PLATFORM_CREDENTIALS.get(platform)
     if not needs or any(_configured(v) for v in needs):
         return deliver
