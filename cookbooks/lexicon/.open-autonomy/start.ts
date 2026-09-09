@@ -208,23 +208,33 @@ const channelLine = /^[A-Z][A-Z0-9_]*=/;
 if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => channelLine.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (channelLine.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
 else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
-// Hermes's own openai-codex provider takes its bearer from the home's auth store (its Codex session, kept there by
-// `hermes auth login openai-codex`, refreshed by Hermes). Forwarded, the valve or the twin supplies the real bearer,
-// so the store carries a stand-in: a token that is not a JWT, which Hermes sends as it is and never tries to refresh.
-// Bare, the store must hold Hermes's own login; a missing one stops the start, as a missing key does.
+// Hermes's own openai-codex provider takes its bearer and its address from its credential pool: the home's entries
+// first, and when the home has none, the user's global store (~/.hermes/auth.json), whose entry carries the real
+// service's address; with nothing usable it adopts the Codex CLI's login from $CODEX_HOME. Forwarded (a container's
+// valve, a world's twin), the home therefore carries a stand-in of its own — a pool entry and the singleton record,
+// both with the forward address and a token that is not a JWT, which Hermes sends as it is and never refreshes — and
+// the CLI's login is out of reach, so a twin can never be bypassed for the real service. Bare, Hermes's own login
+// must exist in the home's store or the user's; a missing one stops the start, as a missing key does.
 const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
 if (onCodex) {
+  type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
+  const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
+  const holds = (s: Store): boolean => !!s.providers?.['openai-codex']?.tokens?.access_token || (s.credential_pool?.['openai-codex'] ?? []).some((e) => typeof e?.access_token === 'string' && !!e.access_token);
   const authFile = resolve(home, 'auth.json');
-  let store: { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<{ access_token?: unknown }>> } = {};
-  try { store = JSON.parse(readFileSync(authFile, 'utf8')); } catch { /* no store yet */ }
-  const state = ((store.providers ??= {})['openai-codex'] ??= {});
-  const held = !!state.tokens?.access_token || ((store.credential_pool ?? {})['openai-codex'] ?? []).some((e) => typeof e?.access_token === 'string' && e.access_token);
-  if (codexForward && !state.tokens?.access_token) {
-    state.tokens = { access_token: 'valve', refresh_token: 'valve' };
-    state.last_refresh = new Date().toISOString();
+  const store = readStore(authFile);
+  if (codexForward) {
+    const now = new Date().toISOString();
+    const state = ((store.providers ??= {})['openai-codex'] ??= {});
+    if (state.tokens?.access_token !== 'valve') { state.tokens = { access_token: 'valve', refresh_token: 'valve' }; state.last_refresh = now; }
+    const pool = (store.credential_pool ??= {});
+    const entries = (pool['openai-codex'] ?? []).filter((e) => e?.id !== 'valve');
+    pool['openai-codex'] = [{ id: 'valve', label: 'the forwarded subscription', source: 'manual:valve', priority: 0, access_token: 'valve', refresh_token: 'valve', base_url: codexForward, inference_base_url: codexForward, last_refresh: now }, ...entries];
     writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  } else if (!codexForward && !held) {
-    console.error(`start: the model is the Codex subscription (provider openai-codex) and ${authFile} holds no login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
+    const noCli = resolve(home, 'codex-home-none');
+    mkdirSync(noCli, { recursive: true });
+    process.env.CODEX_HOME = noCli;
+  } else if (!holds(store) && !holds(readStore(resolve(user ? home : homedir(), '.hermes', 'auth.json')))) {
+    console.error(`start: the model is the Codex subscription (provider openai-codex) and neither ${authFile} nor the user's Hermes store holds a login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
     process.exit(1);
   }
 }
