@@ -22,15 +22,8 @@ const MAX_TURNS_PER_EVENT = 100;
 const MAX_TURN_TEXT = 2000;
 const MAX_UPDATE_TEXT = 2000;
 const DEFAULT_GOAL_DAYS = 30;
-// The sponsorship ladder shown on every project unless an operator sets its own. Each tier's promise is
-// what the platform itself delivers: the patrons wall and the runway the money buys.
-const DEFAULT_TIERS: Tier[] = [
-  { usd_cents: 500, name: 'Supporter' },
-  { usd_cents: 2500, name: 'Sponsor' },
-  { usd_cents: 10000, name: 'Backer' },
-];
 
-interface LedgerState {
+export interface LedgerState {
   day_key: string;
   // Today's settled spend across every account, and outstanding reservations: the global daily rail.
   consumed_usd_cents: number;
@@ -39,15 +32,18 @@ interface LedgerState {
   // The account tree. Every project (owner/repo) and named root is an account:
   // balance = granted_in - granted_out - consumed.
   accounts: Record<string, Account>;
-  // Idempotency keys already applied by mint/grant/coupon, so a retry never double-applies.
+  // Idempotency keys already applied by mint or grant, so a retry never double-applies.
   applied_keys: string[];
-  coupons: Record<string, Coupon>;
   // Append-only money-movement log (capped trailing window): the funding feed.
   flows: Flow[];
   // The key registry: listing, revocation, rotation grace. A key verifies by signature and expiry without
   // it; an entry here can only shorten a key's life.
   keys: Record<string, KeyEntry>;
+  // Keys an app's extension owns (Open Autonomy's coupons, for one), persisted beside the books and opaque here:
+  // the loader keeps them verbatim, the export carries them, nothing in the core reads them.
+  [extension: string]: unknown;
 }
+const CORE_STATE_KEYS = new Set(['day_key', 'consumed_usd_cents', 'reserved_usd_cents', 'reservations', 'accounts', 'applied_keys', 'flows', 'keys']);
 
 export type Tally = { u: number; c: number; t: number; m?: Record<string, [number, number, number]> };
 export interface Usage { minutes: Record<string, Tally>; hours: Record<string, Tally>; days: Record<string, Tally> }
@@ -96,23 +92,21 @@ export interface Account {
   roadmap_revision?: number;
   // The card rail: the account's cardholder at the issuer, created on its first card.
   stripe_cardholder?: string;
-  // Money in: the Polar products behind the account's tiers (`<tier index>:<month|once>` → product id).
-  polar_products?: Record<string, string>;
-  // A funder's bonus credits (the org's match on what they bought): given only to projects they do not own.
+  // Bonus credits: the part of a giver's balance that may only be granted to accounts the giver does not own.
   bonus_usd_cents?: number;
   // What the account's calls used, by the minute (the last hour), the hour (the last day) and the day (the last month):
   // money, calls and tokens, and each model's share — what the project's spend limits are held against.
   usage: Usage;
-  sponsors: Sponsor[];
-  sponsors_active: Record<string, Sponsor>;
   profile?: AccountProfile;
   goal_days?: number;
-  tiers?: Tier[];
   moderation?: Moderation;
   moderation_reason?: string;
   // Read with the owner's config: what the deployed service reports against the repository's default branch.
   deployment?: LiveDeployment;
+  // Keys an app's extension owns on the account (Open Autonomy's sponsors and tiers, for two): kept verbatim, opaque here.
+  [extension: string]: unknown;
 }
+const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cents', 'consumed_usd_cents', 'envelopes', 'calls_total', 'last_call_ms', 'live_sessions', 'roadmap_revision', 'stripe_cardholder', 'bonus_usd_cents', 'usage', 'profile', 'goal_days', 'moderation', 'moderation_reason', 'deployment', 'daily_spend']);
 
 export interface LiveDeployment {
   commit: string | null;
@@ -145,8 +139,6 @@ export interface AccountProfile {
   config_yaml?: string;
 }
 const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
-
-export interface Tier { usd_cents: number; name: string }
 
 export interface Flow {
   kind: 'mint' | 'grant' | 'consume' | 'release';
@@ -217,8 +209,7 @@ export interface CardRecord {
 
 // A Polar checkout the platform opened for a patron: which account and tier it funds, so a paid order is
 // attributed even when Polar's order carries no metadata.
-export interface PolarCheckout { id: string; account: string; tier: number; interval: 'month' | 'once'; usd_cents: number; purpose: EnvelopePurpose; created_at: string }
-
+// Who gave: a giver's identity as a door reports it (a sponsor, a patron), recorded on the flow and the envelope.
 export interface Sponsor {
   login: string;
   name?: string;
@@ -226,17 +217,6 @@ export interface Sponsor {
   url?: string;
   avatar_url?: string;
   monthly_usd_cents?: number;
-}
-
-export interface Coupon {
-  code: string;
-  amount_usd_cents: number;
-  from?: string;
-  sponsor?: Sponsor;
-  expires_at?: string;
-  redeemed_at?: string | null;
-  redeemed_to?: string | null;
-  created_at: string;
 }
 
 export interface KeyEntry {
@@ -359,16 +339,43 @@ export interface ItemView {
   usd_cents: number;
 }
 
-export class LimitLedger implements DurableObject {
+// An app's operation on the books: registered by name before the worker serves, run inside the one Durable
+// Object with the core's own methods and storage. Open Autonomy's patronage (sponsors, coupons, tiers, Polar)
+// is such an extension; a private deployment registers none.
+export type LedgerOp = (ledger: LedgerCore, body: Record<string, unknown>) => Promise<unknown> | unknown;
+export interface LedgerCore {
+  readonly state: LedgerState;
+  readonly storage: DurableObjectState['storage'];
+  acct(id: string): Account | undefined;
+  ensureAcct(id: string): Account;
+  balanceOf(id: string): number;
+  applyKey(key?: string): boolean;
+  recordFlow(flow: Omit<Flow, 'ts'>): Flow;
+  addEnvelope(account: string, amount: number, purpose: EnvelopePurpose, from?: string, giftId?: string): Envelope;
+  mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>>;
+  grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>>;
+  fundingSnapshot(account: string): FundingSnapshot;
+  entryFor(account: string): DirectoryEntry;
+  save(): Promise<void>;
+}
+const extensions = new Map<string, LedgerOp>();
+
+export class LimitLedger implements DurableObject, LedgerCore {
   private loaded = false;
-  private state: LedgerState = emptyState();
+  state: LedgerState = emptyState();
+  // Register an app's operations, once, at module load: a name the core does not serve, its handler.
+  static extend(ops: Record<string, LedgerOp>): void { for (const [name, op] of Object.entries(ops)) extensions.set(name, op); }
 
   constructor(private readonly ctx: DurableObjectState) {}
+  get storage(): DurableObjectState['storage'] { return this.ctx.storage; }
 
   async fetch(req: Request): Promise<Response> {
     await this.load();
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const s = (k: string) => String(body[k] ?? '');
+    const op = typeof body.op === 'string' ? body.op : '';
+    const extension = extensions.get(op);
+    if (extension) return json(await extension(this, body));
     switch (body.op) {
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
@@ -378,12 +385,6 @@ export class LimitLedger implements DurableObject {
       case 'earmark': return json(await this.earmark(s('account'), body.for));
       case 'funder': return json(await this.funderView(s('account')));
       case 'bonus_add': return json(await this.bonusAdd(s('account'), Number(body.amount_usd_cents)));
-      case 'sponsor_upsert': return json(await this.sponsorUpsert(s('account'), body.sponsor as Sponsor));
-      case 'sponsor_remove': return json(await this.sponsorRemove(s('account'), s('login')));
-      case 'accrue': return json(await this.accrue(s('account'), s('key')));
-      case 'coupon_create': return json(await this.couponCreate(body as Partial<Coupon>));
-      case 'coupon_list': return json({ ok: true, coupons: Object.values(this.state.coupons) });
-      case 'coupon_redeem': return json(await this.couponRedeem(s('code'), s('account')));
       case 'key_register': return json(await this.keyRegister(body.claims as KeyClaims));
       case 'key_rotate': return json(await this.keyRotate(body.previous as KeyClaims, body.claims as KeyClaims, s('grace_until')));
       case 'key_check': return json(this.keyCheck(s('kid')));
@@ -408,10 +409,7 @@ export class LimitLedger implements DurableObject {
       case 'card_put': return json(await this.cardPut(body.card as CardRecord));
       case 'card': return json(await this.cardGet(s('id')));
       case 'set_cardholder': return json(await this.setCardholder(s('account'), s('cardholder')));
-      case 'set_polar_products': return json(await this.setPolarProducts(s('account'), body.products as Record<string, string>));
-      case 'polar_checkout_put': return json(await this.polarCheckoutPut(body.checkout as PolarCheckout));
-      case 'polar_checkout': return json(await this.polarCheckoutGet(s('id')));
-      case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined, body.tiers as Tier[] | undefined));
+      case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined));
       case 'set_deployment': return json(await this.setDeployment(s('account'), body.deployment as LiveDeployment | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
       case 'export_all': return json(await this.exportAll());
@@ -433,7 +431,7 @@ export class LimitLedger implements DurableObject {
     this.loaded = true;
   }
 
-  private async save(): Promise<void> {
+  async save(): Promise<void> {
     await this.ctx.storage.put('state', this.state);
   }
 
@@ -459,9 +457,9 @@ export class LimitLedger implements DurableObject {
 
   // ---- accounts --------------------------------------------------------------------------------------
 
-  private acct(id: string): Account | undefined { return this.state.accounts[id]; }
-  private ensureAcct(id: string): Account { return (this.state.accounts[id] ??= emptyAccount()); }
-  private balanceOf(id: string): number {
+  acct(id: string): Account | undefined { return this.state.accounts[id]; }
+  ensureAcct(id: string): Account { return (this.state.accounts[id] ??= emptyAccount()); }
+  balanceOf(id: string): number {
     const a = this.acct(id);
     return a ? a.granted_in_usd_cents - a.granted_out_usd_cents - a.consumed_usd_cents : 0;
   }
@@ -475,14 +473,14 @@ export class LimitLedger implements DurableObject {
     for (const r of Object.values(this.state.reservations)) if (r.account === id) for (const part of r.allocations) if (part.envelope_id === envelopeId) total += part.amount;
     return total;
   }
-  private applyKey(key?: string): boolean {
+  applyKey(key?: string): boolean {
     if (!key) return false;
     if (this.state.applied_keys.includes(key)) return true;
     this.state.applied_keys.push(key);
     this.state.applied_keys = this.state.applied_keys.slice(-500);
     return false;
   }
-  private recordFlow(flow: Omit<Flow, 'ts'>): Flow {
+  recordFlow(flow: Omit<Flow, 'ts'>): Flow {
     const recorded = { ...flow, ts: new Date().toISOString() };
     this.state.flows.push(recorded);
     if (this.state.flows.length > MAX_FLOWS) this.state.flows = this.state.flows.slice(-MAX_FLOWS);
@@ -499,21 +497,20 @@ export class LimitLedger implements DurableObject {
     return { ok: true, purpose };
   }
 
-  private addEnvelope(account: string, amount: number, purpose: EnvelopePurpose, from?: string, giftId?: string): Envelope {
+  addEnvelope(account: string, amount: number, purpose: EnvelopePurpose, from?: string, giftId?: string): Envelope {
     const envelope: Envelope = { id: crypto.randomUUID(), purpose, balance_usd_cents: amount, ...(from ? { from } : {}), ...(giftId ? { gift_id: giftId } : {}), created_at: new Date().toISOString() };
     this.ensureAcct(account).envelopes.push(envelope);
     return envelope;
   }
 
   // Money enters: the only operation that increases the total.
-  private async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>> {
+  async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>> {
     if (!account || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_amount' };
     const marked = await this.earmark(account, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
-    if (sponsor?.login) upsertSponsor(a.sponsors, sponsor);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
     this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id });
     await this.save();
@@ -521,7 +518,7 @@ export class LimitLedger implements DurableObject {
   }
 
   // Money moves down the tree: conserves the total, refused if the source lacks the balance.
-  private async grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>> {
+  async grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>> {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     const marked = await this.earmark(to, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
@@ -549,63 +546,10 @@ export class LimitLedger implements DurableObject {
     return { ok: true, from, to, amount_usd_cents: Math.floor(amount), from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
   }
 
-  private async sponsorUpsert(account: string, sponsor: Sponsor): Promise<Record<string, unknown>> {
-    if (!account || !sponsor?.login) return { ok: false, error: 'invalid_sponsor' };
-    const a = this.ensureAcct(account);
-    a.sponsors_active[sponsor.login] = { login: sponsor.login, name: sponsor.name, tagline: sponsor.tagline, url: sponsor.url, avatar_url: sponsor.avatar_url, monthly_usd_cents: Math.max(0, Math.floor(sponsor.monthly_usd_cents ?? 0)) };
-    await this.save();
-    return { ok: true, active_sponsors: Object.keys(a.sponsors_active).length };
-  }
 
-  private async sponsorRemove(account: string, login: string): Promise<Record<string, unknown>> {
-    const a = this.acct(account);
-    if (a) { delete a.sponsors_active[login]; await this.save(); }
-    return { ok: true };
-  }
 
-  // Mint an account with its active recurring sponsors' combined monthly amount, idempotent on the
-  // billing month: the recurring path GitHub's webhook cannot provide.
-  private async accrue(account: string, key: string): Promise<Record<string, unknown>> {
-    const a = this.acct(account);
-    const sponsors = a ? Object.values(a.sponsors_active) : [];
-    const total = sponsors.reduce((sum, s) => sum + (s.monthly_usd_cents ?? 0), 0);
-    if (total <= 0) return { ok: true, credited: false, monthly_total_usd_cents: 0 };
-    const result = await this.mint(account, total, key);
-    if (!result.idempotent) for (const s of sponsors) upsertSponsor(this.ensureAcct(account).sponsors, s);
-    await this.save();
-    return { ...result, credited: !result.idempotent, monthly_total_usd_cents: total };
-  }
 
-  // ---- coupons ---------------------------------------------------------------------------------------
 
-  private async couponCreate(input: Partial<Coupon>): Promise<Record<string, unknown>> {
-    if (!Number.isFinite(input.amount_usd_cents) || (input.amount_usd_cents as number) <= 0) return { ok: false, error: 'invalid_amount' };
-    const code = (input.code && String(input.code).trim()) || generateCouponCode();
-    if (this.state.coupons[code]) return { ok: false, error: 'coupon_exists' };
-    const coupon: Coupon = { code, amount_usd_cents: Math.floor(input.amount_usd_cents as number), from: input.from, sponsor: input.sponsor, expires_at: input.expires_at, redeemed_at: null, redeemed_to: null, created_at: new Date().toISOString() };
-    this.state.coupons[code] = coupon;
-    await this.save();
-    return { ok: true, coupon };
-  }
-
-  private async couponRedeem(code: string, to: string): Promise<Record<string, unknown>> {
-    const coupon = this.state.coupons[code];
-    if (!to) return { ok: false, error: 'redeem_account_required' };
-    if (!coupon) return { ok: false, error: 'coupon_not_found' };
-    if (coupon.redeemed_at) return { ok: false, error: 'coupon_already_redeemed' };
-    if (coupon.expires_at && Date.parse(coupon.expires_at) <= Date.now()) return { ok: false, error: 'coupon_expired' };
-    if (coupon.from) {
-      const result = await this.grant(coupon.from, to, coupon.amount_usd_cents, `coupon:${code}`);
-      if (!result.ok) return result;
-    } else {
-      await this.mint(to, coupon.amount_usd_cents, `coupon:${code}`, coupon.sponsor);
-    }
-    coupon.redeemed_at = new Date().toISOString();
-    coupon.redeemed_to = to;
-    if (coupon.sponsor?.login) upsertSponsor(this.ensureAcct(to).sponsors, coupon.sponsor);
-    await this.save();
-    return { ok: true, amount_usd_cents: coupon.amount_usd_cents, account: to, sponsor: coupon.sponsor ?? null };
-  }
 
   // ---- keys ------------------------------------------------------------------------------------------
 
@@ -1102,23 +1046,6 @@ export class LimitLedger implements DurableObject {
     return { ok: true };
   }
 
-  // ---- money in: Polar's products and checkouts ---------------------------------------------------------
-  private async setPolarProducts(account: string, products: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
-    if (!products || typeof products !== 'object') return { ok: false, error: 'invalid_products' };
-    this.ensureAcct(account).polar_products = Object.fromEntries(Object.entries(products).filter(([k, v]) => typeof k === 'string' && typeof v === 'string'));
-    await this.save();
-    return { ok: true };
-  }
-  // `polar_checkout:<checkout id>`: the account and tier a checkout funds.
-  private async polarCheckoutPut(checkout: PolarCheckout): Promise<{ ok: boolean; error?: string }> {
-    if (!checkout || typeof checkout.id !== 'string' || !checkout.id || typeof checkout.account !== 'string') return { ok: false, error: 'invalid_checkout' };
-    await this.ctx.storage.put(`polar_checkout:${checkout.id}`, checkout);
-    return { ok: true };
-  }
-  private async polarCheckoutGet(id: string): Promise<{ ok: boolean; error?: string; checkout?: PolarCheckout }> {
-    const checkout = await this.ctx.storage.get<PolarCheckout>(`polar_checkout:${id}`);
-    return checkout ? { ok: true, checkout } : { ok: false, error: 'checkout_not_found' };
-  }
 
   // ---- the roadmap: one normalized model, revisioned ---------------------------------------------------
   // Every driver lands here: the file driver on sync, the milestones driver on sync, an owner-side driver
@@ -1197,7 +1124,6 @@ export class LimitLedger implements DurableObject {
       burn_per_day_usd_cents: est.burn_per_day_usd_cents,
       runway_days: funded ? est.runway_days : null, runway_lo_days: funded ? est.runway_lo_days : null, runway_hi_days: funded ? est.runway_hi_days : null,
       days_observed: est.days_observed, runway_confident: funded && est.confident,
-      sponsors: a ? activeSponsors(a) : [],
       calls_total: a?.calls_total ?? 0,
       last_call_at: a?.last_call_ms ? new Date(a.last_call_ms).toISOString() : null,
       daily_spend_usd_cents: daily,
@@ -1215,13 +1141,12 @@ export class LimitLedger implements DurableObject {
     return { ok: true };
   }
 
-  private async setProfile(account: string, profile: Partial<AccountProfile> = {}, goalDays?: number, tiers?: Tier[]): Promise<Record<string, unknown>> {
+  private async setProfile(account: string, profile: Partial<AccountProfile> = {}, goalDays?: number): Promise<Record<string, unknown>> {
     if (!account) return { ok: false, error: 'invalid_account' };
     const a = this.ensureAcct(account);
     const p = (a.profile ??= {});
     for (const k of PROFILE_KEYS) if (profile[k] !== undefined) p[k] = profile[k];
     if (typeof goalDays === 'number' && goalDays > 0) a.goal_days = Math.floor(goalDays);
-    if (Array.isArray(tiers)) a.tiers = tiers.filter((t) => t && typeof t.usd_cents === 'number' && typeof t.name === 'string').map((t) => ({ usd_cents: t.usd_cents, name: t.name }));
     await this.save();
     return { ok: true, account, profile: p };
   }
@@ -1242,10 +1167,9 @@ export class LimitLedger implements DurableObject {
     return Object.keys(this.state.accounts).map((id) => this.entryFor(id)).sort((a, b) => b.balance_usd_cents - a.balance_usd_cents);
   }
 
-  private entryFor(account: string): DirectoryEntry {
+  entryFor(account: string): DirectoryEntry {
     const a = this.acct(account);
     const f = this.fundingSnapshot(account);
-    const projectPatrons = projectPatronsOf(this.state.flows, account, () => ({})).length;
     return {
       account,
       is_project: account.includes('/'),
@@ -1256,12 +1180,9 @@ export class LimitLedger implements DurableObject {
       funded: f.funded, paused: f.paused,
       balance_usd_cents: f.balance_usd_cents, granted_in_usd_cents: f.granted_in_usd_cents, granted_out_usd_cents: f.granted_out_usd_cents, consumed_usd_cents: f.consumed_usd_cents,
       burn_per_day_usd_cents: f.burn_per_day_usd_cents, runway_days: f.runway_days, runway_confident: f.runway_confident,
-      patron_count: patronCount(a) + projectPatrons,
-      monthly_usd_cents: monthlyTotal(a),
       live_sessions: [...(a?.live_sessions ?? [])],
       ...(a?.deployment ? { live: { ...a.deployment } } : {}),
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
-      ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
       status: fundingStatus(f),
     };
   }
@@ -1294,7 +1215,6 @@ export class LimitLedger implements DurableObject {
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
       credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
-      ...(a?.polar_products ? { polar_products: { ...a.polar_products } } : {}),
       given: flows.filter((x) => x.from === account),
       received: flows.filter((x) => x.to === account),
     };
@@ -1307,9 +1227,7 @@ export class LimitLedger implements DurableObject {
     const flows = this.state.flows.filter((flow) => (flow.to === account || flow.from === account) && flow.kind !== 'consume');
     const giftIds = new Set(funding.envelopes.map((envelope) => envelope.gift_id).filter((id): id is string => !!id));
     const feed = flows.filter((flow, index) => index >= flows.length - FEED_LIMIT || (flow.id && giftIds.has(flow.id))).reverse();
-    const sponsorPatrons: Patron[] = (a ? activeSponsors(a) : []).map((s) => ({ kind: 'sponsor', login: s.login, name: s.name, avatar_url: s.avatar_url, url: s.url, tagline: s.tagline, amount_label: s.monthly_usd_cents ? `$${(s.monthly_usd_cents / 100).toFixed(0)}/mo` : undefined }));
-    const projectPatrons = projectPatronsOf(this.state.flows, account, (id) => displayProfile(this.acct(id)));
-    return { found: Boolean(a), ...entry, bounds: funding.bounds, usable_usd_cents: funding.usable_usd_cents, envelopes: funding.envelopes, tiers: a?.tiers ?? DEFAULT_TIERS, feed, patrons: [...projectPatrons, ...sponsorPatrons] };
+    return { found: Boolean(a), ...entry, bounds: funding.bounds, usable_usd_cents: funding.usable_usd_cents, envelopes: funding.envelopes, feed };
   }
 
   private snapshot() {
@@ -1373,17 +1291,13 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
     if (typeof a.bonus_usd_cents === 'number') acct.bonus_usd_cents = a.bonus_usd_cents;
-    if (a.polar_products && typeof a.polar_products === 'object') acct.polar_products = Object.fromEntries(Object.entries(a.polar_products).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     acct.usage = emptyUsage();
     const u = (a as { usage?: Partial<Usage> }).usage;
     for (const grain of ['minutes', 'hours', 'days'] as const) if (u?.[grain] && typeof u[grain] === 'object') acct.usage[grain] = u[grain] as Record<string, Tally>;
     const old = (a as { daily_spend?: Record<string, number> }).daily_spend;
     if (old && typeof old === 'object') for (const [day, usd] of Object.entries(old)) if (!acct.usage.days[day] && typeof usd === 'number') acct.usage.days[day] = { u: usd, c: 0, t: 0 };
-    acct.sponsors = Array.isArray(a.sponsors) ? a.sponsors : [];
-    acct.sponsors_active = a.sponsors_active && typeof a.sponsors_active === 'object' ? a.sponsors_active : {};
     if (a.profile && typeof a.profile === 'object') { acct.profile = {}; for (const k of PROFILE_KEYS) if (typeof a.profile[k] === 'string') acct.profile[k] = a.profile[k]; }
     if (typeof a.goal_days === 'number') acct.goal_days = a.goal_days;
-    if (Array.isArray(a.tiers)) acct.tiers = a.tiers.filter((t) => t && typeof t.usd_cents === 'number' && typeof t.name === 'string').map((t) => ({ usd_cents: t.usd_cents, name: t.name }));
     if (a.moderation === 'listed' || a.moderation === 'hidden' || a.moderation === 'banned') acct.moderation = a.moderation;
     if (typeof a.moderation_reason === 'string') acct.moderation_reason = a.moderation_reason;
     const deployment = normalizeDeployment(a.deployment);
@@ -1392,6 +1306,8 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
       const legacy = acct.granted_in_usd_cents - acct.granted_out_usd_cents - acct.consumed_usd_cents;
       if (legacy > 0) acct.envelopes.push({ id: `legacy:${id}`, purpose: { type: 'unrestricted' }, balance_usd_cents: legacy, created_at: new Date(0).toISOString() });
     }
+    // What an app's extension keeps on the account is not the core's to read, and never its to drop.
+    for (const [k, v] of Object.entries(a as Record<string, unknown>)) if (!CORE_ACCOUNT_KEYS.has(k) && v !== undefined) (acct as Record<string, unknown>)[k] = v;
     state.accounts[id] = acct;
   }
   // Reservations written by the previous worker shape did not name their source. Give those existing
@@ -1414,9 +1330,9 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
   }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
-  state.coupons = stored.coupons && typeof stored.coupons === 'object' ? stored.coupons : {};
   state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release')) : [];
   state.keys = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
+  for (const [k, v] of Object.entries(stored as Record<string, unknown>)) if (!CORE_STATE_KEYS.has(k) && v !== undefined) state[k] = v;
   return state;
 }
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -1429,10 +1345,10 @@ function normalizeDeployment(value: unknown): LiveDeployment | undefined {
 }
 
 function emptyState(): LedgerState {
-  return { day_key: dayKey(), consumed_usd_cents: 0, reserved_usd_cents: 0, reservations: {}, accounts: {}, applied_keys: [], coupons: {}, flows: [], keys: {} };
+  return { day_key: dayKey(), consumed_usd_cents: 0, reserved_usd_cents: 0, reservations: {}, accounts: {}, applied_keys: [], flows: [], keys: {} };
 }
 function emptyAccount(): Account {
-  return { granted_in_usd_cents: 0, granted_out_usd_cents: 0, consumed_usd_cents: 0, envelopes: [], usage: emptyUsage(), sponsors: [], sponsors_active: {} };
+  return { granted_in_usd_cents: 0, granted_out_usd_cents: 0, consumed_usd_cents: 0, envelopes: [], usage: emptyUsage() };
 }
 function normalizePurpose(raw: unknown): EnvelopePurpose | undefined {
   if (raw === undefined || raw === null || raw === '' || raw === 'unrestricted') return { type: 'unrestricted' };
@@ -1459,10 +1375,6 @@ function qualifies(purpose: EnvelopePurpose, spend: { rail: Rail; model?: string
 }
 function purposeWords(purpose: EnvelopePurpose): string { return purpose.type === 'item' ? `roadmap item ${purpose.item}` : purpose.type === 'models' ? `model calls on ${purpose.models.join(', ')}` : purpose.type === 'model' ? 'model calls only' : purpose.type === 'any' ? 'any spend' : 'whatever the project needs'; }
 function formatCents(cents: number): string { return `$${(cents / 100).toFixed(2)}`; }
-function upsertSponsor(list: Sponsor[], sponsor: Sponsor): void {
-  const i = list.findIndex((s) => s.login === sponsor.login);
-  if (i >= 0) list[i] = sponsor; else list.push(sponsor);
-}
 // Daily spend (idle days as 0), oldest to today, over the trailing 14 days: the evidence for the runway estimate.
 function dailySpendSeries(days: Record<string, Tally>): number[] {
   const daily: Record<string, number> = Object.fromEntries(Object.entries(days).map(([d, t]) => [d, t.u]));
@@ -1478,41 +1390,14 @@ function nextDay(key: string): string {
   dt.setUTCDate(dt.getUTCDate() + 1);
   return dt.toISOString().slice(0, 10);
 }
-function activeSponsors(a: Account): Sponsor[] {
-  return [...Object.values(a.sponsors_active), ...a.sponsors.filter((s) => !a.sponsors_active[s.login])];
-}
 function displayProfile(a: Account | undefined): AccountProfile {
   const p = a?.profile ?? {};
   return { ...p, tagline: p.tagline_override ?? p.tagline, cover_url: p.cover_override ?? p.cover_url };
-}
-function patronCount(a: Account | undefined): number {
-  if (!a) return 0;
-  return new Set<string>([...Object.keys(a.sponsors_active), ...a.sponsors.map((s) => s.login)]).size;
-}
-function monthlyTotal(a: Account | undefined): number {
-  return a ? Object.values(a.sponsors_active).reduce((sum, s) => sum + (s.monthly_usd_cents ?? 0), 0) : 0;
 }
 function fundingStatus(f: FundingSnapshot): 'funded' | 'low' | 'unfunded' {
   if (!f.funded || f.balance_usd_cents <= 0) return 'unfunded';
   if (f.runway_confident && f.runway_days !== null && f.runway_days < 7) return 'low';
   return 'funded';
-}
-// Projects and funders that have granted INTO this account are patrons: a project's avatar is its own, a
-// funder's is their GitHub login's.
-function projectPatronsOf(flows: Flow[], account: string, profileOf: (id: string) => AccountProfile): Patron[] {
-  const byFrom = new Map<string, number>();
-  for (const flow of flows) if (flow.kind === 'grant' && flow.to === account && flow.from && (flow.from.includes('/') || flow.from.startsWith('@'))) byFrom.set(flow.from, (byFrom.get(flow.from) ?? 0) + flow.amount_usd_cents);
-  const funders: Patron[] = [...byFrom.entries()].filter(([from]) => from.startsWith('@')).map(([from, total]) => ({ kind: 'funder', login: from.slice(1), name: from, avatar_url: `https://github.com/${encodeURIComponent(from.slice(1))}.png?size=64`, url: `/p/${encodeURIComponent(from)}`, amount_label: `granted ${(total / 100).toFixed(2)}` }));
-  byFrom.forEach((_, from) => { if (from.startsWith('@')) byFrom.delete(from); });
-  return projectPatronsOfProjects(byFrom, profileOf);
-}
-function projectPatronsOfProjects(byFrom: Map<string, number>, profileOf: (id: string) => AccountProfile): Patron[] {
-  return [...byFrom.entries()].map(([from, total]) => ({ kind: 'project', login: from, name: from, avatar_url: profileOf(from).avatar_url, url: `/p/${encodeURIComponent(from)}`, amount_label: `granted $${(total / 100).toFixed(0)}` }));
-}
-function generateCouponCode(): string {
-  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  const chars = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => alphabet[b % alphabet.length]);
-  return `SPON-${chars.slice(0, 4).join('')}-${chars.slice(4, 8).join('')}-${chars.slice(8, 12).join('')}`;
 }
 function dayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -1602,7 +1487,6 @@ export interface FundingSnapshot {
   runway_hi_days: number | null;
   days_observed: number;
   runway_confident: boolean;
-  sponsors: Sponsor[];
   calls_total: number;
   last_call_at: string | null;
   daily_spend_usd_cents: number[];
@@ -1626,23 +1510,10 @@ export interface DirectoryEntry {
   burn_per_day_usd_cents: number;
   runway_days: number | null;
   runway_confident: boolean;
-  patron_count: number;
-  monthly_usd_cents: number;
   live_sessions: string[];
   live?: LiveDeployment;
   stripe_cardholder?: string;
-  polar_products?: Record<string, string>;
   status: 'funded' | 'low' | 'unfunded';
-}
-
-export interface Patron {
-  kind: 'sponsor' | 'project' | 'funder';
-  login: string;
-  name?: string;
-  avatar_url?: string;
-  url?: string;
-  tagline?: string;
-  amount_label?: string;
 }
 
 export interface FunderView {
@@ -1653,7 +1524,6 @@ export interface FunderView {
   credits_usd_cents: number;
   // Of the credits, the org's matching bonus: for other people's projects only.
   bonus_usd_cents: number;
-  polar_products?: Record<string, string>;
   received_usd_cents: number;
   given_usd_cents: number;
   given: Flow[];
@@ -1665,71 +1535,61 @@ export interface ProjectView extends DirectoryEntry {
   bounds: FundingSnapshot['bounds'];
   usable_usd_cents: number;
   envelopes: Envelope[];
-  tiers: Tier[];
   feed: Flow[];
-  patrons: Patron[];
 }
 
 export class LedgerClient {
   constructor(private readonly ns: DurableObjectNamespace) {}
-  private async rpc<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+  // Any operation by name: the core's below, or one an app registered with `LimitLedger.extend`.
+  async call<T>(op: string, args: Record<string, unknown> = {}): Promise<T> {
     const res = await this.ns.get(this.ns.idFromName('global')).fetch('https://ledger.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op, ...args }) });
     return await res.json() as T;
   }
   reserve(requestId: string, account: string, kid: string, amountUsdCents: number, dailyCapUsdCents: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string) {
-    return this.rpc<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; message?: string; balance_usd_cents?: number; earmarked_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number; limit?: Record<string, unknown>; used?: Record<string, number>; needed?: number; current?: number; retry_after_seconds?: number; how?: string }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents, model, estimated_tokens: estimatedTokens, rail, item, session });
+    return this.call<{ ok: true; balance_usd_cents: number } | { ok: false; error: string; message?: string; balance_usd_cents?: number; earmarked_usd_cents?: number; reserved_usd_cents?: number; available_usd_cents?: number; needed_usd_cents?: number; limit?: Record<string, unknown>; used?: Record<string, number>; needed?: number; current?: number; retry_after_seconds?: number; how?: string }>('reserve', { request_id: requestId, account, kid, amount_usd_cents: amountUsdCents, daily_cap_usd_cents: dailyCapUsdCents, model, estimated_tokens: estimatedTokens, rail, item, session });
   }
-  consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.rpc<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
-  release(requestId: string) { return this.rpc<{ ok: true }>('release', { request_id: requestId }); }
+  consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.call<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
+  release(requestId: string) { return this.call<{ ok: true }>('release', { request_id: requestId }); }
   mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose });
+    return this.call<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose });
   }
   grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string, purpose?: unknown, by?: string) {
-    return this.rpc<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
+    return this.call<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
   }
-  earmark(account: string, purpose?: unknown) { return this.rpc<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }>('earmark', { account, for: purpose }); }
-  funder(account: string) { return this.rpc<FunderView>('funder', { account }); }
-  bonusAdd(account: string, amountUsdCents: number) { return this.rpc<{ ok: boolean; bonus_usd_cents?: number; error?: string }>('bonus_add', { account, amount_usd_cents: amountUsdCents }); }
-  sponsorUpsert(account: string, sponsor: Sponsor) { return this.rpc<{ ok: boolean; active_sponsors?: number; error?: string }>('sponsor_upsert', { account, sponsor }); }
-  sponsorRemove(account: string, login: string) { return this.rpc<{ ok: boolean }>('sponsor_remove', { account, login }); }
-  accrue(account: string, key: string) { return this.rpc<{ ok: boolean; credited?: boolean; idempotent?: boolean; balance_usd_cents?: number; monthly_total_usd_cents?: number }>('accrue', { account, key }); }
-  couponCreate(input: { amount_usd_cents: number; from?: string; sponsor?: Sponsor; code?: string; expires_at?: string }) { return this.rpc<{ ok: boolean; coupon?: Coupon; error?: string }>('coupon_create', input); }
-  couponList() { return this.rpc<{ ok: boolean; coupons: Coupon[] }>('coupon_list'); }
-  couponRedeem(code: string, account: string) { return this.rpc<{ ok: boolean; amount_usd_cents?: number; account?: string; sponsor?: Sponsor | null; error?: string }>('coupon_redeem', { code, account }); }
-  keyRegister(claims: KeyClaims) { return this.rpc<{ ok: boolean; error?: string }>('key_register', { claims }); }
-  keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string) { return this.rpc<{ ok: boolean; error?: string; exp?: string }>('key_rotate', { previous, claims, grace_until: graceUntil }); }
-  keyCheck(kid: string) { return this.rpc<{ ok: boolean; error?: string }>('key_check', { kid }); }
-  keyExpire(kid: string, exp: string) { return this.rpc<{ ok: boolean; error?: string; exp?: string }>('key_expire', { kid, exp }); }
-  keyRevoke(kid: string) { return this.rpc<{ ok: boolean; error?: string }>('key_revoke', { kid }); }
-  keys(account: string) { return this.rpc<{ ok: true; account: string; keys: KeyEntry[] }>('keys', { account }); }
-  funding(account: string) { return this.rpc<FundingSnapshot>('funding', { account }); }
-  pulse(account: string) { return this.rpc<Pulse>('pulse', { account }); }
-  calls(account: string, limit?: number, before?: string) { return this.rpc<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before }); }
-  sessionEvent(account: string, event: SessionEvent) { return this.rpc<{ ok: boolean; error?: string; session?: SessionSummary; idempotent?: boolean }>('session_event', { account, event }); }
-  sessions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
-  session(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
-  sessionDelete(account: string, key: string) { return this.rpc<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
-  setupPut(account: string, setup: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
-  docsPut(account: string, docs: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
-  taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.rpc<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
-  postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.rpc<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
-  item(account: string, itemId: string) { return this.rpc<ItemView>('item', { account, item_id: itemId }); }
-  roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.rpc<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
-  roadmap(account: string) { return this.rpc<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
-  roadmapRevisions(account: string, limit?: number) { return this.rpc<{ ok: true; account: string; revisions: RoadmapRevision[] }>('roadmap_revisions', { account, limit }); }
-  cardPut(card: CardRecord) { return this.rpc<{ ok: boolean; error?: string }>('card_put', { card }); }
-  card(id: string) { return this.rpc<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
-  setCardholder(account: string, cardholder: string) { return this.rpc<{ ok: true }>('set_cardholder', { account, cardholder }); }
-  setPolarProducts(account: string, products: Record<string, string>) { return this.rpc<{ ok: boolean; error?: string }>('set_polar_products', { account, products }); }
-  polarCheckoutPut(checkout: PolarCheckout) { return this.rpc<{ ok: boolean; error?: string }>('polar_checkout_put', { checkout }); }
-  polarCheckout(id: string) { return this.rpc<{ ok: boolean; error?: string; checkout?: PolarCheckout }>('polar_checkout', { id }); }
-  setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number, tiers?: Tier[]) { return this.rpc<{ ok: boolean; profile?: AccountProfile; error?: string }>('set_profile', { account, profile, goal_days: goalDays, tiers }); }
-  setDeployment(account: string, deployment?: LiveDeployment) { return this.rpc<{ ok: true }>('set_deployment', { account, deployment }); }
-  moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.rpc<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
-  exportAll() { return this.rpc<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
-  importAll(entries: Array<[string, unknown]>, replace = false) { return this.rpc<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }
-  directory() { return this.rpc<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
-  project(account: string) { return this.rpc<ProjectView>('project', { account }); }
-  status() { return this.rpc<unknown>('status'); }
-  resetDaily() { return this.rpc<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number }>('reset_daily'); }
+  earmark(account: string, purpose?: unknown) { return this.call<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }>('earmark', { account, for: purpose }); }
+  funder(account: string) { return this.call<FunderView>('funder', { account }); }
+  bonusAdd(account: string, amountUsdCents: number) { return this.call<{ ok: boolean; bonus_usd_cents?: number; error?: string }>('bonus_add', { account, amount_usd_cents: amountUsdCents }); }
+  keyRegister(claims: KeyClaims) { return this.call<{ ok: boolean; error?: string }>('key_register', { claims }); }
+  keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string) { return this.call<{ ok: boolean; error?: string; exp?: string }>('key_rotate', { previous, claims, grace_until: graceUntil }); }
+  keyCheck(kid: string) { return this.call<{ ok: boolean; error?: string }>('key_check', { kid }); }
+  keyExpire(kid: string, exp: string) { return this.call<{ ok: boolean; error?: string; exp?: string }>('key_expire', { kid, exp }); }
+  keyRevoke(kid: string) { return this.call<{ ok: boolean; error?: string }>('key_revoke', { kid }); }
+  keys(account: string) { return this.call<{ ok: true; account: string; keys: KeyEntry[] }>('keys', { account }); }
+  funding(account: string) { return this.call<FundingSnapshot>('funding', { account }); }
+  pulse(account: string) { return this.call<Pulse>('pulse', { account }); }
+  calls(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before }); }
+  sessionEvent(account: string, event: SessionEvent) { return this.call<{ ok: boolean; error?: string; session?: SessionSummary; idempotent?: boolean }>('session_event', { account, event }); }
+  sessions(account: string, limit?: number) { return this.call<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
+  session(account: string, key: string) { return this.call<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
+  sessionDelete(account: string, key: string) { return this.call<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
+  setupPut(account: string, setup: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
+  taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
+  postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.call<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
+  item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
+  roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
+  roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
+  roadmapRevisions(account: string, limit?: number) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[] }>('roadmap_revisions', { account, limit }); }
+  cardPut(card: CardRecord) { return this.call<{ ok: boolean; error?: string }>('card_put', { card }); }
+  card(id: string) { return this.call<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
+  setCardholder(account: string, cardholder: string) { return this.call<{ ok: true }>('set_cardholder', { account, cardholder }); }
+  setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number) { return this.call<Record<string, unknown>>('set_profile', { account, profile, goal_days: goalDays }); }
+  setDeployment(account: string, deployment?: LiveDeployment) { return this.call<{ ok: true }>('set_deployment', { account, deployment }); }
+  moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.call<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
+  exportAll() { return this.call<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
+  importAll(entries: Array<[string, unknown]>, replace = false) { return this.call<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }
+  directory() { return this.call<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
+  project(account: string) { return this.call<ProjectView>('project', { account }); }
+  status() { return this.call<unknown>('status'); }
+  resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number }>('reset_daily'); }
 }

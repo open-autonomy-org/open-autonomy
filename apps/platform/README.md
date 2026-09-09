@@ -6,20 +6,17 @@ every session the project's agent works, and serves the funding site and the REA
 `consumed_usd_cents` is the authoritative cost; nothing is estimated client-side.
 
 ```text
-src/index.ts      the routes
-src/ledger.ts     the Durable Object: accounts, the audit trail, the key registry, sessions, updates, items
-src/keys.ts       claim-file keys: challenge, mint, rotate, list; verification by signature and expiry
-src/proxy.ts      the model rail: OpenAI and Anthropic wires → the model gateway, reserve then settle
-src/pricing.ts    reservation prices; settle uses the gateway's reported cost
-src/stream.ts     the development stream's intake (CloudEvents) and its live channels (SSE)
-src/site.tsx      the site: explore, the project page, the session page, the item page
-src/stream-view.tsx  the timeline's views (board, list, timeline, releases), the session and item pages, the Setup pane
-src/widgets.ts    runway, now, roadmap and activity SVGs for a README
-src/sync.ts       the docs sync: a project's page is its repository's mirror
-src/sponsors.ts   the GitHub Sponsors webhook
+src/index.ts      the entry: the treasury's worker with this app mounted, the one Durable Object re-exported
+src/app.tsx       the app: its routes before the core's, the page's slots, the GitHub login as the identity door, the monthly accrual
+src/patronage.ts  the operations on the books this app registers: sponsors and their accrual, coupons, tiers, Polar products and checkouts, the patrons wall
+src/site.tsx      its pages: explore, a funder's page, the giving page, and the panels it adds to every project's page
 src/polar.ts      money in through Polar: the tiers as products, the checkout, the thanks page, the webhook
-src/runway.ts     the Bayesian runway estimate
+src/sponsors.ts   the GitHub Sponsors webhook
+src/give-auth.ts  the GitHub login for the giving page and the roster edit
 ```
+
+The books, the rails, the keys, the stream, the timeline and the project page are the treasury, `packages/treasury/`,
+which this app mounts. Everything below describes the whole as deployed at open-autonomy.org.
 
 ## Money
 

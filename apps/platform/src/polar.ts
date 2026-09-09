@@ -1,8 +1,7 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import { error, html, json, methodNotAllowed, parseJson } from './http.js';
-import { LedgerClient, type EnvelopePurpose, type Sponsor, type Tier } from './ledger.js';
-import { purposeSentence, renderMessage } from './site.js';
-import { grantsAccount, isFunder, type Env } from './types.js';
+import { LedgerClient, error, grantsAccount, html, isFunder, json, methodNotAllowed, parseJson, purposeSentence, renderMessage, type EnvelopePurpose, type Sponsor } from '@open-autonomy/treasury';
+import { Patronage, type Tier } from './patronage.ts';
+import type { Env } from './types.ts';
 
 // What a funder buys: credit packs, once. Credits are money in on the funder's own books.
 const FUNDER_PACKS: Tier[] = [{ usd_cents: 1000, name: '$10 of grant credits' }, { usd_cents: 2500, name: '$25 of grant credits' }, { usd_cents: 10000, name: '$100 of grant credits' }];
@@ -50,7 +49,7 @@ async function ensureProducts(env: Env, ledger: LedgerClient, account: string, t
       changed = true;
     }
   }
-  if (changed) await ledger.setPolarProducts(account, products);
+  if (changed) await new Patronage(ledger).setPolarProducts(account, products);
   return products;
 }
 
@@ -66,16 +65,18 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
   // A project (owner/repo) buys patronage; a funder (@login) buys credit packs.
   if (!(/^[^/\s@]+\/[^/\s]+$/.test(account) || /^@[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/.test(account)) || !Number.isInteger(tier) || tier < 0) return error('invalid_request');
   const ledger = new LedgerClient(env.LIMITS);
+  const patronage = new Patronage(ledger);
   const funder = isFunder(account) ? await ledger.funder(account) : undefined;
   const view = funder ? undefined : await ledger.project(account);
-  const tiers = funder ? FUNDER_PACKS : view?.tiers ?? [];
+  const own = await patronage.view(account);
+  const tiers = funder ? FUNDER_PACKS : own.tiers;
   if (!(funder?.found || view?.found) || tier >= tiers.length) return error('no_such_tier', 404);
   const marked = await ledger.earmark(account, input.for);
   if (!marked.ok || !marked.purpose) return error(marked.error ?? 'invalid_earmark', marked.error === 'no_such_item' ? 404 : 400);
   const road = marked.purpose.type === 'item' ? await ledger.roadmap(account) : undefined;
   const choice = giftChoice(account, marked.purpose, road?.revision?.roadmap);
   const packs = funder ? 'once' : interval;
-  const products = await ensureProducts(env, ledger, account, tiers, (funder ? funder.polar_products : view?.polar_products) ?? {}, marked.purpose, choice);
+  const products = await ensureProducts(env, ledger, account, tiers, own.polar_products, marked.purpose, choice);
   const origin = new URL(req.url).origin;
   const created = await polar<{ id?: string; url?: string }>(env, 'POST', '/v1/checkouts/', {
     products: [products[`${tier}:${packs}${purposeSuffix(marked.purpose)}`]],
@@ -83,7 +84,7 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
     metadata: { account, tier: String(tier), interval: packs, for: JSON.stringify(marked.purpose), choice },
   });
   if (!created.ok || !created.body.id || !created.body.url) return error('checkout_unavailable', 502);
-  await ledger.polarCheckoutPut({ id: created.body.id, account, tier, interval: packs, usd_cents: tiers[tier].usd_cents, purpose: marked.purpose, created_at: new Date().toISOString() });
+  await patronage.polarCheckoutPut({ id: created.body.id, account, tier, interval: packs, usd_cents: tiers[tier].usd_cents, purpose: marked.purpose, created_at: new Date().toISOString() });
   return ct.includes('json') ? json({ ok: true, checkout_id: created.body.id, url: created.body.url, usd_cents: tiers[tier].usd_cents, interval: packs, for: marked.purpose }) : new Response(null, { status: 303, headers: { location: created.body.url } });
 }
 
@@ -93,7 +94,7 @@ interface PolarOrder { id: string; paid?: boolean; status?: string; total_amount
 // opened, else from the order's metadata; the patron's name from Polar's customer, never their card.
 export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOrder): Promise<{ ok: boolean; minted?: boolean; account?: string; error?: string }> {
   if (!order?.id || order.paid === false) return { ok: true, minted: false };
-  const stored = order.checkout_id ? (await ledger.polarCheckout(order.checkout_id)).checkout : undefined;
+  const stored = order.checkout_id ? (await new Patronage(ledger).polarCheckout(order.checkout_id)).checkout : undefined;
   let account = typeof order.metadata?.account === 'string' ? order.metadata.account : stored?.account;
   if (!account) return { ok: false, error: 'order_without_account' };
   const amount = Number(order.net_amount ?? order.total_amount ?? order.amount ?? 0);
@@ -130,7 +131,7 @@ export async function thanksPage(env: Env, account: string, checkoutId: string |
     const orders = await polar<{ items?: PolarOrder[] }>(env, 'GET', `/v1/orders/?checkout_id=${encodeURIComponent(checkoutId)}`);
     for (const o of orders.body.items ?? []) { const r = await settleOrder(env, ledger, { ...o, checkout_id: o.checkout_id ?? checkoutId }); if (r.minted) minted = true; }
   }
-  const stored = (await ledger.polarCheckout(checkoutId)).checkout;
+  const stored = (await new Patronage(ledger).polarCheckout(checkoutId)).checkout;
   const road = stored?.purpose.type === 'item' ? await ledger.roadmap(account) : undefined;
   const choice = stored ? giftChoice(account, stored.purpose, road?.revision?.roadmap) : `This gift is for whatever ${account.split('/')[1] ?? account} needs.`;
   return html(renderMessage(account, paid, paid ? 'Thank you' : 'Not paid yet', paid ? `${choice} Your patronage of ${account} is on its books${minted ? ' now' : ''}. Every session and cent it funds shows on its page.` : `${choice} Polar has not confirmed this checkout yet. The books update when it does.`));

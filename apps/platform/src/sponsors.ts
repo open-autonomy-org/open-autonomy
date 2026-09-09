@@ -1,6 +1,6 @@
-import { constantTimeEqual, error, json } from './http.js';
-import { LedgerClient, type Sponsor } from './ledger.js';
-import type { Env } from './types.js';
+import { LedgerClient, constantTimeEqual, error, json, type Sponsor } from '@open-autonomy/treasury';
+import { Patronage } from './patronage.ts';
+import type { Env } from './types.ts';
 
 // GitHub Sponsors webhook intake. Configured once in the org's Sponsors settings with a shared secret, it
 // keeps the active recurring-sponsor list current with no GitHub token: created / tier_changed / edited
@@ -40,17 +40,18 @@ export async function handleSponsorsWebhook(req: Request, env: Env, account: str
   const amount = s.tier.monthly_price_in_cents ?? 0;
   const sponsor: Sponsor = { login, avatar_url: s.sponsor?.avatar_url, monthly_usd_cents: amount };
   const ledger = new LedgerClient(env.LIMITS);
+  const patronage = new Patronage(ledger);
   switch (payload.action) {
     case 'created':
       if (s.tier.is_one_time) await ledger.mint(account, amount, `onetime:${s.node_id ?? `${login}:${s.created_at ?? ''}`}`, sponsor);
-      else await ledger.sponsorUpsert(account, sponsor);
+      else await patronage.sponsorUpsert(account, sponsor);
       break;
     case 'tier_changed':
     case 'edited':
-      if (!s.tier.is_one_time) await ledger.sponsorUpsert(account, sponsor);
+      if (!s.tier.is_one_time) await patronage.sponsorUpsert(account, sponsor);
       break;
     case 'cancelled':
-      await ledger.sponsorRemove(account, login);
+      await patronage.sponsorRemove(account, login);
       break;
     default:
       break; // pending_* and anything else: acknowledged, no state change
