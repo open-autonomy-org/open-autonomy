@@ -1,4 +1,4 @@
-import type { Roadmap } from '@open-autonomy/sdk/roadmap';
+import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.js';
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
@@ -50,7 +50,7 @@ async function give(env: Env, from: string, to: unknown, usdCents: unknown, note
 }
 const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
-const EMPTY_ROADMAP: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] };
+const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 
 async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
@@ -137,11 +137,11 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (get()) return get()!;
     return thanksPage(env, dec(m[1]), url.searchParams.get('checkout_id'));
   }
-  if ((m = path.match(/^\/p\/(.+)\/(about|shipped)$/))) {
+  if ((m = path.match(/^\/p\/(.+)\/about$/))) {
     const account = dec(m[1]);
     const view = await ledger.project(account);
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
-    return html(renderDocPage(account, m[2] === 'about' ? 'About' : 'Shipped', m[2] === 'about' ? view.profile.about_md : view.profile.shipped_md));
+    return html(renderDocPage(account, 'About', view.profile.about_md));
   }
   if ((m = path.match(/^\/p\/(.+)\/sessions$/))) {
     if (get()) return get()!;
@@ -171,7 +171,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
     if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
     const [stream, road] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account)]);
-    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env), grantsAccount(env), sponsorAccount(env)));
+    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, polarConfigured(env), grantsAccount(env), sponsorAccount(env), { view: url.searchParams.get('view') ?? undefined, sort: url.searchParams.get('sort') ?? undefined }));
   }
 
   // ---- admin: through the reviewed workflow only ----

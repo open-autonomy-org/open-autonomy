@@ -1,24 +1,24 @@
-// Roadmap drivers: one normalized roadmap, several native homes. `file` is the default — ROADMAP.yml in
-// git, the platform pulls it on sync. `github-milestones` is platform-pulled too, credential-free (public
-// milestones). `jira` runs owner-side, where the credential is, and pushes through the SDK on a steer-scoped
-// key. Each driver declares its conformance: what its tracker cannot express, so a reader knows which fields
-// are the driver's own defaults rather than the project's word. The agent stays tracker-blind: it works and
-// narrates ROADMAP.yml, and a driver's `reconcile` plan carries a finished item back to the native side.
-import { ROADMAP_SCHEMA, type Roadmap, type RoadmapItem, type RoadmapStatus } from './roadmap.ts';
+// Timeline drivers: one normalized document, several native homes. A substrate's reporter publishes its own
+// (the Hermes kit's: CHANGELOG.md, the board, ROADMAP.md). `github-milestones` is platform-pulled on sync,
+// credential-free (public milestones). `jira` runs owner-side, where the credential is, and pushes through the
+// SDK on a steer-scoped key. Each driver declares its conformance: what its tracker cannot express, so a reader
+// knows which fields are the driver's own defaults rather than the project's word. The agent stays
+// tracker-blind: it works its own queue, and a driver's reconcile plan carries a finished item back natively.
+import { ROADMAP_SCHEMA, tenseOf, type Roadmap, type RoadmapItem, type RoadmapStatus } from './roadmap.ts';
 
-export type RoadmapSource = 'file' | 'github-milestones' | 'jira';
-export const ROADMAP_SOURCES: readonly RoadmapSource[] = ['file', 'github-milestones', 'jira'];
+export type RoadmapSource = 'github-milestones' | 'jira';
+export const ROADMAP_SOURCES: readonly RoadmapSource[] = ['github-milestones', 'jira'];
 
 export interface RoadmapConfig {
-  source: RoadmapSource;
-  path: string;
+  // Absent: the platform pulls nothing; the substrate publishes.
+  source?: RoadmapSource;
   github?: { repo?: string };
   jira?: { base_url?: string; project?: string; jql?: string; done_transition?: string };
 }
 
 // `.open-autonomy/config.yaml`'s `roadmap:` block. The config's shape is small and fixed: a line reader.
 export function parseRoadmapConfig(yaml: string): RoadmapConfig {
-  const cfg: RoadmapConfig = { source: 'file', path: 'ROADMAP.yml' };
+  const cfg: RoadmapConfig = {};
   let block = '';
   let sub = '';
   for (const raw of yaml.split('\n')) {
@@ -32,7 +32,6 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
       sub = l2[2] === '' ? l2[1] : '';
       const v = l2[2].trim().replace(/^["']|["']$/g, '');
       if (l2[1] === 'source' && (ROADMAP_SOURCES as readonly string[]).includes(v)) cfg.source = v as RoadmapSource;
-      if (l2[1] === 'path' && v) cfg.path = v;
       continue;
     }
     const l3 = /^    ([a-z_]+):\s*(.+)$/.exec(line);
@@ -48,13 +47,12 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
 export interface DriverConformance { source: RoadmapSource; cannot: string[] }
 
 export const CONFORMANCE: Record<RoadmapSource, string[]> = {
-  file: [],
   'github-milestones': ['priority (a milestone has none; every item is medium)', 'proposed (a milestone is open or closed; open is planned)', 'acceptance lines are the description\'s bullet lines, or its paragraphs'],
   jira: ['phase (an epic has none; the epic\'s rank order is the phase)', 'proposed and active map from the status category: to-do is planned, in-progress is active, done is done'],
 };
 
 // ---- GitHub milestones -----------------------------------------------------------------------------------
-export interface Milestone { number: number; title: string; description?: string | null; state: 'open' | 'closed'; due_on?: string | null; created_at?: string }
+export interface Milestone { number: number; title: string; description?: string | null; state: 'open' | 'closed'; due_on?: string | null; created_at?: string; closed_at?: string | null; html_url?: string }
 
 export const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'item';
 
@@ -71,7 +69,8 @@ export function fromMilestones(milestones: Milestone[]): Roadmap {
     let id = slug(m.title);
     while (seen.has(id)) id = `${id}-${m.number}`;
     seen.add(id);
-    return { id, title: m.title, status: m.state === 'closed' ? 'done' : 'planned', phase: String(phase), priority: 'medium', acceptance: acceptanceOf(m.description ?? '') };
+    const status: RoadmapStatus = m.state === 'closed' ? 'done' : 'planned';
+    return { id, title: m.title, tense: tenseOf({ status }), status, home: 'github-milestones', phase: String(phase), priority: 'medium', ...(m.created_at ? { proposed_at: m.created_at } : {}), ...(m.closed_at ? { done_at: m.closed_at } : {}), ...(m.html_url ? { url: m.html_url } : {}), acceptance: acceptanceOf(m.description ?? '') };
   });
   return { schema: ROADMAP_SCHEMA, items };
 }
@@ -101,7 +100,7 @@ export interface JiraEpic { key: string; summary: string; description?: string |
 export function fromJira(epics: JiraEpic[]): Roadmap {
   const ordered = [...epics].sort((a, b) => (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER) || a.key.localeCompare(b.key));
   const status = (c: string): RoadmapStatus => (c === 'done' ? 'done' : c === 'indeterminate' ? 'active' : 'planned');
-  return { schema: ROADMAP_SCHEMA, items: ordered.map((e, i) => ({ id: e.key, title: e.summary, status: status(e.statusCategory), phase: String(i + 1), priority: (e.priority ?? 'medium').toLowerCase(), acceptance: acceptanceOf(e.description ?? '') })) };
+  return { schema: ROADMAP_SCHEMA, items: ordered.map((e, i) => ({ id: e.key, title: e.summary, tense: tenseOf({ status: status(e.statusCategory) }), status: status(e.statusCategory), home: 'jira', phase: String(i + 1), priority: (e.priority ?? 'medium').toLowerCase(), acceptance: acceptanceOf(e.description ?? '') })) };
 }
 // An item done in the roadmap transitions its epic; one active starts it.
 export function jiraChanges(roadmap: Roadmap, epics: JiraEpic[]): Array<{ key: string; to: 'done' | 'active' }> {
@@ -126,7 +125,7 @@ export function diffRoadmaps(before: Roadmap | undefined, after: Roadmap): Roadm
     const p = prev.get(id);
     if (!p) { out.push({ id, kind: 'added', to: it.status }); continue; }
     if (p.status !== it.status) out.push({ id, kind: 'status', from: p.status, to: it.status });
-    else if (p.title !== it.title || p.phase !== it.phase || p.priority !== it.priority || p.acceptance.join('\n') !== it.acceptance.join('\n')) out.push({ id, kind: 'edited' });
+    else if (p.tense !== it.tense || p.title !== it.title || p.phase !== it.phase || p.priority !== it.priority || p.release !== it.release || p.done_at !== it.done_at || p.started_at !== it.started_at || p.commit !== it.commit || p.acceptance.join('\n') !== it.acceptance.join('\n')) out.push({ id, kind: 'edited' });
   }
   for (const id of prev.keys()) if (!next.has(id)) out.push({ id, kind: 'removed' });
   return out;

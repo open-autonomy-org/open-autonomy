@@ -1,4 +1,4 @@
-import { itemState, phaseNumber, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
+import { itemState, itemTime, phaseNumber, tenseOf, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
 import type { FundingSnapshot, SessionSummary } from './ledger.js';
 import { fmtDur, fmtWhen, shortSha } from './ui.js';
 
@@ -57,16 +57,19 @@ const STATE_COLOR: Record<RoadmapState, string> = { done: C.green, active: C.blu
 const STATE_WORD: Record<RoadmapState, string> = { done: 'shipped', active: 'in progress', queued: 'queued', proposed: 'proposed' };
 const MAX_ROWS = 8;
 
-// The roadmap as a station list: phase-ordered committed items, the earliest active marked "now",
-// proposed candidates folded into one trailing count.
+// The timeline as a station list: what is in flight first, then what is ahead in phase order, then the
+// latest shipped; the earliest active marked "now"; proposed candidates folded into one trailing count.
 export function renderRoadmapSvg(items: RoadmapItem[]): string {
-  const rows = items.map((item) => ({ item, state: itemState(item) }));
-  const committed = rows.filter((r) => r.state !== 'proposed').sort((a, b) => phaseNumber(a.item) - phaseNumber(b.item));
+  const rows = items.map((item) => ({ item, state: itemState(item), tense: tenseOf(item) }));
+  const present = rows.filter((r) => r.tense === 'present').sort((a, b) => (a.state === 'active' ? 0 : 1) - (b.state === 'active' ? 0 : 1));
+  const future = rows.filter((r) => r.tense === 'future' && r.state !== 'proposed').sort((a, b) => phaseNumber(a.item) - phaseNumber(b.item));
+  const past = rows.filter((r) => r.tense === 'past').sort((a, b) => itemTime(b.item) - itemTime(a.item));
+  const committed = [...present, ...future, ...past];
   const proposed = rows.length - committed.length;
   const count = (s: RoadmapState): number => committed.filter((r) => r.state === s).length;
   const shown = committed.slice(0, MAX_ROWS);
   const frontier = committed.find((r) => r.state === 'active');
-  const title = committed.length ? `${count('done')} shipped · ${count('active')} in progress · ${count('queued')} queued` : 'No roadmap yet';
+  const title = committed.length ? `${past.length} shipped · ${count('active')} in progress · ${future.length} ahead` : 'No timeline yet';
   const lines: string[] = [];
   let y = 52;
   for (const r of shown) {
@@ -83,7 +86,7 @@ export function renderRoadmapSvg(items: RoadmapItem[]): string {
   if (committed.length - shown.length > 0) foot.push(`+${committed.length - shown.length} more`);
   if (proposed > 0) foot.push(`${proposed} proposed`);
   if (foot.length) { lines.push(`  <text x="34" y="${y}" font-family="${MONO}" font-size="10" fill="${C.gray}">${esc(foot.join(' · '))}</text>`); y += 20; }
-  return frame(Math.max(72, y - 4), '🗺 roadmap', title, lines.join('\n'));
+  return frame(Math.max(72, y - 4), '🗺 timeline', title, lines.join('\n'));
 }
 
 const DAYS = 14;

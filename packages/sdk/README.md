@@ -91,18 +91,15 @@ when using a checkout's bundled tools. The credential destination remains outsid
   (`done` | `failed`), a chat does not. Several can be live at once.
 - **An update** is a short progress note on an item, optionally from a session.
 - **The timeline** is one normalized document per project: every item of work the project has done, is doing
-  or intends, in one language, whatever holds it natively. An item has a tense, past, present or future, and the
-  page's views (a board, a list, a timeline, a changelog) are sorts and groupings over that one document, never
-  edits: the platform shows, it does not steer. What a substrate keeps locally is its own business: the Hermes
-  kit keeps its past in `CHANGELOG.md`, its present on the Hermes board with the sessions serving it, and its
-  future in `ROADMAP.md`; an engagement keeps all three in a client's tracker. Unifying those into the one
-  language is the job of that substrate's SDK implementation, the reporter or a driver, and of nothing on the
-  platform. (Owner ruling, 2026-09-08. Standing today: the wire below still calls the document the roadmap and
-  the reporter publishes only the present under that name; the item carries no tense, no time and no release;
-  the past reaches the page as a markdown document. The item's fields for the views are the next change to
-  this wire, not yet decided here.)
-  This package reads the file form into a typed shape and writes it back byte for byte (`parseRoadmap`,
-  `serializeRoadmap`, `withStatus`, `renderRoadmap`); no kit writes that file today.
+  or intends, in one language, whatever holds it natively. An item has a tense, past, present or future, a
+  status within it, when it entered each, the release that shipped it or will, who, and its proof (a commit, a
+  native record). The page's views (a board, a list, the timeline by month, the past by release) are sorts and
+  groupings over that one document, never edits: the platform shows, it does not steer. What a substrate keeps
+  locally is its own business: the Hermes kit keeps its past in `CHANGELOG.md`, its present on the Hermes board
+  with the sessions serving it, and its future in `ROADMAP.md`; an engagement keeps all three in a client's
+  tracker. Unifying those into the one language is the job of that substrate's SDK implementation, the reporter
+  or a driver, and of nothing on the platform (owner ruling, 2026-09-08). The wire still calls the document the
+  roadmap in its routes.
 
 Spend is attributed by the platform: Hermes names its session on each model request, so overlapping sessions
 each receive their own settled calls and cents and an item's page shows everything that touched it.
@@ -186,7 +183,7 @@ Public reads, no key:
 | `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes |
 | `GET /v1/accounts/:account/items/:item` | every session, update and settled cent on the item |
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
-| `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md?, shipped_md? }` | the project's documents, from whatever files the substrate keeps: what it is (the page leads with the first paragraph), what shipped |
+| `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md? }` | the project's document, from whatever file the substrate keeps: what it is (the page leads with the first paragraph) |
 | `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision); stays open |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |
