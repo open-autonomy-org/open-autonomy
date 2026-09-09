@@ -158,4 +158,7 @@ See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
 The local Codex setup choice uses the operator's installed CLI and allowance, without copying its login
 or provisioning remote hosting. Activation is blocked until the host sidecar and container executor are
 integrated and verified; native app-server transport alone does not isolate agent tools. Follow the
-generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks.
+generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks. The reporter
+can run on the host with `--container <id> --project <container checkout> --state-file <host cursor file>`
+and `HERMES_HOME=<container home>`. It reads through the container's native Supercode process; the host
+filters and publishes the stream, without copying SQLite files or mounting host credentials into the agent.

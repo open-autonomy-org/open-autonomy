@@ -6,6 +6,8 @@
 // project's key. Nothing here drives the agent; it only reads.
 //
 //   HERMES_HOME=<the agent's home> OPEN_AUTONOMY_BASE_URL=http://127.0.0.1:8787/v1 bun .open-autonomy/reporter.ts [--config .open-autonomy/config.yaml]
+//   Host sidecar: add --container <id> --project <container checkout> --state-file <host cursor file>.
+//   Only the native Supercode reader and file/git reads execute inside that container; publishing stays here.
 //
 // Supercode's contract, as its SDK documents it: `subscribeSessionIndex` lists sessions and streams
 // index changes (`sessionIndexEvent`); `session(locator).follow()` yields a snapshot then appended
@@ -16,15 +18,37 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
-import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
+import { OpenAutonomy, type Session, type Turn, type TaskReview } from './sdk/client.ts';
 
-const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
 const cfg = readConfig(configPath);
+const container = arg('--container');
+if (container && !cfg.hermes_home.startsWith('/')) throw new Error('Container reporting requires HERMES_HOME to name the absolute home inside the container.');
+const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
+if (container && cfg.seats) throw new Error('Container reporting reads Hermes in the container; configure host Claude seats with a separate reporter.');
+// Keep the existing read-only observer next to its SQLite files. Docker carries its ordinary
+// stdio protocol; neither databases nor credentials are mirrored onto another filesystem.
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--env', `HERMES_HOME=${cfg.hermes_home}`, container!, ...cmd];
+const run = (cmd: string[]) => Bun.spawnSync({
+  cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000,
+});
+const readText = (p: string): string | undefined => {
+  try {
+    if (!container) return readFileSync(p, 'utf8');
+    const r = run(['cat', '--', p]);
+    return r.exitCode === 0 ? r.stdout.toString() : undefined;
+  } catch { return undefined; }
+};
+const directories = (p: string): string[] => {
+  if (!container) return readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  const r = run(['python3', '-c', 'import json,os,sys; print(json.dumps([e.name for e in os.scandir(sys.argv[1]) if e.is_dir()]))', p]);
+  if (r.exitCode !== 0) throw new Error('Container directory unavailable');
+  return JSON.parse(r.stdout.toString());
+};
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${cfg.platform}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
-const stateFile = resolve(cfg.state_file);
+const stateFile = resolve(arg('--state-file') ?? cfg.state_file);
 const IDLE_END_MS = Number(process.env.OPEN_AUTONOMY_IDLE_END_MS ?? 5 * 60_000);
 const TURN_END_MS = Number(process.env.OPEN_AUTONOMY_TURN_END_MS ?? 15_000);
 // The board's tasks with an attempt still running, as of its last read: a run session serving one of them is not over,
@@ -83,7 +107,7 @@ const jobNames = new Map<string, string>();
 function jobName(id: string): string {
   if (!jobNames.has(id)) {
     try {
-      const store = JSON.parse(readFileSync(resolve(cfg.hermes_home, 'cron', 'jobs.json'), 'utf8')) as { jobs?: Array<{ id?: string; name?: string }> } | Array<{ id?: string; name?: string }>;
+      const store = JSON.parse(readText(resolve(cfg.hermes_home, 'cron', 'jobs.json')) ?? '{}') as { jobs?: Array<{ id?: string; name?: string }> } | Array<{ id?: string; name?: string }>;
       for (const j of Array.isArray(store) ? store : store.jobs ?? []) if (j.id && j.name) jobNames.set(j.id, j.name);
     } catch { /* no schedule store yet */ }
   }
@@ -228,8 +252,9 @@ class Followed {
 
 // supercode is the reporter's own dependency (its npm package carries the binary), so it is found beside
 // this file before anywhere on PATH; SUPERCODE_BIN names another build outright.
-const supercode = [process.env.SUPERCODE_BIN, resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].filter((p): p is string => !!p).find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
-const sc = new SupercodeHarnessClient({ command: supercode, env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
+const supercode = container ? process.env.SUPERCODE_BIN ?? 'supercode' : [process.env.SUPERCODE_BIN, resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].filter((p): p is string => !!p).find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
+const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
+const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
 const homes = { hermes: resolve(cfg.hermes_home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
 // The board task each seat directory serves, as of the last board read: the task in flight whose workspace names it.
 const seatItems = new Map<string, string>();
@@ -336,9 +361,9 @@ async function board(): Promise<RoadmapItem[] | undefined> {
   for (const t of tasks) {
     const item = t.id;
     const attempts = (t.attempts ?? []).map((a) => ({ id: a.id, profile: a.profile, status: a.status, started_at: a.started_at, ended_at: a.ended_at, outcome: a.outcome, summary: a.handoff?.summary }));
-    const reviews = (t.reviews ?? []).map((r) => ({ verdict: r.verdict as 'requested', by: r.by, reason: r.reason, at: r.at }));
+    const reviews: TaskReview[] = (t.reviews ?? []).map((r) => ({ verdict: r.verdict as TaskReview['verdict'], by: r.by, reason: r.reason, at: r.at }));
     const requested = [...reviews].reverse().find((r) => r.verdict === 'requested');
-    if (t.lane === 'done' && requested && !reviews.some((r) => r.verdict === 'changes_requested' && (r.at ?? '') > (requested.at ?? ''))) reviews.push({ verdict: 'approved' as 'requested', by: attempts[attempts.length - 1]?.profile, at: t.completed_at ?? attempts[attempts.length - 1]?.ended_at });
+    if (t.lane === 'done' && requested && !reviews.some((r) => r.verdict === 'changes_requested' && (r.at ?? '') > (requested.at ?? ''))) reviews.push({ verdict: 'approved', by: attempts[attempts.length - 1]?.profile, at: t.completed_at ?? attempts[attempts.length - 1]?.ended_at });
     const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
     const state = { item, task_id: t.id, lane: t.lane, title: t.title, assignee: t.assignee, attempts, reviews, handoff: last?.handoff, updated_at: new Date().toISOString() };
     const taskDigest = JSON.stringify([state.lane, attempts.map((a) => [a.id, a.status, a.ended_at]), reviews.length, last?.handoff?.summary]);
@@ -430,7 +455,7 @@ const landedCache = new Map<string, { sha?: string; pr?: string }>();
 function landedOf(id: string): { sha?: string; pr?: string } {
   const known = landedCache.get(id);
   if (known) return known;
-  const r = Bun.spawnSync({ cmd: ['git', 'log', 'origin/main', '--first-parent', '-1', '--format=%H%x1f%s', `--grep=agent/${id}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  const r = run(['git', '-C', projectDir, 'log', 'origin/main', '--first-parent', '-1', '--format=%H%x1f%s', `--grep=agent/${id}`]);
   const line = r.exitCode === 0 ? r.stdout.toString().trim() : '';
   const [sha, subject] = line.split('\x1f');
   const found = sha ? { sha, pr: /#(\d+)\b/.exec(subject ?? '')?.[1] } : {};
@@ -469,8 +494,8 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
 // scrum and every worker), never the branch a worker happens to be on; the working tree only when there is no git.
 let fetchedAt = 0;
 function mainFile(name: string): string | undefined {
-  if (Date.now() - fetchedAt > 60_000) { fetchedAt = Date.now(); try { Bun.spawnSync({ cmd: ['git', 'fetch', '-q', 'origin', 'main'], cwd: projectDir, timeout: 20_000 }); } catch { /* no remote here */ } }
-  const r = Bun.spawnSync({ cmd: ['git', 'show', `origin/main:${name}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  if (Date.now() - fetchedAt > 60_000) { fetchedAt = Date.now(); try { run(['git', '-C', projectDir, 'fetch', '-q', 'origin', 'main']); } catch { /* no remote here */ } }
+  const r = run(['git', '-C', projectDir, 'show', `origin/main:${name}`]);
   return r.exitCode === 0 ? r.stdout.toString() : readText(resolve(projectDir, name));
 }
 async function timeline(): Promise<void> {
@@ -488,7 +513,6 @@ async function timeline(): Promise<void> {
 // skills — published whenever they change. The platform reads no harness file.
 // The project's document, from the checkout: CONSTITUTION.md is what the project is (the page leads with its first
 // paragraph). Published when it changes. What shipped is the timeline's past, never a document.
-const projectDir = resolve(stateFile, '..', '..');
 let docsDigest = '';
 async function docs(): Promise<void> {
   const d = { about_md: readText(resolve(projectDir, 'CONSTITUTION.md')) };
@@ -505,7 +529,7 @@ async function setup(): Promise<void> {
   let schedule: Array<{ name: string; schedule: string; description?: string }> = [];
   try { const seed = JSON.parse(readText(resolve(home, 'cron', 'jobs.seed.json')) ?? '{}') as { jobs?: Array<{ name?: string; schedule?: string; prompt?: string; script?: string }> }; schedule = (seed.jobs ?? []).filter((j) => j.name && j.schedule).map((j) => ({ name: j.name!, schedule: j.schedule!, description: j.prompt ?? (j.script ? `runs ${j.script}` : undefined) })); } catch { /* no seed */ }
   const skills: string[] = [];
-  try { for (const cat of readdirSync(resolve(home, 'skills'))) { try { for (const name of readdirSync(resolve(home, 'skills', cat))) if (existsSync(resolve(home, 'skills', cat, name, 'SKILL.md'))) skills.push(name); } catch { /* a file */ } } } catch { /* no skills */ }
+  try { for (const cat of directories(resolve(home, 'skills'))) { try { for (const name of directories(resolve(home, 'skills', cat))) if (readText(resolve(home, 'skills', cat, name, 'SKILL.md')) !== undefined) skills.push(name); } catch { /* a file */ } } } catch { /* no skills */ }
   const s = { harness: 'hermes', persona: readText(resolve(home, 'SOUL.md')), model, provider, schedule, skills: skills.sort(), setup_md: readText(resolve(home, 'README.md')) };
   const digest = JSON.stringify(s);
   if (digest === setupDigest) return;
