@@ -400,7 +400,9 @@ function changelogItems(md: string | undefined, account: string): RoadmapItem[] 
     while (seen.has(id)) id = `${id}-`;
     seen.add(id);
     const commit = /\b(?=[0-9a-f]*\d)([0-9a-f]{7,40})\b/.exec(text)?.[1];
-    const links = dedupe([...linksIn(text), ...[...text.matchAll(/(?:PR\s*)?#(\d+)\b/g)].map((m) => linkOf(`https://github.com/${account}/pull/${m[1]}`, `#${m[1]}`))]);
+    // A bare `#N` is the project's own pull request unless the line already links a pull request by address.
+    const named = linksIn(text);
+    const links = dedupe([...named, ...(named.some((l) => l.kind === 'github-pr') ? [] : [...text.matchAll(/(?:PR\s*)?#(\d+)\b/g)].map((m) => linkOf(`https://github.com/${account}/pull/${m[1]}`, `#${m[1]}`)))]);
     out.push(defined({ id, title: clipWords(plain(text), 200), tense: 'past', status: 'done', home: 'changelog', release, done_at: date, commit, links, acceptance: [] }) as RoadmapItem);
   }
   return out;
@@ -481,7 +483,9 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
       const prUrl = landed.pr ? `https://github.com/${cfg.account}/pull/${landed.pr}` : undefined;
       if (prUrl) item.links = dedupe([...(item.links ?? []), linkOf(prUrl, `#${landed.pr}`)]);
       const sameCommit = (a?: string, b?: string) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
-      const line = shipped.find((l) => l.title.includes(t.id) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!prUrl && (l.links ?? []).some((x) => x.url === prUrl)));
+      // The line that shipped this task: it names the task, or the intention the task served (an engagement's ticket key),
+      // or the same commit, or the project's own pull request for it.
+      const line = shipped.find((l) => l.title.includes(t.id) || (!!t.phase && l.title.includes(t.phase)) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!prUrl && (l.links ?? []).some((x) => x.url === prUrl)));
       if (line) { folded.add(line.id); if (line.release) item.release = line.release; item.links = dedupe([...(item.links ?? []), ...(line.links ?? [])]); item.commit ??= line.commit; item.done_at ??= line.done_at; }
     }
     items.push(item);
