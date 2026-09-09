@@ -1,0 +1,23 @@
+name = "open-autonomy-backend"
+main = "src/index.ts"
+compatibility_date = "2026-06-15"
+workers_dev = true
+
+# Plain configuration. Secrets are set with `wrangler secret put`, never here (README.md).
+[vars]
+MODEL_GATEWAY_URL = "https://api-gateway.merge.dev"
+MAX_BODY_BYTES = "1048576"
+MODEL_PRICES_JSON = "{}"
+MAX_GLOBAL_DAILY_USD_CENTS = "5000"
+
+[triggers]
+crons = ["0 6 * * *"]
+
+# One Durable Object: the books. The class name and binding are the backend's.
+[[durable_objects.bindings]]
+name = "LIMITS"
+class_name = "LimitLedger"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LimitLedger"]

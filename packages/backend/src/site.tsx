@@ -336,6 +336,20 @@ export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], l
   return render(<Shell title={`${nameOf(v.account)} · ${page.brand}`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} view={view} slots={slots} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
 }
 
+// The deployment's index: every listed project, from the books. An app may put its own front page here instead.
+export function renderDirectory(entries: DirectoryEntry[]): string {
+  const listed = entries.filter((e) => e.listed);
+  return render(
+    <Shell title={`Projects · ${page.brand}`}>
+      <Nav />
+      <div class="wrap">
+        <h1>Projects</h1>
+        {listed.length ? <ul class="feed">{listed.map((e) => { const g = goalLine(e); return <li><span><a href={`/p/${encodeURIComponent(e.account)}`}><b>{e.account}</b></a>{e.profile.tagline ? ` — ${e.profile.tagline}` : ''}<span class="when"> · {g.label}{e.live_sessions.length ? ` · ${e.live_sessions.length} live` : ''}</span></span><span class="amt"><StatusDot status={e.status} /></span></li>; })}</ul> : <p class="sub">No project yet. A repository appears here once it has a key and its repository has synced.</p>}
+      </div>
+    </Shell>,
+  );
+}
+
 // A project document in full: what it is, or everything shipped.
 export function renderDocPage(account: string, title: string, md: string | undefined): string {
   return render(<Shell title={`${title} · ${nameOf(account)} · ${page.brand}`}><Nav /><div class="wrap"><h1>{nameOf(account)} · {title}</h1>{md ? <div class="panel prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(md) }} /> : <p class="sub">Nothing published yet.</p>}<p><a href={`/p/${encodeURIComponent(account)}`}>← back to the project</a></p></div></Shell>);
