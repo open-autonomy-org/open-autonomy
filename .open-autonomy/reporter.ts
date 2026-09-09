@@ -305,7 +305,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     const first = attempts.find((a) => a.started_at);
     const last = [...attempts].reverse().find((a) => a.handoff) ?? attempts[attempts.length - 1];
     return defined({
-      id: t.id, title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban',
+      id: t.id, title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban', phase: /<!-- roadmap:([A-Za-z0-9][A-Za-z0-9._-]{0,79}):/.exec(t.body ?? '')?.[1],
       priority: t.priority !== undefined ? String(t.priority) : undefined, proposed_at: t.created_at, started_at: first?.started_at, done_at: t.lane === 'done' ? t.completed_at ?? last?.ended_at : undefined,
       by: last?.profile, commit: last?.handoff?.commit && /^[0-9a-f]{7,40}$/.test(last.handoff.commit) ? last.handoff.commit : undefined,
       acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
@@ -397,12 +397,37 @@ function roadmapItems(md: string | undefined): RoadmapItem[] {
   close();
   return out;
 }
+// One intention is one item across its tenses. A task carries the roadmap section it serves (the scrum's marker,
+// kept above in `phase` until folded here): that section is no longer the future, and the task takes its release
+// and, when it has none of its own, its acceptance. A changelog line that names a done task's commit or id is that
+// task shipped: the task keeps its receipts and takes the line's release and record; the line is not a second item.
+function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapItem[]): RoadmapItem[] {
+  const served = new Map<string, RoadmapItem>(intentions.map((i) => [i.id, i]));
+  const items: RoadmapItem[] = [];
+  const folded = new Set<string>();
+  for (const t of tasks) {
+    const section = t.phase ? served.get(t.phase) : undefined;
+    const { phase: _section, ...rest } = t;
+    const item: RoadmapItem = { ...rest };
+    if (section) {
+      folded.add(section.id);
+      if (section.release && !item.release) item.release = section.release;
+      if (!item.acceptance.length) item.acceptance = section.acceptance;
+    }
+    if (t.tense === 'past') {
+      const line = shipped.find((l) => (l.commit && t.commit && (t.commit.startsWith(l.commit) || l.commit.startsWith(t.commit))) || l.title.includes(t.id));
+      if (line) { folded.add(line.id); if (line.release) item.release = line.release; if (line.url) item.url ??= line.url; if (line.commit) item.commit ??= line.commit; item.done_at ??= line.done_at; }
+    }
+    items.push(item);
+  }
+  const ids = new Set(items.map((i) => i.id));
+  for (const it of [...shipped, ...intentions]) if (!folded.has(it.id) && !ids.has(it.id)) { ids.add(it.id); items.push(it); }
+  return items;
+}
 async function timeline(): Promise<void> {
   const present = await board();
   if (!present) return;
-  const items = [...present];
-  const ids = new Set(items.map((i) => i.id));
-  for (const it of [...changelogItems(readText(resolve(projectDir, 'CHANGELOG.md')), cfg.account), ...roadmapItems(readText(resolve(projectDir, 'ROADMAP.md')))]) if (!ids.has(it.id)) { ids.add(it.id); items.push(it); }
+  const items = fold(present, changelogItems(readText(resolve(projectDir, 'CHANGELOG.md')), cfg.account), roadmapItems(readText(resolve(projectDir, 'ROADMAP.md'))));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest || !items.length) return;
   try {
