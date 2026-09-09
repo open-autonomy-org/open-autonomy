@@ -123,8 +123,10 @@ reaches a real API.
 
 ## Nothing in the agent's reach is a secret that matters
 
-The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent the start script loads with
-one repository-scoped deploy key, which the gateway never holds. Delivery uses at most a Discord bot token. Every session's turns
+The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Managed deployments sign pushes through an ssh-agent
+loaded with one repository-scoped deploy key. Local Codex uses the project GitHub App through the host
+valve; startup checks its Git routes and Contents write grant before starting Hermes. The gateway
+holds neither credential. Delivery uses at most a Discord bot token. Every session's turns
 are published; the platform redacts secret-shaped text at intake as the second wall.
 
 ## Roadmap scrum upgrades

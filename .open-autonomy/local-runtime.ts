@@ -2,10 +2,10 @@
 // checkout, native configuration and connections; this module does not provision them.
 // Keep this installed host code outside the agent-writable container checkout.
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { startCodexHost } from './sdk/codex-host.ts';
-import { startContainerProcess } from './sdk/container-process.ts';
+import { startContainerProcess, checkContainerGit } from './sdk/container-process.ts';
 import { checkCredentialDirectory } from './sdk/credentials.ts';
 import { checkLocalCodexConfig } from './sdk/local-codex.ts';
 
@@ -17,6 +17,10 @@ export async function startLocalRuntime(options: {
   const workspace = options.workspace ?? '/work/project', home = options.hermesHome ?? '/opt/data';
   const port = options.valvePort ?? 8787;
   if (!Number.isInteger(port) || port < 1024 || port > 65532) throw new Error('Choose an unprivileged valve port with room for four services.');
+  const account = (Bun.YAML.parse(readFileSync(options.config, 'utf8')) as any)?.account;
+  if (typeof account !== 'string' || !/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(account)) throw new Error('The project configuration must name its GitHub account.');
+  const githubApp = resolve(options.secrets, 'github-app.json');
+  if (!existsSync(githubApp)) throw new Error('Local Git uses the project GitHub App. Complete its host credential and Contents: write installation grant before startup.');
   const state = checkCredentialDirectory(options.stateDir);
   mkdirSync(state, { recursive: true, mode: 0o700 });
   const keys = ['agent.env', 'treasurer.env'].map(name => resolve(options.secrets, name));
@@ -70,12 +74,15 @@ export async function startLocalRuntime(options: {
   try {
     own('container', ['docker', 'wait', options.container]);
     const valveArgs = keys.flatMap((file, i) => ['--key', `${file}:${port + i}`]);
-    if (existsSync(resolve(options.secrets, 'github-app.json'))) valveArgs.push('--github-app', `${resolve(options.secrets, 'github-app.json')}:${port + 3}`);
+    valveArgs.push('--github-app', `${githubApp}:${port + 3}`);
     own('valve', ['bun', resolve(import.meta.dir, 'sdk/valve.ts'), '--loopback', ...valveArgs]);
     await ready(async () => {
-      try { return (await Promise.all([port, port + 1].map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
+      try { return (await Promise.all([port, port + 1, port + 3].map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
       catch { return false; }
     }, 'the project valves');
+    // A saved setup marker or a successful API read cannot establish Git push access.
+    await checkContainerGit({ container: options.container, home, workspace, account, baseUrl: `http://host.docker.internal:${port + 3}` });
+    if (ending) throw new Error('A host service ended during Git verification.');
     let watching = false;
     own('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', options.config,
       '--container', options.container, '--project', workspace, '--state-file', resolve(state, 'reporter-state.json')], {

@@ -51,3 +51,35 @@ export function startContainerProcess(options: {
     async close() { if (!ended) child.stdin.end(); await exited; },
   };
 }
+
+/** Verify the prepared checkout's actual Git routes, without changing any ref. */
+export async function checkContainerGit(options: { container: string; home: string; workspace: string; account: string; baseUrl: string }): Promise<void> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container) || !/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(options.account)) throw new Error('A container and project GitHub account are required.');
+  const url = new URL(options.baseUrl);
+  if (url.protocol !== 'http:' || !['127.0.0.1', 'host.docker.internal'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Git verification requires the local project valve address.');
+  const script = String.raw`
+import os,subprocess,sys,urllib.request
+home,workspace,account,base=sys.argv[1:]
+env={**os.environ,'HOME':home,'GIT_TERMINAL_PROMPT':'0'}
+expected=base.rstrip('/')+'/'+account
+try:
+    routes=[]
+    for mode in [[],['--push']]:
+        routes.append(subprocess.check_output(['git','-C',workspace,'remote','get-url','--all',*mode,'origin'],env=env,stderr=subprocess.DEVNULL,timeout=10).decode().strip())
+    if any(route not in [expected,expected+'.git'] for route in routes):
+        print('Configure both origin fetch and push through this project valve before startup.');sys.exit(1)
+    for route,service in zip(routes,['git-upload-pack','git-receive-pack']):
+        with urllib.request.urlopen(route+'/info/refs?service='+service,timeout=15) as response:
+            if response.status != 200 or response.headers.get_content_type() != 'application/x-'+service+'-advertisement' or ('# service='+service).encode() not in response.read(96):
+                raise ValueError('Invalid Git advertisement')
+except Exception:
+    print('Project Git verification failed. Check the container mapping and the installed App Contents: write grant; Hermes was not started.');sys.exit(1)
+`;
+  const child = spawn('docker', ['exec', '--user', 'hermes', options.container, 'python3', '-c', script,
+    options.home, options.workspace, options.account, url.origin], { stdio: ['ignore', 'ignore', 'ignore'] });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 35_000);
+  try {
+    const code = await new Promise<number>(resolve => { child.once('error', () => resolve(1)); child.once('exit', code => resolve(code ?? 1)); });
+    if (code !== 0) throw new Error('Project Git is not ready: verify both container origin mappings and the App Contents: write grant before starting Hermes.');
+  } finally { clearTimeout(timer); }
+}

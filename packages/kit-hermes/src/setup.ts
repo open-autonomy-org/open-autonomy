@@ -10,7 +10,7 @@
 //   create-open-autonomy setup <dir> [--plan] [--yes] [--with a,b] [--without a,b] [--secrets <dir>] [--bare]
 //
 // After the setup agent establishes the owner and reviewer, the core prepares the repository on GitHub,
-// the landing, the deploy key, the platform key, the owner's
+// the landing, the selected Git authentication, the platform key, the owner's
 // rulesets. The doors are recommended from what the repository and the accounts show, and each is the owner's to
 // take, decline, or defer (`setup` again adds a deferred one). What is never automated: creating the accounts, and
 // any captcha or sudo prompt — those are named as the owner's up front.
@@ -416,12 +416,6 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   const withinProject = relative(realpathSync(s.dir), credentialDir);
   if (!withinProject || (!isAbsolute(withinProject) && withinProject !== '..' && !withinProject.startsWith(`..${sep}`))) throw new Error('Credentials cannot be saved inside the project, including before Git initialization. Choose protected storage outside the project.');
   const st = loadState(dir);
-  // Completion markers describe an earlier run, not the contents of the currently selected host.
-  // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
-  const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
-  for (const [step, files] of savedCredentials) {
-    if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
-  }
   say('Setup agent: follow .open-autonomy/SETUP.md. Establish the project brief and agreed development connections first; keep application services in the local world until live activation.');
   say(`${s.project} (${s.account}) — the situation:`);
   say(s.ownerIsOrg === true
@@ -435,7 +429,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml. Follow the communication skill for native permissions and preserve the agreed repository review policy.');
   say('  setup agent: compare the detected Codex subscription with the configured platform’s live /v1/catalog through an authorized standalone valve; /v1/models lists only that key’s bounds. Present the available options and costs, ask for the model arrangement, then apply --with subscription or --without subscription. A default of no prevents unattended enrollment; it does not replace this offer. Follow SETUP.md when the platform connection is not ready yet.');
   say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
-  say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the deploy key, the platform keys and the owner\'s rules.');
+  say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the selected Git authentication, the platform keys and the owner\'s rules.');
   say('\nDevelopment connections (plus any explicitly selected later setup):');
   const recs = recommend(s, opts.with);
   for (const r of recs) {
@@ -460,6 +454,17 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
       : `${r.door}: take it?`;
     st.doors[r.door] = ask(question, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
+  if (st.doors.subscription === 'yes' && st.doors['github-app'] !== 'yes') throw new Error('Local Codex Git requires the project GitHub App with Contents: write. Resolve the development connection choice before creating credentials.');
+  // Completion markers describe an earlier run, not the contents of the currently selected host.
+  // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
+  const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
+  for (const [step, files] of savedCredentials) {
+    if (step === 'deploy-key' && st.doors.subscription === 'yes') continue;
+    if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
+  }
+  say(st.doors.subscription === 'yes'
+    ? '  Git authentication: project GitHub App on the host valve, Contents: write. Complete this grant during initial registration; no SSH deploy key is needed.'
+    : '  Git authentication: repository-scoped SSH deploy key. The community App needs Contents: read.');
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
   if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
   if (st.doors.subscription === 'yes') {
@@ -468,7 +473,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   }
   saveState(dir, st);
   stepGitHub(s, opts, st);
-  stepDeployKey(s, opts, st);
+  if (st.doors.subscription !== 'yes') stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
   say('\nFunding: minting keys and setting spending limits do not fund the project. Before activation, the setup agent verifies usable balance on the configured platform’s project page and completes an owner-authorized gift or coupon redemption if needed. The /give flow transfers existing credits; do not assume a grant. Then verify a bounded model call with the agreed model. An explicitly selected subscription uses its operator’s allowance instead.');
   stepOwnerRules(s, opts, st);
