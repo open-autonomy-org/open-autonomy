@@ -100,14 +100,18 @@ human review only for a ready, sourced PM release decision with a fixed candidat
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.
 
-The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
-(`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve
-with the Open Autonomy SDK, attaching it to the task it serves. It publishes the rest the same way: the board
-(`workflowLoad`: every task as a roadmap item, and each task's lane, attempts, handoff and verdicts under it) and
-the agent's setup (its persona, model, schedule and skills). The platform reads no file of
-the agent's; everything a page shows about it came through the SDK. Scheduled runs publish by default;
-`.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
-and settled cent per item, live while a session runs.
+The reporter is an SDK-to-SDK publisher. Supercode supplies session discovery and paginated transcripts,
+native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's
+SDK batches and acknowledges delivery. Silence never ends a session, and a task's lane never invents
+a review verdict. The reporter reads repository-owned documents from committed main and applies the
+YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files.
+
+Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
+history-change events reconcile against Supercode and the destination's receipt. An upload failure stays
+retryable. If already-published history changes, the append-only destination cannot replace it: reporting
+stops for that session with an explicit reconciliation error rather than skipping or duplicating it.
+The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
+default, with private session/job exceptions and optional chat publication controlled by project policy.
 
 **Rails.** The agent's model calls need no configuration beyond the key. `rails:` in
 `.open-autonomy/config.yaml` opens the two others, off by default: a single-use card minted against the

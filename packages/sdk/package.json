@@ -19,7 +19,8 @@
     "./credentials": "./src/credentials.ts",
     "./local-codex": "./src/local-codex.ts",
     "./codex-bridge": "./src/codex-bridge.ts",
-    "./codex-host": "./src/codex-host.ts"
+    "./codex-host": "./src/codex-host.ts",
+    "./reporting": "./src/reporting.ts"
   },
   "files": [
     "src",
@@ -40,5 +41,8 @@
   "bin": {
     "open-autonomy-valve": "src/valve.ts",
     "open-autonomy-credentials": "src/credentials.ts"
+  },
+  "dependencies": {
+    "@volter-ai-dev/supercode-harness-sdk": "^0.3.26"
   }
 }

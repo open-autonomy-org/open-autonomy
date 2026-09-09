@@ -152,7 +152,8 @@ export class OpenAutonomy {
   }
   async session(account: string, key: string): Promise<SessionRecord | undefined> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}`);
-    if (!res.ok) return undefined;
+    if (res.status === 404) return undefined;
+    if (!res.ok) throw new Error(`read session ${key}: ${res.status}`);
     return ((await res.json()) as { session?: SessionRecord }).session;
   }
   async item(account: string, itemId: string): Promise<ItemView> {
@@ -194,12 +195,23 @@ export interface RoadmapRevision {
 export class Session {
   constructor(private readonly client: OpenAutonomy, readonly key: string, public seq: number) {}
   async turns(turns: Turn[], item?: string): Promise<void> {
-    if (!turns.length) return;
-    const r = await this.client.send(sessionTurnsEvent(this.key, this.seq, turns, item));
-    if (r.ok) this.seq += turns.length;
+    // The wire accepts at most 100 turns. Advance only to the server's acknowledged
+    // offset, including when a retry follows a response lost after acceptance.
+    for (let offset = 0; offset < turns.length;) {
+      const batch = turns.slice(offset, offset + 100), start = this.seq;
+      const r = await this.client.send(sessionTurnsEvent(this.key, start, batch, item));
+      const result = r.results[0], next = result?.session?.next_seq;
+      if (!r.ok || !result?.ok || !Number.isInteger(next) || next! < start + batch.length) throw new Error(`publish turns ${this.key}: acknowledgment unavailable (${r.status})`);
+      this.seq = next!;
+      // A server ahead of this exact batch needs reconciliation with its transcript,
+      // not another batch at a guessed offset.
+      if (next !== start + batch.length) throw new Error(`publish turns ${this.key}: offset changed; reconcile before continuing`);
+      offset += batch.length;
+    }
   }
   async end(end: Omit<SessionEnd, 'key'> = {}): Promise<void> {
-    await this.client.send(sessionEndedEvent({ ...end, key: this.key }));
+    const r = await this.client.send(sessionEndedEvent({ ...end, key: this.key }));
+    if (!r.ok || !r.results[0]?.ok) throw new Error(`end session ${this.key}: acknowledgment unavailable (${r.status})`);
   }
 }
 
