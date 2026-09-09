@@ -1,6 +1,6 @@
 import { parseModelsBound, parseSpendLimits, type SpendLimit } from '@open-autonomy/sdk/rails';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
-import { ROADMAP_SCHEMA, ROADMAP_STATUSES, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
+import { ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';
 import { estimateRunway } from './runway.js';
 import type { KeyClaims, UsageEvent } from './types.js';
@@ -133,7 +133,6 @@ export interface AccountProfile {
   cover_override?: string;
   // What the substrate publishes about the project (`org.open-autonomy.project.docs`): what it is, what shipped.
   about_md?: string;
-  shipped_md?: string;
   // The agent's setup, as its substrate publishes it through the SDK (never read from a harness's files).
   schedule_json?: string;
   setup_md?: string;
@@ -145,7 +144,7 @@ export interface AccountProfile {
   // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
   config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'shipped_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
 
 export interface Tier { usd_cents: number; name: string }
 
@@ -1040,13 +1039,12 @@ export class LimitLedger implements DurableObject {
     return { ok: true };
   }
 
-  // The project's documents, as its substrate publishes them: what the project is (the page's lead is its first
-  // paragraph) and what shipped. Each replaces what was there; a missing field leaves the other alone.
+  // The project's document, as its substrate publishes it: what the project is (the page's lead is its first
+  // paragraph). What shipped is the timeline's past, never a document.
   private async docsPut(account: string, docs: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
     if (!docs || typeof docs !== 'object') return { ok: false, error: 'invalid_docs' };
     const profile: Partial<AccountProfile> = {};
     if (typeof docs.about_md === 'string') profile.about_md = docs.about_md.slice(0, 40_000);
-    if (typeof docs.shipped_md === 'string') profile.shipped_md = docs.shipped_md.slice(0, 40_000);
     if (!Object.keys(profile).length) return { ok: false, error: 'invalid_docs' };
     await this.setProfile(account, profile);
     return { ok: true };
@@ -1558,17 +1556,27 @@ export interface RoadmapRevision {
   changes: RoadmapChange[];
   conformance: string[];
 }
-// A roadmap as pushed or pulled, checked to the model's shape: short ids, known statuses, bounded text.
+// A timeline as pushed or pulled, checked to the model's shape: short ids, known statuses and tenses, real
+// timestamps, bounded text. A tense the substrate did not name follows from the status.
+const isoOrNone = (v: unknown): string | undefined => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
+const shortOrNone = (v: unknown, n: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : undefined);
 function normalizeRoadmap(r: unknown): Roadmap | undefined {
   if (!r || typeof r !== 'object' || !Array.isArray((r as Roadmap).items)) return undefined;
   const items: RoadmapItem[] = [];
   const seen = new Set<string>();
-  for (const it of (r as Roadmap).items.slice(0, 500)) {
+  for (const it of (r as Roadmap).items.slice(0, 2000)) {
     if (!it || typeof it !== 'object' || typeof it.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(it.id) || seen.has(it.id) || typeof it.title !== 'string') return undefined;
     seen.add(it.id);
+    const status = (ROADMAP_STATUSES as readonly string[]).includes(it.status) ? it.status : 'planned';
+    const optional: Partial<RoadmapItem> = {
+      home: shortOrNone(it.home, 40), phase: shortOrNone(it.phase, 20), priority: shortOrNone(it.priority, 20), release: shortOrNone(it.release, 80),
+      proposed_at: isoOrNone(it.proposed_at), started_at: isoOrNone(it.started_at), done_at: isoOrNone(it.done_at),
+      by: shortOrNone(it.by, 80), commit: typeof it.commit === 'string' && /^[0-9a-f]{7,40}$/.test(it.commit) ? it.commit : undefined,
+      url: typeof it.url === 'string' && /^https:\/\/[^\s]{1,400}$/.test(it.url) ? it.url : undefined,
+    };
     items.push({
-      id: it.id, title: it.title.slice(0, 200), status: (ROADMAP_STATUSES as readonly string[]).includes(it.status) ? it.status : 'planned',
-      ...(typeof it.phase === 'string' ? { phase: it.phase.slice(0, 20) } : {}), ...(typeof it.priority === 'string' ? { priority: it.priority.slice(0, 20) } : {}),
+      id: it.id, title: it.title.slice(0, 200), tense: tenseOf({ status, tense: it.tense }), status,
+      ...Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined)),
       acceptance: Array.isArray(it.acceptance) ? it.acceptance.filter((l): l is string => typeof l === 'string').slice(0, 40).map((l) => l.slice(0, 1000)) : [],
     });
   }

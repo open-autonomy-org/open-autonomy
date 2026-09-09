@@ -34,8 +34,8 @@ export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 export interface AgentSetup { harness?: string; persona?: string; model?: string; provider?: string; schedule?: Array<{ name: string; schedule: string; description?: string }>; skills?: string[]; setup_md?: string }
 export const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 // The project's documents, from whatever files the substrate keeps: what the project is (`about_md`; the page
-// leads with its first paragraph) and what shipped (`shipped_md`). Each field replaces what was there.
-export interface ProjectDocs { about_md?: string; shipped_md?: string }
+// leads with its first paragraph). What shipped is the timeline's past, published as items, never a document.
+export interface ProjectDocs { about_md?: string }
 export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 
 export interface CloudEvent {

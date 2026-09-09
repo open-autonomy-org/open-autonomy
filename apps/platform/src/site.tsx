@@ -1,9 +1,9 @@
 import { raw } from 'hono/html';
-import { itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
+import { ROADMAP_SCHEMA, itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { TEAM_SCOPES, type TeamMember } from '@open-autonomy/sdk/team';
 import type { TeamFile } from './team.js';
 import type { DirectoryEntry, Envelope, EnvelopePurpose, Flow, FunderView, ItemView, Patron, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
-import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Spine, leadParagraphs } from './stream-view.js';
+import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Timeline, leadParagraphs, type TimelineQuery } from './stream-view.js';
 import { Icon, LOGO_SVG, fmtAgo, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
 
 // The funding site, server-rendered from the books: the explore grid (GET /) and the project page
@@ -212,6 +212,22 @@ export const STYLES = `
   .rm-now{flex:none;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:${C.accent};border-radius:999px;padding:2px 7px;}
   .rm-sphase{flex:none;font-size:11px;font-weight:700;color:${C.faint};font-variant-numeric:tabular-nums;}
   .rm-sstatus{flex:none;font-size:12px;font-weight:700;color:${C.muted};}
+  .tl-nav{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;font-weight:600;color:${C.muted};margin:-4px 0 12px;}
+  .tl-nav a{color:${C.muted};}
+  .tl-nav a.on{color:${C.ink};border-bottom:2px solid ${C.accent};}
+  .tl-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+  @media (max-width:900px){.tl-board{grid-template-columns:1fr;}}
+  .tl-col h4{margin:0 0 8px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:${C.faint};}
+  .tl-col .rm-shead{flex-wrap:wrap;}
+  .rm-smeta{flex:none;font-size:11.5px;color:${C.faint};font-variant-numeric:tabular-nums;}
+  .rm-smeta a{color:${C.muted};}
+  .tl-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .tl-table th{text-align:left;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${C.faint};padding:6px 8px;border-bottom:1px solid ${C.line};}
+  .tl-table th a{color:${C.faint};}
+  .tl-table td{padding:8px;border-bottom:1px solid ${C.line};vertical-align:top;}
+  .tl-table td.t{font-weight:600;color:${C.ink};}
+  .tl-table td.n{color:${C.muted};white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .tl-month{margin:14px 0 6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:${C.faint};}
   .release{margin-bottom:18px;}
   .rel-head{font-weight:800;font-size:14px;color:${C.ink};margin-bottom:8px;}
   .changelog{font-size:14px;line-height:1.55;}
@@ -312,53 +328,6 @@ function AboutPanel({ md, enc }: { md?: string; enc: string }) {
   return <div class="panel"><h3>About</h3><div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(excerpt) }} />{(md ?? '').trim().length > excerpt.length ? <a class="docmore" href={`/p/${enc}/about`}>Read more →</a> : null}</div>;
 }
 
-export function parseChangelog(md: string, maxSections = 2, maxLines = 6): Array<{ heading: string; lines: string[] }> {
-  const sections: Array<{ heading: string; lines: string[] }> = [];
-  let cur: { heading: string; lines: string[] } | null = null;
-  for (const line of md.split('\n')) {
-    const hm = line.match(/^##\s+(.+?)\s*$/);
-    if (hm) { if (cur) sections.push(cur); cur = { heading: hm[1].trim(), lines: [] }; continue; }
-    const bm = cur && line.match(/^\s*-\s+(.+?)\s*$/);
-    if (bm && cur) cur.lines.push(bm[1].trim());
-  }
-  if (cur) sections.push(cur);
-  return sections.slice(0, maxSections).map((s) => ({ heading: s.heading, lines: s.lines.slice(0, maxLines) }));
-}
-
-function changelogMarkdown(md: string, maxSections = 2, maxLines = 6): Array<{ heading: string; markdown: string }> {
-  const sections: Array<{ heading: string; markdown: string[]; items: number }> = [];
-  let cur: { heading: string; markdown: string[]; items: number } | undefined;
-  let included = false;
-  for (const line of md.split('\n')) {
-    const heading = line.match(/^##\s+(.+?)\s*$/);
-    if (heading) {
-      if (cur) sections.push(cur);
-      cur = { heading: heading[1].trim(), markdown: [], items: 0 };
-      included = false;
-      continue;
-    }
-    if (!cur) continue;
-    if (/^\s*[-+*]\s+/.test(line)) {
-      included = cur.items < maxLines;
-      if (included) { cur.markdown.push(line); cur.items++; }
-    } else if (included && /^\s+\S/.test(line)) cur.markdown.push(line);
-  }
-  if (cur) sections.push(cur);
-  return sections.filter((s) => s.markdown.length).slice(0, maxSections).map((s) => ({ heading: s.heading, markdown: s.markdown.join('\n') }));
-}
-
-function ChangelogPanel({ md, enc }: { md?: string; enc: string }) {
-  const sections = changelogMarkdown(md ?? '');
-  if (!sections.length) return null;
-  return (
-    <div class="panel">
-      <h3>What's shipped</h3>
-      {sections.map((s) => <div class="release"><div class="rel-head" dangerouslySetInnerHTML={{ __html: mdInlineToSafeHtml(s.heading) }} /><div class="changelog prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.markdown) }} /></div>)}
-      <a class="docmore" href={`/p/${enc}/shipped`}>Everything shipped →</a>
-    </div>
-  );
-}
-
 function FundRow({ f, now, grants, account }: { f: Flow; now: number; grants: string; account: string }) {
   if (f.kind === 'release') return <li id={f.id ? `gift-${f.id}` : undefined}><span>task done; {usd(f.amount_usd_cents)} released to whatever {nameOf(account)} needs<span class="when"> · {fmtAgo(f.ts, now)}</span></span></li>;
   const label = f.kind === 'grant' ? (f.from === grants ? 'Granted by Open Autonomy' : f.from?.startsWith('@') ? `Granted by ${f.from}` : `Granted from ${f.from ?? ''}`) + (f.by ? ` · passed on by ${f.by}` : '') + (f.note ? ` — ${f.note}` : '') : f.sponsor_login ? `Sponsored by @${f.sponsor_login}` : 'Funded';
@@ -416,7 +385,7 @@ function FundingBounds({ bounds }: { bounds: ProjectView['bounds'] }) {
   );
 }
 
-function Project({ v, sessions, live, roadmap, revision, now, polar, grants, sponsor }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string; sponsor: string }) {
+function Project({ v, sessions, live, roadmap, revision, now, polar, grants, sponsor, view }: { v: ProjectView; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; revision?: RoadmapRevision; now: number; polar: boolean; grants: string; sponsor: string; view: TimelineQuery }) {
   const owner = ownerOf(v.account);
   const g = goalLine(v);
   const enc = encodeURIComponent(v.account);
@@ -444,10 +413,9 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
         <div class="cols">
           <div>
             <AboutPanel md={v.profile.about_md} enc={enc} />
-            <Spine account={v.account} roadmap={roadmap} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} />
-            {revision ? <p class="note">Roadmap from <b>{revision.source}</b>, revision {revision.revision}, {fmtAgo(revision.ts, now)}{revision.by ? ` by ${revision.by}` : ''}{revision.conformance.length ? <> · this source cannot say: {revision.conformance.join('; ')}</> : null} · <a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision</a></p> : null}
+            <Timeline account={v.account} roadmap={roadmap} scheduleJson={v.profile.schedule_json} sessions={sessions} live={live} repoUrl={repoUrl} now={now} query={view} />
+            {revision ? <p class="note">Timeline from <b>{revision.source}</b>, revision {revision.revision}, {fmtAgo(revision.ts, now)}{revision.by ? ` by ${revision.by}` : ''}{revision.conformance.length ? <> · this source cannot say: {revision.conformance.join('; ')}</> : null} · <a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision</a></p> : null}
             <SetupPanel setupMd={v.profile.setup_md} soulMd={v.profile.soul_md} model={v.profile.agent_model} provider={v.profile.agent_provider} harness={v.profile.agent_harness} skills={v.profile.agent_skills} scheduleJson={v.profile.schedule_json} />
-            <ChangelogPanel md={v.profile.shipped_md} enc={enc} />
             <div class="panel">
               <h3>Goal</h3>
               <div class="goalrow" style="margin-bottom:2px"><span style={`font-size:15px;color:${C.body};font-weight:600`}>{g.label}</span></div>
@@ -504,8 +472,8 @@ function Project({ v, sessions, live, roadmap, revision, now, polar, grants, spo
   );
 }
 
-export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: 'open-autonomy.roadmap.v3', items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants', sponsor = 'open-autonomy-org/grants'): string {
-  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} sponsor={sponsor} polar={polar} grants={grants} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
+export function renderProject(v: ProjectView, sessions: SessionSummary[] = [], live: string[] = [], roadmap: Roadmap = { schema: ROADMAP_SCHEMA, items: [] }, revision?: RoadmapRevision, polar = false, grants = 'open-autonomy-org/grants', sponsor = 'open-autonomy-org/grants', view: TimelineQuery = {}): string {
+  return render(<Shell title={`${nameOf(v.account)} · open-autonomy`}><Project v={v} sessions={sessions} live={live} roadmap={roadmap} revision={revision} now={Date.now()} sponsor={sponsor} polar={polar} grants={grants} view={view} /><script dangerouslySetInnerHTML={{ __html: LIVE_SCRIPT }} /></Shell>);
 }
 
 // A project document in full: what it is, or everything shipped.

@@ -11,12 +11,14 @@
 // index changes (`sessionIndexEvent`); `session(locator).follow()` yields a snapshot then appended
 // messages; `subscribeSessionActivity` reports presence and turn state. A Hermes home is named by the
 // path of its state.db in `homes.hermes`.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
 
+const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
 const cfg = readConfig(configPath);
@@ -271,32 +273,54 @@ sc.on('sessionActivityEvent', (ev) => { const key = activitySubs.get(ev.subscrip
 sc.on('exit', (code) => { log(`supercode harness serve exited (${code}); stopping`); process.exit(1); });
 
 await sc.start();
-// The board, through supercode's workflow layer, is the project's roadmap and its work record, both published
-// through the SDK. Every task is a roadmap item — its id, its title, its lane as the item's status, the `- `
-// lines of its body as the acceptance — and each task's board state (lane, attempts, handoff, review verdicts)
-// is published under that item whenever it changes. A task the board marks done after a review it requested
-// was approved by that review.
+// The timeline, published through the SDK as one document in one language: the past from CHANGELOG.md, the
+// present from the board (through supercode's workflow layer) with the sessions serving it, the future from
+// ROADMAP.md. Unifying the three is this reporter's job; the platform reads no file and knows no board.
+// Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
+// acceptance — and each task's board state (lane, attempts, handoff, review verdicts) is published under that
+// item whenever it changes. A task the board marks done after a review it requested was approved by that review.
 type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; branch?: string; commit?: string } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
-// The lanes as the roadmap's four words: done; running or review is active; blocked or parked (scheduled) waits on a
-// decision, so proposed; the rest is planned.
+// The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
+// decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
+const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+// A task's proof: the commit its handoff names (as a field, or in the handoff's own words), else the commit the
+// session serving it pushed while this reporter watched.
+function commitOf(t: BoardTask): string | undefined {
+  const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
+  const named = last?.handoff?.commit;
+  if (named && /^[0-9a-f]{7,40}$/.test(named)) return named;
+  const inWords = /\b(?=[0-9a-f]*\d)([0-9a-f]{7,40})\b/.exec(last?.handoff?.summary ?? '')?.[1];
+  if (inWords) return inWords;
+  return [...followed.values()].filter((f) => f.item === t.id && f.sha).map((f) => f.sha).pop();
+}
 const boardDigests = new Map<string, string>();
-let roadmapDigest = '';
-async function board(): Promise<void> {
+let timelineDigest = '';
+let presentCount = 0;
+async function board(): Promise<RoadmapItem[] | undefined> {
   let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
-  try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return; }
-  // The developer's tasks are the roadmap. Tasks assigned to another profile (a purchase request for the treasurer)
+  try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return undefined; }
+  // The developer's tasks are the present. Tasks assigned to another profile (a purchase request for the treasurer)
   // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
   const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
-  // A read that found no board at all (the database mid-write) is not an empty board.
-  if (!tasks.length) return;
+  // A read that found no board at all (the database mid-write) is not an empty board: a board that had tasks a
+  // moment ago and has none now is skipped; a board that never had any is simply empty, and the past and the
+  // future publish without it.
+  if (!tasks.length && presentCount > 0) return undefined;
+  presentCount = tasks.length;
   runningItems.clear();
   for (const t of tasks) if (t.lane === 'running') runningItems.add(t.id);
-  const items: RoadmapItem[] = tasks.map((t) => ({ id: t.id, title: t.title ?? t.id, status: statusOf(t.lane), acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()) }));
-  const digest = JSON.stringify(items);
-  if (digest !== roadmapDigest) {
-    try { const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'kanban', 'reporter'); if (r.ok) { roadmapDigest = digest; if (!r.unchanged) log(`roadmap published from the board (${items.length} task(s))`); } else log(`roadmap publish refused: ${r.error ?? r.status}`); } catch (e) { log(`roadmap publish failed: ${(e as Error).message}`); }
-  }
+  const items: RoadmapItem[] = tasks.map((t) => {
+    const attempts = t.attempts ?? [];
+    const first = attempts.find((a) => a.started_at);
+    const last = [...attempts].reverse().find((a) => a.handoff) ?? attempts[attempts.length - 1];
+    return defined({
+      id: t.id, title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban', phase: /<!-- roadmap:([A-Za-z0-9][A-Za-z0-9._-]{0,79}):/.exec(t.body ?? '')?.[1],
+      priority: t.priority !== undefined ? String(t.priority) : undefined, proposed_at: t.created_at, started_at: first?.started_at, done_at: t.lane === 'done' ? t.completed_at ?? last?.ended_at : undefined,
+      by: last?.profile, commit: commitOf(t),
+      acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
+    }) as RoadmapItem;
+  });
   for (const t of tasks) {
     const item = t.id;
     const attempts = (t.attempts ?? []).map((a) => ({ id: a.id, profile: a.profile, status: a.status, started_at: a.started_at, ended_at: a.ended_at, outcome: a.outcome, summary: a.handoff?.summary }));
@@ -309,19 +333,153 @@ async function board(): Promise<void> {
     if (boardDigests.get(t.id) === taskDigest) continue;
     try { if (await oa.task(state)) { boardDigests.set(t.id, taskDigest); log(`board: ${t.id} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
   }
+  return items;
+}
+// The past, from CHANGELOG.md as the PM keeps it: a `## ` heading per release (`Unreleased` first; a released
+// heading carries its date), a `- ` line per change. A line is an item whose id is a hash of its own words,
+// so an unchanged line keeps its identity across revisions; a commit or a PR named in the line is its proof.
+const plain = (md: string): string => md.replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/`/g, '').replace(/\s+/g, ' ').trim();
+const clipWords = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0, n - 1).replace(/\s+\S*$/, '')}…`);
+function changelogItems(md: string | undefined, account: string): RoadmapItem[] {
+  const out: RoadmapItem[] = [];
+  if (!md) return out;
+  const seen = new Set<string>();
+  let release: string | undefined;
+  let date: string | undefined;
+  for (const line of md.split('\n')) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      const head = h[1].replace(/^\[|\]$/g, '').trim();
+      if (/^unreleased$/i.test(head)) { release = 'unreleased'; date = undefined; continue; }
+      const d = /(\d{4}-\d{2}-\d{2})/.exec(head);
+      date = d ? `${d[1]}T00:00:00Z` : undefined;
+      release = plain(head.replace(/\s*[—–-]+\s*\d{4}-\d{2}-\d{2}.*$/, '')).slice(0, 80) || 'released';
+      continue;
+    }
+    const b = release !== undefined && /^\s*[-*]\s+(.+?)\s*$/.exec(line);
+    if (!b) continue;
+    const text = b[1];
+    let id = `shipped-${createHash('sha1').update(text).digest('hex').slice(0, 10)}`;
+    while (seen.has(id)) id = `${id}-`;
+    seen.add(id);
+    const commit = /\b(?=[0-9a-f]*\d)([0-9a-f]{7,40})\b/.exec(text)?.[1];
+    const pr = /\((https:\/\/github\.com\/[^)\s]+\/pull\/\d+)\)/.exec(text)?.[1] ?? (/(?:PR\s*)?#(\d+)\b/.exec(text) ? `https://github.com/${account}/pull/${/#(\d+)\b/.exec(text)![1]}` : undefined);
+    out.push(defined({ id, title: clipWords(plain(text), 200), tense: 'past', status: 'done', home: 'changelog', release, done_at: date, commit, url: pr, acceptance: [] }) as RoadmapItem);
+  }
+  return out;
+}
+// The future, from ROADMAP.md as the PM keeps it: a `## <id>: <title>` section per intention; its `Status:` line
+// (planned, else proposed), its `Target version:` as the release, its `Completion:` bullets as the acceptance.
+function roadmapItems(md: string | undefined): RoadmapItem[] {
+  const out: RoadmapItem[] = [];
+  if (!md) return out;
+  const seen = new Set<string>();
+  let cur: { item: RoadmapItem; bullets: string[]; completion: string[]; inCompletion: boolean } | undefined;
+  const close = () => { if (!cur) return; cur.item.acceptance = cur.completion.length ? cur.completion : cur.bullets; out.push(defined(cur.item) as RoadmapItem); cur = undefined; };
+  for (const line of md.split('\n')) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      close();
+      // Only a `## <id>: <title>` section is an intention; a section without an id is the file's own prose.
+      const m = /^([A-Za-z0-9][A-Za-z0-9._-]{0,79}):\s+(.+)$/.exec(h[1]);
+      if (!m) continue;
+      let id = m[1];
+      while (seen.has(id)) id = `${id}-`;
+      seen.add(id);
+      cur = { item: { id, title: clipWords(plain(m[2]), 200), tense: 'future', status: 'proposed', home: 'roadmap', acceptance: [] }, bullets: [], completion: [], inCompletion: false };
+      continue;
+    }
+    if (!cur) continue;
+    const kv = /^([A-Za-z][A-Za-z ]{0,30}):\s*(.*)$/.exec(line);
+    if (kv) {
+      const key = kv[1].toLowerCase();
+      const val = kv[2].trim();
+      cur.inCompletion = key === 'completion';
+      if (key === 'status') cur.item.status = /^(planned|active)\b/i.test(val) ? (val.toLowerCase().startsWith('active') ? 'active' : 'planned') : 'proposed';
+      if (key === 'target version' && val) cur.item.release = plain(val).slice(0, 80);
+      if (key === 'target window' && /\d{4}-\d{2}-\d{2}/.test(val)) cur.item.proposed_at ??= `${/(\d{4}-\d{2}-\d{2})/.exec(val)![1]}T00:00:00Z`;
+      continue;
+    }
+    const b = /^\s*[-*]\s+(.+?)\s*$/.exec(line);
+    if (b) { (cur.inCompletion ? cur.completion : cur.bullets).push(clipWords(plain(b[1]), 1000)); continue; }
+    if (line.trim() === '') cur.inCompletion = false;
+  }
+  close();
+  return out;
+}
+// One intention is one item across its tenses. A task carries the roadmap section it serves (the scrum's marker,
+// kept above in `phase` until folded here): that section is no longer the future, and the task takes its release
+// and, when it has none of its own, its acceptance. A changelog line that names a done task's commit or id is that
+// task shipped: the task keeps its receipts and takes the line's release and record; the line is not a second item.
+// Where a task landed: the merge on main whose subject names its branch (the landing workflow's own words,
+// `Merge pull request #N from …/agent/<task id>`), read from the checkout's origin/main and remembered once found.
+const landedCache = new Map<string, { sha?: string; pr?: string }>();
+function landedOf(id: string): { sha?: string; pr?: string } {
+  const known = landedCache.get(id);
+  if (known) return known;
+  const r = Bun.spawnSync({ cmd: ['git', 'log', 'origin/main', '--first-parent', '-1', '--format=%H%x1f%s', `--grep=agent/${id}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  const line = r.exitCode === 0 ? r.stdout.toString().trim() : '';
+  const [sha, subject] = line.split('\x1f');
+  const found = sha ? { sha, pr: /#(\d+)\b/.exec(subject ?? '')?.[1] } : {};
+  if (sha) landedCache.set(id, found);
+  return found;
+}
+function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapItem[]): RoadmapItem[] {
+  const served = new Map<string, RoadmapItem>(intentions.map((i) => [i.id, i]));
+  const items: RoadmapItem[] = [];
+  const folded = new Set<string>();
+  for (const t of tasks) {
+    const section = t.phase ? served.get(t.phase) : undefined;
+    const { phase: _section, ...rest } = t;
+    const item: RoadmapItem = { ...rest };
+    if (section) {
+      folded.add(section.id);
+      if (section.release && !item.release) item.release = section.release;
+      if (!item.acceptance.length) item.acceptance = section.acceptance;
+    }
+    if (t.tense === 'past') {
+      const landed = landedOf(t.id);
+      if (landed.pr) item.url ??= `https://github.com/${cfg.account}/pull/${landed.pr}`;
+      const sameCommit = (a?: string, b?: string) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+      const line = shipped.find((l) => l.title.includes(t.id) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!l.url && l.url === item.url));
+      if (line) { folded.add(line.id); if (line.release) item.release = line.release; if (line.url) item.url ??= line.url; item.commit ??= line.commit; item.done_at ??= line.done_at; }
+    }
+    items.push(item);
+  }
+  const ids = new Set(items.map((i) => i.id));
+  for (const it of [...shipped, ...intentions]) if (!folded.has(it.id) && !ids.has(it.id)) { ids.add(it.id); items.push(it); }
+  return items;
+}
+// A project file as main has it: the checkout's `origin/main` (refreshed here about once a minute, and by every
+// scrum and every worker), never the branch a worker happens to be on; the working tree only when there is no git.
+let fetchedAt = 0;
+function mainFile(name: string): string | undefined {
+  if (Date.now() - fetchedAt > 60_000) { fetchedAt = Date.now(); try { Bun.spawnSync({ cmd: ['git', 'fetch', '-q', 'origin', 'main'], cwd: projectDir, timeout: 20_000 }); } catch { /* no remote here */ } }
+  const r = Bun.spawnSync({ cmd: ['git', 'show', `origin/main:${name}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  return r.exitCode === 0 ? r.stdout.toString() : readText(resolve(projectDir, name));
+}
+async function timeline(): Promise<void> {
+  const present = await board();
+  if (!present) return;
+  const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
+  const digest = JSON.stringify(items);
+  if (digest === timelineDigest || !items.length) return;
+  try {
+    const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
+    if (r.ok) { timelineDigest = digest; if (!r.unchanged) log(`timeline published (${items.filter((i) => i.tense === 'past').length} past, ${items.filter((i) => i.tense === 'present').length} present, ${items.filter((i) => i.tense === 'future').length} future)`); } else log(`timeline publish refused: ${r.error ?? r.status}`);
+  } catch (e) { log(`timeline publish failed: ${(e as Error).message}`); }
 }
 // The agent's setup, from the home it runs with — the identity text, the model, the schedule seed, the
 // skills — published whenever they change. The platform reads no harness file.
-const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
-// The project's documents, from the checkout: CONSTITUTION.md is what the project is (the page leads with its first
-// paragraph), CHANGELOG.md is what shipped. Published when they change. The platform reads no file for either.
+// The project's document, from the checkout: CONSTITUTION.md is what the project is (the page leads with its first
+// paragraph). Published when it changes. What shipped is the timeline's past, never a document.
 const projectDir = resolve(stateFile, '..', '..');
 let docsDigest = '';
 async function docs(): Promise<void> {
-  const d = { about_md: readText(resolve(projectDir, 'CONSTITUTION.md')), shipped_md: readText(resolve(projectDir, 'CHANGELOG.md')) };
+  const d = { about_md: readText(resolve(projectDir, 'CONSTITUTION.md')) };
   const digest = JSON.stringify(d);
-  if (digest === docsDigest || (!d.about_md && !d.shipped_md)) return;
-  try { if (await oa.docs(d)) { docsDigest = digest; log(`documents published (${[d.about_md && 'about', d.shipped_md && 'shipped'].filter(Boolean).join(', ')})`); } } catch (e) { log(`documents publish failed: ${(e as Error).message}`); }
+  if (digest === docsDigest || !d.about_md) return;
+  try { if (await oa.docs(d)) { docsDigest = digest; log('document published (about)'); } } catch (e) { log(`document publish failed: ${(e as Error).message}`); }
 }
 let setupDigest = '';
 async function setup(): Promise<void> {
@@ -339,8 +497,8 @@ async function setup(): Promise<void> {
   try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
 }
 const index = await sc.subscribeSessionIndex({ harnesses: ['hermes'], homes });
-await setup(); await docs(); await board();
-setInterval(() => { void setup(); void docs(); void board(); }, 10_000);
+await setup(); await docs(); await timeline();
+setInterval(() => { void setup(); void docs(); void timeline(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
 for (const d of index.initial) await consider(d);
 process.on('SIGTERM', () => { void sc.close().then(() => process.exit(0)); });

@@ -1,10 +1,10 @@
-import { itemState, phaseNumber, type Roadmap, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
+import { itemState, itemTime, phaseNumber, tenseOf, type Roadmap, type RoadmapItem, type RoadmapState, type Tense } from '@open-autonomy/sdk/roadmap';
 import type { CallRecord, EnvelopePurpose, ItemView, SessionRecord, SessionSummary, Turn, UpdateRecord } from './ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from './ui.js';
 import { parseSchedule } from './widgets.js';
 
-// The development stream on the page: the spine (NEXT / NOW / DONE), one session's page, one item's
-// page, the Setup pane. Every sentence is a roadmap line, a session's report, a transcript turn, an
+// The development stream on the page: the timeline's views, one session's page, one item's page, the
+// Setup pane. Every sentence is a timeline line, a session's report, a transcript turn, an
 // update or a commit — never the platform's own words — and every element links to its source.
 
 const toolLine = (t: Turn): string => {
@@ -42,18 +42,26 @@ export function Receipt({ s, enc, repoUrl, now }: { s: SessionSummary; enc: stri
   );
 }
 
-function Station({ item, state, enc, now, children }: { item: RoadmapItem; state: RoadmapState; enc: string; now?: boolean; children?: unknown }) {
+type Row = { item: RoadmapItem; state: RoadmapState; tense: Tense; time: number };
+const stateWord = (state: RoadmapState): string => (state === 'active' ? 'in progress' : state === 'done' ? 'shipped' : state === 'proposed' ? 'proposed · awaits owner' : 'queued');
+const whenOf = (r: Row, now: number): string => (r.time ? fmtAgo(new Date(r.time).toISOString(), now) : '');
+
+function Station({ r, enc, now, repoUrl, mark, children }: { r: Row; enc: string; now: number; repoUrl?: string; mark?: boolean; children?: unknown }) {
+  const { item, state } = r;
   const phase = item.phase ? (Number.isNaN(parseInt(item.phase, 10)) ? item.phase : `P${item.phase}`) : '';
-  const word = state === 'active' ? 'in progress' : state === 'done' ? 'shipped' : state === 'proposed' ? 'proposed · awaits owner' : 'queued';
+  const when = whenOf(r, now);
   return (
-    <li class={`rm-stn ${state === 'queued' ? 'planned' : state}${now ? ' is-now' : ''}`}>
+    <li class={`rm-stn ${state === 'queued' ? 'planned' : state}${mark ? ' is-now' : ''}`}>
       <span class="rm-node" aria-hidden="true" />
       <div class="rm-stnbody">
         <div class="rm-shead">
           <a class="rm-stitle" href={`/p/${enc}/items/${encodeURIComponent(item.id)}`}>{item.title}</a>
-          {now ? <span class="rm-now">now</span> : null}
+          {mark ? <span class="rm-now">now</span> : null}
           {phase ? <span class="rm-sphase">{phase}</span> : null}
-          <span class="rm-sstatus">{word}</span>
+          {item.release ? <span class="rm-smeta">{item.release}</span> : null}
+          {when ? <span class="rm-smeta">{when}</span> : null}
+          {item.commit && repoUrl ? <span class="rm-smeta"><a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></span> : item.url ? <span class="rm-smeta"><a href={item.url}>source ↗</a></span> : null}
+          <span class="rm-sstatus">{stateWord(state)}</span>
         </div>
         {children}
       </div>
@@ -63,50 +71,94 @@ function Station({ item, state, enc, now, children }: { item: RoadmapItem; state
 
 const Acceptance = ({ item }: { item: RoadmapItem }) => (item.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null);
 
-export function Spine({ account, roadmap, scheduleJson, sessions, live, repoUrl, now }: { account: string; roadmap: Roadmap; scheduleJson?: string; sessions: SessionSummary[]; live: string[]; repoUrl?: string; now: number }) {
+// The timeline's views: one document, several ways to look at it. A board with the three tenses as columns, a
+// list sortable on any column, the timeline itself by month, and the past grouped by release. Every view is a
+// rendering of what was published; nothing here edits an item.
+export type TimelineView = 'board' | 'list' | 'timeline' | 'releases';
+export interface TimelineQuery { view?: string; sort?: string }
+const VIEWS: readonly TimelineView[] = ['board', 'list', 'timeline', 'releases'];
+type SortKey = 'time' | 'title' | 'tense' | 'status' | 'release' | 'priority' | 'home';
+const SORTS: readonly SortKey[] = ['time', 'title', 'tense', 'status', 'release', 'priority', 'home'];
+const TENSE_RANK: Record<Tense, number> = { future: 0, present: 1, past: 2 };
+function sorted(rows: Row[], sort: string | undefined): { rows: Row[]; key: SortKey; desc: boolean } {
+  const desc = (sort ?? '').startsWith('-');
+  const name = (sort ?? '').replace(/^-/, '');
+  const key: SortKey = (SORTS as readonly string[]).includes(name) ? name as SortKey : 'time';
+  const dir = sort ? (desc ? -1 : 1) : -1;
+  const val = (r: Row): string | number => (key === 'time' ? r.time : key === 'tense' ? TENSE_RANK[r.tense] : key === 'title' ? r.item.title.toLowerCase() : (r.item[key] ?? '').toLowerCase());
+  const out = [...rows].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir || phaseNumber(a.item) - phaseNumber(b.item) || a.item.title.localeCompare(b.item.title); });
+  return { rows: out, key, desc: sort ? desc : true };
+}
+const monthOf = (t: number): string => (t ? new Date(t).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'undated');
+
+export function Timeline({ account, roadmap, scheduleJson, sessions, live, repoUrl, now, query = {} }: { account: string; roadmap: Roadmap; scheduleJson?: string; sessions: SessionSummary[]; live: string[]; repoUrl?: string; now: number; query?: TimelineQuery }) {
   const enc = encodeURIComponent(account);
-  const items = roadmap.items;
-  const rows = items.map((item) => ({ item, state: itemState(item) })).sort((a, b) => phaseNumber(a.item) - phaseNumber(b.item));
+  const view: TimelineView = (VIEWS as readonly string[]).includes(query.view ?? '') ? query.view as TimelineView : 'board';
+  const rows: Row[] = roadmap.items.map((item) => ({ item, state: itemState(item), tense: tenseOf(item), time: itemTime(item) }));
   const byItem = new Map<string, SessionSummary[]>();
-  const known = new Set(items.map((i) => i.id));
+  const known = new Set(roadmap.items.map((i) => i.id));
   for (const s of sessions) if (s.item_id && known.has(s.item_id)) byItem.set(s.item_id, [...(byItem.get(s.item_id) ?? []), s]);
-  // A session with no item, or whose item has since left the roadmap file, still happened.
+  // A session with no item, or whose item has since left the timeline, still happened.
   const orphan = sessions.filter((s) => !s.item_id || !known.has(s.item_id));
   const liveSessions = sessions.filter((s) => live.includes(s.key));
   const last = sessions.find((s) => s.status === 'ended' && s.kind === 'run');
   const schedule = parseSchedule(scheduleJson);
-  const next = rows.filter((r) => r.state === 'queued');
-  const proposed = rows.filter((r) => r.state === 'proposed');
-  const active = rows.filter((r) => r.state === 'active');
-  const done = rows.filter((r) => r.state === 'done').reverse();
+  const future = rows.filter((r) => r.tense === 'future').sort((a, b) => (a.state === 'proposed' ? 1 : 0) - (b.state === 'proposed' ? 1 : 0) || phaseNumber(a.item) - phaseNumber(b.item));
+  const present = rows.filter((r) => r.tense === 'present').sort((a, b) => (a.state === 'active' ? 0 : 1) - (b.state === 'active' ? 0 : 1) || b.time - a.time);
+  const past = rows.filter((r) => r.tense === 'past').sort((a, b) => b.time - a.time);
+  const receipts = (r: Row) => (byItem.get(r.item.id) ?? []).map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />);
+  const nav = (
+    <div class="tl-nav">{VIEWS.map((v) => <a class={v === view ? 'on' : ''} href={`/p/${enc}${v === 'board' ? '' : `?view=${v}`}`}>{v}</a>)}<span style="flex:1" /><span>{past.length} shipped · {present.length} in flight · {future.length} ahead</span></div>
+  );
+  const now_ = liveSessions.length ? liveSessions.map((s) => (
+    <div class="livebox">
+      <div class="lb-head" data-live-session={s.key} data-account={account}><span class="live"><span class="pulse" /></span><b>{s.source ?? s.kind}</b> · {s.item_id ? <a href={`/p/${enc}/items/${encodeURIComponent(s.item_id)}`}>{s.item_id}</a> : s.title ?? ''} · in progress · {fmtDur(s.started_at, undefined, now)} · <span data-live-turns>{s.turn_count}</span> turns · <span data-live-tools>{s.tool_calls}</span> tools</div>
+      <a class="docmore" href={`/p/${enc}/sessions/${encodeURIComponent(s.key)}`}>Follow the session →</a>
+    </div>
+  )) : (
+    <div class="schedbox">
+      {schedule.length ? schedule.map((j) => <div class="sched"><b>{j.name ?? 'job'}</b> · fires {j.schedule ?? '?'}{j.deliver ? ` · reports to ${j.deliver}` : ''}</div>) : <div class="sched">No schedule committed.</div>}
+      {last ? <div class="sched last">last run {fmtWhen(last.started_at)}: {outcomeWord(last)}{last.item_id ? ` · ${last.item_id}` : ''}{last.commit_sha && repoUrl ? <> · <a href={`${repoUrl}/commit/${last.commit_sha}`}>{shortSha(last.commit_sha)} ↗</a></> : null} · <a href={`/p/${enc}/sessions/${encodeURIComponent(last.key)}`}>receipt ↗</a></div> : <div class="sched last">no run yet</div>}
+    </div>
+  );
+  let body: unknown;
+  if (view === 'list') {
+    const { rows: list, key, desc } = sorted(rows, query.sort);
+    const th = (k: SortKey, label: string) => <th><a href={`/p/${enc}?view=list&sort=${key === k && !desc ? '-' : ''}${k}`}>{label}{key === k ? (desc ? ' ↓' : ' ↑') : ''}</a></th>;
+    body = (
+      <table class="tl-table">
+        <thead><tr>{th('title', 'item')}{th('tense', 'tense')}{th('status', 'status')}{th('release', 'release')}{th('time', 'when')}{th('home', 'home')}<th>proof</th></tr></thead>
+        <tbody>{list.map((r) => <tr><td class="t"><a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{r.item.title}</a></td><td class="n">{r.tense}</td><td class="n">{stateWord(r.state)}</td><td class="n">{r.item.release ?? ''}</td><td class="n">{whenOf(r, now)}</td><td class="n">{r.item.home ?? ''}</td><td class="n">{r.item.commit && repoUrl ? <a href={`${repoUrl}/commit/${r.item.commit}`}>{shortSha(r.item.commit)}</a> : r.item.url ? <a href={r.item.url}>source</a> : (byItem.get(r.item.id)?.length ? <a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{byItem.get(r.item.id)!.length} session{byItem.get(r.item.id)!.length === 1 ? '' : 's'}</a> : '')}</td></tr>)}</tbody>
+      </table>
+    );
+  } else if (view === 'timeline') {
+    const dated = rows.filter((r) => r.time).sort((a, b) => b.time - a.time);
+    const undated = rows.filter((r) => !r.time);
+    const months: Array<[string, Row[]]> = [];
+    for (const r of dated) { const m = monthOf(r.time); if (months[months.length - 1]?.[0] === m) months[months.length - 1][1].push(r); else months.push([m, [r]]); }
+    const ahead = future.filter((r) => !r.time);
+    const undatedRest = undated.filter((r) => r.tense !== 'future');
+    const groups: Array<[string, Row[]]> = [...(ahead.length ? [['ahead' as string, ahead]] as Array<[string, Row[]]> : []), ...months, ...(undatedRest.length ? [['undated' as string, undatedRest]] as Array<[string, Row[]]> : [])];
+    body = <>{groups.map(([m, rs]) => <><div class="tl-month">{m}</div><ol class="rm-spine">{rs.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl} mark={r.state === 'active'}>{r.tense !== 'future' ? receipts(r) : null}</Station>)}</ol></>)}{!rows.length ? <p class="sub">Nothing on the timeline yet.</p> : null}</>;
+  } else if (view === 'releases') {
+    const groups: Array<[string, Row[]]> = [];
+    for (const r of past) { const g = r.item.release ?? 'unreleased'; const at = groups.find(([k]) => k === g); if (at) at[1].push(r); else groups.push([g, [r]]); }
+    body = <>{groups.map(([g, rs]) => <div class="release"><div class="tl-month">{g}{rs[0].time ? ` · ${fmtWhen(new Date(rs[0].time).toISOString())}` : ''}</div><ol class="rm-spine">{rs.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl}>{receipts(r)}</Station>)}</ol></div>)}{!past.length ? <p class="sub">Nothing shipped yet.</p> : null}</>;
+  } else {
+    body = (
+      <div class="tl-board">
+        <div class="tl-col"><h4>Future</h4><ol class="rm-spine">{future.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl}><Acceptance item={r.item} /></Station>)}{!future.length ? <li class="empty">Nothing ahead. What comes next is the project's to file.</li> : null}</ol></div>
+        <div class="tl-col"><h4>Present</h4>{now_}<ol class="rm-spine">{present.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl} mark={r.state === 'active'}><Acceptance item={r.item} />{receipts(r)}</Station>)}{!present.length ? <li class="empty">Nothing in flight.</li> : null}</ol></div>
+        <div class="tl-col"><h4>Past</h4><ol class="rm-spine">{past.slice(0, 12).map((r) => { const rc = receipts(r); return <Station r={r} enc={enc} now={now} repoUrl={repoUrl}>{rc.length ? rc : r.item.home === 'kanban' ? <div class="rc-none">no agent session</div> : null}</Station>; })}{past.length > 12 ? <li class="empty">{past.length - 12} more · <a href={`/p/${enc}?view=releases`}>by release</a></li> : null}{!past.length ? <li class="empty">Nothing shipped yet.</li> : null}</ol></div>
+      </div>
+    );
+  }
   return (
     <div class="panel spine">
-      <h3>Next</h3>
-      <ol class="rm-spine">
-        {proposed.map((r) => <Station item={r.item} state={r.state} enc={enc}><Acceptance item={r.item} /></Station>)}
-        {next.map((r) => <Station item={r.item} state={r.state} enc={enc}><Acceptance item={r.item} /></Station>)}
-        {!proposed.length && !next.length ? <li class="empty">Nothing queued. What comes next is the project's to file.</li> : null}
-      </ol>
-      <h3>Now</h3>
-      {liveSessions.length ? liveSessions.map((s) => (
-        <div class="livebox">
-          <div class="lb-head" data-live-session={s.key} data-account={account}><span class="live"><span class="pulse" /></span><b>{s.source ?? s.kind}</b> · {s.item_id ? <a href={`/p/${enc}/items/${encodeURIComponent(s.item_id)}`}>{s.item_id}</a> : s.title ?? ''} · in progress · {fmtDur(s.started_at, undefined, now)} · <span data-live-turns>{s.turn_count}</span> turns · <span data-live-tools>{s.tool_calls}</span> tools</div>
-          <a class="docmore" href={`/p/${enc}/sessions/${encodeURIComponent(s.key)}`}>Follow the session →</a>
-        </div>
-      )) : (
-        <div class="schedbox">
-          {schedule.length ? schedule.map((j) => <div class="sched"><b>{j.name ?? 'job'}</b> · fires {j.schedule ?? '?'}{j.deliver ? ` · reports to ${j.deliver}` : ''}</div>) : <div class="sched">No schedule committed.</div>}
-          {last ? <div class="sched last">last run {fmtWhen(last.started_at)}: {outcomeWord(last)}{last.item_id ? ` · ${last.item_id}` : ''}{last.commit_sha && repoUrl ? <> · <a href={`${repoUrl}/commit/${last.commit_sha}`}>{shortSha(last.commit_sha)} ↗</a></> : null} · <a href={`/p/${enc}/sessions/${encodeURIComponent(last.key)}`}>receipt ↗</a></div> : <div class="sched last">no run yet</div>}
-        </div>
-      )}
-      {active.length ? <ol class="rm-spine">{active.map((r) => <Station item={r.item} state={r.state} enc={enc} now><Acceptance item={r.item} />{(byItem.get(r.item.id) ?? []).map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />)}</Station>)}</ol> : null}
-      <h3>Done</h3>
-      <ol class="rm-spine">
-        {done.map((r) => { const receipts = byItem.get(r.item.id) ?? []; return <Station item={r.item} state={r.state} enc={enc}>{receipts.length ? receipts.map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />) : <div class="rc-none">shipped by the maintainer · no agent session</div>}</Station>; })}
-        {!done.length ? <li class="empty">Nothing shipped yet.</li> : null}
-      </ol>
+      {nav}
+      {body}
       {orphan.length ? <><h3>Other sessions</h3>{orphan.slice(0, 5).map((s) => <Receipt s={s} enc={enc} repoUrl={repoUrl} now={now} />)}{orphan.length > 5 ? <div class="rc-none">{orphan.length - 5} more · <a href={`/p/${enc}/sessions`}>every session ↗</a></div> : null}</> : null}
-      <div class="rc-proofs" style="margin-top:14px"><a href={`/p/${enc}/sessions`}>every session ↗</a><a href={`/v1/accounts/${enc}/roadmap/revisions`}>every roadmap revision ↗</a></div>
+      <div class="rc-proofs" style="margin-top:14px"><a href={`/p/${enc}/sessions`}>every session ↗</a><a href={`/v1/accounts/${enc}/roadmap/revisions`}>every revision ↗</a></div>
     </div>
   );
 }
@@ -173,14 +225,15 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
   const enc = encodeURIComponent(account);
   const item = roadmap.items.find((i) => i.id === view.item_id);
   const state = item ? itemState(item) : undefined;
-  const word = state === 'active' ? 'in progress' : state === 'done' ? 'shipped' : state === 'proposed' ? 'proposed · awaits owner' : state ? 'queued' : 'not on the roadmap file';
+  const word = state ? stateWord(state) : 'not on the timeline';
+  const facts = item ? [item.tense, item.release, item.done_at ? `shipped ${fmtWhen(item.done_at)}` : item.started_at ? `started ${fmtWhen(item.started_at)}` : item.proposed_at ? `proposed ${fmtWhen(item.proposed_at)}` : '', item.by ? `by ${item.by}` : '', item.home ? `from ${item.home}` : ''].filter(Boolean).join(' · ') : '';
   const turns = view.sessions.reduce((n, s) => n + s.turn_count, 0);
   return (
     <div class="wrap">
       <p class="crumb"><a href={`/p/${enc}`}>← {account}</a></p>
       <div class="panel jobhead" data-item={view.item_id} data-account={account} data-live={view.live.length ? '1' : ''} data-sessions={String(view.sessions.length)} data-updates={String(view.updates.length)}>
         <h1><span class="item">{view.item_id}</span>{item ? <> · {item.title}</> : null}</h1>
-        <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
+        <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''}{facts ? ` · ${facts}` : ''}{item?.commit && repoUrl ? <> · <a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></> : item?.url ? <> · <a href={item.url}>source ↗</a></> : null} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
         {item?.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null}
       </div>
       {view.task ? (
