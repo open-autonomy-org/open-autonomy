@@ -176,8 +176,10 @@ and branding exist, while the browser agent is registering the project applicati
   Working in your signed-in browser. No action needed yet.
 ```
 
-**Human handoff: name the precise action and where to take it.** Only use this when the browser reaches
-an actual human-only step. For a passkey challenge observed during registration:
+**Human handoff: name the precise action and where to take it.** Give the short advance notice described
+under [expected human checkpoints](#expected-human-checkpoints) before a likely challenge. Use the
+waiting-for-you card only when the browser reaches an actual human-only step. For a passkey challenge
+observed during registration:
 
 ```text
 +----------------------------------------------------------+
@@ -410,6 +412,39 @@ someone else's funds, or treat a proposed budget as payment authorization. Verif
 project and covers the chosen model before the bounded connection check. A declined funding step leaves
 platform-funded activation incomplete. An agreed subscription uses its operator's allowance instead;
 any remaining platform-funded profiles or product calls still require their own usable project balance.
+
+## Expected human checkpoints
+
+Prepare the owner immediately before a provider action that may require their attention. These are
+anticipated interruption points, not guaranteed prompts on every setup or proof that a connection works.
+Reuse the signed-in browser; a previous successful challenge does not guarantee the next action is clear.
+
+| Before this action | What may interrupt it | Prepare and resume |
+|---|---|---|
+| Submit a GitHub App manifest or change protected app settings | GitHub account re-authentication, such as a passkey or two-factor prompt | Start the credential receiver before manifest submission. After authentication, inspect the returned page: GitHub may have lost the manifest and returned to a blank personal-app form. Restore the agreed organization and manifest only after checking that the app was not already created. |
+| Click **Create** for a new Discord application | A CAPTCHA before the application is created | Tell the owner to keep Chrome visible. After completion, verify the application name and ID; a click or a dismissed dialog is not proof of creation. |
+| Click **Authorise** to add the Discord bot to the server | A separate CAPTCHA, even if application creation just passed one | Confirm the agreed server and permissions first. After the challenge, verify Discord's installation success and target server before advancing. |
+| Generate or reset a Discord bot token | Account verification and a one-time secret display | Prepare the protected credential receiver first and tell the owner where to paste the token. Do not read, copy, screenshot or echo the token through agent tools. Reuse a saved credential; resetting an existing token is rotation, not a routine retry. |
+
+For example, immediately before the Discord server authorization click:
+
+```text
+  NEXT / Discord server installation
+  The next click may open another CAPTCHA, separate from app creation.
+  Keep the Discord tab in Chrome visible; I will pause if it appears.
+```
+
+This heads-up is information, not another approval gate for an already authorized setup action. If the
+owner says they are away, defer that browser step and continue independent work. When a challenge
+appears, identify the exact tab and action promptly, leave it visible, and pause automation on that
+provider. Never solve or bypass a CAPTCHA or human authentication step. Do not navigate away while
+waiting or announce success from an owner's "done" alone: inspect the provider result first.
+
+If the prompt was missed or expired, check for a completed application or installation before retrying.
+Reuse its identifiers and saved credentials. Reopen only the unfinished step, give the heads-up again,
+and show the owner the fresh prompt. If a credential receiver expired, restart it before resubmitting
+the manifest with its current callback and state; never repeat app creation blindly. Keep non-secret
+progress in the existing setup record, not a separate rehearsal document.
 
 ## Complete credentials with the owner
 
