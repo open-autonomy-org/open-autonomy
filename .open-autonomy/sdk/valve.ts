@@ -23,7 +23,7 @@
 // repository, its file `{app_id, repository, private_key, installation_id?}` (the app's PEM).
 // Served on its own port as api.github.com is: the valve signs the app's JWT, mints an installation token scoped
 // to that one repository ahead of every expiry, and forwards the desk's routes (the repository's issues and
-// their comments, GraphQL for its discussions) with it. The agent is configured with GITHUB_API_URL at this port
+// their comments, GraphQL for its discussions, and native HTTPS Git) with it. The agent is configured with GITHUB_API_URL at this port
 // and GITHUB_TOKEN=valve; every comment it posts is the app's, and the key never enters it.
 import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -176,11 +176,12 @@ if (githubArg) {
     const body = b64(JSON.stringify({ iat: now - 60, exp: now + 9 * 60, iss: String(app.app_id) }));
     return `${head}.${body}.${b64(sign('sha256', Buffer.from(`${head}.${body}`), createPrivateKey(app.private_key)))}`;
   };
-  let token: { value: string; expiresAt: number } | undefined;
-  let minting: Promise<{ value: string; expiresAt: number }> | undefined;
+  type InstallationToken = { value: string; expiresAt: number; contents?: string };
+  let token: InstallationToken | undefined;
+  let minting: Promise<InstallationToken> | undefined;
   // One installation token at a time, scoped to the one repository the file names, an hour long, renewed with five
   // minutes to spare.
-  const mint = (): Promise<{ value: string; expiresAt: number }> => (minting ??= (async () => {
+  const mint = (): Promise<InstallationToken> => (minting ??= (async () => {
     try {
       const app = read();
       const [, name] = app.repository.split('/');
@@ -196,14 +197,14 @@ if (githubArg) {
         installationId = installation.id;
       }
       const res = await fetch(`${upstream()}/app/installations/${installationId}/access_tokens`, { method: 'POST', headers, body: JSON.stringify({ repositories: [name] }) });
-      const body = await res.json().catch(() => ({})) as { token?: string; expires_at?: string; message?: string };
+      const body = await res.json().catch(() => ({})) as { token?: string; expires_at?: string; message?: string; permissions?: { contents?: string } };
       if (!res.ok || !body.token) throw new Error(`github-app: installation token refused (${res.status} ${body.message ?? ''})`);
-      token = { value: body.token, expiresAt: Date.parse(body.expires_at ?? '') || Date.now() + 55 * 60_000 };
+      token = { value: body.token, expiresAt: Date.parse(body.expires_at ?? '') || Date.now() + 55 * 60_000, contents: body.permissions?.contents };
       console.log(`github-app: installation token minted for ${app.repository}, expires ${new Date(token.expiresAt).toISOString()}`);
       return token;
     } finally { minting = undefined; }
   })());
-  const fresh = (): Promise<{ value: string; expiresAt: number }> => (token && token.expiresAt - Date.now() > 5 * 60_000 ? Promise.resolve(token) : mint());
+  const fresh = (): Promise<InstallationToken> => (token && token.expiresAt - Date.now() > 5 * 60_000 ? Promise.resolve(token) : mint());
   // Community conversations can be written; PM can read the same repository's review, check and release
   // evidence. Reading an Actions run or a release never grants its mutation routes.
   const allowed = (app: GitHubApp, method: string, path: string): boolean => {
@@ -217,25 +218,51 @@ if (githubArg) {
     if (/^\/(issues|discussions)(\/|$)/.test(resource)) return method === 'GET' || method === 'POST';
     return false;
   };
+  // Git's ordinary smart-HTTP wire uses the same repository-scoped installation
+  // token. No credential helper, token response or SSH transport enters the agent.
+  const gitRoute = (app: GitHubApp, method: string, url: URL): 'read' | 'write' | undefined => {
+    const root = [`/${app.repository}`, `/${app.repository}.git`].find(root => url.pathname.startsWith(root + '/'));
+    if (!root) return;
+    const path = url.pathname.slice(root.length);
+    if (method === 'GET' && path === '/info/refs' && [...url.searchParams.keys()].join(',') === 'service') {
+      if (url.searchParams.get('service') === 'git-upload-pack') return 'read';
+      if (url.searchParams.get('service') === 'git-receive-pack') return 'write';
+    }
+    if (method === 'POST' && !url.search) {
+      if (path === '/git-upload-pack') return 'read';
+      if (path === '/git-receive-pack') return 'write';
+    }
+  };
+  const gitUpstream = (): string => {
+    const api = new URL(upstream());
+    return api.hostname === 'api.github.com' ? 'https://github.com' : api.origin;
+  };
   Bun.serve({
-    hostname: '127.0.0.1', port,
+    hostname: '127.0.0.1', port, idleTimeout: 255,
     async fetch(req) {
       const u = new URL(req.url);
-      if (u.pathname === '/healthz') { try { const app = read(); return new Response(`ok · github app ${app.app_id} on ${app.repository}${token ? ` · installation token expires ${new Date(token.expiresAt).toISOString()}` : ''}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
+      if (u.pathname === '/healthz') { try { const app = read(); return new Response(`ok · github app ${app.app_id} on ${app.repository}${token ? ` · installation token expires ${new Date(token.expiresAt).toISOString()} · contents ${token.contents ?? 'unknown'}` : ''}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
       try {
         const app = read();
-        if (!allowed(app, req.method, u.pathname)) return new Response(JSON.stringify({ message: `the valve forwards the community desk's routes of ${app.repository} only` }), { status: 403, headers: { 'content-type': 'application/json' } });
+        const git = gitRoute(app, req.method, u);
+        if (!git && !allowed(app, req.method, u.pathname)) return new Response(JSON.stringify({ message: `the valve forwards the community and Git routes of ${app.repository} only` }), { status: 403, headers: { 'content-type': 'application/json' } });
         let t = await fresh();
-        const forward = async (tok: string): Promise<Response> => {
+        // Buffer once so a 401 refresh can retry the same binary Git POST safely.
+        const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
+        const forward = async (credential: InstallationToken): Promise<Response> => {
+          if (git && (git === 'write' ? credential.contents !== 'write' : !['read', 'write'].includes(credential.contents ?? ''))) {
+            return Response.json({ message: `The project GitHub App needs Contents: ${git} for this Git operation. Complete the agreed installation permission before retrying.` }, { status: 403 });
+          }
           const headers = new Headers(req.headers);
           for (const h of ['host', 'authorization', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
-          headers.set('authorization', `Bearer ${tok}`);
+          headers.set('authorization', git ? `Basic ${Buffer.from('x-access-token:' + credential.value).toString('base64')}` : `Bearer ${credential.value}`);
           headers.set('user-agent', 'open-autonomy-valve');
           if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json');
-          return fetch(`${upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body, redirect: 'manual' });
+          return fetch(`${git ? gitUpstream() : upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual' });
         };
-        let res = await forward(t.value);
-        if (res.status === 401) { t = await mint(); res = await forward(t.value); }
+        let res = await forward(t);
+        if (res.status === 401) { t = await mint(); res = await forward(t); }
+        if (git && res.status >= 300 && res.status < 400) return Response.json({ message: 'Git repository redirected; reconcile its configured location before retrying.' }, { status: 502 });
         const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
         return new Response(res.body, { status: res.status, headers: out });
       } catch (e) { return new Response(JSON.stringify({ message: (e as Error).message }), { status: 502, headers: { 'content-type': 'application/json' } }); }

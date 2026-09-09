@@ -82,5 +82,6 @@ The Dockerfile’s `local` target includes the pinned native Codex executor and 
 Its entrypoint runs only the executor as `hermes`; the ordinary default and Compose target remain
 `managed`. The host-owned `.open-autonomy/local-runtime.ts` supervises a prepared container’s gateway,
 Codex bridge, loopback valves and reporter. Keep that host installation outside the agent-writable
-checkout. Setup must finish Git access, the chosen communication connection and committed configuration
-refresh before using this as the project’s persistent service; local activation remains guarded.
+checkout. For Git, follow the native URL mappings in `.open-autonomy/SETUP.md`: the host GitHub valve serves
+HTTPS Git for the project App, whose Contents permission must allow writes. Setup must verify that
+connection and finish communication and committed configuration refresh before installing the persistent service; local activation remains guarded.

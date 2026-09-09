@@ -350,8 +350,8 @@ Hermes session, with native container MCP configuration and separate worker cont
 a prepared container gateway. It waits for the reader before starting Hermes, forwards native restart
 requests and stops the gateway when its host connection ends. The container image has an explicit
 `local` target with the native executor and Hermes stdio adapter; the default remains the managed stack.
-Before replacing the activation guard, finish the selected host-held Git and communication connections,
-the committed configuration refresh and host service installation, then verify the complete fleet loop. Use ordinary Docker networking as described in
+Before replacing the activation guard, verify the project App Git connection below and finish the selected
+communication connection, committed configuration refresh and host service installation. Then verify the complete fleet loop. Use ordinary Docker networking as described in
 [the container guide](../container/README.md#local-host-connection): the container reaches the existing
 authenticated host bridge, and the native executor is published only on host loopback. Setup verifies
 that path in the selected Docker context before Hermes starts.
@@ -568,10 +568,32 @@ Replace the example destination and repository with the agreed runtime credentia
 The receiver prints a callback URL and state. Author the manifest from the project branding and GitHub's
 [documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
 use that callback as redirect_url, and pass the state on the registration URL.
-For this template, request issues/discussions write and metadata, pull_requests, contents, checks,
-statuses and actions read; no webhook or subscribed events are needed. Use the project page as the app
+For this template, request issues/discussions write and metadata, pull_requests, checks, statuses and
+actions read. Contents is read for a managed deployment using its SSH deploy key, or write for the
+local host runtime using the project App for HTTPS Git. Existing App installations need the owner to
+accept that permission change; setup must not assume a read-only installation can push. No webhook or
+subscribed events are needed. Use the project page as the app
 homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
+
+For the local host runtime, keep the canonical GitHub origin and configure Git's native URL rewriting
+inside the container, as `hermes` with `HOME` set to its runtime home. Substitute the actual account and
+GitHub valve port (the base valve port plus three):
+
+```sh
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf https://github.com/OWNER/REPO
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf git@github.com:OWNER/REPO
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf ssh://git@github.com/OWNER/REPO
+```
+
+Inspect existing mappings first; reuse matching entries and reconcile an old port instead of accumulating
+settings. These mappings contain no credential and apply to Git in normal and worker checkouts. The host
+valve injects the repository-scoped App installation token. Do not forward the owner's general SSH agent
+or copy a token into a Git URL. Verify clone/fetch and a bounded branch push through this route in the
+World, then verify the agreed live connection before activation. A twin Git push proves transport and
+repository state; production permission approval is a separate setup check. After the first authenticated request,
+the valve’s `/healthz` reports the token’s Contents permission without revealing the token. Restart
+the valve after an approved permission change so the next request mints a token with that grant.
 
 The callback exchanges GitHub's temporary code and saves the app credential immediately. That is the
 end of the credential helper's responsibility. The browser agent installs the existing app, then verifies
