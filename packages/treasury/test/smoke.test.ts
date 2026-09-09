@@ -218,4 +218,24 @@ describe('the treasury, one smoke test per surface', () => {
     for (const w of ['runway', 'roadmap', 'activity', 'now']) expect((await request(env, `/v1/accounts/acme%2Fapp/${w}.svg`)).headers.get('content-type')).toContain('image/svg+xml');
     expect((await request(env, '/p/nobody%2Fnothing')).status).toBe(404);
   });
+  test("an app's state on the books survives the core's loader: what the treasury does not own it keeps, across a restart and an export", async () => {
+    const env = useEnv(testEnv());
+    const { LimitLedger } = require('../src/ledger.ts') as typeof import('../src/ledger.ts');
+    LimitLedger.extend({
+      test_mark: async (core, body) => { core.ensureAcct(String(body.account)).sponsors_active = { pat: { login: 'pat', monthly_usd_cents: 500 } }; core.state.coupons = { 'SPON-TEST': { code: 'SPON-TEST', amount_usd_cents: 100 } }; await core.save(); return { ok: true }; },
+      test_read: (core, body) => ({ ok: true, account: core.acct(String(body.account))?.sponsors_active, state: core.state.coupons }),
+    });
+    await fund(env, 'acme/app', 100);
+    const ledger = new (require('../src/ledger.ts') as typeof import('../src/ledger.ts')).LedgerClient(env.LIMITS);
+    expect((await ledger.call<{ ok: boolean }>('test_mark', { account: 'acme/app' })).ok).toBe(true);
+    env.ns.restart();
+    const after = await ledger.call<{ account: unknown; state: unknown }>('test_read', { account: 'acme/app' });
+    expect(after.account).toEqual({ pat: { login: 'pat', monthly_usd_cents: 500 } });
+    expect(after.state).toEqual({ 'SPON-TEST': { code: 'SPON-TEST', amount_usd_cents: 100 } });
+    const exported = await requestJson(env, '/admin/export', { headers: admin });
+    const state = exported.entries.find(([key]: [string, unknown]) => key === 'state')[1];
+    expect(state.coupons['SPON-TEST'].amount_usd_cents).toBe(100);
+    expect(state.accounts['acme/app'].sponsors_active.pat.login).toBe('pat');
+    expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(100);
+  });
 });
