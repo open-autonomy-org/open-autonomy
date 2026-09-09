@@ -78,10 +78,10 @@ The host reporter reads container state through the existing Supercode stdio con
 `docker exec`. Install and verify host/gateway supervision as described in
 [setup](../.open-autonomy/SETUP.md) before reporting the project activated.
 
-The Dockerfile’s `local` target includes the native executor and Hermes stdio adapter. Select it with
-`STACK=<project> EXECUTOR_PORT=<port> docker compose -p <project> -f container/compose.yml up -d --build executor`.
-Do not start the managed `agent` service alongside it. Compose owns its network and persistent volumes;
-where a World owns infrastructure, invoke these Compose operations through that World's lifecycle.
+The Dockerfile's `local` target runs the native executor and Hermes stdio adapter in one container.
+Use the machine's existing World lifecycle for its Docker start/stop commands, retaining the persistent
+home and checkout volumes. The sidecar runs outside that container. The Compose file above belongs to
+the managed deployment; local Codex does not need a Compose service or another container manager.
 
 Run the installed `.open-autonomy/local-runtime.ts` entrypoint on the host, following
 [setup](../.open-autonomy/SETUP.md#prepare-the-host-and-applications-world). It starts the bridge, valves,

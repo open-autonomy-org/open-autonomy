@@ -359,7 +359,7 @@ Codex subscription and holds model, GitHub App and platform authentication. Nati
 same setup-selected `channels.env` as the managed runtime. The existing reporter runs on the host and
 reads container sessions through Supercode over Docker stdio.
 
-Use the kit's `executor` Compose service and run `.open-autonomy/local-runtime.ts` directly, as described
+Run one container from the Dockerfile's `local` target and `.open-autonomy/local-runtime.ts` on the host, as described
 under [host preparation](#prepare-the-host-and-applications-world). The runtime verifies project Git,
 loads committed configuration while preserving unfinished work, starts the existing services and
 forwards Hermes's native shutdown/restart result. The service manager owns restart policy. Setup does
@@ -650,10 +650,10 @@ For Open Autonomy models, use the existing managed Compose service and start scr
 
 1. Install committed `.open-autonomy/` code and its dependencies in operator-owned host storage outside
    the agent-writable checkout. Record the installed revision. Reuse the protected project credentials.
-2. Build and start the kit's `executor` Compose service, selecting the project name and a free loopback
-   port. Use the machine's World lifecycle where required. Compose owns the container, network and
-   persistent home/checkout volumes. Initialize the canonical Git origin and native valve mappings above
-   as `hermes`; the runtime fetches the committed configuration.
+2. Build the Dockerfile's `local` target. Use the machine's existing World lifecycle to start that one
+   container with persistent home/checkout volumes and a loopback executor port. Put the ordinary Docker
+   start/stop commands in that lifecycle; no local Compose configuration or container-manager script is
+   needed. Initialize the canonical Git origin and native valve mappings above as `hermes`.
 3. Run the installed entrypoint directly:
 
    ```bash
