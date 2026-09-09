@@ -382,12 +382,17 @@ custom_providers:
     base_url: http://127.0.0.1:1/v1
     api_key: local-codex
     api_mode: codex_app_server
+auxiliary:
+  background_review:
+    enabled: false
 ```
 
 This selects Hermes’s existing [Codex app-server](https://learn.chatgpt.com/docs/app-server) transport, not a new server. The non-secret key and unused loopback
 address satisfy Hermes's provider resolver without invoking its OAuth importer; the transport launches
 `codex app-server` over stdio. A mistaken HTTP path fails locally instead of spending through another
-provider. Preserve unrelated config and use `terminal.backend: local` with `home_mode: auto` or `real`.
+provider. Disable optional background reflection as shown: the pinned Hermes implementation downgrades
+that auxiliary task to HTTP instead of preserving app-server transport. This setting does not disable
+native Kanban task review (`kanban.review_dispatch`). Preserve unrelated config and use `terminal.backend: local` with `home_mode: auto` or `real`.
 The pinned Hermes app-server runtime inherits Codex's model and permissions; it does not pass the Hermes
 model field to `thread/start`. Configure and verify the agreed model in Codex's project configuration,
 and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
