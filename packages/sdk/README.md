@@ -57,11 +57,20 @@ when using a checkout's bundled tools. The credential destination remains outsid
   anything else), the roadmap `item` it serves when known, a `source` (the schedule job's name, a channel).
   It opens, its turns append with an offset, and it ends with an optional outcome: a run has a verdict
   (`done` | `failed`), a chat does not. Several can be live at once.
-- **An update** is a short progress note on a roadmap item, optionally from a session.
-- **The roadmap** is one normalized document per project, whatever holds it natively: a board, a tracker, a file. This package reads the file form into a typed shape and writes
-  it back byte for byte (`parseRoadmap`, `serializeRoadmap`, `withStatus`, `renderRoadmap`); the platform's
-  page parses through the same code. There is no write API: the file in git is the only roadmap surface.
-  Adapters that mirror it to a tracker are what the shape is for.
+- **An update** is a short progress note on an item, optionally from a session.
+- **The timeline** is one normalized document per project: every item of work the project has done, is doing
+  or intends, in one language, whatever holds it natively. An item has a tense, past, present or future, and the
+  page's views (a board, a list, a timeline, a changelog) are sorts and groupings over that one document, never
+  edits: the platform shows, it does not steer. What a substrate keeps locally is its own business: the Hermes
+  kit keeps its past in `CHANGELOG.md`, its present on the Hermes board with the sessions serving it, and its
+  future in `ROADMAP.md`; an engagement keeps all three in a client's tracker. Unifying those into the one
+  language is the job of that substrate's SDK implementation, the reporter or a driver, and of nothing on the
+  platform. (Owner ruling, 2026-09-08. Standing today: the wire below still calls the document the roadmap and
+  the reporter publishes only the present under that name; the item carries no tense, no time and no release;
+  the past reaches the page as a markdown document. The item's fields for the views are the next change to
+  this wire, not yet decided here.)
+  This package reads the file form into a typed shape and writes it back byte for byte (`parseRoadmap`,
+  `serializeRoadmap`, `withStatus`, `renderRoadmap`); no kit writes that file today.
 
 Spend is attributed by the platform: Hermes names its session on each model request, so overlapping sessions
 each receive their own settled calls and cents and an item's page shows everything that touched it.
@@ -69,8 +78,8 @@ each receive their own settled calls and cents and an item's page shows everythi
 ## Drivers
 
 The platform holds one normalized roadmap per project, revisioned: who, when, from which source, what
-changed. Substrates feed it: a reporter publishing its board, or a driver. `file` is a roadmap file in git pulled on sync. `github-milestones` is the
-repository's milestones, pulled on sync with no credential (`fromMilestones`). `jira` is the project's
+changed. Substrates feed it: a reporter publishing its board, or a driver. `github-milestones` is the
+repository's milestones, pulled on sync with no credential (`fromMilestones`); it is the only source the platform pulls. `jira` is the project's
 epics, read owner-side where the credential is and pushed with `pushRoadmap` on a `steer`-scoped key
 (`fromJira`). Each driver declares its conformance, what its tracker cannot express (`CONFORMANCE`), and a
 reconcile plan carries a finished item back to the native side (`milestoneChanges`, `jiraChanges`). The
