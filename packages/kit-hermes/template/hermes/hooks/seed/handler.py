@@ -150,3 +150,55 @@ async def handle(event_type: str, context: dict) -> None:
 
     if created or repinned:
         logger.info("seed: seeded %d job(s) from jobs.seed.json, re-pinned %d", created, repinned)
+    _seed_webhooks()
+
+
+def _seed_webhooks() -> None:
+    """The project-owned webhook routes (cron/webhooks.seed.json): a route per entry, created when absent, its
+    prompt, skills, deliver, events, script and toolsets refreshed from the seed, its secret kept once made.
+    The seed never carries a secret; the route's is generated here and lives only in the home's
+    webhook_subscriptions.json, where the sender's door reads it."""
+    import secrets as _secrets
+    seed_file = _hermes_home() / "cron" / "webhooks.seed.json"
+    if not seed_file.exists():
+        return
+    try:
+        data = json.loads(seed_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.error("seed: failed to read %s: %s", seed_file, e)
+        return
+    routes = data.get("routes", []) if isinstance(data, dict) else data
+    routes = [r for r in routes if isinstance(r, dict) and r.get("name")]
+    if not routes:
+        return
+    try:
+        from hermes_cli.webhook import _load_subscriptions, _save_subscriptions
+    except Exception as e:  # pragma: no cover - import path depends on runtime
+        logger.error("seed: cannot import hermes_cli.webhook: %s", e)
+        return
+    subs = _load_subscriptions()
+    changed = 0
+    for spec in routes:
+        name = str(spec["name"]).strip().lower().replace(" ", "-")
+        existing = subs.get(name) or {}
+        route = {
+            "description": spec.get("description") or f"Seeded route: {name}",
+            "events": [str(e).strip() for e in (spec.get("events") or [])],
+            "secret": existing.get("secret") or _secrets.token_urlsafe(32),
+            "prompt": spec.get("prompt") or "",
+            "skills": [str(x).strip() for x in (spec.get("skills") or [])],
+            "deliver": _deliver_target(name, spec.get("deliver") or "log"),
+            "created_at": existing.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        if spec.get("script"):
+            route["script"] = str(spec["script"]).strip()
+        if spec.get("toolsets"):
+            route["toolsets"] = [str(x).strip() for x in spec["toolsets"]]
+        if spec.get("deliver_only"):
+            route["deliver_only"] = True
+        if {k: v for k, v in existing.items() if k != "created_at"} != {k: v for k, v in route.items() if k != "created_at"}:
+            subs[name] = route
+            changed += 1
+    if changed:
+        _save_subscriptions(subs)
+        logger.info("seed: seeded %d webhook route(s) from webhooks.seed.json", changed)
