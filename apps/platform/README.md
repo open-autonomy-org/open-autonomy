@@ -13,7 +13,7 @@ src/proxy.ts      the model rail: OpenAI and Anthropic wires → the model gatew
 src/pricing.ts    reservation prices; settle uses the gateway's reported cost
 src/stream.ts     the development stream's intake (CloudEvents) and its live channels (SSE)
 src/site.tsx      the site: explore, the project page, the session page, the item page
-src/stream-view.tsx  the spine (NEXT / NOW / DONE), the session and item pages, the Setup pane
+src/stream-view.tsx  the timeline's views (board, list, timeline, releases), the session and item pages, the Setup pane
 src/widgets.ts    runway, now, roadmap and activity SVGs for a README
 src/sync.ts       the docs sync: a project's page is its repository's mirror
 src/sponsors.ts   the GitHub Sponsors webhook

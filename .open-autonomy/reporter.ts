@@ -16,7 +16,6 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, type RoadmapItem } from './sdk/roadmap.ts';
-import { slug } from './sdk/drivers.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
 
 const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
@@ -287,14 +286,18 @@ const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'do
 const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 const boardDigests = new Map<string, string>();
 let timelineDigest = '';
+let presentCount = 0;
 async function board(): Promise<RoadmapItem[] | undefined> {
   let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
   try { read = await sc.workflowLoad({ from: 'hermes', home: cfg.hermes_home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return undefined; }
   // The developer's tasks are the present. Tasks assigned to another profile (a purchase request for the treasurer)
   // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
   const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
-  // A read that found no board at all (the database mid-write) is not an empty board.
-  if (!tasks.length) return undefined;
+  // A read that found no board at all (the database mid-write) is not an empty board: a board that had tasks a
+  // moment ago and has none now is skipped; a board that never had any is simply empty, and the past and the
+  // future publish without it.
+  if (!tasks.length && presentCount > 0) return undefined;
+  presentCount = tasks.length;
   runningItems.clear();
   for (const t of tasks) if (t.lane === 'running') runningItems.add(t.id);
   const items: RoadmapItem[] = tasks.map((t) => {
@@ -367,11 +370,13 @@ function roadmapItems(md: string | undefined): RoadmapItem[] {
     const h = /^##\s+(.+?)\s*$/.exec(line);
     if (h) {
       close();
+      // Only a `## <id>: <title>` section is an intention; a section without an id is the file's own prose.
       const m = /^([A-Za-z0-9][A-Za-z0-9._-]{0,79}):\s+(.+)$/.exec(h[1]);
-      let id = m ? m[1] : slug(h[1]);
+      if (!m) continue;
+      let id = m[1];
       while (seen.has(id)) id = `${id}-`;
       seen.add(id);
-      cur = { item: { id, title: clipWords(plain(m ? m[2] : h[1]), 200), tense: 'future', status: 'proposed', home: 'roadmap', acceptance: [] }, bullets: [], completion: [], inCompletion: false };
+      cur = { item: { id, title: clipWords(plain(m[2]), 200), tense: 'future', status: 'proposed', home: 'roadmap', acceptance: [] }, bullets: [], completion: [], inCompletion: false };
       continue;
     }
     if (!cur) continue;
@@ -399,7 +404,7 @@ async function timeline(): Promise<void> {
   const ids = new Set(items.map((i) => i.id));
   for (const it of [...changelogItems(readText(resolve(projectDir, 'CHANGELOG.md')), cfg.account), ...roadmapItems(readText(resolve(projectDir, 'ROADMAP.md')))]) if (!ids.has(it.id)) { ids.add(it.id); items.push(it); }
   const digest = JSON.stringify(items);
-  if (digest === timelineDigest) return;
+  if (digest === timelineDigest || !items.length) return;
   try {
     const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
     if (r.ok) { timelineDigest = digest; if (!r.unchanged) log(`timeline published (${items.filter((i) => i.tense === 'past').length} past, ${items.filter((i) => i.tense === 'present').length} present, ${items.filter((i) => i.tense === 'future').length} future)`); } else log(`timeline publish refused: ${r.error ?? r.status}`);

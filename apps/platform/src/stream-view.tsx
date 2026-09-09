@@ -136,7 +136,10 @@ export function Timeline({ account, roadmap, scheduleJson, sessions, live, repoU
     const undated = rows.filter((r) => !r.time);
     const months: Array<[string, Row[]]> = [];
     for (const r of dated) { const m = monthOf(r.time); if (months[months.length - 1]?.[0] === m) months[months.length - 1][1].push(r); else months.push([m, [r]]); }
-    body = <>{[...(undated.length ? [['ahead, undated', future.filter((r) => !r.time).concat(undated.filter((r) => r.tense !== 'future'))] as [string, Row[]]] : []), ...months].map(([m, rs]) => <><div class="tl-month">{m}</div><ol class="rm-spine">{rs.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl} mark={r.state === 'active'}>{r.tense !== 'future' ? receipts(r) : null}</Station>)}</ol></>)}{!rows.length ? <p class="sub">Nothing on the timeline yet.</p> : null}</>;
+    const ahead = future.filter((r) => !r.time);
+    const undatedRest = undated.filter((r) => r.tense !== 'future');
+    const groups: Array<[string, Row[]]> = [...(ahead.length ? [['ahead' as string, ahead]] as Array<[string, Row[]]> : []), ...months, ...(undatedRest.length ? [['undated' as string, undatedRest]] as Array<[string, Row[]]> : [])];
+    body = <>{groups.map(([m, rs]) => <><div class="tl-month">{m}</div><ol class="rm-spine">{rs.map((r) => <Station r={r} enc={enc} now={now} repoUrl={repoUrl} mark={r.state === 'active'}>{r.tense !== 'future' ? receipts(r) : null}</Station>)}</ol></>)}{!rows.length ? <p class="sub">Nothing on the timeline yet.</p> : null}</>;
   } else if (view === 'releases') {
     const groups: Array<[string, Row[]]> = [];
     for (const r of past) { const g = r.item.release ?? 'unreleased'; const at = groups.find(([k]) => k === g); if (at) at[1].push(r); else groups.push([g, [r]]); }
