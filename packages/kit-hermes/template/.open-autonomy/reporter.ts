@@ -541,3 +541,6 @@ setInterval(() => { void setup(); void docs(); void timeline(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
 for (const d of index.initial) await consider(d);
 process.on('SIGTERM', () => { void sc.close().then(() => process.exit(0)); });
+
+// A host supervisor starts Hermes only after the native reader is watching.
+process.send?.({ type: 'reporter-ready' });

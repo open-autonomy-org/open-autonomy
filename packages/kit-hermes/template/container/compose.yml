@@ -13,6 +13,7 @@ services:
     build:
       context: ..
       dockerfile: container/Dockerfile
+      target: managed
       args:
         HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31} # container/build-hermes.sh builds it
     image: __PROJECT__-agent:local

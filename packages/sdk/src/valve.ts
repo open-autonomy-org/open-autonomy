@@ -7,7 +7,8 @@
 // or commits, which is the whole point: everything the agent produces is public.
 //
 //   open-autonomy-valve --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex /secrets/codex.json:8789]
-//                       [--github-app /secrets/github-app.json:8790]
+//                       [--github-app /secrets/github-app.json:8790] [--loopback]
+// Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
 //
@@ -71,7 +72,7 @@ const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/response
 const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+(?:$|\/(sessions|items)(\/|$))/.test(path);
 
 for (const { file, port } of keys) Bun.serve({
-  hostname: '0.0.0.0',
+  hostname: process.argv.includes('--loopback') ? '127.0.0.1' : '0.0.0.0',
   port,
   idleTimeout: 255,
   async fetch(req) {

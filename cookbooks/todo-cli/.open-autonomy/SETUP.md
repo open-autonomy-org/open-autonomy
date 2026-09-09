@@ -345,9 +345,13 @@ services and reporting, with authentication retained by the host. A successful i
 does not complete this integration. The vendored
 `.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
 and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
-Hermes session, with native container MCP configuration and separate worker context. Startup still
-needs to supervise the host services alongside the container gateway before replacing the activation
-guard. Use ordinary Docker networking as described in
+Hermes session, with native container MCP configuration and separate worker context.
+`.open-autonomy/local-runtime.ts` supervises the host bridge, loopback valves and reporter alongside
+a prepared container gateway. It waits for the reader before starting Hermes, forwards native restart
+requests and stops the gateway when its host connection ends. The container image has an explicit
+`local` target with the native executor and Hermes stdio adapter; the default remains the managed stack.
+Before replacing the activation guard, finish the selected host-held Git and communication connections,
+the committed configuration refresh and host service installation, then verify the complete fleet loop. Use ordinary Docker networking as described in
 [the container guide](../container/README.md#local-host-connection): the container reaches the existing
 authenticated host bridge, and the native executor is published only on host loopback. Setup verifies
 that path in the selected Docker context before Hermes starts.
