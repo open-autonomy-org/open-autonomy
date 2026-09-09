@@ -29,7 +29,7 @@ const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(di
 if (container && cfg.seats) throw new Error('Container reporting reads Hermes in the container; configure host Claude seats with a separate reporter.');
 // Keep the existing read-only observer next to its SQLite files. Docker carries its ordinary
 // stdio protocol; neither databases nor credentials are mirrored onto another filesystem.
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--env', `HERMES_HOME=${cfg.hermes_home}`, container!, ...cmd];
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${cfg.hermes_home}`, container!, ...cmd];
 const run = (cmd: string[]) => Bun.spawnSync({
   cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000,
 });
