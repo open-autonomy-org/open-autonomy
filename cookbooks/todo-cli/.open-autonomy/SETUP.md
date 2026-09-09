@@ -594,6 +594,13 @@ For a product that operates on user-owned folders, the development checkout and 
 folder are different boundaries. Verify with synthetic workspaces; optional customer Git or storage sync
 does not authorize the fleet to read those accounts or require their credentials during development setup.
 
+For a World-managed stack, declare the complete peak resources: memory reservations are machine-wide
+and disk reservations belong to the filesystem they occupy. Diagnose capacity refusals through World
+before changing requirements. Make service commands safe after partial startup, preserving persistent
+volumes and handling an already-absent service. When stopping through a service manager, let the
+foreground process and World teardown finish before restarting; verify the native Hermes lifecycle
+record rather than assuming the service-unload command means shutdown has finished.
+
 No production credential is needed to prove application behavior locally. Initial setup does not
 recommend production provisioning merely because it finds a deployment manifest. At a later authorized
 activation, `--with production` selects the CLI's Cloudflare Worker setup. Package publishing requires
