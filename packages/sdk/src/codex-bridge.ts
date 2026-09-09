@@ -23,7 +23,7 @@ function packet(raw: string): Packet {
 const only = (value: Packet, keys: string[]) => Object.keys(value).every(key => keys.includes(key));
 const failure = (id: Id, message: string) => ({ id, error: { code: -32600, message } });
 
-export interface CodexBridgePolicy { model: string; modelProvider: string; workspace: string; environmentId: string }
+export interface CodexBridgePolicy { model: string; modelProvider: string; workspace: string; environmentId: string; externalSandbox?: true }
 export interface CodexBridgeWire { client: (packet: Packet) => void; server: (packet: Packet) => void; close: () => void }
 
 /** One native Hermes session and one host-owned Codex thread per connection. */
@@ -37,6 +37,7 @@ export class CodexBridgeSession {
   private closed = false;
   constructor(private policy: CodexBridgePolicy, private wire: CodexBridgeWire) {
     if (!policy.model || !policy.modelProvider || !policy.environmentId || policy.environmentId === 'local'
+      || (policy.externalSandbox !== undefined && policy.externalSandbox !== true)
       || !posix.isAbsolute(policy.workspace) || policy.workspace === '/' || posix.normalize(policy.workspace) !== policy.workspace) {
       throw new Error('Codex bridge requires a pinned model, remote environment and absolute project workspace.');
     }
@@ -92,7 +93,9 @@ export class CodexBridgeSession {
           if (!this.thread || params.threadId !== this.thread || !only(params, p.method === 'turn/start' ? ['threadId', 'input'] : ['threadId', 'input', 'expectedTurnId'])) throw new Error();
           if (!Array.isArray(params.input) || !params.input.length || !params.input.every((input: any) => record(input) && only(input, ['type', 'text']) && input.type === 'text' && typeof input.text === 'string')) throw new Error();
           if (p.method === 'turn/steer' && typeof params.expectedTurnId !== 'string') throw new Error();
-          rewritten = params; break;
+          rewritten = p.method === 'turn/start' && this.policy.externalSandbox
+            ? { ...params, sandboxPolicy: { type: 'externalSandbox', networkAccess: 'restricted' } } : params;
+          break;
         }
         case 'thread/compact/start':
         case 'turn/interrupt':

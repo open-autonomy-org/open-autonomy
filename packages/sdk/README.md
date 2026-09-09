@@ -265,3 +265,7 @@ This is a transport component, not an activated local runtime or proof of contai
 The runner must still isolate every execution path, including native MCP, plugins and hooks,
 retain login and reporting on the host, and prove the acceptance checks in the kit's setup guide.
 The bridge does not choose authentication or billing; the installed Codex retains its own login.
+After verifying an outer container boundary, the host can opt into `externalSandbox: true`. The bridge
+then pins Codex's native `externalSandbox` turn policy with restricted network access. This avoids
+requiring a second Linux namespace sandbox inside the container; it does not establish isolation
+itself or allow a container client to override permissions.
