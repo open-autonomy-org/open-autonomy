@@ -338,7 +338,7 @@ function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
   // that work by starting the fleet here, or mark a printed command as a completed activation.
   say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
   if (localCodex) {
-    say('\nFor local Codex, follow SETUP.md to install a trusted host service using .open-autonomy/local-runtime.ts and the local container target. Verify the complete project loop before reporting activation. The ordinary start.ts and managed Compose entrypoint do not run this arrangement.');
+    say('\nFor local Codex, follow SETUP.md to run the installed .open-autonomy/local-runtime.ts entrypoint with the executor Compose service. Verify the complete project loop before reporting activation. The ordinary start.ts and managed Compose entrypoint do not run this arrangement.');
     return;
   }
   say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
