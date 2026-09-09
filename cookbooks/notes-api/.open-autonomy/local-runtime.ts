@@ -3,7 +3,7 @@
 // Keep this installed host code outside the agent-writable container checkout.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { parseEnv } from 'node:util';
+import { parseArgs, parseEnv } from 'node:util';
 import { resolve } from 'node:path';
 import { startCodexHost } from './sdk/codex-host.ts';
 import { startContainerProcess, checkContainerGit } from './sdk/container-process.ts';
@@ -118,4 +118,21 @@ export async function startLocalRuntime(options: {
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 ? 75 : 1); });
     return { exited, close: () => stop(0), restart: () => gateway?.restart() };
   } catch (error) { await stop(1); throw error; }
+}
+
+// The service manager owns restarts. Run this entrypoint directly; a project does
+// not need another host wrapper, health server or restart loop around the runtime.
+if (import.meta.main) {
+  const { values } = parseArgs({ options: Object.fromEntries(
+    ['container', 'executor-url', 'state-dir', 'secrets', 'config', 'workspace', 'home', 'valve'].map(name => [name, { type: 'string' as const }]),
+  ) });
+  for (const name of ['container', 'executor-url', 'state-dir', 'secrets', 'config']) {
+    if (!values[name]) throw new Error(`Missing --${name}. See .open-autonomy/SETUP.md.`);
+  }
+  const runtime = await startLocalRuntime({
+    container: values.container!, executorUrl: values['executor-url']!, stateDir: values['state-dir']!,
+    secrets: values.secrets!, config: values.config!, workspace: values.workspace,
+    hermesHome: values.home, valvePort: values.valve ? Number(values.valve) : undefined,
+  });
+  process.exit(await runtime.exited);
 }
