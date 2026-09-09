@@ -10,6 +10,7 @@ function fixture(count: number) {
   let messages = Array.from({ length: count }, (_, i) => message(i));
   let record: SessionRecord | undefined, reject = '', lost = false;
   const batches: number[] = [], reads: number[] = [], events: string[] = [];
+  let nativeEnd: { ended_at?: string; end_reason?: string } = {};
   const fetch = async (input: any, init?: RequestInit): Promise<Response> => {
     if (!init?.method) return new Response(JSON.stringify({ session: record ? { ...record, turns: record.turns.slice(-400) } : undefined }), { status: record ? 200 : 404 });
     const [event] = JSON.parse(init.body as string), kind = event.type.split('.').pop();
@@ -32,11 +33,25 @@ function fixture(count: number) {
   const sc = { loadWindow: async (_: unknown, options: any): Promise<SessionLoadResult> => {
     const offset = options.message_offset, page = messages.slice(offset, offset + options.message_limit);
     reads.push(offset);
-    return { session: { messages: page }, summary: { last_assistant_text: 'final native report' }, window: { offset, returned: page.length, has_newer: offset + page.length < messages.length } } as SessionLoadResult;
+    return { session: { messages: page, ...nativeEnd }, summary: { end_of_turn: true, last_assistant_text: 'final native report' }, window: { offset, returned: page.length, has_newer: offset + page.length < messages.length } } as SessionLoadResult;
   } };
   const publisher = () => new TranscriptPublisher(sc, oa, 'fixture/repo', descriptor, { key: 'cron-fixture', kind: 'run' });
-  return { oa, sc, publisher, batches, reads, events, record: () => record!, reject: (kind: string) => { reject = kind; }, lose: () => { lost = true; }, append: () => messages.push(message(messages.length)), rewrite: () => { messages[0] = { ...message(0), content: 'corrected source' }; } };
+  return { oa, sc, publisher, batches, reads, events, endNative: (reason: string) => { nativeEnd = { ended_at: completion.endedAt, end_reason: reason }; }, record: () => record!, reject: (kind: string) => { reject = kind; }, lose: () => { lost = true; }, append: () => messages.push(message(messages.length)), rewrite: () => { messages[0] = { ...message(0), content: 'corrected source' }; } };
 }
+
+test('SDK session end closes a worker without inventing task success or requiring a channel binding', async () => {
+  for (const reason of ['cli_close', 'error']) {
+    const f = fixture(503), p = f.publisher();
+    await p.publish();
+    expect(f.record().status).toBe('live');
+    f.endNative(reason);
+    const receipt = await p.publish();
+    expect(receipt.endedAt).toBe(completion.endedAt);
+    expect(f.record().status).toBe('ended');
+    expect(f.record().outcome).toBe(reason === 'error' ? 'failed' : undefined);
+    expect(f.record().turns).toHaveLength(503);
+  }
+});
 
 test('native windows drain past 5000 messages; a quiet run stays open until recorded completion', async () => {
   const f = fixture(5103), p = f.publisher();

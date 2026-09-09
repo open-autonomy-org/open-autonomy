@@ -52,12 +52,17 @@ export class TranscriptPublisher {
   private async reconcile(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
     const key = this.descriptor.locator.session_id;
     const turns: Turn[] = [];
-    let offset = 0, report: string | undefined;
+    let offset = 0, report: string | undefined, nativeCompletion: RecordedCompletion | undefined;
     for (;;) {
       const page = await this.sc.loadWindow(this.descriptor.locator, { message_offset: offset, message_limit: 500 });
       if (page.window.offset !== offset) throw new Error(`${key}: source window moved; retry reconciliation`);
       turns.push(...page.session.messages.flatMap(m => turnsOf(m, this.descriptor.locator.harness)));
       report = page.summary.last_assistant_text || undefined;
+      const native = page.session as typeof page.session & { ended_at?: string | null; end_reason?: string | null };
+      nativeCompletion = native.ended_at ? {
+        endedAt: native.ended_at,
+        ...(native.end_reason === 'error' ? { outcome: 'failed' as const } : {}),
+      } : undefined;
       offset += page.window.returned;
       if (!page.window.has_newer) break;
       if (!page.window.returned) throw new Error(`${key}: source window did not advance`);
@@ -83,9 +88,10 @@ export class TranscriptPublisher {
       this.save?.(this.checkpoint);
     }
     const checkpoint: PublicationCheckpoint = { seq: session.seq, digest: digest(turns) };
-    if (completion) {
-      await session.end({ ...completion, report, item: this.start.item });
-      checkpoint.endedAt = completion.endedAt;
+    const ended = completion ?? nativeCompletion;
+    if (ended) {
+      await session.end({ ...ended, report, item: this.start.item });
+      checkpoint.endedAt = ended.endedAt;
     }
     this.checkpoint = checkpoint;
     this.save?.(checkpoint);
