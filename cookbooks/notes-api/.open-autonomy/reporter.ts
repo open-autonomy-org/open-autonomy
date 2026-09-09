@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type NormalizedMessage, type SessionActivity, type SessionDescriptor, type SessionLocator } from '@volter-ai-dev/supercode-harness-sdk';
-import { ROADMAP_SCHEMA, type RoadmapItem } from './sdk/roadmap.ts';
+import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, type Session, type Turn } from './sdk/client.ts';
 
 const readText = (p: string): string | undefined => { try { return readFileSync(p, 'utf8'); } catch { return undefined; } };
@@ -35,7 +35,7 @@ const log = (m: string) => console.log(`reporter: ${m}`);
 // either log sees the expiry.
 fetch(`${baseUrl.replace(/\/v1\/?$/, '')}/healthz`).then(async (r) => log(`valve: ${(await r.text()).trim()}`)).catch((e: Error) => log(`valve unreachable at start: ${e.message}`));
 
-interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string; timeline: 'hermes' | 'none' }
+interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
 // The config's shape is small and fixed, so a line reader suffices: top-level `key: value` and the
 // `publish:` block's own keys and list.
 function readConfig(path: string): Config {
@@ -60,10 +60,6 @@ function readConfig(path: string): Config {
     account: top.account ?? '', platform: (top.platform ?? 'https://open-autonomy.org').replace(/\/$/, ''),
     publish: { runs: (publish.runs ?? 'true') !== 'false', chats: (publish.chats ?? 'false') === 'true', private: priv },
     hermes_home: top.hermes_home ?? process.env.HERMES_HOME ?? '',
-    // Who publishes the timeline: this reporter from the Hermes kit's three homes (the default), or nobody here
-    // (`timeline: none`) because the project's own driver owns it — an engagement whose past, present and future
-    // live in a client's tracker.
-    timeline: top.timeline === 'none' ? 'none' : 'hermes',
     state_file: resolve(dirname(configPath), top.state_file ?? 'reporter-state.json'),
   };
 }
@@ -288,6 +284,7 @@ type BoardTask = { id: string; title?: string; body?: string; assignee?: string;
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
 const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+const dedupe = (links: Link[]): Link[] | undefined => { const m = new Map<string, Link>(); for (const l of links) if (!m.has(l.url)) m.set(l.url, l); return m.size ? [...m.values()] : undefined; };
 // A task's proof: the commit its handoff names (as a field, or in the handoff's own words), else the commit the
 // session serving it pushed while this reporter watched.
 function commitOf(t: BoardTask): string | undefined {
@@ -322,6 +319,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
       id: t.id, title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban', phase: /<!-- roadmap:([A-Za-z0-9][A-Za-z0-9._-]{0,79}):/.exec(t.body ?? '')?.[1],
       priority: t.priority !== undefined ? String(t.priority) : undefined, proposed_at: t.created_at, started_at: first?.started_at, done_at: t.lane === 'done' ? t.completed_at ?? last?.ended_at : undefined,
       by: last?.profile, commit: commitOf(t),
+      links: dedupe([...linksIn(t.body ?? ''), ...(last?.handoff?.branch ? [linkOf(`https://github.com/${cfg.account}/tree/${last.handoff.branch}`, last.handoff.branch)] : [])]),
       acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
     }) as RoadmapItem;
   });
@@ -367,8 +365,8 @@ function changelogItems(md: string | undefined, account: string): RoadmapItem[] 
     while (seen.has(id)) id = `${id}-`;
     seen.add(id);
     const commit = /\b(?=[0-9a-f]*\d)([0-9a-f]{7,40})\b/.exec(text)?.[1];
-    const pr = /\((https:\/\/github\.com\/[^)\s]+\/pull\/\d+)\)/.exec(text)?.[1] ?? (/(?:PR\s*)?#(\d+)\b/.exec(text) ? `https://github.com/${account}/pull/${/#(\d+)\b/.exec(text)![1]}` : undefined);
-    out.push(defined({ id, title: clipWords(plain(text), 200), tense: 'past', status: 'done', home: 'changelog', release, done_at: date, commit, url: pr, acceptance: [] }) as RoadmapItem);
+    const links = dedupe([...linksIn(text), ...[...text.matchAll(/(?:PR\s*)?#(\d+)\b/g)].map((m) => linkOf(`https://github.com/${account}/pull/${m[1]}`, `#${m[1]}`))]);
+    out.push(defined({ id, title: clipWords(plain(text), 200), tense: 'past', status: 'done', home: 'changelog', release, done_at: date, commit, links, acceptance: [] }) as RoadmapItem);
   }
   return out;
 }
@@ -378,8 +376,8 @@ function roadmapItems(md: string | undefined): RoadmapItem[] {
   const out: RoadmapItem[] = [];
   if (!md) return out;
   const seen = new Set<string>();
-  let cur: { item: RoadmapItem; bullets: string[]; completion: string[]; inCompletion: boolean } | undefined;
-  const close = () => { if (!cur) return; cur.item.acceptance = cur.completion.length ? cur.completion : cur.bullets; out.push(defined(cur.item) as RoadmapItem); cur = undefined; };
+  let cur: { item: RoadmapItem; bullets: string[]; completion: string[]; inCompletion: boolean; text: string[] } | undefined;
+  const close = () => { if (!cur) return; cur.item.acceptance = cur.completion.length ? cur.completion : cur.bullets; cur.item.links = dedupe(linksIn(cur.text.join('\n'))); out.push(defined(cur.item) as RoadmapItem); cur = undefined; };
   for (const line of md.split('\n')) {
     const h = /^##\s+(.+?)\s*$/.exec(line);
     if (h) {
@@ -390,10 +388,11 @@ function roadmapItems(md: string | undefined): RoadmapItem[] {
       let id = m[1];
       while (seen.has(id)) id = `${id}-`;
       seen.add(id);
-      cur = { item: { id, title: clipWords(plain(m[2]), 200), tense: 'future', status: 'proposed', home: 'roadmap', acceptance: [] }, bullets: [], completion: [], inCompletion: false };
+      cur = { item: { id, title: clipWords(plain(m[2]), 200), tense: 'future', status: 'proposed', home: 'roadmap', acceptance: [] }, bullets: [], completion: [], inCompletion: false, text: [] };
       continue;
     }
     if (!cur) continue;
+    cur.text.push(line);
     const kv = /^([A-Za-z][A-Za-z ]{0,30}):\s*(.*)$/.exec(line);
     if (kv) {
       const key = kv[1].toLowerCase();
@@ -440,13 +439,15 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
       folded.add(section.id);
       if (section.release && !item.release) item.release = section.release;
       if (!item.acceptance.length) item.acceptance = section.acceptance;
+      item.links = dedupe([...(item.links ?? []), ...(section.links ?? [])]);
     }
     if (t.tense === 'past') {
       const landed = landedOf(t.id);
-      if (landed.pr) item.url ??= `https://github.com/${cfg.account}/pull/${landed.pr}`;
+      const prUrl = landed.pr ? `https://github.com/${cfg.account}/pull/${landed.pr}` : undefined;
+      if (prUrl) item.links = dedupe([...(item.links ?? []), linkOf(prUrl, `#${landed.pr}`)]);
       const sameCommit = (a?: string, b?: string) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
-      const line = shipped.find((l) => l.title.includes(t.id) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!l.url && l.url === item.url));
-      if (line) { folded.add(line.id); if (line.release) item.release = line.release; if (line.url) item.url ??= line.url; item.commit ??= line.commit; item.done_at ??= line.done_at; }
+      const line = shipped.find((l) => l.title.includes(t.id) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!prUrl && (l.links ?? []).some((x) => x.url === prUrl)));
+      if (line) { folded.add(line.id); if (line.release) item.release = line.release; item.links = dedupe([...(item.links ?? []), ...(line.links ?? [])]); item.commit ??= line.commit; item.done_at ??= line.done_at; }
     }
     items.push(item);
   }
@@ -464,7 +465,7 @@ function mainFile(name: string): string | undefined {
 }
 async function timeline(): Promise<void> {
   const present = await board();
-  if (!present || cfg.timeline === 'none') return;
+  if (!present) return;
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest || !items.length) return;

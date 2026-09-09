@@ -15,11 +15,6 @@ publish:
   private:          # session ids or job names that never publish, whatever their kind
     - []
 
-# Who publishes the timeline. Absent, or `hermes`: the reporter, from CHANGELOG.md, the board with its sessions,
-# and ROADMAP.md. `none`: the project's own driver owns the timeline (an engagement whose work lives in a client's
-# tracker), and the reporter publishes sessions, setup and documents only.
-# timeline: hermes
-
 # Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
 state_file: reporter-state.json
