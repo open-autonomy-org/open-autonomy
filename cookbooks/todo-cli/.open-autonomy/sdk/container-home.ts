@@ -71,3 +71,18 @@ finally:
     if os.path.exists(temp): os.unlink(temp)
 `, options);
 }
+
+/** The existing maintenance record identifies the host kit starting this gateway. */
+export async function writeContainerKitRecord(options: { container: string; home: string; version: string }): Promise<void> {
+  if (!/^\d+\.\d+\.\d+$/.test(options.version)) throw new Error('The installed host kit must have a stable version.');
+  await python(options.container, String.raw`
+import json,os,pathlib,sys,tempfile
+s=json.load(sys.stdin);home=pathlib.Path(s['home']);assert home.is_absolute() and home != pathlib.Path('/')
+fd,temp=tempfile.mkstemp(prefix='running-kit-',dir=home)
+try:
+    with os.fdopen(fd,'w') as stream: json.dump({'version':s['version']},stream)
+    os.replace(temp,home/'running-kit.json')
+finally:
+    if os.path.exists(temp): os.unlink(temp)
+`, options);
+}

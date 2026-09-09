@@ -7,10 +7,13 @@
       "dependencies": {
         "@volter-ai-dev/supercode": "^0.4.19",
         "@volter-ai-dev/supercode-harness-sdk": "^0.3.26",
+        "@volter/twin-world": "0.1.4",
       },
     },
   },
   "packages": {
+    "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
+
     "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.19", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.19", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.19" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-rhYypXJLhKv45+SY2nl9eo/UAXf/gO04lD/ZVnxsxXWU9GX3jGADaINI/u4gDZZ4C3heMmsH99/zm1CVdxQYjA=="],
 
     "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.19", "", { "os": "darwin", "cpu": "arm64" }, "sha512-JlaR0CDQu0yCK9nkA8JiSlBw9maxSv+4gD2gj6J8wvy7ufhHItYn3JDvEuW5Twrvu1jS0rKyqLqY/CRMvg0h6A=="],
@@ -25,6 +28,14 @@
 
     "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.26", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-Os9F4HcBtz/EuOl7MrGj0i11H8fDb0xxMJHY7zmxRiIeU4uUPuOem63sJiY+hg6sEfuAWiLWpjnpCKSr6/+nzg=="],
 
+    "@volter/twin": ["@volter/twin@0.1.2", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-9jUpspssdWmfF75GYNHR1zETl4nKhGzwWHD+3cBnAxakxZl8cjkbzBx8UmdQ0qQwfnqi0ckGHY1zwmxVjHjW4Q=="],
+
+    "@volter/twin-world": ["@volter/twin-world@0.1.4", "", { "dependencies": { "@electric-sql/pglite": "0.5.8", "pg-gateway": "0.3.0-beta.4" }, "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "volter-world": "src/cli.ts", "volter-world-browser-proxy": "src/browser-proxy-cli.ts", "volter-world-host": "src/host-cli.ts", "volter-world-managed-infra": "src/managed-infra-cli.ts" } }, "sha512-1M+plM70x4o3UZU36XZulSEi2RCQEA/xebOy+vOa0cVhiJimI5qFbzn4G6KC/s3vDJmbnjwZ7/PB5D8+TFuJcQ=="],
+
+    "pg-gateway": ["pg-gateway@0.3.0-beta.4", "", {}, "sha512-CTjsM7Z+0Nx2/dyZ6r8zRsc3f9FScoD5UAOlfUx1Fdv/JOIWvRbF7gou6l6vP+uypXQVoYPgw8xZDXgMGvBa4Q=="],
+
     "yaml": ["yaml@2.9.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA=="],
+
+    "zod": ["zod@4.5.4", "", {}, "sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA=="],
   }
 }
