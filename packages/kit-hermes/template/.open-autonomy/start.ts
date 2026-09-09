@@ -13,8 +13,8 @@
 // port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
 // desk posts is the app's, and the key never enters the agent.
 //
-// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it holds its
-// own login in the home (`hermes auth login openai-codex`, once) and this script only checks that it does. Where the login must stay out of the agent (a container)
+// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it runs on the
+// computer's login (the Codex CLI's, adopted into Hermes's store on the first start) and this script does only that. Where the login must stay out of the agent (a container)
 // or the model is a twin (a world), this script forwards: <secrets>/codex.json (the Codex CLI's auth.json tokens, the
 // setup's copy), when present, is served by the valve on the third port and refreshed there; HERMES_CODEX_BASE_URL in
 // this script's own environment names a world's model twin instead. Either way the home's .env points the provider
@@ -213,8 +213,9 @@ writeFileSync(envFile, `${lines.join('\n')}\n`);
 // service's address; with nothing usable it adopts the Codex CLI's login from $CODEX_HOME. Forwarded (a container's
 // valve, a world's twin), the home therefore carries a stand-in of its own — a pool entry and the singleton record,
 // both with the forward address and a token that is not a JWT, which Hermes sends as it is and never refreshes — and
-// the CLI's login is out of reach, so a twin can never be bypassed for the real service. Bare, Hermes's own login
-// must exist in the home's store or the user's; a missing one stops the start, as a missing key does.
+// the CLI's login is out of reach, so a twin can never be bypassed for the real service. Bare, the computer's login:
+// Hermes's own store when it has one, else the Codex CLI's adopted into it; a computer with no Codex login stops the
+// start, as a missing key does.
 const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
 if (onCodex) {
   type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
@@ -239,8 +240,19 @@ if (onCodex) {
     // entry for; the stand-in is that entry, so the user's real login stays out. HOME stays the user's: a project's
     // doors may live under it (Peak's ~/peak), and a container gives the agent its own HOME already.
   } else if (!holds(store) && !holds(readStore(resolve(user ? home : homedir(), '.hermes', 'auth.json')))) {
-    console.error(`start: the model is the Codex subscription (provider openai-codex) and neither ${authFile} nor the user's Hermes store holds a login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
-    process.exit(1);
+    // Bare, the computer's login: the Codex CLI's (`codex login`, its auth.json under CODEX_HOME or ~/.codex), adopted
+    // into Hermes's own store the way Hermes's importer does it — Hermes then keeps and refreshes that session itself.
+    const cliFile = resolve(process.env.CODEX_HOME?.trim() || resolve(homedir(), '.codex'), 'auth.json');
+    let cli: { tokens?: { access_token?: string; refresh_token?: string } } = {};
+    try { cli = JSON.parse(readFileSync(cliFile, 'utf8')); } catch { /* no CLI login */ }
+    if (cli.tokens?.access_token && cli.tokens.refresh_token) {
+      (store.providers ??= {})['openai-codex'] = { tokens: cli.tokens, last_refresh: new Date().toISOString() };
+      writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+      say(`the Codex subscription: the computer's login (${cliFile}) adopted into ${authFile}`);
+    } else {
+      console.error(`start: the model is the Codex subscription (provider openai-codex) and this computer has no Codex login — run \`codex login\` once, then start again`);
+      process.exit(1);
+    }
   }
 }
 own(home);
