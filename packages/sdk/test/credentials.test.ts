@@ -90,6 +90,7 @@ test('browser capture transfers only one visible field from the expected page an
   let width = 100;
   let type = 'password';
   let childCount = 0;
+  let directNodes: { nodeType: number; textContent: string }[] = [];
   let tag = 'INPUT';
   let selectorCount = 1;
   let receivedBody = '';
@@ -99,7 +100,7 @@ test('browser capture transfers only one visible field from the expected page an
     expect(holder).toBe('setup');
     const element = {
       ownerDocument: { defaultView: { location: { href: currentPage }, getComputedStyle: () => ({ visibility: 'visible', display: 'block' }) } },
-      getBoundingClientRect: () => ({ width, height: 20 }), tagName: tag, type, value, textContent: value, children: { length: childCount },
+      getBoundingClientRect: () => ({ width, height: 20 }), tagName: tag, type, value, textContent: value, children: { length: childCount }, childNodes: directNodes,
     };
     const page = { locator: (selector: string) => {
       expect(selector).toBe('#credential');
@@ -115,7 +116,7 @@ test('browser capture transfers only one visible field from the expected page an
     return Response.json({ ok: true, result, logs: [{ text: secret }] });
   } });
   const dir = root();
-  const capture = (name: string, field: 'value' | 'text' = 'value') => captureCredential({ out: join(dir, name), browser: controller.url.origin, holder: 'setup', page: expectedPage, selector: '#credential', field });
+  const capture = (name: string, field: 'value' | 'text' | 'direct-text' = 'value') => captureCredential({ out: join(dir, name), browser: controller.url.origin, holder: 'setup', page: expectedPage, selector: '#credential', field });
   try {
     const receipt = await capture('token');
     expect(receipt).toEqual({ saved: join(dir, 'token') });
@@ -125,6 +126,18 @@ test('browser capture transfers only one visible field from the expected page an
     await expect(capture('token')).rejects.toThrow('already exists');
     tag = 'CODE';
     expect(await capture('text-token', 'text')).toEqual({ saved: join(dir, 'text-token') });
+    // Providers can render the credential beside Copy/Reset children. Never collect button text.
+    tag = 'DIV'; childCount = 1;
+    directNodes = [{ nodeType: 3, textContent: '  ' }, { nodeType: 3, textContent: secret }, { nodeType: 1, textContent: 'Copy Reset Token' }];
+    const direct = await capture('direct-token', 'direct-text');
+    expect(readFileSync(direct.saved, 'utf8')).toBe(secret);
+    for (const nodes of [[], [{ nodeType: 1, textContent: secret }], [...directNodes, { nodeType: 3, textContent: 'another-field' }]]) {
+      directNodes = nodes;
+      await expect(capture('ambiguous-direct', 'direct-text')).rejects.toThrow('exactly one nonempty direct text node');
+      expect(existsSync(join(dir, 'ambiguous-direct'))).toBe(false);
+    }
+    tag = 'BODY'; directNodes = [{ nodeType: 3, textContent: secret }];
+    await expect(capture('body-direct', 'direct-text')).rejects.toThrow('exactly one nonempty direct text node');
     for (const scenario of ['wrong-page', 'hidden', 'hidden-input', 'masked', 'multiple', 'whole-page']) {
       currentPage = scenario === 'wrong-page' ? 'https://unrelated.example/' : expectedPage;
       width = scenario === 'hidden' ? 0 : 100;

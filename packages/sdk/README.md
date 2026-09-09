@@ -61,6 +61,8 @@ URL at capture time, without query parameters or fragments; HTTPS is required ex
 Choose the field within the credential-labeled section using safe DOM metadata, never by returning its
 value to the agent. A lone Copy button can belong to an app ID or permissions calculator.
 `--field value` reads a visible input/textarea; `--field text` reads a visible leaf text element.
+Use `--field direct-text` when the credential is one direct text node beside child controls such as
+Copy/Reset buttons. It excludes descendants and refuses multiple nonempty direct text nodes.
 Ambiguous, hidden, empty or masked fields fail without saving. The operation verifies the page at the
 moment it reads the field, posts directly from the browser controller to protected storage, and returns
 only a receipt. Raw browser errors and page logs are never forwarded by the command. Treat selectors as
