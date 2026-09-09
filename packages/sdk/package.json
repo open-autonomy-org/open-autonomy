@@ -17,7 +17,8 @@
     "./rails": "./src/rails.ts",
     "./team": "./src/team.ts",
     "./credentials": "./src/credentials.ts",
-    "./local-codex": "./src/local-codex.ts"
+    "./local-codex": "./src/local-codex.ts",
+    "./codex-bridge": "./src/codex-bridge.ts"
   },
   "files": [
     "src",

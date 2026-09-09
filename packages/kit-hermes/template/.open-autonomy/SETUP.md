@@ -340,7 +340,10 @@ budget; the platform is not itself a hosting service. Product hosting is a later
 Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
 and every agent tool inside the container. A host sidecar connects the installed Codex, external
 services and reporting, with authentication retained by the host. The native remote executor prototype
-does not establish Docker isolation or complete this integration. Do not run the fleet as the operator,
+does not establish Docker isolation or complete this integration. The vendored
+`.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
+and environment checks; it still needs the host runner, protected container connection and
+container-local MCP integration before it can replace the activation guard. Do not run the fleet as the operator,
 offer bare execution as a substitute, or silently switch an agreed local choice to project-funded models.
 
 An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup
