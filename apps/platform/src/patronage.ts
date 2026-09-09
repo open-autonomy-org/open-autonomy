@@ -1,9 +1,9 @@
-// Patronage on the books: what Open Autonomy adds to the treasury for money in from the public. Sponsors and
+// Patronage on the books: what Open Autonomy adds to the backend for money in from the public. Sponsors and
 // their monthly accrual, coupons, a project's tiers, the Polar products and checkouts behind them, and the
-// patrons wall. Every operation runs inside the one Durable Object through the treasury's extension registry,
+// patrons wall. Every operation runs inside the one Durable Object through the backend's extension registry,
 // on the same accounts and flows; what it keeps on an account is its own (`sponsors`, `sponsors_active`,
 // `tiers`, `polar_products`) and on the state (`coupons`), persisted beside the core's keys and opaque to it.
-import { LedgerClient, LimitLedger, type Account, type AccountProfile, type EnvelopePurpose, type Flow, type LedgerCore, type Sponsor } from '@open-autonomy/treasury';
+import { LedgerClient, LimitLedger, type Account, type AccountProfile, type EnvelopePurpose, type Flow, type LedgerCore, type Sponsor } from '@open-autonomy/backend';
 
 export type { Sponsor };
 export interface Tier { usd_cents: number; name: string }
@@ -168,7 +168,7 @@ LimitLedger.extend({
   },
 });
 
-// The patronage operations from the worker's side, by name through the treasury's client.
+// The patronage operations from the worker's side, by name through the backend's client.
 export class Patronage {
   constructor(private readonly ledger: LedgerClient) {}
   view(account: string) { return this.ledger.call<PatronageView & { ok: true }>('patronage', { account }); }

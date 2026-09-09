@@ -1,9 +1,9 @@
-# The treasury
+# The backend
 
 The core of one Cloudflare Worker: an account tree that holds each project's funds, the rails that spend them
 (the model rail, cards, partners), the keys, the development stream, the timeline of a project's work, and the
 project page that shows all of it. Open Autonomy's public platform (`apps/platform/`) and a private deployment
-run this same treasury; what differs is the app mounted around it.
+run this same backend; what differs is the app mounted around it.
 
 ```text
 src/routes.ts       the routes, with an app around them: `worker(app)` is the whole handler

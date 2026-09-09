@@ -13,7 +13,7 @@ const sign = async (secret: string, payload: string): Promise<string> => {
   return `t=${t},v1=${sig}`;
 };
 
-describe('the treasury, one smoke test per surface', () => {
+describe('the backend, one smoke test per surface', () => {
   test('books and keys: money in, a key by claim file, a metered call on both wires, the audit trail; survives a redeploy; refusals', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'root', 1000);
@@ -218,7 +218,7 @@ describe('the treasury, one smoke test per surface', () => {
     for (const w of ['runway', 'roadmap', 'activity', 'now']) expect((await request(env, `/v1/accounts/acme%2Fapp/${w}.svg`)).headers.get('content-type')).toContain('image/svg+xml');
     expect((await request(env, '/p/nobody%2Fnothing')).status).toBe(404);
   });
-  test("an app's state on the books survives the core's loader: what the treasury does not own it keeps, across a restart and an export", async () => {
+  test("an app's state on the books survives the core's loader: what the backend does not own it keeps, across a restart and an export", async () => {
     const env = useEnv(testEnv());
     const { LimitLedger } = require('../src/ledger.ts') as typeof import('../src/ledger.ts');
     LimitLedger.extend({

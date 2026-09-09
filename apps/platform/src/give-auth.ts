@@ -1,4 +1,4 @@
-import { base64url, constantTimeEqual, fromBase64url, grantsAccount, hmac, proposeTeamEdit, type TeamEdit } from '@open-autonomy/treasury';
+import { base64url, constantTimeEqual, fromBase64url, grantsAccount, hmac, proposeTeamEdit, type TeamEdit } from '@open-autonomy/backend';
 import type { Env } from './types.ts';
 
 // GitHub OAuth for the human giving page. Its short-lived cookie carries only the verified login,

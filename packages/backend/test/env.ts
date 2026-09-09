@@ -1,6 +1,6 @@
 /// <reference path="../src/cloudflare-types.d.ts" />
 // The worker under test, with an in-memory Durable Object and a fake model gateway. No network anywhere. An
-// app's tests build their environment on this one: `testEnv(gateway, app)` mounts the app around the treasury,
+// app's tests build their environment on this one: `testEnv(gateway, app)` mounts the app around the backend,
 // and a fake for an origin the app talks to registers in `fakes` (first crack at every fetch; undefined falls through).
 import { signKey } from '../src/keys.ts';
 import { worker as makeWorker, type App } from '../src/routes.ts';

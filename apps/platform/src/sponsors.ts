@@ -1,4 +1,4 @@
-import { LedgerClient, constantTimeEqual, error, json, type Sponsor } from '@open-autonomy/treasury';
+import { LedgerClient, constantTimeEqual, error, json, type Sponsor } from '@open-autonomy/backend';
 import { Patronage } from './patronage.ts';
 import type { Env } from './types.ts';
 

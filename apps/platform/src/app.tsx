@@ -1,9 +1,9 @@
-// The open platform as an app around the treasury: its doors onto money in (GitHub Sponsors, Polar, grant
+// The open platform as an app around the backend: its doors onto money in (GitHub Sponsors, Polar, grant
 // credits, coupons), the explore page, the human giving page, the patrons wall on every project, and the
 // GitHub login that lets an owner edit a roster on the page. Everything here is tried before the core's
-// routes; what it does not answer, the treasury does.
+// routes; what it does not answer, the backend does.
 import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, authedClaims, configurePage, error, hasScope, html, isStale, json, methodNotAllowed, parseJson, renderMessage, syncProfile, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/treasury';
+import { LedgerClient, authedClaims, configurePage, error, hasScope, html, isStale, json, methodNotAllowed, parseJson, renderMessage, syncProfile, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';

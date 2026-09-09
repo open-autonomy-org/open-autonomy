@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 // The platform as a world service: the REAL worker under `wrangler dev`, its upstreams pointed at the
-// twins the world injected. The worker takes those as ordinary configuration, so nothing in the treasury or the app
+// twins the world injected. The worker takes those as ordinary configuration, so nothing in the backend or the app
 // knows it is in a world. The world gives PORT and --persist-to (the local Durable Object storage).
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { MODEL_PRICES } from '../packages/treasury/src/pricing.ts';
+import { MODEL_PRICES } from '../packages/backend/src/pricing.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const need = (name: string): string => { const v = process.env[name]; if (!v) { console.error(`world/platform.ts: ${name} is required (the world injects it)`); process.exit(2); } return v; };
