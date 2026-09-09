@@ -411,6 +411,19 @@ function roadmapItems(md: string | undefined): RoadmapItem[] {
 // kept above in `phase` until folded here): that section is no longer the future, and the task takes its release
 // and, when it has none of its own, its acceptance. A changelog line that names a done task's commit or id is that
 // task shipped: the task keeps its receipts and takes the line's release and record; the line is not a second item.
+// Where a task landed: the merge on main whose subject names its branch (the landing workflow's own words,
+// `Merge pull request #N from …/agent/<task id>`), read from the checkout's origin/main and remembered once found.
+const landedCache = new Map<string, { sha?: string; pr?: string }>();
+function landedOf(id: string): { sha?: string; pr?: string } {
+  const known = landedCache.get(id);
+  if (known) return known;
+  const r = Bun.spawnSync({ cmd: ['git', 'log', 'origin/main', '--first-parent', '-1', '--format=%H%x1f%s', `--grep=agent/${id}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  const line = r.exitCode === 0 ? r.stdout.toString().trim() : '';
+  const [sha, subject] = line.split('\x1f');
+  const found = sha ? { sha, pr: /#(\d+)\b/.exec(subject ?? '')?.[1] } : {};
+  if (sha) landedCache.set(id, found);
+  return found;
+}
 function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapItem[]): RoadmapItem[] {
   const served = new Map<string, RoadmapItem>(intentions.map((i) => [i.id, i]));
   const items: RoadmapItem[] = [];
@@ -425,8 +438,11 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
       if (!item.acceptance.length) item.acceptance = section.acceptance;
     }
     if (t.tense === 'past') {
-      const line = shipped.find((l) => (l.commit && t.commit && (t.commit.startsWith(l.commit) || l.commit.startsWith(t.commit))) || l.title.includes(t.id));
-      if (line) { folded.add(line.id); if (line.release) item.release = line.release; if (line.url) item.url ??= line.url; if (line.commit) item.commit ??= line.commit; item.done_at ??= line.done_at; }
+      const landed = landedOf(t.id);
+      if (landed.pr) item.url ??= `https://github.com/${cfg.account}/pull/${landed.pr}`;
+      const sameCommit = (a?: string, b?: string) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+      const line = shipped.find((l) => l.title.includes(t.id) || sameCommit(l.commit, t.commit) || sameCommit(l.commit, landed.sha) || (!!l.url && l.url === item.url));
+      if (line) { folded.add(line.id); if (line.release) item.release = line.release; if (line.url) item.url ??= line.url; item.commit ??= line.commit; item.done_at ??= line.done_at; }
     }
     items.push(item);
   }
