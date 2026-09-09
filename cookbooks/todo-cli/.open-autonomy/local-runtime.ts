@@ -7,7 +7,7 @@ import { parseArgs, parseEnv } from 'node:util';
 import { resolve } from 'node:path';
 import { startCodexHost } from './sdk/codex-host.ts';
 import { startContainerProcess, checkContainerGit } from './sdk/container-process.ts';
-import { prepareContainerHome, writeContainerEnvironment } from './sdk/container-home.ts';
+import { prepareContainerHome, writeContainerEnvironment, writeContainerKitRecord } from './sdk/container-home.ts';
 import { checkCredentialDirectory } from './sdk/credentials.ts';
 import { checkLocalCodexConfig } from './sdk/local-codex.ts';
 
@@ -18,6 +18,8 @@ export async function startLocalRuntime(options: {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container)) throw new Error('A container name or ID is required.');
   const workspace = options.workspace ?? '/work/project', home = options.hermesHome ?? '/opt/data';
   const port = options.valvePort ?? 8787;
+  const kit = JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8'));
+  if (typeof kit.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(kit.version)) throw new Error('The installed host kit must have a stable version.');
   if (!Number.isInteger(port) || port < 1024 || port > 65532) throw new Error('Choose an unprivileged valve port with room for four services.');
   const account = (Bun.YAML.parse(readFileSync(options.config, 'utf8')) as any)?.account;
   if (typeof account !== 'string' || !/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(account)) throw new Error('The project configuration must name its GitHub account.');
@@ -61,6 +63,8 @@ export async function startLocalRuntime(options: {
   }
   try {
     own('container', ['docker', 'wait', options.container]);
+    const world = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', options.container, 'volter-world', '--help'], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    if (world.exitCode !== 0) throw new Error('The executor is missing usable World tooling. Rebuild the local image from the installed kit before starting Hermes.');
     const valveArgs = keys.flatMap((file, i) => ['--key', `${file}:${port + i}`]);
     valveArgs.push('--github-app', `${githubApp}:${port + 3}`);
     own('valve', ['bun', resolve(import.meta.dir, 'sdk/valve.ts'), '--loopback', ...valveArgs]);
@@ -114,6 +118,7 @@ export async function startLocalRuntime(options: {
     });
     await ready(async () => watching, 'the container reporter');
     if (ending) throw new Error('A host service ended during startup.');
+    await writeContainerKitRecord({ container: options.container, home, version: kit.version });
     gateway = startContainerProcess({ container: options.container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env: runtimeEnv });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 ? 75 : 1); });
     return { exited, close: () => stop(0), restart: () => gateway?.restart() };

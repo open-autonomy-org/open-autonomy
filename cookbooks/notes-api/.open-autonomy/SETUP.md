@@ -672,6 +672,8 @@ For Open Autonomy models, use the existing managed Compose service and start scr
 
 Verify Bun 1.3.10 or newer and the application's verification tools inside the actual executor before
 starting PM. Install locked project dependencies and run the project's check in that environment.
+The kit image includes `volter-world` on PATH; local startup verifies it before starting Hermes and
+writes the running-kit.json version record from the installed host kit. Rebuild an older image if this preflight fails.
 A fresh template includes its compiler; an existing project keeps its own working tooling.
 
 Establish the application's local world using this machine's World instructions. Seed vendor state

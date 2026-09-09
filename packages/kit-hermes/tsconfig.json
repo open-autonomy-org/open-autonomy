@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["../../.open-autonomy/reporter.ts", "src/**/*.ts", "test/**/*.ts", "template/.open-autonomy/scrum.ts", "template/.open-autonomy/community.ts", "template/.open-autonomy/maintain.ts"]
+  "include": ["../../.open-autonomy/reporter.ts", "../../.open-autonomy/local-runtime.ts", "src/**/*.ts", "test/**/*.ts", "template/.open-autonomy/scrum.ts", "template/.open-autonomy/community.ts", "template/.open-autonomy/maintain.ts"]
 }
