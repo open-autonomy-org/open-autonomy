@@ -37,3 +37,38 @@ test('unverified local activation cannot expose the host through a flag or eithe
     expect(() => checkLocalCodexActivation([funded, config], false)).toThrow('Keep the fleet stopped');
   }
 });
+
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { probeLocalCodex } from '../src/local-codex.ts';
+
+test('native verification never exposes account data, forwards credentials, or starts a turn', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-codex-probe-'));
+  const binary = join(root, 'codex');
+  const trace = join(root, 'methods.json');
+  const original = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'synthetic-host-key';
+  writeFileSync(binary, `#!/usr/bin/env bun
+import {createInterface} from 'node:readline';
+const methods=[];
+for await (const line of createInterface({input:process.stdin})) {
+ const request=JSON.parse(line); methods.push(request.method);
+ await Bun.write(${JSON.stringify(trace)}, JSON.stringify({methods,apiKeyPresent:!!process.env.OPENAI_API_KEY,executor:process.env.CODEX_EXEC_SERVER_URL}));
+ if (request.id===undefined) continue;
+ const result=request.method==='account/read'?{account:{type:'chatgpt',email:'synthetic-private-account@example.test'}}:request.method==='model/list'?{data:[{id:'verified-model'}]}:{};
+ console.log(JSON.stringify({id:request.id,result}));
+}
+`);
+  chmodSync(binary, 0o700);
+  try {
+    expect(await probeLocalCodex({ binary, stateDir: join(root, 'state'), model: 'verified-model' })).toEqual({ accountType: 'chatgpt', model: 'verified-model' });
+    expect(JSON.parse(readFileSync(trace, 'utf8'))).toEqual({ methods: ['initialize', 'initialized', 'account/read', 'model/list'], apiKeyPresent: false, executor: 'none' });
+    await expect(probeLocalCodex({ binary, stateDir: join(root, 'state'), model: 'unavailable-model' })).rejects.toThrow('not listed');
+    writeFileSync(binary, `#!/usr/bin/env bun\nconsole.log('synthetic-private-diagnostic');setInterval(()=>{},1000);\n`);
+    await expect(probeLocalCodex({ binary, stateDir: join(root, 'state'), model: 'verified-model' })).rejects.toThrow('raw output was not published');
+  } finally {
+    if (original === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = original;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
