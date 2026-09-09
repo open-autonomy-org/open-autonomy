@@ -70,7 +70,7 @@ export function fromMilestones(milestones: Milestone[]): Roadmap {
     while (seen.has(id)) id = `${id}-${m.number}`;
     seen.add(id);
     const status: RoadmapStatus = m.state === 'closed' ? 'done' : 'planned';
-    return { id, title: m.title, tense: tenseOf({ status }), status, home: 'github-milestones', phase: String(phase), priority: 'medium', ...(m.created_at ? { proposed_at: m.created_at } : {}), ...(m.closed_at ? { done_at: m.closed_at } : {}), ...(m.html_url ? { url: m.html_url } : {}), acceptance: acceptanceOf(m.description ?? '') };
+    return { id, title: m.title, tense: tenseOf({ status }), status, home: 'github-milestones', phase: String(phase), priority: 'medium', ...(m.created_at ? { proposed_at: m.created_at } : {}), ...(m.closed_at ? { done_at: m.closed_at } : {}), ...(m.html_url ? { links: [{ kind: 'other' as const, url: m.html_url, label: 'milestone' }] } : {}), acceptance: acceptanceOf(m.description ?? '') };
   });
   return { schema: ROADMAP_SCHEMA, items };
 }

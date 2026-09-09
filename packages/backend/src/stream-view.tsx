@@ -60,7 +60,8 @@ function Station({ r, enc, now, repoUrl, mark, children }: { r: Row; enc: string
           {phase ? <span class="rm-sphase">{phase}</span> : null}
           {item.release ? <span class="rm-smeta">{item.release}</span> : null}
           {when ? <span class="rm-smeta">{when}</span> : null}
-          {item.commit && repoUrl ? <span class="rm-smeta"><a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></span> : item.url ? <span class="rm-smeta"><a href={item.url}>source ↗</a></span> : null}
+          {item.commit && repoUrl ? <span class="rm-smeta"><a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></span> : null}
+          {(item.links ?? []).map((l) => <span class="rm-smeta"><a href={l.url} title={l.kind}>{l.label ?? l.kind} ↗</a></span>)}
           <span class="rm-sstatus">{stateWord(state)}</span>
         </div>
         {children}
@@ -128,7 +129,7 @@ export function Timeline({ account, roadmap, scheduleJson, sessions, live, repoU
     body = (
       <table class="tl-table">
         <thead><tr>{th('title', 'item')}{th('tense', 'tense')}{th('status', 'status')}{th('release', 'release')}{th('time', 'when')}{th('home', 'home')}<th>proof</th></tr></thead>
-        <tbody>{list.map((r) => <tr><td class="t"><a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{r.item.title}</a></td><td class="n">{r.tense}</td><td class="n">{stateWord(r.state)}</td><td class="n">{r.item.release ?? ''}</td><td class="n">{whenOf(r, now)}</td><td class="n">{r.item.home ?? ''}</td><td class="n">{r.item.commit && repoUrl ? <a href={`${repoUrl}/commit/${r.item.commit}`}>{shortSha(r.item.commit)}</a> : r.item.url ? <a href={r.item.url}>source</a> : (byItem.get(r.item.id)?.length ? <a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{byItem.get(r.item.id)!.length} session{byItem.get(r.item.id)!.length === 1 ? '' : 's'}</a> : '')}</td></tr>)}</tbody>
+        <tbody>{list.map((r) => <tr><td class="t"><a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{r.item.title}</a></td><td class="n">{r.tense}</td><td class="n">{stateWord(r.state)}</td><td class="n">{r.item.release ?? ''}</td><td class="n">{whenOf(r, now)}</td><td class="n">{r.item.home ?? ''}</td><td class="n">{r.item.commit && repoUrl ? <><a href={`${repoUrl}/commit/${r.item.commit}`}>{shortSha(r.item.commit)}</a> </> : null}{(r.item.links ?? []).map((l) => <><a href={l.url} title={l.kind}>{l.label ?? l.kind}</a> </>)}{!r.item.commit && !r.item.links?.length && byItem.get(r.item.id)?.length ? <a href={`/p/${enc}/items/${encodeURIComponent(r.item.id)}`}>{byItem.get(r.item.id)!.length} session{byItem.get(r.item.id)!.length === 1 ? '' : 's'}</a> : ''}</td></tr>)}</tbody>
       </table>
     );
   } else if (view === 'timeline') {
@@ -233,8 +234,9 @@ export function ItemPage({ account, roadmap, view, repoUrl, now }: { account: st
       <p class="crumb"><a href={`/p/${enc}`}>← {account}</a></p>
       <div class="panel jobhead" data-item={view.item_id} data-account={account} data-live={view.live.length ? '1' : ''} data-sessions={String(view.sessions.length)} data-updates={String(view.updates.length)}>
         <h1><span class="item">{view.item_id}</span>{item ? <> · {item.title}</> : null}</h1>
-        <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''}{facts ? ` · ${facts}` : ''}{item?.commit && repoUrl ? <> · <a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></> : item?.url ? <> · <a href={item.url}>source ↗</a></> : null} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
+        <p class="meta">{word}{item?.phase ? ` · phase ${item.phase}` : ''}{facts ? ` · ${facts}` : ''}{item?.commit && repoUrl ? <> · <a href={`${repoUrl}/commit/${item.commit}`}>{shortSha(item.commit)} ↗</a></> : null} · <span data-item-sessions>{view.sessions.length}</span> session{view.sessions.length === 1 ? '' : 's'} · <span data-item-turns>{turns}</span> turns · <span data-item-updates>{view.updates.length}</span> update{view.updates.length === 1 ? '' : 's'} · <span data-item-cents>{usd(view.usd_cents)}</span> settled{view.live.length ? <> · <span class="live"><span class="pulse" /></span> {view.live.length} live</> : null}</p>
         {item?.acceptance.length ? <ul class="accept">{item.acceptance.map((l) => <li>{l}</li>)}</ul> : null}
+        {item?.links?.length ? <div class="rc-proofs">{item.links.map((l) => <a href={l.url} title={l.kind}>{l.label ?? l.kind} ↗</a>)}</div> : null}
       </div>
       {view.task ? (
         <div class="panel">

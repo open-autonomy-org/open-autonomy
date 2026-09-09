@@ -94,8 +94,9 @@ when using a checkout's bundled tools. The credential destination remains outsid
 - **An update** is a short progress note on an item, optionally from a session.
 - **The timeline** is one normalized document per project: every item of work the project has done, is doing
   or intends, in one language, whatever holds it natively. An item has a tense, past, present or future, a
-  status within it, when it entered each, the release that shipped it or will, who, and its proof (a commit, a
-  native record). The page's views (a board, a list, the timeline by month, the past by release) are sorts and
+  status within it, when it entered each, the release that shipped it or will, who, its proof (a commit), and its
+  links, typed and as many as the publisher knows: the ticket that asked, the issue, the pull request, the branch, the
+  recording, the roadmap section. The page's views (a board, a list, the timeline by month, the past by release) are sorts and
   groupings over that one document, never edits: the platform shows, it does not steer. What a substrate keeps
   locally is its own business: the Hermes kit keeps its past in `CHANGELOG.md`, its present on the Hermes board
   with the sessions serving it, and its future in `ROADMAP.md`; an engagement keeps all three in a client's
