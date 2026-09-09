@@ -239,9 +239,10 @@ if (onCodex) {
     // Hermes reads the user's global store (~/.hermes/auth.json) into the pool only for a provider the home has no
     // entry for; the stand-in is that entry, so the user's real login stays out. HOME stays the user's: a project's
     // doors may live under it (Peak's ~/peak), and a container gives the agent its own HOME already.
-  } else if (!holds(store) && !holds(readStore(resolve(user ? home : homedir(), '.hermes', 'auth.json')))) {
+  } else if (!holds(store)) {
     // Bare, the computer's login: the Codex CLI's (`codex login`, its auth.json under CODEX_HOME or ~/.codex), adopted
     // into Hermes's own store the way Hermes's importer does it — Hermes then keeps and refreshes that session itself.
+    // The home's store alone counts: Hermes's model path reads it directly, never the user's global one.
     const cliFile = resolve(process.env.CODEX_HOME?.trim() || resolve(homedir(), '.codex'), 'auth.json');
     let cli: { tokens?: { access_token?: string; refresh_token?: string } } = {};
     try { cli = JSON.parse(readFileSync(cliFile, 'utf8')); } catch { /* no CLI login */ }
