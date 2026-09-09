@@ -223,9 +223,11 @@ if (onCodex) {
   const authFile = resolve(home, 'auth.json');
   const store = readStore(authFile);
   if (codexForward) {
+    // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
+    // which would be a second entry pointing the wrong way; with no singleton it takes the pool, whose entry names
+    // the forward address itself, and the address in the home's .env agrees.
     const now = new Date().toISOString();
-    const state = ((store.providers ??= {})['openai-codex'] ??= {});
-    if (state.tokens?.access_token !== 'valve') { state.tokens = { access_token: 'valve', refresh_token: 'valve' }; state.last_refresh = now; }
+    if (store.providers?.['openai-codex']) delete store.providers['openai-codex'];
     const pool = (store.credential_pool ??= {});
     const entries = (pool['openai-codex'] ?? []).filter((e) => e?.id !== 'valve');
     pool['openai-codex'] = [{ id: 'valve', label: 'the forwarded subscription', source: 'manual:valve', priority: 0, access_token: 'valve', refresh_token: 'valve', base_url: codexForward, inference_base_url: codexForward, last_refresh: now }, ...entries];
@@ -233,6 +235,9 @@ if (onCodex) {
     const noCli = resolve(home, 'codex-home-none');
     mkdirSync(noCli, { recursive: true });
     process.env.CODEX_HOME = noCli;
+    // Hermes also reads the user's global store (~/.hermes/auth.json) into the pool. Forwarded, the agent's HOME is
+    // its own home, as in a container, so the user's real login never sits beside the stand-in.
+    process.env.HOME = home;
   } else if (!holds(store) && !holds(readStore(resolve(user ? home : homedir(), '.hermes', 'auth.json')))) {
     console.error(`start: the model is the Codex subscription (provider openai-codex) and neither ${authFile} nor the user's Hermes store holds a login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
     process.exit(1);
