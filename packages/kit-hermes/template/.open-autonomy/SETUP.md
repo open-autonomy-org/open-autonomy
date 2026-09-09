@@ -344,8 +344,10 @@ and every agent tool inside the container. A host sidecar connects the installed
 services and reporting, with authentication retained by the host. A successful isolated executor test
 does not complete this integration. The vendored
 `.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
-and environment checks; it still needs the host runner, protected container connection and
-container-local MCP integration before it can replace the activation guard. Do not run the fleet as the operator,
+and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
+Hermes session, with native container MCP configuration and separate worker context. The supervisor
+still needs the protected container connection and host-side reporting before it can replace the
+activation guard. Do not run the fleet as the operator,
 offer bare execution as a substitute, or silently switch an agreed local choice to project-funded models.
 
 An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup

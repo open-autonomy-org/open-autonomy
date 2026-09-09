@@ -166,19 +166,23 @@ export class CodexBridgeSession {
 export interface CodexBridgeBackend { write: (packet: Packet) => void; close: () => void }
 /** The runner owns backend processes and must close them when their connection ends. */
 export function serveCodexBridge(options: { token: string; policy: CodexBridgePolicy; port?: number;
-  connect: (receive: (raw: string) => void, disconnected: () => void) => CodexBridgeBackend }) {
+  context?: (request: Request) => Record<string, string>;
+  connect: (receive: (raw: string) => void, disconnected: () => void, context: Record<string, string>) => CodexBridgeBackend }) {
   if (!/^[A-Za-z0-9_-]{32,256}$/.test(options.token)) throw new Error('Codex bridge requires an unpredictable project capability of at least 32 bytes.');
   new CodexBridgeSession(options.policy, { client() {}, server() {}, close() {} });
   const expected = Buffer.from(`Bearer ${options.token}`);
-  const sessions = new Set<{ session?: CodexBridgeSession; backend?: CodexBridgeBackend }>();
-  const server = Bun.serve<{ session?: CodexBridgeSession; backend?: CodexBridgeBackend }>({
+  type Connection = { session?: CodexBridgeSession; backend?: CodexBridgeBackend; context: Record<string, string> };
+  const sessions = new Set<Connection>();
+  const server = Bun.serve<Connection>({
     hostname: '127.0.0.1', port: options.port ?? 0,
     fetch(req, server) {
       const supplied = Buffer.from(req.headers.get('authorization') ?? '');
       if (req.headers.has('origin') || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return new Response('Unauthorized', { status: 401 });
       if (req.method !== 'GET' || new URL(req.url).pathname !== '/session') return new Response('Not found', { status: 404 });
       if (sessions.size >= 32) return new Response('Session capacity reached', { status: 503 });
-      const data = {};
+      let context: Record<string, string>;
+      try { context = options.context?.(req) ?? {}; } catch { return new Response('Invalid project session context', { status: 400 }); }
+      const data = { context };
       if (server.upgrade(req, { data })) return;
       return new Response('WebSocket required', { status: 426 });
     },
@@ -193,7 +197,7 @@ export function serveCodexBridge(options: { token: string; policy: CodexBridgePo
           server: p => data.backend?.write(p),
           close: () => { ended = true; data.backend?.close(); ws.close(1000, 'Project session ended'); sessions.delete(data); },
         });
-        try { data.backend = options.connect(raw => data.session?.fromServer(raw), () => data.session?.close()); if (ended) data.backend.close(); }
+        try { data.backend = options.connect(raw => data.session?.fromServer(raw), () => data.session?.close(), data.context); if (ended) data.backend.close(); }
         catch { data.session.close(); }
       },
       message(ws, message) { if (typeof message !== 'string') ws.data.session?.close(); else ws.data.session?.fromClient(message); },
@@ -204,7 +208,7 @@ export function serveCodexBridge(options: { token: string; policy: CodexBridgePo
 }
 
 /** Preserve the stdin/stdout interface expected by the unmodified Hermes client. */
-export async function forwardCodexStdio(options: { url: string; token: string; input?: Readable; output?: Writable }): Promise<void> {
+export async function forwardCodexStdio(options: { url: string; token: string; context?: Record<string, string>; input?: Readable; output?: Writable }): Promise<void> {
   let url: URL;
   try { url = new URL(options.url); } catch { throw new Error('Invalid Codex bridge address.'); }
   if (!/^[A-Za-z0-9_-]{32,256}$/.test(options.token)) throw new Error('Invalid project Codex capability.');
@@ -214,7 +218,7 @@ export async function forwardCodexStdio(options: { url: string; token: string; i
   await new Promise<void>((resolve, reject) => {
     // Bun accepts headers; DOM typings otherwise hide its constructor overload.
     const BunWebSocket = WebSocket as unknown as { new(url: string, options: Bun.WebSocketOptions): WebSocket };
-    const ws = new BunWebSocket(url.href, { headers: { authorization: `Bearer ${options.token}` } });
+    const ws = new BunWebSocket(url.href, { headers: { authorization: `Bearer ${options.token}`, ...(options.context ? { 'x-open-autonomy-context': JSON.stringify(options.context) } : {}) } });
     const decoder = new StringDecoder('utf8');
     let buffer = '', settled = false;
     const timer = setTimeout(() => end(new Error('Codex bridge connection timed out.')), 10_000);

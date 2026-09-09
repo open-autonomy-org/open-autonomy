@@ -269,3 +269,21 @@ After verifying an outer container boundary, the host can opt into `externalSand
 then pins Codex's native `externalSandbox` turn policy with restricted network access. This avoids
 requiring a second Linux namespace sandbox inside the container; it does not establish isolation
 itself or allow a container client to override permissions.
+
+`@open-autonomy/sdk/codex-host` supplies `startCodexHost({ model, workspace, hermesHome,
+executorUrl, stateDir, token, port? })`, returning `{ url, close }`. Paths for the workspace and
+Hermes home name the container; the state directory is a protected host directory outside Git.
+The executor URL names its protected host-loopback connection. The kit vendors this module too.
+
+The host verifies the installed ChatGPT login and model, then starts one native Codex process per
+bridge connection. It disables unrelated host MCP servers, plugins, hooks and host skill discovery
+for those processes without rewriting global configuration. Each connection rechecks its login and
+effective configuration before forwarding requests, and closes its process on disconnect. Startup
+and restart policy belongs to the caller's supervisor; there is no session pool or retry loop.
+
+`forwardCodexStdio` accepts the native Hermes environment as `context`: `HERMES_HOME`,
+`HERMES_SESSION_ID` and the dispatcher's `HERMES_KANBAN_*` task/run/database/board/workspace/claim
+fields. The host accepts only those fields and container paths under the agreed workspace or home;
+it gives each MCP process its own context. This preserves native worker handoff. The supervisor still
+has to connect the container to the loopback listener and run the existing reporter on the host before
+fleet activation; starting this component alone does not activate a project.
