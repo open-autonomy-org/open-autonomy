@@ -101,7 +101,7 @@ interface BrowserCapture {
   holder: string;
   page: string;
   selector: string;
-  field: 'value' | 'text';
+  field: 'value' | 'text' | 'direct-text';
 }
 
 // This fixed operation runs inside the existing normal-browser controller. The selected value
@@ -120,6 +120,11 @@ try {
     if (options.field === 'value') {
       if (!['input', 'textarea'].includes(tag) || element.type === 'hidden') return { error: 'field_not_input' };
       value = element.value;
+    } else if (options.field === 'direct-text') {
+      if (['html', 'body', 'form', 'input', 'textarea'].includes(tag)) return { error: 'field_not_direct_text' };
+      const nodes = [...element.childNodes].filter(node => node.nodeType === 3 && node.textContent.trim());
+      if (nodes.length !== 1) return { error: 'field_not_direct_text' };
+      value = nodes[0].textContent;
     } else {
       if (['html', 'body', 'form', 'input', 'textarea'].includes(tag) || element.children.length) return { error: 'field_not_leaf_text' };
       value = element.textContent;
@@ -150,8 +155,8 @@ export async function captureCredential(options: BrowserCapture): Promise<Receip
   if ((source.protocol !== 'https:' && !(source.protocol === 'http:' && loopback(source))) || source.username || source.password || source.search || source.hash) {
     throw new Error('Use a credential page on HTTPS (or local HTTP), without credentials, query parameters or fragments in its URL.');
   }
-  if (!options.holder?.trim() || !options.selector?.trim() || !['value', 'text'].includes(options.field)) {
-    throw new Error('Capture needs the existing browser holder, one exact field selector, and --field value or text.');
+  if (!options.holder?.trim() || !options.selector?.trim() || !['value', 'text', 'direct-text'].includes(options.field)) {
+    throw new Error('Capture needs the existing browser holder, one exact field selector, and --field value, text, or direct-text.');
   }
   const receiver = receiveCredential(options.out);
   let receipt: Receipt | undefined;
@@ -177,6 +182,7 @@ export async function captureCredential(options: BrowserCapture): Promise<Receip
       page_changed: 'The bound tab is no longer on the expected page.',
       field_not_visible: 'The selected field is not visible.',
       field_not_input: 'Value capture requires an input or textarea.',
+      field_not_direct_text: 'Direct-text capture requires exactly one nonempty direct text node in the selected credential element.',
       field_not_leaf_text: 'Text capture requires a single text element with no child elements.',
       field_empty_or_masked: 'The selected field is empty, masked, or too large.',
       receiver_refused: 'Protected storage refused the handoff.',
@@ -195,7 +201,7 @@ if (import.meta.main) {
       console.log(json(await captureCredential({ out, browser: flag('--browser') ?? '', holder: flag('--holder') ?? '', page: flag('--page') ?? '', selector: flag('--selector') ?? '', field: flag('--field') as BrowserCapture['field'] })));
       process.exit(0);
     }
-    if (!out || argv[0] !== 'receive') throw new Error('Usage: open-autonomy-credentials receive --out /protected/file [--github-app owner/repo], or capture --out /protected/file --browser http://127.0.0.1:<controller-port> --holder <session> --page <exact-url> --selector <field> --field value|text');
+    if (!out || argv[0] !== 'receive') throw new Error('Usage: open-autonomy-credentials receive --out /protected/file [--github-app owner/repo], or capture --out /protected/file --browser http://127.0.0.1:<controller-port> --holder <session> --page <exact-url> --selector <field> --field value|text|direct-text');
     const receiver = receiveCredential(out, flag('--github-app'));
     console.log(json(flag('--github-app') ? { callback: receiver.callback, state: receiver.state } : { url: receiver.url }));
     try { console.log(json(await receiver.done)); }
