@@ -11,9 +11,9 @@ Target version: deploy-v2026.09.10.1; create-open-autonomy 2.8.3; @open-autonomy
 Target window: 2026-09-10 18:00–22:00 EDT
 Review by: 2026-09-10 12:00 EDT
 Candidate: pending
-Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; the repository-owned team roster and Team editor, shared integration branding and installed project GitHub App; reproducible fresh-project bootstrap, container-compatible runtime slugs, explicit model/funding choice and protected-branch-safe owner-policy/key setup; the installed local Codex runtime path; and the SDK subscription-stream and local-runtime repairs. Giving-secret activation, real-money activation and the seven-day observation are excluded.
+Scope: GitHub-authenticated giving and live-versus-landed status in the service; the 2.7–2.8 Hermes kit changes for owner outreach, idle upgrades, sourced scrum and release review; the repository-owned team roster and Team editor, shared integration branding and installed project GitHub App; reproducible fresh-project bootstrap, container-compatible runtime slugs, explicit model/funding choice and protected-branch-safe owner-policy/key setup; fail-closed local Codex selection while its isolated host-sidecar/container runtime remains future work; and the SDK subscription-stream and local-runtime repairs. Giving-secret activation, real-money activation and the seven-day observation are excluded.
 Readiness: pending
-Readiness evidence: the previously reviewed feature handoffs and onboarding evidence remain applicable, and `hermes:task/t_71c39b4b` established the superseded 2.8.2/2.4.1 artifact baseline. [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506) replaced setup's copied Codex OAuth credential with the installed native runtime, but its signed-in-home activation timed out and its Security check failed because the unchanged lockfile now audits one high-severity `sharp` advisory, `GHSA-rgj7-g3m4-5g8c`. `hermes:task/t_85106ace` confirmed that current `wrangler@4.130.0` resolves `miniflare@5.20260908.0-alpha`, which still pins vulnerable `sharp@0.35.2`; no currently published owning dependency can supply the required `sharp >=0.35.4`. A replacement candidate needs that upstream release, a green supply-chain scan, coherent package versions and renewed artifact/runtime verification.
+Readiness evidence: the previously reviewed feature handoffs and onboarding evidence remain applicable, and `hermes:task/t_71c39b4b` established the superseded 2.8.2/2.4.1 artifact baseline. [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506) replaced setup's copied Codex OAuth credential with the installed native runtime, but its signed-in-home activation timed out and its Security check failed because the unchanged lockfile now audits one high-severity `sharp` advisory, `GHSA-rgj7-g3m4-5g8c`. [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509) then closed the unsafe host-execution path: local selection is retained but activation now fails closed until an isolated runtime exists. `hermes:task/t_85106ace` confirmed that current `wrangler@4.130.0` resolves `miniflare@5.20260908.0-alpha`, which still pins vulnerable `sharp@0.35.2`; the September 8 recheck found the published chain unchanged, so no owning dependency can yet supply the required `sharp >=0.35.4`. A replacement candidate needs that upstream release, a green supply-chain scan, coherent package versions and renewed artifact/runtime verification.
 Rationale: do not ask a maintainer to approve an artifact whose dependency lock now fails the repository's required security gate, or publish 2.8.2 after its setup behavior was materially replaced on main. The September 10 window remains a forecast, not a shipping trigger, and is at risk until Cloudflare publishes the patched dependency chain with enough time for remediation and fresh review.
 Version rationale: service tags use dated `deploy-v*` identifiers, so the replacement forecast moves to the next unused September 10 sequence. The unpublished kit and SDK each need a patch increment because PR #506 changed both the setup artifact and the SDK's exported runtime support after the reviewed 2.8.2/2.4.1 candidate. Registry publication, tags and manifest bumps remain evidence inputs, not authority to ship.
 
@@ -28,9 +28,10 @@ Dependencies and risks:
 - The installed GitHub App exposes PR, review, workflow, tag and release evidence; no replacement candidate, maintainer approval, release run or matching release tag exists yet.
 - Docker UID isolation/token refresh and delayed-review native auto-merge remain unverified end to end after PR #493; candidate preparation must preserve these as explicit operational risks rather than claiming live proof.
 - PR #496 fails closed when committed Hermes configuration cannot be loaded after an interrupted task, but Docker ownership transition remains statically reviewed and committed provenance for every executable runtime file is not established.
+- PR #509 prevents local Codex from exposing the operator's host, but the intended host sidecar/container executor, disconnect behavior, real subscription authentication, in-container Hermes callbacks and host-side reporting remain unimplemented or unverified.
 - The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
 
-Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
+Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
 
 ## release-hardening: Prepare the replacement onboarding artifacts
 
@@ -42,8 +43,36 @@ Source: [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), 
 Completion:
 - Update the transitive `sharp` dependency through its owning package so `bun scripts/check-supply-chain.ts` is green without weakening or editing the protected security workflow.
 - Advance create-open-autonomy to 2.8.3 and `@open-autonomy/sdk` to 2.4.2, upgrade this repository and every cookbook normally, and inspect both package tarballs.
-- Exercise fresh setup and the native `codex_app_server` path in the world, then attempt the existing signed-in local Codex home without reading or copying credentials. If it still times out, report the exact runtime boundary and leave that activation unclaimed.
+- Exercise fresh setup and prove that the generated entrypoint refuses explicit or profile-selected local Codex before starting fleet processes. Preserve the isolated-runtime outcome below as unclaimed rather than bypassing the guard with a host-level activation.
 - Run the canonical root check, hand off for independent review and report the remaining Docker, delayed-review, live-GitHub and executable-provenance gaps. Do not publish, tag or deploy.
+
+## local-codex-isolation: Run local Codex without exposing the operator's host
+
+Status: activation fails closed; the intended isolated runtime is not implemented or end-to-end verified.
+Dispatch: hold
+
+Source: [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), which landed the safety guard and recorded the remaining boundary.
+
+Completion:
+- Hermes, its workspace and every agent tool run inside the container while a host sidecar retains the installed Codex authentication and connects only the bounded model/runtime surface.
+- Executor disconnects fail without host fallback; the container cannot read operator files or credentials.
+- The operator's actual subscription proves native initialization, account access and one bounded turn, followed by in-container PM/worker tools and host-side reporting. Synthetic providers and empty Codex homes do not establish activation.
+
+Dependency: the current machine could not start the Docker World with 448 MiB available against its 2048 MiB requirement, so the required isolation proof needs a capable verification environment before fleet dispatch.
+
+## timeline-language: Publish past, present and future work as one timeline
+
+Status: the owner has fixed the model; the wire's item fields and migration shape remain undecided.
+Dispatch: hold
+
+Source: the verified owner-authored and signed [commit `56c83b3b`](https://github.com/open-autonomy-org/open-autonomy/commit/56c83b3be255f396a76d01b9d90b370707232a20), landed through [PR #510](https://github.com/open-autonomy-org/open-autonomy/pull/510).
+
+Completion:
+- The SDK wire carries one normalized document of past, present and future items in one language, with the item fields needed for tense, time and release views.
+- Each substrate unifies its own local sources into that document; for the Hermes kit those sources remain `CHANGELOG.md`, the native board and sessions, and `ROADMAP.md`.
+- Board, list, timeline and changelog are read-only sorts or groupings on the platform; the platform does not steer or edit project work.
+
+Dependency: owner direction fixed the model but explicitly left the new wire fields undecided; do not dispatch an inferred schema.
 
 ## give-auth-production: Activate and verify the signed-in giving page in production
 
