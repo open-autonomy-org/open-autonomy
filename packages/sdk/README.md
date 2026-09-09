@@ -22,7 +22,7 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
 The standalone `open-autonomy-credentials` command receives secrets into the runtime host's protected
 storage without needing a repository checkout. It is a local tool, not a hosted platform vault.
 The setup agent owns provider configuration and browser navigation. This tool owns the secret handoff;
-it prints only the entry/callback address and a receipt, never the credential. Do not pass secrets as
+it prints only the entry/callback address or a saved-path receipt, never the credential. Do not pass secrets as
 command arguments or inspect the entry page after a person has filled it.
 
 ```sh
@@ -42,8 +42,35 @@ access token. Existing credentials with an installation ID remain supported. No 
 Use a destination outside every Git checkout. New files are owner-only and never overwrite an existing
 file. The receiver binds only to loopback and expires
 after ten minutes. If the browser is on another machine, the operator must establish an authorized SSH
-tunnel to that loopback port. Do not expose the receiver publicly. A token only displayed by a provider
-requires direct human entry; browser-to-secret-store transfer is not implemented.
+tunnel to that loopback port. Do not expose the receiver publicly.
+
+For a credential displayed on a page, `capture` transfers one selected field through the existing
+normal-browser controller directly to the protected receiver. No provider-specific scraper, clipboard,
+new browser connection, or manual paste is needed:
+
+```sh
+open-autonomy-credentials capture --out /protected/project/provider-token \
+  --browser http://127.0.0.1:<controller-port> --holder <existing-session> \
+  --page https://provider.example/app/token --selector '#token' --field value
+```
+
+Discover the existing controller and bind the intended tab using the setup agent's browser skill first.
+`--browser` is that controller's loopback HTTP origin (with its existing `/eval` interface), never a CDP
+endpoint. The browser and this command must run on the same host. `--page` must match the tab's complete
+URL at capture time, without query parameters or fragments; HTTPS is required except on loopback.
+Choose the field using safe DOM metadata, never by returning its credential value to the agent.
+`--field value` reads a visible input/textarea; `--field text` reads a visible leaf text element.
+Ambiguous, hidden, empty or masked fields fail without saving. The operation verifies the page at the
+moment it reads the field, posts directly from the browser controller to protected storage, and returns
+only a receipt. Raw browser errors and page logs are never forwarded by the command. Treat selectors as
+public metadata: never put a credential in a selector or any command argument.
+
+Capture is for an authorized integration's displayed credential, never account session tokens or cookies.
+It requires permission under the active browser policy; explicit owner authorization can narrow an
+otherwise blanket restriction to this protected operation. It does not navigate, reveal/reset tokens,
+or bypass CAPTCHA or MFA. Reconcile the existing page and destination after any failed/uncertain attempt;
+never rotate a key merely to retry capture. Manual `receive` remains available when capture is not
+supported or authorized. Downloads and remote-browser capture are not implemented.
 
 Secret-producing host tools can share `checkCredentialDirectory` from `@open-autonomy/sdk/credentials`.
 It validates an absolute directory outside Git and returns its resolved path without creating it.

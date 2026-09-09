@@ -424,7 +424,7 @@ Reuse the signed-in browser; a previous successful challenge does not guarantee 
 | Submit a GitHub App manifest or change protected app settings | GitHub account re-authentication, such as a passkey or two-factor prompt | Start the credential receiver before manifest submission. After authentication, inspect the returned page: GitHub may have lost the manifest and returned to a blank personal-app form. Restore the agreed organization and manifest only after checking that the app was not already created. |
 | Click **Create** for a new Discord application | A CAPTCHA before the application is created | Tell the owner to keep Chrome visible. After completion, verify the application name and ID; a click or a dismissed dialog is not proof of creation. |
 | Click **Authorise** to add the Discord bot to the server | A separate CAPTCHA, even if application creation just passed one | Confirm the agreed server and permissions first. After the challenge, verify Discord's installation success and target server before advancing. |
-| Generate or reset a Discord bot token | Account verification and a one-time secret display | Prepare the protected credential receiver first and tell the owner where to paste the token. Do not read, copy, screenshot or echo the token through agent tools. Reuse a saved credential; resetting an existing token is rotation, not a routine retry. |
+| Generate or reset a Discord bot token | Account verification and a one-time secret display | Prepare protected page capture before generating the token; after human verification, transfer the displayed field directly into storage. Use the protected input only when capture is unavailable or unauthorized. Never return the token through ordinary agent tools or screenshots. Reuse a saved credential; resetting an existing token is rotation, not a routine retry. |
 
 For example, immediately before the Discord server authorization click:
 
@@ -464,7 +464,7 @@ directory with owner-only permissions. Existing credential files must be regular
 | GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
 | Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver only saves the key; verify access through the running valve | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
 | Open Autonomy platform | The key tool prepares a repository-control claim; the setup agent lands it through normal Git/PR tools, then reruns setup to provision developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
-| Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use secure credential entry where no callback exists | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
+| Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use protected page capture for displayed credentials, or secure entry when capture is unavailable | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
 Verify these connections before starting Hermes. Use the existing vendored SDK valve CLI directly in the
@@ -534,11 +534,29 @@ provider's existing apps before deciding what to retry. The receiver does not ov
 The setup agent handles recovery using provider evidence. No manifest generation, browser navigation,
 installation, Git operation, policy decision or runtime configuration belongs in the credential saver.
 
-For providers that display a token, the general receiver without --github-app gives the owner a protected
-password input and saves that text directly. Do not read the provider token into the agent's context.
-It does not yet import browser downloads, transfer browser-only secrets, or convert a token into every
-runtime's provider configuration. Keep those handoff gaps explicit. If the browser and runtime host differ,
-use an authorized SSH tunnel to the receiver's loopback port; never expose it as a public secret endpoint.
+### Displayed credentials
+
+When the agreed integration displays its new credential on a page, use the standalone helper's capture
+command to transfer that one field directly into protected storage. The SDK README documents the command
+and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
+and bound task tab; do not launch a second browser or scrape the token with ordinary eval/snapshot tools.
+Confirm the project app and exact page first, then identify the single field from safe DOM structure
+without reading its value or snapshotting its container. Capture accepts an input value or a leaf text
+element; it returns only a saved-path receipt and keeps the credential outside agent context and logs.
+The helper does not navigate, click Reveal/Reset, solve challenges, or choose which integration to trust.
+
+Honor the active browser policy. Authorization to capture the agreed app's displayed credential is
+limited to that protected transfer, never browser session tokens or cookies. If an active policy forbids
+even protected transfer and existing owner authorization does not cover it, explain the exact restriction;
+do not silently route around it. Where supported and authorized, displayed credentials are an automated
+handoff, not another manual setup checkpoint.
+
+If capture fails, inspect safe page metadata and credential presence before retrying. Do not regenerate
+a token or repeat app creation. The general receiver without --github-app remains the fallback: it gives
+the owner a protected password input and saves that text directly. Browser downloads are not imported,
+and the helper does not configure the runtime. Page capture currently requires the browser controller
+and credential receiver on the same host. For a remote runtime, use the manual receiver through an
+authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
