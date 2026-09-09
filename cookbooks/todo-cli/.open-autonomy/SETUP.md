@@ -376,9 +376,15 @@ discovered key.
 
 Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning,
 then checks `initialize`, `account/read` and `model/list` through the installed CLI. It uses project-scoped
-SQLite state under the operator's Open Autonomy state directory and allows up to three minutes for the
-first startup to index existing session metadata. A startup timeout is not proof of an expired login:
-inspect native database/startup health before requesting authentication again. The probe sends no model
+SQLite state under the operator's Open Autonomy state directory.
+
+> **Codex startup warning:** the installed Codex CLI can pause while preparing or indexing its local
+> database, especially with an existing session history. This work happens inside Codex, before its
+> app-server handshake completes. Setup waits up to three minutes; this is a wait limit, not a guarantee
+> that indexing will finish within it. A timeout alone does not mean the login is broken. Inspect
+> Codex startup/database progress before restarting it or requesting another sign-in.
+
+The probe sends no model
 turn or tool request, returns only the account type and agreed model, and never rewrites global choices
 or exports authentication. An explicit Codex environments.toml configuration must be reconciled before this probe;
 setup does not replace it. Setup reports activation as blocked, and the
