@@ -6,7 +6,7 @@ every session the project's agent works, and serves the funding site and the REA
 `consumed_usd_cents` is the authoritative cost; nothing is estimated client-side.
 
 ```text
-src/index.ts      the entry: the treasury's worker with this app mounted, the one Durable Object re-exported
+src/index.ts      the entry: the backend's worker with this app mounted, the one Durable Object re-exported
 src/app.tsx       the app: its routes before the core's, the page's slots, the GitHub login as the identity door, the monthly accrual
 src/patronage.ts  the operations on the books this app registers: sponsors and their accrual, coupons, tiers, Polar products and checkouts, the patrons wall
 src/site.tsx      its pages: explore, a funder's page, the giving page, and the panels it adds to every project's page
@@ -15,7 +15,7 @@ src/sponsors.ts   the GitHub Sponsors webhook
 src/give-auth.ts  the GitHub login for the giving page and the roster edit
 ```
 
-The books, the rails, the keys, the stream, the timeline and the project page are the treasury, `packages/treasury/`,
+The books, the rails, the keys, the stream, the timeline and the project page are the backend, `packages/backend/`,
 which this app mounts. Everything below describes the whole as deployed at open-autonomy.org.
 
 ## Money

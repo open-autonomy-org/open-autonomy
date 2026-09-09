@@ -5,7 +5,7 @@
 Open Autonomy in four pieces — the platform, the starter kits, the cookbooks, and this install's own
 boilerplate — and itself an Open Autonomy project. **Every spend is metered on public books.**
 
-- `packages/treasury/` — the core of the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
+- `packages/backend/` — the core of the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
   coupons, explore); a private deployment mounts it bare. Deploys and admin ops go through GitHub only, from human-cut tags (`deploy-v*` for `deploy.yml`, `release-v*`

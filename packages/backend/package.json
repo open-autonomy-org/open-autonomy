@@ -1,12 +1,12 @@
 {
-  "name": "@open-autonomy/treasury",
+  "name": "@open-autonomy/backend",
   "version": "0.1.0",
-  "description": "The treasury: one Cloudflare Worker's core that holds each project's funds in an account tree, meters every spend through its rails, carries the development stream and the timeline, and serves a project's page. Open Autonomy's public platform and a private deployment run the same treasury.",
+  "description": "The backend: one Cloudflare Worker's core that holds each project's funds in an account tree, meters every spend through its rails, carries the development stream and the timeline, and serves a project's page. Open Autonomy's public platform and a private deployment run the same backend.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/open-autonomy-org/open-autonomy.git",
-    "directory": "packages/treasury"
+    "directory": "packages/backend"
   },
   "type": "module",
   "exports": {

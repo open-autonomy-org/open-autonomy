@@ -1,18 +1,18 @@
-// The open platform under test: the treasury's harness with this app mounted, plus a tiny Polar and the GitHub
-// login the giving page uses. Everything the treasury's harness exports is re-exported, so a test reads as one.
-import { fakes, testEnv as treasuryEnv, useEnv as treasuryUseEnv, type FakeGateway, type TestEnv } from '@open-autonomy/treasury/testing';
+// The open platform under test: the backend's harness with this app mounted, plus a tiny Polar and the GitHub
+// login the giving page uses. Everything the backend's harness exports is re-exported, so a test reads as one.
+import { fakes, testEnv as backendEnv, useEnv as backendUseEnv, type FakeGateway, type TestEnv } from '@open-autonomy/backend/testing';
 import '../src/patronage.ts';
 import { app } from '../src/app.tsx';
 import type { Env } from '../src/types.ts';
 
-export { admin, ctx, fund, github, mintKey, request, requestJson, settle, signKey, stripe } from '@open-autonomy/treasury/testing';
-export const useEnv = (env: PlatformTestEnv): PlatformTestEnv => treasuryUseEnv(env) as PlatformTestEnv;
+export { admin, ctx, fund, github, mintKey, request, requestJson, settle, signKey, stripe } from '@open-autonomy/backend/testing';
+export const useEnv = (env: PlatformTestEnv): PlatformTestEnv => backendUseEnv(env) as PlatformTestEnv;
 
 export type PlatformTestEnv = TestEnv & Env;
 export function testEnv(gateway?: Partial<FakeGateway>): PlatformTestEnv {
   polar.products = {}; polar.checkouts = {}; polar.orders = [];
   return {
-    ...treasuryEnv(gateway, app),
+    ...backendEnv(gateway, app),
     GITHUB_OAUTH_BASE: 'https://github.test',
     GITHUB_OAUTH_CLIENT_ID: 'test-client',
     GITHUB_OAUTH_CLIENT_SECRET: 'test-client-secret',

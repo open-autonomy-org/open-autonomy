@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { base64url, hmac } from '@open-autonomy/treasury';
+import { base64url, hmac } from '@open-autonomy/backend';
 import { admin, fund, github, mintKey, polar, request, requestJson, testEnv, useEnv } from './env.ts';
 
 const ce = (type: string, subject: string, data: unknown) => ({ specversion: '1.0', id: crypto.randomUUID(), source: 'test', type: `org.open-autonomy.${type}`, subject, time: new Date().toISOString(), datacontenttype: 'application/json', data });

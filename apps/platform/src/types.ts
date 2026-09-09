@@ -1,7 +1,7 @@
-import { fundingAccount, type Env as TreasuryEnv } from '@open-autonomy/treasury';
+import { fundingAccount, type Env as BackendEnv } from '@open-autonomy/backend';
 
-// The open platform's environment: the treasury's, plus its doors onto money in and the human giving page.
-export interface Env extends TreasuryEnv {
+// The open platform's environment: the backend's, plus its doors onto money in and the human giving page.
+export interface Env extends BackendEnv {
   // GitHub Sponsors: one listing per organization, landing on this account (default: the funding account).
   DEFAULT_SPONSOR_ACCOUNT?: string;
   GITHUB_SPONSORS_WEBHOOK_SECRET?: string;

@@ -1,8 +1,8 @@
 import { ROADMAP_SCHEMA, itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import { Avatar, C, Icon, Nav, Progress, STATUS, Shell, StatusDot, coverStyle, fmtAgo, goalLine, nameOf, ownerOf, purposeSentence, render, usd, usd0, type DirectoryEntry, type FunderView, type ProjectSlots, type ProjectView } from '@open-autonomy/treasury';
+import { Avatar, C, Icon, Nav, Progress, STATUS, Shell, StatusDot, coverStyle, fmtAgo, goalLine, nameOf, ownerOf, purposeSentence, render, usd, usd0, type DirectoryEntry, type FunderView, type ProjectSlots, type ProjectView } from '@open-autonomy/backend';
 import type { Patron, PatronageView, Tier } from './patronage.ts';
 
-// The open platform's pages around the treasury's: the explore grid (GET /), a funder's page, the human giving
+// The open platform's pages around the backend's: the explore grid (GET /), a funder's page, the human giving
 // page, and what it adds to every project's page — the patrons wall, the tiers, the give and coupon forms.
 
 // The navigation every page carries here: explore, give credits, become a patron.

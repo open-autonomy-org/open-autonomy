@@ -1,5 +1,5 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, error, grantsAccount, html, isFunder, json, methodNotAllowed, parseJson, purposeSentence, renderMessage, type EnvelopePurpose, type Sponsor } from '@open-autonomy/treasury';
+import { LedgerClient, error, grantsAccount, html, isFunder, json, methodNotAllowed, parseJson, purposeSentence, renderMessage, type EnvelopePurpose, type Sponsor } from '@open-autonomy/backend';
 import { Patronage, type Tier } from './patronage.ts';
 import type { Env } from './types.ts';
 
