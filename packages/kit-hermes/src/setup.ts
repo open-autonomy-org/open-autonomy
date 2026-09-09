@@ -20,7 +20,6 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
-import { localCodexLogin, probeLocalCodex, checkLocalCodexProfiles } from '@open-autonomy/sdk/local-codex';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -111,7 +110,7 @@ export function readSituation(dir: string): Situation {
   return {
     dir, project, account, owner, repo, ownerIsOrg, login, deploy, sponsorsListing,
     discordToken: Boolean(process.env.DISCORD_BOT_TOKEN),
-    codex: localCodexLogin(),
+    codex: codexLogin(),
     docker: dockerServer.ok && Boolean(dockerServer.out.trim()) && run(['docker', 'compose', 'version']).ok,
   };
 }
@@ -128,9 +127,9 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push({ door: 'subscription', suggested: 'no', reason: s.codex
-    ? 'the installed local Codex reports a ChatGPT login: offer this choice alongside Open Autonomy models, explaining the required host/container service; verify model access and the project runtime separately'
+    ? 'the installed Codex reports a ChatGPT login: offer this choice alongside Open Autonomy models; plain Hermes runs on it bare, and the container forwards it'
     : 'local Codex is unavailable or has no verified ChatGPT login: offer Open Autonomy models or guided local Codex sign-in',
-    cost: 'local Codex uses this computer and its operator’s allowance, through the prepared host/container service; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
+    cost: 'local Codex uses this computer and its operator’s allowance; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
@@ -322,25 +321,36 @@ async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<vo
   say(`  Discord app ${me.id} can reach channel ${channel}. The setup agent verifies the agreed public access, branding and per-job delivery through the project communication skill.`);
 }
 
-async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promise<void> {
-  // Verified before any provisioning, including on reruns. No auth-file copying,
-  // no OAuth refresh implementation, and no hosted substitute for this computer.
-  const config = Bun.YAML.parse(readFileSync(join(s.dir, 'hermes/config.yaml'), 'utf8')) as any;
-  const stateDir = join(homedir(), '.local', 'state', 'open-autonomy', ...s.account.split('/'), 'codex-runtime-state');
-  say('  Checking the installed Codex account and agreed model; authentication stays with Codex.');
-  say('  Codex startup warning: the installed CLI may pause while preparing or indexing its local database, especially with an existing session history. Setup waits up to three minutes. A timeout alone does not mean your login is broken; inspect Codex startup before restarting or signing in again.');
-  const verified = await probeLocalCodex({ stateDir, model: config.model.default });
-  mark(s.dir, st, 'subscription', `installed Codex confirmed ChatGPT and ${verified.model}; project database state at ${stateDir}; native metadata verified; setup agent verifies and installs the isolated host/container service separately`);
+// The installed Codex CLI's ChatGPT login, as Codex itself reports it. Never its auth file: some CLI versions print
+// account information in the status output, so only the verdict is kept.
+function codexLogin(): boolean {
+  const r = spawnSync('codex', ['login', 'status'], { encoding: 'utf8', timeout: 10_000 });
+  return r.status === 0 && /logged in using ChatGPT/i.test(`${r.stdout ?? ''}\n${r.stderr ?? ''}`);
 }
 
-function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
+// The subscription is plain Hermes: its own openai-codex provider in both profiles. Bare, Hermes adopts the Codex
+// CLI's login itself; the container's start script forwards through the valve, which needs its own copy of the login.
+function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
+  const dst = join(opts.secrets, 'codex.json');
+  say(`\nSubscription: hermes/config.yaml and the treasurer's profile name Hermes's own openai-codex provider. Bare, Hermes adopts the Codex CLI's login itself. For the container, the login is copied once to ${dst}: the valve serves it on its third port and refreshes it, and the start script points the provider there with a stand-in credential, so the login never enters the agent.`);
+  if (opts.plan) return;
+  for (const rel of ['hermes/config.yaml', 'hermes/profiles/treasurer/config.yaml']) {
+    const cfg = join(s.dir, rel);
+    if (!existsSync(cfg)) continue;
+    const text = readFileSync(cfg, 'utf8');
+    if (/^\s+provider:\s*openai-codex\s*$/m.test(text)) continue;
+    writeFileSync(cfg, text.replace(/^model:\n(?:  .*\n)+/m, 'model:\n  default: gpt-5.6-sol\n  provider: openai-codex\n'));
+    say(`  ${rel} now names the subscription; reconcile the model with the owner's choice and commit it with the rest.`);
+  }
+  const src = join(homedir(), '.codex', 'auth.json');
+  if (!existsSync(dst) && existsSync(src)) { mkdirSync(opts.secrets, { recursive: true, mode: 0o700 }); writeFileSync(dst, readFileSync(src), { mode: 0o600 }); }
+  mark(s.dir, st, 'subscription', `openai-codex in both profiles${existsSync(dst) ? `; the container's copy of the login at ${dst}` : ''}`);
+}
+
+function printStart(s: Situation, opts: Opts): void {
   // Identity and delegation are established by the setup agent in the project-owned skill. Do not race
   // that work by starting the fleet here, or mark a printed command as a completed activation.
   say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
-  if (localCodex) {
-    say('\nFor local Codex, follow SETUP.md to run the installed .open-autonomy/local-runtime.ts entrypoint on the host with one container built from the local target. Verify the complete project loop before reporting activation. The ordinary start.ts and managed Compose entrypoint do not run this arrangement.');
-    return;
-  }
   say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
   if (opts.bare) {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
@@ -454,34 +464,27 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
       : `${r.door}: take it?`;
     st.doors[r.door] = ask(question, r.suggested === 'yes', opts) ? 'yes' : 'no';
   }
-  if (st.doors.subscription === 'yes' && st.doors['github-app'] !== 'yes') throw new Error('Local Codex Git requires the project GitHub App with Contents: write. Resolve the development connection choice before creating credentials.');
   // Completion markers describe an earlier run, not the contents of the currently selected host.
   // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
   const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
   for (const [step, files] of savedCredentials) {
-    if (step === 'deploy-key' && st.doors.subscription === 'yes') continue;
     if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
   }
-  say(st.doors.subscription === 'yes'
-    ? '  Git authentication: project GitHub App on the host valve, Contents: write. Complete this grant during initial registration; no SSH deploy key is needed.'
-    : '  Git authentication: repository-scoped SSH deploy key. The community App needs Contents: read.');
+  say('  Git authentication: repository-scoped SSH deploy key. The community App needs Contents: read.');
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
   if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
-  if (st.doors.subscription === 'yes') {
-    checkLocalCodexProfiles(join(s.dir, 'hermes'));
-    if (!s.codex) throw new Error('Local Codex needs the installed codex CLI signed in with ChatGPT as this operator. Complete codex login locally and rerun setup; no credentials were copied.');
-  }
+  if (st.doors.subscription === 'yes' && !s.codex) throw new Error('Local Codex needs the installed codex CLI signed in with ChatGPT as this operator. Complete codex login locally and rerun setup.');
   saveState(dir, st);
   stepGitHub(s, opts, st);
-  if (st.doors.subscription !== 'yes') stepDeployKey(s, opts, st);
+  stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
   say('\nFunding: minting keys and setting spending limits do not fund the project. Before activation, the setup agent verifies usable balance on the configured platform’s project page and completes an owner-authorized gift or coupon redemption if needed. The /give flow transfers existing credits; do not assume a grant. Then verify a bounded model call with the agreed model. An explicitly selected subscription uses its operator’s allowance instead.');
   stepOwnerRules(s, opts, st);
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
-  if (st.doors.subscription === 'yes') await stepSubscription(s, opts, st);
+  if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
-  printStart(s, opts, st.doors.subscription === 'yes');
+  printStart(s, opts);
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
 }

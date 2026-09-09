@@ -17,9 +17,6 @@
     "./rails": "./src/rails.ts",
     "./team": "./src/team.ts",
     "./credentials": "./src/credentials.ts",
-    "./local-codex": "./src/local-codex.ts",
-    "./codex-bridge": "./src/codex-bridge.ts",
-    "./codex-host": "./src/codex-host.ts",
     "./reporting": "./src/reporting.ts"
   },
   "files": [

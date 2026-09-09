@@ -278,18 +278,10 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 Before registering an App or collecting credentials, trace the chosen runtime's Git, model,
 communication and reporting paths. Establish where authentication lives and the permissions each
-path needs. In particular, choose Git authentication from the agreed runtime:
-
-| Runtime | Fleet Git authentication | Project App Contents permission |
-| --- | --- | --- |
-| Local Codex with a host sidecar | Project App through the host valve | Write |
-| Managed container | Repository-scoped SSH deploy key | Read |
-
-Request those permissions during the initial App registration. Local setup does not create an
-additional SSH deploy key. Reuse existing project integrations; if the runtime changes, reverify the
-affected paths and installed grants before activation. A completed registration is not proof that the
-selected runtime can use it. This is setup-agent judgment using the existing configuration, not another
-configuration file or user questionnaire.
+path needs. Git authentication is the repository-scoped SSH deploy key wherever the fleet runs, bare or in the
+container, on any model; the community App needs Contents: read. Reuse existing project integrations; a
+completed registration is not proof that the fleet can use it. This is setup-agent judgment using the existing
+configuration, not another configuration file or user questionnaire.
 
 Recommend reuse of the organization's established communication space when available: for example,
 one Discord server or Slack workspace can serve several projects. Show the discovered space and its
@@ -312,7 +304,7 @@ another project's private channels or to confidential human spaces.
 Run `create-open-autonomy setup . --plan` and reconcile its output with the agreed choices before
 running the mutating command. The CLI prepares GitHub repository access, the selected Git authentication, the platform
 connection and owner rules. Its selectable development connections are the project's GitHub App, Discord,
-and an existing model subscription. The project App is required for local Codex Git. Apply the decisions using the existing `--with` and `--without`
+and an existing model subscription. Apply the decisions using the existing `--with` and `--without`
 options; `--yes` accepts the displayed defaults and is not a substitute for establishing owner authority.
 
 If no shared organization space is established, GitHub issues/discussions are a sufficient recommended
@@ -338,8 +330,7 @@ Present model funding and fleet location together, using the guided setup format
   MODELS + FLEET
   ────────────────────────────────────────────────────────
   Local Codex     Uses your installed Codex and ChatGPT allowance
-                  Runs here; this computer must stay awake
-                  Activation pending the isolated runtime
+                  Runs here, bare or in the container; this computer must stay awake
   Open Autonomy   Uses the project's funded model allowance
                   Runs here or on an agreed, verified host
 
@@ -354,94 +345,32 @@ budget; the platform is not itself a hosting service. Product hosting is a later
 Verify a nonempty server version from the selected local Docker context before attempting a container
 build. Reuse an existing working local context; CLI availability alone does not verify the connection.
 
-Local Codex keeps Hermes and every agent tool in the container. The host sidecar uses the installed
-Codex subscription and holds model, GitHub App and platform authentication. Native messaging uses the
-same setup-selected `channels.env` as the managed runtime. The existing reporter runs on the host and
-reads container sessions through Supercode over Docker stdio.
+Local Codex is plain Hermes on its own `openai-codex` provider: the same agent loop, tools, board, skills
+and channels as any other model, with the model turn on the owner's ChatGPT allowance. The fleet looks
+the same wherever it runs; only what carries the login differs.
 
-Run one container from the Dockerfile's `local` target and `.open-autonomy/local-runtime.ts` on the host, as described
-under [host preparation](#prepare-the-host-and-applications-world). The runtime verifies project Git,
-loads committed configuration while preserving unfinished work, starts the existing services and
-forwards Hermes's native shutdown/restart result. The service manager owns restart policy. Setup does
-not need to write a container manager, host health server or another restart loop.
+- **Bare, on this computer:** nothing to prepare. Hermes adopts the Codex CLI's login into its own session
+  and refreshes it itself. The login sits in the agent's home, the accepted trade of every bare fleet
+  (`container/README.md`).
+- **In the container:** the start script forwards. The root valve holds a copy of the login (codex.json
+  in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
+  serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
+  auth store carries a stand-in credential, so the login never enters the agent. Git goes through the
+  deploy key as in any container.
+- **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
+  forwarding points the provider at the twin's Responses door.
 
-Verify the ordinary loopback connection in [the container guide](../container/README.md#local-host-connection).
-Keep host files and authentication out of the executor; do not run the fleet as the operator or switch
-an agreed local subscription to project-funded models to work around a failed setup check.
-
-An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup
-agent edits both `hermes/config.yaml` and `hermes/profiles/treasurer/config.yaml` before applying the helper;
-these settings record the choice and do not authorize activation:
+`--with subscription` checks `codex login status` and writes both profiles' model block:
 
 ```yaml
 model:
   default: <exact model verified in local Codex>
-  provider: local-codex
-custom_providers:
-  - name: local-codex
-    base_url: http://127.0.0.1:1/v1
-    api_key: local-codex
-    api_mode: codex_app_server
+  provider: openai-codex
 ```
 
-This selects Hermes’s existing [Codex app-server](https://learn.chatgpt.com/docs/app-server) transport, not a new server. The non-secret key and unused loopback
-address satisfy Hermes's provider resolver without invoking its OAuth importer; the transport launches
-`codex app-server` over stdio. A mistaken HTTP path fails locally instead of spending through another
-provider. Preserve unrelated config and use `terminal.backend: local` with `home_mode: auto` or `real`.
-The pinned Hermes app-server runtime inherits Codex's model and permissions; it does not pass the Hermes
-model field to `thread/start`. Configure and verify the agreed model in Codex's project configuration,
-and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
-
-The runtime integration must establish the native Hermes MCP callback inside the container and verify
-skills, Kanban access and project communication tools there. Configure Codex's native stdio MCP server
-with `environment_id = "remote"` and `required = true`, invoking the container's Hermes Python with
-`-m agent.transports.hermes_tools_mcp_server` from its installation directory. A remote shell environment
-does not relocate an MCP server whose environment is still the default `local`; `required` prevents
-a turn from proceeding when the server cannot initialize.
-
-Give that MCP process the session's explicit container `HERMES_HOME`. PM profiles need `kanban` in
-their top-level `toolsets`; a Discord platform toolset alone does not enable the MCP kanban tools.
-For workers, preserve the dispatcher's task, run, board/database, workspace and claim context in the
-container callback. Verify a completion changes the assigned task and run, and refuses a foreign task;
-an empty board or a successful protocol handshake alone is insufficient.
-
-Set `security.allow_lazy_installs: false` in the container profiles and install agreed optional
-dependencies when building the image. The pinned Hermes MCP server discovers optional tools during
-startup, which can otherwise trigger package installation and exceed its native 15-second thread-start
-wait. Increasing Codex's MCP startup timeout alone does not extend that Hermes wait. Check a missing
-required server produces no model turn. A YAML field or a remote shell endpoint alone does not establish
-the boundary: inspect all tool paths, including plugins, hooks and MCP tools.
-Once the container supplies that boundary, the host runner can set the bridge's `externalSandbox: true`
-to use Codex's native `externalSandbox` policy with restricted network access. Keep the container's
-restrictions in place; an additional nested Linux namespace sandbox may be unavailable inside it.
-The container client cannot choose or override this host policy.
-Do not migrate agent tools onto the host, import credentials, mount/copy `~/.codex` into a container, or
-add an OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools
-need an explicitly agreed connection or must be disabled; do not infer permission to use another
-discovered key.
-
-Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning,
-then checks `initialize`, `account/read` and `model/list` through the installed CLI. It uses project-scoped
-SQLite state under the operator's Open Autonomy state directory.
-
-> **Codex startup warning:** the installed Codex CLI can pause while preparing or indexing its local
-> database, especially with an existing session history. This work happens inside Codex, before its
-> app-server handshake completes. Setup waits up to three minutes; this is a wait limit, not a guarantee
-> that indexing will finish within it. A timeout alone does not mean the login is broken. Inspect
-> Codex startup/database progress before restarting it or requesting another sign-in.
-
-The probe sends no model
-turn or tool request, returns only the account type and agreed model, and never rewrites global choices
-or exports authentication. An explicit Codex environments.toml configuration must be reconciled before this probe;
-setup does not replace it. The ordinary start script rejects `--local-codex` or a local Codex profile;
-that entrypoint is not the isolated host service. Before activating the host service, prove container execution, denial of host files and credentials, and failure
-without host fallback when the executor disconnects. Then prove `initialize`, `account/read` and one
-bounded turn through native Hermes with the operator's actual Codex, followed by PM and worker tools
-and host-side reporting. A successful CLI login status or a synthetic-provider test with a clean Codex
-home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
-Existing `codex-valve` fleets are legacy installations, not evidence of local Codex readiness: migrate
-only after the isolated runtime is verified for the project. Old secret files are never imported or
-deleted by this selection.
+Reconcile the model with the owner's choice and what `codex` offers; do not change the operator's global
+Codex configuration. A fleet on the older `codex-valve` custom provider keeps working, forwarded the same
+way; switching it to `openai-codex` is one config edit.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
 lists only the current key's bounds, not the platform's available choices. If no authorized platform
@@ -646,34 +575,13 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
-For Open Autonomy models, use the existing managed Compose service and start script. For local Codex:
+The fleet runs the same way on any model: bare with the start script, or in the managed Compose container
+(`container/README.md`). Local Codex adds nothing to prepare; in the container the start script forwards
+the subscription by itself.
 
-1. Install committed `.open-autonomy/` code and its dependencies in operator-owned host storage outside
-   the agent-writable checkout. Record the installed revision. Reuse the protected project credentials.
-2. Build the Dockerfile's `local` target. Use the machine's existing World lifecycle to start that one
-   container with persistent home/checkout volumes and a loopback executor port. Put the ordinary Docker
-   start/stop commands in that lifecycle; no local Compose configuration or container-manager script is
-   needed. Initialize the canonical Git origin and native valve mappings above as `hermes`.
-3. Run the installed entrypoint directly:
-
-   ```bash
-   bun /path/to/installed/.open-autonomy/local-runtime.ts \
-     --container <project-executor> --executor-url ws://127.0.0.1:<port> \
-     --state-dir <host-state> --secrets <protected-project-credentials> \
-     --config /path/to/installed/.open-autonomy/config.yaml --valve <port>
-   ```
-
-   Use the selected host's existing service manager for unattended operation. The process exits when
-   the stack stops; exit 75 is Hermes's restart request. SIGTERM and SIGINT close the stack. If a World
-   owns the container, its `run` command can own this foreground entrypoint. Do not also start a second
-   copy as a World service, or add a project-specific supervisor around it.
-4. Verify the real PM/worker flow, Git, selected messaging and published transcripts, then record the
-   results and service location in the existing setup record. Keep human release review in place.
-
-Verify Bun 1.3.10 or newer and the application's verification tools inside the actual executor before
+Verify Bun 1.3.10 or newer and the application's verification tools where the fleet runs before
 starting PM. Install locked project dependencies and run the project's check in that environment.
-The kit image includes `volter-world` on PATH; local startup verifies it before starting Hermes and
-writes the running-kit.json version record from the installed host kit. Rebuild an older image if this preflight fails.
+The kit image includes `volter-world` on PATH.
 A fresh template includes its compiler; an existing project keeps its own working tooling.
 
 Establish the application's local world using this machine's World instructions. Seed vendor state

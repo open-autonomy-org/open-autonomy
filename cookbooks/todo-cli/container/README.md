@@ -3,9 +3,10 @@
 The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
 developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
 the Hermes gateway. For normal fleet operation, `.open-autonomy/start.ts` manages the complete stack.
-This is the managed stack. Local Codex uses the explicit `local` image target and a trusted host
-service running `local-runtime.ts`, prepared by the setup agent as described in
-[setup](../.open-autonomy/SETUP.md). Starting the whole fleet as the host operator is unsupported.
+The same stack serves every model choice. On the owner's Codex subscription (`provider: openai-codex`, plain
+Hermes), bare Hermes adopts the Codex CLI's login itself; in the container the start script forwards it: the
+root valve holds `codex.json` and serves the Codex protocol on its third port, the home's `.env` points the
+provider there, and the login never enters the agent.
 Before activation, the setup agent can run the SDK valve alone in a one-off container with its entrypoint
 overridden to verify the configured connections; see [setup](../.open-autonomy/SETUP.md). Keep those ports
 unpublished and stop that process before starting the fleet through the normal entrypoint.
@@ -55,36 +56,3 @@ Several stacks on one Docker host: `STACK=<name> docker compose -p <name> …`; 
 the name (`<name>-agent`, `<name>-home`, `<name>-repo`). The default is `oa`.
 
 The kit owns this directory and `.open-autonomy/start.ts`; `create-open-autonomy upgrade .` brings them forward.
-
-## Local host connection
-
-Use a dedicated Docker bridge network for the project's local Codex runtime. On the tested Colima setup,
-`host.docker.internal` reaches the host's loopback listener: the container connects to
-`ws://host.docker.internal:<bridge-port>/session` with the existing project capability. Keep the
-host bridge bound to `127.0.0.1`; its authentication and restricted protocol remain in force.
-
-Publish the container's native Codex executor only on host loopback, using
-`127.0.0.1:<executor-port>:51216`, and give the host Codex process
-`ws://127.0.0.1:<executor-port>` as its executor URL. The executor listens on its container interface
-on port 51216. Setup chooses unused host ports and verifies both directions in the selected Docker
-context before starting Hermes. Keep the container's filesystem, user and capability restrictions.
-
-This route requires access to the Docker host; an `internal` network blocks it on Colima. If the
-selected Docker context cannot reach host loopback, resolve its host networking before activation; do not
-expose the native executor or an unauthenticated valve on a public interface. A tunnel is an explicit
-installation choice only when a required network boundary prevents the ordinary path.
-
-The host reporter reads container state through the existing Supercode stdio connection over
-`docker exec`. Install and verify host/gateway supervision as described in
-[setup](../.open-autonomy/SETUP.md) before reporting the project activated.
-
-The Dockerfile's `local` target runs the native executor and Hermes stdio adapter in one container.
-Use the machine's existing World lifecycle for its Docker start/stop commands, retaining the persistent
-home and checkout volumes. The sidecar runs outside that container. The Compose file above belongs to
-the managed deployment; local Codex does not need a Compose service or another container manager.
-
-Run the installed `.open-autonomy/local-runtime.ts` entrypoint on the host, following
-[setup](../.open-autonomy/SETUP.md#prepare-the-host-and-applications-world). It starts the bridge, valves,
-reporter and gateway and returns Hermes's exit status to the host service manager. No per-project
-container manager, health server or restart wrapper is needed. Host code stays outside the agent's
-checkout. Git mappings, committed home refresh and native messaging use the setup contract above.
