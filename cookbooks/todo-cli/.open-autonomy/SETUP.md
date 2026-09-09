@@ -354,7 +354,7 @@ budget; the platform is not itself a hosting service. Product hosting is a later
 Verify a nonempty server version from the selected local Docker context before attempting a container
 build. Reuse an existing working local context; CLI availability alone does not verify the connection.
 
-Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
+Local Codex uses the host/container arrangement below. It keeps Hermes, its workspace
 and every agent tool inside the container. A host sidecar connects the installed Codex, external
 services and reporting, with model, GitHub App and platform authentication retained by the host.
 Native messaging uses the same explicit `channels.env` settings as the managed runtime; its
@@ -374,8 +374,8 @@ routes into the native home environment so cron workers see them too. It waits f
 the reader, forwards native restart
 requests and stops the gateway when its host connection ends. The container image has an explicit
 `local` target with the native executor and Hermes stdio adapter; the default remains the managed stack.
-Before replacing the activation guard, verify the project App Git connection below and finish the selected
-communication connection and host service installation. Then verify the complete fleet loop. Use ordinary Docker networking as described in
+Before installing the persistent service, verify the project App Git connection below and the selected
+communication connection. Then verify the complete fleet loop. Use ordinary Docker networking as described in
 [the container guide](../container/README.md#local-host-connection): the container reaches the existing
 authenticated host bridge, and the native executor is published only on host loopback. Setup verifies
 that path in the selected Docker context before Hermes starts.
@@ -450,15 +450,14 @@ SQLite state under the operator's Open Autonomy state directory.
 The probe sends no model
 turn or tool request, returns only the account type and agreed model, and never rewrites global choices
 or exports authentication. An explicit Codex environments.toml configuration must be reconciled before this probe;
-setup does not replace it. Setup reports activation as blocked, and the
-start script rejects `--local-codex` or a local Codex profile until the isolated integration is available.
-Before enabling that path, prove container execution, denial of host files and credentials, and failure
+setup does not replace it. The ordinary start script rejects `--local-codex` or a local Codex profile;
+that entrypoint is not the isolated host service. Before activating the host service, prove container execution, denial of host files and credentials, and failure
 without host fallback when the executor disconnects. Then prove `initialize`, `account/read` and one
 bounded turn through native Hermes with the operator's actual Codex, followed by PM and worker tools
 and host-side reporting. A successful CLI login status or a synthetic-provider test with a clean Codex
 home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
 Existing `codex-valve` fleets are legacy installations, not evidence of local Codex readiness: migrate
-only after the isolated runtime is implemented and verified. Old secret files are never imported or
+only after the isolated runtime is verified for the project. Old secret files are never imported or
 deleted by this selection.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
@@ -665,9 +664,27 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 ## Prepare the host and application's world
 
 For Open Autonomy models, use the kit's container deployment and its existing start script and
-supervisor. For local Codex, keep activation blocked until the host sidecar and container runtime above
-are implemented and verified; the current container entrypoint does not implement that split. Bare mode
-is for debugging, not a local Codex activation path. Verify Bun 1.3.10 or newer in the actual service and native
+supervisor. For local Codex, the setup agent prepares the host service using the existing runtime:
+
+1. Build the Dockerfile's `local` target. Prepare a project-specific container, Docker volumes for
+   `/work/project` and `/opt/data`, and the verified loopback-only executor connection. Keep host
+   credentials and host filesystem mounts out of the container.
+2. Initialize the checkout's canonical Git origin and the native project valve mappings above, as
+   `hermes`. The runtime authenticates the fetch and loads committed configuration on its first start.
+3. Install the committed `.open-autonomy/` code and its dependencies in operator-owned host storage,
+   outside the agent-writable checkout. Keep the installed revision identifiable. Use the existing
+   protected project credential directory; do not recreate connections.
+4. The host service imports `startLocalRuntime` from that installed `local-runtime.ts`, supplying the
+   container ID, loopback executor URL, host state directory, credential directory, project config path,
+   and chosen valve port. Await its `exited` promise. Exit 75 requests a whole-stack restart; SIGTERM
+   and SIGINT close the stack. Supervise this using the machine's existing World/service conventions.
+   A printed command or a healthy executor alone does not establish a working service.
+5. Verify the native gateway, scoped Git, selected messaging connection, one bounded subscription turn,
+   PM/worker tools and reporting. Record the service location and verified results in the existing setup
+   record; preserve any remaining gaps. Keep human release review in place.
+
+This is agent-led host preparation, not another provisioner or configuration schema. The ordinary
+managed entrypoint and bare execution cannot substitute for this service. Verify Bun 1.3.10 or newer in the actual service and native
 Hermes terminal. Install the project's locked dependencies and run its own check in its verification
 environment. A fresh template includes its compiler; an existing project keeps its own working tooling.
 

@@ -18,7 +18,7 @@ export function usesLocalCodex(config: any): boolean {
     || config?.model?.openai_runtime === 'codex_app_server';
 }
 
-export const LOCAL_CODEX_ACTIVATION_BLOCKED = 'Local Codex activation is unavailable: the host sidecar and container executor are not integrated and verified yet. Keep the fleet stopped; running Hermes as the host operator is not a supported substitute.';
+export const LOCAL_CODEX_ACTIVATION_BLOCKED = 'Local Codex requires the prepared host sidecar and isolated container via local-runtime.ts. This entrypoint cannot run that arrangement; running Hermes as the host operator is not supported.';
 
 // Fail before starting any fleet process. Native transport selection alone does
 // not isolate agent tools from the operator's filesystem and credentials.
