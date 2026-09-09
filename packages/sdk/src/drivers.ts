@@ -125,9 +125,11 @@ export function diffRoadmaps(before: Roadmap | undefined, after: Roadmap): Roadm
     const p = prev.get(id);
     if (!p) { out.push({ id, kind: 'added', to: it.status }); continue; }
     if (p.status !== it.status) out.push({ id, kind: 'status', from: p.status, to: it.status });
-    else if (p.tense !== it.tense || p.title !== it.title || p.phase !== it.phase || p.priority !== it.priority || p.release !== it.release || p.done_at !== it.done_at || p.started_at !== it.started_at || p.commit !== it.commit || p.acceptance.join('\n') !== it.acceptance.join('\n')) out.push({ id, kind: 'edited' });
+    else if (p.tense !== it.tense || p.title !== it.title || p.phase !== it.phase || p.priority !== it.priority || p.release !== it.release || p.done_at !== it.done_at || p.started_at !== it.started_at || p.commit !== it.commit || p.acceptance.join('\n') !== it.acceptance.join('\n') || linksKey(p) !== linksKey(it)) out.push({ id, kind: 'edited' });
   }
   for (const id of prev.keys()) if (!next.has(id)) out.push({ id, kind: 'removed' });
   return out;
 }
+// A link added or removed is an edit: what an item points at is part of what it says.
+const linksKey = (i: RoadmapItem): string => (i.links ?? []).map((l) => `${l.kind} ${l.url} ${l.label ?? ''}`).join('\n');
 export const sameRoadmap = (a: Roadmap | undefined, b: Roadmap): boolean => !!a && diffRoadmaps(a, b).length === 0 && a.schema === b.schema;
