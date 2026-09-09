@@ -5,14 +5,13 @@
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
 FROM ${HERMES_IMAGE}
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-client openssh-server git ca-certificates curl unzip \
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*
 ARG BUN_VERSION=1.3.10
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
     && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
-COPY container/sshd_config /opt/agent/sshd_config
 RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
 ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"

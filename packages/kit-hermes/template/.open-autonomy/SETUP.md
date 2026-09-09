@@ -347,9 +347,10 @@ does not complete this integration. The vendored
 and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
 Hermes session, with native container MCP configuration and separate worker context. Startup still
 needs to supervise the host services alongside the container gateway before replacing the activation
-guard. Use the native
-OpenSSH forwarding arrangement in [the container guide](../container/README.md#local-host-connection)
-for the protected connection; setup prepares its native keys and SSH configuration before Hermes starts.
+guard. Use ordinary Docker networking as described in
+[the container guide](../container/README.md#local-host-connection): the container reaches the existing
+authenticated host bridge, and the native executor is published only on host loopback. Setup verifies
+that path in the selected Docker context before Hermes starts.
 Run the existing reporter on the host with `--container <id> --project <container checkout>
 --state-file <host cursor file>` and `HERMES_HOME=<container home>`. Its Supercode reader executes inside
 the container over Docker stdio; filtering, publishing and the cursor stay on the host. Verify public
