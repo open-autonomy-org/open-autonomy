@@ -35,7 +35,7 @@ const log = (m: string) => console.log(`reporter: ${m}`);
 // either log sees the expiry.
 fetch(`${baseUrl.replace(/\/v1\/?$/, '')}/healthz`).then(async (r) => log(`valve: ${(await r.text()).trim()}`)).catch((e: Error) => log(`valve unreachable at start: ${e.message}`));
 
-interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
+interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string; seats?: string }
 // The config's shape is small and fixed, so a line reader suffices: top-level `key: value` and the
 // `publish:` block's own keys and list.
 function readConfig(path: string): Config {
@@ -61,6 +61,10 @@ function readConfig(path: string): Config {
     publish: { runs: (publish.runs ?? 'true') !== 'false', chats: (publish.chats ?? 'false') === 'true', private: priv },
     hermes_home: top.hermes_home ?? process.env.HERMES_HOME ?? '',
     state_file: resolve(dirname(configPath), top.state_file ?? 'reporter-state.json'),
+    // `seats`: a directory under which the project's workers open Claude Code sessions (one worktree per task); their
+    // transcripts, in this user's ~/.claude, are followed and published as runs sourced `seat`, each under the board
+    // task whose workspace it is. Their model is the seat's own subscription, never the platform's books.
+    seats: top.seats ? resolve(top.seats.replace(/^~(?=$|\/)/, process.env.HOME ?? '')) : undefined,
   };
 }
 
@@ -70,7 +74,8 @@ const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 
 const saveState = () => { try { writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`); } catch (e) { log(`cannot write ${stateFile}: ${(e as Error).message}`); } };
 
 // A run: the schedule fired it, or the board's dispatcher spawned it for a task (a worker or a reviewer).
-const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (d.trigger === 'cron' || d.trigger === 'heartbeat' || d.trigger === 'task' ? 'run' : 'chat');
+const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-code' && !!cfg.seats && !!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${cfg.seats}/`);
+const kindOf = (d: SessionDescriptor): 'run' | 'chat' => (isSeat(d) || d.trigger === 'cron' || d.trigger === 'heartbeat' || d.trigger === 'task' ? 'run' : 'chat');
 // A run's source is its job's name. supercode's job model carries the job's id, not its name; Hermes keeps
 // the name beside the id in its own schedule store in the home the reporter reads, so that is where the
 // name comes from (read-only, refreshed whenever an id is new), falling back to the id.
@@ -84,7 +89,7 @@ function jobName(id: string): string {
   }
   return jobNames.get(id) ?? id;
 }
-const sourceOf = (d: SessionDescriptor): string => (d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d));
+const sourceOf = (d: SessionDescriptor): string => (isSeat(d) ? 'seat' : d.recurrence?.job_id ? jobName(d.recurrence.job_id) : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d));
 // A provider id is safe to publish; an endpoint and credential are not. The kit's `custom` provider is the
 // platform only when its configured base URL names the valve. For any other configured provider, the owner's
 // provider account funds the session. An incomplete custom configuration stays unknown.
@@ -98,6 +103,7 @@ function configuredProvider(home: string): string | undefined {
   return provider;
 }
 function modelProviderOf(d: SessionDescriptor): string | undefined {
+  if (isSeat(d)) return 'claude-code';
   const home = d.profile && d.profile !== 'default' ? resolve(cfg.hermes_home, 'profiles', d.profile) : cfg.hermes_home;
   return configuredProvider(home);
 }
@@ -177,6 +183,7 @@ class Followed {
           // Only a board run serves an item; a scheduled session (the PM over the whole board) mentions branches and
           // tasks without being about one.
           if (sourceOf(this.d) === 'board') this.item ??= itemIn(turns);
+          if (sourceOf(this.d) === 'seat' && this.d.cwd) this.item ??= seatItems.get(resolve(this.d.cwd));
           this.sha ??= shaIn(turns);
           await this.session!.turns(turns, this.item);
           this.seq = this.session!.seq;
@@ -223,13 +230,15 @@ class Followed {
 // this file before anywhere on PATH; SUPERCODE_BIN names another build outright.
 const supercode = [process.env.SUPERCODE_BIN, resolve(import.meta.dir, 'node_modules', '.bin', 'supercode')].filter((p): p is string => !!p).find(existsSync) ?? Bun.which('supercode') ?? 'supercode';
 const sc = new SupercodeHarnessClient({ command: supercode, env: { ...process.env, HERMES_HOME: cfg.hermes_home } as Record<string, string> });
-const homes = { hermes: resolve(cfg.hermes_home, 'state.db') };
+const homes = { hermes: resolve(cfg.hermes_home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
+// The board task each seat directory serves, as of the last board read: the task in flight whose workspace names it.
+const seatItems = new Map<string, string>();
 const followed = new Map<string, Followed>();
 const activitySubs = new Map<string, string>();
 
 async function consider(d: SessionDescriptor): Promise<void> {
   const key = d.locator.session_id;
-  if (d.locator.harness !== 'hermes' || followed.has(key) || state.ended[key]) return;
+  if (!(d.locator.harness === 'hermes' || isSeat(d)) || followed.has(key) || state.ended[key]) return;
   if (!publishes(d)) { log(`${key}: ${kindOf(d)} (${sourceOf(d)}) is private; not published`); state.ended[key] = 'private'; saveState(); return; }
   const f = new Followed(d);
   followed.set(key, f);
@@ -279,7 +288,7 @@ await sc.start();
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance — and each task's board state (lane, attempts, handoff, review verdicts) is published under that
 // item whenever it changes. A task the board marks done after a review it requested was approved by that review.
-type BoardTask = { id: string; title?: string; body?: string; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; branch?: string; commit?: string } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+type BoardTask = { id: string; title?: string; body?: string; workspace?: string; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; branch?: string; commit?: string } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
@@ -304,6 +313,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
   // The developer's tasks are the present. Tasks assigned to another profile (a purchase request for the treasurer)
   // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
   const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  for (const t of tasks) { const dir = /^dir:(.+)$/.exec(t.workspace ?? '')?.[1]; if (dir && (t.lane === 'running' || t.lane === 'review' || !seatItems.has(resolve(dir)))) seatItems.set(resolve(dir), t.id); }
   // A read that found no board at all (the database mid-write) is not an empty board: a board that had tasks a
   // moment ago and has none now is skipped; a board that never had any is simply empty, and the past and the
   // future publish without it.
@@ -501,7 +511,7 @@ async function setup(): Promise<void> {
   if (digest === setupDigest) return;
   try { if (await oa.setup(s)) { setupDigest = digest; log(`setup published (${model ?? 'no model'}, ${schedule.length} job(s), ${skills.length} skill(s))`); } } catch (e) { log(`setup publish failed: ${(e as Error).message}`); }
 }
-const index = await sc.subscribeSessionIndex({ harnesses: ['hermes'], homes });
+const index = await sc.subscribeSessionIndex({ harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes });
 await setup(); await docs(); await timeline();
 setInterval(() => { void setup(); void docs(); void timeline(); }, 10_000);
 log(`watching ${cfg.hermes_home} for ${cfg.account} → ${baseUrl} (${index.initial.length} session(s) on the index)`);
