@@ -276,6 +276,21 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 ## Select development connections
 
+Before registering an App or collecting credentials, trace the chosen runtime's Git, model,
+communication and reporting paths. Establish where authentication lives and the permissions each
+path needs. In particular, choose Git authentication from the agreed runtime:
+
+| Runtime | Fleet Git authentication | Project App Contents permission |
+| --- | --- | --- |
+| Local Codex with a host sidecar | Project App through the host valve | Write |
+| Managed container | Repository-scoped SSH deploy key | Read |
+
+Request those permissions during the initial App registration. Local setup does not create an
+additional SSH deploy key. Reuse existing project integrations; if the runtime changes, reverify the
+affected paths and installed grants before activation. A completed registration is not proof that the
+selected runtime can use it. This is setup-agent judgment using the existing configuration, not another
+configuration file or user questionnaire.
+
 Recommend reuse of the organization's established communication space when available: for example,
 one Discord server or Slack workspace can serve several projects. Show the discovered space and its
 source, then propose the new project's own branded application/bot and a project channel or category.
@@ -295,9 +310,9 @@ project owner selects its enabled connections and reviewer. Shared space does no
 another project's private channels or to confidential human spaces.
 
 Run `create-open-autonomy setup . --plan` and reconcile its output with the agreed choices before
-running the mutating command. The CLI prepares GitHub repository access, a scoped push key, the platform
-connection and owner rules. Its optional development connections are the project's GitHub App, Discord,
-and an existing model subscription. Apply the decisions using the existing `--with` and `--without`
+running the mutating command. The CLI prepares GitHub repository access, the selected Git authentication, the platform
+connection and owner rules. Its selectable development connections are the project's GitHub App, Discord,
+and an existing model subscription. The project App is required for local Codex Git. Apply the decisions using the existing `--with` and `--without`
 options; `--yes` accepts the displayed defaults and is not a substitute for establishing owner authority.
 
 If no shared organization space is established, GitHub issues/discussions are a sufficient recommended
@@ -347,7 +362,10 @@ does not complete this integration. The vendored
 and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
 Hermes session, with native container MCP configuration and separate worker context.
 `.open-autonomy/local-runtime.ts` supervises the host bridge, loopback valves and reporter alongside
-a prepared container gateway. It waits for the reader before starting Hermes, forwards native restart
+a prepared container gateway. Before starting Hermes, it checks the container's resolved origin fetch
+and push URLs against the project valve and requires authenticated Git read and write advertisements.
+This check changes no refs and rejects a missing mapping or read-only installation. It then waits for
+the reader, forwards native restart
 requests and stops the gateway when its host connection ends. The container image has an explicit
 `local` target with the native executor and Hermes stdio adapter; the default remains the managed stack.
 Before replacing the activation guard, verify the project App Git connection below and finish the selected
@@ -677,11 +695,11 @@ a treasurer credential alone cannot activate the fleet.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.
-These checks do not establish human authority or prove the fleet's scoped push key works. An unexpected
+These checks do not establish human authority or prove the fleet's selected Git credential works. An unexpected
 remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
-On reruns, setup also checks that the deploy key remains registered with write access. A revoked,
+For managed deployments, setup also checks on reruns that the deploy key remains registered with write access. A revoked,
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 

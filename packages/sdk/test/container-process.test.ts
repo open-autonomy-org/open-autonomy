@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startContainerProcess } from '../src/container-process.ts';
+import { startContainerProcess, checkContainerGit } from '../src/container-process.ts';
 
 test('the container lease closes on EOF and preserves native restart exit status', async () => {
   const root = mkdtempSync(join(tmpdir(), 'oa-container-process-'));
@@ -52,4 +52,43 @@ await startContainerProcess({container:'fixture',command:${JSON.stringify([proce
     process.env.PATH = path;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('Git readiness rejects missing mappings and a read-only App before allowing the prepared connection', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'oa-git-readiness-'));
+  const path = process.env.PATH;
+  writeFileSync(join(root, 'docker'), '#!/bin/sh\nshift 4\nexec "$@"\n');
+  chmodSync(join(root, 'docker'), 0o700);
+  process.env.PATH = `${root}:${path}`;
+  let writable = false, calls = 0;
+  const valve = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(req) {
+    calls++;
+    expect(req.method).toBe('GET'); // Verification never submits a pack or changes a ref.
+    const service = new URL(req.url).searchParams.get('service');
+    if (service === 'git-receive-pack' && !writable) return new Response('Contents: write required', { status: 403 });
+    return new Response(`001f# service=${service}\n0000`, { headers: { 'content-type': `application/x-${service}-advertisement` } });
+  } });
+  const options = { container: 'fixture', home: root, workspace: root, account: 'owner/project', baseUrl: valve.url.origin };
+  const git = (...args: string[]) => {
+    const result = Bun.spawnSync([Bun.which('git')!, '-C', root, ...args], { stdout: 'ignore', stderr: 'ignore' });
+    expect(result.exitCode).toBe(0);
+  };
+  try {
+    git('init', '-q'); git('remote', 'add', 'origin', 'https://github.com/owner/project.git');
+    await expect(checkContainerGit(options)).rejects.toThrow('Project Git is not ready');
+    expect(calls).toBe(0);
+    git('config', `url.${valve.url.origin}/owner/project.insteadOf`, 'https://github.com/owner/project');
+    await expect(checkContainerGit(options)).rejects.toThrow('Contents: write');
+    expect(calls).toBe(2);
+    writable = true;
+    git('remote', 'set-url', '--push', 'origin', 'https://github.com/other/project.git');
+    await expect(checkContainerGit(options)).rejects.toThrow('Project Git is not ready');
+    expect(calls).toBe(2);
+    git('remote', 'set-url', '--push', 'origin', 'https://github.com/owner/project.git');
+    await checkContainerGit(options);
+    expect(calls).toBe(4);
+    git('config', '--add', 'remote.origin.pushurl', 'https://github.com/other/project.git');
+    await expect(checkContainerGit(options)).rejects.toThrow('Project Git is not ready');
+    expect(calls).toBe(4);
+  } finally { valve.stop(true); process.env.PATH = path; rmSync(root, { recursive: true, force: true }); }
 });
