@@ -20,7 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
-import { localCodexLogin, checkLocalCodexProfiles, LOCAL_CODEX_ACTIVATION_BLOCKED } from '@open-autonomy/sdk/local-codex';
+import { localCodexLogin, probeLocalCodex, checkLocalCodexProfiles, LOCAL_CODEX_ACTIVATION_BLOCKED } from '@open-autonomy/sdk/local-codex';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -321,10 +321,14 @@ async function stepDiscord(s: Situation, opts: Opts, st: SetupState): Promise<vo
   say(`  Discord app ${me.id} can reach channel ${channel}. The setup agent verifies the agreed public access, branding and per-job delivery through the project communication skill.`);
 }
 
-function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
+async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promise<void> {
   // Verified before any provisioning, including on reruns. No auth-file copying,
   // no OAuth refresh implementation, and no hosted substitute for this computer.
-  mark(s.dir, st, 'subscription', 'local Codex selected; login/configuration checked; activation blocked pending the isolated host sidecar and container executor');
+  const config = Bun.YAML.parse(readFileSync(join(s.dir, 'hermes/config.yaml'), 'utf8')) as any;
+  const stateDir = join(homedir(), '.local', 'state', 'open-autonomy', ...s.account.split('/'), 'codex-runtime-state');
+  say('  Checking the installed Codex account and agreed model. First startup may take up to three minutes to index local session metadata; authentication stays with Codex.');
+  const verified = await probeLocalCodex({ stateDir, model: config.model.default });
+  mark(s.dir, st, 'subscription', `installed Codex confirmed ChatGPT and ${verified.model}; project database state at ${stateDir}; container execution and activation remain blocked`);
 }
 
 function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
@@ -469,7 +473,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
-  if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
+  if (st.doors.subscription === 'yes') await stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   printStart(s, opts, st.doors.subscription === 'yes');
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);

@@ -374,8 +374,14 @@ add an OAuth proxy. Codex itself retains responsibility for login and refresh. A
 need an explicitly agreed connection or must be disabled; do not infer permission to use another
 discovered key.
 
-Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning;
-it never rewrites model choices or exports authentication. Setup reports activation as blocked, and the
+Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning,
+then checks `initialize`, `account/read` and `model/list` through the installed CLI. It uses project-scoped
+SQLite state under the operator's Open Autonomy state directory and allows up to three minutes for the
+first startup to index existing session metadata. A startup timeout is not proof of an expired login:
+inspect native database/startup health before requesting authentication again. The probe sends no model
+turn or tool request, returns only the account type and agreed model, and never rewrites global choices
+or exports authentication. An explicit Codex environments.toml configuration must be reconciled before this probe;
+setup does not replace it. Setup reports activation as blocked, and the
 start script rejects `--local-codex` or a local Codex profile until the isolated integration is available.
 Before enabling that path, prove container execution, denial of host files and credentials, and failure
 without host fallback when the executor disconnects. Then prove `initialize`, `account/read` and one
