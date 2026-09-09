@@ -284,6 +284,16 @@ type BoardTask = { id: string; title?: string; body?: string; assignee?: string;
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
 const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+// A task's proof: the commit its handoff names (as a field, or in the handoff's own words), else the commit the
+// session serving it pushed while this reporter watched.
+function commitOf(t: BoardTask): string | undefined {
+  const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
+  const named = last?.handoff?.commit;
+  if (named && /^[0-9a-f]{7,40}$/.test(named)) return named;
+  const inWords = /\b(?=[0-9a-f]*\d)([0-9a-f]{7,40})\b/.exec(last?.handoff?.summary ?? '')?.[1];
+  if (inWords) return inWords;
+  return [...followed.values()].filter((f) => f.item === t.id && f.sha).map((f) => f.sha).pop();
+}
 const boardDigests = new Map<string, string>();
 let timelineDigest = '';
 let presentCount = 0;
@@ -307,7 +317,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     return defined({
       id: t.id, title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban', phase: /<!-- roadmap:([A-Za-z0-9][A-Za-z0-9._-]{0,79}):/.exec(t.body ?? '')?.[1],
       priority: t.priority !== undefined ? String(t.priority) : undefined, proposed_at: t.created_at, started_at: first?.started_at, done_at: t.lane === 'done' ? t.completed_at ?? last?.ended_at : undefined,
-      by: last?.profile, commit: last?.handoff?.commit && /^[0-9a-f]{7,40}$/.test(last.handoff.commit) ? last.handoff.commit : undefined,
+      by: last?.profile, commit: commitOf(t),
       acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
     }) as RoadmapItem;
   });
@@ -424,10 +434,18 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
   for (const it of [...shipped, ...intentions]) if (!folded.has(it.id) && !ids.has(it.id)) { ids.add(it.id); items.push(it); }
   return items;
 }
+// A project file as main has it: the checkout's `origin/main` (refreshed here about once a minute, and by every
+// scrum and every worker), never the branch a worker happens to be on; the working tree only when there is no git.
+let fetchedAt = 0;
+function mainFile(name: string): string | undefined {
+  if (Date.now() - fetchedAt > 60_000) { fetchedAt = Date.now(); try { Bun.spawnSync({ cmd: ['git', 'fetch', '-q', 'origin', 'main'], cwd: projectDir, timeout: 20_000 }); } catch { /* no remote here */ } }
+  const r = Bun.spawnSync({ cmd: ['git', 'show', `origin/main:${name}`], cwd: projectDir, stdout: 'pipe', stderr: 'pipe' });
+  return r.exitCode === 0 ? r.stdout.toString() : readText(resolve(projectDir, name));
+}
 async function timeline(): Promise<void> {
   const present = await board();
   if (!present) return;
-  const items = fold(present, changelogItems(readText(resolve(projectDir, 'CHANGELOG.md')), cfg.account), roadmapItems(readText(resolve(projectDir, 'ROADMAP.md'))));
+  const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest || !items.length) return;
   try {
