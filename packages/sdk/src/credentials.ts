@@ -95,12 +95,107 @@ export function receiveCredential(out: string, githubRepository?: string) {
   return { url: server.url.origin, callback: `${server.url.origin}/callback`, state, done, close: () => { clearTimeout(timeout); server.stop(true); } };
 }
 
+interface BrowserCapture {
+  out: string;
+  browser: string;
+  holder: string;
+  page: string;
+  selector: string;
+  field: 'value' | 'text';
+}
+
+// This fixed operation runs inside the existing normal-browser controller. The selected value
+// goes directly to the receiver, never into eval's result, an exception, a log, or the clipboard.
+const captureOperation = `
+const { source, selector, field, receiver, state } = CAPTURE_OPTIONS;
+try {
+  const credential = await page.locator(selector).evaluate((element, options) => {
+    const view = element.ownerDocument.defaultView;
+    if (!view || view.location.href !== options.source) return { error: 'page_changed' };
+    const style = view.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height || style.visibility !== 'visible' || style.display === 'none') return { error: 'field_not_visible' };
+    const tag = element.tagName.toLowerCase();
+    let value;
+    if (options.field === 'value') {
+      if (!['input', 'textarea'].includes(tag) || element.type === 'hidden') return { error: 'field_not_input' };
+      value = element.value;
+    } else {
+      if (['html', 'body', 'form', 'input', 'textarea'].includes(tag) || element.children.length) return { error: 'field_not_leaf_text' };
+      value = element.textContent;
+    }
+    if (typeof value !== 'string' || !value.trim() || value.length > 65536 || /^[*•●·\\s]+$/.test(value)) return { error: 'field_empty_or_masked' };
+    return { value };
+  }, { source, field }, { timeout: 1000 });
+  if (credential.error) return { captured: false, reason: credential.error };
+  const response = await fetch(receiver, {
+    method: 'POST', headers: { origin: receiver },
+    body: new URLSearchParams({ state, credential: credential.value }),
+    signal: AbortSignal.timeout(2000),
+  });
+  return { captured: response.ok, reason: response.ok ? 'saved' : 'receiver_refused' };
+} catch {
+  return { captured: false, reason: 'capture_failed' };
+}
+`;
+
+export async function captureCredential(options: BrowserCapture): Promise<Receipt> {
+  let browser: URL; let source: URL;
+  try { browser = new URL(options.browser); source = new URL(options.page); }
+  catch { throw new Error('Capture needs an existing loopback browser-controller URL and the exact credential page URL.'); }
+  const loopback = (url: URL) => ['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname);
+  if (browser.protocol !== 'http:' || !loopback(browser) || browser.username || browser.password || browser.pathname !== '/' || browser.search || browser.hash) {
+    throw new Error('Use the existing normal-browser controller’s loopback HTTP origin, not a browser debugging endpoint.');
+  }
+  if ((source.protocol !== 'https:' && !(source.protocol === 'http:' && loopback(source))) || source.username || source.password || source.search || source.hash) {
+    throw new Error('Use a credential page on HTTPS (or local HTTP), without credentials, query parameters or fragments in its URL.');
+  }
+  if (!options.holder?.trim() || !options.selector?.trim() || !['value', 'text'].includes(options.field)) {
+    throw new Error('Capture needs the existing browser holder, one exact field selector, and --field value or text.');
+  }
+  const receiver = receiveCredential(options.out);
+  let receipt: Receipt | undefined;
+  void receiver.done.then(value => { receipt = value; }, () => {});
+  try {
+    const code = captureOperation.replace('CAPTURE_OPTIONS', () => JSON.stringify({ source: source.href, selector: options.selector, field: options.field, receiver: receiver.url, state: receiver.state }));
+    let result: { ok?: boolean; result?: { captured?: boolean; reason?: string } };
+    try {
+      const response = await fetch(new URL('/eval', browser), {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ holder: options.holder, code, timeout_ms: 4000 }),
+        signal: AbortSignal.timeout(6000), redirect: 'error',
+      });
+      if (!response.ok) throw new Error();
+      // Controller diagnostics/logs can contain page content. Never forward them to the agent.
+      result = await response.json() as typeof result;
+    } catch {
+      if (receipt) return receipt;
+      throw new Error('Browser capture could not complete. Check the existing controller and destination before retrying; do not regenerate the credential.');
+    }
+    if (receipt) return receipt;
+    const reasons: Record<string, string> = {
+      page_changed: 'The bound tab is no longer on the expected page.',
+      field_not_visible: 'The selected field is not visible.',
+      field_not_input: 'Value capture requires an input or textarea.',
+      field_not_leaf_text: 'Text capture requires a single text element with no child elements.',
+      field_empty_or_masked: 'The selected field is empty, masked, or too large.',
+      receiver_refused: 'Protected storage refused the handoff.',
+    };
+    const reason = result.ok && result.result?.reason;
+    throw new Error(`${reason && Object.hasOwn(reasons, reason) ? reasons[reason] : 'The browser could not capture exactly one field in the bound tab.'} No save was confirmed. Inspect the existing page and destination before retrying; do not regenerate the credential.`);
+  } finally { receiver.close(); }
+}
+
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   const flag = (name: string): string | undefined => { const index = argv.indexOf(name); return index < 0 ? undefined : argv[index + 1]; };
   try {
     const out = flag('--out');
-    if (!out || argv[0] !== 'receive') throw new Error('Usage: open-autonomy-credentials receive --out /protected/file [--github-app owner/repo]');
+    if (out && argv[0] === 'capture' && !flag('--github-app')) {
+      console.log(json(await captureCredential({ out, browser: flag('--browser') ?? '', holder: flag('--holder') ?? '', page: flag('--page') ?? '', selector: flag('--selector') ?? '', field: flag('--field') as BrowserCapture['field'] })));
+      process.exit(0);
+    }
+    if (!out || argv[0] !== 'receive') throw new Error('Usage: open-autonomy-credentials receive --out /protected/file [--github-app owner/repo], or capture --out /protected/file --browser http://127.0.0.1:<controller-port> --holder <session> --page <exact-url> --selector <field> --field value|text');
     const receiver = receiveCredential(out, flag('--github-app'));
     console.log(json(flag('--github-app') ? { callback: receiver.callback, state: receiver.state } : { url: receiver.url }));
     try { console.log(json(await receiver.done)); }

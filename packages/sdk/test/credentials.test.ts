@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkCredentialDirectory, receiveCredential } from '../src/credentials.ts';
+import { captureCredential, checkCredentialDirectory, receiveCredential } from '../src/credentials.ts';
 const roots: string[] = [];
 const receivers: ReturnType<typeof receiveCredential>[] = [];
 const root = () => { const dir = mkdtempSync(join(tmpdir(), 'oa-credential-test-')); roots.push(dir); return dir; };
@@ -80,4 +80,77 @@ test('a receiver cannot overwrite an existing or dangling symlink destination', 
   }
   expect(readFileSync(target, 'utf8')).toBe('synthetic-original');
   expect(existsSync(join(dir, 'missing'))).toBe(false);
+});
+
+test('browser capture transfers only one visible field from the expected page and returns no page data', async () => {
+  const secret = 'synthetic-displayed-token';
+  const expectedPage = 'https://provider.example/app/123/token';
+  let currentPage = expectedPage;
+  let value = secret;
+  let width = 100;
+  let type = 'password';
+  let childCount = 0;
+  let tag = 'INPUT';
+  let selectorCount = 1;
+  let receivedBody = '';
+  const controller = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    receivedBody = await request.text();
+    const { code, holder } = JSON.parse(receivedBody);
+    expect(holder).toBe('setup');
+    const element = {
+      ownerDocument: { defaultView: { location: { href: currentPage }, getComputedStyle: () => ({ visibility: 'visible', display: 'block' }) } },
+      getBoundingClientRect: () => ({ width, height: 20 }), tagName: tag, type, value, textContent: value, children: { length: childCount },
+    };
+    const page = { locator: (selector: string) => {
+      expect(selector).toBe('#credential');
+      return { evaluate: (fn: (element: unknown, options: unknown) => unknown, options: unknown, action: { timeout: number }) => {
+        expect(action.timeout).toBe(1000);
+        if (selectorCount !== 1) throw new Error(`strict locator error with page content: ${secret}`);
+        return fn(element, options);
+      } };
+    } };
+    const result = await new Function('page', `return (async () => { ${code} })()`)(page);
+    expect(JSON.stringify(result)).not.toContain(secret);
+    // Even noisy controller diagnostics must stay out of the public receipt/errors.
+    return Response.json({ ok: true, result, logs: [{ text: secret }] });
+  } });
+  const dir = root();
+  const capture = (name: string, field: 'value' | 'text' = 'value') => captureCredential({ out: join(dir, name), browser: controller.url.origin, holder: 'setup', page: expectedPage, selector: '#credential', field });
+  try {
+    const receipt = await capture('token');
+    expect(receipt).toEqual({ saved: join(dir, 'token') });
+    expect(receivedBody).not.toContain(secret);
+    expect(readFileSync(receipt.saved, 'utf8')).toBe(secret);
+    expect(statSync(receipt.saved).mode & 0o777).toBe(0o600);
+    await expect(capture('token')).rejects.toThrow('already exists');
+    tag = 'CODE';
+    expect(await capture('text-token', 'text')).toEqual({ saved: join(dir, 'text-token') });
+    for (const scenario of ['wrong-page', 'hidden', 'hidden-input', 'masked', 'multiple', 'whole-page']) {
+      currentPage = scenario === 'wrong-page' ? 'https://unrelated.example/' : expectedPage;
+      width = scenario === 'hidden' ? 0 : 100;
+      type = scenario === 'hidden-input' ? 'hidden' : 'password';
+      value = scenario === 'masked' ? '••••••••' : secret;
+      selectorCount = scenario === 'multiple' ? 2 : 1;
+      tag = scenario === 'whole-page' ? 'BODY' : 'INPUT';
+      childCount = scenario === 'whole-page' ? 3 : 0;
+      let message = '';
+      try { await capture(scenario, scenario === 'whole-page' ? 'text' : 'value'); }
+      catch (error) { message = (error as Error).message; }
+      expect(message).toContain('No save was confirmed');
+      expect(message).not.toContain(secret);
+      expect(existsSync(join(dir, scenario))).toBe(false);
+    }
+  } finally { controller.stop(true); }
+});
+
+test('browser capture refuses remote controllers and unsafe source URLs before creating storage', async () => {
+  const out = join(root(), 'not-created', 'token');
+  const options = { out, browser: 'http://127.0.0.1:1234', holder: 'setup', page: 'https://provider.example/app/token', selector: '#token', field: 'value' as const };
+  for (const browser of ['https://remote.example', 'http://127.0.0.1:1234/eval', 'http://user:password@localhost:1234']) {
+    await expect(captureCredential({ ...options, browser })).rejects.toThrow('loopback HTTP origin');
+  }
+  for (const page of ['http://remote.example/token', 'https://provider.example/token?secret=hidden', 'https://provider.example/token#secret']) {
+    await expect(captureCredential({ ...options, page })).rejects.toThrow('without credentials');
+  }
+  expect(existsSync(join(out, '..'))).toBe(false);
 });
