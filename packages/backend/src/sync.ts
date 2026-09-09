@@ -153,11 +153,13 @@ export async function fetchMilestones(env: Env, repo: string): Promise<Milestone
 // A UTF-8 text file from the repository's default branch, size-capped; undefined when absent.
 export async function fetchRepoText(env: Env, account: string, path: string, maxBytes = 24_000): Promise<string | undefined> {
   const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
+  // The raw host first, with the token when there is one: a private repository answers 404 to a bare request, which
+  // is not absence, so with a token in hand a miss falls through to the contents API instead of ending here.
   try {
     const raw = env.GITHUB_RAW_BASE ?? 'https://raw.githubusercontent.com';
-    const r = await fetch(`${raw}/${account}/HEAD/${path}`, { headers: { 'user-agent': 'open-autonomy' } });
+    const r = await fetch(`${raw}/${account}/HEAD/${path}`, { headers: { 'user-agent': 'open-autonomy', ...(env.GITHUB_TOKEN ? { authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}) } });
     if (r.ok) return (await r.text()).slice(0, maxBytes);
-    if (r.status === 404) return undefined;
+    if (r.status === 404 && !env.GITHUB_TOKEN) return undefined;
   } catch { /* fall through to the contents API */ }
   try {
     const res = await fetch(`${base}/repos/${account}/contents/${path}`, { headers: ghHeaders(env) });
