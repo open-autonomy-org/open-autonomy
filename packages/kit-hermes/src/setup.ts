@@ -326,7 +326,8 @@ async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promi
   // no OAuth refresh implementation, and no hosted substitute for this computer.
   const config = Bun.YAML.parse(readFileSync(join(s.dir, 'hermes/config.yaml'), 'utf8')) as any;
   const stateDir = join(homedir(), '.local', 'state', 'open-autonomy', ...s.account.split('/'), 'codex-runtime-state');
-  say('  Checking the installed Codex account and agreed model. First startup may take up to three minutes to index local session metadata; authentication stays with Codex.');
+  say('  Checking the installed Codex account and agreed model; authentication stays with Codex.');
+  say('  Codex startup warning: the installed CLI may pause while preparing or indexing its local database, especially with an existing session history. Setup waits up to three minutes. A timeout alone does not mean your login is broken; inspect Codex startup before restarting or signing in again.');
   const verified = await probeLocalCodex({ stateDir, model: config.model.default });
   mark(s.dir, st, 'subscription', `installed Codex confirmed ChatGPT and ${verified.model}; project database state at ${stateDir}; container execution and activation remain blocked`);
 }

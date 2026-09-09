@@ -111,7 +111,7 @@ export async function probeLocalCodex(options: { stateDir: string; model: string
         timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(method === 'initialize'
-            ? 'Codex initialization timed out while preparing local state. Inspect native startup/database health; this does not establish a login failure.'
+            ? 'The installed Codex app-server did not initialize within the setup wait window. Native database preparation or indexing can cause this; a timeout alone does not establish a login failure. Inspect Codex startup before retrying or signing in again.'
             : 'Codex account/model verification timed out; no access was confirmed.'));
         }, timeoutMs);
         child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
