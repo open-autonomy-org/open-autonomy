@@ -235,9 +235,9 @@ if (onCodex) {
     const noCli = resolve(home, 'codex-home-none');
     mkdirSync(noCli, { recursive: true });
     process.env.CODEX_HOME = noCli;
-    // Hermes also reads the user's global store (~/.hermes/auth.json) into the pool. Forwarded, the agent's HOME is
-    // its own home, as in a container, so the user's real login never sits beside the stand-in.
-    process.env.HOME = home;
+    // Hermes reads the user's global store (~/.hermes/auth.json) into the pool only for a provider the home has no
+    // entry for; the stand-in is that entry, so the user's real login stays out. HOME stays the user's: a project's
+    // doors may live under it (Peak's ~/peak), and a container gives the agent its own HOME already.
   } else if (!holds(store) && !holds(readStore(resolve(user ? home : homedir(), '.hermes', 'auth.json')))) {
     console.error(`start: the model is the Codex subscription (provider openai-codex) and neither ${authFile} nor the user's Hermes store holds a login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
     process.exit(1);
