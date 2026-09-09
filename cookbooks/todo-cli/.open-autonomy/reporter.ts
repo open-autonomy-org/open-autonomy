@@ -35,7 +35,7 @@ const log = (m: string) => console.log(`reporter: ${m}`);
 // either log sees the expiry.
 fetch(`${baseUrl.replace(/\/v1\/?$/, '')}/healthz`).then(async (r) => log(`valve: ${(await r.text()).trim()}`)).catch((e: Error) => log(`valve unreachable at start: ${e.message}`));
 
-interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string }
+interface Config { account: string; platform: string; publish: { runs: boolean; chats: boolean; private: string[] }; hermes_home: string; state_file: string; timeline: 'hermes' | 'none' }
 // The config's shape is small and fixed, so a line reader suffices: top-level `key: value` and the
 // `publish:` block's own keys and list.
 function readConfig(path: string): Config {
@@ -60,6 +60,10 @@ function readConfig(path: string): Config {
     account: top.account ?? '', platform: (top.platform ?? 'https://open-autonomy.org').replace(/\/$/, ''),
     publish: { runs: (publish.runs ?? 'true') !== 'false', chats: (publish.chats ?? 'false') === 'true', private: priv },
     hermes_home: top.hermes_home ?? process.env.HERMES_HOME ?? '',
+    // Who publishes the timeline: this reporter from the Hermes kit's three homes (the default), or nobody here
+    // (`timeline: none`) because the project's own driver owns it — an engagement whose past, present and future
+    // live in a client's tracker.
+    timeline: top.timeline === 'none' ? 'none' : 'hermes',
     state_file: resolve(dirname(configPath), top.state_file ?? 'reporter-state.json'),
   };
 }
@@ -460,7 +464,7 @@ function mainFile(name: string): string | undefined {
 }
 async function timeline(): Promise<void> {
   const present = await board();
-  if (!present) return;
+  if (!present || cfg.timeline === 'none') return;
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest || !items.length) return;

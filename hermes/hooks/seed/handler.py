@@ -135,6 +135,10 @@ async def handle(event_type: str, context: dict) -> None:
                 skill=spec.get("skill"),
                 workdir=os.getcwd(),
                 script=spec.get("script"),
+                # A monitor job runs its script (or reads its URL) on the schedule and wakes the agent only when the
+                # output changed, handing it the diff: how an engagement's brain watches a board without spending.
+                monitor_script=spec.get("monitor_script"),
+                monitor_url=spec.get("monitor_url"),
                 no_agent=bool(spec.get("no_agent")),
                 model=None if spec.get("no_agent") else model,
                 provider=None if spec.get("no_agent") else provider,
