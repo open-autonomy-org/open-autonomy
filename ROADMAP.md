@@ -33,6 +33,23 @@ Dependencies and risks:
 
 Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), [PRs #513–#515](https://github.com/open-autonomy-org/open-autonomy/pull/515), [PRs #518–#522](https://github.com/open-autonomy-org/open-autonomy/pull/522), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
 
+## kit-rehearsal: Every project rehearses its own method in a world
+
+Status: planned
+Dispatch: fleet
+Scope: the rehearsal engine is in the template (`.open-autonomy/rehearsal/`, kit-owned): the world's front door, the
+seed onto the GitHub twin, the backend copy, the Actions runner, the brain's stack from a clean environment, and the
+story runner with its acts, conditions and static scenario checks. What remains: `create` seeds a starter
+`rehearsal/` (a world of the project's chosen channels, a scenario scaffold, one story, a hooks file); the Peak
+engagement is re-adopted onto it and its hand-written copies deleted; this repository's own `world/` becomes an
+instance of it, which is the proof the machinery is general.
+Completion:
+- a fresh `create-open-autonomy create` yields a project whose `run.ts up` brings a world and whose one seeded story passes
+- `peak-autonomy` runs its three stories on the kit's engine, with only its world, scenario, stories and hooks its own
+- `world/run.ts` is the kit's rehearsal with the cookbook as the project
+Rationale: the machinery was written three times (the product's world, the engagement's rehearsal, and nothing in the
+template). Every defect found in one copy was invisible to the others.
+
 ## release-hardening: Prepare the replacement onboarding and backend artifacts
 
 Status: blocked upstream until a published Wrangler/Miniflare dependency chain uses `sharp >=0.35.4`; recheck before releasing the existing fleet task.
