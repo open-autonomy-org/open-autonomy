@@ -28,31 +28,7 @@ services:
       - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:rw
       - home:/opt/data
       - repo:/work/project
-  # Selected explicitly with `up -d executor`; ordinary `up` still uses agent.
-  # The host runs local-runtime.ts. This service contains no host credentials.
-  executor:
-    profiles: [local]
-    build:
-      context: ..
-      dockerfile: container/Dockerfile
-      target: local
-      args:
-        HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31}
-    image: open-autonomy-executor:local
-    container_name: ${STACK:-oa}-executor
-    read_only: true
-    ports:
-      - "127.0.0.1:${EXECUTOR_PORT:-51216}:51216"
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    pids_limit: 256
-    mem_limit: 1536m
-    cpus: 2
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,size=268435456
-    volumes:
-      - home:/opt/data
-      - repo:/work/project
+
 volumes:
   home:
     name: ${STACK:-oa}-home
