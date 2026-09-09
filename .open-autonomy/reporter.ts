@@ -16,20 +16,16 @@ if (!cfg || typeof cfg.account !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(cfg.ac
 const policy = publicationPolicy(cfg.publish);
 const home = cfg.hermes_home ?? process.env.HERMES_HOME;
 if (typeof home !== 'string' || !home.startsWith('/')) throw new Error('Reporter requires the absolute Hermes home');
-const container = arg('--container');
-if (container && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('Invalid container');
-if (container && cfg.seats) throw new Error('Host Claude seats require their own reporter');
-const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
+const projectDir = arg('--project') ?? resolve(dirname(configPath), '..');
 const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
 const log = (message: string) => console.log(`reporter: ${message}`);
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, container!, ...cmd];
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
-const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
-const supercode = container ? process.env.SUPERCODE_BIN ?? 'supercode' : process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode');
-const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
+const run = (cmd: string[]) => Bun.spawnSync({ cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
+const supercode = process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode');
+const reader = [supercode, 'harness', 'serve'];
 const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: { ...process.env, HERMES_HOME: home } as Record<string, string> });
 const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.

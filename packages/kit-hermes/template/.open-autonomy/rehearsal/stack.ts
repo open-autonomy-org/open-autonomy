@@ -37,6 +37,13 @@ function hermesBin(): string {
   }
   return resolve(dir, '.venv', 'bin');
 }
+// Whether the project's brain runs on the owner's Codex subscription: plain Hermes's own provider, in its committed config.
+function onCodex(): boolean {
+  const file = resolve(ROOT, 'hermes', 'config.yaml');
+  if (!existsSync(file)) return false;
+  const provider = (Bun.YAML.parse(readFileSync(file, 'utf8')) as { model?: { provider?: string } } | null)?.model?.provider;
+  return provider === 'openai-codex';
+}
 // The stack's environment, from nothing: the machine's PATH with Hermes first, HOME, the world's twin addresses the
 // channels need, and what the project's hook adds. Never the operator's shell, never a custody file.
 function stackEnv(bin: string): Record<string, string> {
@@ -45,6 +52,10 @@ function stackEnv(bin: string): Record<string, string> {
   // The world's proxy and CA, when the world attached this process (the twins' hostnames resolve to the twins).
   for (const k of ['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'VOLTER_WORLD']) if (process.env[k]) base[k] = process.env[k]!;
   if (world.GITHUB_TWIN_URL) Object.assign(base, { GITHUB_API_URL: world.GITHUB_TWIN_URL, GITHUB_TOKEN: 'world-bot' });
+  // A brain on the owner's Codex subscription (Hermes's own openai-codex provider) is pointed at the model twin's
+  // Responses door instead: the start script writes this into the home's .env and gives the provider a stand-in
+  // credential, the same forwarding a container uses for the valve.
+  if (world.GATEWAY_TWIN_URL && onCodex()) base.HERMES_CODEX_BASE_URL = `${world.GATEWAY_TWIN_URL.replace(/\/$/, '')}/v1`;
   return { ...base, ...(h.stackEnv ? h.stackEnv(context()) : {}) };
 }
 function start(): void {

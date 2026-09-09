@@ -8,3 +8,8 @@
 - **Secrets.** There are none for you to use: your model calls and your pushes are authorized outside your reach. Never read or print `.env` files or key material; your sessions are published live.
 - **Do not edit** `LICENSE`, `.github/workflows/`, `container/`, `.open-autonomy/reporter.ts`, or anything under `hermes/` except a skill a task asks you to improve.
 - **Cost.** Your calls are metered and public. Read before writing; run the check once; stop when verified.
+
+- **Native calls and agent decisions, not scripts.** Reach for Hermes' own surface first — the kanban toolset, the
+  connected platform, cron and its monitors, MCP for a vendor — and for the agent's own judgment in its skill. A script
+  earns its place only where no judgment lives in it: a lint, a listing a monitor diffs, an infrastructure command. A
+  generated file can only be appended to; a file the agent writes is a file the agent can correct.

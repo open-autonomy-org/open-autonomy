@@ -12,12 +12,13 @@
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
 //
-// Legacy installations only (new setup uses the installed local Codex):
-// --codex: the owner's ChatGPT/Codex subscription login, held here the same way — the file as the Codex CLI keeps it
-// (`tokens.access_token`, `refresh_token`, `id_token`, `account_id`), served under /backend-api/codex/* on its own port
-// and forwarded to chatgpt.com's Codex backend with the bearer and the account header; the access token is refreshed
-// ahead of its expiry (auth.openai.com, the Codex client id) and written back. Hermes's `openai-codex` provider is
-// pointed at this port (HERMES_CODEX_BASE_URL) with a placeholder credential, so the login never enters the agent.
+// --codex: the owner's ChatGPT/Codex subscription login for a fleet whose agent must not hold it (a container), held
+// here the same way — the file as the Codex CLI keeps it (`tokens.access_token`, `refresh_token`, `id_token`,
+// `account_id`), served under /backend-api/codex/* on its own port and forwarded to chatgpt.com's Codex backend with
+// the bearer and the account header; the access token is refreshed ahead of its expiry (auth.openai.com, the Codex
+// client id) and written back. Hermes's own `openai-codex` provider is pointed at this port (HERMES_CODEX_BASE_URL)
+// with a stand-in credential, so the login never enters the agent. Bare on a laptop the same provider adopts the
+// Codex CLI's login itself, and this port is not started.
 //
 // --github-app: the agent's own GitHub identity for its community desk — a GitHub App installed on the project's
 // repository, its file `{app_id, repository, private_key, installation_id?}` (the app's PEM).
