@@ -77,3 +77,10 @@ installation choice only when a required network boundary prevents the ordinary 
 The host reporter reads container state through the existing Supercode stdio connection over
 `docker exec`. The complete host/gateway supervision still needs integration and verification as
 described in [setup](../.open-autonomy/SETUP.md); local fleet activation remains guarded.
+
+The Dockerfile’s `local` target includes the pinned native Codex executor and the Hermes stdio adapter.
+Its entrypoint runs only the executor as `hermes`; the ordinary default and Compose target remain
+`managed`. The host-owned `.open-autonomy/local-runtime.ts` supervises a prepared container’s gateway,
+Codex bridge, loopback valves and reporter. Keep that host installation outside the agent-writable
+checkout. Setup must finish Git access, the chosen communication connection and committed configuration
+refresh before using this as the project’s persistent service; local activation remains guarded.
