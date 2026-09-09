@@ -341,8 +341,8 @@ build. Reuse an existing working local context; CLI availability alone does not 
 
 Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
 and every agent tool inside the container. A host sidecar connects the installed Codex, external
-services and reporting, with authentication retained by the host. The native remote executor prototype
-does not establish Docker isolation or complete this integration. The vendored
+services and reporting, with authentication retained by the host. A successful isolated executor test
+does not complete this integration. The vendored
 `.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
 and environment checks; it still needs the host runner, protected container connection and
 container-local MCP integration before it can replace the activation guard. Do not run the fleet as the operator,
@@ -372,8 +372,24 @@ model field to `thread/start`. Configure and verify the agreed model in Codex's 
 and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
 
 The runtime integration must establish the native Hermes MCP callback inside the container and verify
-skills, Kanban access and project communication tools there. A YAML field or a remote shell endpoint
-alone does not establish that boundary: inspect all tool paths, including plugins, hooks and MCP tools.
+skills, Kanban access and project communication tools there. Configure Codex's native stdio MCP server
+with `environment_id = "remote"` and `required = true`, invoking the container's Hermes Python with
+`-m agent.transports.hermes_tools_mcp_server` from its installation directory. A remote shell environment
+does not relocate an MCP server whose environment is still the default `local`; `required` prevents
+a turn from proceeding when the server cannot initialize.
+
+Give that MCP process the session's explicit container `HERMES_HOME`. PM profiles need `kanban` in
+their top-level `toolsets`; a Discord platform toolset alone does not enable the MCP kanban tools.
+For workers, preserve the dispatcher's task, run, board/database, workspace and claim context in the
+container callback. Verify a completion changes the assigned task and run, and refuses a foreign task;
+an empty board or a successful protocol handshake alone is insufficient.
+
+Set `security.allow_lazy_installs: false` in the container profiles and install agreed optional
+dependencies when building the image. The pinned Hermes MCP server discovers optional tools during
+startup, which can otherwise trigger package installation and exceed its native 15-second thread-start
+wait. Increasing Codex's MCP startup timeout alone does not extend that Hermes wait. Check a missing
+required server produces no model turn. A YAML field or a remote shell endpoint alone does not establish
+the boundary: inspect all tool paths, including plugins, hooks and MCP tools.
 Once the container supplies that boundary, the host runner can set the bridge's `externalSandbox: true`
 to use Codex's native `externalSandbox` policy with restricted network access. Keep the container's
 restrictions in place; an additional nested Linux namespace sandbox may be unavailable inside it.
