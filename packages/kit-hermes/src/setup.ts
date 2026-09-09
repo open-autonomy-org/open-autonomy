@@ -107,11 +107,12 @@ export function readSituation(dir: string): Situation {
     : personal?.ok && personal.out === 'User' ? false : null;
   let sponsorsListing = false;
   if (owner) { try { const r = spawnSync('curl', ['-sL', '--max-time', '8', `https://github.com/sponsors/${owner}`], { encoding: 'utf8' }); sponsorsListing = /Select a tier/.test(r.stdout ?? ''); } catch { /* offline: no recommendation */ } }
+  const dockerServer = run(['docker', 'version', '--format', '{{.Server.Version}}']);
   return {
     dir, project, account, owner, repo, ownerIsOrg, login, deploy, sponsorsListing,
     discordToken: Boolean(process.env.DISCORD_BOT_TOKEN),
     codex: localCodexLogin(),
-    docker: run(['docker', 'compose', 'version']).ok,
+    docker: dockerServer.ok && Boolean(dockerServer.out.trim()) && run(['docker', 'compose', 'version']).ok,
   };
 }
 
@@ -344,7 +345,7 @@ function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
   if (opts.bare) {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
-    if (!s.docker) say('  Docker is not here; install it before starting the container.');
+    if (!s.docker) say('  A working Docker connection is not verified; select or start a local runtime before starting the container.');
     say('  sh container/build-hermes.sh   # build the pinned base image if absent');
     say(`  AGENT_SECRETS=${opts.secrets} STACK=${s.project} docker compose -p ${s.project} -f container/compose.yml up -d --build`);
   }
@@ -426,7 +427,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   say(s.ownerIsOrg === true
     ? `  organization: ${s.owner}. Discover its existing project setup and communication space before choosing new connections; use a project-branded bot and project channels in an agreed shared server/workspace.`
     : '  organization: unresolved. Setup requires a verified GitHub organization; personal repositories need an owner-agreed organization target before provisioning.');
-  say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker: ${s.docker ? 'yes' : 'no'}`);
+  say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker ready: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
   say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and run the project check before activation. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
   say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');

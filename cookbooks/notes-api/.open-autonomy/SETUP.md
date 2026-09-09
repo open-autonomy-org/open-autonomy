@@ -336,6 +336,8 @@ Adapt that recommendation to actual discovery. Never recommend a server the user
 Docker is running because its CLI exists, or offer remote hosting under the local Codex choice.
 Open Autonomy funding for a host is a separate metered spend requiring an available provider and agreed
 budget; the platform is not itself a hosting service. Product hosting is a later, separate decision.
+Verify a nonempty server version from the selected local Docker context before attempting a container
+build. Reuse an existing working local context; CLI availability alone does not verify the connection.
 
 Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
 and every agent tool inside the container. A host sidecar connects the installed Codex, external
@@ -372,6 +374,10 @@ and keep both Hermes model labels consistent with it. Do not change the operator
 The runtime integration must establish the native Hermes MCP callback inside the container and verify
 skills, Kanban access and project communication tools there. A YAML field or a remote shell endpoint
 alone does not establish that boundary: inspect all tool paths, including plugins, hooks and MCP tools.
+Once the container supplies that boundary, the host runner can set the bridge's `externalSandbox: true`
+to use Codex's native `externalSandbox` policy with restricted network access. Keep the container's
+restrictions in place; an additional nested Linux namespace sandbox may be unavailable inside it.
+The container client cannot choose or override this host policy.
 Do not migrate agent tools onto the host, import credentials, mount/copy `~/.codex` into a container, or
 add an OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools
 need an explicitly agreed connection or must be disabled; do not infer permission to use another

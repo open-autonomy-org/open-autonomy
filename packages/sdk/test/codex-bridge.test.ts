@@ -4,9 +4,9 @@ import { expect, test } from 'bun:test';
 import { PassThrough } from 'node:stream';
 import { CodexBridgeSession, forwardCodexStdio, serveCodexBridge } from '../src/codex-bridge.ts';
 const policy = { model: 'agreed-model', modelProvider: 'openai', workspace: '/work/project', environmentId: 'remote' };
-function fixture() {
+function fixture(externalSandbox?: true) {
   const client: any[] = [], server: any[] = []; let closed = false;
-  const session = new CodexBridgeSession(policy, { client: p => client.push(p), server: p => server.push(p), close: () => { closed = true; } });
+  const session = new CodexBridgeSession({ ...policy, externalSandbox }, { client: p => client.push(p), server: p => server.push(p), close: () => { closed = true; } });
   const send = (p: any) => session.fromClient(JSON.stringify(p));
   const receive = (p: any) => session.fromServer(JSON.stringify(p));
   const initialize = () => { send({ id: 1, method: 'initialize', params: { capabilities: { arbitrary: true } } }); receive({ id: 1, result: { codexHome: '/host/private', userAgent: 'native' } }); send({ method: 'initialized' }); };
@@ -130,4 +130,15 @@ test('a backend disconnect closes the authenticated forwarder without fallback',
     await expect(forwarding).rejects.toThrow('host execution fallback is unavailable');
     expect(closed).toBe(1);
   } finally { server.close(); input.destroy(); output.destroy(); }
+});
+
+test('only the host selects the native external sandbox policy', () => {
+  const f = fixture(true); f.thread();
+  f.send({ id: 3, method: 'turn/start', params: { threadId: 'owned-thread', input: [{ type: 'text', text: 'work' }] } });
+  f.ready();
+  expect(f.server.at(-1).params.sandboxPolicy).toEqual({ type: 'externalSandbox', networkAccess: 'restricted' });
+  const g = fixture(); g.thread();
+  g.send({ id: 3, method: 'turn/start', params: { threadId: 'owned-thread', input: [{ type: 'text', text: 'work' }], sandboxPolicy: { type: 'dangerFullAccess' } } });
+  expect(g.closed()).toBe(true);
+  expect(g.server.some(p => p.method === 'turn/start')).toBe(false);
 });
