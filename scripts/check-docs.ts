@@ -6,8 +6,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '..');
-const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
-const router = readFileSync(resolve(ROOT, 'apps/platform/src/index.ts'), 'utf8') + readFileSync(resolve(ROOT, 'apps/platform/src/keys.ts'), 'utf8') + readFileSync(resolve(ROOT, 'apps/platform/src/stream.ts'), 'utf8');
+const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/treasury/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
+const router = ['packages/treasury/src/routes.ts', 'packages/treasury/src/keys.ts', 'packages/treasury/src/stream.ts', 'apps/platform/src/app.tsx'].map((f) => readFileSync(resolve(ROOT, f), 'utf8')).join('\n');
 const runner = readFileSync(resolve(ROOT, 'world/run.ts'), 'utf8');
 const verbs = new Set([...runner.matchAll(/case '([a-z-]+)'/g)].map((m) => m[1]));
 const problems: string[] = [];
@@ -50,7 +50,7 @@ for (const doc of DOCS) {
 // SECURITY.md: every `proof: smoke "…"` names text that exists in the smoke suite, so a claim cannot outlive its
 // proof. A claim with no label is one exercised by hand in the world, through the product's doors.
 const security = readFileSync(resolve(ROOT, 'SECURITY.md'), 'utf8');
-const proofs = { smoke: readFileSync(resolve(ROOT, 'apps/platform/test/smoke.test.ts'), 'utf8') };
+const proofs = { smoke: readFileSync(resolve(ROOT, 'packages/treasury/test/smoke.test.ts'), 'utf8') + readFileSync(resolve(ROOT, 'apps/platform/test/smoke.test.ts'), 'utf8') };
 let claims = 0;
 for (const m of security.matchAll(/proof:\s*(smoke)\s*"([^"]+)"/g)) {
   claims++;

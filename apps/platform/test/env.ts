@@ -1,168 +1,48 @@
-// The worker under test, with an in-memory Durable Object and a fake model gateway. No network anywhere.
-import worker from '../src/index.ts';
-import { signKey } from '../src/keys.ts';
-import type { Env, KeyClaims } from '../src/types.ts';
+// The open platform under test: the treasury's harness with this app mounted, plus a tiny Polar and the GitHub
+// login the giving page uses. Everything the treasury's harness exports is re-exported, so a test reads as one.
+import { fakes, testEnv as treasuryEnv, useEnv as treasuryUseEnv, type FakeGateway, type TestEnv } from '@open-autonomy/treasury/testing';
+import '../src/patronage.ts';
+import { app } from '../src/app.tsx';
+import type { Env } from '../src/types.ts';
 
-export const ctx: ExecutionContext = { waitUntil: (p) => { pending.push(p); } };
-const pending: Promise<unknown>[] = [];
-export async function settle(): Promise<void> { await Promise.all(pending.splice(0)); }
+export { admin, ctx, fund, github, mintKey, request, requestJson, settle, signKey, stripe } from '@open-autonomy/treasury/testing';
+export const useEnv = (env: PlatformTestEnv): PlatformTestEnv => treasuryUseEnv(env) as PlatformTestEnv;
 
-class MemoryStorage {
-  private readonly values = new Map<string, unknown>();
-  private alarm: number | null = null;
-  async get<T = unknown>(key: string): Promise<T | undefined> { return this.values.get(key) as T | undefined; }
-  async put<T>(key: string | Record<string, T>, value?: T): Promise<void> { if (typeof key === 'string') this.values.set(key, structuredClone(value)); else for (const [k, v] of Object.entries(key)) this.values.set(k, structuredClone(v)); }
-  async delete(key: string): Promise<boolean> { return this.values.delete(key); }
-  async deleteAll(): Promise<void> { this.values.clear(); }
-  async list<T = unknown>(options: { prefix?: string; reverse?: boolean; limit?: number; end?: string } = {}): Promise<Map<string, T>> {
-    let keys = [...this.values.keys()].filter((k) => !options.prefix || k.startsWith(options.prefix)).sort();
-    if (options.end !== undefined) keys = keys.filter((k) => k < (options.end as string));
-    if (options.reverse) keys.reverse();
-    if (options.limit !== undefined) keys = keys.slice(0, options.limit);
-    return new Map(keys.map((k) => [k, this.values.get(k) as T]));
-  }
-  async getAlarm(): Promise<number | null> { return this.alarm; }
-  async setAlarm(time: number): Promise<void> { this.alarm = time; }
-}
-
-export class MemoryNamespace implements DurableObjectNamespace {
-  private readonly instances = new Map<string, DurableObjectStub>();
-  readonly storages = new Map<string, MemoryStorage>();
-  constructor(private readonly create: (state: DurableObjectState) => DurableObject) {}
-  idFromName(name: string): DurableObjectId { return name as unknown as DurableObjectId; }
-  get(id: DurableObjectId): DurableObjectStub {
-    const key = id as unknown as string;
-    let stub = this.instances.get(key);
-    if (!stub) {
-      const storage = this.storages.get(key) ?? new MemoryStorage();
-      this.storages.set(key, storage);
-      const instance = this.create({ storage } as unknown as DurableObjectState);
-      stub = { fetch: (input, init) => instance.fetch(new Request(input, init)) };
-      this.instances.set(key, stub);
-    }
-    return stub;
-  }
-  // A redeploy: the same storage, a fresh object.
-  restart(): void { this.instances.clear(); }
-}
-
-export interface FakeGateway { calls: Array<{ route: string; body: Record<string, unknown>; headers: Headers }>; respond: (route: string, body: Record<string, unknown>) => Response | Promise<Response> }
-
-export function testEnv(gateway?: Partial<FakeGateway>): Env & { ns: MemoryNamespace; gateway: FakeGateway } {
-  const { LimitLedger } = require('../src/ledger.ts') as typeof import('../src/ledger.ts');
-  const ns = new MemoryNamespace((state) => new LimitLedger(state));
-  const gw: FakeGateway = {
-    calls: [],
-    respond: gateway?.respond ?? ((route, body) => Response.json(route === '/v1/messages'
-      ? { id: 'msg', type: 'message', model: body.model, content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 10, output_tokens: 5, cost: 0.0007 } }
-      : { id: 'chatcmpl', model: body.model, choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.0007 } })),
-  };
+export type PlatformTestEnv = TestEnv & Env;
+export function testEnv(gateway?: Partial<FakeGateway>): PlatformTestEnv {
+  polar.products = {}; polar.checkouts = {}; polar.orders = [];
   return {
-    AGENT_PROXY_ADMIN_TOKEN: 'admin',
-    AGENT_PROXY_HMAC_SECRET: 'test-secret',
-    MODEL_GATEWAY_URL: 'https://gateway.test',
-    MODEL_GATEWAY_API_KEY: 'gw-key',
-    MAX_GLOBAL_DAILY_USD_CENTS: '5000',
-    DEFAULT_FUNDING_ACCOUNT: 'acme/app',
-    GITHUB_API_BASE: 'https://github.test',
-    GITHUB_RAW_BASE: 'https://raw.test',
+    ...treasuryEnv(gateway, app),
     GITHUB_OAUTH_BASE: 'https://github.test',
     GITHUB_OAUTH_CLIENT_ID: 'test-client',
     GITHUB_OAUTH_CLIENT_SECRET: 'test-client-secret',
     GIVE_SESSION_HMAC_SECRET: 'test-give-session-secret',
-    GITHUB_TOKEN: 'test-github-org-token',
-    STRIPE_API_BASE: 'https://stripe.test',
-    STRIPE_SECRET_KEY: 'sk_test_fake',
-    ISSUING_BILLING_ADDRESS_JSON: JSON.stringify({ line1: '1 Test Street', city: 'Testville', state: 'CA', postal_code: '00000', country: 'US' }),
-    STRIPE_WEBHOOK_SECRET: 'whsec_test',
     POLAR_API_BASE: 'https://polar.test',
     POLAR_ACCESS_TOKEN: 'polar_at_test',
     POLAR_WEBHOOK_SECRET: 'whsec_' + btoa('polar-test'),
-    LIMITS: ns,
-    ns,
-    gateway: gw,
   };
 }
 
-// Every fetch the worker makes goes through here: the gateway answers model calls, GitHub is a tiny fake
-// serving the claim file and the docs, and everything else is refused (the tests reach no network).
-export const github: { files: Record<string, string>; repos: Record<string, Record<string, unknown>>; milestones: Record<string, unknown[]> } = { files: {}, repos: {}, milestones: {} };
-export const stripe: { requests: Array<{ method: string; path: string; body: Record<string, string> }>; cards: Record<string, Record<string, any>>; decisions: string[] } = { requests: [], cards: {}, decisions: [] };
-let current: ReturnType<typeof testEnv> | undefined;
+// A tiny Polar: products, checkouts, orders, customers. The test pays a checkout by confirming it here.
 export const polar: { products: Record<string, Record<string, any>>; checkouts: Record<string, Record<string, any>>; orders: Record<string, any>[] } = { products: {}, checkouts: {}, orders: [] };
-export function useEnv(env: ReturnType<typeof testEnv>): ReturnType<typeof testEnv> { current = env; github.files = {}; github.repos = {}; github.milestones = {}; stripe.requests = []; stripe.cards = {}; stripe.decisions = []; polar.products = {}; polar.checkouts = {}; polar.orders = []; return env; }
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  const req = new Request(input, init);
-  const url = new URL(req.url);
-  if (url.origin === 'https://gateway.test') {
-    const body = JSON.parse(await req.text()) as Record<string, unknown>;
-    current!.gateway.calls.push({ route: url.pathname, body, headers: req.headers });
-    return current!.gateway.respond(url.pathname, body);
-  }
-  if (url.origin === 'https://raw.test') {
-    const m = url.pathname.match(/^\/([^/]+\/[^/]+)\/HEAD\/(.+)$/);
-    const text = m ? github.files[`${m[1]}:${m[2]}`] : undefined;
-    return text === undefined ? new Response('', { status: 404 }) : new Response(text);
-  }
+fakes.set('https://polar.test', async (req, url) => {
   // A tiny Polar: products, checkouts, orders, customers. The test pays a checkout by confirming it here.
-  if (url.origin === 'https://polar.test') {
-    const body = req.method === 'POST' ? JSON.parse(await req.text() || '{}') as Record<string, any> : {};
-    if (req.method === 'POST' && url.pathname === '/v1/products/') { const id = `prod_${Object.keys(polar.products).length + 1}`; polar.products[id] = { id, ...body }; return Response.json(polar.products[id], { status: 201 }); }
-    if (req.method === 'POST' && url.pathname === '/v1/checkouts/') { const id = `chk_${Object.keys(polar.checkouts).length + 1}`; const product = polar.products[body.products?.[0]]; polar.checkouts[id] = { id, status: 'open', url: `https://polar.test/checkout/${id}`, product_id: product?.id, amount: product?.prices?.[0]?.price_amount ?? 0, metadata: body.metadata ?? {} }; return Response.json(polar.checkouts[id], { status: 201 }); }
-    let m = url.pathname.match(/^\/v1\/checkouts\/([^/]+)$/);
-    if (m && req.method === 'GET') return polar.checkouts[m[1]] ? Response.json(polar.checkouts[m[1]]) : new Response('{}', { status: 404 });
-    if (url.pathname === '/v1/orders/' && req.method === 'GET') return Response.json({ items: polar.orders.filter((o) => !url.searchParams.get('checkout_id') || o.checkout_id === url.searchParams.get('checkout_id')) });
-    if ((m = url.pathname.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === 'GET') return Response.json({ id: m[1], email: 'pat@example.com', name: 'Pat Patron' });
-    return new Response('{}', { status: 404 });
-  }
-  // A tiny Stripe Issuing: cardholders, cards, cards retrieved with their number, cards canceled,
-  // authorizations approved or declined by the API. Everything it stores is inspectable by the test.
-  if (url.origin === 'https://stripe.test') {
-    const body = Object.fromEntries(new URLSearchParams(await req.text()));
-    stripe.requests.push({ method: req.method, path: url.pathname, body });
-    if (req.method === 'POST' && url.pathname === '/v1/issuing/cardholders') return Response.json({ id: `ich_${stripe.requests.length}`, object: 'issuing.cardholder' });
-    if (req.method === 'POST' && url.pathname === '/v1/issuing/cards') { const id = `ic_${stripe.requests.length}`; stripe.cards[id] = { id, status: 'active', last4: '4242', exp_month: 12, exp_year: 2030, spending: body }; return Response.json(stripe.cards[id]); }
-    const card = url.pathname.match(/^\/v1\/issuing\/cards\/(ic_\d+)$/);
-    if (card && req.method === 'GET') return stripe.cards[card[1]] ? Response.json({ ...stripe.cards[card[1]], number: '4000000000004242', cvc: '123' }) : new Response('{}', { status: 404 });
-    if (card && req.method === 'POST') { if (stripe.cards[card[1]]) stripe.cards[card[1]].status = body.status; return Response.json(stripe.cards[card[1]] ?? {}); }
-    const decision = url.pathname.match(/^\/v1\/issuing\/authorizations\/(\w+)\/(approve|decline)$/);
-    if (decision) { stripe.decisions.push(`${decision[1]}:${decision[2]}`); return Response.json({ id: decision[1], approved: decision[2] === 'approve' }); }
-    return new Response('{}', { status: 404 });
-  }
-  if (url.origin === 'https://github.test') {
-    if (url.pathname === '/login/oauth/access_token' && req.method === 'POST') return Response.json({ access_token: 'gho_test', token_type: 'bearer', scope: '' });
-    if (url.pathname === '/user') return Response.json({ login: 'octocat', id: 1 });
-    if (url.pathname === '/orgs/open-autonomy-org/memberships/octocat') return req.headers.get('authorization') === 'Bearer test-github-org-token'
-      ? Response.json({ role: 'admin', state: 'active' })
-      : Response.json({ message: 'Resource not accessible by integration' }, { status: 403 });
-    const repo = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)$/);
-    if (repo) return github.repos[repo[1]] ? Response.json(github.repos[repo[1]]) : new Response('', { status: 404 });
-    const ms = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/milestones$/);
-    if (ms) return github.milestones[ms[1]] ? Response.json(github.milestones[ms[1]]) : new Response('', { status: 404 });
-    return new Response('', { status: 404 });
-  }
-  throw new Error(`test: unexpected fetch ${req.url}`);
-}) as typeof fetch;
+  const body = req.method === 'POST' ? JSON.parse(await req.text() || '{}') as Record<string, any> : {};
+  if (req.method === 'POST' && url.pathname === '/v1/products/') { const id = `prod_${Object.keys(polar.products).length + 1}`; polar.products[id] = { id, ...body }; return Response.json(polar.products[id], { status: 201 }); }
+  if (req.method === 'POST' && url.pathname === '/v1/checkouts/') { const id = `chk_${Object.keys(polar.checkouts).length + 1}`; const product = polar.products[body.products?.[0]]; polar.checkouts[id] = { id, status: 'open', url: `https://polar.test/checkout/${id}`, product_id: product?.id, amount: product?.prices?.[0]?.price_amount ?? 0, metadata: body.metadata ?? {} }; return Response.json(polar.checkouts[id], { status: 201 }); }
+  let m = url.pathname.match(/^\/v1\/checkouts\/([^/]+)$/);
+  if (m && req.method === 'GET') return polar.checkouts[m[1]] ? Response.json(polar.checkouts[m[1]]) : new Response('{}', { status: 404 });
+  if (url.pathname === '/v1/orders/' && req.method === 'GET') return Response.json({ items: polar.orders.filter((o) => !url.searchParams.get('checkout_id') || o.checkout_id === url.searchParams.get('checkout_id')) });
+  if ((m = url.pathname.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === 'GET') return Response.json({ id: m[1], email: 'pat@example.com', name: 'Pat Patron' });
+  return new Response('{}', { status: 404 });
 
-export async function request(env: Env, path: string, init: { method?: string; headers?: Record<string, string>; body?: unknown } = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  let body: BodyInit | undefined;
-  if (init.body !== undefined) { body = typeof init.body === 'string' ? init.body : JSON.stringify(init.body); if (!headers.has('content-type')) headers.set('content-type', 'application/json'); }
-  return worker.fetch(new Request(`https://platform.test${path}`, { method: init.method ?? (body ? 'POST' : 'GET'), headers, body }), env, ctx);
-}
-export async function requestJson<T = any>(env: Env, path: string, init: Parameters<typeof request>[2] = {}): Promise<T> {
-  return await (await request(env, path, init)).json() as T;
-}
-export const admin = { 'x-admin-token': 'admin' };
-export async function fund(env: Env, account: string, cents = 1000): Promise<void> {
-  const r = await requestJson(env, `/admin/accounts/${encodeURIComponent(account)}/mint`, { headers: admin, body: { amount_usd_cents: cents } });
-  if (!r.ok) throw new Error(`fund: ${JSON.stringify(r)}`);
-}
-// A key for tests: signed like the platform signs one, registered on the books.
-export async function mintKey(env: Env, account = 'acme/app', models = ['zai/glm-5.3-flash'], scopes?: string[]): Promise<{ token: string; claims: KeyClaims }> {
-  github.files[`${account}:.open-autonomy-claim`] = (await requestJson(env, `/v1/keys/challenge?account=${encodeURIComponent(account)}`)).claim;
-  const r = await requestJson(env, '/v1/keys/mint', { body: { account, models, ...(scopes ? { scopes } : {}) } });
-  if (!r.ok) throw new Error(`mintKey: ${JSON.stringify(r)}`);
-  return { token: r.token, claims: r.key };
-}
-export { signKey };
+});
+// The GitHub login: the OAuth exchange, the signed-in user, the org membership the pool admin check reads.
+fakes.set('https://github.test', async (req, url) => {
+  if (url.pathname === '/login/oauth/access_token' && req.method === 'POST') return Response.json({ access_token: 'gho_test', token_type: 'bearer', scope: '' });
+  if (url.pathname === '/user') return Response.json({ login: 'octocat', id: 1 });
+  if (url.pathname === '/orgs/open-autonomy-org/memberships/octocat') return req.headers.get('authorization') === 'Bearer test-github-org-token'
+    ? Response.json({ role: 'admin', state: 'active' })
+    : Response.json({ message: 'Resource not accessible by integration' }, { status: 403 });
+  return undefined;
+});

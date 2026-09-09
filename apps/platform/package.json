@@ -1,7 +1,7 @@
 {
   "name": "@open-autonomy/platform",
   "version": "2.0.0",
-  "description": "The Open Autonomy platform: one Cloudflare Worker that holds each project's funds, meters every spend against its account, takes money in, carries the development stream, and serves the funding site and the README widgets.",
+  "description": "Open Autonomy's public platform: the treasury with patronage on top \u2014 money in from GitHub Sponsors, Polar and grant credits, the explore page, the patrons wall \u2014 deployed as one Cloudflare Worker.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@open-autonomy/sdk": "workspace:*",
+    "@open-autonomy/treasury": "workspace:*",
     "hono": "^4.13.4"
   },
   "devDependencies": {

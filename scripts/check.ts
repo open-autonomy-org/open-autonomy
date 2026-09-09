@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 const ROOT = resolve(import.meta.dir, '..');
 const BUDGET_MS = 30_000;
 const steps: Array<[string, string[], string]> = [
+  ['treasury', ['bun', 'run', 'check'], 'packages/treasury'],
   ['platform', ['bun', 'run', 'check'], 'apps/platform'],
   ['sdk', ['bun', 'run', 'check'], 'packages/sdk'],
   ['kit', ['bun', 'run', 'check'], 'packages/kit-hermes'],
