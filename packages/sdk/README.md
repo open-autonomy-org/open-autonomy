@@ -58,12 +58,17 @@ Discover the existing controller and bind the intended tab using the setup agent
 `--browser` is that controller's loopback HTTP origin (with its existing `/eval` interface), never a CDP
 endpoint. The browser and this command must run on the same host. `--page` must match the tab's complete
 URL at capture time, without query parameters or fragments; HTTPS is required except on loopback.
-Choose the field using safe DOM metadata, never by returning its credential value to the agent.
+Choose the field within the credential-labeled section using safe DOM metadata, never by returning its
+value to the agent. A lone Copy button can belong to an app ID or permissions calculator.
 `--field value` reads a visible input/textarea; `--field text` reads a visible leaf text element.
 Ambiguous, hidden, empty or masked fields fail without saving. The operation verifies the page at the
 moment it reads the field, posts directly from the browser controller to protected storage, and returns
 only a receipt. Raw browser errors and page logs are never forwarded by the command. Treat selectors as
-public metadata: never put a credential in a selector or any command argument.
+public metadata: never put a credential in a selector or any command argument. A receipt proves data
+transfer, not that the chosen field is a valid credential. Verify it immediately with the provider’s native
+connection check and expected app/resource identity before recording success or leaving/reloading the
+page. Retain the one-time display until verification succeeds so a wrong selector can be corrected
+without regenerating the credential.
 
 Capture is for an authorized integration's displayed credential, never account session tokens or cookies.
 It requires permission under the active browser policy; explicit owner authorization can narrow an

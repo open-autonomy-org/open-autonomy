@@ -540,10 +540,17 @@ When the agreed integration displays its new credential on a page, use the stand
 command to transfer that one field directly into protected storage. The SDK README documents the command
 and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
 and bound task tab; do not launch a second browser or scrape the token with ordinary eval/snapshot tools.
-Confirm the project app and exact page first, then identify the single field from safe DOM structure
-without reading its value or snapshotting its container. Capture accepts an input value or a leaf text
+Confirm the project app and exact page first, then identify the single field within its credential-labeled
+section from safe DOM structure, without reading its value or snapshotting its container. A unique Copy
+button is not enough: provider pages also have copyable app IDs and permission calculators. Capture accepts an input value or a leaf text
 element; it returns only a saved-path receipt and keeps the credential outside agent context and logs.
 The helper does not navigate, click Reveal/Reset, solve challenges, or choose which integration to trust.
+Immediately verify the saved credential through the provider’s native connection check, including the
+expected app identity and agreed resource access. A saved-path receipt proves only that a field was
+stored. Keep the provider page open until this check succeeds; do not reload, navigate away or record
+credential success first. On rejection, reconcile the chosen field while the actual credential may still
+be displayed. Preserve the rejected capture in protected storage; never overwrite it silently or start
+with another token reset. Regeneration is recovery only after the original credential is unavailable.
 
 Honor the active browser policy. Authorization to capture the agreed app's displayed credential is
 limited to that protected transfer, never browser session tokens or cookies. If an active policy forbids
