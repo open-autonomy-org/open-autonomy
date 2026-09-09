@@ -128,14 +128,14 @@ if (codexArg) {
     } finally { refreshing = undefined; }
   })());
   const fresh = async (): Promise<CodexTokens> => { const t = read().tokens; return expiresAt(t) - Date.now() < 5 * 60_000 ? refresh() : t; };
-  const forward = async (req: Request, path: string, tokens: CodexTokens): Promise<Response> => {
+  const forward = async (req: Request, path: string, tokens: CodexTokens, body?: ArrayBuffer): Promise<Response> => {
     const headers = new Headers(req.headers);
     for (const h of ['host', 'authorization', 'chatgpt-account-id', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
     headers.set('authorization', `Bearer ${tokens.access_token}`);
     const account = accountOf(tokens); if (account) headers.set('ChatGPT-Account-Id', account);
     headers.set('originator', 'codex_cli_rs');
     headers.set('user-agent', 'codex_cli_rs/0.153.2');
-    return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body, redirect: 'manual' });
+    return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body, redirect: 'manual' });
   };
   Bun.serve({
     hostname: '127.0.0.1', port,
@@ -147,9 +147,11 @@ if (codexArg) {
       if (!u.pathname.startsWith('/backend-api/codex/')) return new Response('not found: the Codex backend lives under /backend-api/codex/\n', { status: 404 });
       const path = u.pathname.slice('/backend-api/codex'.length) + u.search;
       try {
+        // A known-length body avoids chunked uploads rejected by the Codex backend and can be replayed after refresh.
+        const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
         let tokens = await fresh();
-        let res = await forward(req, path, tokens);
-        if (res.status === 401) { tokens = await refresh(); res = await forward(req.clone(), path, tokens); }
+        let res = await forward(req, path, tokens, body);
+        if (res.status === 401) { tokens = await refresh(); res = await forward(req, path, tokens, body); }
         const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
         return new Response(res.body, { status: res.status, headers: out });
       } catch (e) { return new Response(JSON.stringify({ error: { code: 'codex_unavailable', message: (e as Error).message } }), { status: 502, headers: { 'content-type': 'application/json' } }); }
