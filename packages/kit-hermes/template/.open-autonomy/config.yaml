@@ -42,3 +42,5 @@ rails:
   partner:                    # a partner service settling a metered charge against the balance
     max_usd_cents: 0          # the most one charge may be
     partners: []              # the partner ids allowed to settle
+# seats: ~/work/seats   # a directory under which workers open Claude Code sessions, one worktree per task: followed
+#                       # from this user's ~/.claude and published as runs of the task, on the seat's own subscription

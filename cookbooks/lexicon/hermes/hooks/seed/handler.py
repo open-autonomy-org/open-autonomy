@@ -115,14 +115,27 @@ async def handle(event_type: str, context: dict) -> None:
             continue
         job = live_by_name.get(name)
         if job is not None:
-            if bool(spec.get("no_agent")) or ((job.get("model") or None) == model and (job.get("provider") or None) == provider):
+            # The seed is the job's definition: a prompt, a skill, a schedule, a monitor or a delivery that moved in
+            # the seed moves in the live job (its id, its history and its enabled state stay); the model pin follows
+            # config.yaml. What the seed does not name is left as the operator set it.
+            updates = {}
+            if not bool(spec.get("no_agent")) and ((job.get("model") or None) != model or (job.get("provider") or None) != provider):
+                updates.update({"model": model, "provider": provider})
+            for field, live_key in (("prompt", "prompt"), ("skills", "skills"), ("monitor_script", "monitor_script"), ("monitor_url", "monitor_url"), ("script", "script"), ("enabled_toolsets", "enabled_toolsets")):
+                if field in spec and (spec.get(field) or None) != (job.get(live_key) or None):
+                    updates[live_key] = spec.get(field) or None
+            if "deliver" in spec and _deliver_target(name, spec.get("deliver")) != job.get("deliver"):
+                updates["deliver"] = _deliver_target(name, spec.get("deliver"))
+            if "schedule" in spec and spec.get("schedule") != ((job.get("schedule") or {}).get("display") if isinstance(job.get("schedule"), dict) else job.get("schedule")):
+                updates["schedule"] = spec.get("schedule")
+            if not updates:
                 continue
             try:
-                update_job(job["id"], {"model": model, "provider": provider})
+                update_job(job["id"], updates)
                 repinned += 1
-                logger.info("seed: re-pinned job '%s' to %s / %s (config.yaml moved)", name, provider, model)
+                logger.info("seed: refreshed job '%s' from the seed (%s)", name, ", ".join(sorted(updates)))
             except Exception as e:
-                logger.error("seed: failed to re-pin job '%s': %s", name, e)
+                logger.error("seed: failed to refresh job '%s': %s", name, e)
             continue
         try:
             create_job(
