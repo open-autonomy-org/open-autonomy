@@ -4,7 +4,7 @@ The agent is four processes: an ssh-agent holding the deploy key, the valve hold
 developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
 the Hermes gateway. For normal fleet operation, `.open-autonomy/start.ts` manages the complete stack.
 The same stack serves every model choice. On the owner's Codex subscription (`provider: openai-codex`, plain
-Hermes), bare Hermes adopts the Codex CLI's login itself; in the container the start script forwards it: the
+Hermes), bare Hermes holds its own login in its home (`hermes auth login openai-codex`, once); in the container the start script forwards it: the
 root valve holds `codex.json` and serves the Codex protocol on its third port, the home's `.env` points the
 provider there, and the login never enters the agent.
 Before activation, the setup agent can run the SDK valve alone in a one-off container with its entrypoint

@@ -13,8 +13,8 @@
 // port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
 // desk posts is the app's, and the key never enters the agent.
 //
-// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it adopts the
-// Codex CLI's login itself and this script does nothing for it. Where the login must stay out of the agent (a container)
+// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it holds its
+// own login in the home (`hermes auth login openai-codex`, once) and this script only checks that it does. Where the login must stay out of the agent (a container)
 // or the model is a twin (a world), this script forwards: <secrets>/codex.json (the Codex CLI's auth.json tokens, the
 // setup's copy), when present, is served by the valve on the third port and refreshed there; HERMES_CODEX_BASE_URL in
 // this script's own environment names a world's model twin instead. Either way the home's .env points the provider
@@ -208,17 +208,24 @@ const channelLine = /^[A-Z][A-Z0-9_]*=/;
 if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => channelLine.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (channelLine.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
 else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
-// Hermes's openai-codex provider takes its bearer from the home's credential pool and has none to adopt where the
-// login is kept out; forwarded, the valve or the twin supplies the real one, so the pool carries a stand-in.
-if (codexForward) {
+// Hermes's own openai-codex provider takes its bearer from the home's auth store (its Codex session, kept there by
+// `hermes auth login openai-codex`, refreshed by Hermes). Forwarded, the valve or the twin supplies the real bearer,
+// so the store carries a stand-in: a token that is not a JWT, which Hermes sends as it is and never tries to refresh.
+// Bare, the store must hold Hermes's own login; a missing one stops the start, as a missing key does.
+const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
+if (onCodex) {
   const authFile = resolve(home, 'auth.json');
-  let store: { credential_pool?: Record<string, Array<Record<string, unknown>>> } = {};
+  let store: { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<{ access_token?: unknown }>> } = {};
   try { store = JSON.parse(readFileSync(authFile, 'utf8')); } catch { /* no store yet */ }
-  const pool = (store.credential_pool ??= {});
-  const entries = pool['openai-codex'] ?? [];
-  if (!entries.some((e) => typeof e?.access_token === 'string' && e.access_token)) {
-    pool['openai-codex'] = [...entries, { access_token: 'valve', refresh_token: '', source: 'valve' }];
+  const state = ((store.providers ??= {})['openai-codex'] ??= {});
+  const held = !!state.tokens?.access_token || ((store.credential_pool ?? {})['openai-codex'] ?? []).some((e) => typeof e?.access_token === 'string' && e.access_token);
+  if (codexForward && !state.tokens?.access_token) {
+    state.tokens = { access_token: 'valve', refresh_token: 'valve' };
+    state.last_refresh = new Date().toISOString();
     writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+  } else if (!codexForward && !held) {
+    console.error(`start: the model is the Codex subscription (provider openai-codex) and ${authFile} holds no login — run \`HERMES_HOME=${home} hermes auth login openai-codex\` once, then start again`);
+    process.exit(1);
   }
 }
 own(home);
