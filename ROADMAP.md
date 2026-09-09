@@ -70,7 +70,7 @@ Dispatch: hold
 Source: the owner's ruling that the non-containerized fleet is plain Hermes and containerization forwards everything, one merely safer than the other. [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509) had made the container a precondition of the native path instead.
 
 Completion:
-- Bare: `provider: openai-codex` in both profiles runs with nothing prepared; Hermes adopts the Codex CLI's login itself.
+- Bare: `provider: openai-codex` in both profiles runs on Hermes's own login in the home, one `hermes auth login openai-codex`; the start refuses without it.
 - Container: the start script forwards through the valve's Codex port with a stand-in credential in the home's auth store; the login never enters the agent. Proven by one turn in the managed container on a Docker host.
 - A world points the provider at its model twin through `HERMES_CODEX_BASE_URL`; the rehearsal engine sets it and a story passes on it.
 

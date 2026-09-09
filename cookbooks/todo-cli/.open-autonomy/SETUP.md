@@ -349,9 +349,10 @@ Local Codex is plain Hermes on its own `openai-codex` provider: the same agent l
 and channels as any other model, with the model turn on the owner's ChatGPT allowance. The fleet looks
 the same wherever it runs; only what carries the login differs.
 
-- **Bare, on this computer:** nothing to prepare. Hermes adopts the Codex CLI's login into its own session
-  and refreshes it itself. The login sits in the agent's home, the accepted trade of every bare fleet
-  (`container/README.md`).
+- **Bare, on this computer:** Hermes's own login, once: `HERMES_HOME=<home> hermes auth login openai-codex`
+  (its device-code sign-in with the same ChatGPT account, or its offer to import the Codex CLI's login).
+  Hermes keeps and refreshes that session in the agent's home, the accepted trade of every bare fleet
+  (`container/README.md`); the start script refuses to start without it.
 - **In the container:** the start script forwards. The root valve holds a copy of the login (codex.json
   in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
   serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
