@@ -346,8 +346,11 @@ does not complete this integration. The vendored
 `.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
 and environment checks. The vendored `.open-autonomy/sdk/codex-host.ts` starts one installed Codex process per
 Hermes session, with native container MCP configuration and separate worker context. The supervisor
-still needs the protected container connection and host-side reporting before it can replace the
-activation guard. Do not run the fleet as the operator,
+still needs the protected container connection and complete service supervision before it can replace the
+activation guard. Run the existing reporter on the host with `--container <id> --project <container checkout>
+--state-file <host cursor file>` and `HERMES_HOME=<container home>`. Its Supercode reader executes inside
+the container over Docker stdio; filtering, publishing and the cursor stay on the host. Verify public
+transcripts, privacy exclusions and restart continuity against the platform before activation. Do not run the fleet as the operator,
 offer bare execution as a substitute, or silently switch an agreed local choice to project-funded models.
 
 An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup
