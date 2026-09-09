@@ -20,7 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
-import { localCodexLogin, probeLocalCodex, checkLocalCodexProfiles, LOCAL_CODEX_ACTIVATION_BLOCKED } from '@open-autonomy/sdk/local-codex';
+import { localCodexLogin, probeLocalCodex, checkLocalCodexProfiles } from '@open-autonomy/sdk/local-codex';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -128,9 +128,9 @@ export function recommend(s: Situation, selected: Door[] = []): Recommendation[]
   out.push({ door: 'github-app', suggested: 'yes', reason: "the community desk answers the repository's issues and discussions as the project's own GitHub App — one approval, and it reaches everyone who already found the repository", cost: 'browser-led registration and installation; the credential receiver handles the secret handoff' });
   out.push({ door: 'discord', suggested: 'no', reason: 'select only if the owner agreed to Discord for development; available credentials do not choose the communication platform or destination', cost: s.discordToken ? 'verify the existing application belongs to this project, then authorize its agreed server' : 'guided browser setup: project application, secure token entry and server authorization' });
   out.push({ door: 'subscription', suggested: 'no', reason: s.codex
-    ? 'the installed local Codex reports a ChatGPT login: offer this choice alongside Open Autonomy models, explaining that isolated local activation is not implemented yet; verify model access separately'
+    ? 'the installed local Codex reports a ChatGPT login: offer this choice alongside Open Autonomy models, explaining the required host/container service; verify model access and the project runtime separately'
     : 'local Codex is unavailable or has no verified ChatGPT login: offer Open Autonomy models or guided local Codex sign-in',
-    cost: 'local Codex uses this computer and its operator’s allowance, with activation currently blocked; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
+    cost: 'local Codex uses this computer and its operator’s allowance, through the prepared host/container service; Open Autonomy models use project funds and can run on an agreed local or hosted fleet' });
   if (selected.includes('sponsors')) out.push(s.sponsorsListing
     ? { door: 'sponsors', suggested: 'later', reason: `${s.owner} has an approved GitHub Sponsors listing; sponsorships of an org land on the platform's grants pool and are given on to projects, and per-org routing for other orgs is not on the platform yet`, cost: 'a webhook in your Sponsors dashboard, when the platform routes it' }
     : { door: 'sponsors', suggested: 'no', reason: 'no Sponsors listing; when you want patrons, GitHub Sponsors or Polar are the two doors, and the project page shows the tiers the moment either exists', cost: 'nothing now' });
@@ -330,7 +330,7 @@ async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promi
   say('  Checking the installed Codex account and agreed model; authentication stays with Codex.');
   say('  Codex startup warning: the installed CLI may pause while preparing or indexing its local database, especially with an existing session history. Setup waits up to three minutes. A timeout alone does not mean your login is broken; inspect Codex startup before restarting or signing in again.');
   const verified = await probeLocalCodex({ stateDir, model: config.model.default });
-  mark(s.dir, st, 'subscription', `installed Codex confirmed ChatGPT and ${verified.model}; project database state at ${stateDir}; container execution and activation remain blocked`);
+  mark(s.dir, st, 'subscription', `installed Codex confirmed ChatGPT and ${verified.model}; project database state at ${stateDir}; native metadata verified; setup agent verifies and installs the isolated host/container service separately`);
 }
 
 function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
@@ -338,7 +338,7 @@ function printStart(s: Situation, opts: Opts, localCodex: boolean): void {
   // that work by starting the fleet here, or mark a printed command as a completed activation.
   say('\nInfrastructure prepared; project setup still needs the setup agent to verify the shared branding on each integration, finish the team roster in .open-autonomy/config.yaml and communication practices in hermes/skills/project-communications/SKILL.md, verify native permissions and actual human release reviewers, and land those settings before activation. Reuse established evidence on a rerun; report unresolved identities explicitly.');
   if (localCodex) {
-    say(`\n${LOCAL_CODEX_ACTIVATION_BLOCKED}`);
+    say('\nFor local Codex, follow SETUP.md to install a trusted host service using .open-autonomy/local-runtime.ts and the local container target. Verify the complete project loop before reporting activation. The ordinary start.ts and managed Compose entrypoint do not run this arrangement.');
     return;
   }
   say(`\nAfter that verification, start ${opts.bare ? 'bare, as you — for development and fast debugging; the agent can reach its own keys' : 'in the container — the default for a real setup; the agent cannot reach its keys'}:`);
