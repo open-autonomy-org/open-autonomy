@@ -352,6 +352,10 @@ await sc.start();
 const query = { harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes };
 const index = await sc.subscribeSessionIndex(query);
 for (const d of index.initial) descriptors.set(d.locator.session_id, d);
+// The host can start Hermes once SDK discovery and native state are readable.
+// Historical publication may take minutes; replay is not a readiness condition.
+await nativeState();
+process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
 let cursor: string | undefined;
 do {
@@ -359,13 +363,9 @@ do {
   for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
   cursor = page.next_cursor ?? undefined;
 } while (cursor);
-// Startup readiness requires a readable native profile/run ledger. A retry log
-// from tick() is not successful SDK initialization.
-await nativeState();
 await tick();
 const poll = setInterval(requestTick, 5000); // observation cadence, never completion evidence
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {
   quitting = true; clearInterval(poll); void sc.close().then(() => process.exit(0));
 });
 log(`watching ${home} for ${cfg.account}`);
-process.send?.({ type: 'reporter-ready' });
