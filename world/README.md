@@ -88,8 +88,9 @@ Explicitly scripted judgment, with real Hermes cron, kit helpers, git landing, b
 mechanics, not unscripted judgment. The operator beats below drive one step at a time by hand. The PM's poll reads the
 outside pull request from the repository's issue list, as GitHub serves it; the published GitHub twin omits pull requests
 there, so this story runs with the twin from a checkout (`WORLD_GITHUB_CLI=<checkout>/packages/twin/github/src/cli.ts`),
-the GitHub twin alone: the checkout's Discord twin no longer creates a channel on its first message, so a whole
-checkout (`TWINS_ROOT`) stops at the seed.
+the GitHub twin alone. The checkout's Discord twin ships its own guild (the seed finds its text channel and writes it
+to the world's channels.env, which every door reads) but dispatches a person's message to the bot under an id it does
+not store, so the brain's reply is refused; Discord worlds stay on the published Discord twin until that is fixed.
 
 ```bash
 bun world/run.ts env -- bun rehearsal/operators/scrum.ts overlap   # existing integration work awaiting the outside PR
