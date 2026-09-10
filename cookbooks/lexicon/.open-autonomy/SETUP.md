@@ -675,6 +675,9 @@ The managed-container profiles use `terminal.shell_init_files` to activate the e
 environment after login-shell initialization; Docker PATH alone is insufficient. For a host install,
 set that native option to its actual activation file when the terminal cannot import Hermes APIs.
 Verify that a first GitHub poll discovers known repository activity before acknowledging its cursor.
+Also exercise native file creation and patching in a disposable checkout subdirectory. The managed
+container’s `HERMES_WRITE_SAFE_ROOT` includes `/opt/data` and `/work/project`; verify unrelated paths
+and protected credential paths remain denied. A working terminal does not prove file-tool access.
 
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.

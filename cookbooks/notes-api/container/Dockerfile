@@ -16,5 +16,7 @@ RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin
 # Login shells use /usr/local/bin; expose the installed World CLI there too.
 RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
+# Keep native file writes within the Hermes home and this project checkout.
+ENV HERMES_WRITE_SAFE_ROOT="/opt/data:/work/project"
 ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"
 ENTRYPOINT ["bun", "/opt/agent/.open-autonomy/start.ts", "--project", "/work/project", "--home", "/opt/data", "--secrets", "/secrets", "--as", "hermes"]
