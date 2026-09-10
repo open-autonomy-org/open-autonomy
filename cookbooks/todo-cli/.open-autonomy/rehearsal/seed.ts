@@ -110,7 +110,9 @@ if (process.env.DISCORD_TWIN_URL) {
     hello = await discord.post(`/api/v10/channels/${home}/messages`, { content: `home channel of ${ACCOUNT}` });
   }
   if (hello.status !== 200) throw new Error(`discord twin: seed channel → ${hello.status} ${hello.text.slice(0, 200)}`);
-  lines.push(`DISCORD_BOT_TOKEN=${token}`, `DISCORD_HOME_CHANNEL=${home}`, 'DISCORD_ALLOWED_CHANNELS=*', 'DISCORD_ALLOWED_USERS=*');
+  // The home channel is the brain's own: a person there is answered without addressing the bot (Hermes otherwise
+  // answers a guild message only when mentioned).
+  lines.push(`DISCORD_BOT_TOKEN=${token}`, `DISCORD_HOME_CHANNEL=${home}`, `DISCORD_FREE_RESPONSE_CHANNELS=${home}`, 'DISCORD_ALLOWED_CHANNELS=*', 'DISCORD_ALLOWED_USERS=*');
 }
 writeFileSync(resolve(SECRETS, 'channels.env'), `${lines.join('\n')}\n`);
 // The page reads the repository: sync it now rather than waiting for staleness.
