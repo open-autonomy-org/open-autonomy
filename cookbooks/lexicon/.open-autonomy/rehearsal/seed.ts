@@ -49,7 +49,14 @@ if (existsSync(resolve(project, '.git'))) { await git(project, 'remote', 'set-ur
 else await git(STACK, 'clone', '-q', remote, project);
 await git(project, 'config', 'user.name', 'agent'); await git(project, 'config', 'user.email', 'agent@example.test');
 // The reporter's dependencies are this checkout's, already installed: the world clone shares them.
-if (existsSync(resolve(ROOT, '.open-autonomy', 'node_modules')) && !existsSync(resolve(project, '.open-autonomy', 'node_modules'))) sh(['ln', '-sfn', resolve(ROOT, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules')]);
+if (existsSync(resolve(ROOT, '.open-autonomy', 'node_modules'))) {
+  if (!existsSync(resolve(project, '.open-autonomy', 'node_modules'))) sh(['ln', '-sfn', resolve(ROOT, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules')]);
+  // A directory-only node_modules/ rule does not ignore this warm-cache symlink.
+  // Keep our fixture out of Git status so restart can advance a clean checkout.
+  const exclude = resolve(project, await git(project, 'rev-parse', '--git-path', 'info/exclude'));
+  const prior = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
+  if (!prior.split('\n').includes('/.open-autonomy/node_modules')) writeFileSync(exclude, `${prior}\n/.open-autonomy/node_modules\n`);
+}
 // The maintainer's rule on main when the project lands through pull requests: the `ci` check, nobody bypasses. A
 // project whose brain writes main directly (its books) has no landing workflow and no protection.
 if (existsSync(resolve(ROOT, '.github', 'workflows', 'land.yml'))) {
