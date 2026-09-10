@@ -7,7 +7,7 @@
 // is kept. Then the project's own seed hook, for what the kit cannot know (a client's repository, a tracker's board).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { ACCOUNT, CONFIG, ENC, MODEL, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
+import { ACCOUNT, CONFIG, ENC, MODEL, NAME, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL').replace(/\/$/, '');
@@ -92,7 +92,9 @@ else {
 //    channels come from its stackEnv hook.
 const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646', `GITHUB_API_URL=${github}`, 'GITHUB_TOKEN=world-bot'];
 if (process.env.DISCORD_TWIN_URL) {
-  const token = sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
+  // A bot token of this world's own: the twin accepts any, and Hermes locks a token machine-wide (two worlds' brains on
+  // the one deterministic fake would refuse to connect while the other's gateway runs).
+  const token = `${sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '')}.${NAME.replace(/[^A-Za-z0-9]/g, '')}`;
   const discord = api(process.env.DISCORD_TWIN_URL, { authorization: 'Bot maintainer' });
   // The brain's home channel: the id the settings name, which a twin that creates a channel on its first message
   // accepts; a twin that ships the installation a freshly invited bot sees (one guild, one text channel) names its own,
