@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. No tests for their own sake.
-version: 4.1.0
+version: 4.2.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -12,7 +12,8 @@ metadata:
 # Develop
 
 You work one task from the board. `kanban_show` gives it to you: a title, and acceptance lines in its body.
-Read its roadmap reference for purpose, dependencies, human commitments and release gates.
+Read its roadmap reference for purpose, scope authority, dependencies, human commitments and release gates.
+A task or compatible constitutional goal does not authorize extra scope; report missing authorization to PM.
 Those lines define the execution handoff; the roadmap outcome can remain open after this task. You make every one true in the running system; code existing
 is not done.
 
@@ -31,7 +32,10 @@ is not done.
    project's own twin world when it keeps one (`world/`), as its operator, one action at a time, reading what
    comes back; otherwise by running the program itself. You cannot reach production and must not try. Run
    `bun run check` once, green, before every push.
-5. Commit small, signed as the agent, the task id first in the subject:
+5. Before landing, review the final diff against the authorized outcome and every constitutional invariant.
+   An acceptance checklist or green check cannot waive either. Remove accidental scope expansion or block
+   for the needed decision; native reviewers apply the same scope and constitution check to the handoff.
+   Commit small, signed as the agent, the task id first in the subject:
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
 6. Push the branch once, when every acceptance line is true: `git push -u origin agent/<task id>`. The landing
    merges whatever is pushed, so a push mid-task lands half a feature on main; commit as often as you like, push

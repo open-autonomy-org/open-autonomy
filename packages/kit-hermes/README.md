@@ -148,6 +148,16 @@ still equates the board and roadmap. No production or release permission changes
 kanban creation from a sourced, landed roadmap section marked `Dispatch: fleet`. Decisions, priorities,
 human commitments and release review stay with the Hermes skills, not a scheduler implemented by the kit.
 
+Strategy owns product-scope development under the owner's agreement in the existing project-communications
+skill. Activation (on demand, scheduled or agreed event) and authority (bounded autonomous decisions or
+proposals for human decision) are independent. The default is available on demand with proposals for human
+decision; no strategy cron job is seeded automatically. Native sessions and cron use the same strategy skill.
+PM always records explicit authorized requests, including from the agreed trackers, and manages delivery.
+PM may decompose an authorized outcome, but cannot create successor features from the constitution or an
+empty board. The constitution constrains scope at conception and implementation at merge. Upgrades add the
+skill without changing project-owned mandates or schedules; reconcile legacy PM-inferred drafts and old job
+prompts before dispatch. Keep strategic outcomes and unresolved proposals in ROADMAP.md, tasks in kanban.
+
 PM owns careful distillation: ROADMAP.md holds notable present/future intentions; CHANGELOG.md holds notable
 changes consolidated into main, separating Unreleased from released. Contributors need no special handoff
 or shared-document edit. Routine activity remains in source history. The native PM cron notepad carries

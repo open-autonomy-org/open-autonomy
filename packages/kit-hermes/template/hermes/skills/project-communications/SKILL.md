@@ -101,6 +101,32 @@ Hermes access settings; do not grant administrative access that bypasses the bou
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
 by a published run. Humans bring an appropriate public statement when private matters affect the project.
 
+## Strategy agreement
+
+During setup, establish two independent choices with the owner: when strategy runs (on demand,
+scheduled, or agreed events) and what it may decide (bounded autonomous scope or proposals for human
+decision). Record the objective, exclusions, research/input sources, decision-makers and actual discussion
+channel here in plain language, with the owner's source. Reuse existing roster identities and native
+permissions. No new policy schema or credential mechanism is needed.
+
+For example, a parity mandate names reference products/workflows and bounds; a daily discussion names
+the agreed participants and channel. Either can be scheduled or requested on demand. An issue tracker
+can supply explicit authorized requests to PM while strategy remains available on demand. Tracker
+presence, frequency, bot authorship and silence never grant scope authority. PM records explicit
+verified asks in all arrangements. Preserve the original request and obtain verified confirmation when
+the current roster cannot establish authority on that integration.
+
+Default until an owner agreement says otherwise: strategy is available on demand, prepares proposals
+for human decision, and has no automatic schedule or event trigger. The setup agent confirms or replaces
+this recommendation; it does not create a recurring job merely because the skill exists. Configure an
+agreed strategy job using native Hermes cron with skills: [strategy], or load strategy in a separate
+native chat session on request. Preserve existing schedules on upgrades; inspect live jobs for older
+scope-expanding PM prompts and reconcile their instructions without deleting history or checkpoints.
+
+An authorized strategy decision must fit both its mandate and the constitution. PM manages its delivery;
+PM does not assume strategy authority when it runs out of work. Requests needing new strategy activity
+follow the agreed activation policy. A policy change needs owner authority; neither agent may widen it.
+
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps
 requests requiring human review open.

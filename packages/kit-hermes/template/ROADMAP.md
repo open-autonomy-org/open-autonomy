@@ -1,6 +1,6 @@
 # __PROJECT__ roadmap
 
-Notable present/future intentions and outstanding outcomes, carefully maintained by the Hermes PM scrum. The owner sets direction; the fleet builds by default.
+Notable present/future intentions and outstanding outcomes, carefully maintained by the Hermes PM scrum. The owner sets direction and strategy's mandate; PM manages authorized delivery.
 Sources support decisions and claims. Ideas and unanswered requests are not commitments or dispatch orders.
 See the [PM skill](hermes/skills/open-autonomy/pm/SKILL.md) for the reconciliation cycle.
 
@@ -9,7 +9,7 @@ See the [PM skill](hermes/skills/open-autonomy/pm/SKILL.md) for the reconciliati
 Status: planned; reconcile with existing work before dispatch.
 Dispatch: hold
 
-Initial intention from the [starter seed](hermes/kanban.seed.json). No implementation or human commitment is implied.
+Initial intention from the [starter seed](hermes/kanban.seed.json). No scope authority, implementation or human commitment is implied; reconcile this placeholder with explicit owner direction before dispatch.
 
 Completion:
 - `bun run check` passes on a fresh clone.

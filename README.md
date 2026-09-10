@@ -24,6 +24,10 @@ is funded by people who want the project to exist and metered on public books. F
 4. **This install's own boilerplate** — the world (`world/`: the kit's rehearsal run in a cookbook, with the platform
    from this tree, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
 
+Strategy develops product scope under the owner's mandate, with activation and decision authority
+agreed during setup. It can research autonomously, collaborate with people or remain available on
+demand. PM always captures explicit authorized requests; an empty board does not authorize new scope.
+
 PM's hourly scrum reconciles contributions, conversations and fleet work into notable plans in `ROADMAP.md`
 and landed changes in `CHANGELOG.md`. Hermes kanban holds fleet execution. Contributors use ordinary commits,
 PRs and discussions; PM discovers them. PM also proposes release scope, version and a target window, then
