@@ -55,7 +55,13 @@ function stackEnv(bin: string): Record<string, string> {
   // A brain on the owner's Codex subscription (Hermes's own openai-codex provider) is pointed at the model twin's
   // Responses door instead: the start script writes this into the home's .env and gives the provider a stand-in
   // credential, the same forwarding a container uses for the valve.
-  if (world.GATEWAY_TWIN_URL && onCodex()) base.HERMES_CODEX_BASE_URL = `${world.GATEWAY_TWIN_URL.replace(/\/$/, '')}/v1`;
+  // REHEARSAL_MODEL=real is the dress rehearsal: the brain thinks on the computer's own Codex login (the start script
+  // adopts it, as live) while every vendor is still a twin and the seats stay dry. A story's exact words are the
+  // scripted brain's; a real one is judged by reading what it did.
+  if (world.GATEWAY_TWIN_URL && onCodex()) {
+    if (process.env.REHEARSAL_MODEL === 'real') console.log('stack: DRESS REHEARSAL — the brain on the real Codex subscription, the vendors twins, the seats dry');
+    else base.HERMES_CODEX_BASE_URL = `${world.GATEWAY_TWIN_URL.replace(/\/$/, '')}/v1`;
+  }
   return { ...base, ...(h.stackEnv ? h.stackEnv(context()) : {}) };
 }
 function start(): void {

@@ -7,6 +7,10 @@ import { resolve } from 'node:path';
 export const KIT_DIR = import.meta.dir;                       // .open-autonomy/rehearsal (the kit's)
 export const ROOT = resolve(KIT_DIR, '..', '..');             // the project
 export const REHEARSAL = resolve(ROOT, 'rehearsal');          // the project's: world.json, model/, stories/, hooks.ts
+// The project's rehearsal settings (rehearsal/env, KEY=VALUE, never a secret): the world's name, where its state lives,
+// a twins checkout, the client's repository and branch prefix, the tracker's project and its people. Defaults for this
+// process, never over what the operator exported; read first, since everything below follows from them.
+for (const [k, v] of Object.entries(readEnvFile(resolve(REHEARSAL, 'env')))) if (process.env[k] === undefined) process.env[k] = v.replace(/\$HOME|^~(?=\/)/g, process.env.HOME ?? '');
 export const NAME = process.env.REHEARSAL_WORLD ?? `${readConfig().account.replace('/', '-')}-rehearsal`;
 // The twins: the published packages in the project's .open-autonomy/node_modules (@volter/twin-world and one
 // @volter/twin-<vendor> per twin), or a checkout named by TWINS_ROOT when the twins themselves are being developed.

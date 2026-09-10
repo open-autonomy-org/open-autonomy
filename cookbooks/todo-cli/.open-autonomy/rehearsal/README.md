@@ -18,11 +18,19 @@ that needs a real credential is not a story.
   story.ts                   one story, act by act, with the brain's monitors ticked after each act
   lib.ts                     where the world's state lives, the twins' CLIs, the project's hooks
 rehearsal/                   the project's own — seeded once, yours to write
+  env                        settings, never secrets: REHEARSAL_WORLD, WORLD_STATE_ROOT, TWINS_ROOT, OPEN_AUTONOMY_ROOT,
+                             REHEARSAL_CLIENT_REPO, REHEARSAL_BRANCH_PREFIX, REHEARSAL_JIRA_PROJECT, REHEARSAL_ASSIGNEE,
+                             REHEARSAL_CLIENT, REHEARSAL_VALVE_PORT, WORLD_HERMES_BIN ($HOME expands; the shell's export wins)
   world.json                 the twins this project's channels need (${TWIN:github}, ${KIT_DIR}, ${SCENARIO}, ${DATA})
   model/scenario.ts|.py      the scripted brain: prints the scenario document the model twin serves
   stories/*.jsonl            one story per shape of the method
   hooks.ts                   custody, seed, acts, conditions, stackEnv — what the kit cannot know
 ```
+
+A brain on the owner's Codex subscription (`provider: openai-codex`) is pointed at the model twin's Responses door by the
+stack. `REHEARSAL_MODEL=real bun .open-autonomy/rehearsal/run.ts up` is the dress rehearsal: the brain thinks on the
+computer's own Codex login while every vendor is still a twin and the seats stay dry; a story's exact words are the
+scripted brain's, so a real one is judged by reading what it did, not by the runner's verdict.
 
 ## Running it
 
