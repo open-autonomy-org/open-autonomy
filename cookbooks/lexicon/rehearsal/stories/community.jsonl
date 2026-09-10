@@ -5,5 +5,3 @@
 {"until":{"channel":"shared glossary"},"budget":90}
 {"job":"pm"}
 {"until":{"roadmap":"## community-twin:"},"budget":300}
-{"job":"pm"}
-{"until":{"board":{"title":"add the term \"twin\" to the lexicon","status":"done"}},"budget":420}

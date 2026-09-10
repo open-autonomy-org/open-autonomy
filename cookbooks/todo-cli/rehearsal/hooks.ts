@@ -56,6 +56,12 @@ const hooks: Hooks = {
       const r = await adm.post(`/admin/accounts/${account}/mint`, { amount_usd_cents: amount, key, ...extra });
       if (r.status !== 200) throw new Error(`platform: ${key} → ${r.status} ${r.text.slice(0, 200)}`);
     }
+    // The deployed service reports the commit the kit applied: main moves past it with the owner's commits below, so the
+    // page reads a service behind main, and a release has later main commits to consider.
+    await git(ctx.stack.project, 'fetch', '-q', 'origin', 'main');
+    const deployed = (await git(ctx.stack.project, 'rev-parse', '--short', 'origin/main')).trim();
+    const live = await api(ctx.world.LIVE_SERVICE_URL).post('/_world/commit', { commit: deployed });
+    if (live.status !== 200) throw new Error(`live service: set commit → ${live.status} ${live.text.slice(0, 200)}`);
     // The owner's opening moves on the twin's main: the bounds allow the previous model and name the deployed service
     // the page compares with main; the brain's config names the previous model until the owner moves it (the
     // `between-tasks` act); the opening position a story asked for (REHEARSAL_IDLE, REHEARSAL_RELEASE, the owner's door).
@@ -69,10 +75,7 @@ const hooks: Hooks = {
     if (process.env.REHEARSAL_RELEASE === '1') { const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json')); for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local'; await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, "jobs.seed.json: the PM's routine report stays local"); }
     const door = process.env.REHEARSAL_OWNER_DOOR ?? 'discord';
     await putMain(ctx, 'hermes/skills/project-communications/SKILL.md', `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${door === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${HOME_CHANNEL}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`, 'project-communications: the owner\'s door for release review');
-    // The deployed service reports main's commit; the page reads the repository now.
-    const commit = (await git(ctx.stack.project, 'rev-parse', '--short', 'origin/main')).trim();
-    const live = await api(ctx.world.LIVE_SERVICE_URL).post('/_world/commit', { commit });
-    if (live.status !== 200) throw new Error(`live service: set commit → ${live.status} ${live.text.slice(0, 200)}`);
+    // The page reads the repository now.
     const synced = await adm.post(`/admin/accounts/${ENC}/sync`);
     if (synced.status !== 200) throw new Error(`platform: sync → ${synced.status}`);
     if (process.env.REHEARSAL_SCRUM === '1') await hooks.acts!['scrum-seed'](ctx, {});
