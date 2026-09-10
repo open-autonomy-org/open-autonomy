@@ -281,10 +281,12 @@ if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
-//    .open-autonomy/package.json) are installed on the first start of a bare checkout.
+//    .open-autonomy/package.json) are reconciled before every bare start. A failed install
+//    can leave node_modules behind; its existence is not evidence of a complete installation.
 const env = agentEnv();
-if (!existsSync(resolve(import.meta.dir, 'node_modules'))) {
-  const install = Bun.spawnSync({ cmd: drop(['bun', 'install']), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
+{
+  const locked = ['bun.lock', 'bun.lockb'].some(file => existsSync(resolve(import.meta.dir, file)));
+  const install = Bun.spawnSync({ cmd: drop(['bun', 'install', ...(locked ? ['--frozen-lockfile'] : [])]), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
   if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }
   say(`reporter dependencies installed in ${import.meta.dir}`);
 }

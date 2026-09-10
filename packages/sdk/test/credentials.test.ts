@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { captureCredential, checkCredentialDirectory, receiveCredential } from '../src/credentials.ts';
 const roots: string[] = [];
 const receivers: ReturnType<typeof receiveCredential>[] = [];
+// Pre-commit runs inside Git's own environment; fixture repositories are independent.
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
 const root = () => { const dir = mkdtempSync(join(tmpdir(), 'oa-credential-test-')); roots.push(dir); return dir; };
 const receive = (file: string, repo?: string) => { const receiver = receiveCredential(file, repo); receivers.push(receiver); return receiver; };
 afterEach(() => { for (const receiver of receivers.splice(0)) receiver.close(); for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -44,7 +46,7 @@ test('wrong origin and state cannot save a credential or consume the receiver', 
 
 test('repository destinations and symlinks to them are refused before writing', () => {
   const dir = root(); const repo = join(dir, 'repo'); mkdirSync(repo);
-  expect(spawnSync('git', ['init', '-q', repo]).status).toBe(0);
+  expect(spawnSync('git', ['init', '-q', repo], { env: gitEnv }).status).toBe(0);
   const alias = join(dir, 'alias'); symlinkSync(repo, alias);
   for (const at of [repo, alias]) expect(() => receiveCredential(join(at, 'new-directory', 'token'))).toThrow('inside a repository');
   expect(existsSync(join(repo, 'new-directory'))).toBe(false);
@@ -56,10 +58,20 @@ test('credential directory validation permits existing storage but rejects Git m
   expect(checkCredentialDirectory(protectedDir)).toBe(realpathSync(protectedDir));
   expect(checkCredentialDirectory(join(alias, 'new'))).toBe(join(realpathSync(protectedDir), 'new'));
   const repo = join(dir, 'repo'); const bare = join(dir, 'bare');
-  expect(spawnSync('git', ['init', '-q', repo]).status).toBe(0);
-  expect(spawnSync('git', ['init', '-q', '--bare', bare]).status).toBe(0);
+  expect(spawnSync('git', ['init', '-q', repo], { env: gitEnv }).status).toBe(0);
+  expect(spawnSync('git', ['init', '-q', '--bare', bare], { env: gitEnv }).status).toBe(0);
   for (const at of [repo, join(repo, '.git'), bare]) expect(() => checkCredentialDirectory(join(at, 'credentials'))).toThrow('inside a repository');
   expect(() => checkCredentialDirectory('relative')).toThrow('absolute path');
+  const previous = process.env.GIT_DIR;
+  try {
+    process.env.GIT_DIR = join(repo, '.git');
+    expect(checkCredentialDirectory(protectedDir)).toBe(realpathSync(protectedDir));
+    process.env.GIT_DIR = join(dir, 'missing');
+    expect(() => checkCredentialDirectory(join(repo, 'credentials'))).toThrow('inside a repository');
+  } finally {
+    if (previous === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = previous;
+  }
 });
 
 test('GitHub handoff rejects callbacks without the receiver state before exchanging any code', async () => {

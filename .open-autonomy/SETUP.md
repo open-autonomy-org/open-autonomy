@@ -362,7 +362,10 @@ the same wherever it runs; only what carries the login differs.
 - **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
   forwarding points the provider at the twin's Responses door.
 
-`--with subscription` checks `codex login status` and writes both profiles' model block:
+`--with subscription` checks `codex login status` and switches profiles that are not already on
+`openai-codex` to the kit's starter model. It does not discover or select the owner's exact model.
+Before activation, the setup agent reconciles **both** `hermes/config.yaml` and
+`hermes/profiles/treasurer/config.yaml` with the agreed, locally verified model:
 
 ```yaml
 model:
