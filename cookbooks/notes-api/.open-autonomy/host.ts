@@ -22,7 +22,7 @@ export async function startHost(options: {
   const state = checkCredentialDirectory(resolve(options.state ?? resolve(homedir(), '.local/state/open-autonomy', account, 'host')));
   mkdirSync(state, { recursive: true, mode: 0o700 });
   const keys = ['agent.env', 'treasurer.env'].map(name => resolve(secrets, name));
-  const github = resolve(secrets, 'github-app.json'), subscription = resolve(secrets, 'codex.json');
+  const github = resolve(secrets, 'github-app.json');
   if ([...keys, github].some(path => !existsSync(path))) throw new Error('Restore the project credentials and installed GitHub App before starting Hermes');
   const kit = JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8'));
   await verifyContainer({ container, home, workspace });
@@ -61,7 +61,7 @@ export async function startHost(options: {
     const ports = [port, port + 1, port + 3];
     const args = keys.flatMap((file, i) => ['--key', `${file}:${port + i}`]);
     args.push('--github-app', `${github}:${port + 3}`);
-    if (existsSync(subscription)) { args.push('--codex', `${subscription}:${port + 2}`); ports.push(port + 2); }
+    args.push('--codex', String(port + 2));
     own('valve', ['bun', resolve(import.meta.dir, 'sdk/valve.ts'), '--loopback', ...args]);
     await ready(async () => {
       try { return (await Promise.all(ports.map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
@@ -72,7 +72,7 @@ export async function startHost(options: {
     const prepared = await prepareContainerHome({ container, home, workspace });
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
     const onCodex = prepared.models.some(model => model?.provider === 'openai-codex');
-    if (onCodex && !existsSync(subscription)) throw new Error('The committed model needs the protected Codex subscription credential');
+    if (onCodex && !(await fetch(`http://127.0.0.1:${port + 2}/healthz`, { signal: AbortSignal.timeout(125_000) })).ok) throw new Error('The committed model needs the current host Codex ChatGPT login; check the service user and CODEX_HOME');
     const codexBase = onCodex ? `${host}:${port + 2}/backend-api/codex` : '';
     if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
     const channelsFile = resolve(secrets, 'channels.env');

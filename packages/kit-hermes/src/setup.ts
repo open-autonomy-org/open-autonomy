@@ -20,6 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
+import { codexAccess } from '@open-autonomy/sdk/codex-auth';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -328,25 +329,11 @@ function codexLogin(): boolean {
   return r.status === 0 && /logged in using ChatGPT/i.test(`${r.stdout ?? ''}\n${r.stderr ?? ''}`);
 }
 
-// The subscription is plain Hermes: its own openai-codex provider in both profiles. Bare, Hermes adopts the Codex
-// CLI's login itself; the container's start script forwards through the valve, which needs its own copy of the login.
-function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
-  const dst = join(opts.secrets, 'codex.json');
-  say(`\nSubscription: hermes/config.yaml and the treasurer's profile name Hermes's own openai-codex provider. Bare, Hermes adopts the Codex CLI's login itself. For the container, the login is copied once to ${dst}: the valve serves it on its third port and refreshes it, and the start script points the provider there with a stand-in credential, so the login never enters the agent.`);
+// Both launch modes use the host Codex login through the same valve.
+async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promise<void> {
+  say("\nSubscription: both Hermes profiles use openai-codex through the host valve. The installed Codex owns the current login and refresh. Setup does not copy credentials; run the host service as this user with the same CODEX_HOME.");
   if (opts.plan) return;
-  if (!opts.bare) {
-    // The CLI may authenticate from a configured home or an OS credential store.
-    // Only an actual usable file can be transferred to this host valve.
-    const src = join(resolve(process.env.CODEX_HOME ?? join(homedir(), '.codex')), 'auth.json');
-    const source = existsSync(dst) ? dst : src;
-    if (!existsSync(source)) throw new Error('Codex login succeeded but no transferable auth.json is available in its configured home. Complete protected host credential preparation using the installed Codex authentication method before resuming; subscription setup is incomplete.');
-    if (lstatSync(source).isSymbolicLink()) throw new Error('Reconcile the subscription credential symlink before setup; it was not followed.');
-    const raw = readFileSync(source);
-    let usable = false;
-    try { const value = JSON.parse(raw.toString()); usable = typeof value.tokens?.access_token === 'string' && !!value.tokens.access_token && typeof value.tokens?.refresh_token === 'string' && !!value.tokens.refresh_token; } catch { /* Never include credential text in a parse error. */ }
-    if (!usable) throw new Error('The subscription credential is not usable by the host valve. Reconcile the protected credential before resuming; setup did not replace it.');
-    if (!existsSync(dst)) { mkdirSync(opts.secrets, { recursive: true, mode: 0o700 }); writeFileSync(dst, raw, { mode: 0o600, flag: 'wx' }); }
-  }
+  await codexAccess();
   for (const rel of ['hermes/config.yaml', 'hermes/profiles/treasurer/config.yaml']) {
     const cfg = join(s.dir, rel);
     if (!existsSync(cfg)) continue;
@@ -355,7 +342,7 @@ function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
     writeFileSync(cfg, text.replace(/^model:\n(?:  .*\n)+/m, 'model:\n  default: gpt-5.6-sol\n  provider: openai-codex\n'));
     say(`  ${rel} now names the subscription; reconcile the model with the owner's choice and commit it with the rest.`);
   }
-  mark(s.dir, st, 'subscription', `openai-codex in both profiles${existsSync(dst) ? `; the container's copy of the login at ${dst}` : ''}`);
+  mark(s.dir, st, 'subscription', 'openai-codex in both profiles; current host Codex login, no project credential copy');
 }
 
 function printStart(s: Situation, opts: Opts): void {
@@ -500,7 +487,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
-  if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
+  if (st.doors.subscription === 'yes') await stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   printStart(s, opts);
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
