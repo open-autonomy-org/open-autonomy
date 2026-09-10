@@ -12,7 +12,10 @@ export function checkCredentialDirectory(directory: string): string {
   if (!isAbsolute(directory)) throw new Error('Credential destination must be an absolute path outside a repository.');
   let parent = directory;
   while (!existsSync(parent)) parent = dirname(parent);
-  const git = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: realpathSync(parent), encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+  // Git hooks and callers may pin another checkout with GIT_DIR/GIT_WORK_TREE or
+  // stop discovery with GIT_CEILING_DIRECTORIES. Inspect the destination itself.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+  const git = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: realpathSync(parent), encoding: 'utf8', env: { ...env, LC_ALL: 'C' } });
   if (git.error) throw new Error('Git must be available to verify that the credential destination is outside a repository.');
   if (git.status === 0) throw new Error('Credentials cannot be saved inside a repository. Choose the runtime host’s protected credential directory.');
   if (!git.stderr.includes('not a git repository')) throw new Error('Cannot verify the credential destination’s Git boundary. Resolve the Git error before receiving a secret.');

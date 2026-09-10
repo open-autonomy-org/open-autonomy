@@ -48,7 +48,14 @@ An empty roster grants nobody authority; establish its first owner from the exis
 and owner-led setup, never merely from the helper's authenticated account. Preserve the owner's repository review policy. Verify the source of each authority grant: a merged
 agent-authored assertion alone does not establish human authorization.
 
-Before activation, verify that the owner is recognized on each enabled avenue, an ordinary member is not
+The current roster supports GitHub and Discord identities. Other channels, including Slack, may carry
+discussion and outreach, but cannot establish project authority in this kit. For those channels, agree
+during setup that direction, delegation and release decisions are confirmed by the person's verified
+GitHub account; record this routing policy here, without duplicating their IDs. Keep the original
+discussion as context and source the authoritative confirmation. Do not invent unsupported roster fields
+or treat a Slack display name as identity evidence.
+
+Before activation, verify that the owner is recognized on each agreed authority avenue, an ordinary member is not
 recognized as the owner, and the actual release reviewers match the agreement. Use the world for message
 rehearsals; do not send live test messages without authorization. Land the agreement and native settings,
 start/reload Hermes through the existing lifecycle, and verify what it loaded before reporting completion.
