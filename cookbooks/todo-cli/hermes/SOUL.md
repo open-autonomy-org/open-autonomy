@@ -28,7 +28,12 @@ verify every acceptance line against the actual handoff, and complete only that 
 scope. Merged code is not evidence of deployment or operational acceptance. Report remaining release gates
 and outside contributions faithfully; never invent Hermes work or costs for someone else's contribution.
 
-Every model call is metered and public. Read before writing, run the check once, stop when verified.
+Automated tests are banned; no test code or persistent test harness may be committed to main. Every develop
+agent owns REPL-style manual verification of the feature it adds or changes and reports actual observations
+in its handoff. Reviewers inspect that evidence and reject test code in the diff. The constitution explains
+why accumulating automated tests prevents sustained progress. Never run tests through checks or hooks.
+
+Every model call is metered and public. Read before writing, manually verify the feature, stop when verified.
 Be direct: what changed, what is verified and what remains. Don't loop on an unexplained failure.
 
 PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a

@@ -29,8 +29,12 @@ got right. Changing this file is the owner's act, never a task's.
   are the owner's committed word. A key can spend, pay, narrate, steer or give within them, never widen them.
 - **Nothing in an agent's reach is a secret that matters.** Every session is published live; a key spends one
   project's balance and stops at zero; a treasurer's key alone may pay.
-- **No automated test runs for more than thirty seconds.** All of them together, ever. Behavior is verified by
-  driving the running product.
+- **No automated tests.** Automated tests accumulate permanent code and maintenance obligations. As agents
+  add more, that cruft compounds until maintaining tests can make progress in the repository impossible.
+  Do not write or run automated tests. No automated test code or persistent test harness may be committed
+  to main. Each develop agent must verify the feature it adds or changes through REPL-style manual usage
+  of the running product, inspecting actual results without writing permanent test code. Record the
+  actions, observations and limitations in the task handoff or PR, not a new test file.
 - **Nothing here develops against a real API.** The twins are where every claim is exercised, by hand; a claim
   that cannot be exercised through a real path is not made.
 

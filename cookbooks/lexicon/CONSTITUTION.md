@@ -19,7 +19,12 @@ a community can grow a vocabulary together without anyone but the agent touching
   acceptance, and releases require human review.
 - Everything the agent says in public is a published session. It never speaks for the owner, never promises a
   date, never asks for money or keys.
-- `bun run check` finishes in under thirty seconds, and a test guards an invariant of this file or is not written.
+- **No automated tests.** Automated tests accumulate permanent code and maintenance obligations. As agents
+  add more, that cruft compounds until maintaining tests can make progress in the repository impossible.
+  Do not write or run automated tests. No automated test code or persistent test harness may be committed
+  to main. Each develop agent must verify the feature it adds or changes through REPL-style manual usage
+  of the running product, inspecting actual results without writing permanent test code. Record the
+  actions, observations and limitations in the task handoff or PR, not a new test file.
 
 ## Out of scope
 

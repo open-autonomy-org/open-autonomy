@@ -36,7 +36,7 @@ hermes/              the agent: SOUL.md, its three skills (develop, pm, communit
 .open-autonomy/      the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
-.github/workflows/   land.yml (the landing convention; contributors run the project check before pushing)
+.github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
 ```
 
 ## The guided setup
@@ -181,3 +181,8 @@ generated `.open-autonomy/SETUP.md` for model selection and the remaining activa
 can run on the host with `--container <id> --project <container checkout> --state-file <host cursor file>`
 and `HERMES_HOME=<container home>`. It reads through the container's native Supercode process; the host
 filters and publishes the stream, without copying SQLite files or mounting host credentials into the agent.
+
+Automated tests are banned: their accumulated code and maintenance become cruft that can prevent
+repository progress. Each develop agent verifies its feature through REPL-style manual usage of the
+running product, records observations in its handoff and commits no permanent test code. The shared
+develop skill and seeded constitution/contributor instructions carry this policy.
