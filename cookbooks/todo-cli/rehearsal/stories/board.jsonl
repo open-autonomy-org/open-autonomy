@@ -7,4 +7,6 @@
 {"job":"pm"}
 {"until":{"board":{"title":"the project owns its domain name","status":"done"}},"budget":420}
 {"expect":{"spent":true}}
+{"expect":{"live":"behind"}}
+{"act":"live"}
 {"expect":{"live":"current"}}

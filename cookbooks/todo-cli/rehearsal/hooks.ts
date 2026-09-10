@@ -172,8 +172,16 @@ const hooks: Hooks = {
     file: async (ctx, want) => { const w = want as { path: string; includes: string }; try { return (await onMain(ctx, w.path)).includes(w.includes); } catch { return false; } },
     // An issue on the project's repository whose title contains the phrase ({"issue":"…"}, or {"issue":{"title":…,"state":"closed"}}).
     issue: async (ctx, want) => { const w = typeof want === 'string' ? { title: want } : (want as { title: string; state?: string }); const rows = (await github(ctx).get(`/repos/${ACCOUNT}/issues?state=all&per_page=100`)).body ?? []; return rows.some((i: any) => String(i.title).includes(w.title) && (!w.state || i.state === w.state)); },
-    // The page's reading of the deployed service ({"live":"current"|"behind"|"unreachable"}).
-    live: async (ctx, want) => { const r = await api(ctx.world.PLATFORM_URL).get(`/v1/accounts/${ENC}`); return JSON.stringify(r.body?.live ?? null).includes(String(want)); },
+    // The page's reading of the deployed service, synced now ({"live":"current"|"behind"|"unreachable"}): the commit it
+    // reports against main's head — current when they are one, behind when main is ahead, unreachable when it answers nothing.
+    live: async (ctx, want) => {
+      await admin(ctx).post(`/admin/accounts/${ENC}/sync`);
+      const live = (await api(ctx.world.PLATFORM_URL).get(`/v1/accounts/${ENC}`)).body?.live as { commit: string | null; head: string | null; ahead: number | null } | undefined;
+      if (!live) return false;
+      if (want === 'unreachable') return live.commit === null;
+      if (want === 'behind') return live.commit !== null && (live.ahead ?? 0) > 0;
+      return live.commit !== null && live.commit === live.head && live.ahead === 0;
+    },
     // The project's balance on the books is below the seed ({"spent":true}): the brain's thinking was metered.
     spent: async (ctx) => { const r = await api(ctx.world.PLATFORM_URL).get(`/v1/accounts/${ENC}`); return Number(r.body?.balance_usd_cents ?? 5000) < 5000; },
   },
