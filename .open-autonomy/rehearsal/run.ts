@@ -30,9 +30,10 @@ const envFile = resolve(GENERATED, 'world.env');
 const scenario = resolve(GENERATED, 'scenario.json');
 mkdirSync(GENERATED, { recursive: true });
 
-function world(args: string[], opts: { check?: boolean } = { check: true }): number {
+function world(args: string[], opts: { check?: boolean } = {}): number {
   const res = Bun.spawnSync({ cmd: ['bun', cli, ...args], cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, ...(TWINS_ROOT ? { TWINS_ROOT } : {}) } });
-  if (opts.check && res.exitCode !== 0) { console.error(`volter-world ${args[0]} failed (${res.exitCode})`); process.exit(res.exitCode || 1); }
+  // A failed step stops the up: a seed that did not seed leaves a world the stories cannot pass in.
+  if (opts.check !== false && res.exitCode !== 0) { console.error(`volter-world ${args[0]} failed (${res.exitCode})`); process.exit(res.exitCode || 1); }
   return res.exitCode;
 }
 const inWorld = (cmd: string[], opts: { check?: boolean } = {}) => world(['attach', NAME, '--root', STATE, '--', 'env', `VOLTER_WORLD=${NAME}`, ...cmd], opts);
