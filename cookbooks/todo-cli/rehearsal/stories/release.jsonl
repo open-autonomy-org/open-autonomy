@@ -1,6 +1,7 @@
 {"act":"release-schedule","phase":"accumulate"}
 {"job":"pm"}
 {"until":{"roadmap":"Release decision: accumulate"},"budget":300}
+{"job":"pm"}
 {"act":"release-schedule","phase":"request-review"}
 {"job":"pm"}
 {"until":{"roadmap":"Release decision: request-review"},"budget":300}
