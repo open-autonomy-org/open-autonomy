@@ -5,7 +5,7 @@
 // scripted brain); its channels go to the twins. Nothing it inherits is the operator's: the environment it starts
 // with is built here from nothing (the world's own stripEnv rule, for a stack the world does not start).
 //   stack.ts up | down [--purge] | restart | hermes <args…>
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { ACCOUNT, ROOT, SECRETS, STACK, STATE, context, hooks, need, sh, timed } from './lib.ts';
@@ -59,8 +59,19 @@ function stackEnv(bin: string): Record<string, string> {
   // adopts it, as live) while every vendor is still a twin and the seats stay dry. A story's exact words are the
   // scripted brain's; a real one is judged by reading what it did.
   if (world.GATEWAY_TWIN_URL && onCodex()) {
-    if (process.env.REHEARSAL_MODEL === 'real') console.log('stack: DRESS REHEARSAL — the brain on the real Codex subscription, the vendors twins, the seats dry');
-    else base.HERMES_CODEX_BASE_URL = `${world.GATEWAY_TWIN_URL.replace(/\/$/, '')}/v1`;
+    if (process.env.REHEARSAL_MODEL === 'real') {
+      console.log('stack: DRESS REHEARSAL — the brain on the real Codex subscription, the vendors twins, the seats dry');
+      // The one real service of a dress rehearsal is the model: its hosts bypass the world's proxy, and the brain trusts
+      // the world's session CA and the internet's roots together (one bundle, since a process has one trust store).
+      base.NO_PROXY = [base.NO_PROXY, 'chatgpt.com', 'auth.openai.com'].filter(Boolean).join(',');
+      const worldCa = process.env.SSL_CERT_FILE ?? process.env.REQUESTS_CA_BUNDLE ?? process.env.NODE_EXTRA_CA_CERTS;
+      const roots = readdirSync(resolve(bin, '..', 'lib')).filter((d) => d.startsWith('python')).map((d) => resolve(bin, '..', 'lib', d, 'site-packages', 'certifi', 'cacert.pem')).find(existsSync);
+      if (worldCa && roots) {
+        const bundle = resolve(STACK, 'dress-ca.pem');
+        writeFileSync(bundle, `${readFileSync(roots, 'utf8')}\n${readFileSync(worldCa, 'utf8')}`);
+        for (const k of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'NODE_EXTRA_CA_CERTS']) base[k] = bundle;
+      }
+    } else base.HERMES_CODEX_BASE_URL = `${world.GATEWAY_TWIN_URL.replace(/\/$/, '')}/v1`;
   }
   return { ...base, ...(h.stackEnv ? h.stackEnv(context()) : {}) };
 }

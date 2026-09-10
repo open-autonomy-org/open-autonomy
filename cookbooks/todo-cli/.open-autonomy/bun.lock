@@ -20,19 +20,19 @@
   "packages": {
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
 
-    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.19", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.19", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.19", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.19" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-rhYypXJLhKv45+SY2nl9eo/UAXf/gO04lD/ZVnxsxXWU9GX3jGADaINI/u4gDZZ4C3heMmsH99/zm1CVdxQYjA=="],
+    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.21", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.21", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.21", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.21", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.21", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.21" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-wba8lU2zcagle+w7s81w0OhbRrR1P+imnlFOHqBm320vMrlffqZf51T2ATynDeWAw6I54WYVNfSlvIMueIjUSA=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.19", "", { "os": "darwin", "cpu": "arm64" }, "sha512-JlaR0CDQu0yCK9nkA8JiSlBw9maxSv+4gD2gj6J8wvy7ufhHItYn3JDvEuW5Twrvu1jS0rKyqLqY/CRMvg0h6A=="],
+    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.21", "", { "os": "darwin", "cpu": "arm64" }, "sha512-ooaIMbSsqysA8JOXmWf4UW4KSwp1R4EA3u5et80N3U8soytVUGNfTJJCFa27vOcWc8i3QV9tU9HCLjhCrVtnKw=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.19", "", { "os": "darwin", "cpu": "x64" }, "sha512-7W3ojZx4NR0B/1BQZIN4XundK4kN352geLNTQAqcZsOyoMjhtZXKGT3PChERG7IR7PoFqJYs+gKyQ54OpsnHZQ=="],
+    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.21", "", { "os": "darwin", "cpu": "x64" }, "sha512-YPh50qyzGii/8iKwHvZ7wDeQr2ywYXopVfcIk5MyB7ICw24Kvle5cmO+9ukYixlw6XPTmD2hE42WZdTlmjKWYw=="],
 
-    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.19", "", { "os": "linux", "cpu": "arm64" }, "sha512-twOdGLR/cTh5C630Kem24qX62iVohoCCCYHfgTkAGeCBGcWcw8XE3UqwMojTCz+Y0PbyNAqtfw0MwIMoeM7gRA=="],
+    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.21", "", { "os": "linux", "cpu": "arm64" }, "sha512-bxKyGytsoh7wR9bup50IPwOAZfsYDj1C3/Tkuc7whrDJzsOsdKKkLRVJXdBUrwHVGn0KewZiMI6XC2QGY3y+XQ=="],
 
-    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.19", "", { "os": "linux", "cpu": "x64" }, "sha512-BVDPj3skwFyEOv6vg4HHVcNEJawh5GsLQsGjoZRCtTsfwP0OSo7PsyimWeQo3SulfG7DtU6Aj1RPy1uai4KEFg=="],
+    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.21", "", { "os": "linux", "cpu": "x64" }, "sha512-d99etEBkRzVn0uV45iBQzcnbugmeJ/xmIf5AzzVdd3jY9VhQWGHSOzd1/q8VmkOqOUBD4Os0LmShKZvTkYfmDg=="],
 
-    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.19", "", { "os": "win32", "cpu": "x64" }, "sha512-UxlCxFog8I+TiYsU5pGFdIXProTS4AFNAnLxX8pGwPOj/6KHVGVwFmEZl9sh7YDOOwk3wCXglgNkeY8iqdg/8g=="],
+    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.21", "", { "os": "win32", "cpu": "x64" }, "sha512-YiX+qrSdXa3gLo2BgdTF0YlBGvr5glphxgwagkjrb66xCpvk5E+SnU3r/bJmocflwkXNh4xG0QA7elYvX+BpMw=="],
 
-    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.26", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-Os9F4HcBtz/EuOl7MrGj0i11H8fDb0xxMJHY7zmxRiIeU4uUPuOem63sJiY+hg6sEfuAWiLWpjnpCKSr6/+nzg=="],
+    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.27", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-+Rzx+UqQpg+HEBmVfRCd+NLFh7K8p6439Mztk6wmak5hus/2nqqebseoHJmFHSKfAzpMwQSe4z641+jVcFAJMA=="],
 
     "@volter/twin": ["@volter/twin@0.1.3", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-K6cKB2dYxtjC2L/H9quREEV38tlQsrkxZt7kIpDUKJbQ79cL4uz9cP20Bdc1DSpn/vbk3ESNPtWh1/uOdRN8HQ=="],
 
@@ -58,6 +58,6 @@
 
     "yaml": ["yaml@2.9.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA=="],
 
-    "zod": ["zod@4.5.4", "", {}, "sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA=="],
+    "zod": ["zod@4.6.2", "", {}, "sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ=="],
   }
 }
