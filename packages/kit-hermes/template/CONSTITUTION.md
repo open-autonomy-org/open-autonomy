@@ -10,7 +10,10 @@ else it got right. Changing this file is the owner's act, never a task's.
 ## Invariants
 
 - **The roadmap holds the plan.** The owner sets direction and constraints. The Hermes PM maintains sourced
-  working notes in `ROADMAP.md`, reconciles contributions and decisions, and queues fleet work on kanban.
+  working notes in `ROADMAP.md`, records explicit authorized requests, reconciles progress and decisions,
+  and queues execution work on kanban. Strategy develops scope under the owner's agreed mandate;
+  activation and scope authority are independent. Constitutional fit constrains outcomes at conception
+  and implementations at merge; it does not authorize either agent to invent scope.
   Human implementation commitments require acceptance; human release review is mandatory.
 - **The agent is readable.** Its identity, skills and schedule live in `hermes/`; changing what it does is a
   commit anyone can read.

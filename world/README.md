@@ -214,7 +214,8 @@ preparation, preservation of unfinished work and native state, control-stream cl
 It does not restart or reconfigure the live fleet. Its printed directory retains the synthetic evidence.
 
 With `REHEARSAL_RELEASE=1 REHEARSAL_IDLE=1`, the separate `continuation.jsonl` story exercises PM
-landing and dispatching a sourced successor while the original candidate still awaits human review.
+landing and dispatching an explicit owner request while the original candidate still awaits human review.
+Generic encouragement and the historical seed do not authorize additional product scope.
 The model's choice is authored scenario behavior, not proof of unscripted planning judgment. A blind
 agent also rehearses the packed kit from a fresh project without this repository's operator history;
 provider challenges remain explicit human checkpoints. Record discovered defects and verification in

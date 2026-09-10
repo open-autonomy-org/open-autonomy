@@ -229,7 +229,7 @@ outcome only after observing every listed result; otherwise keep the outstanding
   [x] PM contacted you and read your reply on GitHub
   [x] First bounded task landed and PM reconciled it
 
-  Planning       PM maintains ROADMAP.md and CHANGELOG.md
+  Planning       Strategy sets scope; PM manages delivery and CHANGELOG.md
   Human contact  GitHub issues
   Releases       Candidate-specific human review required
 ```
@@ -246,13 +246,28 @@ conversation has no accessible reference, identify the setup summary and establi
 before activation, reusing direction already given. An agent-written summary alone is not evidence of owner
 approval. For an existing project,
 read and preserve its established constitution and working conventions before proposing changes.
-PM owns the sourced roadmap and changelog after handoff. Do not invent a backlog during setup.
+PM manages the sourced roadmap and changelog after handoff and always captures explicit authorized
+requests. Strategy develops scope under the owner's mandate. Do not invent a backlog during setup.
+
+Establish strategy activation and authority separately in the existing project-communications skill.
+Recommend on-demand strategy preparing proposals for human decision unless the owner's instructions
+already establish another arrangement. Offer native recurring discussions/research or event triggers
+only when useful to that project; a schedule does not grant scope authority. An autonomous mandate
+states its objective and bounds (for example competitive parity and constitutional boundaries); collaborative strategy
+names the agreed decision-makers and channel. Reuse the verified roster, selected integrations and
+existing answers. Projects driven by explicit requests still have on-demand strategy available.
+
+Create or update a native strategy cron job only for an agreed schedule, loading skills: [strategy].
+On-demand strategy runs in a separate native session loading the same skill; it needs no idle recurring
+job, extra service, profile/model configuration or policy parser. Verify the actual installed skill and
+agreed activation. Check that PM can capture an authorized request without invoking strategy, and that
+an ordinary suggestion or an empty board does not become autonomous new scope.
 
 Reuse answers already given and present the recommended operating defaults together. Settle only what
 is missing and materially affects setup: working name/repository owner, the development host, the model
 arrangement and budget, human coordination destination, and owner/release reviewer. Keep the template's
 development conventions and native schedules unless the project requires a change. Architecture and
-feature questions can remain for PM; credentials or directories found on the machine are availability
+feature questions can remain for strategy under its mandate; credentials or directories found on the machine are availability
 evidence, not permission to use them for this project.
 
 Use a lowercase runtime slug such as `audit-desk` for `--project`: letters and digits separated by
@@ -672,8 +687,12 @@ that a connected bot sees every thread. Consult native cron status, doctor, runs
 
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
-Future product scope, architecture and release proposals are PM work; unfinished setup is not. PM reconciles the generic
-starter intention into a sourced initial roadmap and queues only ready work. The historical kanban seed
+Strategy handles product scope under the established mandate; PM handles authorized delivery,
+implementation sequencing and release proposals. The constitution is a conception/merge constraint,
+not a backlog generator. PM reconciles historical starter intentions against explicit authority; the
+hello seed alone grants none. Strategy's first invocation develops a coherent product-level plan when
+requested or triggered under its agreement; on-demand availability does not require running it during
+setup. PM can immediately record and deliver explicit authorized requests without a strategy meeting. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
 landing and subsequent PM reconciliation before claiming the development loop works. The actual first
 release still needs candidate-specific human review. Local applications and packages follow the artifact

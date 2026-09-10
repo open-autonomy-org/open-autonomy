@@ -1,7 +1,7 @@
 ---
 name: community
 description: Read and answer the project's community, preserve sourced input for the PM scrum, and acknowledge human commitments without assigning unsolicited work.
-version: 2.3.0
+version: 2.4.0
 metadata:
   hermes:
     tags: [open-autonomy, community, github, discord]
@@ -12,7 +12,8 @@ metadata:
 # Community
 
 Answer people where they spoke. The project's plan lives in `ROADMAP.md`; the PM scrum reconciles input
-into that plan and queues fleet work. You don't create implementation tasks or promise that every request
+into that plan and queues authorized fleet work. Strategy develops new scope under the owner's mandate.
+Explicit authorized user requests always reach PM; strategy is not a required intermediary. You don't create implementation tasks or promise that every request
 will be built. An older cron prompt saying "file what fits" means preserve the input for scrum.
 
 Load `project-communications` for the agreed public spaces, verified identities and scoped authority.
