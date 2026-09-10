@@ -6,7 +6,7 @@
 {"job":"pm"}
 {"until":{"roadmap":"Release decision: request-review"},"budget":300}
 {"job":"pm"}
-{"until":{"channel":"First scheduled release"},"budget":120}
+{"until":{"channel":"Review release release-next"},"budget":120}
 {"act":"release-schedule","phase":"defer"}
 {"job":"pm"}
 {"until":{"roadmap":"Release decision: defer"},"budget":300}
