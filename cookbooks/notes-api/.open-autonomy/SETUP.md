@@ -670,6 +670,12 @@ PM must post the human request there and read the reply; a locally saved cron re
 Live test messages require owner authorization. Record genuine source-coverage gaps instead of claiming
 that a connected bot sees every thread. Consult native cron status, doctor, runs and incidents.
 
+Exercise the PM/community helpers through a native Hermes terminal tool, not only an operator shell.
+The managed-container profiles use `terminal.shell_init_files` to activate the existing Hermes virtual
+environment after login-shell initialization; Docker PATH alone is insufficient. For a host install,
+set that native option to its actual activation file when the terminal cannot import Hermes APIs.
+Verify that a first GitHub poll discovers known repository activity before acknowledging its cursor.
+
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
 Future product scope, architecture and release proposals are PM work; unfinished setup is not. PM reconciles the generic

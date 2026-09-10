@@ -14,6 +14,5 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${B
 COPY .open-autonomy /opt/agent/.open-autonomy
 RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
-# Kit helpers call native Hermes Python APIs from terminal tools.
-ENV PATH="/opt/hermes/.venv/bin:/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"
+ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"
 ENTRYPOINT ["bun", "/opt/agent/.open-autonomy/start.ts", "--project", "/work/project", "--home", "/opt/data", "--secrets", "/secrets", "--as", "hermes"]

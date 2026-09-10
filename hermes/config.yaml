@@ -17,6 +17,8 @@ custom_providers:
 
 terminal:
   backend: local
+  # Native API helpers use Hermes Python in the managed container; absent files are skipped.
+  shell_init_files: [/opt/hermes/.venv/bin/activate]
   timeout: 300
 
 # Everything the agent is must be readable in the repository, so it carries no private memory between runs.
