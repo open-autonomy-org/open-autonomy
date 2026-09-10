@@ -6,19 +6,15 @@
 // platform from the agent's side. Held outside the agent's process, the key survives anything the agent prints
 // or commits, which is the whole point: everything the agent produces is public.
 //
-//   open-autonomy-valve --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex /secrets/codex.json:8789]
+//   open-autonomy-valve --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex 8789]
 //                       [--github-app /secrets/github-app.json:8790] [--loopback]
 // Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
 //
-// --codex: the owner's ChatGPT/Codex subscription login for a fleet whose agent must not hold it (a container), held
-// here the same way — the file as the Codex CLI keeps it (`tokens.access_token`, `refresh_token`, `id_token`,
-// `account_id`), served under /backend-api/codex/* on its own port and forwarded to chatgpt.com's Codex backend with
-// the bearer and the account header; the access token is refreshed ahead of its expiry (auth.openai.com, the Codex
-// client id) and written back. Hermes's own `openai-codex` provider is pointed at this port (HERMES_CODEX_BASE_URL)
-// with a stand-in credential, so the login never enters the agent. Bare on a laptop the same provider adopts the
-// Codex CLI's login itself, and this port is not started.
+// --codex <port>: use the host's current Codex ChatGPT login through Codex's
+// app-server authentication RPC. Codex owns storage and refresh. Both bare and
+// container Hermes use the same valve with a stand-in credential; OA keeps no login copy.
 //
 // --github-app: the agent's own GitHub identity for its community desk — a GitHub App installed on the project's
 // repository, its file `{app_id, repository, private_key, installation_id?}` (the app's PEM).
@@ -27,7 +23,8 @@
 // their comments, GraphQL for its discussions, and native HTTPS Git) with it. The agent is configured with GITHUB_API_URL at this port
 // and GITHUB_TOKEN=valve; every comment it posts is the app's, and the key never enters it.
 import { createPrivateKey, sign } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { codexAccess, type CodexAccess } from './codex-auth.ts';
 
 // Each key file is served on its own port: `--key <file>:<port>`, repeatable. A file is re-read when it changes,
 // so a rotated key is picked up without a restart.
@@ -35,7 +32,7 @@ const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
 const githubArg = process.argv.includes('--github-app') ? String(process.argv[process.argv.indexOf('--github-app') + 1]) : undefined;
-if (!keys.length && !codexArg && !githubArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <tokens.json>:<port>] [--github-app <app.json>:<port>]'); process.exit(2); }
+if (!keys.length && !codexArg && !githubArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port>]'); process.exit(2); }
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -99,40 +96,14 @@ for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)}
 
 // ── The Codex subscription ─────────────────────────────────────────────────────────────────────────────────────
 const CODEX_UPSTREAM = 'https://chatgpt.com/backend-api/codex';
-const CODEX_TOKEN_URL = 'https://auth.openai.com/oauth/token';
-const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
-interface CodexTokens { access_token: string; refresh_token: string; id_token?: string; account_id?: string }
-const jwtClaims = (token: string): Record<string, any> => { try { const p = token.split('.')[1] ?? ''; return JSON.parse(Buffer.from(p + '='.repeat((4 - (p.length % 4)) % 4), 'base64url').toString('utf8')); } catch { return {}; } };
 if (codexArg) {
-  const [file, portRaw] = codexArg.split(':');
-  const port = Number(portRaw || 8789);
-  const read = (): { tokens: CodexTokens; [k: string]: unknown } => {
-    const doc = JSON.parse(readFileSync(file, 'utf8')) as { tokens?: CodexTokens };
-    if (!doc.tokens?.access_token || !doc.tokens.refresh_token) throw new Error(`${file}: no tokens.access_token / tokens.refresh_token (the Codex CLI's auth.json shape)`);
-    return doc as { tokens: CodexTokens };
-  };
-  const accountOf = (t: CodexTokens): string | undefined => t.account_id ?? jwtClaims(t.access_token)['https://api.openai.com/auth']?.chatgpt_account_id;
-  const expiresAt = (t: CodexTokens): number => Number(jwtClaims(t.access_token).exp ?? 0) * 1000;
-  let refreshing: Promise<CodexTokens> | undefined;
-  // One refresh at a time; the new tokens (the refresh token rotates too) go back to the file before anyone uses them.
-  const refresh = (): Promise<CodexTokens> => (refreshing ??= (async () => {
-    try {
-      const doc = read();
-      const res = await fetch(CODEX_TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: doc.tokens.refresh_token, client_id: CODEX_CLIENT_ID }) });
-      const body = await res.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; id_token?: string; error?: string };
-      if (!res.ok || !body.access_token) throw new Error(`codex: refresh refused (${res.status} ${body.error ?? ''}) — log in again with the Codex CLI and copy its auth.json tokens to ${file}`);
-      const tokens: CodexTokens = { ...doc.tokens, access_token: body.access_token, refresh_token: body.refresh_token ?? doc.tokens.refresh_token, ...(body.id_token ? { id_token: body.id_token } : {}) };
-      writeFileSync(file, `${JSON.stringify({ ...doc, tokens, last_refresh: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
-      console.log(`codex: access token refreshed, expires ${new Date(expiresAt(tokens)).toISOString()}`);
-      return tokens;
-    } finally { refreshing = undefined; }
-  })());
-  const fresh = async (): Promise<CodexTokens> => { const t = read().tokens; return expiresAt(t) - Date.now() < 5 * 60_000 ? refresh() : t; };
-  const forward = async (req: Request, path: string, tokens: CodexTokens, body?: ArrayBuffer): Promise<Response> => {
+  const port = Number(codexArg);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Use --codex <port>; saved project login copies are no longer used.');
+  const forward = async (req: Request, path: string, tokens: CodexAccess, body?: ArrayBuffer): Promise<Response> => {
     const headers = new Headers(req.headers);
     for (const h of ['host', 'authorization', 'chatgpt-account-id', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
-    headers.set('authorization', `Bearer ${tokens.access_token}`);
-    const account = accountOf(tokens); if (account) headers.set('ChatGPT-Account-Id', account);
+    headers.set('authorization', `Bearer ${tokens.accessToken}`);
+    headers.set('ChatGPT-Account-Id', tokens.accountId);
     headers.set('originator', 'codex_cli_rs');
     headers.set('user-agent', 'codex_cli_rs/0.153.2');
     return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body, redirect: 'manual' });
@@ -143,21 +114,21 @@ if (codexArg) {
     idleTimeout: 255,
     async fetch(req) {
       const u = new URL(req.url);
-      if (u.pathname === '/healthz') { try { const t = read().tokens; return new Response(`ok · codex account ${accountOf(t) ?? '?'} · access token expires ${new Date(expiresAt(t)).toISOString()}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
+      if (u.pathname === '/healthz') { try { await codexAccess(); return new Response('ok · host Codex login\n'); } catch { return new Response('unavailable: check the host Codex login\n', { status: 503 }); } }
       if (!u.pathname.startsWith('/backend-api/codex/')) return new Response('not found: the Codex backend lives under /backend-api/codex/\n', { status: 404 });
       const path = u.pathname.slice('/backend-api/codex'.length) + u.search;
       try {
         // A known-length body avoids chunked uploads rejected by the Codex backend and can be replayed after refresh.
         const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
-        let tokens = await fresh();
+        let tokens = await codexAccess();
         let res = await forward(req, path, tokens, body);
-        if (res.status === 401) { tokens = await refresh(); res = await forward(req, path, tokens, body); }
+        if (res.status === 401) { await res.body?.cancel(); tokens = await codexAccess({ rejectedToken: tokens.accessToken }); res = await forward(req, path, tokens, body); }
         const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
         return new Response(res.body, { status: res.status, headers: out });
       } catch (e) { return new Response(JSON.stringify({ error: { code: 'codex_unavailable', message: (e as Error).message } }), { status: 502, headers: { 'content-type': 'application/json' } }); }
     },
   });
-  try { const t = read().tokens; console.log(`codex: ${file} → ${CODEX_UPSTREAM} on :${port} (account ${accountOf(t) ?? '?'}, access token expires ${new Date(expiresAt(t)).toISOString()})`); } catch (e) { console.error(`codex: ${(e as Error).message}`); process.exit(2); }
+  console.log(`codex: host Codex login → ${CODEX_UPSTREAM} on :${port}`);
 }
 
 // ── The GitHub App ─────────────────────────────────────────────────────────────────────────────────────────────

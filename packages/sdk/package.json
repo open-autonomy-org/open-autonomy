@@ -16,6 +16,7 @@
     "./drivers": "./src/drivers.ts",
     "./rails": "./src/rails.ts",
     "./team": "./src/team.ts",
+    "./codex-auth": "./src/codex-auth.ts",
     "./credentials": "./src/credentials.ts",
     "./reporting": "./src/reporting.ts"
   },

@@ -246,3 +246,9 @@ proposals leave the committed roster unchanged; inspect a partially created bran
 
 Authority changes need owner-authorized provenance even after merging. Native Discord access and GitHub
 release protection are reconciled separately by the setup agent; a roster edit is not release approval.
+
+The local subscription valve (`--codex <port>`) obtains an access token from the installed Codex
+app-server's `getAuthStatus` RPC for each request. Codex owns storage and refresh, including
+`CODEX_HOME` and its credential-store configuration. Both container and bare Hermes receive only
+a stand-in credential. Account changes apply to the next request; logout fails closed. The valve
+never copies a login, writes the Codex auth file, accepts a project token file, or publishes RPC diagnostics.

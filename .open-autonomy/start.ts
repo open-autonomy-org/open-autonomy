@@ -10,13 +10,9 @@
 // port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
 // desk posts is the app's, and the key never enters the agent.
 //
-// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it runs on the
-// computer's login (the Codex CLI's, adopted into Hermes's store on the first start) and this script does only that. Where the login must stay out of the agent (a container)
-// or the model is a twin (a world), this script forwards: <secrets>/codex.json (the Codex CLI's auth.json tokens, the
-// setup's copy), when present, is served by the valve on the third port and refreshed there; HERMES_CODEX_BASE_URL in
-// this script's own environment names a world's model twin instead. Either way the home's .env points the provider
-// there and the home's auth store carries a stand-in credential, so the fleet's configuration is the same everywhere
-// and only what carries the login differs.
+// Both launch modes forward Hermes's native openai-codex provider through the host
+// valve. The installed Codex owns the current login and refresh; OA keeps no copy.
+// HERMES_CODEX_BASE_URL selects a model twin during rehearsals instead.
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -31,6 +27,7 @@
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
+import { codexAccess } from './sdk/codex-auth.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -82,13 +79,13 @@ const sock = resolve(home, 'ssh-agent.sock');
 // Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
 const user = as ? (() => { const r = Bun.spawnSync({ cmd: ['id', '-u', as], stdout: 'pipe', stderr: 'pipe' }); const g = Bun.spawnSync({ cmd: ['id', '-g', as], stdout: 'pipe' }); if (r.exitCode !== 0) throw new Error(`start: no such user ${as}`); return { name: as, uid: Number(r.stdout.toString().trim()), gid: Number(g.stdout.toString().trim()) }; })() : null;
 const drop = (cmd: string[]): string[] => (user ? ['setpriv', `--reuid=${user.uid}`, `--regid=${user.gid}`, '--clear-groups', ...cmd] : cmd);
-// The valve needs owner write access for token refresh. A writable mount must still be inaccessible
+// The host's credentials must remain inaccessible
 // to the agent UID: refuse before starting children, including when host/container UIDs happen to match.
 if (user) {
   let isolated = false;
   try {
     isolated = Bun.spawnSync({ cmd: drop(['sh', '-c', 'for path do if [ -r "$path" ] || [ -w "$path" ]; then exit 1; fi; done', 'credential-isolation', secrets,
-      ...['agent.env', 'treasurer.env', 'deploy_key', 'github-app.json', 'codex.json'].map((name) => resolve(secrets, name))]), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
+      resolve(process.env.CODEX_HOME ?? resolve(homedir(), '.codex')), ...['agent.env', 'treasurer.env', 'deploy_key', 'github-app.json'].map((name) => resolve(secrets, name))]), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
   } catch { /* An unavailable privilege-drop tool cannot establish isolation. */ }
   if (!isolated) {
     console.error('start: cannot establish credential isolation from the agent user. Use owner-only storage owned by a different UID; verify setpriv is available. No services were started.');
@@ -194,13 +191,13 @@ const envFile = resolve(home, '.env');
 const githubApp = existsSync(resolve(secrets, 'github-app.json'));
 const managed = githubApp ? /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL|GITHUB_API_URL|GITHUB_TOKEN)=/ : /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL)=/;
 const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !managed.test(l)) : [];
-// The Codex subscription's address goes in the .env too: Hermes loads the home's .env into every process it starts,
-// including the scheduler's job runners, which do not inherit the gateway's environment. A world names its model twin
-// in this script's environment; a container's login is the valve's third port; bare with neither, Hermes goes to the
-// subscription itself.
-const codexFile = resolve(secrets, 'codex.json');
+// Keep the host login environment for the valve; only the agent gets an empty Codex home.
+const hostEnvironment = inherited();
+const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
 const codexPort = valvePort + 2;
-const codexForward = process.env.HERMES_CODEX_BASE_URL?.trim() || (existsSync(codexFile) ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
+const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
+const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
+if (onCodex && !codexTwin) await codexAccess();
 const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
@@ -214,30 +211,21 @@ const channelLine = /^[A-Z][A-Z0-9_]*=/;
 if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => channelLine.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (channelLine.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
 else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
-// Hermes's own openai-codex provider takes its bearer and its address from its credential pool: the home's entries
-// first, and when the home has none, the user's global store (~/.hermes/auth.json), whose entry carries the real
-// service's address; with nothing usable it adopts the Codex CLI's login from $CODEX_HOME. Forwarded (a container's
-// valve, a world's twin), the home therefore carries a stand-in of its own — a pool entry and the singleton record,
-// both with the forward address and a token that is not a JWT, which Hermes sends as it is and never refreshes — and
-// the CLI's login is out of reach, so a twin can never be bypassed for the real service. Bare, the computer's login:
-// Hermes's own store when it has one, else the Codex CLI's adopted into it; a computer with no Codex login stops the
-// start, as a missing key does.
-const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
+// Only the stand-in belongs in Hermes's pool. Remove prior imported subscription
+// entries so failures cannot fall back to a copied login or a different account.
 if (onCodex) {
   type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
   const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
-  const holds = (s: Store): boolean => !!s.providers?.['openai-codex']?.tokens?.access_token || (s.credential_pool?.['openai-codex'] ?? []).some((e) => typeof e?.access_token === 'string' && !!e.access_token);
-  const authFile = resolve(home, 'auth.json');
-  const store = readStore(authFile);
-  if (codexForward) {
+  for (const profile of [home, resolve(home, 'profiles/treasurer')]) {
+    const authFile = resolve(profile, 'auth.json');
+    const store = readStore(authFile);
     // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
     // which would be a second entry pointing the wrong way; with no singleton it takes the pool, whose entry names
     // the forward address itself, and the address in the home's .env agrees.
     const now = new Date().toISOString();
     if (store.providers?.['openai-codex']) delete store.providers['openai-codex'];
     const pool = (store.credential_pool ??= {});
-    const entries = (pool['openai-codex'] ?? []).filter((e) => e?.id !== 'valve');
-    pool['openai-codex'] = [{ id: 'valve', label: 'the forwarded subscription', source: 'manual:valve', priority: 0, access_token: 'valve', refresh_token: 'valve', base_url: codexForward, inference_base_url: codexForward, last_refresh: now }, ...entries];
+    pool['openai-codex'] = [{ id: 'valve', label: 'the forwarded subscription', source: 'manual:valve', priority: 0, access_token: 'valve', refresh_token: 'valve', base_url: codexForward, inference_base_url: codexForward, last_refresh: now }];
     writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
     const noCli = resolve(home, 'codex-home-none');
     mkdirSync(noCli, { recursive: true });
@@ -245,21 +233,6 @@ if (onCodex) {
     // Hermes reads the user's global store (~/.hermes/auth.json) into the pool only for a provider the home has no
     // entry for; the stand-in is that entry, so the user's real login stays out. HOME stays the user's: a project's
     // doors may live under it (Peak's ~/peak), and a container gives the agent its own HOME already.
-  } else if (!holds(store)) {
-    // Bare, the computer's login: the Codex CLI's (`codex login`, its auth.json under CODEX_HOME or ~/.codex), adopted
-    // into Hermes's own store the way Hermes's importer does it — Hermes then keeps and refreshes that session itself.
-    // The home's store alone counts: Hermes's model path reads it directly, never the user's global one.
-    const cliFile = resolve(process.env.CODEX_HOME?.trim() || resolve(homedir(), '.codex'), 'auth.json');
-    let cli: { tokens?: { access_token?: string; refresh_token?: string } } = {};
-    try { cli = JSON.parse(readFileSync(cliFile, 'utf8')); } catch { /* no CLI login */ }
-    if (cli.tokens?.access_token && cli.tokens.refresh_token) {
-      (store.providers ??= {})['openai-codex'] = { tokens: cli.tokens, last_refresh: new Date().toISOString() };
-      writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-      say(`the Codex subscription: the computer's login (${cliFile}) adopted into ${authFile}`);
-    } else {
-      console.error(`start: the model is the Codex subscription (provider openai-codex) and this computer has no Codex login — run \`codex login\` once, then start again`);
-      process.exit(1);
-    }
   }
 }
 own(home);
@@ -273,12 +246,12 @@ writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\n
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
 if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
-// The Codex subscription: the valve holds the login and serves it on the third port, which the home's .env names.
-if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
+// Both launch modes use the host Codex login. A model twin never starts real authentication.
+if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 // The agent's GitHub identity: the valve mints the app's installation tokens and serves the desk's routes on the fourth port.
 const githubFile = resolve(secrets, 'github-app.json');
 if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
-spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
+spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], { env: hostEnvironment });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
 //    .open-autonomy/package.json) are reconciled before every bare start. A failed install

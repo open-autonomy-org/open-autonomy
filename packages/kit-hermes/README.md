@@ -161,9 +161,10 @@ not a release trigger. Only a landed, ready PM decision with a fixed candidate w
 later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
 See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
 
-The local Codex setup choice uses the operator's ChatGPT allowance on this computer. Managed setup copies
-the file-based login into protected host storage for the valve to refresh; the executor receives only a
-stand-in credential. Bare Hermes imports the login into its own store. This choice does not provision remote
+The local Codex setup choice uses the operator's ChatGPT allowance on this computer. Both launch modes use
+the host valve, which asks the installed Codex for the current login through its app-server protocol.
+Codex owns credential storage and refresh; Hermes receives only a stand-in credential. OA keeps no
+project copy of the login. Run the host service as the signed-in user with the same `CODEX_HOME`. This choice does not provision remote
 hosting. The setup agent installs the local image and trusted host service, then verifies the
 project connections and development loop. Follow the
 generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks. The reporter

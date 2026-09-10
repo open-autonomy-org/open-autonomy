@@ -348,22 +348,20 @@ build. Reuse an existing working local context; CLI availability alone does not 
 
 Local Codex is plain Hermes on its own `openai-codex` provider: the same agent loop, tools, board, skills
 and channels as any other model, with the model turn on the owner's ChatGPT allowance. The fleet looks
-the same wherever it runs; only what carries the login differs.
+the same wherever it runs.
 
-- **Bare, on this computer:** the computer's login. The start script adopts the Codex CLI's login
-  (`codex login`) into Hermes's own store on the first start, as Hermes's importer does; Hermes keeps and
-  refreshes that session in the agent's home, the accepted trade of every bare fleet (`container/README.md`).
-  A computer with no Codex login cannot start.
-- **In the container:** the start script forwards. The host valve holds a copy of the login (codex.json
-  in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
-  serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
-  auth store carries a stand-in credential, so the login never enters the agent. Git goes through the
-  project GitHub App valve.
+- **Bare or in a container:** the host valve asks the installed Codex app-server for the current
+  ChatGPT access token. Codex owns storage and refresh, including its configured credential store.
+  Run the host service as the signed-in user with the same `CODEX_HOME`. The next request picks up a
+  changed login. OA does not copy the login into project secrets or Hermes's home. Hermes receives
+  only a stand-in credential and the valve address. Bare execution still has the host user's filesystem
+  permissions; use the container for isolation. Git uses the project GitHub App valve.
 - **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
-  forwarding points the provider at the twin's Responses door.
+  forwarding points the provider at the twin's Responses door without accessing the host login.
 
-`--with subscription` checks `codex login status` and switches profiles that are not already on
-`openai-codex` to the kit's starter model. It does not discover or select the owner's exact model.
+`--with subscription` verifies authentication through the installed Codex and switches profiles that
+are not already on `openai-codex` to the kit's starter model. It does not select the owner's exact model.
+On upgrade, old protected codex.json copies are unused; remove them after verifying the host connection.
 Before activation, the setup agent reconciles **both** `hermes/config.yaml` and
 `hermes/profiles/treasurer/config.yaml` with the agreed, locally verified model:
 
