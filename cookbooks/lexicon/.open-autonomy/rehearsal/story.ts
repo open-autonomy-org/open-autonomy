@@ -81,7 +81,7 @@ async function condition(c: Record<string, any>, line: Record<string, unknown>):
     if (!jira || !key) return false;
     const t = (await jira.get(`/rest/api/2/issue/${key}`)).body; if (!t) return false;
     if (c.status !== undefined && (t.fields?.status?.name ?? t.status) !== c.status) return false;
-    if (c.comment !== undefined) { const cs = (await jira.get(`/rest/api/2/issue/${key}/comment`)).body?.comments ?? []; if (!cs.some((x: any) => String(x.body ?? '').includes(c.comment))) return false; }
+    if (c.comment !== undefined) { const cs = (await jira.get(`/rest/api/2/issue/${key}/comment`)).body?.comments ?? []; if (!cs.some((x: any) => jiraText(x.body).includes(c.comment))) return false; }
   }
   if (c.pr !== undefined) {
     if (!gh || !key) return false;
@@ -102,6 +102,9 @@ async function condition(c: Record<string, any>, line: Record<string, unknown>):
   for (const [name, fn] of Object.entries(h.conditions ?? {})) if (c[name] !== undefined && !(await fn(ctx, c[name], line))) return false;
   return true;
 }
+// A Jira comment's body is a string on the v2 wire and a rich-text document (Atlassian Document Format) on v3 and on a
+// twin that stores what it was given; a condition reads the words either way.
+const jiraText = (v: any): string => typeof v === 'string' ? v : Array.isArray(v) ? v.map(jiraText).join('') : v && typeof v === 'object' ? `${v.text ?? ''}${(v.content ?? []).map(jiraText).join('')}${v.type === 'paragraph' ? '\n' : ''}` : '';
 const resolveAliases = (o: any): any => { if (Array.isArray(o)) return o.map(resolveAliases); if (o && typeof o === 'object') { const out: any = {}; for (const [k, v] of Object.entries(o)) out[k] = (k === 'key' || k === 'pr') && typeof v === 'string' && aliases[v] ? aliases[v] : resolveAliases(v); return out; } return o; };
 
 let fails = 0;
