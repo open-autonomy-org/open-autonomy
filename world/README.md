@@ -22,7 +22,9 @@ bun world/run.ts say "what is a lexicon?"   # a person speaks in the brain's cha
 bun world/run.ts fresh                 # start over (a restart is `fresh`, never down-then-up)
 ```
 
-`--cookbook <name>` picks the project under test (default `todo-cli`; also `WORLD_COOKBOOK`). For a second world of the
+`WORLD_STATE_ROOT` must lie outside this checkout (the kit's default, the cookbook's own directory, does not): the
+kit refuses to write a credential inside a repository, and the `between-tasks` act rotates the brain's key into the
+world's secrets. `--cookbook <name>` picks the project under test (default `todo-cli`; also `WORLD_COOKBOOK`). For a second world of the
 same cookbook on one machine, use a separate `WORLD_STATE_ROOT` and export `REHEARSAL_PORT_OFFSET=1000`: every service
 port moves together. `WORLD_HERMES_BIN` names an installed pinned Hermes bin directory (otherwise the pin is installed
 once under the state root). The opening position a story needs is exported before `up` and read by the cookbook's seed
