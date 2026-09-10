@@ -14,10 +14,18 @@ const scrum = (...args: string[]) => run(['bun', '.open-autonomy/scrum.ts', ...a
 const community = (...args: string[]) => run(['bun', '.open-autonomy/community.ts', ...args]);
 const account = /^account:\s*(\S+)/m.exec(readFileSync('.open-autonomy/config.yaml', 'utf8'))![1];
 const field = (text: string, name: string) => text.split('\n').find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1).trim();
+function historicalAdd() {
+  // The idle opening empties the live seed. Its sourced intention remains in Git.
+  for (const revision of run(['git', 'log', '--format=%H', 'origin/main', '--', 'hermes/kanban.seed.json']).split('\n')) {
+    const seed = JSON.parse(run(['git', 'show', `${revision}:hermes/kanban.seed.json`])).tasks.find((t: { key: string }) => t.key === 'add');
+    if (seed) return { seed, revision };
+  }
+  throw new Error('The authored add intention is missing from committed history');
+}
 function nextWork() {
   const landed = run(['git', 'show', 'origin/main:ROADMAP.md']);
   if (!landed.includes('PM inference: the next useful product slice')) return;
-  const seed = JSON.parse(readFileSync('hermes/kanban.seed.json', 'utf8')).tasks.find((t: { key: string }) => t.key === 'add');
+  const { seed } = historicalAdd();
   console.log(scrum('queue', 'add', 'after-preview-add', seed.title,
     `Implement the independently planned add slice. Preserve the fixed release candidate and human review hold.\n${seed.acceptance.map((a: string) => `- ${a}`).join('\n')}`));
 }
@@ -103,8 +111,8 @@ let draft = previous.includes('## release-next:') ? previous.replace(/^## releas
 // A authored continuation beat: broad direction, then PM inference from the actual
 // constitution and historical intention. No automatic feature-selection algorithm.
 if (issue && field(issue.body, 'Development') === 'continue' && !draft.includes('PM inference: the next useful product slice')) {
-  const seed = JSON.parse(readFileSync('hermes/kanban.seed.json', 'utf8')).tasks.find((t: { key: string }) => t.key === 'add');
-  const next = `## add: ${seed.title}\n\nDispatch: fleet\n\nPM inference: the next useful product slice is adding a task to the owned local store, under the [constitution](https://github.com/${account}/blob/${snapshot.snapshot.main}/CONSTITUTION.md) and the reconciled [historical intention](https://github.com/${account}/blob/${snapshot.snapshot.main}/hermes/kanban.seed.json). [Continued development](${source}) does not approve the fixed preview or specify this implementation choice. No overlapping execution exists in this authored empty-board scenario.\n\nCompletion:\n${seed.acceptance.map((a: string) => `- ${a}`).join('\n')}\n`;
+  const { seed, revision } = historicalAdd();
+  const next = `## add: ${seed.title}\n\nDispatch: fleet\n\nPM inference: the next useful product slice is adding a task to the owned local store, under the [constitution](https://github.com/${account}/blob/${snapshot.snapshot.main}/CONSTITUTION.md) and the reconciled [historical intention](https://github.com/${account}/blob/${revision}/hermes/kanban.seed.json). [Continued development](${source}) does not approve the fixed preview or specify this implementation choice. No overlapping execution exists in this authored empty-board scenario.\n\nCompletion:\n${seed.acceptance.map((a: string) => `- ${a}`).join('\n')}\n`;
   draft = /^## add:/m.test(draft) ? draft.replace(/^## add:[\s\S]*?(?=^## |$(?![\s\S]))/m, next + '\n') : `${draft}\n${next}`;
 }
 if (draft !== previous) writeFileSync(file, draft);
