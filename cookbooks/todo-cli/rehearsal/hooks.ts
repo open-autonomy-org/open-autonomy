@@ -157,12 +157,14 @@ const hooks: Hooks = {
       if (synced.status !== 200) throw new Error(`platform: sync → ${synced.status}`);
     },
     // An ordinary outside contributor: merges their pull request and leaves a routine comment, telling nobody.
-    async outside(ctx, line) {
+    async outside(ctx) {
       const gh = github(ctx);
-      const pr = Number(line.pr ?? 5);
-      const merged = await gh.put(`/repos/${ACCOUNT}/pulls/${pr}/merge`, { merge_method: 'merge' });
+      const pr = ((await gh.get(`/repos/${ACCOUNT}/pulls?state=open&per_page=100`)).body ?? []).find((p: any) => p.title === 'scrum: outside release notes');
+      if (!pr) throw new Error('no open pull request titled "scrum: outside release notes" (the scrum-seed act files it)');
+      const merged = await gh.put(`/repos/${ACCOUNT}/pulls/${pr.number}/merge`, { merge_method: 'merge' });
       if (merged.status !== 200 || !merged.body?.merged) throw new Error(merged.text);
-      await gh.post(`/repos/${ACCOUNT}/issues/${line.issue ?? 4}/comments`, { body: 'Routine update: retried a local command; all fine now. No change in direction.' });
+      const issue = ((await gh.get(`/repos/${ACCOUNT}/issues?state=all&per_page=100`)).body ?? []).find((i: any) => i.title === 'scrum: conflicting proposal');
+      if (issue) await gh.post(`/repos/${ACCOUNT}/issues/${issue.number}/comments`, { body: 'Routine update: retried a local command; all fine now. No change in direction.' });
     },
   },
   conditions: {
