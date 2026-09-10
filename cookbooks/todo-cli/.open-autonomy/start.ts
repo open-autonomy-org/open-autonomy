@@ -254,14 +254,15 @@ if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], { env: hostEnvironment });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
-//    .open-autonomy/package.json) are installed when the lockfile is not the one the last complete install satisfied:
-//    a stamp beside them names that lockfile, and a failed install leaves none, so node_modules alone is no evidence.
-//    An install that is already complete costs no registry call, which a sealed world could not make.
+//    .open-autonomy/package.json) are installed when that file is not the one the last complete install satisfied:
+//    a stamp beside them names it, and a failed install leaves none, so node_modules alone is no evidence. (The
+//    lockfile is not the identity: a clone carries none, the kit ignores it.) An install that is already complete
+//    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
 {
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find(existsSync);
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
-  const want = lock ? String(Bun.hash(readFileSync(lock))) : 'unlocked';
+  const want = String(Bun.hash(readFileSync(resolve(import.meta.dir, 'package.json'))));
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     const install = Bun.spawnSync({ cmd: drop(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])]), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
     if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }

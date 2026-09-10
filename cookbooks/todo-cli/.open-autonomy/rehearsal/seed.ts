@@ -57,7 +57,7 @@ await git(project, 'config', 'user.name', 'agent'); await git(project, 'config',
   for (const [k, v] of Object.entries(process.env as Record<string, string | undefined>)) if (typeof v === 'string' && !/^(https?_proxy|all_proxy|no_proxy|node_options|node_extra_ca_certs|ssl_cert_file|requests_ca_bundle|curl_ca_bundle)$/i.test(k)) outside[k] = v;
   const lock = ['bun.lock', 'bun.lockb'].map((f) => resolve(dir, f)).find(existsSync);
   sh(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])], { cwd: dir, env: outside, quiet: true });
-  writeFileSync(resolve(dir, 'node_modules', '.open-autonomy-install'), `${lock ? String(Bun.hash(readFileSync(lock))) : 'unlocked'}\n`);
+  writeFileSync(resolve(dir, 'node_modules', '.open-autonomy-install'), `${String(Bun.hash(readFileSync(resolve(dir, 'package.json'))))}\n`);
 }
 if (existsSync(resolve(ROOT, '.open-autonomy', 'node_modules'))) {
   if (!existsSync(resolve(project, '.open-autonomy', 'node_modules'))) sh(['ln', '-sfn', resolve(ROOT, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules')]);
