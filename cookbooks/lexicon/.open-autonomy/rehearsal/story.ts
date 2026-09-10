@@ -118,7 +118,8 @@ for (const raw of readFileSync(file, 'utf8').split('\n')) {
     else if (line.jira) { say(`jira: ${shown}`); await twinCall('jira', line); tick(); }
     else if (line.say) { say(`say: ${shown}`); const ch = line.channel ?? (world.SLACK_TWIN_URL ? 'slack' : 'discord');
       if (ch === 'slack') await api(world.SLACK_TWIN_URL!, { authorization: 'Bearer twin' }).post('/chat.postMessage', { channel: process.env.REHEARSAL_SLACK_CHANNEL, text: line.say });
-      else await api(world.DISCORD_TWIN_URL!, { authorization: 'Bot maintainer' }).post(`/api/v10/channels/${process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001'}/messages`, { content: line.say });
+      // A person, not a bot: the twin dispatches a user's message to the connected bot as a human's, and Hermes answers it (a bot's message it ignores).
+      else await api(world.DISCORD_TWIN_URL!, { authorization: 'User alice' }).post(`/api/v10/channels/${process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001'}/messages`, { content: line.say });
       tick(); }
     else if (line.clock) { say(`clock +${line.clock}`); sh(['bun', twinCli('world'), 'clock', ctx.name, 'advance', String(line.clock), '--root', resolve(ctx.root === process.cwd() ? ctx.root : ctx.root)], { quiet: true, check: false }); tick(); }
     else if (line.job) { say(`job: ${line.job}`); const j = jobs().find((x) => x.name === line.job); if (!j) throw new Error(`no job ${line.job}`); hermes('cron', 'run', '--accept-hooks', j.id); }
