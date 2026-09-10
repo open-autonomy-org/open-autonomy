@@ -29,7 +29,9 @@ if (!existsSync(resolve(project, 'rehearsal', 'world.json')) || !existsSync(engi
 const verb = argv[0];
 switch (verb) {
   case 'up': case 'fresh': case 'down': case 'seed': case 'stack': case 'story': case 'stories': case 'say': case 'hermes': case 'env': case 'url': {
-    const args = verb === 'story' && argv[1] && !argv[1].startsWith('/') ? [verb, resolve(process.cwd(), argv[1]), ...argv.slice(2)] : argv;
+    // A story named relative: the cookbook's (`rehearsal/stories/<name>.jsonl`, as the cookbook's README says), else the operator's directory.
+    const story = verb === 'story' && argv[1] && !argv[1].startsWith('/') ? [resolve(project, argv[1]), resolve(process.cwd(), argv[1])].find(existsSync) ?? resolve(project, argv[1]) : undefined;
+    const args = story ? [verb, story, ...argv.slice(2)] : argv;
     const r = Bun.spawnSync({ cmd: ['bun', engine, ...args], cwd: project, stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, WORLD_COOKBOOK: cookbook, OPEN_AUTONOMY_ROOT: ROOT } });
     process.exit(r.exitCode);
   }

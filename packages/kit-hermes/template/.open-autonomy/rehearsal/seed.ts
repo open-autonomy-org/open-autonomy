@@ -23,7 +23,8 @@ const project = resolve(STACK, 'project');
 //    as a repository of its own: one commit holding it, on top of the world's main when the world already has one.
 if (sh(['git', 'status', '--porcelain', '--', '.'], { quiet: true }).out.trim()) throw new Error('seed: this checkout has uncommitted changes; the world clones what HEAD says — commit first');
 await gh.post('/orgs', { login: OWNER });
-const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME, default_branch: 'main', private: true });
+// Public, as the page publishes it: the platform syncs a public repository's profile and refuses a private one.
+const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME, default_branch: 'main', private: false });
 if (![201, 422].includes(created.status)) throw new Error(`github twin: create repo → ${created.status} ${created.text.slice(0, 200)}`);
 const remote = `${github}/${ACCOUNT}.git`;
 const prefix = relative(sh(['git', 'rev-parse', '--show-toplevel'], { quiet: true }).out.trim(), ROOT);
