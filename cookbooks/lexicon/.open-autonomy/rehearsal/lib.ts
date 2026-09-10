@@ -101,6 +101,7 @@ export const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now
 //   conditions       the project's own story conditions: { name: (ctx, want) => Promise<boolean> }
 //   stackEnv(ctx)    extra environment for the brain's stack (twin addresses its channels need), beyond the kit's
 //   hermesBin        a Hermes to run instead of the pin (a directory holding `hermes`)
+//   models           models the world's keys carry beyond the project's bounds (a world-only name, say)
 //   ticks            the monitor jobs a story ticks after each act (default: every monitor job)
 export interface RehearsalContext { world: Record<string, string>; name: string; data: string; secrets: string; stack: { project: string; home: string }; account: string; root: string; log: (m: string) => void }
 export interface Hooks {
@@ -110,6 +111,7 @@ export interface Hooks {
   conditions?: Record<string, (ctx: RehearsalContext, want: unknown, line: Record<string, unknown>) => Promise<boolean> | boolean>;
   stackEnv?: (ctx: RehearsalContext) => Record<string, string>;
   hermesBin?: string;
+  models?: string[];
   ticks?: string[];
 }
 export async function hooks(): Promise<Hooks> {

@@ -63,8 +63,10 @@ if (minted.status !== 200) throw new Error(`platform: mint → ${minted.status} 
 console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${ENC}`)).body?.balance_usd_cents} cents`);
 
 // 3. The brain's keys, the adopter way: challenge → claim file on the twin's main → mint. A key already minted on
-//    this backend copy is kept; the developer's key spends and narrates, the treasurer's adds `pay`.
-const models = [...new Set([MODEL, ...CONFIG.models])];
+//    this backend copy is kept; the developer's key spends and narrates, the treasurer's adds `pay`. The keys carry
+//    the project's bounds and what its hooks add (the registry holds a few keys per account: these two are all it mints).
+const h = await hooks();
+const models = [...new Set([MODEL, ...CONFIG.models, ...(h.models ?? [])])];
 const keyFile = resolve(SECRETS, 'agent.env');
 const alive = async (file: string): Promise<boolean> => { const k = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(existsSync(file) ? readFileSync(file, 'utf8') : '')?.[1]; return !!k && (await fetch(`${platform}/v1/accounts/${ENC}`, { headers: { authorization: `Bearer ${k}` } })).status === 200; };
 if (await alive(keyFile)) console.log('seed: the key already minted on this backend copy is kept');
@@ -100,5 +102,4 @@ writeFileSync(resolve(SECRETS, 'channels.env'), `${lines.join('\n')}\n`);
 console.log(`seed: docs synced from the twin → ${(await admin.post(`/admin/accounts/${ENC}/sync`)).body?.ok}`);
 
 // 5. What the project seeds beyond itself.
-const h = await hooks();
 if (h.seed) await h.seed(context((m) => console.log(`seed: ${m}`)));

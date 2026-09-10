@@ -38,9 +38,11 @@ const onMain = async (ctx: RehearsalContext, path: string): Promise<string> => {
 const stack = (...args: string[]) => sh(['bun', resolve(KIT_DIR, 'stack.ts'), ...args]);
 
 const hooks: Hooks = {
+  // The keys carry the previous model too.
+  models: [PREVIOUS_MODEL],
   // Beyond the project on the twin, funded, its keys minted: the platform's patronage and the owner's opening moves.
   async seed(ctx) {
-    const gh = github(ctx); const adm = admin(ctx); const pub = api(ctx.world.PLATFORM_URL);
+    const gh = github(ctx); const adm = admin(ctx);
     // The deterministic OAuth user is an admin of the organization whose Sponsors money enters the grants pool: the
     // same membership lookup the page performs after login, through the twin's GitHub API. The scope-free OAuth token
     // cannot read organization roles; the page must use the platform's separate members-reader credential for that.
@@ -67,13 +69,6 @@ const hooks: Hooks = {
     if (process.env.REHEARSAL_RELEASE === '1') { const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json')); for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local'; await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, "jobs.seed.json: the PM's routine report stays local"); }
     const door = process.env.REHEARSAL_OWNER_DOOR ?? 'discord';
     await putMain(ctx, 'hermes/skills/project-communications/SKILL.md', `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${door === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${HOME_CHANNEL}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`, 'project-communications: the owner\'s door for release review');
-    // The keys carry the previous model too (the kit minted them on the bounds as committed; the claim is on main).
-    const models = [MODEL, PREVIOUS_MODEL];
-    for (const [file, scopes] of [['agent.env', undefined], ['treasurer.env', ['spend', 'narrate', 'pay']]] as const) {
-      const key = await pub.post('/v1/keys/mint', { account: ACCOUNT, models, ...(scopes ? { scopes } : {}) });
-      if (key.status !== 200 || !key.body?.token) throw new Error(`platform: mint ${file} → ${key.status} ${key.text.slice(0, 300)}`);
-      writeFileSync(resolve(ctx.secrets, file), `OPEN_AUTONOMY_BASE_URL=${ctx.world.PLATFORM_URL}/v1\nOPEN_AUTONOMY_KEY=${key.body.token}\n`);
-    }
     // The deployed service reports main's commit; the page reads the repository now.
     const commit = (await git(ctx.stack.project, 'rev-parse', '--short', 'origin/main')).trim();
     const live = await api(ctx.world.LIVE_SERVICE_URL).post('/_world/commit', { commit });
