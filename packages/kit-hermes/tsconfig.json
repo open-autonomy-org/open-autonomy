@@ -7,7 +7,19 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ]
   },
-  "include": ["../../.open-autonomy/reporter.ts", "src/**/*.ts", "test/**/*.ts", "template/.open-autonomy/scrum.ts", "template/.open-autonomy/community.ts", "template/.open-autonomy/maintain.ts"]
+  "include": [
+    "../../.open-autonomy/reporter.ts",
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "template/.open-autonomy/scrum.ts",
+    "template/.open-autonomy/community.ts",
+    "template/.open-autonomy/maintain.ts",
+    "../../.open-autonomy/start.ts",
+    "../../.open-autonomy/host.ts",
+    "../../.open-autonomy/reporter.ts"
+  ]
 }

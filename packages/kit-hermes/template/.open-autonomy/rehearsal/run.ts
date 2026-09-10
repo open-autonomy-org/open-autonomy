@@ -100,6 +100,9 @@ switch (verb) {
   case 'fresh': {
     Bun.spawnSync({ cmd: ['bun', resolve(KIT_DIR, 'stack.ts'), 'down', '--purge'], stdio: ['inherit', 'inherit', 'inherit'] });
     world(['down', NAME, '--root', STATE, '--purge'], { check: false });
+    // A world that would not go down (a story still attached to it, say) keeps its state: forgetting its generated
+    // env while it runs leaves the next `up` reading a world that names no twin.
+    if (running()) { console.error(`rehearsal: ${NAME} is still running (something is attached to it); finish or stop that first — nothing forgotten`); process.exit(1); }
     for (const d of [DATA, GENERATED, STACK]) rmSync(d, { recursive: true, force: true });
     console.log('rehearsal: forgotten — the twins\' state, the books, the keys, the home, the clone; `up` starts over');
     break;

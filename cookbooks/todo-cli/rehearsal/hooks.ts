@@ -153,7 +153,7 @@ const hooks: Hooks = {
       const gh = github(ctx); const phase = String(line.phase);
       const issues = (await gh.get(`/repos/${ACCOUNT}/issues?state=all&per_page=100`)).body ?? [];
       const prior = issues.find((i: { title: string }) => i.title === 'release: target schedule');
-      const body = `Phase: ${phase}\n\nSchedule scenario: target October 1, 2026, 14:00–16:00 UTC, with review by September 30, 14:00 UTC. PM chooses whether the baseline is ready and proposes a calendar version under the deployment procedure. A date or another merge is not permission to release. ${phase === 'defer' ? 'New evidence: postpone the proposal and stop the previous review request.' : ''}`;
+      const body = `Phase: ${phase}\n${line.continue ? 'Development: continue\n' : ''}\nSchedule scenario: target October 1, 2026, 14:00–16:00 UTC, with review by September 30, 14:00 UTC. PM chooses whether the baseline is ready and proposes a calendar version under the deployment procedure. A date or another merge is not permission to release. ${phase === 'defer' ? 'New evidence: postpone the proposal and stop the previous review request.' : ''}`;
       const r = prior ? await gh.patch(`/repos/${ACCOUNT}/issues/${prior.number}`, { body }) : await gh.post(`/repos/${ACCOUNT}/issues`, { title: 'release: target schedule', body });
       if (![200, 201].includes(r.status)) throw new Error(r.text);
       const synced = await admin(ctx).post(`/admin/accounts/${ENC}/sync`);

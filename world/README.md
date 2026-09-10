@@ -203,3 +203,18 @@ tools cannot hide an undeclared project dependency. Initial installation creates
 subsequent installs must preserve it. This proves packaging and bootstrap mechanics, while the scrum,
 implementation/review, and release-schedule rehearsals above exercise the running fleet. Provider consent,
 real project requirements, and production activation still need their own setup evidence.
+
+## Setup and runtime regression
+
+`cookbooks/todo-cli/rehearsal/operators/setup-runtime.ts <executor>` operates only disposable
+homes/checkouts and explicitly owned children in an existing World executor. Run it through that
+executor's `volter-world attach`: it verifies executable scratch, tools/write roots, clean/resumed home
+preparation, preservation of unfinished work and native state, control-stream closure, and orphan reaping.
+It does not restart or reconfigure the live fleet. Its printed directory retains the synthetic evidence.
+
+With `REHEARSAL_RELEASE=1 REHEARSAL_IDLE=1`, the separate `continuation.jsonl` story exercises PM
+landing and dispatching a sourced successor while the original candidate still awaits human review.
+The model's choice is authored scenario behavior, not proof of unscripted planning judgment. A blind
+agent also rehearses the packed kit from a fresh project without this repository's operator history;
+provider challenges remain explicit human checkpoints. Record discovered defects and verification in
+the change's PR, then correct the kit and repeat the affected exercise.

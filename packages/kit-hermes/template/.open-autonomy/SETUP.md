@@ -256,7 +256,7 @@ feature questions can remain for PM; credentials or directories found on the mac
 evidence, not permission to use them for this project.
 
 Use a lowercase runtime slug such as `audit-desk` for `--project`: letters and digits separated by
-hyphens, at most 64 characters. It names Docker images, the Compose project and default credential
+hyphens, at most 64 characters. It names Docker images, the World executor and default credential
 storage. The display name in `branding/brand.json` can be `AuditDesk` or another human-facing name.
 For an older install with an incompatible slug, reconcile its kit identity and existing host resources
 before rerunning setup; do not silently rename its containers, volumes or credential directory.
@@ -278,8 +278,9 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 Before registering an App or collecting credentials, trace the chosen runtime's Git, model,
 communication and reporting paths. Establish where authentication lives and the permissions each
-path needs. Git authentication is the repository-scoped SSH deploy key wherever the fleet runs, bare or in the
-container, on any model; the community App needs Contents: read. Reuse existing project integrations; a
+path needs. The managed executor uses the host project GitHub App valve for Git and community access,
+with Contents: write installed for this repository. Bare development can retain its repository-scoped
+SSH deploy key and a read-only Contents grant for the community App. Reuse existing project integrations; a
 completed registration is not proof that the fleet can use it. This is setup-agent judgment using the existing
 configuration, not another configuration file or user questionnaire.
 
@@ -353,11 +354,11 @@ the same wherever it runs; only what carries the login differs.
   (`codex login`) into Hermes's own store on the first start, as Hermes's importer does; Hermes keeps and
   refreshes that session in the agent's home, the accepted trade of every bare fleet (`container/README.md`).
   A computer with no Codex login cannot start.
-- **In the container:** the start script forwards. The root valve holds a copy of the login (codex.json
+- **In the container:** the start script forwards. The host valve holds a copy of the login (codex.json
   in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
   serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
   auth store carries a stand-in credential, so the login never enters the agent. Git goes through the
-  deploy key as in any container.
+  project GitHub App valve.
 - **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
   forwarding points the provider at the twin's Responses door.
 
@@ -380,6 +381,13 @@ finalizing the model choice. Initial key bounds are provisional, not proof of av
 spend. If catalog access fails, report the unavailable lookup and resolve it rather than presenting the
 template's default as a verified catalog. This discovery does not require starting Hermes or funding a
 model call. A missing or unusable subscription should be stated plainly when offering the platform options.
+
+When the owner already selected the subscription, retain that choice and verify its agreed model; a catalog
+comparison is not a prerequisite. The platform connection is still needed for reporting. File-based Codex
+credentials use `CODEX_HOME` (default `~/.codex`); keyring-only or ephemeral login does not establish a
+transferable host credential. Follow [Codex authentication](https://developers.openai.com/codex/auth) for
+the installed storage arrangement. Never print the credential or silently change the operator's global
+storage policy. The managed subscription step remains incomplete until its protected copy is usable.
 
 After applying the helper, reconcile `hermes/config.yaml` with the agreed provider and exact model;
 the helper's seeded provider defaults are not the owner's model selection. For platform-funded profiles,
@@ -517,8 +525,8 @@ The receiver prints a callback URL and state. Author the manifest from the proje
 [documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
 use that callback as redirect_url, and pass the state on the registration URL.
 For this template, request issues/discussions write and metadata, pull_requests, checks, statuses and
-actions read. Contents is read for a managed deployment using its SSH deploy key, or write for the
-local host runtime using the project App for HTTPS Git. Existing App installations need the owner to
+actions read. Contents is write for the managed host runtime using the project App for HTTPS Git,
+or read for bare development using its separate deploy key. Existing App installations need the owner to
 accept that permission change; setup must not assume a read-only installation can push. No webhook or
 subscribed events are needed. Use the project page as the app
 homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
@@ -558,8 +566,8 @@ installation, Git operation, policy decision or runtime configuration belongs in
 ### Displayed credentials
 
 When the agreed integration displays its new credential on a page, use the standalone helper's capture
-command to transfer that one field directly into protected storage. The SDK README documents the command
-and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
+command to transfer that one field directly into protected storage. The [vendored SDK README](sdk/README.md)
+documents the command and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
 and bound task tab; do not launch a second browser or scrape the token with ordinary eval/snapshot tools.
 Confirm the project app and exact page first, then identify the single field within its credential-labeled
 section from safe DOM structure, without reading its value or snapshotting its container. A unique Copy
@@ -588,13 +596,17 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
-The fleet runs the same way on any model: bare with the start script, or in the managed Compose container
-(`container/README.md`). Local Codex adds nothing to prepare; in the container the start script forwards
-the subscription by itself.
+The model choice does not change the fleet architecture. For the managed setup, World owns one executor
+and the host runs `start.ts --container`: credential valves and SDK reporting stay outside, native Hermes
+runs inside. Follow `container/README.md` for preparation, activation and supervision. The bare start
+script remains the development and twin-rehearsal path; it is not credential isolation.
 
 Verify Bun 1.3.10 or newer and the application's verification tools where the fleet runs before
 starting PM. Install locked project dependencies and run the project's check in that environment.
-The kit image includes `volter-world` on PATH.
+The kit image includes `volter-world` on PATH. The host preflight verifies PID 1 reaping, native tool
+availability, the checkout write roots, and execution from `$HERMES_HOME/artifact-verification`. Use unique
+directories there for extracted installs and release checks; `/tmp` may deliberately be `noexec`.
+Do not relax isolation or replace the declared compiler command to make verification pass.
 A fresh template includes its compiler; an existing project keeps its own working tooling.
 
 Establish the application's local world using this machine's World instructions. Seed vendor state
@@ -638,7 +650,7 @@ These checks do not establish human authority or prove the fleet's selected Git 
 remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
-For managed deployments, setup also checks on reruns that the deploy key remains registered with write access. A revoked,
+For bare deployments using a deploy key, setup also checks on reruns that it remains registered with write access. A revoked,
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 
@@ -683,8 +695,12 @@ PM starts with the established constitution, roster, communication policy and op
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
 Future product scope, architecture and release proposals are PM work; unfinished setup is not. PM reconciles the generic
 starter intention into a sourced initial roadmap and queues only ready work. The historical kanban seed
-does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
-landing and subsequent PM reconciliation before claiming the development loop works. The actual first
+does not dispatch work on startup. Observe bounded tasks through implementation, verification, review,
+landing and subsequent PM reconciliation before claiming the development loop works. Include a review
+correction, a graceful restart preserving unfinished work, reported native session completion, and PM
+reassessment after the queue drains while release review remains held. A process running or one task
+passing does not establish these outcomes. Continue the authorized setup through these checks; pause
+only for an actual owner decision, provider challenge or reported blocker. The actual first
 release still needs candidate-specific human review. Local applications and packages follow the artifact
 procedure in `.open-autonomy/PRODUCTION.md`; a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.

@@ -1,7 +1,6 @@
-# The agent's container: stock Hermes at the pinned tag (container/hermes.pin, built by container/build-hermes.sh) plus
-# bun and git over ssh, started by the same script that starts it on a laptop (.open-autonomy/start.ts), here as root
-# with `--as hermes`: the secrets mounted at /secrets are root's, and the gateway runs as the image's `hermes` user
-# and can reach no key. The checkout is cloned into /work/project on first boot; the home lives at /opt/data.
+# The executor: native Hermes and its tools. World owns this container's lifetime;
+# start.ts --container on the host owns the valve, reporter and gateway lifetime.
+# No host credentials or Docker socket are mounted into the executor.
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
 FROM ${HERMES_IMAGE} AS managed
 USER root
@@ -19,4 +18,4 @@ RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/d
 # Keep native file writes within the Hermes home and this project checkout.
 ENV HERMES_WRITE_SAFE_ROOT="/opt/data:/work/project"
 ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"
-ENTRYPOINT ["bun", "/opt/agent/.open-autonomy/start.ts", "--project", "/work/project", "--home", "/opt/data", "--secrets", "/secrets", "--as", "hermes"]
+ENTRYPOINT ["sleep", "infinity"]
