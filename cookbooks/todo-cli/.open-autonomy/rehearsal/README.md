@@ -28,7 +28,7 @@ rehearsal/                   the project's own — seeded once by `create`, your
                              a service of the project's own under ${REHEARSAL_DIR}
   model/scenario.ts|.py      the scripted brain: prints the scenario document the model twin serves
   stories/*.jsonl            one story per shape of the method
-  hooks.ts                   custody, seed, acts, conditions, stackEnv — what the kit cannot know
+  hooks.ts                   custody, seed, acts, conditions, stackEnv, models, hermesBin, ticks — what the kit cannot know
 ```
 
 A brain on the owner's Codex subscription (`provider: openai-codex`) is pointed at the model twin's Responses door by the
