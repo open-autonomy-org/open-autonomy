@@ -17,7 +17,10 @@ that needs a real credential is not a story.
   stack.ts                   the brain: the kit's start script on the world clone, from a clean environment
   story.ts                   one story, act by act, with the brain's monitors ticked after each act
   lib.ts                     where the world's state lives, the twins' CLIs, the project's hooks
-rehearsal/                   the project's own — seeded once, yours to write
+rehearsal/                   the project's own — seeded once by `create`, yours to write from there: the starter is
+                             the GitHub and Discord twins, a scripted PM whose one beat plans every new issue as a
+                             sourced outcome and lands the plan, one story (an issue → `job pm` → the roadmap on main),
+                             and a `roadmap` condition reading that roadmap through the twin's API
   env                        settings, never secrets: REHEARSAL_WORLD, WORLD_STATE_ROOT, TWINS_ROOT, OPEN_AUTONOMY_ROOT,
                              REHEARSAL_CLIENT_REPO, REHEARSAL_BRANCH_PREFIX, REHEARSAL_JIRA_PROJECT, REHEARSAL_ASSIGNEE,
                              REHEARSAL_CLIENT, REHEARSAL_VALVE_PORT, WORLD_HERMES_BIN ($HOME expands; the shell's export wins)
