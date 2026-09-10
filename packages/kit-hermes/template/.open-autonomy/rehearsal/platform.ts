@@ -46,9 +46,21 @@ const args = ['wrangler', 'dev', '-c', toml, '--port', port, '--inspector-port',
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 // Supervised the way a deployment supervises its worker: wrangler's dev proxy is known to drop under a long
 // session, and the world's health check would otherwise read that as the platform gone.
+// A wrangler whose dev proxy died can leave its workerd holding the port; the restart reclaims it first, or every
+// restart dies on the bind and the world's readiness probe runs out.
+const reclaim = (): void => {
+  for (let i = 0; i < 25; i++) {
+    let holders: string[] = [];
+    try { holders = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).split('\n').filter(Boolean); } catch { /* nobody listens */ }
+    if (!holders.length) return;
+    for (const pid of holders) { try { process.kill(Number(pid), 'SIGKILL'); } catch { /* gone */ } }
+    Bun.sleepSync(200);
+  }
+};
 const cwd = resolve(ROOT, '.open-autonomy');
-let child = spawn('bunx', args, { cwd, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+const launch = () => spawn('bunx', args, { cwd, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+let child = launch();
 let stopping = false;
-const restart = (code: number | null) => { if (stopping) return; console.error(`rehearsal/platform.ts: wrangler dev exited (${code}); restarting on :${port}`); child = spawn('bunx', args, { cwd, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } }); child.on('exit', restart); };
+const restart = (code: number | null) => { if (stopping) return; console.error(`rehearsal/platform.ts: wrangler dev exited (${code}); restarting on :${port}`); reclaim(); child = launch(); child.on('exit', restart); };
 child.on('exit', restart);
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { stopping = true; child.kill(sig); process.exit(0); });

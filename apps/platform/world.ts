@@ -60,10 +60,22 @@ const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(insp
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 // Supervised the way a deployment supervises its worker: wrangler's dev proxy is known to drop under a long
 // session, and the books live on disk, so a restart on the same port loses nothing but the request in flight.
+// A wrangler whose dev proxy died can leave its workerd holding the port; the restart reclaims it first, or every
+// restart dies on the bind and the world's readiness probe runs out.
+const reclaim = (): void => {
+  for (let i = 0; i < 25; i++) {
+    let holders: string[] = [];
+    try { holders = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).split('\n').filter(Boolean); } catch { /* nobody listens */ }
+    if (!holders.length) return;
+    for (const pid of holders) { try { process.kill(Number(pid), 'SIGKILL'); } catch { /* gone */ } }
+    Bun.sleepSync(200);
+  }
+};
 let stopping = false;
 let child: ReturnType<typeof spawn> | undefined;
 const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' };
 const start = () => {
+  reclaim();
   child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env });
   child.on('exit', (code) => {
     if (stopping) process.exit(code ?? 0);
