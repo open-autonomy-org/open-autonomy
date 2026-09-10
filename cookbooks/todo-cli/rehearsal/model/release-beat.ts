@@ -27,7 +27,7 @@ function contactReviewer() {
   const instructions = run(['python', '-c', 'from tools.skills_tool import skill_view; print(skill_view("project-communications"))']);
   console.log(instructions);
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--json']));
-  const send = (message: string) => {
+  const send = (message: string, channel: string) => {
     // The terminal subprocess is credential-scrubbed; restore the native gateway
     // environment before exercising its send implementation. Never print credentials.
     const result = JSON.parse(run(['python', '-c', `import os, sys
@@ -35,7 +35,7 @@ from hermes_cli.config import load_env
 for key, value in load_env().items():
     if key.startswith("DISCORD_"): os.environ.setdefault(key, value)
 from tools.send_message_tool import send_message_tool
-print(send_message_tool({"target": "discord:1000000000000000001", "message": sys.argv[1]}))`, message]));
+print(send_message_tool({"target": "discord:" + sys.argv[2], "message": sys.argv[1]}))`, message, channel]));
     if (!result.success || result.skipped) throw new Error(`Native message was not sent: ${JSON.stringify(result)}`);
     return result;
   };
@@ -56,9 +56,10 @@ print(send_message_tool({"target": "discord:1000000000000000001", "message": sys
     if (instructions.includes('assigned GitHub issue')) {
       const issue = JSON.parse(community('issue', 'open', task.id, task.title, request, 'octocat'));
       link = issue.html_url ?? `https://github.com/${account}/issues/${issue.number}`;
-    } else if (instructions.includes('discord:1000000000000000001')) {
-      const message = send(`${task.title}\n\n${request}`);
-      link = `discord:1000000000000000001 message ${message.message_id}`;
+    } else if (/discord:\d+/.test(instructions)) {
+      const channel = /discord:(\d+)/.exec(instructions)![1];
+      const message = send(`${task.title}\n\n${request}`, channel);
+      link = `discord:${channel} message ${message.message_id}`;
     } else throw new Error('No scripted judgment authored for these communication instructions');
     run(['hermes', 'kanban', 'comment', task.id, `Review conversation: ${link}`, '--author', 'pm']);
   }

@@ -4,14 +4,13 @@
 // door is a vendor's own API or the pinned Hermes; nothing here reads a twin's files.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, DATA, ENC, KIT_DIR, MODEL, ROOT, STATE, api, git, need, sh } from '../.open-autonomy/rehearsal/lib.ts';
+import { ACCOUNT, DATA, ENC, KIT_DIR, MODEL, ROOT, STATE, api, git, homeChannel, need, sh } from '../.open-autonomy/rehearsal/lib.ts';
 import type { Hooks, RehearsalContext } from '../.open-autonomy/rehearsal/lib.ts';
 
 // The model the config names before the owner moves it to MODEL between two tasks: a world-only name, allowed on the
 // key and priced like the model (apps/platform/world.ts), so the schedule's re-pin is proven the way the production
 // incident happened.
 export const PREVIOUS_MODEL = `${MODEL}-previous`;
-export const HOME_CHANNEL = process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';
 const admin = (ctx: RehearsalContext) => api(ctx.world.PLATFORM_URL, { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin' });
 const github = (ctx: RehearsalContext) => api(ctx.world.GITHUB_TWIN_URL);
 
@@ -74,7 +73,7 @@ const hooks: Hooks = {
     if (process.env.REHEARSAL_IDLE === '1' && process.env.REHEARSAL_SCRUM !== '1') await putMain(ctx, 'hermes/kanban.seed.json', JSON.stringify({ tasks: [] }), 'kanban.seed.json: an empty board');
     if (process.env.REHEARSAL_RELEASE === '1') { const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json')); for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local'; await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, "jobs.seed.json: the PM's routine report stays local"); }
     const door = process.env.REHEARSAL_OWNER_DOOR ?? 'discord';
-    await putMain(ctx, 'hermes/skills/project-communications/SKILL.md', `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${door === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${HOME_CHANNEL}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`, 'project-communications: the owner\'s door for release review');
+    await putMain(ctx, 'hermes/skills/project-communications/SKILL.md', `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${door === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${homeChannel()}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`, 'project-communications: the owner\'s door for release review');
     // The page reads the repository now.
     const synced = await adm.post(`/admin/accounts/${ENC}/sync`);
     if (synced.status !== 200) throw new Error(`platform: sync → ${synced.status}`);
