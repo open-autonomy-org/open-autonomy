@@ -67,9 +67,11 @@ else {
   console.log(`seed: keys minted by claim file (models ${models.join(', ')}) → ${SECRETS}`);
 }
 
-// 4. The channels' twin credentials, for the stack: a Discord bot the twin accepts and its home channel, when the
-//    world has a Discord twin; the webhook platform on loopback. A project's other channels come from its stackEnv hook.
-const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646'];
+// 4. The channels' twin credentials, for the stack: the GitHub twin as the community desk's door (the desk re-enters
+//    GITHUB_TOKEN from the home's .env, which the start script fills from this file), a Discord bot the twin accepts
+//    and its home channel when the world has a Discord twin, the webhook platform on loopback. A project's other
+//    channels come from its stackEnv hook.
+const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646', `GITHUB_API_URL=${github}`, 'GITHUB_TOKEN=world-bot'];
 if (process.env.DISCORD_TWIN_URL) {
   const token = sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
   const home = process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';

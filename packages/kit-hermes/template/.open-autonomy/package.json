@@ -7,6 +7,11 @@
     "@volter-ai-dev/supercode": "^0.4.19",
     "@volter-ai-dev/supercode-harness-sdk": "^0.3.26",
     "@volter/twin": "0.1.3",
-    "@volter/twin-world": "0.1.7"
+    "@volter/twin-world": "0.1.7",
+    "@volter/twin-github": "0.1.2",
+    "@volter/twin-openai": "0.1.2",
+    "@volter/twin-discord": "0.1.2",
+    "@volter/twin-jira": "0.1.0",
+    "@volter/twin-slack": "0.1.0"
   }
 }
