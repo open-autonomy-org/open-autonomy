@@ -58,7 +58,8 @@ export const need = (name: string): string => {
 export function readEnvFile(path: string): Record<string, string> {
   const out: Record<string, string> = {};
   if (!existsSync(path)) return out;
-  for (const line of readFileSync(path, 'utf8').split('\n')) { const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2].replace(/^"(.*)"$/, '$1'); }
+  // The runtime writes its env file shell-style (`export KEY=value`); a project's settings file is bare KEY=value.
+  for (const line of readFileSync(path, 'utf8').split('\n')) { const m = /^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim()); if (m) out[m[1]] = m[2].replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1'); }
   return out;
 }
 export const worldEnv = (): Record<string, string> => readEnvFile(resolve(GENERATED, 'world.env'));
