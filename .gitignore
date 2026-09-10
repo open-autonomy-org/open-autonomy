@@ -4,7 +4,7 @@ node_modules/
 .dev.vars
 .wrangler/
 
-# volter-world instances and builds (the committed world is world/)
+# volter-world instances and builds (the committed worlds are the cookbooks' rehearsal/)
 .volter/
 
 # Our own agent's home (hermes/, from the kit): its identity, skills and schedule are committed; its runtime

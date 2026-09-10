@@ -1,21 +1,28 @@
 #!/usr/bin/env bun
-// The model's side of a board task on cookbooks/todo-cli, printed as the openai twin's scenario JSON
-// (world/run.ts writes it to the generated world). The scripted model works like the real one is asked
-// to: it reads its task from the board, writes that task's code, runs the project's check, commits as the
-// agent and pushes agent/<task id>, hands off; the reviewer approves; the PM job reads the board and reports.
-// Rules are stateless and key on the conversation's own text, never on call counts: the platform meters
-// housekeeping calls too.
+// The scripted brain: what the model twin answers when the brain thinks, printed as the scenario document the twin
+// serves (the kit's rehearsal writes it into the world). The scripted model works like the real one is asked to: it
+// reads its task from the board, writes that task's code, runs the project's check, commits as the agent and pushes
+// agent/<task id>, hands off; the reviewer approves; the PM job reads the board and plans; the treasurer pays for the
+// domain on a card the platform mints. Handlers are stateless and key on the conversation's own text, never on call
+// counts: the platform meters housekeeping calls too.
 //
-// stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage
-// green on its own.
-import { scrumHandlers } from '../scrum.ts';
+// stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage green on its own.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const here = import.meta.dir;
-// The checkout the world's agent works in (world/run.ts names it): where the treasurer's task is filed to run.
-const project = process.env.WORLD_PROJECT_DIR ?? (() => { throw new Error('gateway.ts: WORLD_PROJECT_DIR is not set'); })();
-const seed = JSON.parse(readFileSync(resolve(here, '../../../cookbooks/todo-cli/hermes/kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string }> };
+// The scripted PM, shared by the board's stories: the PM job's wake (`WAKE: PM`, the token its prompt carries and the
+// skill text never does) runs the beat as the model's terminal call — the scrum beat, or the release-planning beat when
+// the world was brought up for the release rehearsal (REHEARSAL_RELEASE=1) — and the beat's last line is the verdict.
+const beat = process.env.REHEARSAL_RELEASE === '1' ? 'rehearsal/model/release-beat.ts' : 'rehearsal/model/scrum-beat.ts'; // relative to the brain's checkout
+const scrumHandlers = [
+  { id: 'scrum-report', on: { userTextIncludes: 'WAKE: PM', toolResultFor: 'terminal', anyTextIncludes: 'SCRUM_BEAT_DONE' }, respond: { text: 'Scrum reconciled the sourced roadmap and fleet work. The terminal output records the landing or dispatch result. Human commitments and release gates remain explicit.' } },
+  { id: 'scrum-act', on: { userTextIncludes: 'WAKE: PM', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: `bun ${beat}` } } } },
+  { id: 'scrum-error', on: { userTextIncludes: 'WAKE: PM', toolResultFor: 'terminal' }, respond: { text: 'Scrum did not finish: inspect the terminal error. Preserve the planning worktree and leave the PM cursor unchanged.' } },
+];
+// The brain's checkout in the world (the kit's rehearsal names it): where the treasurer's task is filed to run.
+const project = process.env.REHEARSAL_STACK_PROJECT ?? (() => { throw new Error('scenario.ts: REHEARSAL_STACK_PROJECT is not set'); })();
+const seed = JSON.parse(readFileSync(resolve(here, '../../hermes/kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string }> };
 const items = seed.tasks.map((t) => ({ id: t.key, title: t.title }));
 
 function files(dir: string, base = dir): string[] {
@@ -41,6 +48,8 @@ function implement(item: { id: string; title: string }): string {
   ].join('\n');
 }
 
+// The Stripe twin's address, from the world's definition: the registrar the treasurer presents the card to.
+const stripe = `http://127.0.0.1:${(JSON.parse(readFileSync(resolve(here, '../world.json'), 'utf8')) as { services: Array<{ id: string; port: number }> }).services.find((x) => x.id === 'stripe')!.port + Number(process.env.REHEARSAL_PORT_OFFSET ?? 0)}`;
 // The treasurer's payment for the domain: the one blocked developer task is the one waiting; the card is minted on
 // the treasurer's valve naming that task, presented to the registrar (the Stripe twin), captured; the receipt goes
 // on the developer's task and the task is released. Plain shell; the card never leaves this session.
@@ -48,9 +57,9 @@ const payDomain = [
     `dev=$(hermes kanban list --status blocked --assignee default --json 2>/dev/null | sed -n 's/^ *"id": *"\\([^"]*\\)".*/\\1/p' | head -1); [ -n "$dev" ] || { echo "PAYMENT_""RAN no blocked developer task on the board: $(hermes kanban list --status blocked --json 2>&1 | head -c 200)"; exit 1; }`,
     `card=$(curl -sf -X POST $OPEN_AUTONOMY_PAY_URL/rails/card -H 'authorization: Bearer valve' -H 'content-type: application/json' -d "{\\"usd_cents\\":250,\\"purpose\\":\\"domain todo-cli.example\\",\\"item\\":\\"$dev\\"}") || { echo "PAYMENT_""RAN the card rail refused"; exit 1; }`,
     `card_id=$(printf '%s' "$card" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4); last4=$(printf '%s' "$card" | grep -o '"last4":"[^"]*"' | head -1 | cut -d'"' -f4); [ -n "$card_id" ] || { echo "PAYMENT_""RAN no card id: $card"; exit 1; }`,
-    `auth=$(curl -sf -u sk_test_world: -X POST http://127.0.0.1:${47616 + Number(process.env.WORLD_PORT_OFFSET ?? 0)}/v1/test_helpers/issuing/authorizations -d card=$card_id -d amount=200 -d 'merchant_data[category]=computer_software_stores' -d 'merchant_data[name]=Namecheap') || { echo "PAYMENT_""RAN the registrar could not authorize"; exit 1; }`,
+    `auth=$(curl -sf -u sk_test_world: -X POST ${stripe}/v1/test_helpers/issuing/authorizations -d card=$card_id -d amount=200 -d 'merchant_data[category]=computer_software_stores' -d 'merchant_data[name]=Namecheap') || { echo "PAYMENT_""RAN the registrar could not authorize"; exit 1; }`,
     `auth_id=$(printf '%s' "$auth" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4); printf '%s' "$auth" | grep -q '"approved":true' || { echo "PAYMENT_""RAN the authorization was declined: $auth"; exit 1; }`,
-    `curl -sf -u sk_test_world: -X POST http://127.0.0.1:${47616 + Number(process.env.WORLD_PORT_OFFSET ?? 0)}/v1/test_helpers/issuing/authorizations/$auth_id/capture >/dev/null || { echo "PAYMENT_""RAN the capture failed"; exit 1; }`,
+    `curl -sf -u sk_test_world: -X POST ${stripe}/v1/test_helpers/issuing/authorizations/$auth_id/capture >/dev/null || { echo "PAYMENT_""RAN the capture failed"; exit 1; }`,
     `hermes kanban comment $dev "RECEIPT: domain todo-cli.example at Namecheap, \\$2.00 on card ····$last4" >/dev/null && hermes kanban unblock $dev >/dev/null || { echo "PAYMENT_""RAN paid but could not release $dev"; exit 1; }`,
     `echo "PAYMENT_""RAN PAID domain todo-cli.example at Namecheap on card $card_id for $dev"`,
   ].join('\n');
@@ -95,4 +104,4 @@ const handlers = [
   { id: 'orient', on: { userTextIncludes: 'work kanban task', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'kanban_show', arguments: {} } } },
   { id: 'housekeeping', on: {}, respond: { text: 'ok' } },
 ];
-process.stdout.write(`${JSON.stringify({ $comment: 'Generated by world/handlers/todo-cli/gateway.ts — edit that and the stages, not this.', handlers }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ $comment: 'GENERATED by rehearsal/model/scenario.ts — the scripted brain for the model twin; edit the generator and the stages.', extractors: {}, handlers }, null, 2)}\n`);

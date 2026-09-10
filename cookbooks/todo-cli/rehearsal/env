@@ -1,0 +1,18 @@
+# The rehearsal's settings (never a secret), read first by the kit's rehearsal. An exported variable wins over a line here.
+# The world: one per cookbook on this machine, its addresses pinned in world.json (47611–47619), the brain's valve
+# beside a real agent's (18787/18788). REHEARSAL_PORT_OFFSET moves every port for a second world of the same cookbook.
+REHEARSAL_WORLD=open-autonomy-todo-cli
+REHEARSAL_VALVE_PORT=18787
+# Sealed: every vendor is a twin, and the world's proxy refuses anything untwinned.
+WORLD_MODE=sealed
+# The brain's Discord home channel on the Discord twin (the id its .env names and the seed creates).
+DISCORD_HOME_CHANNEL=1000000000000000001
+# The operator's, exported before any verb (this file is committed; these name a machine):
+#   WORLD_STATE_ROOT   a disk with headroom for the world's state (the runtime admits a world against its free space)
+#   WORLD_HERMES_BIN   an installed pinned Hermes (bin directory) instead of installing the pin under the state root
+#   TWINS_ROOT         a twins checkout instead of the published packages, when developing the twins
+# The opening position a story needs, exported before `up` (the seed reads them; rehearsal/hooks.ts):
+#   REHEARSAL_IDLE=1         an empty board (owner-notification, upgrade and release exercises)
+#   REHEARSAL_SCRUM=1        the scrum rehearsal's community: owner direction, a volunteer, a suggestion, a contradiction, an outside PR
+#   REHEARSAL_RELEASE=1      the release rehearsal: the PM's release-planning judgment, its routine report kept local
+#   REHEARSAL_OWNER_DOOR=github   the owner asks for release review in an assigned GitHub issue (default: the Discord channel)

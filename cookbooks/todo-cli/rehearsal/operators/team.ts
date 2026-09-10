@@ -1,6 +1,8 @@
 // Manual roster rehearsal through vendor APIs; run attached to the twin world. No live accounts.
-import { api, need, ACCOUNT, STATE } from './lib.ts';
-import { parseTeamConfig, replaceTeamConfig } from '../packages/sdk/src/team.ts';
+import { resolve } from 'node:path';
+import { api, need, ACCOUNT, STACK } from '../../.open-autonomy/rehearsal/lib.ts';
+import { hermesBin } from '../hooks.ts';
+import { parseTeamConfig, replaceTeamConfig } from '../../.open-autonomy/sdk/team.ts';
 const gh = api(need('GITHUB_TWIN_URL'));
 const platform = need('PLATFORM_URL');
 const route = `/repos/${ACCOUNT}/contents/.open-autonomy/config.yaml`;
@@ -33,8 +35,8 @@ if (process.argv[2] === 'seed') {
   const prs = await gh.get(`/repos/${ACCOUNT}/pulls?state=open`);
   console.log('draft proposals', prs.body.map((p: any) => ({ number: p.number, draft: p.draft, head: p.head.ref, base: p.base.ref, title: p.title })));
 } else if (process.argv[2] === 'scrum') {
-  const native = need('WORLD_HERMES_BIN');
-  const home = `${STATE}/.volter/stack/home`, project = `${STATE}/.volter/stack/project`;
+  const native = hermesBin();
+  const home = resolve(STACK, 'home'), project = resolve(STACK, 'project');
   const result = Bun.spawnSync({ cmd: ['bun', `${project}/.open-autonomy/scrum.ts`, 'prepare'], cwd: project, env: { ...process.env, HERMES_HOME: home, PYTHONPATH: native.replace(/\/.venv\/bin$/, ''), PATH: `${native}:${process.env.PATH}` }, stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode) throw new Error(result.stderr.toString());
   const prepared = JSON.parse(result.stdout.toString());

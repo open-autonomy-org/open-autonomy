@@ -19,8 +19,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `cookbooks/` — complete autonomous projects, made with a kit plus their own code (`lexicon`: a community desk over
   the GitHub twin's issues and discussions and the Discord twin, a GitHub Pages homepage). `todo-cli` is the one the
   world runs.
-- `world/` — the volter-world: twins + the platform from this tree + the kit on a cookbook, an environment to
-  drive, never a gate.
+- `world/` — the front of the world: the kit's own rehearsal (`.open-autonomy/rehearsal/`, carried by every cookbook)
+  run in a cookbook, with the platform from this tree on the twins (`cookbooks/<name>/rehearsal/`: the world, the
+  scripted brain, the stories, the hooks). An environment to drive, never a gate.
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
   this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
   `container/` is the kit's default for a real deployment (one image, one compose file; Docker or Podman): the
@@ -67,9 +68,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   and its own Discord bot: Open Autonomy and Hookline. Their project conversations follow each install's
   communication agreement.
 - **The world is where this runs without keys.** `bun world/run.ts up` brings the twins (the published `@volter/twin-*`
-  packages in node_modules; `TWINS_ROOT` names a checkout when developing the twins),
+  packages in the cookbook's `.open-autonomy/node_modules`; `TWINS_ROOT` names a checkout when developing the twins),
   the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
-  world/run.ts hermes kanban list`, `hermes cron run pm`), then `down --purge`.
+  world/run.ts hermes kanban list`, `hermes cron run pm`) or run a story (`bun world/run.ts stories`), then `fresh`.
 - Our own agent runs that same world from its own checkout to verify a change (`bun world/run.ts up`, then its doors
   and curl; the world's agent takes the valve ports 18787/18788, beside the real ones). It is that world's operator,
   never a second agent inside it.

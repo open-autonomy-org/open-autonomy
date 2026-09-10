@@ -1,0 +1,5 @@
+{"until":{"board":{"title":"todo add appends an item and prints its id","status":"done"}},"budget":420}
+{"act":"between-tasks"}
+{"until":{"board":{"title":"the project owns its domain name","status":"done"}},"budget":420}
+{"expect":{"spent":true}}
+{"expect":{"live":"current"}}

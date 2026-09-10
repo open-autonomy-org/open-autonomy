@@ -12,6 +12,7 @@
 //   bun .open-autonomy/rehearsal/run.ts down [--purge]
 //   bun .open-autonomy/rehearsal/run.ts story rehearsal/stories/<name>.jsonl     one story, one line per act
 //   bun .open-autonomy/rehearsal/run.ts stories       every story, one line per story with its verdict and its seconds
+//   bun .open-autonomy/rehearsal/run.ts say <text…>                                 a person speaks in the brain's channel on the twin
 //   bun .open-autonomy/rehearsal/run.ts seed | stack up|down|restart | hermes <args…> | env -- <cmd…> | url [service]
 //
 // A restart starts over: a world's down-then-up is a new instance, and the twins' vendor roots outlive the instance's
@@ -71,12 +72,13 @@ function generateScenario(): void {
 }
 function walk(dir: string): string[] { if (!existsSync(dir)) return []; return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(resolve(dir, e.name)) : [resolve(dir, e.name)])); }
 // The world's definition, rendered: ${TWIN:<vendor>} (that twin's CLI), ${KIT_DIR} (this directory: the backend copy,
-// the Actions runner), ${SCENARIO}, ${DATA}. Ports move by REHEARSAL_PORT_OFFSET when two worlds share a machine.
+// the Actions runner), ${REHEARSAL_DIR} (the project's rehearsal/: a service of its own), ${SCENARIO}, ${DATA}. Ports move
+// by REHEARSAL_PORT_OFFSET when two worlds share a machine.
 function renderWorld(): void {
   const src = resolve(REHEARSAL, 'world.json');
   if (!existsSync(src)) { console.error('rehearsal: no rehearsal/world.json'); process.exit(2); }
   const offset = Number(process.env.REHEARSAL_PORT_OFFSET ?? 0);
-  const doc = JSON.parse(readFileSync(src, 'utf8').replace(/\$\{TWIN:([a-z-]+)\}/g, (_, n: string) => twinCli(n)).replaceAll('${KIT_DIR}', KIT_DIR).replaceAll('${SCENARIO}', scenario).replaceAll('${DATA}', DATA).replaceAll('${HOME}', process.env.HOME ?? ''));
+  const doc = JSON.parse(readFileSync(src, 'utf8').replace(/\$\{TWIN:([a-z-]+)\}/g, (_, n: string) => twinCli(n)).replaceAll('${KIT_DIR}', KIT_DIR).replaceAll('${REHEARSAL_DIR}', REHEARSAL).replaceAll('${SCENARIO}', scenario).replaceAll('${DATA}', DATA).replaceAll('${HOME}', process.env.HOME ?? ''));
   doc.id = NAME;
   for (const s of doc.services ?? []) { if (typeof s.port === 'number') s.port += offset; if (s.id === 'discord' && s.env?.TWIN_DISCORD_GATEWAY_URL) s.env.TWIN_DISCORD_GATEWAY_URL = `ws://127.0.0.1:${s.port}/gateway`; }
   writeFileSync(config, JSON.stringify(doc, null, 2));
@@ -108,6 +110,7 @@ switch (verb) {
   case 'hermes': process.exit(Bun.spawnSync({ cmd: ['bun', resolve(KIT_DIR, 'stack.ts'), 'hermes', ...argv.slice(1)], stdio: ['inherit', 'inherit', 'inherit'] }).exitCode);
   case 'env': inWorld(rest); break;
   case 'url': console.log(url(argv[1] ?? 'platform')); break;
+  case 'say': { const text = argv.slice(1).join(' '); if (!text) { console.error('usage: run.ts say <text…>'); process.exit(2); } const f = resolve(GENERATED, 'say.jsonl'); writeFileSync(f, `${JSON.stringify({ say: text })}\n`); process.exit(inWorld(['bun', resolve(KIT_DIR, 'story.ts'), f], { check: false })); }
   case 'story': { const f = argv[1]; if (!f) { console.error('usage: run.ts story <file.jsonl>'); process.exit(2); } process.exit(inWorld(['bun', resolve(KIT_DIR, 'story.ts'), resolve(f)], { check: false })); }
   case 'stories': {
     const dir = resolve(REHEARSAL, 'stories'); const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort() : [];
@@ -117,6 +120,6 @@ switch (verb) {
     process.exit(failed ? 1 : 0);
   }
   default:
-    console.error('usage: bun .open-autonomy/rehearsal/run.ts up | fresh | down [--purge] | seed | stack up|down|restart | story <file> | stories | hermes <args…> | env -- <cmd…> | url [service]');
+    console.error('usage: bun .open-autonomy/rehearsal/run.ts up | fresh | down [--purge] | seed | stack up|down|restart | story <file> | stories | say <text…> | hermes <args…> | env -- <cmd…> | url [service]');
     process.exit(2);
 }

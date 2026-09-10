@@ -35,17 +35,19 @@ Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/
 
 ## kit-rehearsal: Every project rehearses its own method in a world
 
-Status: in progress; Peak runs its three stories on the engine and a fresh `create` runs its seeded story (2026-09-10); this repository's own world remains
-Dispatch: fleet
+Status: done (2026-09-10): Peak runs its three stories on the engine, a fresh `create` runs its seeded story, and this repository's own world is the engine run in a cookbook
+Dispatch: hold
 Scope: the rehearsal engine is in the template (`.open-autonomy/rehearsal/`, kit-owned): the world's front door, the
 seed onto the GitHub twin, the backend copy, the Actions runner, the brain's stack from a clean environment, and the
 story runner with its acts, conditions and static scenario checks; a project's settings in `rehearsal/env`, the dress
 rehearsal (`REHEARSAL_MODEL=real`). `create` seeds a starter `rehearsal/` (the GitHub and Discord twins, a scripted PM
 whose one beat plans every new issue and lands the plan, one story, a `roadmap` condition). Peak is re-adopted onto the
 engine with only its settings, world, scripted brain, stories and hooks its own, and its hand-written copy is gone.
-What remains: this repository's own `world/` becomes an instance of it, which is the proof the machinery is general.
+This repository's own `world/` is an instance of it: each cookbook keeps `rehearsal/` (the world with the platform from this
+tree on the twins, the scripted brain, its stories, its hooks) and carries the engine; `world/run.ts` is a front that runs
+the engine in the cookbook. The hand-written world is gone.
 Completion:
-- `world/run.ts` is the kit's rehearsal with the cookbook as the project
+- `world/run.ts` is the kit's rehearsal with the cookbook as the project — done
 Rationale: the machinery was written three times (the product's world, the engagement's rehearsal, and nothing in the
 template). Every defect found in one copy was invisible to the others.
 

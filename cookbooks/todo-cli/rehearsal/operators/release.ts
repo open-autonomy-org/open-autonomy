@@ -2,10 +2,11 @@
 // product decisions run in the actual PM cron through release-beat.ts.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, ENC, STATE, api, need } from './lib.ts';
-const project = resolve(STATE, '.volter/stack/project');
-const home = resolve(STATE, '.volter/stack/home');
-const env = { ...process.env, HERMES_HOME: home, PATH: `${need('WORLD_HERMES_BIN')}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };
+import { ACCOUNT, ENC, STACK, api, need } from '../../.open-autonomy/rehearsal/lib.ts';
+import { hermesBin } from '../hooks.ts';
+const project = resolve(STACK, 'project');
+const home = resolve(STACK, 'home');
+const env = { ...process.env, HERMES_HOME: home, PATH: `${hermesBin()}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };
 const run = (cmd: string[], cwd = project) => {
   const r = Bun.spawnSync({ cmd, cwd, env, stdout: 'pipe', stderr: 'pipe' });
   if (r.exitCode) throw new Error(r.stderr.toString());
@@ -86,4 +87,4 @@ if (['accumulate', 'prepare', 'request-review', 'defer'].includes(command)) {
 } else if (command === 'reconcile') {
   console.log({ live: await sync() });
   reconcile();
-} else throw new Error('usage: release-operator.ts accumulate | prepare | request-review | defer | inspect | landed | later | finish-later | premature-package | invalid-package | deployed | unknown | reconcile');
+} else throw new Error('usage: release.ts accumulate | prepare | request-review | defer | inspect | landed | later | finish-later | premature-package | invalid-package | deployed | unknown | reconcile');

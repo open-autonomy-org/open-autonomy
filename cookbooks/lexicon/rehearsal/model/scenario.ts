@@ -1,22 +1,29 @@
 #!/usr/bin/env bun
-// The model's side of cookbooks/lexicon, printed as the openai twin's scenario JSON (world/run.ts writes it to the
-// generated world). The board's workers, the reviewer and the PM as in todo-cli's scenario; and the community desk:
-// every quarter hour the community job reads the repository's issues and discussions through the project's own
-// tool, answers where it was asked, files the request that fits the constitution on the board (which a worker then
-// builds and lands), and marks the look done; in the channel the agent answers a person's question as itself.
-// Rules are stateless and key on the conversation's own text, never on call counts: the platform meters
-// housekeeping calls too.
+// The scripted brain: what the model twin answers when the brain thinks, printed as the scenario document the twin
+// serves (the kit's rehearsal writes it into the world). The board's workers, the reviewer and the PM as in todo-cli's
+// scenario; and the community desk: every quarter hour the community job (`WAKE: COMMUNITY`) reads the repository's
+// issues and discussions through the project's own tool, answers where it was asked, files the request that fits the
+// constitution on the board (which a worker then builds and lands), and marks the look done; in the channel the brain
+// answers a person's question as itself. Handlers are stateless and key on the conversation's own text, never on call
+// counts: the platform meters housekeeping calls too.
 //
-// stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage
-// green on its own.
-import { scrumHandlers } from '../scrum.ts';
+// stages/<key>/ holds the files the model "writes" for the seed task with that key, cumulative, each stage green on its own.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const here = import.meta.dir;
-// The checkout the world's agent works in (world/run.ts names it): where the treasurer's task is filed to run.
-const project = process.env.WORLD_PROJECT_DIR ?? (() => { throw new Error('gateway.ts: WORLD_PROJECT_DIR is not set'); })();
-const seed = JSON.parse(readFileSync(resolve(here, '../../../cookbooks/lexicon/hermes/kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string }> };
+// The scripted PM, shared by the board's stories: the PM job's wake (`WAKE: PM`, the token its prompt carries and the
+// skill text never does) runs the beat as the model's terminal call — the scrum beat, or the release-planning beat when
+// the world was brought up for the release rehearsal (REHEARSAL_RELEASE=1) — and the beat's last line is the verdict.
+const beat = process.env.REHEARSAL_RELEASE === '1' ? 'rehearsal/model/release-beat.ts' : 'rehearsal/model/scrum-beat.ts'; // relative to the brain's checkout
+const scrumHandlers = [
+  { id: 'scrum-report', on: { userTextIncludes: 'WAKE: PM', toolResultFor: 'terminal', anyTextIncludes: 'SCRUM_BEAT_DONE' }, respond: { text: 'Scrum reconciled the sourced roadmap and fleet work. The terminal output records the landing or dispatch result. Human commitments and release gates remain explicit.' } },
+  { id: 'scrum-act', on: { userTextIncludes: 'WAKE: PM', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: `bun ${beat}` } } } },
+  { id: 'scrum-error', on: { userTextIncludes: 'WAKE: PM', toolResultFor: 'terminal' }, respond: { text: 'Scrum did not finish: inspect the terminal error. Preserve the planning worktree and leave the PM cursor unchanged.' } },
+];
+// The brain's checkout in the world (the kit's rehearsal names it): where the treasurer's task is filed to run.
+const project = process.env.REHEARSAL_STACK_PROJECT ?? (() => { throw new Error('scenario.ts: REHEARSAL_STACK_PROJECT is not set'); })();
+const seed = JSON.parse(readFileSync(resolve(here, '../../hermes/kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string }> };
 // The board's seed tasks, and the one the community files (issue #2): the twin stage.
 const items = [...seed.tasks.map((t) => ({ id: t.key, title: t.title })), { id: 'twin', title: 'add the term "twin" to the lexicon' }];
 
@@ -58,14 +65,14 @@ const handlers = [
   // The community desk (the community job, the community skill). Most specific first: the report after the look
   // is marked done; the filing and the answers (one shell, the board's CLI: a scheduled job has no board tools)
   // after the poll that shows a request; the poll itself. Stateless, keyed on the conversation's own text.
-  { id: 'community-report', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; preserved the request in issue #2 for roadmap scrum; nothing declined.' } },
-  { id: 'community-act', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'request: add the term' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
+  { id: 'community-report', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; preserved the request in issue #2 for roadmap scrum; nothing declined.' } },
+  { id: 'community-act', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'request: add the term' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
     `bun .open-autonomy/community.ts comment 2 "Captured for the PM scrum to consider in ROADMAP.md." || exit 1`,
     `bun .open-autonomy/community.ts comment 1 "A lexicon is this project's shared glossary: terms the community defines, rendered to the homepage. Propose one in an issue titled 'request: add the term …' with a definition and a source." || { echo "COMMUNITY_""FAILED comment 1"; exit 1; }`,
     `bun .open-autonomy/community.ts discuss 1 "A term of the week fits the constitution: a term is defined once and the homepage renders from the glossary alone, so the week's term is whichever was added last. I will keep it in mind when the glossary is larger." || { echo "COMMUNITY_""FAILED discuss 1"; exit 1; }`,
     `bun .open-autonomy/community.ts mark && echo "COMMUNITY_""DONE captured request"`].join('\n') } } } },
-  { id: 'community-quiet', on: { userTextIncludes: 'Run the community skill', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_POLL_DONE' }, respond: { text: 'Community: nothing new since the last look.' } },
-  { id: 'community-poll', on: { userTextIncludes: 'Run the community skill', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'bun .open-autonomy/community.ts poll' } } } },
+  { id: 'community-quiet', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_POLL_DONE' }, respond: { text: 'Community: nothing new since the last look.' } },
+  { id: 'community-poll', on: { userTextIncludes: 'WAKE: COMMUNITY', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'bun .open-autonomy/community.ts poll' } } } },
   // A person in the channel: answered as the agent itself.
   { id: 'channel-what-is', on: { userTextIncludes: 'what is a lexicon' }, respond: { text: 'A lexicon is this project\'s shared glossary: terms its community defines, added by me, rendered to the homepage. Propose one in an issue titled "request: add the term …" with a definition and a source, or just say it here.' } },
   { id: 'handoff', on: { anyTextIncludes: 'PUSHED_BRANCH=agent/', hasTool: 'kanban_request_review' }, respond: { toolCalls: { name: 'kanban_request_review', arguments: { summary: 'HANDOFF pushed the agent branch named on the thread (PUSHED_BRANCH, with its commit): implemented with the check green; the landing workflow merges it when the checks pass.' } } } },
@@ -81,4 +88,4 @@ const handlers = [
   { id: 'orient', on: { userTextIncludes: 'work kanban task', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'kanban_show', arguments: {} } } },
   { id: 'housekeeping', on: {}, respond: { text: 'ok' } },
 ];
-process.stdout.write(`${JSON.stringify({ $comment: 'Generated by world/handlers/lexicon/gateway.ts — edit that and the stages, not this.', handlers }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ $comment: 'GENERATED by rehearsal/model/scenario.ts — the scripted brain for the model twin; edit the generator and the stages.', extractors: {}, handlers }, null, 2)}\n`);

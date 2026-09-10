@@ -1,13 +1,16 @@
 #!/usr/bin/env bun
-// The platform as a world service: the REAL worker under `wrangler dev`, its upstreams pointed at the
-// twins the world injected. The worker takes those as ordinary configuration, so nothing in the backend or the app
-// knows it is in a world. The world gives PORT and --persist-to (the local Durable Object storage).
+// The platform as a world service: the REAL worker under `wrangler dev`, its upstreams pointed at the twins the world
+// injected — the model rail on the model twin, GitHub on the GitHub twin, the card rail on the Stripe twin, money in
+// on the Polar twin. The worker takes those as ordinary configuration, so nothing in the backend or the app knows it
+// is in a world. The world gives PORT and --persist-to (the books). A cookbook's rehearsal/world.json names this as its
+// platform service (the kit's own rehearsal serves the bare backend copy; this tree's world serves the platform).
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { MODEL_PRICES } from '../packages/backend/src/pricing.ts';
 
+const TREE = resolve(import.meta.dir, '..', '..');
+const { MODEL_PRICES } = await import(resolve(TREE, 'packages/backend/src/pricing.ts'));
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
-const need = (name: string): string => { const v = process.env[name]; if (!v) { console.error(`world/platform.ts: ${name} is required (the world injects it)`); process.exit(2); } return v; };
+const need = (name: string): string => { const v = process.env[name]; if (!v) { console.error(`apps/platform/world.ts: ${name} is required (the world injects it)`); process.exit(2); } return v; };
 const MODEL = process.env.OPEN_AUTONOMY_MODEL ?? 'zai/glm-5.3-flash';
 const PREVIOUS_MODEL = `${MODEL}-previous`;
 const port = need('PORT');
@@ -25,11 +28,11 @@ const vars: Record<string, string> = {
   GIVE_SESSION_HMAC_SECRET: 'world-give-session-secret',
   // Represents the platform operator's read:org credential; the funder's OAuth token remains scope-free.
   GITHUB_TOKEN: 'world-bot',
-  DEPLOY_COMMIT: execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: resolve(import.meta.dir, '..'), encoding: 'utf8' }).trim(),
+  DEPLOY_COMMIT: execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: TREE, encoding: 'utf8' }).trim(),
   // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
   // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
   MODEL_PRICES_JSON: JSON.stringify({ [PREVIOUS_MODEL]: MODEL_PRICES[MODEL] }),
-  DEFAULT_FUNDING_ACCOUNT: process.env.OPEN_AUTONOMY_ACCOUNT ?? `cookbook/${process.env.WORLD_COOKBOOK ?? 'todo-cli'}`,
+  DEFAULT_FUNDING_ACCOUNT: need('OPEN_AUTONOMY_ACCOUNT'),
   DEFAULT_SPONSOR_ACCOUNT: 'open-autonomy-org/grants',
   GRANTS_ACCOUNT: 'open-autonomy-org/grants',
 };
@@ -42,7 +45,7 @@ if (process.env.STRIPE_TWIN_URL) {
   vars.ISSUING_BILLING_ADDRESS_JSON = JSON.stringify({ line1: '1 World Street', city: 'Twin City', state: 'CA', postal_code: '00000', country: 'US' });
   const res = await fetch(`${process.env.STRIPE_TWIN_URL}/v1/webhook_endpoints`, { method: 'POST', headers: { authorization: `Bearer ${vars.STRIPE_SECRET_KEY}`, 'content-type': 'application/x-www-form-urlencoded' }, body: `url=${encodeURIComponent(`http://127.0.0.1:${port}/webhooks/stripe`)}&enabled_events[0]=issuing_authorization.request&enabled_events[1]=issuing_authorization.created&enabled_events[2]=issuing_transaction.created` });
   const endpoint = await res.json().catch(() => ({})) as { secret?: string };
-  if (!res.ok || !endpoint.secret) { console.error(`world/platform.ts: cannot enrol the webhook endpoint on the Stripe twin (${res.status})`); process.exit(2); }
+  if (!res.ok || !endpoint.secret) { console.error(`apps/platform/world.ts: cannot enrol the webhook endpoint on the Stripe twin (${res.status})`); process.exit(2); }
   vars.STRIPE_WEBHOOK_SECRET = endpoint.secret;
 }
 // Money in is the Polar twin. It stores products, checkouts and orders but delivers no webhooks, so the
@@ -61,10 +64,10 @@ let stopping = false;
 let child: ReturnType<typeof spawn> | undefined;
 const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' };
 const start = () => {
-  child = spawn('bunx', args, { cwd: resolve(import.meta.dir, '..', 'apps', 'platform'), stdio: 'inherit', env });
+  child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env });
   child.on('exit', (code) => {
     if (stopping) process.exit(code ?? 0);
-    console.error(`world/platform.ts: wrangler dev exited (${code}); restarting on :${port}`);
+    console.error(`apps/platform/world.ts: wrangler dev exited (${code}); restarting on :${port}`);
     setTimeout(start, 2000);
   });
 };

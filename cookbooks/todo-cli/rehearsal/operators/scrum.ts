@@ -2,15 +2,15 @@
 // mutations use the pinned Hermes CLI. Invoke one beat at a time through world attach.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, ENC, STATE, api, need } from './lib.ts';
-const project = resolve(STATE, '.volter/stack/project');
-const home = resolve(STATE, '.volter/stack/home');
-const bin = need('WORLD_HERMES_BIN');
-const env = { ...process.env, HERMES_HOME: home, PATH: `${bin}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };
+import { ACCOUNT, ENC, STACK, api, need } from '../../.open-autonomy/rehearsal/lib.ts';
+import { hermesBin } from '../hooks.ts';
+const project = resolve(STACK, 'project');
+const home = resolve(STACK, 'home');
+const env = { ...process.env, HERMES_HOME: home, PATH: `${hermesBin()}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };
 const run = (cmd: string[], allowFailure = false) => {
   const r = Bun.spawnSync({ cmd, cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
   if (r.exitCode && !allowFailure) throw new Error(r.stderr.toString());
-  return { code: r.exitCode, out: r.stdout.toString().trim(), error: r.stderr.toString().trim().split('\n').find((l) => l.startsWith('error:')) ?? r.stderr.toString().trim() };
+  return { code: r.exitCode, out: r.stdout.toString().trim(), error: r.stderr.toString().trim().split('\n').find((l: string) => l.startsWith('error:')) ?? r.stderr.toString().trim() };
 };
 const scrum = (...args: string[]) => run(['bun', '.open-autonomy/scrum.ts', ...args]);
 const gh = api(need('GITHUB_TWIN_URL'));
@@ -87,4 +87,4 @@ if (command === 'inspect') {
 } else if (command === 'resume') {
   console.log(scrum('prepare').out);
   console.log({ pmCursor: existsSync(resolve(home, 'pm-cursor.json')) ? JSON.parse(readFileSync(resolve(home, 'pm-cursor.json'), 'utf8')) : null });
-} else throw new Error('usage: scrum-operator.ts inspect | outside | checkpoint | gap | notepad | guards | intake | release | archive | resume');
+} else throw new Error('usage: scrum.ts inspect | outside | checkpoint | gap | notepad | guards | intake | release | archive | resume');

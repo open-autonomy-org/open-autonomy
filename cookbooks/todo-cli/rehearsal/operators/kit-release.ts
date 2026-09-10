@@ -3,7 +3,8 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { ROOT, DATA } from './lib.ts';
+import { DATA, ROOT } from '../../.open-autonomy/rehearsal/lib.ts';
+const TREE = resolve(ROOT, '..', '..'); // this cookbook lives in Open Autonomy's tree, whose kit and SDK are packed
 
 if (!process.env.VOLTER_WORLD) throw new Error('publish the rehearsal kit inside volter-world attach');
 const target = process.argv[2];
@@ -15,7 +16,7 @@ mkdirSync(dir, { recursive: true });
 for (const pkg of ['sdk', 'kit-hermes']) {
   const cwd = resolve(dir, pkg);
   rmSync(cwd, { recursive: true, force: true });
-  cpSync(resolve(ROOT, 'packages', pkg), cwd, { recursive: true, filter: (p) => !p.includes('/node_modules') });
+  cpSync(resolve(TREE, 'packages', pkg), cwd, { recursive: true, filter: (p) => !p.includes('/node_modules') });
   const path = resolve(cwd, 'package.json');
   const data = JSON.parse(readFileSync(path, 'utf8'));
   if (pkg === 'sdk') {
@@ -25,7 +26,7 @@ for (const pkg of ['sdk', 'kit-hermes']) {
   }
   if (pkg === 'kit-hermes') {
     data.version = target;
-    data.dependencies['@open-autonomy/sdk'] = JSON.parse(readFileSync(resolve(ROOT, 'packages/sdk/package.json'), 'utf8')).version;
+    data.dependencies['@open-autonomy/sdk'] = JSON.parse(readFileSync(resolve(TREE, 'packages/sdk/package.json'), 'utf8')).version;
     const src = resolve(cwd, 'src/kit.ts');
     writeFileSync(src, readFileSync(src, 'utf8').replace(/version: '[0-9.]+'/, `version: '${target}'`));
   }

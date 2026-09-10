@@ -77,3 +77,6 @@ hermes/scrum-queue.lock
 hermes/pm-cursor.json*
 hermes/community-cursor.json*
 hermes/release-review.md
+
+# The rehearsal world's state, when WORLD_STATE_ROOT is not set.
+.volter/

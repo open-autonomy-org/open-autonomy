@@ -1,6 +1,6 @@
-// Scripted MODEL judgment for the scrum rehearsal, not application orchestration.
-// The real cron invokes it as a terminal tool; it uses the kit's doors and native
-// Hermes CLI. The resulting roadmap/PR/task/message state is inspected by the operator.
+// The scripted PM's judgment for one scrum, run by the model twin as the brain's terminal call (rehearsal/model/
+// scenario.ts): the kit's doors and the native Hermes CLI, the judgment fixed. The resulting roadmap, pull request,
+// board and channel state is what a story reads. Runs in the brain's checkout; its last line is the verdict.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const project = process.cwd();
@@ -10,6 +10,7 @@ const run = (cmd: string[], cwd = project) => {
   return r.stdout.toString().trim();
 };
 const scrum = (...args: string[]) => run(['bun', '.open-autonomy/scrum.ts', ...args]);
+const account = /^account:\s*(\S+)/m.exec(readFileSync('.open-autonomy/config.yaml', 'utf8'))![1];
 const community = (...args: string[]) => run(['bun', '.open-autonomy/community.ts', ...args]);
 const snapshot = JSON.parse(scrum('prepare'));
 // Scripted judgment reads native history too; no explicit community intake is required.
@@ -86,7 +87,7 @@ if (outsideLanded) {
   const changelogFile = resolve(plan, 'CHANGELOG.md');
   let changelog = readFileSync(changelogFile, 'utf8');
   if (!changelog.includes(`commit/${commit}`)) {
-    const entry = `- Outside contributor supplied release notes. [Landed change](https://github.com/cookbook/todo-cli/commit/${commit}).`;
+    const entry = `- Outside contributor supplied release notes. [Landed change](https://github.com/${account}/commit/${commit}).`;
     if (!changelog.includes('## Unreleased')) changelog += '\n## Unreleased\n';
     changelog = changelog.replace('## Unreleased', `## Unreleased\n\n${entry}`);
     writeFileSync(changelogFile, changelog);
@@ -94,7 +95,7 @@ if (outsideLanded) {
   draft = draft.replace('Status: outside PR awaiting integration; human release review and post-release verification pending',
     'Status: release notes landed; human release review and post-release verification pending');
   if (!draft.includes(`commit/${commit}`)) draft = draft.replace('Review the candidate diff and check evidence,',
-    `Landed evidence: [outside contribution](https://github.com/cookbook/todo-cli/commit/${commit}). Review the candidate diff and check evidence,`);
+    `Landed evidence: [outside contribution](https://github.com/${account}/commit/${commit}). Review the candidate diff and check evidence,`);
 }
 // Routine intake is accounted for in operational memory; it never becomes a dated log.
 

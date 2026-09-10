@@ -13,7 +13,8 @@ export const REHEARSAL = resolve(ROOT, 'rehearsal');          // the project's: 
 for (const [k, v] of Object.entries(readEnvFile(resolve(REHEARSAL, 'env')))) if (process.env[k] === undefined) process.env[k] = v.replace(/\$HOME|^~(?=\/)/g, process.env.HOME ?? '');
 export const NAME = process.env.REHEARSAL_WORLD ?? `${readConfig().account.replace('/', '-')}-rehearsal`;
 // The twins: the published packages in the project's .open-autonomy/node_modules (@volter/twin-world and one
-// @volter/twin-<vendor> per twin), or a checkout named by TWINS_ROOT when the twins themselves are being developed.
+// @volter/twin-<vendor> per twin), else the nearest node_modules up the tree (a project that is a directory of a larger
+// repository, which installs them), or a checkout named by TWINS_ROOT when the twins themselves are being developed.
 export const TWINS_ROOT = process.env.TWINS_ROOT ? resolve(process.env.TWINS_ROOT) : undefined;
 export const twinCli = (name: string): string => {
   const override = process.env[`WORLD_${name.toUpperCase().replaceAll('-', '_')}_CLI`];
@@ -23,7 +24,9 @@ export const twinCli = (name: string): string => {
     const candidates = name === 'world' ? [resolve(TWINS_ROOT, 'packages/world-runtime/src/cli.ts'), resolve(TWINS_ROOT, 'packages/twin/world-runtime/src/cli.ts')] : [resolve(TWINS_ROOT, 'packages/twin', name, 'src/cli.ts')];
     return candidates.find(existsSync) ?? candidates[0];
   }
-  return resolve(ROOT, '.open-autonomy', 'node_modules', '@volter', name === 'world' ? 'twin-world' : `twin-${name}`, 'src/cli.ts');
+  const pkg = name === 'world' ? 'twin-world' : `twin-${name}`;
+  const installed = [resolve(ROOT, '.open-autonomy'), ...(() => { const dirs: string[] = []; for (let d = ROOT; ; d = resolve(d, '..')) { dirs.push(d); if (d === resolve(d, '..')) break; } return dirs; })()].map((d) => resolve(d, 'node_modules', '@volter', pkg, 'src/cli.ts'));
+  return installed.find(existsSync) ?? installed[0];
 };
 // Where the world's state lives (its instances, the generated config, the backend copy's books, the stack's clone and
 // home): the project by default, or WORLD_STATE_ROOT — a disk with headroom, since the runtime admits a world only
