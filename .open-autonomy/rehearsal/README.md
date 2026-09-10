@@ -10,7 +10,7 @@ that needs a real credential is not a story.
 
 ```text
 .open-autonomy/rehearsal/    the kit's, kept current by `create-open-autonomy upgrade` — never edited in place
-  run.ts                     the front door: up | fresh | down | seed | stack | story | stories | hermes | env | url
+  run.ts                     the front door: up | fresh | down | seed | stack | story | stories | say | hermes | env | url
   seed.ts                    the project on the GitHub twin, its account funded, its keys minted the adopter way
   platform.ts                the backend copy: the real worker on the twins (the model rail on the model twin)
   actions.ts                 GitHub Actions played by the world (the landing convention: pull request, ci, delete)
@@ -24,7 +24,8 @@ rehearsal/                   the project's own — seeded once by `create`, your
   env                        settings, never secrets: REHEARSAL_WORLD, WORLD_STATE_ROOT, TWINS_ROOT, OPEN_AUTONOMY_ROOT,
                              REHEARSAL_CLIENT_REPO, REHEARSAL_BRANCH_PREFIX, REHEARSAL_JIRA_PROJECT, REHEARSAL_ASSIGNEE,
                              REHEARSAL_CLIENT, REHEARSAL_VALVE_PORT, WORLD_HERMES_BIN ($HOME expands; the shell's export wins)
-  world.json                 the twins this project's channels need (${TWIN:github}, ${KIT_DIR}, ${SCENARIO}, ${DATA})
+  world.json                 the twins this project's channels need (${TWIN:github}, ${KIT_DIR}, ${SCENARIO}, ${DATA});
+                             a service of the project's own under ${REHEARSAL_DIR}
   model/scenario.ts|.py      the scripted brain: prints the scenario document the model twin serves
   stories/*.jsonl            one story per shape of the method
   hooks.ts                   custody, seed, acts, conditions, stackEnv — what the kit cannot know
@@ -46,6 +47,10 @@ bun .open-autonomy/rehearsal/run.ts fresh       # start over (a restart is `fres
 A story takes seconds to a couple of minutes: the scripted brain answers immediately, and the runner ticks the
 monitors itself rather than waiting on their schedule. Budget a wait in a story accordingly (`"budget": 90`), never
 for a real model's pace.
+
+**A project that is a directory of a larger repository** (a cookbook in a product's tree) is seeded as a repository of
+its own: one commit holding that directory's tree at HEAD, on top of the world's main when the world already has one.
+Its `.open-autonomy/` and `rehearsal/` are its own; the tree around it never enters the world.
 
 **A restart is `fresh`.** A world's down-then-up is a new instance: the twins' vendor roots outlive it but the
 instance's blob store does not, so the GitHub twin keeps refs whose objects are gone and every later push fails.

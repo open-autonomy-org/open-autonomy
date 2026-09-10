@@ -120,10 +120,11 @@ for a listed partner within a bound. Both leave records on the public audit trai
 
 ## The world
 
-A project that talks to a vendor verifies against twins, never the vendor: `bun add -d @volter/twin-world @volter/twin-<vendor>`,
-a `world/world.json` naming them, `bunx volter-world up world/world.json`. The develop skill drives the running
-system in that world, one action at a time (this repository's own `world/` is the shape). Nothing an agent does
-reaches a real API.
+A project that talks to a vendor verifies against twins, never the vendor: the kit's rehearsal (`.open-autonomy/rehearsal/`,
+kept current by `upgrade`) brings the project's own world up — the twins its channels name in `rehearsal/world.json`, the
+model twin on its scripted brain, the backend copy, the brain's stack — and drives stories through it. The develop skill
+drives the running system in that world, one action at a time (this repository's own `world/` runs the same rehearsal in
+a cookbook). Nothing an agent does reaches a real API.
 
 ## Nothing in the agent's reach is a secret that matters
 

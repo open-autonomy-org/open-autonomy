@@ -1,0 +1,11 @@
+{"act":"scrum-seed"}
+{"job":"pm"}
+{"until":{"roadmap":"scrum rehearsal"},"budget":300}
+{"expect":{"issue":"scrum: documentation commitment"}}
+{"job":"pm"}
+{"job":"pm"}
+{"until":{"board":{"title":"todo add appends an item and prints its id"}},"budget":120}
+{"act":"outside"}
+{"job":"pm"}
+{"until":{"changelog":"Outside contributor supplied release notes"},"budget":300}
+{"expect":{"roadmap":"Status: release notes landed"}}

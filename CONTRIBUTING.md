@@ -4,7 +4,7 @@
   .githooks` once per clone). Nothing else runs unattended.
 - The world is where a change is exercised with no keys: `bun world/run.ts up` brings the twins, the real platform
   and the cookbook's agent stack up; then drive it — the page, the books, the board, the twins' ledgers — one action
-  at a time (`world/README.md`). Nothing scripted asserts over it.
+  at a time, or through a cookbook's stories (`world/README.md`). No gate stands over it.
 - Nothing pushes to `main`. Push a `land/<topic>` branch; the landing workflow opens the pull request and merges
   it. No check stands between a branch and main. The agent's own work lands from `agent/<task id>` the same way.
 - Deploys and admin operations go through GitHub workflows gated on the `production` environment's reviewer

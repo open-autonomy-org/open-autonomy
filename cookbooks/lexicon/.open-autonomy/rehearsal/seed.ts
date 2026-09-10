@@ -6,7 +6,7 @@
 // world: a repository already there moves forward only (its main carries what the brain wrote), a key already minted
 // is kept. Then the project's own seed hook, for what the kit cannot know (a client's repository, a tracker's board).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { ACCOUNT, CONFIG, ENC, MODEL, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
@@ -19,13 +19,30 @@ const project = resolve(STACK, 'project');
 
 // 1. The project's repository on the GitHub twin: what this checkout's HEAD says. A new world takes HEAD as its main
 //    (force); an existing world's main moves forward only, whole objects (a twin that lost a delta's base still unpacks).
-if (sh(['git', 'status', '--porcelain'], { quiet: true }).out.trim()) throw new Error('seed: this checkout has uncommitted changes; the world clones what HEAD says — commit first');
+//    A project that is a directory of a larger repository (a cookbook in the product's tree) is that directory's tree
+//    as a repository of its own: one commit holding it, on top of the world's main when the world already has one.
+if (sh(['git', 'status', '--porcelain', '--', '.'], { quiet: true }).out.trim()) throw new Error('seed: this checkout has uncommitted changes; the world clones what HEAD says — commit first');
 await gh.post('/orgs', { login: OWNER });
-const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME, default_branch: 'main', private: true });
+// Public, as the page publishes it: the platform syncs a public repository's profile and refuses a private one.
+const created = await gh.post(`/orgs/${OWNER}/repos`, { name: REPO_NAME, default_branch: 'main', private: false });
 if (![201, 422].includes(created.status)) throw new Error(`github twin: create repo → ${created.status} ${created.text.slice(0, 200)}`);
 const remote = `${github}/${ACCOUNT}.git`;
-if (created.status === 201) await git(ROOT, 'push', '-q', '-f', '--no-thin', remote, 'HEAD:refs/heads/main');
-else { try { await git(ROOT, 'push', '-q', '--no-thin', remote, 'HEAD:refs/heads/main'); console.log("seed: the world's main moved forward to HEAD"); } catch { console.log("seed: the world's main keeps what the brain wrote (this checkout's HEAD is not a fast-forward of it; `fresh` starts over)"); } }
+const prefix = relative(sh(['git', 'rev-parse', '--show-toplevel'], { quiet: true }).out.trim(), ROOT);
+if (!prefix) {
+  if (created.status === 201) await git(ROOT, 'push', '-q', '-f', '--no-thin', remote, 'HEAD:refs/heads/main');
+  else { try { await git(ROOT, 'push', '-q', '--no-thin', remote, 'HEAD:refs/heads/main'); console.log("seed: the world's main moved forward to HEAD"); } catch { console.log("seed: the world's main keeps what the brain wrote (this checkout's HEAD is not a fast-forward of it; `fresh` starts over)"); } }
+} else {
+  const tree = await git(ROOT, 'rev-parse', `HEAD:${prefix}`);
+  const message = `${REPO_NAME}: ${prefix} at ${await git(ROOT, 'rev-parse', '--short', 'HEAD')}`;
+  let parent: string | undefined;
+  if (created.status !== 201) { try { await git(ROOT, 'fetch', '-q', remote, 'main'); parent = await git(ROOT, 'rev-parse', 'FETCH_HEAD'); } catch { /* an empty repository */ } }
+  if (parent && (await git(ROOT, 'rev-parse', 'FETCH_HEAD^{tree}')) === tree) console.log("seed: the world's main already holds this checkout's HEAD");
+  else {
+    const commit = await git(ROOT, 'commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message);
+    await git(ROOT, 'push', '-q', '-f', '--no-thin', remote, `${commit}:refs/heads/main`);
+    if (parent) console.log("seed: the world's main moved forward to HEAD");
+  }
+}
 // The world clone: the checkout the stack runs (the start script brings it to origin/main on every start).
 mkdirSync(STACK, { recursive: true });
 if (existsSync(resolve(project, '.git'))) { await git(project, 'remote', 'set-url', 'origin', remote); await git(project, 'fetch', '-q', 'origin'); await git(project, 'reset', '-q', '--hard', 'origin/main'); }
@@ -47,8 +64,10 @@ if (minted.status !== 200) throw new Error(`platform: mint → ${minted.status} 
 console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${ENC}`)).body?.balance_usd_cents} cents`);
 
 // 3. The brain's keys, the adopter way: challenge → claim file on the twin's main → mint. A key already minted on
-//    this backend copy is kept; the developer's key spends and narrates, the treasurer's adds `pay`.
-const models = [...new Set([MODEL, ...CONFIG.models])];
+//    this backend copy is kept; the developer's key spends and narrates, the treasurer's adds `pay`. The keys carry
+//    the project's bounds and what its hooks add (the registry holds a few keys per account: these two are all it mints).
+const h = await hooks();
+const models = [...new Set([MODEL, ...CONFIG.models, ...(h.models ?? [])])];
 const keyFile = resolve(SECRETS, 'agent.env');
 const alive = async (file: string): Promise<boolean> => { const k = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(existsSync(file) ? readFileSync(file, 'utf8') : '')?.[1]; return !!k && (await fetch(`${platform}/v1/accounts/${ENC}`, { headers: { authorization: `Bearer ${k}` } })).status === 200; };
 if (await alive(keyFile)) console.log('seed: the key already minted on this backend copy is kept');
@@ -84,5 +103,4 @@ writeFileSync(resolve(SECRETS, 'channels.env'), `${lines.join('\n')}\n`);
 console.log(`seed: docs synced from the twin → ${(await admin.post(`/admin/accounts/${ENC}/sync`)).body?.ok}`);
 
 // 5. What the project seeds beyond itself.
-const h = await hooks();
 if (h.seed) await h.seed(context((m) => console.log(`seed: ${m}`)));

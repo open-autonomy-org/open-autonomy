@@ -1,0 +1,12 @@
+{"job":"pm"}
+{"until":{"roadmap":"Dispatch: fleet"},"budget":300}
+{"job":"pm"}
+{"job":"pm"}
+{"until":{"board":{"title":"todo add appends an item and prints its id","status":"done"}},"budget":420}
+{"act":"between-tasks"}
+{"job":"pm"}
+{"until":{"board":{"title":"the project owns its domain name","status":"done"}},"budget":420}
+{"expect":{"spent":true}}
+{"expect":{"live":"behind"}}
+{"act":"live"}
+{"expect":{"live":"current"}}
