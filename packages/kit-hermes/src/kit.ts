@@ -19,7 +19,7 @@ export interface KitRecord { kit: string; version: string; params: KitParams; di
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's three).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(host\.ts|reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|scrum\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|scrum\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -40,7 +40,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK is vendored into the generated repository under .open-autonomy/sdk, kit-owned, so
 // the reporter and the key tool run from a bare clone with no package to publish or install.
 const SDK_SRC = resolve(dirname(Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir)), 'src');
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts', 'valve.ts', 'codex-auth.ts', 'team.ts', 'credentials.ts', 'reporting.ts', 'container-home.ts', 'container-process.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts', 'valve.ts', 'team.ts', 'credentials.ts', 'reporting.ts'];
 
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
 // the account as a URL path segment); binary-looking files pass through untouched.
@@ -56,7 +56,6 @@ export function render(params: KitParams): Map<string, Buffer> {
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
-  out.set('.open-autonomy/sdk/README.md', readFileSync(join(SDK_SRC, '..', 'README.md')));
   out.set(KIT_FILE, Buffer.from(`${JSON.stringify({ kit: KIT.name, version: KIT.version, params, divergences: [] } satisfies KitRecord, null, 2)}\n`));
   return out;
 }

@@ -1,0 +1,36 @@
+# The agent as a real setup runs it: one container, started by the same script a laptop uses
+# (.open-autonomy/start.ts), as root with the secrets mounted for root alone; the gateway inside runs as the
+# image's `hermes` user and can reach no key. The home and the checkout live in Docker volumes (SQLite over a
+# bind mount is a bus error waiting to happen); inspect them with `docker exec`.
+#
+#   AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
+#
+# Several stacks on one Docker host (two projects, or a project beside a world's copy of it): each has its own
+# STACK name, which the container and volumes carry, and its own compose project: `STACK=<name> docker compose
+# -p <name> …`. The default is `oa`.
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
+      target: managed
+      args:
+        HERMES_IMAGE: ${HERMES_IMAGE:-hermes-agent:v2026.8.31} # container/build-hermes.sh builds it
+    image: todo-cli-agent:local
+    container_name: ${STACK:-oa}-agent
+    restart: unless-stopped
+    environment:
+      - ORIGIN=${ORIGIN:-git@github.com:cookbook/todo-cli.git} # cloned on first boot, through the deploy key
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_HOME_CHANNEL=${DISCORD_HOME_CHANNEL:-}
+    volumes:
+      # The root valve persists refreshed subscription tokens; filesystem permissions keep the agent out.
+      - ${AGENT_SECRETS:-~/.config/open-autonomy}:/secrets:rw
+      - home:/opt/data
+      - repo:/work/project
+
+volumes:
+  home:
+    name: ${STACK:-oa}-home
+  repo:
+    name: ${STACK:-oa}-repo
