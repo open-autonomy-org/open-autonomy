@@ -48,7 +48,17 @@ mkdirSync(STACK, { recursive: true });
 if (existsSync(resolve(project, '.git'))) { await git(project, 'remote', 'set-url', 'origin', remote); await git(project, 'fetch', '-q', 'origin'); await git(project, 'reset', '-q', '--hard', 'origin/main'); }
 else await git(STACK, 'clone', '-q', remote, project);
 await git(project, 'config', 'user.name', 'agent'); await git(project, 'config', 'user.email', 'agent@example.test');
-// The reporter's dependencies are this checkout's, already installed: the world clone shares them.
+// The reporter's dependencies are this checkout's, completed here from the real registry (the machine's tooling, outside
+// the world's proxy) and stamped as the start script stamps them, so the world clone, which shares them, starts without
+// a registry call the sealed world could not make.
+{
+  const dir = resolve(ROOT, '.open-autonomy');
+  const outside: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env as Record<string, string | undefined>)) if (typeof v === 'string' && !/^(https?_proxy|all_proxy|no_proxy|node_options|node_extra_ca_certs|ssl_cert_file|requests_ca_bundle|curl_ca_bundle)$/i.test(k)) outside[k] = v;
+  const lock = ['bun.lock', 'bun.lockb'].map((f) => resolve(dir, f)).find(existsSync);
+  sh(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])], { cwd: dir, env: outside, quiet: true });
+  writeFileSync(resolve(dir, 'node_modules', '.open-autonomy-install'), `${lock ? String(Bun.hash(readFileSync(lock))) : 'unlocked'}\n`);
+}
 if (existsSync(resolve(ROOT, '.open-autonomy', 'node_modules'))) {
   if (!existsSync(resolve(project, '.open-autonomy', 'node_modules'))) sh(['ln', '-sfn', resolve(ROOT, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules')]);
   // A directory-only node_modules/ rule does not ignore this warm-cache symlink.
