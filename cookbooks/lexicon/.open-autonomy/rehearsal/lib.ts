@@ -66,6 +66,8 @@ export function readEnvFile(path: string): Record<string, string> {
   return out;
 }
 export const worldEnv = (): Record<string, string> => readEnvFile(resolve(GENERATED, 'world.env'));
+// The brain's home channel on the Discord twin: the one the seed wrote for the stack (channels.env), else the settings'.
+export const homeChannel = (): string => readEnvFile(resolve(SECRETS, 'channels.env')).DISCORD_HOME_CHANNEL ?? process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';
 
 export function api(base: string, headers: Record<string, string> = {}) {
   const call = async (method: string, path: string, body?: unknown) => {

@@ -7,7 +7,7 @@
 // is kept. Then the project's own seed hook, for what the kit cannot know (a client's repository, a tracker's board).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { ACCOUNT, CONFIG, ENC, MODEL, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
+import { ACCOUNT, CONFIG, ENC, MODEL, NAME, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL').replace(/\/$/, '');
@@ -99,11 +99,27 @@ else {
 //    channels come from its stackEnv hook.
 const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646', `GITHUB_API_URL=${github}`, 'GITHUB_TOKEN=world-bot'];
 if (process.env.DISCORD_TWIN_URL) {
-  const token = sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '');
-  const home = process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';
-  const hello = await api(process.env.DISCORD_TWIN_URL, { authorization: 'Bot maintainer' }).post(`/api/v10/channels/${home}/messages`, { content: `home channel of ${ACCOUNT}` });
+  // A bot token of this world's own: the twin accepts any, and Hermes locks a token machine-wide (two worlds' brains on
+  // the one deterministic fake would refuse to connect while the other's gateway runs).
+  const token = `${sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '')}.${NAME.replace(/[^A-Za-z0-9]/g, '')}`;
+  const discord = api(process.env.DISCORD_TWIN_URL, { authorization: 'Bot maintainer' });
+  // The brain's home channel: the id the settings name, which a twin that creates a channel on its first message
+  // accepts; a twin that ships the installation a freshly invited bot sees (one guild, one text channel) names its own,
+  // and the channel the stack, the stories and the hooks use is the one written here (channels.env), never a guess.
+  let home = process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';
+  let hello = await discord.post(`/api/v10/channels/${home}/messages`, { content: `home channel of ${ACCOUNT}` });
+  if (hello.status === 404) {
+    const bot = api(process.env.DISCORD_TWIN_URL, { authorization: `Bot ${token}` });
+    const guild = ((await bot.get('/api/v10/users/@me/guilds')).body ?? [])[0]?.id;
+    const channel = guild ? ((await bot.get(`/api/v10/guilds/${guild}/channels`)).body ?? []).find((c: any) => c.type === 0)?.id : undefined;
+    if (!channel) throw new Error(`discord twin: channel ${home} is unknown and the bot's guild names no text channel (${hello.text.slice(0, 120)})`);
+    home = String(channel);
+    hello = await discord.post(`/api/v10/channels/${home}/messages`, { content: `home channel of ${ACCOUNT}` });
+  }
   if (hello.status !== 200) throw new Error(`discord twin: seed channel → ${hello.status} ${hello.text.slice(0, 200)}`);
-  lines.push(`DISCORD_BOT_TOKEN=${token}`, `DISCORD_HOME_CHANNEL=${home}`, 'DISCORD_ALLOWED_CHANNELS=*', 'DISCORD_ALLOWED_USERS=*');
+  // The home channel is the brain's own: a person there is answered without addressing the bot (Hermes otherwise
+  // answers a guild message only when mentioned).
+  lines.push(`DISCORD_BOT_TOKEN=${token}`, `DISCORD_HOME_CHANNEL=${home}`, `DISCORD_FREE_RESPONSE_CHANNELS=${home}`, 'DISCORD_ALLOWED_CHANNELS=*', 'DISCORD_ALLOWED_USERS=*');
 }
 writeFileSync(resolve(SECRETS, 'channels.env'), `${lines.join('\n')}\n`);
 // The page reads the repository: sync it now rather than waiting for staleness.
