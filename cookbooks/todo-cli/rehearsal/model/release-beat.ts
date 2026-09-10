@@ -14,6 +14,13 @@ const scrum = (...args: string[]) => run(['bun', '.open-autonomy/scrum.ts', ...a
 const community = (...args: string[]) => run(['bun', '.open-autonomy/community.ts', ...args]);
 const account = /^account:\s*(\S+)/m.exec(readFileSync('.open-autonomy/config.yaml', 'utf8'))![1];
 const field = (text: string, name: string) => text.split('\n').find((line) => line.startsWith(`${name}:`))?.slice(name.length + 1).trim();
+function nextWork() {
+  const landed = run(['git', 'show', 'origin/main:ROADMAP.md']);
+  if (!landed.includes('PM inference: the next useful product slice')) return;
+  const seed = JSON.parse(readFileSync('hermes/kanban.seed.json', 'utf8')).tasks.find((t: { key: string }) => t.key === 'add');
+  console.log(scrum('queue', 'add', 'after-preview-add', seed.title,
+    `Implement the independently planned add slice. Preserve the fixed release candidate and human review hold.\n${seed.acceptance.map((a: string) => `- ${a}`).join('\n')}`));
+}
 function contactReviewer() {
   // Scripted judgment for the two authored setup stories. Production PM interprets
   // its skill directly; there is no application policy parser or routing service.
@@ -80,6 +87,7 @@ if (snapshot.resumed && planHead !== snapshot.snapshot.main &&
   scrum('finish', snapshot.snapshot.id, 'main');
   community('mark', 'pm');
   review();
+  nextWork();
   console.log('SCRUM_BEAT_DONE release decision landed and review gate reconciled.');
   process.exit(0);
 }
@@ -91,7 +99,14 @@ if (!phase || !['accumulate', 'prepare', 'defer', 'request-review'].includes(pha
 const candidate = field(previous, 'Candidate') ?? snapshot.snapshot.main;
 const source = issue?.html_url ?? `https://github.com/${account}/issues/1`;
 const section = `## release-next: First scheduled release\n\nDispatch: hold\nRelease decision: ${phase}\nTarget version: 2026.10.01\nTarget window: 2026-10-01 14:00–16:00 UTC (target, not an automatic trigger)\nReview by: 2026-09-30 14:00 UTC\nCandidate: ${candidate}\nScope: The verified cookbook baseline; later main changes are outside this candidate.\nReadiness: ${phase === 'request-review' ? 'ready-for-review' : 'pending'}\nReadiness evidence: [Candidate and checks](https://github.com/${account}/commit/${candidate}); human review and operational verification remain outstanding.\nRationale: PM scenario judgment: ${phase === 'request-review' ? 'the baseline is ready for human review ahead of the target window' : phase === 'defer' ? 'postpone this proposal and stop the previous review request' : 'accumulate and prepare a coherent baseline instead of releasing every commit'}; [schedule input](${source}).\nVersion rationale: PM proposes a calendar release following the [deploy-v date convention](https://github.com/${account}/blob/${candidate}/.open-autonomy/PRODUCTION.md); this is not an npm version or publication.\n\nDependencies and risks: human review time and production verification; target scope/date may change with sourced evidence.\n`;
-const draft = previous.includes('## release-next:') ? previous.replace(/^## release-next:[\s\S]*?(?=^## |$(?![\s\S]))/m, section) : `${previous.trimEnd()}\n\n${section}`;
+let draft = previous.includes('## release-next:') ? previous.replace(/^## release-next:[\s\S]*?(?=^## |$(?![\s\S]))/m, section) : `${previous.trimEnd()}\n\n${section}`;
+// A authored continuation beat: broad direction, then PM inference from the actual
+// constitution and historical intention. No automatic feature-selection algorithm.
+if (issue && field(issue.body, 'Development') === 'continue' && !draft.includes('PM inference: the next useful product slice')) {
+  const seed = JSON.parse(readFileSync('hermes/kanban.seed.json', 'utf8')).tasks.find((t: { key: string }) => t.key === 'add');
+  const next = `## add: ${seed.title}\n\nDispatch: fleet\n\nPM inference: the next useful product slice is adding a task to the owned local store, under the [constitution](https://github.com/${account}/blob/${snapshot.snapshot.main}/CONSTITUTION.md) and the reconciled [historical intention](https://github.com/${account}/blob/${snapshot.snapshot.main}/hermes/kanban.seed.json). [Continued development](${source}) does not approve the fixed preview or specify this implementation choice. No overlapping execution exists in this authored empty-board scenario.\n\nCompletion:\n${seed.acceptance.map((a: string) => `- ${a}`).join('\n')}\n`;
+  draft = /^## add:/m.test(draft) ? draft.replace(/^## add:[\s\S]*?(?=^## |$(?![\s\S]))/m, next + '\n') : `${draft}\n${next}`;
+}
 if (draft !== previous) writeFileSync(file, draft);
 if (run(['git', 'status', '--porcelain'], plan)) {
   run(['bun', 'run', 'check'], plan);
@@ -103,5 +118,6 @@ if (run(['git', 'status', '--porcelain'], plan)) {
   scrum('finish', snapshot.snapshot.id, 'main');
   community('mark', 'pm');
   review();
+  nextWork();
   console.log('SCRUM_BEAT_DONE release plan unchanged; reconciled existing review gate.');
 }

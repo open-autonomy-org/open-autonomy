@@ -34,9 +34,8 @@ package.json        the project's own check (`bun run check`), starting with a p
 hermes/              the agent: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (historical migration input),
                      cron/jobs.seed.json (the PM, hourly; the community desk, every quarter hour; a monitor job wakes only when its script's output changed), cron/webhooks.seed.json (routes that wake the agent on a signed POST, their secrets generated at seed time and kept in the home), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
-                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the agent's four
-                     processes, the one way it starts), the vendored SDK, kit.json (which kit, version and parameters made this repository)
-container/           the default for a real deployment (bare is for development and fast debugging): one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
+                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
+container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
 .github/workflows/   land.yml (the landing convention; contributors run the project check before pushing)
 ```
 

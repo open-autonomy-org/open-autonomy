@@ -1,10 +1,7 @@
 #!/usr/bin/env bun
-// Start the agent. The same processes wherever it runs; only how this script is started differs:
-//   in a container    the default for a real deployment: the image's entrypoint, as root with the secrets mounted for
-//                     root alone and `--as <user>`; the gateway and the reporter run as that user and can reach no
-//                     key (container/README.md)
-//   on your machine   `bun .open-autonomy/start.ts` — everything as you, no isolation: for development and fast
-//                     debugging, where the agent reaching its own keys is an accepted trade
+// Start native Hermes. --container runs the host sidecar against a prepared World
+// executor (container/README.md). Without it this is the bare development/rehearsal
+// stack; legacy --as privilege dropping remains available for existing installations.
 //
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
 //
@@ -41,6 +38,15 @@ import { basename, resolve } from 'node:path';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+// A managed executor keeps credentials, reporting and supervision on this host.
+// The bare entrypoint below remains the development/rehearsal path.
+if (arg('--container')) {
+  const { startHost } = await import('./host.ts');
+  const runtime = await startHost({ container: arg('--container')!, project: arg('--project'),
+    home: arg('--home'), secrets: arg('--secrets'), state: arg('--state'),
+    config: arg('--config'), port: Number(arg('--valve') ?? 8787) });
+  process.exit(await runtime.exited);
+}
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
 const loadedSource = readFileSync(import.meta.path, 'utf8');
 // Hermes drains active turns and exits 75 for an in-band restart. Restart the complete

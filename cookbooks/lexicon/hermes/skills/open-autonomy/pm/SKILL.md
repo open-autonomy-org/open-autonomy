@@ -96,6 +96,14 @@ in private human discussion; do not retrieve its confidential source or ask for 
 
 ## Distill and coordinate
 
+An empty board is a planning input, not evidence that the product is finished. Compare the demonstrated
+product with the constitution and sourced outstanding outcomes. Within delegated implementation authority,
+choose the next useful bounded outcome, label the reasoning as PM inference, land the plan and dispatch it.
+A pending release review holds that candidate's publication, not independent development. Do not invent
+owner requests or queue maintenance merely to stay busy. If progress instead needs a product decision,
+contact the agreed owner with the concrete choice and recommendation, retain its source in the plan, and
+continue independent work. A deliberate pause or completed scope warrants no invented successor task.
+
 Change the shared documents only when evidence warrants a notable addition, correction, reprioritization
 or retirement. Keep stable `## <id>: <title>` roadmap outcome headings, completion criteria and dependencies.
 Mark ready fleet outcomes `Dispatch: fleet`; human work, future ideas and unresolved decisions stay
@@ -171,6 +179,12 @@ Read before posting; follow up when agreed or when evidence changes. Don't repea
 or assign people unsolicited work. Pending replies do not stop independent progress.
 
 ## Land, acknowledge, dispatch
+
+Use standalone supported commands for `finish`, `community.ts mark pm` and native notepad operations.
+Check each result before advancing the dependent checkpoint. Bundling them with inline shell/Python
+diagnostics can require interactive approval unavailable to a scheduled job. If approval blocks an
+operation, preserve its pending state; retry the ordinary authorized command without the unrelated
+diagnostics, or report the block. Never weaken approval policy or claim the held command executed.
 
 Commit warranted roadmap/changelog changes on the planning branch, signed as the agent with its scrum ID
 first. Run the project's check before pushing; normal landing handles the PR. Preserve unfinished work
