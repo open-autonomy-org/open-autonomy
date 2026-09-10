@@ -13,6 +13,8 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${B
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
+# Login shells use /usr/local/bin; expose the installed World CLI there too.
+RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
 ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:${PATH}"
 ENTRYPOINT ["bun", "/opt/agent/.open-autonomy/start.ts", "--project", "/work/project", "--home", "/opt/data", "--secrets", "/secrets", "--as", "hermes"]
