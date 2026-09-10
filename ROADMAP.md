@@ -35,17 +35,17 @@ Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/
 
 ## kit-rehearsal: Every project rehearses its own method in a world
 
-Status: planned
+Status: in progress; the Peak engagement runs its three stories on the engine (2026-09-10), the starter and this repository's own world remain
 Dispatch: fleet
 Scope: the rehearsal engine is in the template (`.open-autonomy/rehearsal/`, kit-owned): the world's front door, the
 seed onto the GitHub twin, the backend copy, the Actions runner, the brain's stack from a clean environment, and the
-story runner with its acts, conditions and static scenario checks. What remains: `create` seeds a starter
-`rehearsal/` (a world of the project's chosen channels, a scenario scaffold, one story, a hooks file); the Peak
-engagement is re-adopted onto it and its hand-written copies deleted; this repository's own `world/` becomes an
-instance of it, which is the proof the machinery is general.
+story runner with its acts, conditions and static scenario checks; a project's settings in `rehearsal/env`, the dress
+rehearsal (`REHEARSAL_MODEL=real`). Peak is re-adopted onto it with only its settings, world, scripted brain, stories
+and hooks its own, and its hand-written copy is gone. What remains: `create` seeds a starter `rehearsal/` (a world of
+the project's chosen channels, a scenario scaffold, one story, a hooks file), and this repository's own `world/`
+becomes an instance of it, which is the proof the machinery is general.
 Completion:
 - a fresh `create-open-autonomy create` yields a project whose `run.ts up` brings a world and whose one seeded story passes
-- `peak-autonomy` runs its three stories on the kit's engine, with only its world, scenario, stories and hooks its own
 - `world/run.ts` is the kit's rehearsal with the cookbook as the project
 Rationale: the machinery was written three times (the product's world, the engagement's rehearsal, and nothing in the
 template). Every defect found in one copy was invisible to the others.
