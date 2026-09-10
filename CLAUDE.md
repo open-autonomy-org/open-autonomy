@@ -53,6 +53,12 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
   the docs check); the pre-commit hook runs it. `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
+- **Bare is plain Hermes; the container forwards.** A brain on the owner's Codex subscription is Hermes's own
+  `openai-codex` provider. Bare on a computer it runs on that computer's login (the Codex CLI's, adopted into the
+  home's store on the first start) and the start script does nothing else: no sidecar, no host half, no valve on the
+  bare path. Only where the login must stay out of the agent (the container) or the model is a twin (a world) does the
+  start script forward the provider, through the valve or to the twin. Anything that re-routes the bare path or adds
+  a host-side orchestrator is removed, not repaired.
 - **Thirty seconds, total, forever.** Every test and check together finish in under thirty seconds or they are
   cut; a test guards a constitution invariant (money, keys, authority) or is not written. Behavior is verified by
   driving the running product and the world one action at a time. No gate over the world, nothing waiting on an
