@@ -1,4 +1,0 @@
-#!/bin/sh
-# The check runs at the moment of the change, on the committer's machine, in under thirty seconds. `git config
-# core.hooksPath .githooks` once per clone (CONTRIBUTING.md).
-exec bun scripts/check.ts

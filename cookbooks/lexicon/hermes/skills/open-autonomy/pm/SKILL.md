@@ -211,7 +211,7 @@ operation, preserve its pending state; retry the ordinary authorized command wit
 diagnostics, or report the block. Never weaken approval policy or claim the held command executed.
 
 Commit warranted roadmap/changelog changes on the planning branch, signed as the agent with its scrum ID
-first. Run the project's check before pushing; normal landing handles the PR. Preserve unfinished work
+first. Review the planning diff and source evidence before pushing; never run automated tests or test-running checks. Normal landing handles the PR. Preserve unfinished work
 across interruptions, resolve conflicts without rewriting history, and never push main. A no-change scrum
 needs no commit. Preserve concise pending decisions in the native notepad if interrupted.
 

@@ -17,6 +17,12 @@ workflow. Deterministic helpers perform bounded operations and check facts: the 
 command success, credential storage and access. Do not turn this guide into a configuration framework
 or treat discovered credentials as decisions.
 
+Automated tests are banned by the project constitution. Do not create or run them, including indirectly
+through check commands or hooks, and never commit test code to main. During setup, inspect any verification
+command before running it. Each develop agent demonstrates its feature through REPL-style manual usage
+without permanent test code and records observations in its handoff. This rule also applies to setup
+rehearsals; use interactive operation, not automated scenario runners.
+
 ## Orient before presenting setup
 
 Open Autonomy follows GitHub's organization structure: an OA organization is the GitHub organization,

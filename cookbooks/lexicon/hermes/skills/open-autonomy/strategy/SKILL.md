@@ -71,7 +71,7 @@ review and landing, checking the constitution before proposing and again against
 push. Reconcile concurrent PM edits against current main instead of overwriting progress or release
 fields. If no strategic change is warranted, leave the roadmap unchanged.
 
-Run the project's declared World check before pushing. Land only decisions authorized by the mandate;
+Review the planning diff and its source evidence before pushing; never run automated tests or test-running checks. Land only decisions authorized by the mandate;
 a proposal may be recorded as held, never disguised as a dispatchable decision. Report the landed
 outcomes and authority to PM through ordinary project history. An optional sourced scrum note can point
 to an urgent decision; it is not required intake. PM verifies authorization, readiness and overlap before

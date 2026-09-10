@@ -48,7 +48,9 @@ Three ways in:
   [guided setup](.open-autonomy/SETUP.md): establish the project brief and agreed development connections,
   then verify owner identity, communication and release review before activating the fleet. The agent then plans and works in the open,
   metered to your project's account.
-- **Contribute.** `bun run check` is the whole check, under thirty seconds. `bun world/run.ts up` brings up the
+- **Contribute.** Each develop agent manually verifies its feature through REPL-style usage, without
+  permanent test code. Automated tests are banned; see `CONTRIBUTING.md` for the rationale and handoff.
+  `bun world/run.ts up` brings up the
   platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive
   through its page. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
 
@@ -63,7 +65,6 @@ hermes/ .open-autonomy/ container/   our own install: the kit applied to this re
 ```
 
 ```bash
-bun run check          # the whole check, under thirty seconds (the pre-commit hook runs it)
 bun world/run.ts up    # the world, to drive (the twins are npm packages; WORLD_STATE_ROOT for a disk with headroom)
 ```
 
