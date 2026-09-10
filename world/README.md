@@ -85,7 +85,11 @@ direction, a documentation volunteer, an unanswered suggestion, a conflicting pr
 ordinary APIs (`REHEARSAL_SCRUM=1` before `up` seeds them at the start instead); the scripted PM (`cookbooks/todo-cli/rehearsal/model/scrum-beat.ts`)
 plans, the plan lands, the next scrum queues fleet work, the outside PR merges and the following scrum distills it.
 Explicitly scripted judgment, with real Hermes cron, kit helpers, git landing, board dispatch and native review: it proves
-mechanics, not unscripted judgment. The operator beats below drive one step at a time by hand.
+mechanics, not unscripted judgment. The operator beats below drive one step at a time by hand. The PM's poll reads the
+outside pull request from the repository's issue list, as GitHub serves it; the published GitHub twin omits pull requests
+there, so this story runs with the twin from a checkout (`WORLD_GITHUB_CLI=<checkout>/packages/twin/github/src/cli.ts`),
+the GitHub twin alone: the checkout's Discord twin no longer creates a channel on its first message, so a whole
+checkout (`TWINS_ROOT`) stops at the seed.
 
 ```bash
 bun world/run.ts env -- bun rehearsal/operators/scrum.ts overlap   # existing integration work awaiting the outside PR
