@@ -26,6 +26,9 @@ const h = await hooks();
 const t0 = Date.now();
 const say = (m: string) => console.log(`[${((Date.now() - t0) / 1000).toFixed(0).padStart(4)}s] ${m}`);
 const aliases: Record<string, string> = {};
+// A budget is sized for a scripted brain; a real model on a loaded computer needs minutes. REHEARSAL_BUDGET_SCALE, or
+// three in a dress rehearsal (REHEARSAL_MODEL=real), one otherwise.
+const scale = Number(process.env.REHEARSAL_BUDGET_SCALE ?? (process.env.REHEARSAL_MODEL === 'real' ? 3 : 1)) || 1;
 const gh = world.GITHUB_TWIN_URL ? api(world.GITHUB_TWIN_URL, { authorization: 'Bearer twin:client' }) : undefined;
 const jiraAuth = { authorization: `Basic ${Buffer.from(`${process.env.REHEARSAL_CLIENT ?? 'client@example.test'}:twin`).toString('base64')}` };
 const jira = world.JIRA_TWIN_URL ? api(world.JIRA_TWIN_URL, jiraAuth) : undefined;
@@ -124,7 +127,7 @@ for (const raw of readFileSync(file, 'utf8').split('\n')) {
     else if (line.clock) { say(`clock +${line.clock}`); sh(['bun', twinCli('world'), 'clock', ctx.name, 'advance', String(line.clock), '--root', resolve(ctx.root === process.cwd() ? ctx.root : ctx.root)], { quiet: true, check: false }); tick(); }
     else if (line.job) { say(`job: ${line.job}`); const j = jobs().find((x) => x.name === line.job); if (!j) throw new Error(`no job ${line.job}`); hermes('cron', 'run', '--accept-hooks', j.id); }
     else if (line.act) { say(`act: ${shown}`); const fn = h.acts?.[String(line.act)]; if (!fn) throw new Error(`no act ${line.act} in rehearsal/hooks.ts`); await fn(ctx, line); tick(); }
-    else if (line.until) { say(`until: ${shown}`); const budget = Number(line.budget ?? 90); const start = Date.now(); let met = false;
+    else if (line.until) { say(`until: ${shown}`); const budget = Number(line.budget ?? 90) * scale; const start = Date.now(); let met = false;
       while (Date.now() - start < budget * 1000) { if (await condition(line.until, line)) { met = true; break; } tick(); await Bun.sleep(3000); }
       if (met) say(`  met`); else { say(`  NOT met in ${budget}s`); fails++; } }
     else if (line.expect) { say(`expect: ${shown}`); if (await condition(line.expect, line)) say('  PASS'); else { say('  FAIL'); fails++; } }
