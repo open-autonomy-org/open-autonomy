@@ -98,6 +98,9 @@ switch (verb) {
     break;
   }
   case 'fresh': {
+    // A story of this checkout still attached to the world (its runner killed, the story left behind) ends first: it
+    // would hold the world up and drive the next instance.
+    Bun.spawnSync({ cmd: ['pkill', '-f', `${resolve(KIT_DIR, 'story.ts')} `] });
     Bun.spawnSync({ cmd: ['bun', resolve(KIT_DIR, 'stack.ts'), 'down', '--purge'], stdio: ['inherit', 'inherit', 'inherit'] });
     world(['down', NAME, '--root', STATE, '--purge'], { check: false });
     // A world that would not go down (a story still attached to it, say) keeps its state: forgetting its generated
