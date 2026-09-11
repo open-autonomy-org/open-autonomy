@@ -16,11 +16,12 @@ and are removed by normal World purge. The source scenario survives.
 Install dependencies from the lockfile through a tooling World, using the package manager's warm
 cache. Prepare both the OA workspace and the cookbook's `.open-autonomy` dependencies. Use the
 Hermes version recorded in `cookbooks/todo-cli/container/hermes.pin`; an existing installation
-can be reused. Boot does not download Hermes or bypass World to install packages.
+can be reused. Boot does not download Hermes or bypass World to install packages. Keep the state root and World name
+short: the pinned Hermes uses a Unix socket below its home; preparation checks its path length.
 
 ```bash
-export WORLD_STATE_ROOT=/fast/disk/oa-world  # outside the checkout
-export OA_WORLD_NAME=open-autonomy-todo-cli
+export WORLD_STATE_ROOT=/fast/disk/oa  # outside the checkout
+export OA_WORLD_NAME=oa
 export WORLD_HERMES_BIN=/path/to/pinned-hermes/.venv/bin
 export TWINS_ROOT=/path/to/twin             # current checkout with complete environment stripping
 bun world/prepare.ts

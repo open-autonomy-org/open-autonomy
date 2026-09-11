@@ -34,19 +34,6 @@ Dependencies and risks:
 
 Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), [PRs #513–#515](https://github.com/open-autonomy-org/open-autonomy/pull/515), [PRs #518–#522](https://github.com/open-autonomy-org/open-autonomy/pull/522), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
 
-## world-scenario: Rehearsal uses the ordinary World runtime
-
-Status: implementation under independent review
-Dispatch: hold
-Source: owner instruction to make rehearsal an ordinary World scenario, September 11, 2026;
-[ADR 0002](docs/decisions/0002-world-scenario.md) records the proposed boundary.
-
-Completion:
-- OA owns one scenario in `world/`: opening data, model handlers and manual operators.
-- World owns service lifecycle, readiness, environment and cleanup, including the native agent.
-- The kit emits no separate rehearsal engine or starter story interpreter.
-- Manually verify community, planning, release and lifecycle behavior before acceptance.
-
 ## release-hardening: Prepare the replacement onboarding and backend artifacts
 
 Status: the security prerequisite landed in PR #551; the existing artifact task remains scheduled until the runtime-boundary authority conflict and current-main review coverage are resolved.

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MODEL, NAME, ROOT, SCENARIO, STATE, TREE } from './lib.ts';
 
+if (process.env.REHEARSAL_MODEL && process.env.REHEARSAL_MODEL !== 'scripted') throw new Error('This scenario declares a scripted model; REHEARSAL_MODEL no longer enables a separate dress runner');
 if (!/^[a-z0-9][a-z0-9-]*$/.test(NAME)) throw new Error('OA_WORLD_NAME must be a lowercase World name');
 if (STATE === TREE || STATE.startsWith(`${TREE}/`)) throw new Error('WORLD_STATE_ROOT must be outside this checkout');
 const hermes = process.env.WORLD_HERMES_BIN;
@@ -21,6 +22,10 @@ const cli = (vendor: string): string => {
 // Rendering can itself run inside a tooling World; never borrow that World's instance data.
 const DATA = resolve(STATE, '.volter/worlds', NAME, 'data');
 const STACK = resolve(DATA, 'agent');
+const home = resolve(STACK, 'home');
+// The pinned Hermes binds its liveness socket below its home. Fail before admitting a World.
+const socketPath = `${home}/state/gateway.loop-tick.2147483647.sock`;
+if (Buffer.byteLength(socketPath) >= 104) throw new Error(`Hermes socket path is too long (${Buffer.byteLength(socketPath)} bytes; need under 104). Choose a shorter WORLD_STATE_ROOT or OA_WORLD_NAME.`);
 const dir = resolve(STATE, 'scenarios', NAME);
 const handlers = resolve(dir, 'handlers/openai.json');
 mkdirSync(resolve(dir, 'handlers'), { recursive: true });
@@ -33,7 +38,6 @@ const config = JSON.parse(readFileSync(resolve(SCENARIO, 'world.config.json'), '
   .replace(/\$\{TWIN:([a-z-]+)\}/g, (_, name: string) => cli(name))
   .replaceAll('${SCENARIO_DIR}', SCENARIO).replaceAll('${TREE}', TREE).replaceAll('${HANDLERS}', handlers));
 config.id = NAME;
-const home = resolve(STACK, 'home');
 Object.assign(config.env, { OA_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, WORLD_HERMES_BIN: resolve(hermes),
   OA_SCENARIO_DIR: SCENARIO, OA_PROJECT: ROOT, OA_AGENT_PROJECT: resolve(STACK, 'project'),
   OA_AGENT_HOME: home, OA_SECRETS: resolve(DATA, 'secrets'), OA_ACCOUNT: 'cookbook/todo-cli',
