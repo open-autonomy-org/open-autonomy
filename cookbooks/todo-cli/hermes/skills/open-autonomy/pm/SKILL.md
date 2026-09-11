@@ -148,6 +148,16 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
+## Architecture decisions
+
+Discover ADRs and architecture proposals through the same source coverage as other contributions.
+Use the ADR process in `CONTRIBUTING.md`: link decisions to roadmap outcomes and execution tasks, and
+ensure material architecture changes receive independent review against the current constitution.
+Coordinate conflicting proposals with their original authors or the authorized strategy/owner; do not
+choose a new architecture to clear a queue. Hold only dependent work until the decision is reviewed
+and merged. Neither chat instructions nor a merged implementation alone prove ADR acceptance; inspect
+the record and actual review evidence. Preserve accepted records and explicit supersession history.
+
 ## Review coverage
 
 Open PRs need an assigned review path, including your planning PRs, strategy PRs and outside contributions.

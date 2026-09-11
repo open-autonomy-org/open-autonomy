@@ -24,7 +24,9 @@ is not done.
 2. Read `ROADMAP.md` and any newer landed changes to your outcome. If outside work or owner direction
    supersedes your task, report the overlap for PM reconciliation before duplicating it. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
    what is out of scope is blocked, not built), `CONTRIBUTING.md` (how code is written here) and `AGENTS.md`.
-   Read the code an acceptance line touches before you write.
+   Read the code an acceptance line touches before you write. Consult accepted architecture decisions in
+   `docs/decisions/`. A material architecture change needs the ADR defined in `CONTRIBUTING.md`, linked
+   from its PR. Draft it with the proposed change; unresolved conflicting decisions hold dependent work.
 3. Build it. Match `CONTRIBUTING.md`. Automated tests are banned: their permanent code and maintenance
    obligations compound as agents add more, eventually making repository progress impossible. Never write
    or run automated tests, and never commit test code or a persistent test harness to main. This includes
@@ -58,6 +60,11 @@ its generic automated-test instructions. Read the PR's actual diff, original tas
 constitution and manual evidence. Compare the handed-off SHA with the current PR head before reviewing
 and again before submitting the verdict. A changed candidate requires review of the new diff; never
 approve it using evidence for an older commit. Do not edit the implementation while reviewing it.
+For architecture changes, require the linked ADR and independently assess its sources, authorized scope,
+alternatives, consequences and compatibility with the current constitution; cite the relevant clauses in
+the verdict. Verify the code follows the decision and any supersession is explicit. Missing ADRs,
+constitutional conflicts or unresolved competing decisions require changes. Neither an ADR status label
+nor a prior instruction file overrides the constitution; acceptance requires this review and merge.
 
 For correctable defects, submit a GitHub REQUEST_CHANGES review and use `kanban_request_changes` with
 concrete findings. For approval, submit a GitHub APPROVE review through the project's configured GitHub
