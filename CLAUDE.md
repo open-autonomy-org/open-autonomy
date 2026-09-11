@@ -24,7 +24,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   scripted brain, the stories, the hooks). An environment to drive, never a gate.
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
   this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
-  `container/` is the kit's default for a real deployment (one image, one compose file; Docker or Podman): the
+  `container/` is the kit's default for a real deployment (one World-managed executor): the
   agent cannot reach its keys there. This Mac runs both agents bare for fast debugging, an accepted trade here.
 
 Architecture decisions follow the ADR process in `CONTRIBUTING.md`. This file does not replace
@@ -33,8 +33,8 @@ accepted decision records; conflicting directions require a sourced proposal and
 ## Working agreement
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a
-  `land/<topic>` branch; `land.yml` opens its pull request and merges it. No check stands between a branch and main.
-- Live proof is the proof: the deployed worker and the rendered site, not local tests alone.
+  `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current head is required before automatic merge.
+- Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
@@ -54,18 +54,13 @@ accepted decision records; conflicting directions require a sourced proposal and
   The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
-- `bun run check` = the whole check under a thirty-second budget (typechecks, the smoke tests, the kit's drift check,
-  the docs check); the pre-commit hook runs it. `bun scripts/check-supply-chain.ts` = lockfile integrity + audit.
-- **Bare is plain Hermes; the container forwards.** A brain on the owner's Codex subscription is Hermes's own
-  `openai-codex` provider. Bare on a computer it runs on that computer's login (the Codex CLI's, adopted into the
-  home's store on the first start) and the start script does nothing else: no sidecar, no host half, no valve on the
-  bare path. Only where the login must stay out of the agent (the container) or the model is a twin (a world) does the
-  start script forward the provider, through the valve or to the twin. Anything that re-routes the bare path or adds
-  a host-side orchestrator is removed, not repaired.
-- **Thirty seconds, total, forever.** Every test and check together finish in under thirty seconds or they are
-  cut; a test guards a constitution invariant (money, keys, authority) or is not written. Behavior is verified by
-  driving the running product and the world one action at a time. No gate over the world, nothing waiting on an
-  agent.
+- **Runtime responsibilities are separate.** Follow [ADR 0001](docs/decisions/0001-runtime-boundary.md).
+  The existing valve and reporter stay on the host; container mode runs native Hermes inside the World
+  executor. Bare mode uses the same local components without container orchestration. The installed
+  Codex owns its current login; OA never saves a separate project login. Do not infer removal of
+  reporting or a changed credential boundary from a decision about Codex forwarding.
+- **No automated tests.** Follow `CONSTITUTION.md` and `CONTRIBUTING.md`: manual feature usage only;
+  never run test suites or test hooks and never commit permanent test code.
 - **Money in is GitHub Sponsors, Polar and grant credits**, side by side, all onto the same books (Polar is the
   merchant of record for direct patronage; grant credits are held by funders and by the org's grants account,
   and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.

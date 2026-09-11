@@ -1,58 +1,70 @@
-# Running the agent
+# Running the fleet
 
-The agent is four processes: an ssh-agent holding the deploy key, the valve holding the project's keys (the
-developer's on :8787, the treasurer's on :8788 — `--valve <port>` moves both — each re-read when its file changes), the keyless reporter, and
-the Hermes gateway. For normal fleet operation, `.open-autonomy/start.ts` manages the complete stack.
-The same stack serves every model choice. On the owner's Codex subscription (`provider: openai-codex`, plain
-Hermes), bare Hermes runs on the computer's login, the Codex CLI's adopted into its store on the first start; in the container the start script forwards it: the
-root valve holds `codex.json` and serves the Codex protocol on its third port, the home's `.env` points the
-provider there, and the login never enters the agent.
-Before activation, the setup agent can run the SDK valve alone in a one-off container with its entrypoint
-overridden to verify the configured connections; see [setup](../.open-autonomy/SETUP.md). Keep those ports
-unpublished and stop that process before starting the fleet through the normal entrypoint.
+For a managed installation, World owns one executor container. The host runs
+`.open-autonomy/start.ts --container`: credential valves, the SDK reporter and gateway supervision.
+Hermes and its workers run as `hermes` inside the executor. No host credential directory or Docker
+socket is mounted there. Supercode reads native state inside the container over its SDK transport;
+the reporter publishes it from the host through the Open Autonomy SDK.
 
-On restart, the stack fetches `origin/main` before loading the Hermes home. It preserves an interrupted
-task's dirty checkout and extracts the committed `hermes/` configuration separately. If Git access or
-snapshot extraction fails, startup stops for the supervisor to retry; it does not load the dirty home
-configuration as a fallback.
+The same native Hermes profiles support platform-funded models and the optional Codex subscription.
+Model and GitHub App credentials stay in protected host storage. Explicitly configured native channel
+credentials are supplied to Hermes through its home; do not print them. Bare `start.ts` is still useful
+for development and twin rehearsals, but is not isolation. Use synthetic credentials there; a real
+autonomous bare installation requires the existing `--as` OS user boundary protecting host credentials.
 
-**In a container** is the default for a real deployment. **On your machine**, for development and fast debugging: everything as you, no isolation, the agent able to reach its own keys — an accepted trade while debugging, never the shape of production.
+## Prepare and start
 
-```bash
-bun .open-autonomy/mint-key.ts                                   # the developer's key → ~/.config/open-autonomy/agent.env
-bun .open-autonomy/mint-key.ts --scopes spend,narrate,pay --out ~/.config/open-autonomy/treasurer.env
-bun .open-autonomy/start.ts                                      # ssh-agent, valve, reporter, gateway; Ctrl-C ends all
-HERMES_HOME=~/.local/state/open-autonomy/<project>/home hermes kanban list   # the board, from another shell
-```
+The setup agent follows [SETUP.md](../.open-autonomy/SETUP.md), using the existing Docker context and
+World tooling. Keep host runtime code and credentials outside the agent-writable checkout.
 
-**In a container**, for a real setup: the same script is the image's entrypoint, run as root with the secrets
-mounted for root alone; the gateway and the reporter run as the image's `hermes` user and can reach no key
-(the script refuses to start if they could). Every session's turns are published, so the agent's environment
-holds nothing whose leak matters: its `.env` says `OPEN_AUTONOMY_KEY=valve`; pushes sign through the
-ssh-agent's socket; delivery uses at most a Discord bot token, which can only post as the bot.
+1. Copy `container/build-world.json` beside the project and replace the build service's `cwd` with
+   the absolute reviewed project checkout. Select the verified Docker context for the World command.
+   Run `volter-world up <copied-build-world.json> --root <world-state-root>`; this builds the pinned
+   Hermes base and then `__PROJECT__-agent:local`. Check `volter-world doctor __PROJECT__-image
+   --root <world-state-root>`, then `volter-world down __PROJECT__-image --root <world-state-root>`
+   to release the build reservation while retaining the image/cache. Adjust the declared peak resources
+   to the actual build before starting. Install host `.open-autonomy` dependencies from its lockfile when present.
+2. Copy `container/world.json` beside the project into the installation's World definition. Select the
+   verified Docker context and resource budget there. World `up`, `doctor` and `down` own the executor.
+   Preserve `--init`, the read-only root, resource limits and named home/checkout volumes. A restart
+   preserves these volumes. Never mount the Docker socket or host credentials into the executor.
+3. Run the SDK valve alone on the host to verify connections before activation (the setup guide gives
+   its flags). Its GitHub App port is the selected base port plus three. As the executor's `hermes`
+   user, configure the repository-specific Git URL rewriting shown in SETUP.md, then clone the canonical
+   `https://github.com/__ACCOUNT__.git` into `/work/project`. Verify that both effective fetch and push
+   routes use the valve, including worker worktrees. Verify the installed App's Contents write grant and actual landing settings.
+   Stop this temporary valve before startup; reuse the clone when resuming.
+4. Install the reviewed kit's `.open-autonomy` directory in host-owned storage and run:
 
-The credential directory is mounted read/write so the root valve can persist refreshed subscription tokens
-across restarts. Keep it owner-only (directory mode 700, credential files 600), owned by a UID different from
-the container's `hermes` user. Startup checks access as that user before starting services and refuses if it
-can read or write the credential storage. Do not solve a permission failure by making credentials readable
-to the agent. Existing installations need their container recreated with the updated Compose mount.
+   ```bash
+   bun .open-autonomy/start.ts --container oa-__PROJECT__ --secrets /absolute/protected/project-credentials
+   ```
 
-- `~/.config/open-autonomy/agent.env` and `treasurer.env`: the keys, as above (rotate with `--rotate`; the
-  valve takes the new key from the file without a restart).
-- `~/.config/open-autonomy/deploy_key`: a deploy key for this one repository, write access:
-  `ssh-keygen -t ed25519 -N '' -f ~/.config/open-autonomy/deploy_key` and
-  `gh repo deploy-key add ~/.config/open-autonomy/deploy_key.pub --allow-write`. The container clones through it
-  on first boot.
-- The pinned Hermes image: `sh container/build-hermes.sh` builds it from `hermes.pin` (~10 minutes, once).
+   `--config` names the host project configuration when it is elsewhere; `--state` selects host reporter
+   state; `--valve` selects four consecutive ports. The executor defaults are `/work/project` and
+   `/opt/data`. The host-to-container address must be reachable: setup proves this with the real Git
+   connection, not merely a host health check. Linux hosts may need an explicit host forwarding route;
+   do not expose credential valves publicly to make that check pass.
+5. Put that host command under the machine's existing service manager after verification. It stops its
+   owned gateway when its control connection closes, and exits when a required service dies. Let shutdown
+   finish before restarting. Native restart exit 75 is a request for the supervisor to restart the host
+   entrypoint. The World must be healthy before that entrypoint runs.
 
-```bash
-AGENT_SECRETS=~/.config/open-autonomy docker compose -f container/compose.yml up -d --build
-docker logs -f oa-agent                                                          # the start's four processes
-docker exec -u hermes oa-agent hermes kanban list                                # the board
-docker exec -u hermes oa-agent hermes kanban create 'A task' --body '- its acceptance line' --assignee default --workspace dir:/work/project --skill develop
-```
+During setup, verify orphan reaping, required tools, native write roots, executable scratch and both
+Git routes. Startup fetches main and verifies the project identity before starting Hermes. It loads configuration from committed
+main while preserving a dirty worker checkout. Reporter readiness comes from SDK initialization.
+These checks do not replace a real task, review, landing, delivered human conversation and PM cycle.
 
-Several stacks on one Docker host: `STACK=<name> docker compose -p <name> …`; the container and volumes carry
-the name (`<name>-agent`, `<name>-home`, `<name>-repo`). The default is `oa`.
+## Verification and upgrades
 
-The kit owns this directory and `.open-autonomy/start.ts`; `create-open-autonomy upgrade .` brings them forward.
+Use unique directories under `/opt/data/artifact-verification` for extracted executable checks; `/tmp`
+may be `noexec`. Product commands run through the product's World. Preserve active work, native state
+and release-review artifacts during recovery. Never solve capacity failures by deleting worker files
+or weakening limits.
+
+Upgrade through `create-open-autonomy upgrade`, review the resulting change and manually verify the changed feature.
+The host kit is a separate trusted installation: a changed checkout does not update that running copy.
+Drain active work, install the reviewed kit on the host, then restart through the service manager and
+World. Verify the reported running version and a native operation. Existing project-owned divergence
+files require explicit reconciliation; do not erase them to force a clean kit check. Older Compose
+installations need this setup migration, not an automatic destructive conversion of their volumes.

@@ -56,7 +56,7 @@ function stackEnv(bin: string): Record<string, string> {
   // Responses door instead: the start script writes this into the home's .env and gives the provider a stand-in
   // credential, the same forwarding a container uses for the valve.
   // REHEARSAL_MODEL=real is the dress rehearsal: the brain thinks on the computer's own Codex login (the start script
-  // adopts it, as live) while every vendor is still a twin and the seats stay dry. A story's exact words are the
+  // uses through the host valve, as live) while every vendor is still a twin and the seats stay dry. A story's exact words are the
   // scripted brain's; a real one is judged by reading what it did.
   if (world.GATEWAY_TWIN_URL && onCodex()) {
     if (process.env.REHEARSAL_MODEL === 'real') {
