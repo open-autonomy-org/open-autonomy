@@ -236,7 +236,7 @@ function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
   const intended = remote.ok && unchanged && onDefaultHistory ? remote.out
     : existsSync(co) ? readFileSync(co, 'utf8').trim() : pending.ok ? pending.out : remote.ok ? remote.out
     : `# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a\n# secret is never changed by the agent. Everything else lands with no review.\n/.github/ @${s.login}`;
-  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
+  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: true, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
   if (!remote.ok || remote.out !== intended) {
     if (!existsSync(co) && !pending.ok) {
       mkdirSync(join(s.dir, '.github'), { recursive: true });

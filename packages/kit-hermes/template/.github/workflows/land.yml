@@ -1,6 +1,6 @@
 name: Land a branch
-# Nothing pushes to `main`: branch protection requires a pull request, with no bypass, and no check stands
-# between a branch and main. Work lands by pushing a branch: this workflow opens its pull request once and merges it.
+# Nothing pushes to main: repository rules require a PR and approving review with stale approvals dismissed.
+# Pushing opens the PR and arms native auto-merge; approval gates the merge. No bypass actors.
 #   agent/**  the agent's own work        land/**  a maintainer's
 on:
   push:
@@ -22,11 +22,11 @@ jobs:
           existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$BRANCH" \
-              --body "Opened by the landing workflow for \`$BRANCH\`. It merges on its own when the required checks pass."
+              --body "Opened by the landing workflow for \`$BRANCH\`. It merges after the required review approval and repository gates pass."
             existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           fi
           # Retry transient API/mergeability races. Once armed, GitHub waits for the required checks and
-          # human reviews even when they arrive after this workflow has finished.
+          # reviews even when they arrive after this workflow has finished.
           for attempt in 1 2 3 4 5 6; do
             if gh pr merge -R "$REPO" "$existing" --merge --auto; then echo "pull request #$existing: merged or auto-merge armed"; exit 0; fi
             echo "auto-merge attempt $attempt did not go through; retrying in 20s"; sleep 20

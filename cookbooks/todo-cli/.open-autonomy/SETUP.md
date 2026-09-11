@@ -663,6 +663,17 @@ For managed deployments, setup also checks on reruns that the deploy key remains
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 
+Before activation, inspect effective main rules: require at least one approving PR review, dismiss stale
+approvals when a diff changes, retain existing stronger protections and permit no agent bypass. Existing
+rulesets are preserved by setup helpers, so the setup agent must reconcile an older zero-review rule.
+Keep the PR author and reviewer identities distinct: the landing workflow opens PRs as GitHub Actions;
+the project's GitHub App needs pull_requests write to submit the native reviewer's verdict. Verify that
+this reviewer can supply a qualifying approval without requiring a human for every development PR.
+Do not require approval from the last pusher when that would make the shared project App unable to act
+as reviewer; independent Hermes sessions provide the worker/reviewer separation. Human release approval
+remains a separate authority requirement. Verify this flow using the actual first contribution, not a
+synthetic test PR or automated tests.
+
 Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
 and staged work, prepares a missing CODEOWNERS without committing or pushing, and checks that the intended
 file has landed on origin/main before marking that preparation complete. Resolve an interrupted commit
