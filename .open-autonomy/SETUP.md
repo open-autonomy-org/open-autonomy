@@ -731,6 +731,13 @@ PM must post the human request there and read the reply; a locally saved cron re
 Live test messages require owner authorization. Record genuine source-coverage gaps instead of claiming
 that a connected bot sees every thread. Consult native cron status, doctor, runs and incidents.
 
+Record material setup architecture choices in project-owned ADRs under `docs/decisions/`, following
+`CONTRIBUTING.md`: include the runtime and credential boundaries, alternatives, sources and constitutional
+fit. Complete independent constitution review and normal PR landing before activating those choices.
+When adopting an existing project, inspect its records and reconcile conflicting or unreviewed choices;
+do not label historical architecture accepted merely because it is already running. Keep project ADRs
+and contribution policy intact during kit upgrades; reconcile new guidance through an ordinary PR.
+
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
 Strategy handles product scope under the established mandate; PM handles authorized delivery,

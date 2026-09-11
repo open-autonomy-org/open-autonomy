@@ -27,6 +27,9 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   `container/` is the kit's default for a real deployment (one image, one compose file; Docker or Podman): the
   agent cannot reach its keys there. This Mac runs both agents bare for fast debugging, an accepted trade here.
 
+Architecture decisions follow the ADR process in `CONTRIBUTING.md`. This file does not replace
+accepted decision records; conflicting directions require a sourced proposal and constitution review.
+
 ## Working agreement
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a

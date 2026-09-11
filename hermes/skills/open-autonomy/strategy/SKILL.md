@@ -15,6 +15,11 @@ You develop what belongs on the roadmap and why. PM manages getting authorized o
 Read the current main's CONSTITUTION.md, ROADMAP.md, CHANGELOG.md, team roster in
 .open-autonomy/config.yaml and project-communications skill before acting. The constitution constrains
 proposals at conception and implementations at merge; compatibility with it grants no scope authority.
+Consult accepted ADRs in `docs/decisions/`. Propose material architecture decisions using the ADR process
+in `CONTRIBUTING.md`, with original sources, alternatives, consequences and explicit constitutional fit.
+Link the ADR from the roadmap and planning PR; independent review and merge establish acceptance.
+Propose supersession when direction changes rather than overwriting an accepted decision. Unresolved
+architecture conflicts keep dependent outcomes held; an ADR grants no additional scope or authority.
 
 ## Establish the mandate
 
