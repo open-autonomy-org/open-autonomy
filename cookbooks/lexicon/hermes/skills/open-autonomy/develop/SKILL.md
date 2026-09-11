@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. Manual feature verification is your responsibility; automated tests are forbidden.
-version: 4.4.0
+version: 4.5.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -10,6 +10,9 @@ metadata:
 ---
 
 # Develop
+
+This workflow is for a worker dispatched by Hermes on an existing native task. Outside contributors
+follow `CONTRIBUTING.md`; do not create or operate a fleet card merely to submit an ordinary PR.
 
 You work one task from the board. `kanban_show` gives it to you: a title, and acceptance lines in its body.
 Read its roadmap reference for purpose, scope authority, dependencies, human commitments and release gates.
@@ -45,7 +48,9 @@ is not done.
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
 6. Push the completed candidate to agent/<task id>. The landing workflow opens its PR and enables
    auto-merge; GitHub must require an approving review and dismiss stale approvals when the diff changes.
-   Observe the open PR and record its URL and full head SHA. Pushing opens review, not permission to merge.
+   Observe the open PR and record its URL and full head SHA. Apply the draft-readiness rules in
+   `CONTRIBUTING.md`: mark a finished candidate ready, recording dependencies separately. Pushing opens
+   review, not permission to merge.
    Do not approve your own work, bypass review or merge as the implementer.
 7. Hand off with `kanban_request_review`: name the PR, workspace, branch and full candidate SHA, then
    the manual actions and observed results for every acceptance line and any limitations. Leave the
