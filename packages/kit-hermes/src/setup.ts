@@ -20,6 +20,7 @@ import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
+import { codexAccess } from '@open-autonomy/sdk/codex-auth';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
@@ -111,7 +112,7 @@ export function readSituation(dir: string): Situation {
     dir, project, account, owner, repo, ownerIsOrg, login, deploy, sponsorsListing,
     discordToken: Boolean(process.env.DISCORD_BOT_TOKEN),
     codex: codexLogin(),
-    docker: dockerServer.ok && Boolean(dockerServer.out.trim()) && run(['docker', 'compose', 'version']).ok,
+    docker: dockerServer.ok && Boolean(dockerServer.out.trim()),
   };
 }
 
@@ -307,12 +308,11 @@ function codexLogin(): boolean {
   return r.status === 0 && /logged in using ChatGPT/i.test(`${r.stdout ?? ''}\n${r.stderr ?? ''}`);
 }
 
-// The subscription is plain Hermes: its own openai-codex provider in both profiles. Bare, Hermes adopts the Codex
-// CLI's login itself; the container's start script forwards through the valve, which needs its own copy of the login.
-function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
-  const dst = join(opts.secrets, 'codex.json');
-  say(`\nSubscription: hermes/config.yaml and the treasurer's profile name Hermes's own openai-codex provider. Bare, Hermes adopts the Codex CLI's login itself. For the container, the login is copied once to ${dst}: the valve serves it on its third port and refreshes it, and the start script points the provider there with a stand-in credential, so the login never enters the agent.`);
+// Both launch modes use the host Codex login through the same valve.
+async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promise<void> {
+  say("\nSubscription: both Hermes profiles use openai-codex through the host valve. The installed Codex owns the current login and refresh. Setup does not copy credentials; run the host service as this user with the same CODEX_HOME.");
   if (opts.plan) return;
+  await codexAccess();
   for (const rel of ['hermes/config.yaml', 'hermes/profiles/treasurer/config.yaml']) {
     const cfg = join(s.dir, rel);
     if (!existsSync(cfg)) continue;
@@ -321,9 +321,7 @@ function stepSubscription(s: Situation, opts: Opts, st: SetupState): void {
     writeFileSync(cfg, text.replace(/^model:\n(?:  .*\n)+/m, 'model:\n  default: gpt-5.6-sol\n  provider: openai-codex\n'));
     say(`  ${rel} now names the subscription; reconcile the model with the owner's choice and commit it with the rest.`);
   }
-  const src = join(homedir(), '.codex', 'auth.json');
-  if (!existsSync(dst) && existsSync(src)) { mkdirSync(opts.secrets, { recursive: true, mode: 0o700 }); writeFileSync(dst, readFileSync(src), { mode: 0o600 }); }
-  mark(s.dir, st, 'subscription', `openai-codex in both profiles${existsSync(dst) ? `; the container's copy of the login at ${dst}` : ''}`);
+  mark(s.dir, st, 'subscription', 'openai-codex in both profiles; current host Codex login, no project credential copy');
 }
 
 function printStart(s: Situation, opts: Opts): void {
@@ -335,8 +333,8 @@ function printStart(s: Situation, opts: Opts): void {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
     if (!s.docker) say('  A working Docker connection is not verified; select or start a local runtime before starting the container.');
-    say('  sh container/build-hermes.sh   # build the pinned base image if absent');
-    say(`  AGENT_SECRETS=${opts.secrets} STACK=${s.project} docker compose -p ${s.project} -f container/compose.yml up -d --build`);
+    say('  Follow container/README.md: build and start the World executor, prepare its checkout, then start the existing valve and reporter on this host.');
+    say(`  bun .open-autonomy/start.ts --container oa-${s.project} --secrets ${opts.secrets}`);
   }
   say('  An existing fleet uses its supported graceful reload after the changes land. Verify the loaded skill/config and connected platforms before reporting setup complete.');
 }
@@ -412,7 +410,7 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     : '  organization: unresolved. Setup requires a verified GitHub organization; personal repositories need an owner-agreed organization target before provisioning.');
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker ready: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
-  say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and run the project check before activation. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
+  say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and manually verify the feature before activation; never run automated tests or test hooks. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
   say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');
   say('  setup agent: follow the agreed communication policy in hermes/skills/project-communications/SKILL.md; configure only the selected platforms and verify actual human outreach and replies. Keep confidential spaces outside the publicly logged fleet.');
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml. Follow the communication skill for native permissions and preserve the agreed repository review policy.');
@@ -445,24 +443,25 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   }
   // Completion markers describe an earlier run, not the contents of the currently selected host.
   // Leave recovery to the setup agent; never silently replace a missing credential on a resumed step.
-  const savedCredentials: Array<[string, string[]]> = [['deploy-key', ['deploy_key', 'deploy_key.pub']], ['platform-key', ['agent.env', 'treasurer.env']]];
+  const savedCredentials: Array<[string, string[]]> = [...(opts.bare ? [['deploy-key', ['deploy_key', 'deploy_key.pub']] as [string, string[]]] : []), ['platform-key', ['agent.env', 'treasurer.env']]];
   for (const [step, files] of savedCredentials) {
     if (done(st, step) && files.some((file) => !existsSync(join(opts.secrets, file)))) throw new Error(`The saved setup step ${step} is missing credential files in the selected directory. Restore the intended files or reconcile the credential directory and setup record before resuming; no replacement credential was issued.`);
   }
-  say('  Git authentication: repository-scoped SSH deploy key. The community App needs Contents: read.');
+  if (!opts.bare && st.doors['github-app'] !== 'yes') throw new Error('The container runtime requires the project GitHub App connection for Git.');
+  say(opts.bare ? '  Bare Git authentication: repository-scoped SSH deploy key.' : '  Container Git authentication: the host project App valve, with an installed Contents: write grant. No deploy key is created.');
   // Branding is agent-led work, not a generator or a final-design approval gate. Check before creating new apps.
   if (st.doors.discord === 'yes' && !done(st, 'discord')) readBranding(dir);
   if (st.doors.subscription === 'yes' && !s.codex) throw new Error('Local Codex needs the installed codex CLI signed in with ChatGPT as this operator. Complete codex login locally and rerun setup.');
   saveState(dir, st);
   stepGitHub(s, opts, st);
-  stepDeployKey(s, opts, st);
+  if (opts.bare) stepDeployKey(s, opts, st);
   stepPlatformKey(s, opts, st);
   say('\nFunding: minting keys and setting spending limits do not fund the project. Before activation, the setup agent verifies usable balance on the configured platform’s project page and completes an owner-authorized gift or coupon redemption if needed. The /give flow transfers existing credits; do not assume a grant. Then verify a bounded model call with the agreed model. An explicitly selected subscription uses its operator’s allowance instead.');
   stepOwnerRules(s, opts, st);
   if (opts.with.includes('production') && st.doors.production === 'yes') stepProduction(s, opts, st);
   if (st.doors['github-app'] === 'yes') stepGitHubApp(opts);
   if (st.doors.discord === 'yes') await stepDiscord(s, opts, st);
-  if (st.doors.subscription === 'yes') stepSubscription(s, opts, st);
+  if (st.doors.subscription === 'yes') await stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   printStart(s, opts);
   say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);

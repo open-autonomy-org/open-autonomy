@@ -1,0 +1,15 @@
+{
+  "id": "todo-cli-image",
+  "description": "Build the executor through World. Setup copies this definition beside the project and replaces the build service cwd with the absolute reviewed checkout path. Down releases the build reservation and retains the image/cache.",
+  "resources": { "memoryMiB": 4096, "writableStorageMiB": 16384 },
+  "services": [{
+    "id": "build",
+    "type": "external",
+    "cwd": "/absolute/project-checkout",
+    "external": {
+      "up": ["sh", "-c", "sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag todo-cli-agent:local ."],
+      "down": ["true"],
+      "status": ["docker", "image", "inspect", "--format", "{{.Id}}", "todo-cli-agent:local"]
+    }
+  }]
+}

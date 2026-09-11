@@ -277,7 +277,7 @@ feature questions can remain for strategy under its mandate; credentials or dire
 evidence, not permission to use them for this project.
 
 Use a lowercase runtime slug such as `audit-desk` for `--project`: letters and digits separated by
-hyphens, at most 64 characters. It names Docker images, the Compose project and default credential
+hyphens, at most 64 characters. It names Docker images, the World executor and default credential
 storage. The display name in `branding/brand.json` can be `AuditDesk` or another human-facing name.
 For an older install with an incompatible slug, reconcile its kit identity and existing host resources
 before rerunning setup; do not silently rename its containers, volumes or credential directory.
@@ -299,8 +299,9 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 Before registering an App or collecting credentials, trace the chosen runtime's Git, model,
 communication and reporting paths. Establish where authentication lives and the permissions each
-path needs. Git authentication is the repository-scoped SSH deploy key wherever the fleet runs, bare or in the
-container, on any model; the community App needs Contents: read. Reuse existing project integrations; a
+path needs. The managed executor uses the host project GitHub App valve for Git and community access,
+with Contents: write installed for this repository. Bare development can retain its repository-scoped
+SSH deploy key and a read-only Contents grant for the community App. Reuse existing project integrations; a
 completed registration is not proof that the fleet can use it. This is setup-agent judgment using the existing
 configuration, not another configuration file or user questionnaire.
 
@@ -368,21 +369,24 @@ build. Reuse an existing working local context; CLI availability alone does not 
 
 Local Codex is plain Hermes on its own `openai-codex` provider: the same agent loop, tools, board, skills
 and channels as any other model, with the model turn on the owner's ChatGPT allowance. The fleet looks
-the same wherever it runs; only what carries the login differs.
+the same wherever it runs.
 
-- **Bare, on this computer:** the computer's login. The start script adopts the Codex CLI's login
-  (`codex login`) into Hermes's own store on the first start, as Hermes's importer does; Hermes keeps and
-  refreshes that session in the agent's home, the accepted trade of every bare fleet (`container/README.md`).
-  A computer with no Codex login cannot start.
-- **In the container:** the start script forwards. The root valve holds a copy of the login (codex.json
-  in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
-  serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
-  auth store carries a stand-in credential, so the login never enters the agent. Git goes through the
-  deploy key as in any container.
+- **Bare or in a container:** the host valve asks the installed Codex app-server for the current
+  ChatGPT access token. Codex owns storage and refresh, including its configured credential store.
+  Run the host service as the signed-in user with the same `CODEX_HOME`. The next request picks up a
+  changed login. OA does not copy the login into project secrets or Hermes's home. Hermes receives
+  only a stand-in credential and the valve address. Bare execution alone provides no filesystem
+  isolation: real autonomous runs require an OS user boundary (the existing `--as` mode) or the container.
+  Use synthetic credentials for unisolated rehearsals. Container Git uses the project GitHub App valve.
 - **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
-  forwarding points the provider at the twin's Responses door.
+  forwarding points the provider at the twin's Responses door without accessing the host login.
 
-`--with subscription` checks `codex login status` and writes both profiles' model block:
+`--with subscription` verifies authentication through the installed Codex and switches profiles that
+are not already on `openai-codex` to the kit's starter model. It does not select the owner's exact model.
+On upgrade, old protected codex.json copies are unused. Preserve them during migration; any later
+credential cleanup is a separate owner decision, never an incidental kit upgrade.
+Before activation, the setup agent reconciles **both** `hermes/config.yaml` and
+`hermes/profiles/treasurer/config.yaml` with the agreed, locally verified model:
 
 ```yaml
 model:
@@ -401,6 +405,14 @@ finalizing the model choice. Initial key bounds are provisional, not proof of av
 spend. If catalog access fails, report the unavailable lookup and resolve it rather than presenting the
 template's default as a verified catalog. This discovery does not require starting Hermes or funding a
 model call. A missing or unusable subscription should be stated plainly when offering the platform options.
+
+When the owner already selected the subscription, retain that choice and verify its agreed model; a catalog
+comparison is not a prerequisite. The platform connection is still needed for reporting. Verify access
+through the installed Codex app-server as the intended host service user, with the same `CODEX_HOME`
+(default `~/.codex`). Codex owns its configured credential storage, including keyring access; OA does not
+require a transferable credential file. Follow [Codex authentication](https://developers.openai.com/codex/auth)
+for the installed storage arrangement. Never print credentials or change the operator's global storage
+policy. The subscription step remains incomplete until that host process can use the current login.
 
 After applying the helper, reconcile `hermes/config.yaml` with the agreed provider and exact model;
 the helper's seeded provider defaults are not the owner's model selection. For platform-funded profiles,
@@ -475,15 +487,19 @@ directory with owner-only permissions. Existing credential files must be regular
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use protected page capture for displayed credentials, or secure entry when capture is unavailable | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
-Verify these connections before starting Hermes. Use the existing vendored SDK valve CLI directly in the
-prepared runtime, supplying the selected `--key`, `--github-app` credential-file
-arguments; this starts only the valve. In a container, use a one-off command with the entrypoint overridden,
-keeping its ports inside the runtime network with no published ports. The valve listens on all interfaces;
-its placeholder bearer is not an access boundary. Make the checks from inside that protected environment.
+Verify these connections before starting the fleet. Run the existing vendored SDK valve CLI on the
+host, supplying `--loopback` and the selected `--key`, `--github-app` and optional `--codex` arguments;
+this starts only the valve. Credential files stay in protected host storage. The executor reaches the
+host valve through its verified local route; never mount credentials into it or publish the valve
+publicly. Its placeholder bearer is not an access boundary.
+
 Use actual repository reads and a bounded model request under the agreed funding arrangement; a health
-response alone is insufficient. Stop the temporary valve before the normal stack takes its ports.
-The setup agent verifies the scoped push key and selected communication provider through their native
-tools as well. Reporter delivery and the loaded Hermes configuration are checked on the final startup;
+response alone is insufficient. Exercise a PR read through the installed Hermes terminal tool with its
+normal unattended approval policy, so a command-scanner rejection is discovered during setup. Resolve
+trust for the configured local connection through native policy before activation; do not disable the
+scanner or grant blanket command approval. Stop the temporary valve before the normal stack takes its
+ports. Verify the effective Git fetch and push routes and selected communication provider through their
+native tools as well. Reporter delivery and the loaded Hermes configuration are checked on final startup;
 those checks do not require PM to finish credentials or policy.
 
 When key minting reports a pending claim, land the prepared `.open-autonomy-claim` on the repository's
@@ -602,8 +618,8 @@ installation, Git operation, policy decision or runtime configuration belongs in
 ### Displayed credentials
 
 When the agreed integration displays its new credential on a page, use the standalone helper's capture
-command to transfer that one field directly into protected storage. The SDK README documents the command
-and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
+command to transfer that one field directly into protected storage. The [vendored SDK README](sdk/README.md)
+documents the command and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
 and bound task tab; do not launch a second browser or scrape the token with ordinary eval/snapshot tools.
 Confirm the project app and exact page first, then identify the single field within its credential-labeled
 section from safe DOM structure, without reading its value or snapshotting its container. A unique Copy
@@ -632,13 +648,17 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
-The fleet runs the same way on any model: bare with the start script, or in the managed Compose container
-(`container/README.md`). Local Codex adds nothing to prepare; in the container the start script forwards
-the subscription by itself.
+The model choice does not change the fleet architecture. For the managed setup, World owns one executor
+and the host runs `start.ts --container`: credential valves and SDK reporting stay outside, native Hermes
+runs inside. Follow `container/README.md` for preparation, activation and supervision. The bare start
+script remains the development and twin-rehearsal path; it is not credential isolation.
 
 Verify Bun 1.3.10 or newer and the application's verification tools where the fleet runs before
-starting PM. Install locked project dependencies and run the project's check in that environment.
-The kit image includes `volter-world` on PATH.
+starting PM. Install locked project dependencies and manually verify the feature in that environment.
+The kit image includes `volter-world` on PATH. The host preflight verifies PID 1 reaping, native tool
+availability, the checkout write roots, and execution from `$HERMES_HOME/artifact-verification`. Use unique
+directories there for extracted installs and release checks; `/tmp` may deliberately be `noexec`.
+Do not relax isolation or replace the declared compiler command to make verification pass.
 A fresh template includes its compiler; an existing project keeps its own working tooling.
 
 Establish the application's local world using this machine's World instructions. Seed vendor state
@@ -682,7 +702,7 @@ These checks do not establish human authority or prove the fleet's selected Git 
 remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
-For managed deployments, setup also checks on reruns that the deploy key remains registered with write access. A revoked,
+For bare deployments using a deploy key, setup also checks on reruns that it remains registered with write access. A revoked,
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 
@@ -730,6 +750,22 @@ versus owner authority, interruption and recovery in the world. When GitHub is t
 PM must post the human request there and read the reply; a locally saved cron report is insufficient.
 Live test messages require owner authorization. Record genuine source-coverage gaps instead of claiming
 that a connected bot sees every thread. Consult native cron status, doctor, runs and incidents.
+
+Exercise the PM/community helpers through a native Hermes terminal tool, not only an operator shell.
+The managed-container profiles use `terminal.shell_init_files` to activate the existing Hermes virtual
+environment after login-shell initialization; Docker PATH alone is insufficient. For a host install,
+set that native option to its actual activation file when the terminal cannot import Hermes APIs.
+Verify that a first GitHub poll discovers known repository activity before acknowledging its cursor.
+Also exercise native file creation and patching in a disposable checkout subdirectory. The managed
+container’s `HERMES_WRITE_SAFE_ROOT` includes `/opt/data` and `/work/project`; verify unrelated paths
+and protected credential paths remain denied. A working terminal does not prove file-tool access.
+
+For a host service, retain the operator's real `HOME` and intended `CODEX_HOME`; use `--home` or
+`HERMES_HOME` for Hermes's own state. Only the container process receives the container home.
+Verify the installed Codex under that actual service environment. Native startup can perform local
+database maintenance before authentication; let it finish. A failure before `initialize` is a Codex
+runtime failure, not proof of an invalid login. Diagnose it before asking for another sign-in. Keep
+credential storage and conversation history intact; setup does not clone or repair Codex databases.
 
 Record material setup architecture choices in project-owned ADRs under `docs/decisions/`, following
 `CONTRIBUTING.md`: include the runtime and credential boundaries, alternatives, sources and constitutional

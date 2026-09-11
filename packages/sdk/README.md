@@ -17,6 +17,12 @@ await oa.update({ item: 'add', text: 'the store writes; the id counter next', se
 await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commit: '7d30729' });
 ```
 
+The optional Codex connection uses `open-autonomy-valve --codex <port>`. The installed host Codex
+owns its current ChatGPT login and refresh; OA obtains transient access through the native app-server
+protocol and never stores a separate project login. Both local and container callers use this same
+connection. Keep the valve outside the agent's credential boundary. A rehearsal points the native
+Hermes provider directly at the model twin and does not acquire real Codex access.
+
 ## Owner-side credential handoff
 
 The standalone `open-autonomy-credentials` command receives secrets into the runtime host's protected
