@@ -1,6 +1,6 @@
 # ADR 0002: Rehearsal is an ordinary World scenario
 
-Status: Proposed; accepted only after independent constitution review and merge.
+Status: Accepted upon independent constitution approval and merge of this record and implementation; proposed until both occur.
 
 ## Context and sources
 
