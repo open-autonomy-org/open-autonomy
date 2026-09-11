@@ -88,11 +88,9 @@ ordinary APIs (`REHEARSAL_SCRUM=1` before `up` seeds them at the start instead);
 plans, the plan lands, the next scrum queues fleet work, the outside PR merges and the following scrum distills it.
 Explicitly scripted judgment, with real Hermes cron, kit helpers, git landing, board dispatch and native review: it proves
 mechanics, not unscripted judgment. The operator beats below drive one step at a time by hand. The PM's poll reads the
-outside pull request from the repository's issue list, as GitHub serves it; the published GitHub twin omits pull requests
-there, so this story runs with the twin from a checkout (`WORLD_GITHUB_CLI=<checkout>/packages/twin/github/src/cli.ts`),
-the GitHub twin alone. The checkout's Discord twin ships its own guild (the seed finds its text channel and writes it
-to the world's channels.env, which every door reads) but dispatches a person's message to the bot under an id it does
-not store, so the brain's reply is refused; Discord worlds stay on the published Discord twin until that is fixed.
+outside pull request from the repository's issue list, as GitHub serves it. Use a current twins checkout
+with `TWINS_ROOT=<checkout>`. The Discord seed discovers the checkout twin's text channel and writes it
+to the world's channels.env, which every door reads.
 
 ```bash
 bun world/run.ts env -- bun rehearsal/operators/scrum.ts overlap   # existing integration work awaiting the outside PR
@@ -178,12 +176,8 @@ Inspect between beats. The twin has no GraphQL mark-ready mutation, so the merge
 and opens an ordinary review PR for the identical branch through GitHub's real REST API. CI and merge
 remain real. Its synthetic OAuth exchange does not prove GitHub consent UI or real token permissions.
 
-Older GitHub twins keep REST file edits outside their Git object store, causing branch edits to shadow
-main and pinned revisions. That is a twin coverage gap, not a reason to change the app or fake a handler
-success. The retained [GitHub Contents fidelity patch](../cookbooks/todo-cli/rehearsal/patches/github-contents.patch), against twin commit
-32b1b4ea, repairs Git-backed file writes and reads and reads current Git refs after merges. Apply it in an
-isolated twin checkout and select that checkout with WORLD_GITHUB_CLI before bringing the world up.
-The app under test remains unchanged. This patch is a rehearsal prerequisite until the twin incorporates it.
+The team flow requires the current [GitHub twin's Contents and Git ref support](https://github.com/volter-ai/twin/tree/main/packages/twin/github#coverage).
+Select that checkout with `TWINS_ROOT` before bringing the world up.
 
 ## Install the packed kit into a fresh project
 
