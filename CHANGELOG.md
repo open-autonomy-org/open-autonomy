@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Release-review withdrawals return to the recorded conversation.** When PM defers a Discord review request, the rehearsal now derives the channel from the original receipt, delivers the withdrawal before recording it, and fails loudly on a malformed receipt. The world guide uses a current Twin checkout for GitHub and Discord rather than carrying obsolete local fidelity patches ([PR #605](https://github.com/open-autonomy-org/open-autonomy/pull/605)).
 - **Projects can monitor without model calls.** The kit seeds monitor jobs whose scripts wake the agent only when their output changes, carrying the diff.
 - **Development review and product authority are separate.** A developer pushes a branch and a separate native reviewer verifies the exact PR head, authorized scope, constitutional fit and manual observations before automatic merge; human approval is reserved for a fixed release candidate. Strategy develops product scope under its recorded mandate while PM manages delivery, and material architecture decisions now require a sourced ADR plus independent constitutional review.
 - **Manual feature use replaces automated tests.** The constitution now forbids writing or running automated tests and persistent test harnesses; develop agents exercise changed behavior through REPL-style use of the running product and reviewers verify the reported observations before landing.
