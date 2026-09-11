@@ -34,7 +34,7 @@
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
@@ -272,6 +272,14 @@ if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
 // The agent's GitHub identity: the valve mints the app's installation tokens and serves the desk's routes on the fourth port.
 const githubFile = resolve(secrets, 'github-app.json');
 if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
+// The project's own vendors, one door each: <secrets>/door-<name>.env names the vendor (URL=), the credential as the
+// header it takes (AUTHORIZATION=) and the port the valve serves it on (PORT=); the home's .env (channels.env) names
+// that port as the vendor's address and `valve` as the token, so the agent speaks to the vendor and holds nothing.
+for (const f of (existsSync(secrets) ? readdirSync(secrets) : []).filter((n) => /^door-[a-z0-9-]+\.env$/.test(n)).sort()) {
+  const port = /^PORT=(\d+)/m.exec(readFileSync(resolve(secrets, f), 'utf8'))?.[1];
+  if (!port) { console.error(`start: ${resolve(secrets, f)} names no PORT=`); process.exit(1); }
+  keys.push('--door', `${f.slice('door-'.length, -'.env'.length)}:${resolve(secrets, f)}:${port}`);
+}
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in

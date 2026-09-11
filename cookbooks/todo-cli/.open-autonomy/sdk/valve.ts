@@ -35,7 +35,13 @@ const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
 const githubArg = process.argv.includes('--github-app') ? String(process.argv[process.argv.indexOf('--github-app') + 1]) : undefined;
-if (!keys.length && !codexArg && !githubArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <tokens.json>:<port>] [--github-app <app.json>:<port>]'); process.exit(2); }
+// A vendor door: `--door <name>:<file>:<port>`, repeatable. The file names the vendor (`URL=https://…`) and the
+// credential as the header the vendor takes (`AUTHORIZATION=Basic …` or `Bearer …`); every request on the port is
+// forwarded there with that header, the agent having sent a stand-in. What a project speaks (its client's Jira, a
+// Slack workspace, GitHub as a person) is one door each; the credential never enters the agent.
+const doors: Array<{ name: string; file: string; port: number }> = [];
+for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--door') { const [name, file, port] = String(process.argv[i + 1]).split(':'); doors.push({ name, file, port: Number(port) }); }
+if (!keys.length && !codexArg && !githubArg && !doors.length) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <tokens.json>:<port>] [--github-app <app.json>:<port>] [--door <name>:<file>:<port> …]'); process.exit(2); }
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -270,4 +276,30 @@ if (githubArg) {
     },
   });
   try { const app = read(); console.log(`github-app: ${file} → ${upstream()} on :${port} (app ${app.app_id}, installation ${app.installation_id ?? 'discovered on use'}, ${app.repository})`); } catch (e) { console.error(`github-app: ${(e as Error).message}`); process.exit(2); }
+}
+
+for (const door of doors) {
+  const read = (): { url: string; authorization: string } => {
+    const env = keyEnv(door.file);
+    if (!env.URL || !env.AUTHORIZATION) throw new Error(`${door.file}: needs URL=https://… and AUTHORIZATION=<the header value>`);
+    return { url: env.URL.replace(/\/$/, ''), authorization: env.AUTHORIZATION };
+  };
+  Bun.serve({
+    hostname: '127.0.0.1', port: door.port, idleTimeout: 255,
+    async fetch(req) {
+      const u = new URL(req.url);
+      if (u.pathname === '/healthz') { try { return new Response(`ok · door ${door.name} → ${read().url}`); } catch (e) { return new Response((e as Error).message, { status: 503 }); } }
+      try {
+        const { url, authorization } = read();
+        const headers = new Headers(req.headers);
+        for (const h of ['host', 'authorization', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
+        headers.set('authorization', authorization);
+        const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
+        const res = await fetch(`${url}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual' });
+        const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
+        return new Response(res.body, { status: res.status, headers: out });
+      } catch (e) { return new Response(JSON.stringify({ message: (e as Error).message }), { status: 502, headers: { 'content-type': 'application/json' } }); }
+    },
+  });
+  try { console.log(`door ${door.name}: ${door.file} → ${read().url} on :${door.port}`); } catch (e) { console.log(`door ${door.name}: ${(e as Error).message} (serving on :${door.port} once the file is right)`); }
 }
