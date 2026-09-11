@@ -256,7 +256,7 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
       run(['git', 'checkout', '-q', '-B', 'land/deploy-door'], { cwd: s.dir }); run(['git', 'add', wf], { cwd: s.dir });
       run(['git', 'commit', '-q', '-m', 'The production door: deploy.yml runs from a human-cut deploy-v* tag through the production environment'], { cwd: s.dir });
       run(['git', 'push', '-q', '-u', 'origin', 'land/deploy-door'], { cwd: s.dir }); run(['git', 'checkout', '-q', 'main'], { cwd: s.dir });
-      say('  the deploy workflow is on branch land/deploy-door: it touches .github/, so its landing waits for your review (gh pr review --approve, then merge).');
+      say('  the deploy workflow is on branch land/deploy-door: hand its PR and exact head to an independent agent reviewer; it merges automatically after approval. Running a release or deployment still requires human approval of the exact candidate.');
     }
   }
   mark(s.dir, st, 'production', 'environment, tag ruleset' + (s.deploy === 'cloudflare-worker' ? ', Cloudflare token, deploy.yml' : ''));

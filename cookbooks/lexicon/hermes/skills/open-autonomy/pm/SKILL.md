@@ -266,8 +266,9 @@ workers hand off to native review, which alone completes execution. PM coordinat
   still verifies execution acceptance. Unknown status completes nothing.
 - Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
   link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
-- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Workflow-changing
-  upgrades await owner review; the supervisor drains and restarts after landing.
+- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Every upgrade PR,
+  including workflow changes, goes through independent exact-head agent review and automatic merge.
+  The supervisor drains and restarts after landing. Human approval is reserved for release of the exact candidate.
 
 Report notable changes, queue decisions, pending commitments/release gates, source gaps and installed/running
 kit versions. This report is operational output, not another permanent project journal.
