@@ -486,15 +486,19 @@ directory with owner-only permissions. Existing credential files must be regular
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use protected page capture for displayed credentials, or secure entry when capture is unavailable | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
 | Development model | Reuse the agreed authorized connection or complete the required provider authorization | A call through the installed runtime succeeds under the intended account and bounds |
 
-Verify these connections before starting Hermes. Use the existing vendored SDK valve CLI directly in the
-prepared runtime, supplying the selected `--key`, `--github-app` credential-file
-arguments; this starts only the valve. In a container, use a one-off command with the entrypoint overridden,
-keeping its ports inside the runtime network with no published ports. The valve listens on all interfaces;
-its placeholder bearer is not an access boundary. Make the checks from inside that protected environment.
+Verify these connections before starting the fleet. Run the existing vendored SDK valve CLI on the
+host, supplying `--loopback` and the selected `--key`, `--github-app` and optional `--codex` arguments;
+this starts only the valve. Credential files stay in protected host storage. The executor reaches the
+host valve through its verified local route; never mount credentials into it or publish the valve
+publicly. Its placeholder bearer is not an access boundary.
+
 Use actual repository reads and a bounded model request under the agreed funding arrangement; a health
-response alone is insufficient. Stop the temporary valve before the normal stack takes its ports.
-The setup agent verifies the scoped push key and selected communication provider through their native
-tools as well. Reporter delivery and the loaded Hermes configuration are checked on the final startup;
+response alone is insufficient. Exercise a PR read through the installed Hermes terminal tool with its
+normal unattended approval policy, so a command-scanner rejection is discovered during setup. Resolve
+trust for the configured local connection through native policy before activation; do not disable the
+scanner or grant blanket command approval. Stop the temporary valve before the normal stack takes its
+ports. Verify the effective Git fetch and push routes and selected communication provider through their
+native tools as well. Reporter delivery and the loaded Hermes configuration are checked on final startup;
 those checks do not require PM to finish credentials or policy.
 
 When key minting reports a pending claim, land the prepared `.open-autonomy-claim` on the repository's
