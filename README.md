@@ -59,7 +59,6 @@ apps/platform        the worker: the books, the rails, the development stream, t
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
 cookbooks/todo-cli   the reference project: CLI, community scenarios, and a focused HTTP example
-                     desk (issues, discussions, Discord) and a GitHub Pages homepage (`--cookbook <name>`)
 world/               the world's front: the kit's rehearsal in a cookbook, the platform from this tree; `bun world/run.ts up`
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
 ```

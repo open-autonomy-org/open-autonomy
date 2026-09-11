@@ -11,7 +11,7 @@ bun run check
 ```
 
 One generated project carries the setup, board, community, team and release scenarios. Follow the
-[World operator guide](../../world/README.md) to run them with synthetic vendors. Fresh-install verification uses
+[World operator guide](https://github.com/open-autonomy-org/open-autonomy/blob/main/world/README.md) to run them with synthetic vendors. Fresh-install verification uses
 a disposable project made by the kit; additional generated cookbook copies are unnecessary.
 
 The focused [notes HTTP example](examples/notes-http.ts) retains the service behavior from the retired notes-api
