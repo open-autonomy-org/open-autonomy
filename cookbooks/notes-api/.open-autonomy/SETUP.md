@@ -753,6 +753,13 @@ Also exercise native file creation and patching in a disposable checkout subdire
 container’s `HERMES_WRITE_SAFE_ROOT` includes `/opt/data` and `/work/project`; verify unrelated paths
 and protected credential paths remain denied. A working terminal does not prove file-tool access.
 
+For a host service, retain the operator's real `HOME` and intended `CODEX_HOME`; use `--home` or
+`HERMES_HOME` for Hermes's own state. Only the container process receives the container home.
+Verify the installed Codex under that actual service environment. Native startup can perform local
+database maintenance before authentication; let it finish. A failure before `initialize` is a Codex
+runtime failure, not proof of an invalid login. Diagnose it before asking for another sign-in. Keep
+credential storage and conversation history intact; setup does not clone or repair Codex databases.
+
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
 Strategy handles product scope under the established mandate; PM handles authorized delivery,

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import { codexAccess } from './sdk/codex-auth.ts';
 import { checkCredentialDirectory } from './sdk/credentials.ts';
 import { checkContainerGit, startContainerProcess } from './sdk/container-process.ts';
 import { prepareContainerHome, prepareContainerSubscription, verifyContainer, writeContainerEnvironment, writeContainerKitRecord } from './sdk/container-home.ts';
@@ -72,7 +73,9 @@ export async function startHost(options: {
     const prepared = await prepareContainerHome({ container, home, workspace });
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
     const onCodex = prepared.models.some(model => model?.provider === 'openai-codex');
-    if (onCodex && !(await fetch(`http://127.0.0.1:${port + 2}/healthz`, { signal: AbortSignal.timeout(125_000) })).ok) throw new Error('The committed model needs the current host Codex ChatGPT login; check the service user and CODEX_HOME');
+    // Let native Codex startup finish before starting the fleet; its database
+    // maintenance is not an authentication RPC timeout.
+    if (onCodex) await codexAccess();
     const codexBase = onCodex ? `${host}:${port + 2}/backend-api/codex` : '';
     if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
     const channelsFile = resolve(secrets, 'channels.env');
