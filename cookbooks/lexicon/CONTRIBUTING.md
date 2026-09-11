@@ -17,6 +17,26 @@ the constitution's invariants. Short on purpose; the reviewer reads it whole.
 - **Dependencies.** Add one only when writing it would be more code than reading it. Pin what you add.
 - **History.** One change per commit, the task id first in the subject, signed as the agent.
 
+## Contributing and review
+
+A person or coding agent working outside a dispatched Hermes task contributes through an ordinary PR.
+Include scope sources, the current head, manual verification evidence and known dependencies in the PR.
+PM discovers the contribution and coordinates its independent review; no kanban access, shared planning
+document edit or separate handoff is required from the contributor. A Hermes worker already dispatched
+on a native task uses that task's review lane as described in the develop skill. Being a coding agent,
+or having access to Hermes, does not itself make a contributor a fleet worker.
+
+Use a draft while contributor work is unfinished, and state what remains. Once the change is reviewable,
+mark it ready for review. A pending upstream PR, merge dependency, runtime activation or human release
+approval is not by itself a reason to keep reviewable work in draft. Record the dependency and which
+action it blocks; PM coordinates that action while independent review can proceed. Review readiness
+does not authorize merge, activation or release. Independent approval of the current head gates automatic
+merge; human approval remains release-only. Authors never approve their own PRs or bypass these gates.
+
+Report the observed state: draft, ready with review unconfirmed, review queued or running, or approved
+but not yet merged. Claim queued or running review only when its native task state has been verified;
+an open PR alone is not evidence that a reviewer has started.
+
 ## Architecture decisions
 
 Material architecture decisions require an Architecture Decision Record (ADR) in

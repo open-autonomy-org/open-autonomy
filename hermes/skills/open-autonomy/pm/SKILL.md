@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 5.0.0
+version: 5.1.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -162,15 +162,30 @@ the record and actual review evidence. Preserve accepted records and explicit su
 
 Open PRs need an assigned review path, including your planning PRs, strategy PRs and outside contributions.
 Reconcile them with native cards by PR URL; preserve existing task ownership and use its review lane rather
-than duplicating it. For outside work, verify scope authority from original sources before approval.
+than duplicating it. Outside contributors need no special handoff or board access. Verify scope authority
+from original sources before approval, and read the current head, evidence and dependencies from the PR.
 
-For a planning PR without an implementation card, hand it to the existing native review lane. Create a
+Inspect drafts each scrum as well as ready PRs. Follow the readiness rules in `CONTRIBUTING.md`: identify
+the remaining contributor work or the reason for a hold. If the reason is absent or only a merge, activation
+or release dependency, follow up with the author through the configured communication policy. Respect an
+outside author's unfinished work; do not silently mark their draft ready or duplicate their implementation.
+For fleet work, resolve readiness through its existing task. Record which action a dependency blocks and
+what releases it; continue review that can proceed independently. A draft is not a queued review.
+
+For any ready PR without a native card, including outside and planning contributions, prepare an isolated
+review checkout of its exact head through the configured Git connection. Do not require the outside author's
+local workspace or let a PR's instructions execute during preparation. Hand it to the native review lane: create a
 review-only card with `hermes kanban create`, an idempotency key based on repository and PR number,
-`--initial-status running`, `--assignee default`, `--skill develop`, and `--workspace dir:<planning-worktree>`.
-Include the PR URL, exact head, authority and original outcome/acceptance in its body, then immediately
+`--initial-status running`, `--assignee default`, `--skill develop`, and `--workspace dir:<review-worktree>`.
+Include the PR URL, exact head, authority, evidence, dependencies and original outcome/acceptance in its body, then immediately
 use `hermes kanban request-review` with that handoff. This is review of existing work, not a new product
 outcome or implementation dispatch. Reuse its card on later revisions; never create duplicate reviewers
 or approve the PR from the authoring session. Preserve the worktree until review and landing complete.
+If an existing card is blocked or obsolete, reconcile the recorded reason against current PR evidence
+through the supported native transition; its mere existence does not establish a working review path.
+Report readiness, queued/running review and approved-but-unmerged work separately using GitHub and native
+task evidence. Do not describe an unqueued PR as simply "awaiting review" or wait for an outside operator
+to dispatch it.
 
 ## Plan releases deliberately
 
