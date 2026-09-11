@@ -86,8 +86,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. A
 human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped), and
 shipping from a tag — `deploy-v<date>` on a commit they read, `release-v<kit version>` for the kit — then approving
-the run on its page. `apps/platform/DEPLOY.md` says how; a landing that touches `.github/` waits for the code owner's
-approval on its pull request. Anything else a person finds themselves doing for a project is a task for the kit, not
+the run on its page. `apps/platform/DEPLOY.md` says how; all development PRs, including `.github/` changes, merge automatically after independent agent
+review. Human approval is reserved for release. Anything else a person finds themselves doing for a project is a task for the kit, not
 a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
 
 ## Live surfaces

@@ -469,7 +469,7 @@ directory with owner-only permissions. Existing credential files must be regular
 
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
-| GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
+| GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main requires agent review; release requires human approval |
 | Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver only saves the key; verify access through the running valve | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
 | Open Autonomy platform | The key tool prepares a repository-control claim; the setup agent lands it through normal Git/PR tools, then reruns setup to provision developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use protected page capture for displayed credentials, or secure entry when capture is unavailable | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
@@ -537,12 +537,35 @@ Replace the example destination and repository with the agreed runtime credentia
 The receiver prints a callback URL and state. Author the manifest from the project branding and GitHub's
 [documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
 use that callback as redirect_url, and pass the state on the registration URL.
-For this template, request issues/discussions write and metadata, pull_requests, checks, statuses and
-actions read. Contents is read for a managed deployment using its SSH deploy key, or write for the
-local host runtime using the project App for HTTPS Git. Existing App installations need the owner to
-accept that permission change; setup must not assume a read-only installation can push. No webhook or
-subscribed events are needed. Use the project page as the app
-homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
+Request the complete development permission set at initial registration, for every launch mode:
+
+```json
+"default_permissions": {
+  "contents": "write",
+  "workflows": "write",
+  "pull_requests": "write",
+  "issues": "write",
+  "discussions": "write",
+  "actions": "write",
+  "checks": "write",
+  "statuses": "write",
+  "metadata": "read"
+}
+```
+
+This is the template's standard development grant, including Git pushes, workflow edits and agent PR
+reviews. Do not reduce it based on the first feature or selected Git transport and add permissions
+piecemeal later. Install only on the agreed project repository. Repository administration, environments,
+secrets and organization/account permissions are outside this grant; human release authority remains
+separate. No webhook or subscribed events are needed. Use the project page as the app homepage and
+register a private app under the agreed repository owner.
+
+For an existing App, compare its registration AND installed grant with the complete set above, update
+missing permissions together, and accept the update on the existing installation. Registration changes
+do not upgrade an installation until accepted. Reuse the App, installation and protected credential;
+no reinstall or key replacement is needed. Record the verified grant in the existing setup record.
+Verify the first real contribution can push, receive a separate agent's GitHub approval and auto-merge
+before declaring setup complete. Use manual operation, never automated tests or synthetic test PRs.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
 
 For the local host runtime, keep the canonical GitHub origin and configure Git's native URL rewriting
@@ -663,22 +686,39 @@ For managed deployments, setup also checks on reruns that the deploy key remains
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 
-Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
-and staged work, prepares a missing CODEOWNERS without committing or pushing, and checks that the intended
-file has landed on origin/main before marking that preparation complete. Resolve an interrupted commit
-or an outstanding pull request through the normal Git/browser tools, then rerun setup. Reuse an existing
-owner-rules branch/PR, based on the fetched default branch; do not include unrelated feature commits.
-The helper recognizes a landed owner-rules branch even if local main has not caught up; it does not create,
-reset or push a branch. Reconcile local main through normal Git tools before activation. A matching file
-and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
-the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
+Before activation, inspect effective main rules: require at least one approving PR review, dismiss stale
+approvals when a diff changes, retain existing stronger protections and permit no agent bypass. Existing
+rulesets are preserved by setup helpers, so the setup agent must reconcile an older zero-review rule.
+Keep the PR author and reviewer identities distinct: the landing workflow opens PRs as GitHub Actions;
+the project's GitHub App needs pull_requests write to submit the native reviewer's verdict. Verify that
+this reviewer can supply a qualifying approval without requiring a human for every development PR.
+Do not require approval from the last pusher when that would make the shared project App unable to act
+as reviewer; independent Hermes sessions provide the worker/reviewer separation. Human release approval
+remains a separate authority requirement. Verify this flow using the actual first contribution, not a
+synthetic test PR or automated tests.
+
+Repository policy has no CODEOWNERS or human development-review gate, including workflow changes.
+Remove inherited CODEOWNERS files from root, `.github/` and `docs/` through the normal PR process and
+reconcile all effective main rules to disable code-owner review while retaining independent agent
+approval, stale-review dismissal and no bypass. Do not regenerate CODEOWNERS during setup or upgrades.
+The helper only prepares absent rulesets; the setup agent verifies and reconciles existing repository
+and inherited organization rules under the agreed policy before activation. Keep human release reviewers
+and production environment gates. Development code receives no production keys; release approval covers
+the exact candidate that can use them.
+
+Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. Use
+Hermes' bundled skill sync when enabled. A Blank Slate home deliberately skips bundled sync: configure
+native `skills.external_dirs` to the installed Hermes checkout's `skills/devops/sdlc-review` directory
+in `hermes/config.yaml`, and verify `skill_view("sdlc-review")` actually resolves it. Do not vendor a
+second copy or enable the whole catalog just for review. Keep the project's manual-verification policy
+authoritative over generic skill suggestions about tests.
 
 Before exercising landing, enable the repository's native auto-merge setting (`gh repo edit --enable-auto-merge`)
 and verify that its Actions settings permit the landing workflow to create pull requests. Inspect
 `repos/<owner>/<repo>/actions/permissions/workflow` through `gh api`; the GitHub setting named
 `can_approve_pull_request_reviews` governs Actions creating and approving PRs. Configure the agreed setting
 through the owner's repository administration, preserving other workflow permissions and organization policy.
-The landing workflow never submits approvals: required human reviews and existing protection still apply.
+The landing workflow never submits approvals: the independent agent review requirement still applies.
 If organization policy prevents these settings, resolve that with the owner before claiming landing works.
 The workflow arms native auto-merge so a required review can arrive after its run has finished.
 
