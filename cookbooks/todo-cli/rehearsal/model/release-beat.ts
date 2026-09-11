@@ -55,7 +55,11 @@ print(send_message_tool({"target": "discord:" + sys.argv[2], "message": sys.argv
       if (issue) {
         community('comment', issue, 'PM withdrew this release proposal; it is no longer awaiting approval.');
         community('issue', 'close', issue);
-      } else send(`PM withdrew this release proposal; it is no longer awaiting approval. ${receipt}`);
+      } else {
+        const channel = /\bdiscord:(\d+)\b/.exec(receipt)?.[1];
+        if (!channel) throw new Error('Release review receipt does not name a Discord channel');
+        send(`PM withdrew this release proposal; it is no longer awaiting approval. ${receipt}`, channel);
+      }
       run(['hermes', 'kanban', 'comment', task.id, `Review withdrawn: ${receipt}`, '--author', 'pm']);
     }
     if (task.status !== 'blocked' || receipt) continue; // no new information warrants another ask in this story
