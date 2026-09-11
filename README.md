@@ -21,7 +21,7 @@ is funded by people who want the project to exist and metered on public books. F
    code. `todo-cli` is the canonical reference project; its community scenario reads the
    repository's issues and discussions and its Discord channel, answers where it was asked, brings input into
    PM's planning. A focused HTTP example lives beside the CLI.
-4. **This install's own boilerplate** — the world (`world/`: the kit's rehearsal run in a cookbook, with the platform
+4. **This install's own boilerplate** — the world (`world/`: OA's World scenario around the cookbook and platform
    from this tree, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
 
 Strategy develops product scope under the owner's mandate, with activation and decision authority
@@ -50,21 +50,19 @@ Three ways in:
   metered to your project's account.
 - **Contribute.** Each develop agent manually verifies its feature through REPL-style usage, without
   permanent test code. Automated tests are banned; see `CONTRIBUTING.md` for the rationale and handoff.
-  `bun world/run.ts up` brings up the
-  platform from this tree and the kit on a cookbook against twins of every vendor, with no keys, for you to drive
-  through its page. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
+  Follow the [World guide](world/README.md) to run the platform and native cookbook agent against synthetic vendors. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
 
 ```text
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
 cookbooks/todo-cli   the reference project: CLI, community scenarios, and a focused HTTP example
-world/               the world's front: the kit's rehearsal in a cookbook, the platform from this tree; `bun world/run.ts up`
+world/               OA's scenario: opening data, model handlers and ordinary World configuration
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
 ```
 
 ```bash
-bun world/run.ts up    # the world, to drive (the twins are npm packages; WORLD_STATE_ROOT for a disk with headroom)
+bun world/prepare.ts   # prepare the scenario; prints ordinary World up/attach/down commands
 ```
 
 The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,

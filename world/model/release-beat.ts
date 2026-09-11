@@ -1,4 +1,4 @@
-// The scripted PM's release-planning judgment (REHEARSAL_RELEASE=1 selects it in rehearsal/model/scenario.ts): real
+// The scripted PM's release-planning judgment (REHEARSAL_RELEASE=1 selects it in world/model/scenario.ts): real
 // cron, planning pull requests, the native board and the owner's doors; the phase comes from ordinary sourced GitHub
 // activity (the `release: target schedule` issue the release operator files). Runs in the brain's checkout.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';

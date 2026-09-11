@@ -19,9 +19,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `cookbooks/todo-cli/` — the canonical reference project, made with the kit: CLI development plus community,
   setup, team and release scenarios. Its `cookbooks/todo-cli/examples/notes-http.ts` is a focused HTTP service without another kit copy.
   Verify fresh installation in a disposable generated project.
-- `world/` — the front of the world: the kit's own rehearsal (`.open-autonomy/rehearsal/`, carried by every cookbook)
-  run in a cookbook, with the platform from this tree on the twins (`cookbooks/<name>/rehearsal/`: the world, the
-  scripted brain, the stories, the hooks). An environment to drive, never a gate.
+- `world/` — OA's ordinary World scenario: its opening data, model handlers and manual operators around
+  the real platform and unmodified cookbook. World owns every service's lifecycle; follow [the guide](world/README.md).
 - `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
   this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
   `container/` is the kit's default for a real deployment (one World-managed executor): the
@@ -64,20 +63,11 @@ accepted decision records; conflicting directions require a sourced proposal and
 - **Money in is GitHub Sponsors, Polar and grant credits**, side by side, all onto the same books (Polar is the
   merchant of record for direct patronage; grant credits are held by funders and by the org's grants account,
   and given to projects); **cards out are Stripe Issuing**. Nothing else takes or moves money.
-- On this Mac the world's state lives on the SSD: `WORLD_STATE_ROOT=/Volumes/PeakSSD/volter-work/open-autonomy`
-  before any `bun world/run.ts` verb (the internal disk has no headroom; the runtime admits a world against the
-  root's free space). The world runs the cookbook's agent bare, as the kit's start script starts it on a laptop:
-  no Docker, no isolation (nothing the world's agent reaches is worth protecting), the pinned Hermes installed once
-  under that root. Each live agent has its own home (`HOME` too, so two gateways on one bot token never share a lock)
-  and its own Discord bot: Open Autonomy and Hookline. Their project conversations follow each install's
-  communication agreement.
-- **The world is where this runs without keys.** `bun world/run.ts up` brings the twins (the published `@volter/twin-*`
-  packages in the cookbook's `.open-autonomy/node_modules`; `TWINS_ROOT` names a checkout when developing the twins),
-  the real platform and the cookbook's agent up, in seconds; drive it through its page and doors (`bun
-  world/run.ts hermes kanban list`, `hermes cron run pm`) or run a story (`bun world/run.ts stories`), then `fresh`.
-- Our own agent runs that same world from its own checkout to verify a change (`bun world/run.ts up`, then its doors
-  and curl; the world's agent takes the valve ports 18787/18788, beside the real ones). It is that world's operator,
-  never a second agent inside it.
+- **Verify in the World.** Follow [world/README.md](world/README.md). Keep instance state outside the checkout,
+  on a disk with headroom. Reuse the installed pinned Hermes and warm dependency cache. Prepare the scenario
+  and use ordinary `volter-world up`, `attach`, `doctor`, `tail`, and `down --purge`. All vendor credentials
+  are synthetic; World owns the agent service, its readiness and cleanup. Do not recreate a rehearsal runner.
+- You operate this World to verify the product; you are never a second agent inside its cookbook.
 
 ## What a human does, and nothing else
 

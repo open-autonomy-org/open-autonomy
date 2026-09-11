@@ -3,7 +3,7 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { DATA, ROOT } from '../../.open-autonomy/rehearsal/lib.ts';
+import { DATA, ROOT } from '../lib.ts';
 const TREE = resolve(ROOT, '..', '..'); // this cookbook lives in Open Autonomy's tree, whose kit and SDK are packed
 
 if (!process.env.VOLTER_WORLD) throw new Error('publish the rehearsal kit inside volter-world attach');

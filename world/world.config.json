@@ -1,6 +1,6 @@
 {
   "id": "open-autonomy-todo-cli",
-  "description": "todo-cli's rehearsal world, which is Open Autonomy's own: the platform built from this tree (apps/platform/world.ts) on the twins \u2014 the model gateway (the openai twin, scripted by rehearsal/model/scenario.ts), GitHub, Discord, Stripe (cards out), Polar (money in), the npm registry \u2014 with a deployed service the page compares with main (rehearsal/live.ts) and GitHub Actions played by the kit's runner. Nothing here calls a real API. ${TWIN:<vendor>}, ${KIT_DIR}, ${REHEARSAL_DIR} and ${SCENARIO} are rendered by the kit's rehearsal. Nothing Hermes set on the process that runs the world enters it (stripEnv): the world's brain has a board and a home of its own, never the outer agent's.",
+  "description": "Open Autonomy scenario: synthetic vendors, real platform and native cookbook agent. World owns all service lifetimes.",
   "env": {
     "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
     "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
@@ -8,7 +8,15 @@
     "OPEN_AUTONOMY_MODEL": "zai/glm-5.3-flash"
   },
   "stripEnv": [
-    "HERMES_*"
+    "HERMES_*",
+    "OPENAI_*",
+    "ANTHROPIC_*",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "DISCORD_*",
+    "SLACK_*",
+    "OPEN_AUTONOMY_KEY",
+    "CODEX_HOME"
   ],
   "services": [
     {
@@ -19,11 +27,10 @@
         "${TWIN:openai}",
         "serve"
       ],
-      "port": 47611,
-      "portReason": "the brain was given this address at seed time and a restart of the world must keep it",
+      "port": "auto",
       "injectEnv": "GATEWAY_TWIN_URL",
       "env": {
-        "TWIN_OPENAI_SCENARIO": "${SCENARIO}"
+        "TWIN_OPENAI_SCENARIO": "${HANDLERS}"
       }
     },
     {
@@ -34,8 +41,7 @@
         "${TWIN:github}",
         "serve"
       ],
-      "port": 47612,
-      "portReason": "the brain's origin names this address at seed time and a restart of the world must keep it",
+      "port": "auto",
       "injectEnv": "GITHUB_TWIN_URL"
     },
     {
@@ -46,12 +52,8 @@
         "${TWIN:discord}",
         "serve"
       ],
-      "port": 47615,
-      "portReason": "the brain reaches the twin's gateway websocket at this address and a restart of the world must keep it",
-      "injectEnv": "DISCORD_TWIN_URL",
-      "env": {
-        "TWIN_DISCORD_GATEWAY_URL": "ws://127.0.0.1:47615/gateway"
-      }
+      "port": "auto",
+      "injectEnv": "DISCORD_TWIN_URL"
     },
     {
       "id": "stripe",
@@ -61,8 +63,7 @@
         "${TWIN:stripe}",
         "serve"
       ],
-      "port": 47616,
-      "portReason": "the platform enrols its webhook endpoint here at start and a restart of the world must keep the address",
+      "port": "auto",
       "injectEnv": "STRIPE_TWIN_URL"
     },
     {
@@ -73,8 +74,7 @@
         "${TWIN:polar}",
         "serve"
       ],
-      "port": 47617,
-      "portReason": "the platform is given this address at start and a restart of the world must keep it",
+      "port": "auto",
       "injectEnv": "POLAR_TWIN_URL"
     },
     {
@@ -85,8 +85,7 @@
         "${TWIN:npm-registry}",
         "serve"
       ],
-      "port": 47618,
-      "portReason": "pinned like the others so a restart of the world keeps every address",
+      "port": "auto",
       "injectEnv": "NPM_REGISTRY_TWIN_URL"
     },
     {
@@ -94,10 +93,9 @@
       "type": "process",
       "command": "bun",
       "args": [
-        "${REHEARSAL_DIR}/live.ts"
+        "${SCENARIO_DIR}/live.ts"
       ],
-      "port": 47619,
-      "portReason": "the project's committed live address must survive a restart of the world",
+      "port": "auto",
       "portArg": false,
       "rootArg": false,
       "injectEnv": "LIVE_SERVICE_URL",
@@ -112,10 +110,9 @@
       "type": "process",
       "command": "bun",
       "args": [
-        "${REHEARSAL_DIR}/../../../apps/platform/world.ts"
+        "${TREE}/apps/platform/world.ts"
       ],
-      "port": 47613,
-      "portReason": "the brain was given this address at seed time and a restart of the world must keep it",
+      "port": "auto",
       "portArg": false,
       "rootArg": "--persist-to",
       "injectEnv": "PLATFORM_URL",
@@ -133,10 +130,9 @@
       "type": "process",
       "command": "bun",
       "args": [
-        "${KIT_DIR}/actions.ts"
+        "${SCENARIO_DIR}/actions.ts"
       ],
-      "port": 47614,
-      "portReason": "pinned like the others so a restart of the world keeps every address",
+      "port": "auto",
       "portArg": false,
       "rootArg": false,
       "injectEnv": "ACTIONS_URL",
@@ -144,6 +140,27 @@
         "httpUrl": "${url}/healthz",
         "timeoutMs": 30000,
         "intervalMs": 200
+      }
+    },
+    {
+      "id": "agent",
+      "type": "process",
+      "command": "sh",
+      "args": [
+        "${SCENARIO_DIR}/agent.sh"
+      ],
+      "port": 18787,
+      "portReason": "The existing OA entrypoint uses this port and the next two for its valves; choose OA_VALVE_PORT for another instance.",
+      "portArg": false,
+      "rootArg": false,
+      "injectEnv": "OA_AGENT_URL",
+      "ready": {
+        "command": "bun",
+        "args": [
+          "${SCENARIO_DIR}/ready.ts"
+        ],
+        "timeoutMs": 300000,
+        "intervalMs": 1000
       }
     }
   ],

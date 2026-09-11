@@ -2,9 +2,8 @@
 
 - Inspect command definitions before running them. Do not run automated test suites, test-running checks
   or test hooks. Source inspection and REPL-style manual feature verification are the review evidence.
-- The world is where a change is exercised with no keys: `bun world/run.ts up` brings the twins, the real platform
-  and the cookbook's agent stack up; then drive it — the page, the books, the board, the twins' ledgers — one action
-  at a time (`world/README.md`). No gate stands over it.
+- Verify manually in the [World scenario](world/README.md): synthetic vendors, the real platform and the
+  native cookbook agent. Use ordinary World lifecycle and attachment commands, then read the actual output.
 - Nothing pushes to `main`. Push a `land/<topic>` branch (or `agent/<task id>` for agent work); the landing
   workflow opens its PR and arms auto-merge. Independent agent approval of the current head is required;
   changed diffs invalidate stale approval. Human approval is reserved for release. Never bypass review.

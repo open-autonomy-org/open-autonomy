@@ -1,8 +1,8 @@
 // Manual roster rehearsal through vendor APIs; run attached to the twin world. No live accounts.
 import { resolve } from 'node:path';
-import { api, need, ACCOUNT, STACK } from '../../.open-autonomy/rehearsal/lib.ts';
-import { hermesBin } from '../hooks.ts';
-import { parseTeamConfig, replaceTeamConfig } from '../../.open-autonomy/sdk/team.ts';
+import { api, need, ACCOUNT, STACK } from '../lib.ts';
+import { hermesBin } from '../lib.ts';
+import { parseTeamConfig, replaceTeamConfig } from '../../packages/sdk/src/team.ts';
 const gh = api(need('GITHUB_TWIN_URL'));
 const platform = need('PLATFORM_URL');
 const route = `/repos/${ACCOUNT}/contents/.open-autonomy/config.yaml`;

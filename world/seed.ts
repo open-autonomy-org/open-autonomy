@@ -4,10 +4,11 @@
 // for a sponsor or an invoice); the brain's keys minted THE ADOPTER WAY (the claim file committed on the twin's main,
 // read back by the backend copy); the channels' twin credentials written for the stack. Idempotent over a running
 // world: a repository already there moves forward only (its main carries what the brain wrote), a key already minted
-// is kept. Then the project's own seed hook, for what the kit cannot know (a client's repository, a tracker's board).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// is kept. Then OA’s opening situation.
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { ACCOUNT, CONFIG, ENC, MODEL, NAME, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, hooks, need, sh, twinCli } from './lib.ts';
+import { ACCOUNT, CONFIG, ENC, MODEL, NAME, OWNER, REPO_NAME, ROOT, SECRETS, STACK, api, context, git, need, sh } from './lib.ts';
+import { PREVIOUS_MODEL, seedOpening } from './opening.ts';
 
 const github = need('GITHUB_TWIN_URL');
 const platform = need('PLATFORM_URL').replace(/\/$/, '');
@@ -48,27 +49,20 @@ mkdirSync(STACK, { recursive: true });
 if (existsSync(resolve(project, '.git'))) { await git(project, 'remote', 'set-url', 'origin', remote); await git(project, 'fetch', '-q', 'origin'); await git(project, 'reset', '-q', '--hard', 'origin/main'); }
 else await git(STACK, 'clone', '-q', remote, project);
 await git(project, 'config', 'user.name', 'agent'); await git(project, 'config', 'user.email', 'agent@example.test');
-// The reporter's dependencies are this checkout's, completed here from the real registry (the machine's tooling, outside
-// the world's proxy) and stamped as the start script stamps them, so the world clone, which shares them, starts without
-// a registry call the sealed world could not make.
-{
-  const dir = resolve(ROOT, '.open-autonomy');
-  const outside: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env as Record<string, string | undefined>)) if (typeof v === 'string' && !/^(https?_proxy|all_proxy|no_proxy|node_options|node_extra_ca_certs|ssl_cert_file|requests_ca_bundle|curl_ca_bundle)$/i.test(k)) outside[k] = v;
-  // The real registry by name: a world with a registry twin would otherwise hand this install versions it minted.
-  outside.npm_config_registry = 'https://registry.npmjs.org';
-  const lock = ['bun.lock', 'bun.lockb'].map((f) => resolve(dir, f)).find(existsSync);
-  sh(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])], { cwd: dir, env: outside, quiet: true });
-  writeFileSync(resolve(dir, 'node_modules', '.open-autonomy-install'), `${String(Bun.hash(readFileSync(resolve(dir, 'package.json'))))}\n`);
+// Share the already-installed package tree, with an instance-local install stamp. Boot never
+// downloads dependencies or disables World interception to reach a package registry.
+const installed = resolve(ROOT, '.open-autonomy/node_modules');
+const manifest = resolve(ROOT, '.open-autonomy/package.json');
+for (const dependency of Object.keys(JSON.parse(readFileSync(manifest, 'utf8')).dependencies ?? {})) {
+  if (!existsSync(resolve(installed, dependency, 'package.json'))) throw new Error(`Missing ${dependency}; install the cookbook's .open-autonomy dependencies through a tooling World first`);
 }
-if (existsSync(resolve(ROOT, '.open-autonomy', 'node_modules'))) {
-  if (!existsSync(resolve(project, '.open-autonomy', 'node_modules'))) sh(['ln', '-sfn', resolve(ROOT, '.open-autonomy', 'node_modules'), resolve(project, '.open-autonomy', 'node_modules')]);
-  // A directory-only node_modules/ rule does not ignore this warm-cache symlink.
-  // Keep our fixture out of Git status so restart can advance a clean checkout.
-  const exclude = resolve(project, await git(project, 'rev-parse', '--git-path', 'info/exclude'));
-  const prior = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-  if (!prior.split('\n').includes('/.open-autonomy/node_modules')) writeFileSync(exclude, `${prior}\n/.open-autonomy/node_modules\n`);
+const modules = resolve(project, '.open-autonomy/node_modules');
+mkdirSync(modules, { recursive: true });
+for (const entry of readdirSync(installed)) {
+  if (entry === '.open-autonomy-install' || existsSync(resolve(modules, entry))) continue;
+  symlinkSync(resolve(installed, entry), resolve(modules, entry));
 }
+writeFileSync(resolve(modules, '.open-autonomy-install'), `${String(Bun.hash(readFileSync(manifest)))}\n`);
 // The maintainer's rule on main when the project lands through pull requests: the `ci` check, nobody bypasses. A
 // project whose brain writes main directly (its books) has no landing workflow and no protection.
 if (existsSync(resolve(ROOT, '.github', 'workflows', 'land.yml'))) {
@@ -84,9 +78,8 @@ console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${E
 
 // 3. The brain's keys, the adopter way: challenge → claim file on the twin's main → mint. A key already minted on
 //    this backend copy is kept; the developer's key spends and narrates, the treasurer's adds `pay`. The keys carry
-//    the project's bounds and what its hooks add (the registry holds a few keys per account: these two are all it mints).
-const h = await hooks();
-const models = [...new Set([MODEL, ...CONFIG.models, ...(h.models ?? [])])];
+//    the project's bounds and previous model (the registry holds a few keys per account: these two are all it mints).
+const models = [...new Set([MODEL, ...CONFIG.models, PREVIOUS_MODEL])];
 const keyFile = resolve(SECRETS, 'agent.env');
 const alive = async (file: string): Promise<boolean> => { const k = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(existsSync(file) ? readFileSync(file, 'utf8') : '')?.[1]; return !!k && (await fetch(`${platform}/v1/accounts/${ENC}`, { headers: { authorization: `Bearer ${k}` } })).status === 200; };
 if (await alive(keyFile)) console.log('seed: the key already minted on this backend copy is kept');
@@ -113,11 +106,11 @@ const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646', `GITHUB_API_U
 if (process.env.DISCORD_TWIN_URL) {
   // A bot token of this world's own: the twin accepts any, and Hermes locks a token machine-wide (two worlds' brains on
   // the one deterministic fake would refuse to connect while the other's gateway runs).
-  const token = `${sh(['bun', twinCli('world'), 'fake-env', 'DISCORD_BOT_TOKEN'], { quiet: true }).out.trim().replace(/^DISCORD_BOT_TOKEN=/, '')}.${NAME.replace(/[^A-Za-z0-9]/g, '')}`;
+  const token = `${Buffer.from('1000000000000000000').toString('base64url')}.world.${NAME.replace(/[^A-Za-z0-9]/g, '')}`;
   const discord = api(process.env.DISCORD_TWIN_URL, { authorization: 'Bot maintainer' });
   // The brain's home channel: the id the settings name, which a twin that creates a channel on its first message
   // accepts; a twin that ships the installation a freshly invited bot sees (one guild, one text channel) names its own,
-  // and the channel the stack, the stories and the hooks use is the one written here (channels.env), never a guess.
+  // and the channel the agent and manual operators use is the one written here (channels.env), never a guess.
   let home = process.env.DISCORD_HOME_CHANNEL ?? '1000000000000000001';
   let hello = await discord.post(`/api/v10/channels/${home}/messages`, { content: `home channel of ${ACCOUNT}` });
   if (hello.status === 404) {
@@ -137,5 +130,5 @@ writeFileSync(resolve(SECRETS, 'channels.env'), `${lines.join('\n')}\n`);
 // The page reads the repository: sync it now rather than waiting for staleness.
 console.log(`seed: docs synced from the twin → ${(await admin.post(`/admin/accounts/${ENC}/sync`)).body?.ok}`);
 
-// 5. What the project seeds beyond itself.
-if (h.seed) await h.seed(context((m) => console.log(`seed: ${m}`)));
+// 5. OA’s opening situation.
+await seedOpening(context((m) => console.log(`seed: ${m}`)));

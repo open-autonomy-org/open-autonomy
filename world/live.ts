@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// A deployed todo-cli service in the world (rehearsal/world.json names it): it reports the commit it is running on Hookline's `GET /api`
+// A deployed todo-cli service in the world (world/world.config.json names it): it reports the commit it is running on Hookline's `GET /api`
 // shape. The operator endpoint lets a world proof move it between a commit and an outage.
 let commit: string | undefined;
 let reachable = true;

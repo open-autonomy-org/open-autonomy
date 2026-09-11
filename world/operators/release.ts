@@ -2,8 +2,8 @@
 // product decisions run in the actual PM cron through release-beat.ts.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, ENC, STACK, api, need } from '../../.open-autonomy/rehearsal/lib.ts';
-import { hermesBin } from '../hooks.ts';
+import { ACCOUNT, ENC, STACK, api, need } from '../lib.ts';
+import { hermesBin } from '../lib.ts';
 const project = resolve(STACK, 'project');
 const home = resolve(STACK, 'home');
 const env = { ...process.env, HERMES_HOME: home, PATH: `${hermesBin()}:${process.env.PATH}`, GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot', OPEN_AUTONOMY_BASE_URL: `${need('PLATFORM_URL')}/v1` };

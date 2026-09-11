@@ -1,7 +1,0 @@
-{"job":"community"}
-{"until":{"answered":{"issue":1,"includes":"todo list command line tool"}},"budget":120}
-{"expect":{"answered":{"issue":2,"includes":"Captured for the PM scrum"}}}
-{"say":"what is todo-cli?"}
-{"until":{"channel":"todo list command line tool"},"budget":90}
-{"job":"pm"}
-{"until":{"roadmap":"## community-usage:"},"budget":300}

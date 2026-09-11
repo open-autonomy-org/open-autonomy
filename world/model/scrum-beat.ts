@@ -1,4 +1,4 @@
-// The scripted PM's judgment for one scrum, run by the model twin as the brain's terminal call (rehearsal/model/
+// The scripted PM's judgment for one scrum, run by the model twin as the brain's terminal call (world/model/
 // scenario.ts): the kit's doors and the native Hermes CLI, the judgment fixed. The resulting roadmap, pull request,
 // board and channel state is what a story reads. Runs in the brain's checkout; its last line is the verdict.
 import { readFileSync, writeFileSync } from 'node:fs';
