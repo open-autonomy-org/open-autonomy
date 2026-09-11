@@ -2,7 +2,7 @@
 // Run the printed commands with the ordinary World CLI; this file owns no processes or lifecycle.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DATA, MODEL, NAME, ROOT, SCENARIO, STACK, STATE, TREE } from './lib.ts';
+import { MODEL, NAME, ROOT, SCENARIO, STATE, TREE } from './lib.ts';
 
 if (!/^[a-z0-9][a-z0-9-]*$/.test(NAME)) throw new Error('OA_WORLD_NAME must be a lowercase World name');
 if (STATE === TREE || STATE.startsWith(`${TREE}/`)) throw new Error('WORLD_STATE_ROOT must be outside this checkout');
@@ -18,6 +18,9 @@ const cli = (vendor: string): string => {
   if (!existsSync(path)) throw new Error(`Missing ${vendor} CLI: ${path}`);
   return resolve(path);
 };
+// Rendering can itself run inside a tooling World; never borrow that World's instance data.
+const DATA = resolve(STATE, '.volter/worlds', NAME, 'data');
+const STACK = resolve(DATA, 'agent');
 const dir = resolve(STATE, 'scenarios', NAME);
 const handlers = resolve(dir, 'handlers/openai.json');
 mkdirSync(resolve(dir, 'handlers'), { recursive: true });
@@ -36,7 +39,7 @@ Object.assign(config.env, { OA_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, WORLD_
   OA_AGENT_HOME: home, OA_SECRETS: resolve(DATA, 'secrets'), OA_ACCOUNT: 'cookbook/todo-cli',
   HOME: home, HERMES_HOME: home, PATH: `${resolve(hermes)}:${process.env.PATH}`, OPEN_AUTONOMY_MODEL: MODEL,
   // Freeze scenario choices into the config so attach/ready see the same opening situation.
-  ...Object.fromEntries(['REHEARSAL_IDLE', 'REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE', 'REHEARSAL_OWNER_DOOR'].map(key => [key, process.env[key] ?? ''])) });
+  ...Object.fromEntries(['REHEARSAL_IDLE', 'REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE', 'REHEARSAL_OWNER_DOOR'].map(key => [key, process.env[key] ?? (key === 'REHEARSAL_OWNER_DOOR' ? 'discord' : '')])) });
 config.services.find((service: { id: string }) => service.id === 'agent').port = valve;
 for (const service of config.services) service.cwd = TREE;
 const path = resolve(dir, 'world.config.json');

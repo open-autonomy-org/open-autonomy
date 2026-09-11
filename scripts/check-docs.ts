@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
-// Every doc names only what exists. Walks the repository's markdown for backticked paths, routes and world
-// verbs, and fails on any the tree, the router or the runner does not have. Docs drift the moment code
+// Every doc names only what exists. Walks the repository's markdown for backticked paths and routes, and fails on any the tree or router does not have. Docs drift the moment code
 // moves; this is the gate that keeps them honest.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -8,8 +7,6 @@ import { dirname, resolve } from 'node:path';
 const ROOT = resolve(import.meta.dir, '..');
 const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/backend/README.md', 'apps/self-host/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
 const router = ['packages/backend/src/routes.ts', 'packages/backend/src/keys.ts', 'packages/backend/src/stream.ts', 'apps/platform/src/app.tsx'].map((f) => readFileSync(resolve(ROOT, f), 'utf8')).join('\n');
-const runner = readFileSync(resolve(ROOT, 'world/run.ts'), 'utf8');
-const verbs = new Set([...runner.matchAll(/case '([a-z-]+)'/g)].map((m) => m[1]));
 const problems: string[] = [];
 
 // A route the router serves: its literal path, or a pattern whose fixed segments all appear in the router.
@@ -28,8 +25,6 @@ for (const doc of DOCS) {
     const ref = m[1].trim();
     // Paths: something with a slash or a known extension, no spaces, not a command or a URL.
     if (/^(https?:|\$|-|bun |curl |docker |git |create-open-autonomy|npm |TWINS_ROOT|WORLD_|SUPERCODE_|OPEN_AUTONOMY_)/.test(ref) || /\s/.test(ref)) {
-      const verb = /^bun world\/run\.ts ([a-z-]+)/.exec(ref)?.[1];
-      if (verb && !verbs.has(verb)) problems.push(`${doc}: world verb \`${verb}\` does not exist`);
       continue;
     }
     if (ref.startsWith('/v1/') || ref.startsWith('/admin/') || ref.startsWith('/p/') || ref.startsWith('/webhooks/')) {
@@ -61,4 +56,4 @@ for (const m of security.matchAll(/proof:\s*(smoke)\s*"([^"]+)"/g)) {
 if (!claims) problems.push('SECURITY.md: names no proofs');
 if (problems.length) { for (const p of problems) console.error(p); console.error(`check:docs FAILED — ${problems.length} reference(s) to things that do not exist`); process.exit(1); }
 const count = DOCS.length;
-console.log(`check:docs OK — ${count} docs name only paths, routes and world verbs that exist; ${claims} security claims name their proofs`);
+console.log(`check:docs OK — ${count} docs name only paths and routes that exist; ${claims} security claims name their proofs`);

@@ -8,7 +8,7 @@ if (command === 'hermes') {
     env: { ...process.env, HERMES_HOME: resolve(STACK, 'home'), GITHUB_API_URL: need('GITHUB_TWIN_URL'), GITHUB_TOKEN: 'world-bot' },
     stdio: ['inherit', 'inherit', 'inherit'] }).exitCode);
 } else if (command === 'say' || command === 'channel') {
-  const discord = api(need('DISCORD_TWIN_URL'), { authorization: 'Bot maintainer' });
+  const discord = api(need('DISCORD_TWIN_URL'), { authorization: command === 'say' ? 'User alice' : 'Bot maintainer' });
   const path = `/api/v10/channels/${homeChannel()}/messages`;
   if (command === 'say' && !args.length) throw new Error('say requires a message');
   const response = command === 'say' ? await discord.post(path, { content: args.join(' ') }) : await discord.get(path);

@@ -34,23 +34,18 @@ Dependencies and risks:
 
 Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), [PRs #513–#515](https://github.com/open-autonomy-org/open-autonomy/pull/515), [PRs #518–#522](https://github.com/open-autonomy-org/open-autonomy/pull/522), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
 
-## kit-rehearsal: Every project rehearses its own method in a world
+## world-scenario: Rehearsal uses the ordinary World runtime
 
-Status: done (2026-09-10): Peak runs its three stories on the engine, a fresh `create` runs its seeded story, and this repository's own world is the engine run in a cookbook
+Status: implementation under independent review
 Dispatch: hold
-Scope: the rehearsal engine is in the template (`.open-autonomy/rehearsal/`, kit-owned): the world's front door, the
-seed onto the GitHub twin, the backend copy, the Actions runner, the brain's stack from a clean environment, and the
-story runner with its acts, conditions and static scenario checks; a project's settings in `rehearsal/env`, the dress
-rehearsal (`REHEARSAL_MODEL=real`). `create` seeds a starter `rehearsal/` (the GitHub and Discord twins, a scripted PM
-whose one beat plans every new issue and lands the plan, one story, a `roadmap` condition). Peak is re-adopted onto the
-engine with only its settings, world, scripted brain, stories and hooks its own, and its hand-written copy is gone.
-This repository's own `world/` is an instance of it: each cookbook keeps `rehearsal/` (the world with the platform from this
-tree on the twins, the scripted brain, its stories, its hooks) and carries the engine; `world/run.ts` is a front that runs
-the engine in the cookbook. The hand-written world is gone.
+Source: owner instruction to make rehearsal an ordinary World scenario, September 11, 2026;
+[ADR 0002](docs/decisions/0002-world-scenario.md) records the proposed boundary.
+
 Completion:
-- `world/run.ts` is the kit's rehearsal with the cookbook as the project — done
-Rationale: the machinery was written three times (the product's world, the engagement's rehearsal, and nothing in the
-template). Every defect found in one copy was invisible to the others.
+- OA owns one scenario in `world/`: opening data, model handlers and manual operators.
+- World owns service lifecycle, readiness, environment and cleanup, including the native agent.
+- The kit emits no separate rehearsal engine or starter story interpreter.
+- Manually verify community, planning, release and lifecycle behavior before acceptance.
 
 ## release-hardening: Prepare the replacement onboarding and backend artifacts
 

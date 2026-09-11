@@ -56,4 +56,3 @@ export function sh(cmd: string[], opts: { quiet?: boolean; check?: boolean; env?
   return { code: r.exitCode, out, err };
 }
 export const timed = <T>(label: string, fn: () => T): T => { const t0 = Date.now(); try { return fn(); } finally { console.log(`⏱ ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } };
-

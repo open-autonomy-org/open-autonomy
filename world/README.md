@@ -218,5 +218,3 @@ tools cannot hide an undeclared project dependency. Initial installation creates
 subsequent installs must preserve it. This proves packaging and bootstrap mechanics, while the scrum,
 implementation/review, and release-schedule rehearsals above exercise the running fleet. Provider consent,
 real project requirements, and production activation still need their own setup evidence.
-
-## Setup and runtime regression
