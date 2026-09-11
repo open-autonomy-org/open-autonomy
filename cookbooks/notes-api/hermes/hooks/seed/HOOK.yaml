@@ -1,4 +1,0 @@
-name: seed
-description: Seed the schedule on gateway startup; the PM scrum plans fleet dispatch from ROADMAP.md
-events:
-  - gateway:startup

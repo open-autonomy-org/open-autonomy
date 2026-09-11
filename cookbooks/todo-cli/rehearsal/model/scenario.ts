@@ -23,7 +23,7 @@ const scrumHandlers = [
 // The brain's checkout in the world (the kit's rehearsal names it): where the treasurer's task is filed to run.
 const project = process.env.REHEARSAL_STACK_PROJECT ?? (() => { throw new Error('scenario.ts: REHEARSAL_STACK_PROJECT is not set'); })();
 const seed = JSON.parse(readFileSync(resolve(here, '../../hermes/kanban.seed.json'), 'utf8')) as { tasks: Array<{ key: string; title: string }> };
-const items = seed.tasks.map((t) => ({ id: t.key, title: t.title }));
+const items = [...seed.tasks.map((t) => ({ id: t.key, title: t.title })), { id: "community-usage", title: "document how to start using todo-cli" }];
 
 function files(dir: string, base = dir): string[] {
   return readdirSync(dir).flatMap((name) => { const p = join(dir, name); return statSync(p).isDirectory() ? files(p, base) : [relative(base, p)]; }).sort();
@@ -66,6 +66,20 @@ const payDomain = [
 
 const handlers = [
   ...scrumHandlers,
+  // The community desk (the community job, the community skill). Most specific first: the report after the look
+  // is marked done; the filing and the answers (one shell, the board's CLI: a scheduled job has no board tools)
+  // after the poll that shows a request; the poll itself. Stateless, keyed on the conversation's own text.
+  { id: 'community-report', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_DONE' }, respond: { text: 'Community: answered the question in issue #1 and the discussion; preserved the request in issue #2 for roadmap scrum; nothing declined.' } },
+  { id: 'community-act', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'request: document todo usage' }, respond: { toolCalls: { name: 'terminal', arguments: { command: [
+    `bun .open-autonomy/community.ts comment 2 "Captured for the PM scrum to consider in ROADMAP.md." || exit 1`,
+    `bun .open-autonomy/community.ts comment 1 "todo-cli is a todo list command line tool. Run bun run todo --help; propose improvements in a GitHub issue." || { echo "COMMUNITY_""FAILED comment 1"; exit 1; }`,
+    `bun .open-autonomy/community.ts discuss 1 "A usage tip fits the CLI scope. I will preserve this idea for the PM to consider; it is not an implementation commitment." || { echo "COMMUNITY_""FAILED discuss 1"; exit 1; }`,
+    `bun .open-autonomy/community.ts mark && echo "COMMUNITY_""DONE captured request"`].join('\n') } } } },
+  { id: 'community-quiet', on: { userTextIncludes: 'WAKE: COMMUNITY', toolResultFor: 'terminal', anyTextIncludes: 'COMMUNITY_POLL_DONE' }, respond: { text: 'Community: nothing new since the last look.' } },
+  { id: 'community-poll', on: { userTextIncludes: 'WAKE: COMMUNITY', lastMessageIsToolResult: false }, respond: { toolCalls: { name: 'terminal', arguments: { command: 'bun .open-autonomy/community.ts poll' } } } },
+  // A person in the channel: answered as the agent itself.
+  { id: 'channel-what-is', on: { userTextIncludes: 'what is todo-cli' }, respond: { text: 'todo-cli is a todo list command line tool. Run bun run todo --help; propose improvements in a GitHub issue or in this channel.' } },
+
   {
     id: 'clamped-output-cap',
     $comment: 'The failure class that killed a real run: a proxy that clamps the output cap gets finish_reason=length and no text, which the harness retries and then fails. The run only succeeds when the platform forwards a roomy cap.',

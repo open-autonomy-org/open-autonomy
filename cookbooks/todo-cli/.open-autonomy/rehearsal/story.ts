@@ -81,7 +81,7 @@ async function condition(c: Record<string, any>, line: Record<string, unknown>):
     if (!jira || !key) return false;
     const t = (await jira.get(`/rest/api/2/issue/${key}`)).body; if (!t) return false;
     if (c.status !== undefined && (t.fields?.status?.name ?? t.status) !== c.status) return false;
-    if (c.comment !== undefined) { const cs = (await jira.get(`/rest/api/2/issue/${key}/comment`)).body?.comments ?? []; if (!cs.some((x: any) => jiraText(x.body).includes(c.comment))) return false; }
+    if (c.comment !== undefined) { const cs = (await jira.get(`/rest/api/2/issue/${key}/comment`)).body?.comments ?? []; if (!cs.some((x: any) => jiraText(x.body).toLowerCase().includes(String(c.comment).toLowerCase()))) return false; } // words, not their case
   }
   if (c.pr !== undefined) {
     if (!gh || !key) return false;

@@ -1,14 +1,25 @@
 # todo-cli
 
-A todo list command line tool, built item by item by this project's agent. It exists to iterate on the
-Open Autonomy template quickly: each roadmap item is one command and one test, small enough for one run,
-and `bun run check` is the whole definition of done. The PM maintains sourced ROADMAP.md notes and queues fleet work on kanban; watch it
-on the project page.
+The canonical Open Autonomy reference project: a small todo CLI whose agent develops it one command at a time.
+The PM maintains sourced ROADMAP.md notes and queues fleet work on kanban. Verify behavior by manually running
+commands against a disposable `TODO_FILE` and reading the output. `bun run check` only compiles the CLI and the
+HTTP example; compilation does not establish that an acceptance line holds.
 
 ```bash
 bun run todo --help
 bun run check
 ```
+
+One generated project carries the setup, board, community, team and release scenarios. Follow the
+[World operator guide](https://github.com/open-autonomy-org/open-autonomy/blob/main/world/README.md) to run them with synthetic vendors. Fresh-install verification uses
+a disposable project made by the kit; additional generated cookbook copies are unnecessary.
+
+The focused [notes HTTP example](examples/notes-http.ts) retains the service behavior from the retired notes-api
+cookbook without another agent installation. Start it through the World with
+`PORT=8080 bun examples/notes-http.ts`, then register that URL with `volter-world app-url`.
+It serves `GET /healthz`, `POST /notes` with a JSON `text`, `GET /notes` (optional case-insensitive `?q=`),
+`GET /notes/:id`, and `DELETE /notes/:id`. Invalid notes return 400; missing notes return 404.
+Its notes live in memory and reset when the process stops. Inspect responses with curl, then stop the process.
 
 To run this as an autonomous project, have the setup agent begin with
 `create-open-autonomy setup . --plan` and complete the agreement in

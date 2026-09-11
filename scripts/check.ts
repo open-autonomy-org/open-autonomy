@@ -14,7 +14,7 @@ const steps: Array<[string, string[], string]> = [
   ['self-host', ['bun', 'run', 'check'], 'apps/self-host'],
   ['sdk', ['bun', 'run', 'check'], 'packages/sdk'],
   ['kit', ['bun', 'run', 'check'], 'packages/kit-hermes'],
-  ['kit: cookbooks current', ['sh', '-c', 'bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check cookbooks/notes-api && bun packages/kit-hermes/src/cli.ts check .'], '.'],
+  ['kit: cookbooks current', ['sh', '-c', 'bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check .'], '.'],
   ['docs', ['bun', 'scripts/check-docs.ts'], '.'],
 ];
 // The lockfile names each workspace package's version, and `bun publish` writes that — not package.json's — in place

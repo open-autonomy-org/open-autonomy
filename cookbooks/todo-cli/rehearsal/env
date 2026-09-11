@@ -16,3 +16,4 @@ DISCORD_HOME_CHANNEL=1000000000000000001
 #   REHEARSAL_SCRUM=1        the scrum rehearsal's community: owner direction, a volunteer, a suggestion, a contradiction, an outside PR
 #   REHEARSAL_RELEASE=1      the release rehearsal: the PM's release-planning judgment, its routine report kept local
 #   REHEARSAL_OWNER_DOOR=github   the owner asks for release review in an assigned GitHub issue (default: the Discord channel)
+#   REHEARSAL_COMMUNITY=1    issue/discussion/Discord community scenario; requires IDLE=1, without SCRUM or RELEASE

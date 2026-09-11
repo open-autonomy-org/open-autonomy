@@ -69,9 +69,9 @@ if (special && !draft.includes('scrum rehearsal')) {
 }
 // This migration placeholder is stale after reconciliation, not shared knowledge to retain.
 draft = draft.replace(/\n## Questions and scrum notes\n[\s\S]*?(?=\n## |$)/, '\n');
-const termRequest = issues.find((i) => i.title?.includes('request: add the term'));
-if (!special && termRequest && !draft.includes('## community-twin:')) {
-  draft += `\n## community-twin: add the term "twin" to the lexicon\n\nStatus: planned\nDispatch: fleet\n\nSource: [community request](${termRequest.html_url}). ${termRequest.body}\nCompletion: list the sourced definition and render it on the homepage.\n`;
+const usageRequest = issues.find((i) => i.title?.includes('request: document todo usage'));
+if (!special && usageRequest && !draft.includes('## community-usage:')) {
+  draft += `\n## community-usage: document how to start using todo-cli\n\nStatus: planned\nDispatch: fleet\n\nSource: [community request](${usageRequest.html_url}). ${usageRequest.body}\nCompletion: document the help command and how to propose an improvement in COMMUNITY.md.\n`;
 }
 const late = poll.split('\n').find((l) => l.startsWith('NEW comment on #4 ') && l.includes('Late owner reply:'));
 if (late && !draft.includes('Late owner reply recorded')) {
@@ -110,7 +110,7 @@ if (run(['git', 'status', '--porcelain'], plan)) {
   // finish refuses a clean but unmerged plan, so no queue or cursor acknowledgment follows it.
   scrum('finish', snapshot.snapshot.id, 'main', 'sessions', ...snapshot.intake.map((n: { id: string }) => `note:${n.id}`));
   const seed = JSON.parse(readFileSync(resolve(project, 'hermes/kanban.seed.json'), 'utf8'));
-  if (current.includes('## community-twin:')) seed.tasks.push({key: 'community-twin', title: 'add the term "twin" to the lexicon', acceptance: ['lexicon list shows twin with its sourced definition from issue #2', 'the homepage renders the term from the glossary']});
+  if (current.includes('## community-usage:')) seed.tasks.push({key: 'community-usage', title: 'document how to start using todo-cli', acceptance: ['COMMUNITY.md explains the help command and links the source request', 'COMMUNITY.md explains how to propose an improvement']});
   const board = JSON.parse(run(['hermes', 'kanban', 'list', '--archived', '--json']));
   const item = seed.tasks.find((t: { key: string; title: string; held?: string }) => !t.held && (!special || t.key === 'add') && !board.some((b: { title: string }) => b.title === t.title));
   if (item) console.log(scrum('queue', item.key, 'implementation', item.title, item.acceptance.map((a: string) => `- ${a}`).join('\n'), ...((board.findLast((b: { status: string }) => ['running', 'review', 'ready', 'todo'].includes(b.status))) ? [board.findLast((b: { status: string }) => ['running', 'review', 'ready', 'todo'].includes(b.status)).id] : [])));

@@ -12,7 +12,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `add`. This is not eviden
 Completion:
 - `todo add "buy milk"` appends {id, text, done:false, created} to the store and prints the new id.
 - Ids are small integers that never repeat within a store, even after removals.
-- A test adds two items to a temp store and asserts the ids 1 and 2 and the stored text.
+- Manually add two items to a disposable store and inspect ids 1 and 2 and the stored text.
 
 ## domain: the project owns its domain name
 
@@ -23,7 +23,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `domain`. This is not evi
 
 Completion:
 - `todo-cli.example` is registered for the project: a single-use card minted through the platform's card rail, within the owner's bound and merchant category, pays the registrar once, and the purchase shows on the audit trail and on this item's page with the merchant.
-- `docs/DOMAIN.md` records the domain, the registrar and the amount, and a test asserts the file names the domain.
+- `docs/DOMAIN.md` records the domain, the registrar and the amount, and manual inspection confirms the file names the domain.
 
 ## list: todo list prints open items with their ids
 
@@ -34,7 +34,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `list`. This is not evide
 
 Completion:
 - `todo list` prints one line per open item as `<id>  <text>`, oldest first, and `nothing to do` when empty.
-- A test covers both the empty store and a store with two items.
+- Manually inspect both the empty store and a store with two items.
 
 ## done: todo done marks an item finished
 
@@ -46,7 +46,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `done`. This is not evide
 Completion:
 - `todo done <id>` sets done:true; `list` hides done items unless `--all`, which shows them with a `[x]` prefix.
 - An unknown id exits 1 with `no such item: <id>`.
-- Tests cover marking, hiding, --all, and the unknown id.
+- Manually inspect marking, hiding, --all, and the unknown id.
 
 ## remove: todo remove deletes an item
 
@@ -57,7 +57,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `remove`. This is not evi
 
 Completion:
 - `todo remove <id>` deletes the item; a later `add` does not reuse its id.
-- Tests cover removal and the non-reuse of ids.
+- Manually inspect removal and the non-reuse of ids.
 
 ## json: todo list --json prints the items as JSON
 
@@ -68,7 +68,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `json`. This is not evide
 
 Completion:
 - `todo list --json` prints the open items (all with --all) as a JSON array of {id, text, done, created}.
-- A test parses the output and checks the shape.
+- Manually parse the output and inspect the shape.
 
 ## due: items can carry a due date
 
@@ -79,7 +79,7 @@ Source: [committed seed](hermes/kanban.seed.json), key `due`. This is not eviden
 
 Completion:
 - `todo add "pay rent" --due 2026-10-01` stores due as an ISO date; `list` shows `(due 2026-10-01)` and sorts due items first by date.
-- Overdue items (due before today) show `OVERDUE` in `list`; a test pins today with $TODO_TODAY.
+- Overdue items (due before today) show `OVERDUE` in `list`; manual verification pins today with $TODO_TODAY.
 
 ## stats: todo stats counts the store
 
@@ -89,7 +89,7 @@ Dispatch: hold
 Source: [committed seed](hermes/kanban.seed.json), key `stats`. This is not evidence of current priority or completion.
 
 Completion:
-- `todo stats` prints `open <n>  done <n>  overdue <n>` and a test asserts the counts on a seeded store.
+- `todo stats` prints `open <n>  done <n>  overdue <n>` and manual verification compares the counts with a synthetic store.
 
 ## readme-usage: the README's usage section is the help text
 
@@ -99,7 +99,7 @@ Dispatch: hold
 Source: [committed seed](hermes/kanban.seed.json), key `readme-usage`. This is not evidence of current priority or completion.
 
 Completion:
-- README.md contains a `## Usage` section whose fenced block equals `todo --help` output, and a test asserts they match.
+- README.md contains a `## Usage` section whose fenced block equals `todo --help` output, and manual verification compares them.
 
 ## Questions and scrum notes
 

@@ -17,8 +17,8 @@ bun world/run.ts stories               # every story of the cookbook: one line e
 bun world/run.ts story rehearsal/stories/board.jsonl   # one story: the seeded tasks land, the owner moves the model, the treasurer pays
 bun world/run.ts env -- curl -s "$PLATFORM_URL/v1/funding"   # anything, inside the world: the books, the sessions, the twins' ledgers
 bun world/run.ts hermes kanban list    # the fleet board, through the pinned Hermes against the world's home
-bun world/run.ts hermes cron run pm    # the PM's hour, now (`cron run community`: the lexicon cookbook's community desk)
-bun world/run.ts say "what is a lexicon?"   # a person speaks in the brain's channel on the Discord twin; the brain answers
+bun world/run.ts hermes cron run pm    # the PM's hour, now (`cron run community`: the community desk; select REHEARSAL_COMMUNITY=1 before up)
+bun world/run.ts say "what is todo-cli?"   # a person speaks in the brain's channel on the Discord twin; the brain answers
 bun world/run.ts fresh                 # start over (a restart is `fresh`, never down-then-up)
 ```
 
@@ -38,16 +38,20 @@ verifying a fix before its release; `TWINS_ROOT` names a whole checkout.
 
 The world is an environment, not a gate. Nothing runs unattended over it: whoever brings it up drives it — the page, the
 books, the board, the twins' ledgers (`volter-world tail`) — and reads what the product says, or runs a story and reads
-what it did. That is the repository's standing rule on tests: everything that runs by itself finishes in under thirty
-seconds (`bun run check`), and behavior is verified by driving the running product.
+what it did. Do not run automated test suites or test hooks. The cookbook’s `bun run check` is compilation only;
+verify behavior by driving the running product and inspecting the result.
 
 The cookbook is `todo-cli`: nine historical seed intentions, each one command. Fire the PM to reconcile them into
 ROADMAP.md; a subsequent scrum queues ready work after the planning PR lands; the brain thinks on the owner's previous
 model until the `between-tasks` act moves it (the model on main, the checkout following, the brain restarted, the key
-rotated with a short grace). `--cookbook lexicon` is the community cookbook: the seed files a question and a request as
-issues and an idea as a discussion on the GitHub twin; the community job (`hermes cron run community`) answers them and
-leaves the request in ordinary source history for the PM to discover; `say` puts a person in the channel and the brain
-answers there (`rehearsal/stories/community.jsonl`). The world stays up between edits; the platform reloads on its own
+rotated with a short grace). For community interactions, export `REHEARSAL_COMMUNITY=1 REHEARSAL_IDLE=1`
+(without `REHEARSAL_SCRUM` or `REHEARSAL_RELEASE`) before `up`. The seed creates a question and a documentation
+request as issues, and a usage-tip idea as a discussion through GitHub GraphQL. Run `hermes cron run community`,
+inspect the issue comments and discussion reply through the community door, then `say "what is todo-cli?"`
+and inspect the Discord reply. Routine cron reports stay local in this scenario. Run `hermes cron run pm` and read the sourced `community-usage` section on main's
+ROADMAP.md after the planning PR lands. The next scrum can queue the matching documentation stage.
+The transferred `rehearsal/stories/community.jsonl` records this sequence. It requires the current Twin
+checkout's GraphQL discussion creation support (`TWINS_ROOT`); an older twin refuses the seed loudly. The world stays up between edits; the platform reloads on its own
 under `wrangler dev`; a kit change is `stack down --purge` and `stack up`; a code change to the cookbook is `fresh`.
 
 ## What is real and what is a twin
