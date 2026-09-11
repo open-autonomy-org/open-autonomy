@@ -683,9 +683,12 @@ and inherited organization rules under the agreed policy before activation. Keep
 and production environment gates. Development code receives no production keys; release approval covers
 the exact candidate that can use them.
 
-Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. If a
-bundled skill was omitted, use Hermes' native `skills reset sdlc-review --restore` command; keep the
-project's manual-verification policy authoritative over generic skill suggestions about tests.
+Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. Use
+Hermes' bundled skill sync when enabled. A Blank Slate home deliberately skips bundled sync: configure
+native `skills.external_dirs` to the installed Hermes checkout's `skills/devops/sdlc-review` directory
+in `hermes/config.yaml`, and verify `skill_view("sdlc-review")` actually resolves it. Do not vendor a
+second copy or enable the whole catalog just for review. Keep the project's manual-verification policy
+authoritative over generic skill suggestions about tests.
 
 Before exercising landing, enable the repository's native auto-merge setting (`gh repo edit --enable-auto-merge`)
 and verify that its Actions settings permit the landing workflow to create pull requests. Inspect
