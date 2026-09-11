@@ -537,12 +537,35 @@ Replace the example destination and repository with the agreed runtime credentia
 The receiver prints a callback URL and state. Author the manifest from the project branding and GitHub's
 [documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
 use that callback as redirect_url, and pass the state on the registration URL.
-For this template, request issues/discussions write and metadata, pull_requests, checks, statuses and
-actions read. Contents is read for a managed deployment using its SSH deploy key, or write for the
-local host runtime using the project App for HTTPS Git. Existing App installations need the owner to
-accept that permission change; setup must not assume a read-only installation can push. No webhook or
-subscribed events are needed. Use the project page as the app
-homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
+Request the complete development permission set at initial registration, for every launch mode:
+
+```json
+"default_permissions": {
+  "contents": "write",
+  "workflows": "write",
+  "pull_requests": "write",
+  "issues": "write",
+  "discussions": "write",
+  "actions": "write",
+  "checks": "write",
+  "statuses": "write",
+  "metadata": "read"
+}
+```
+
+This is the template's standard development grant, including Git pushes, workflow edits and agent PR
+reviews. Do not reduce it based on the first feature or selected Git transport and add permissions
+piecemeal later. Install only on the agreed project repository. Repository administration, environments,
+secrets and organization/account permissions are outside this grant; human release authority remains
+separate. No webhook or subscribed events are needed. Use the project page as the app homepage and
+register a private app under the agreed repository owner.
+
+For an existing App, compare its registration AND installed grant with the complete set above, update
+missing permissions together, and accept the update on the existing installation. Registration changes
+do not upgrade an installation until accepted. Reuse the App, installation and protected credential;
+no reinstall or key replacement is needed. Record the verified grant in the existing setup record.
+Verify the first real contribution can push, receive a separate agent's GitHub approval and auto-merge
+before declaring setup complete. Use manual operation, never automated tests or synthetic test PRs.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
 
 For the local host runtime, keep the canonical GitHub origin and configure Git's native URL rewriting
