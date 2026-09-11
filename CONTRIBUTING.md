@@ -5,8 +5,9 @@
 - The world is where a change is exercised with no keys: `bun world/run.ts up` brings the twins, the real platform
   and the cookbook's agent stack up; then drive it — the page, the books, the board, the twins' ledgers — one action
   at a time (`world/README.md`). No gate stands over it.
-- Nothing pushes to `main`. Push a `land/<topic>` branch; the landing workflow opens the pull request and merges
-  it. No check stands between a branch and main. The agent's own work lands from `agent/<task id>` the same way.
+- Nothing pushes to `main`. Push a `land/<topic>` branch (or `agent/<task id>` for agent work); the landing
+  workflow opens its PR and arms auto-merge. Independent agent approval of the current head is required;
+  changed diffs invalidate stale approval. Human approval is reserved for release. Never bypass review.
 - Deploys and admin operations go through GitHub workflows gated on the `production` environment's reviewer
   (`apps/platform/DEPLOY.md`). No machine holds a deploy or admin token.
 - `hermes/`, `container/` and `.open-autonomy/` in this repository come from the Hermes kit
