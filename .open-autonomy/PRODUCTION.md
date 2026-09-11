@@ -7,12 +7,14 @@ without requiring a hosted service.
 
 ## The shape
 
-- **Landing is the agent's.** It pushes `agent/<task>` branches; the landing workflow opens the pull request and
-  merges it. Nothing pushes `main` directly, maintainers included (`main-protected` ruleset: pull request required,
-  no bypass).
-- **The workflows are the owner's.** `.github/CODEOWNERS` names the owner for `/.github/`, and the `main` ruleset
-  requires code-owner review, so a landing that touches a workflow waits for the owner while everything else lands
-  with no review. The file that runs with a secret is never changed by the agent.
+- **Landing follows independent agent review.** The developer pushes `agent/<task>`; the landing workflow
+  opens a PR and arms auto-merge. A separate reviewer approves the current PR head after constitution,
+  scope and manual feature verification review. Changed diffs invalidate stale approvals. All code,
+  including workflows, follows this process; there is no CODEOWNERS or human development-review gate.
+  Nothing pushes `main` directly, maintainers included (`main-protected`: PR required, no bypass).
+- **Credentials stay outside development.** Agents and development code do not receive production keys;
+  the host valve supplies scoped development access. Human approval gates release of the exact candidate,
+  when production credentials may be used, rather than each merge to main.
 - **Production runs only from a human-cut tag.** A `production` environment with the owner as required reviewer,
   whose deployment branches are the tag pattern `deploy-v*` and nothing else, never `main`. Its secrets are the
   deploy credential and nothing more. A `deploy-tags-admin-only` tag ruleset lets only an org admin create such a
@@ -23,9 +25,10 @@ without requiring a hosted service.
 
 ## Setting it up, once per project
 
-1. `.github/CODEOWNERS`: `/.github/ @<owner login>` (a user or a team; an org is not a code owner).
-2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (0 approvals, code-owner review required),
-   `non_fast_forward`, `deletion`; no bypass actors.
+1. No CODEOWNERS files (including root, `.github/` and `docs/` locations).
+2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (1 approving agent review, stale approvals
+   dismissed on push, code-owner review disabled), `non_fast_forward`, `deletion`; no bypass actors.
+   Enable repository auto-merge and allow the landing workflow to open PRs.
 3. Ruleset `deploy-tags-admin-only` on `refs/tags/deploy-v*`: `creation`, `update`, `deletion`; bypass:
    OrganizationAdmin, always.
 4. Environment `production`: required reviewer the owner; deployment branches "selected", one tag pattern

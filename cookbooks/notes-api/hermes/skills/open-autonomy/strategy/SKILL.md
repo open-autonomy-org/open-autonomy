@@ -15,6 +15,11 @@ You develop what belongs on the roadmap and why. PM manages getting authorized o
 Read the current main's CONSTITUTION.md, ROADMAP.md, CHANGELOG.md, team roster in
 .open-autonomy/config.yaml and project-communications skill before acting. The constitution constrains
 proposals at conception and implementations at merge; compatibility with it grants no scope authority.
+Consult accepted ADRs in `docs/decisions/`. Propose material architecture decisions using the ADR process
+in `CONTRIBUTING.md`, with original sources, alternatives, consequences and explicit constitutional fit.
+Link the ADR from the roadmap and planning PR; independent review and merge establish acceptance.
+Propose supersession when direction changes rather than overwriting an accepted decision. Unresolved
+architecture conflicts keep dependent outcomes held; an ADR grants no additional scope or authority.
 
 ## Establish the mandate
 
@@ -64,6 +69,14 @@ Record the decision and its original source; silence is not approval. PM continu
 authorized user requests in every strategy arrangement and does not need your permission to do so.
 
 ## Publish and hand over
+For a planning PR without an implementation card, hand it to the existing native review lane. Create a
+review-only card with `hermes kanban create`, an idempotency key based on repository and PR number,
+`--initial-status running`, `--assignee default`, `--skill develop`, and `--workspace dir:<planning-worktree>`.
+Include the PR URL, exact head, authority and original outcome/acceptance in its body, then immediately
+use `hermes kanban request-review` with that handoff. This is review of existing work, not a new product
+outcome or implementation dispatch. Reuse its card on later revisions; never create duplicate reviewers
+or approve the PR from the authoring session. Preserve the worktree until review and landing complete.
+
 
 Work in a separate ordinary Git worktree on agent/strategy-<unique-id> off fresh origin/main. Preserve
 and resume your unfinished branch; never edit PM's scrum worktree or its cursors/notepad. Use normal Git

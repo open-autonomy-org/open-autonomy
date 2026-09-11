@@ -1,7 +1,7 @@
 name: Land a branch
-# Nothing pushes to `main`: the `main-protected` ruleset requires a pull request and the `ci` + `security`
-# checks, with no bypass actors. Work lands by pushing a branch: this workflow opens its pull request once
-# and arms native auto-merge, so it merges exactly when the required checks pass on its head commit.
+# Nothing pushes to `main`: independent approval of the current PR head is required, with no bypass.
+# Pushing a branch opens its PR and arms native auto-merge; repository rules enforce review and any
+# required static checks. Human approval is reserved for release.
 #   agent/**  the agent's own work        land/**  a maintainer's
 on:
   push:
@@ -23,8 +23,8 @@ jobs:
           existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$BRANCH" \
-              --body "Opened by the landing workflow for \`$BRANCH\`. It merges on its own when the required checks pass."
+              --body "Opened by the landing workflow for \`$BRANCH\`. It merges automatically after independent agent approval and required static checks."
             existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           fi
-          gh pr merge -R "$REPO" "$existing" --merge
-          echo "pull request #$existing: merged"
+          gh pr merge -R "$REPO" "$existing" --merge --auto
+          echo "pull request #$existing: auto-merge armed; required approval gates landing"

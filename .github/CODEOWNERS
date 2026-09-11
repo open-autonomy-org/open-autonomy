@@ -1,3 +1,0 @@
-# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a
-# secret is never changed by the agent. Everything else lands with no review (the working agreement in CLAUDE.md).
-/.github/ @yueranyuan
