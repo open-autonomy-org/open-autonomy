@@ -358,12 +358,14 @@ await nativeState();
 process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
 let cursor: string | undefined;
-do {
-  const page = await sc.discover({ ...query, cursor, limit: 500 });
-  for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
-  cursor = page.next_cursor ?? undefined;
-} while (cursor);
-await tick();
+try {
+  do {
+    const page = await sc.discover({ ...query, cursor, limit: 500 });
+    for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
+    cursor = page.next_cursor ?? undefined;
+  } while (cursor);
+  await tick();
+} catch (e) { log(`first discovery incomplete (${(e as Error).message}); polling still reconciles`); }
 const poll = setInterval(requestTick, 5000); // observation cadence, never completion evidence
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {
   quitting = true; clearInterval(poll); void sc.close().then(() => process.exit(0));

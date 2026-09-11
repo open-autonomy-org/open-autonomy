@@ -108,6 +108,13 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
+    if (name === 'reporter') {
+      // The reporter narrates; it never decides whether the brain runs. It comes back in ten seconds.
+      say(`reporter ended (${code}); the brain keeps running, the reporter returns in 10 s`);
+      children.splice(children.findIndex((c) => c.proc === proc), 1);
+      setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
+      return;
+    }
     ending = true;
     say(`${name} ended (${code}); stopping the rest`);
     for (const c of children) if (c.proc !== proc) c.proc.kill();

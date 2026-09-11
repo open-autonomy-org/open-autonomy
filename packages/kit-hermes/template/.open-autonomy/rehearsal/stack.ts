@@ -110,5 +110,8 @@ const [verb, ...rest] = process.argv.slice(2);
 if (verb === 'up') { stop(); timed('start', () => start()); waitUp(); console.log(`stack: up (valve :${VALVE_PORT}, home ${home}, log ${logFile})`); }
 else if (verb === 'down') down(rest.includes('--purge'));
 else if (verb === 'restart') { stop(); timed('restart', () => start()); waitUp(); }
-else if (verb === 'hermes') { const bin = hermesBin(); process.exit(Bun.spawnSync({ cmd: [resolve(bin, 'hermes'), ...rest], cwd: existsSync(project) ? project : STATE, env: stackEnv(bin), stdio: ['inherit', 'inherit', 'inherit'] }).exitCode); }
+else if (verb === 'hermes') {
+  // A story ticks jobs through this verb; against a dead stack the wakes would run without the gateway's dispatcher and look alive.
+  if (existsSync(pidFile)) { try { process.kill(Number(readFileSync(pidFile, 'utf8').trim()), 0); } catch { console.error(`stack: the brain is down (the start script ended; ${logFile}); fresh`); process.exit(3); } }
+  const bin = hermesBin(); process.exit(Bun.spawnSync({ cmd: [resolve(bin, 'hermes'), ...rest], cwd: existsSync(project) ? project : STATE, env: stackEnv(bin), stdio: ['inherit', 'inherit', 'inherit'] }).exitCode); }
 else { console.error('usage: stack.ts up | down [--purge] | restart | hermes <args…>'); process.exit(2); }
