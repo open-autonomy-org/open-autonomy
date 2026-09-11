@@ -60,7 +60,7 @@ function stackEnv(bin: string): Record<string, string> {
   // scripted brain's; a real one is judged by reading what it did.
   if (world.GATEWAY_TWIN_URL && onCodex()) {
     if (process.env.REHEARSAL_MODEL === 'real') {
-      console.log('stack: DRESS REHEARSAL — the brain on the real Codex subscription, the vendors twins, the seats dry');
+      console.error('stack: DRESS REHEARSAL — the brain on the real Codex subscription, the vendors twins, the seats dry');
       // The one real service of a dress rehearsal is the model: its hosts bypass the world's proxy, and the brain trusts
       // the world's session CA and the internet's roots together (one bundle, since a process has one trust store).
       base.NO_PROXY = [base.NO_PROXY, 'chatgpt.com', 'auth.openai.com'].filter(Boolean).join(',');
