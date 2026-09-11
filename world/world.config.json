@@ -8,15 +8,7 @@
     "OPEN_AUTONOMY_MODEL": "zai/glm-5.3-flash"
   },
   "stripEnv": [
-    "HERMES_*",
-    "OPENAI_*",
-    "ANTHROPIC_*",
-    "GITHUB_TOKEN",
-    "GH_TOKEN",
-    "DISCORD_*",
-    "SLACK_*",
-    "OPEN_AUTONOMY_KEY",
-    "CODEX_HOME"
+    "*"
   ],
   "services": [
     {

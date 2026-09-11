@@ -19,7 +19,9 @@ World tooling but no OA rehearsal engine; they author their own scenarios beside
 
 The World config declares the native agent as its last service. Its foreground command
 seeds through vendor and platform APIs, then executes the ordinary kit start entrypoint.
-World owns its process group, logs, resources, startup readiness and teardown. One native
+World owns its process group, logs, resources, startup readiness and teardown. The config uses
+`stripEnv: ["*"]` with explicit paths and a synthetic home; World excludes all inherited caller
+variables while preserving its own injection. One native
 Hermes schedule observation supplies the app-specific readiness criterion. All per-instance
 homes, clones and synthetic keys live inside World data, so normal purge removes them.
 The scenario renderer only resolves source paths and produces a file of model handlers.

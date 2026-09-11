@@ -6,7 +6,8 @@ with the real platform and native Hermes. Generated projects have World tooling 
 scenarios for their own applications; they do not carry this scenario or a rehearsal engine.
 
 World owns every service, including the agent: startup order, resources, injected environment,
-readiness, logs and shutdown. The agent's command seeds through vendor APIs, then executes the
+readiness, logs and shutdown. `stripEnv: ["*"]` admits only declared and World-generated
+variables, so the caller’s credentials and agent settings do not enter the application. The agent's command seeds through vendor APIs, then executes the
 ordinary `.open-autonomy/start.ts`. Homes, clones, books and synthetic keys live in instance data
 and are removed by normal World purge. The source scenario survives.
 
@@ -21,11 +22,12 @@ can be reused. Boot does not download Hermes or bypass World to install packages
 export WORLD_STATE_ROOT=/fast/disk/oa-world  # outside the checkout
 export OA_WORLD_NAME=open-autonomy-todo-cli
 export WORLD_HERMES_BIN=/path/to/pinned-hermes/.venv/bin
-export TWINS_ROOT=/path/to/twin             # current checkout; omit to use installed packages
+export TWINS_ROOT=/path/to/twin             # current checkout with complete environment stripping
 bun world/prepare.ts
 ```
 
-Preparation prints the exact World commands for the installed CLI or selected Twin checkout.
+Preparation prints the exact commands for the selected World CLI. Until the supporting World change
+is released, use the current Twin checkout: this scenario requires `stripEnv: ["*"]`.
 It writes ordinary `world.config.json` and `<scenario>/handlers/openai.json` under
 `$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/`. Use the printed commands, or the equivalent
 installed CLI below, from the OA repository:
