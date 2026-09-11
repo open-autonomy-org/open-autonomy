@@ -18,7 +18,7 @@ Three packages publish from this repository: `@open-autonomy/sdk`, `@open-autono
 `.github/workflows/release.yml` publishes them on a human-cut `release-v<kit version>` tag (or a manual dispatch)
 after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
 (`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
-open-autonomy` from it against the npm registry twin (`bun world/run.ts env -- bun world/kit-release.ts <kit-version>`) before any release is cut.
+open-autonomy` from it against the npm registry twin (the [World operator guide](../../world/README.md)) before any release is cut.
 
 ## What a generated repository contains
 
@@ -120,11 +120,11 @@ for a listed partner within a bound. Both leave records on the public audit trai
 
 ## The world
 
-A project that talks to a vendor verifies against twins, never the vendor: the kit's rehearsal (`.open-autonomy/rehearsal/`,
-kept current by `upgrade`) brings the project's own world up — the twins its channels name in `rehearsal/world.json`, the
-model twin on its scripted brain, the backend copy, the brain's stack — and drives stories through it. The develop skill
-drives the running system in that world, one action at a time (this repository's own `world/` runs the same rehearsal in
-a cookbook). Nothing an agent does reaches a real API.
+A rehearsal is an ordinary World scenario: opening state through vendor APIs, file handlers for model
+judgment and faults, and the unmodified application running inside World. The kit includes World tooling;
+each project owns its scenario beside its application. It does not receive OA's scenario or a separate
+rehearsal engine. OA's [World guide](../../world/README.md) demonstrates this with the cookbook, the real
+platform, synthetic vendors and manual actions. World owns resources, processes, readiness and cleanup.
 
 ## Nothing in the agent's reach is a secret that matters
 

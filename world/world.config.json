@@ -1,0 +1,163 @@
+{
+  "id": "open-autonomy-todo-cli",
+  "description": "Open Autonomy scenario: synthetic vendors, real platform and native cookbook agent. World owns all service lifetimes.",
+  "env": {
+    "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
+    "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
+    "MODEL_GATEWAY_API_KEY": "world-gateway-key",
+    "OPEN_AUTONOMY_MODEL": "zai/glm-5.3-flash"
+  },
+  "stripEnv": [
+    "*"
+  ],
+  "services": [
+    {
+      "id": "gateway",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:openai}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "GATEWAY_TWIN_URL",
+      "env": {
+        "TWIN_OPENAI_SCENARIO": "${HANDLERS}"
+      }
+    },
+    {
+      "id": "github",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:github}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "GITHUB_TWIN_URL"
+    },
+    {
+      "id": "discord",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:discord}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "DISCORD_TWIN_URL"
+    },
+    {
+      "id": "stripe",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:stripe}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "STRIPE_TWIN_URL"
+    },
+    {
+      "id": "polar",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:polar}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "POLAR_TWIN_URL"
+    },
+    {
+      "id": "npm",
+      "type": "twin",
+      "command": "bun",
+      "args": [
+        "${TWIN:npm-registry}",
+        "serve"
+      ],
+      "port": "auto",
+      "injectEnv": "NPM_REGISTRY_TWIN_URL"
+    },
+    {
+      "id": "live",
+      "type": "process",
+      "command": "bun",
+      "args": [
+        "${SCENARIO_DIR}/live.ts"
+      ],
+      "port": "auto",
+      "portArg": false,
+      "rootArg": false,
+      "injectEnv": "LIVE_SERVICE_URL",
+      "ready": {
+        "httpUrl": "${url}/api",
+        "timeoutMs": 30000,
+        "intervalMs": 200
+      }
+    },
+    {
+      "id": "platform",
+      "type": "process",
+      "command": "bun",
+      "args": [
+        "${TREE}/apps/platform/world.ts"
+      ],
+      "port": "auto",
+      "portArg": false,
+      "rootArg": "--persist-to",
+      "injectEnv": "PLATFORM_URL",
+      "env": {
+        "OPEN_AUTONOMY_ACCOUNT": "cookbook/todo-cli"
+      },
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 120000,
+        "intervalMs": 500
+      }
+    },
+    {
+      "id": "actions",
+      "type": "process",
+      "command": "bun",
+      "args": [
+        "${SCENARIO_DIR}/actions.ts"
+      ],
+      "port": "auto",
+      "portArg": false,
+      "rootArg": false,
+      "injectEnv": "ACTIONS_URL",
+      "ready": {
+        "httpUrl": "${url}/healthz",
+        "timeoutMs": 30000,
+        "intervalMs": 200
+      }
+    },
+    {
+      "id": "agent",
+      "type": "process",
+      "command": "sh",
+      "args": [
+        "${SCENARIO_DIR}/agent.sh"
+      ],
+      "port": 18787,
+      "portReason": "The existing OA entrypoint uses this port and the next three for its valves and webhook listener; choose OA_VALVE_PORT for another instance.",
+      "portArg": false,
+      "rootArg": false,
+      "injectEnv": "OA_AGENT_URL",
+      "ready": {
+        "command": "bun",
+        "args": [
+          "${SCENARIO_DIR}/ready.ts"
+        ],
+        "timeoutMs": 300000,
+        "intervalMs": 1000
+      }
+    }
+  ],
+  "resources": {
+    "memoryMiB": 3072,
+    "writableStorageMiB": 2048
+  }
+}

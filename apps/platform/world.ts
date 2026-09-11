@@ -2,8 +2,7 @@
 // The platform as a world service: the REAL worker under `wrangler dev`, its upstreams pointed at the twins the world
 // injected — the model rail on the model twin, GitHub on the GitHub twin, the card rail on the Stripe twin, money in
 // on the Polar twin. The worker takes those as ordinary configuration, so nothing in the backend or the app knows it
-// is in a world. The world gives PORT and --persist-to (the books). A cookbook's rehearsal/world.json names this as its
-// platform service (the kit's own rehearsal serves the bare backend copy; this tree's world serves the platform).
+// is in a world. The world gives PORT and --persist-to (the books). world/world.config.json declares this service.
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -58,32 +57,8 @@ if (process.env.POLAR_TWIN_URL) {
 const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () => new Response('') }); const p = s.port; s.stop(true); return p; })();
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
-// Supervised the way a deployment supervises its worker: wrangler's dev proxy is known to drop under a long
-// session, and the books live on disk, so a restart on the same port loses nothing but the request in flight.
-// A wrangler whose dev proxy died can leave its workerd holding the port; the restart reclaims it first, or every
-// restart dies on the bind and the world's readiness probe runs out.
-const reclaim = (): void => {
-  for (let i = 0; i < 25; i++) {
-    let holders: string[] = [];
-    try { holders = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).split('\n').filter(Boolean); } catch { /* nobody listens */ }
-    if (!holders.length) return;
-    for (const pid of holders) { try { process.kill(Number(pid), 'SIGKILL'); } catch { /* gone */ } }
-    Bun.sleepSync(200);
-  }
-};
-let stopping = false;
-let child: ReturnType<typeof spawn> | undefined;
-const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' };
-const start = () => {
-  reclaim();
-  child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env });
-  child.on('exit', (code) => {
-    if (stopping) process.exit(code ?? 0);
-    console.error(`apps/platform/world.ts: wrangler dev exited (${code}); restarting on :${port}`);
-    setTimeout(start, 2000);
-  });
-};
-const stop = () => { stopping = true; child?.kill('SIGTERM'); };
-process.on('SIGINT', stop);
-process.on('SIGTERM', stop);
-start();
+// One foreground process. World captures failure and owns this entire process group.
+const child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' } });
+child.on('error', (error) => { console.error(error); process.exit(1); });
+child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));

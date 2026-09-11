@@ -101,7 +101,7 @@ export function check(dir: string): Outcome {
 // Kit-owned files the repository has that the kit no longer renders: what an earlier kit made and this one
 // retired. `upgrade` removes them; a project that keeps one names it in `divergences`. Only the families the
 // kit writes are looked at — never the agent's runtime state beside them (its database, sessions, logs, .env).
-const RETIRABLE = [/^hermes\/(skills\/open-autonomy|hooks|scripts|plugins)\//, /^\.open-autonomy\/([a-z-]+\.ts|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const RETIRABLE = [/^\.open-autonomy\/rehearsal\/(README\.md|(?:actions|lib|platform|run|seed|stack|story)\.ts)$/, /^hermes\/(skills\/open-autonomy|hooks|scripts|plugins)\//, /^\.open-autonomy\/([a-z-]+\.ts|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 function retired(dir: string, rendered: Map<string, Buffer>, rec: KitRecord): string[] {
   const out: string[] = [];
   for (const root of ['hermes/skills', 'hermes/hooks', 'hermes/scripts', 'hermes/plugins', '.open-autonomy', 'container', '.github/workflows']) {

@@ -31,3 +31,19 @@ short blurb and reusable icon for project integrations. Existing branding and ap
 
 For a new installation, follow the [agent-led setup guide](.open-autonomy/SETUP.md). It establishes the
 project brief and real development connections first; application services use the world until live activation.
+
+## Usage
+
+```
+todo — a todo list in a JSON file
+
+usage: todo <command> [args]
+
+commands:
+  help                     show this help
+  add <text> [--due DATE]  append an item (DATE is YYYY-MM-DD) and print its id
+  list [--all] [--json]    print open items, due ones first (--all: done ones too, marked [x]; --json: as JSON)
+  done <id>                mark an item finished
+  remove <id>              delete an item (its id is never reused)
+  stats                    count open, done and overdue items
+```
