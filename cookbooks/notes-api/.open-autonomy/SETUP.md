@@ -469,7 +469,7 @@ directory with owner-only permissions. Existing credential files must be regular
 
 | Connection | Setup and credential handoff | Proof before completion |
 |---|---|---|
-| GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main and workflow ownership follow the agreed policy |
+| GitHub repository | Verify the owner and repository; the helper generates and registers a repository-scoped SSH push key | The agent's key can push its branch; main requires agent review; release requires human approval |
 | Project GitHub App | The browser agent handles registration and installation; the standalone credential receiver only saves the key; verify access through the running valve | Through the app/valve, read this repository's issues, PR reviews/checks, workflows and release records |
 | Open Autonomy platform | The key tool prepares a repository-control claim; the setup agent lands it through normal Git/PR tools, then reruns setup to provision developer/treasurer credentials into protected host storage | The project account is correct and the actual reporting/model arrangement works |
 | Optional communication provider | Guide the chosen provider's application setup, scopes and installation; use protected page capture for displayed credentials, or secure entry when capture is unavailable | Read the agreed history, deliver to the agreed destination, and recognize the owner's reply |
@@ -674,22 +674,25 @@ as reviewer; independent Hermes sessions provide the worker/reviewer separation.
 remains a separate authority requirement. Verify this flow using the actual first contribution, not a
 synthetic test PR or automated tests.
 
-Repository policy preparation must also finish its Git operations. Setup preserves existing rulesets
-and staged work, prepares a missing CODEOWNERS without committing or pushing, and checks that the intended
-file has landed on origin/main before marking that preparation complete. Resolve an interrupted commit
-or an outstanding pull request through the normal Git/browser tools, then rerun setup. Reuse an existing
-owner-rules branch/PR, based on the fetched default branch; do not include unrelated feature commits.
-The helper recognizes a landed owner-rules branch even if local main has not caught up; it does not create,
-reset or push a branch. Reconcile local main through normal Git tools before activation. A matching file
-and a named ruleset do not prove effective authority: the setup agent still verifies the agreed humans,
-the actual rules and the resulting review gate. Existing stricter rules are not replaced by kit defaults.
+Repository policy has no CODEOWNERS or human development-review gate, including workflow changes.
+Remove inherited CODEOWNERS files from root, `.github/` and `docs/` through the normal PR process and
+reconcile all effective main rules to disable code-owner review while retaining independent agent
+approval, stale-review dismissal and no bypass. Do not regenerate CODEOWNERS during setup or upgrades.
+The helper only prepares absent rulesets; the setup agent verifies and reconciles existing repository
+and inherited organization rules under the agreed policy before activation. Keep human release reviewers
+and production environment gates. Development code receives no production keys; release approval covers
+the exact candidate that can use them.
+
+Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. If a
+bundled skill was omitted, use Hermes' native `skills reset sdlc-review --restore` command; keep the
+project's manual-verification policy authoritative over generic skill suggestions about tests.
 
 Before exercising landing, enable the repository's native auto-merge setting (`gh repo edit --enable-auto-merge`)
 and verify that its Actions settings permit the landing workflow to create pull requests. Inspect
 `repos/<owner>/<repo>/actions/permissions/workflow` through `gh api`; the GitHub setting named
 `can_approve_pull_request_reviews` governs Actions creating and approving PRs. Configure the agreed setting
 through the owner's repository administration, preserving other workflow permissions and organization policy.
-The landing workflow never submits approvals: required human reviews and existing protection still apply.
+The landing workflow never submits approvals: the independent agent review requirement still applies.
 If organization policy prevents these settings, resolve that with the owner before claiming landing works.
 The workflow arms native auto-merge so a required review can arrive after its run has finished.
 
