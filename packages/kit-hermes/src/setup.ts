@@ -221,31 +221,10 @@ function ensureRuleset(s: Situation, body: Record<string, unknown>): void {
 }
 
 function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
-  say('\nRepository policy: preserve existing rulesets, prepare absent kit defaults, and land CODEOWNERS. The setup agent verifies the actual owner and effective review policy before activation.');
+  say('\nRepository policy: PRs merge automatically after independent agent review, including workflow changes. No CODEOWNERS gate; human approval is reserved for release. The setup agent reconciles existing rules before activation.');
   if (opts.plan) return;
-  if (setupGit(s, 'diff', '--cached', '--name-only')) throw new Error('Finish or preserve the staged work before owner-rule setup; setup will not include it in its commit.');
-  setupGit(s, 'fetch', '-q', 'origin');
-  const co = join(s.dir, '.github', 'CODEOWNERS');
-  const remote = run(['git', 'show', 'origin/main:.github/CODEOWNERS'], { cwd: s.dir });
-  const pending = run(['git', 'show', 'refs/heads/land/owner-rules:.github/CODEOWNERS'], { cwd: s.dir });
-  if (pending.ok && remote.ok && pending.out !== remote.out && !run(['git', 'merge-base', '--is-ancestor', 'refs/heads/land/owner-rules', 'origin/main'], { cwd: s.dir }).ok) {
-    throw new Error('The existing owner-rules branch differs from the landed policy and has not merged. Reconcile that pending change through normal Git/PR tools before completing owner-rule setup.');
-  }
-  // An unchanged file on stale default-branch history is not a request to revert a landed policy change.
-  const unchanged = !setupGit(s, 'status', '--porcelain', '--', '.github/CODEOWNERS');
-  const onDefaultHistory = run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], { cwd: s.dir }).ok;
-  const intended = remote.ok && unchanged && onDefaultHistory ? remote.out
-    : existsSync(co) ? readFileSync(co, 'utf8').trim() : pending.ok ? pending.out : remote.ok ? remote.out
-    : `# The workflows are the owner's: a landing that touches them waits for the owner's review, so a workflow that holds a\n# secret is never changed by the agent. Everything else lands with no review.\n/.github/ @${s.login}`;
-  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: true, require_last_push_approval: false, required_review_thread_resolution: false } }] });
-  if (!remote.ok || remote.out !== intended) {
-    if (!existsSync(co) && !pending.ok) {
-      mkdirSync(join(s.dir, '.github'), { recursive: true });
-      writeFileSync(co, `${intended}\n`);
-    }
-    throw new Error('Reconcile the intended CODEOWNERS with the agreed owner policy and land it on main through normal Git/PR tools, then rerun setup. Reuse an existing owner-rules branch/PR and exclude unrelated feature work; setup does not commit, switch branches or push it.');
-  }
-  mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; CODEOWNERS landed; effective owner policy requires setup-agent verification');
+  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } }] });
+  mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; effective agent review and release authority require setup-agent verification');
 }
 
 function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
@@ -432,13 +411,13 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
     : '  organization: unresolved. Setup requires a verified GitHub organization; personal repositories need an owner-agreed organization target before provisioning.');
   say(`  deploys as: ${s.deploy} · owner: ${s.owner} (${s.ownerIsOrg === null ? 'unknown' : s.ownerIsOrg ? 'an org' : 'a user'}) · signed in: ${s.login ?? 'no'} · sponsors listing: ${s.sponsorsListing ? 'yes' : 'no'} · discord token: ${s.discordToken ? 'yes' : 'no'} · codex login: ${s.codex ? 'yes' : 'no'} · docker ready: ${s.docker ? 'yes' : 'no'}`);
   say(`  yours alone, always: creating your GitHub and platform accounts, any captcha, any sudo prompt. Everything else the setup does, and opens the exact page when your click is needed.`);
-  say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and run the project check before activation. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
+  say('  setup agent: verify Bun 1.3.10 or newer in the actual host service and Hermes terminal, install project dependencies, commit the generated lockfile and manually verify the actual feature before activation; never run automated tests or test hooks. The kit uses Bun.YAML; a newer setup shell alone does not fix an older service runtime.');
   say('  setup agent: complete a first branding pass using branding/README.md: reuse or create the project name, short blurb and square icon. Provisional is fine. Use that identity for every project integration, including both Discord application and bot profiles; preserve existing application IDs and never substitute the Hermes/runtime name. Reconcile existing integrations even when their infrastructure steps are already complete.');
   say('  setup agent: follow the agreed communication policy in hermes/skills/project-communications/SKILL.md; configure only the selected platforms and verify actual human outreach and replies. Keep confidential spaces outside the publicly logged fleet.');
   say('  setup agent: record verified owner/delegate platform IDs, scoped authority and its source in the shared team section of .open-autonomy/config.yaml. Follow the communication skill for native permissions and preserve the agreed repository review policy.');
   if (opts.with.includes('subscription') || st.doors.subscription === 'yes') say('  Model arrangement: the existing Codex subscription choice is retained. Verify its exact agreed model and the native fleet call. The platform reporting connection is still required; no funding-choice questionnaire is needed.');
   else say('  setup agent: offer the detected subscription alongside the configured platform’s live /v1/catalog. Honor an existing explicit choice; otherwise explain costs and ask once. /v1/models lists only key bounds. Follow SETUP.md when the platform connection is not ready yet.');
-  say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new workflow ownership/production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
+  say('  setup agent: verify the owner on GitHub (gh api user: numeric id and login) and separately on every enabled human communication platform. Link accounts only with owner-authorized evidence; repository organizations, server ownership and the helper running setup are not interchangeable with the project owner. This command defaults new production review to the authenticated GitHub account: establish the agreed reviewer before those steps. Activation follows the completed agreement, not this command.');
   say('\nAfter establishing the owner and reviewer, the core prepares the repository on GitHub, the selected Git authentication, the platform keys and the owner\'s rules.');
   say('\nDevelopment connections (plus any explicitly selected later setup):');
   const recs = recommend(s, opts.with);

@@ -148,6 +148,20 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
+## Review coverage
+
+Open PRs need an assigned review path, including your planning PRs, strategy PRs and outside contributions.
+Reconcile them with native cards by PR URL; preserve existing task ownership and use its review lane rather
+than duplicating it. For outside work, verify scope authority from original sources before approval.
+
+For a planning PR without an implementation card, hand it to the existing native review lane. Create a
+review-only card with `hermes kanban create`, an idempotency key based on repository and PR number,
+`--initial-status running`, `--assignee default`, `--skill develop`, and `--workspace dir:<planning-worktree>`.
+Include the PR URL, exact head, authority and original outcome/acceptance in its body, then immediately
+use `hermes kanban request-review` with that handoff. This is review of existing work, not a new product
+outcome or implementation dispatch. Reuse its card on later revisions; never create duplicate reviewers
+or approve the PR from the authoring session. Preserve the worktree until review and landing complete.
+
 ## Plan releases deliberately
 
 Choose release scope from authorized roadmap outcomes; release planning does not authorize new features.

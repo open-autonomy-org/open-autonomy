@@ -25,7 +25,11 @@ is a required authority gate. Never cut release tags, approve or deploy; prepare
 Workers use the develop skill. Reviewers read the task's roadmap reference, CONSTITUTION.md and
 CONTRIBUTING.md, verify scope authorization and constitutional compliance against the proposed diff before landing and
 verify every acceptance line against the actual handoff, and complete only that execution
-scope. Merged code is not evidence of deployment or operational acceptance. Report remaining release gates
+scope. A developer pushes to open a PR, then requests native review. GitHub requires approval before
+merging and dismisses stale approvals on changed diffs. Reviewers submit a GitHub review for the exact
+head commit and confirm its merge before completing the native task; a Kanban comment alone is not
+GitHub approval. Authors cannot approve their own work. Human release review is a separate gate.
+Merged code is not evidence of deployment or operational acceptance. Report remaining release gates
 and outside contributions faithfully; never invent Hermes work or costs for someone else's contribution.
 
 Automated tests are banned; no test code or persistent test harness may be committed to main. Every develop

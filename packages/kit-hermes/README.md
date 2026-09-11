@@ -89,8 +89,9 @@ its model calls forwarded by the key valve beside it (which alone holds the proj
 where each is metered to the project's account. ROADMAP.md is the planning memory: the PM scrum reconciles sourced input and queues bounded fleet work.
 The native kanban holds execution tasks; the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
-verified, lands it on an `agent/<task id>` branch the landing workflow merges when the checks pass, and hands
-off; the review lane, Hermes's own, verifies the handoff against the constitution and `CONTRIBUTING.md` in a session of its own; once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill). Every
+verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its
+exact head against the constitution, scope and manual evidence, submits a GitHub review and confirms the
+merge before completing the task. GitHub requires approval and dismisses stale approvals on changed diffs; once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill). Every
 session shows on the project's page with its cost.
 
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
