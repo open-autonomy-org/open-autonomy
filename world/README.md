@@ -26,7 +26,7 @@ bun world/prepare.ts
 ```
 
 Preparation prints the exact World commands for the installed CLI or selected Twin checkout.
-It writes ordinary `world.config.json` and `handlers/openai.json` under
+It writes ordinary `world.config.json` and `<scenario>/handlers/openai.json` under
 `$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/`. Use the printed commands, or the equivalent
 installed CLI below, from the OA repository:
 
@@ -44,7 +44,7 @@ volter-world down "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" --purge
 another `up`; it is never silently reseeded. To change handlers or the opening situation, finish
 attached commands, run `down --purge`, prepare again and `up`. Other services use automatic ports;
 for a second simultaneous scenario, choose another name and `OA_VALVE_PORT` (default 18787,
-plus the following two ports for the existing OA valves). World reports conflicts and capacity
+plus the following three ports for the existing OA valves). World reports conflicts and capacity
 refusals. It never reclaims another actor's process or World.
 
 The model twin supplies authored judgment. A labeled stub is missing scenario content; read
@@ -87,7 +87,7 @@ volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/ope
 ```
 
 Read the issue and discussion replies through the community door. After the planning PR lands,
-a subsequent PM run can queue `community-usage`; inspect the resulting `COMMUNITY.md` on main
+a subsequent PM run can queue `community-usage`; inspect the resulting the [community document](model/stages/community-usage/COMMUNITY.md) on main
 and its source link to request #2. Routine reports stay local; the direct Discord reply goes to
 the person who asked. With no opening flags, the historical todo intentions instead await PM
 reconciliation before dispatch. `REHEARSAL_IDLE=1` starts with an empty board.

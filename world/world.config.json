@@ -150,7 +150,7 @@
         "${SCENARIO_DIR}/agent.sh"
       ],
       "port": 18787,
-      "portReason": "The existing OA entrypoint uses this port and the next two for its valves; choose OA_VALVE_PORT for another instance.",
+      "portReason": "The existing OA entrypoint uses this port and the next three for its valves and webhook listener; choose OA_VALVE_PORT for another instance.",
       "portArg": false,
       "rootArg": false,
       "injectEnv": "OA_AGENT_URL",

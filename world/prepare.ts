@@ -9,7 +9,7 @@ if (STATE === TREE || STATE.startsWith(`${TREE}/`)) throw new Error('WORLD_STATE
 const hermes = process.env.WORLD_HERMES_BIN;
 if (!hermes || !existsSync(resolve(hermes, 'hermes'))) throw new Error('Set WORLD_HERMES_BIN to the installed pinned Hermes bin directory (world/README.md)');
 const valve = Number(process.env.OA_VALVE_PORT ?? 18787);
-if (!Number.isInteger(valve) || valve < 1024 || valve > 65532) throw new Error('OA_VALVE_PORT must be an integer between 1024 and 65532');
+if (!Number.isInteger(valve) || valve < 1024 || valve > 65531) throw new Error('OA_VALVE_PORT must be an integer between 1024 and 65531');
 const cli = (vendor: string): string => {
   const checkout = process.env.TWINS_ROOT;
   const path = process.env[`WORLD_${vendor.toUpperCase().replaceAll('-', '_')}_CLI`] ?? (checkout

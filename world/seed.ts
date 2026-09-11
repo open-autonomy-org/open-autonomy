@@ -102,7 +102,7 @@ else {
 //    GITHUB_TOKEN from the home's .env, which the start script fills from this file), a Discord bot the twin accepts
 //    and its home channel when the world has a Discord twin, the webhook platform on loopback. A project's other
 //    channels come from its stackEnv hook.
-const lines: string[] = ['WEBHOOK_ENABLED=1', 'WEBHOOK_PORT=8646', `GITHUB_API_URL=${github}`, 'GITHUB_TOKEN=world-bot'];
+const lines: string[] = ['WEBHOOK_ENABLED=1', `WEBHOOK_PORT=${Number(need('PORT')) + 3}`, `GITHUB_API_URL=${github}`, 'GITHUB_TOKEN=world-bot'];
 if (process.env.DISCORD_TWIN_URL) {
   // A bot token of this world's own: the twin accepts any, and Hermes locks a token machine-wide (two worlds' brains on
   // the one deterministic fake would refuse to connect while the other's gateway runs).

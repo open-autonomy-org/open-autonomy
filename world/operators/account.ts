@@ -1,7 +1,7 @@
 // Manual funding, key rotation, model selection and deployed-version observations in the World.
 import { resolve } from 'node:path';
 import { ACCOUNT, ENC, MODEL, ROOT, SECRETS, api, context, git, need, sh } from '../lib.ts';
-import { PREVIOUS_MODEL, putMain } from '../opening.ts';
+import { PREVIOUS_MODEL } from '../opening.ts';
 if (!process.env.VOLTER_WORLD) throw new Error('Use volter-world attach');
 const [command, value] = process.argv.slice(2);
 const ctx = context();
@@ -11,9 +11,16 @@ if (command === 'rotate-key') {
     { env: { OPEN_AUTONOMY_URL: platform } });
   console.log('Rotation requested with five-second grace; inspect the valve health and platform key registry.');
 } else if (command === 'model') {
-  await git(ctx.stack.project, 'fetch', '-q', 'origin', 'main');
-  const config = await git(ctx.stack.project, 'show', 'origin/main:hermes/config.yaml');
-  await putMain(ctx, 'hermes/config.yaml', config.replace(`default: ${PREVIOUS_MODEL}`, `default: ${MODEL}`), `owner: select ${MODEL}`);
+  const gh = api(need('GITHUB_TWIN_URL'), { authorization: 'Bearer octocat' });
+  const path = `/repos/${ACCOUNT}/contents/hermes/config.yaml`;
+  const current = await gh.get(`${path}?ref=main`);
+  if (current.status !== 200) throw new Error(current.text);
+  const config = Buffer.from(current.body.content, 'base64').toString('utf8');
+  const updated = config.replace(`default: ${PREVIOUS_MODEL}`, `default: ${MODEL}`);
+  if (updated !== config) {
+    const result = await gh.put(path, { message: `owner: select ${MODEL}`, branch: 'main', sha: current.body.sha, content: Buffer.from(updated).toString('base64') });
+    if (result.status !== 200) throw new Error(result.text);
+  }
   console.log('Model selected on main. Send /restart through the scenario channel for native Hermes to reload it.');
 } else if (command === 'live') {
   const commit = value ?? (await git(ctx.stack.project, 'rev-parse', 'origin/main'));

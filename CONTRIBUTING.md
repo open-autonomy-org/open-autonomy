@@ -34,7 +34,7 @@ The bar every diff is reviewed against, beside the constitution's invariants. Sh
 ## Architecture decisions
 
 Material architecture decisions require an Architecture Decision Record (ADR) in
-`docs/decisions/NNNN-short-title.md`: runtime topology, trust and credential boundaries, durable data
+`docs/decisions/<number>-<short-title>.md`: runtime topology, trust and credential boundaries, durable data
 formats, service responsibilities, or major dependency choices. Consult the existing records before
 changing those decisions. Keep records concise and decision-specific; routine implementation details
 belong in code and the PR.
