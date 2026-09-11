@@ -41,6 +41,7 @@ const hooks: Hooks = {
   models: [PREVIOUS_MODEL],
   // Beyond the project on the twin, funded, its keys minted: the platform's patronage and the owner's opening moves.
   async seed(ctx) {
+    if (process.env.REHEARSAL_COMMUNITY === '1' && (process.env.REHEARSAL_IDLE !== '1' || process.env.REHEARSAL_SCRUM === '1' || process.env.REHEARSAL_RELEASE === '1')) throw new Error('community requires REHEARSAL_IDLE=1 without REHEARSAL_SCRUM or REHEARSAL_RELEASE');
     const gh = github(ctx); const adm = admin(ctx);
     // The deterministic OAuth user is an admin of the organization whose Sponsors money enters the grants pool: the
     // same membership lookup the page performs after login, through the twin's GitHub API. The scope-free OAuth token
@@ -78,6 +79,27 @@ const hooks: Hooks = {
     const synced = await adm.post(`/admin/accounts/${ENC}/sync`);
     if (synced.status !== 200) throw new Error(`platform: sync → ${synced.status}`);
     if (process.env.REHEARSAL_SCRUM === '1') await hooks.acts!['scrum-seed'](ctx, {});
+    if (process.env.REHEARSAL_COMMUNITY === '1') {
+      const human = api(ctx.world.GITHUB_TWIN_URL, { authorization: 'Bearer alice' });
+      for (const [number, title, body] of [
+        [1, 'question: what is todo-cli?', 'How do I see the available commands and propose an improvement?'],
+        [2, 'request: document todo usage', 'Please add COMMUNITY.md explaining the help command and how to propose an improvement. Link this request as the source.'],
+      ] as const) {
+        const issue = await human.post(`/repos/${ACCOUNT}/issues`, { title, body });
+        if (issue.status !== 201 || issue.body?.number !== number) throw new Error('community requires a fresh World with no existing issues');
+      }
+      const [owner, name] = ACCOUNT.split('/');
+      const lookup = await human.post('/graphql', { query: 'query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ id discussionCategories(first:100){ nodes { id slug } } } }', variables: { owner, name } });
+      const repository = lookup.body?.data?.repository;
+      const category = repository?.discussionCategories?.nodes?.find((c: { slug: string }) => c.slug === 'general');
+      if (!category?.id) throw new Error(`community: GitHub category lookup failed: ${lookup.text}`);
+      const discussion = await human.post('/graphql', { query: 'mutation($input:CreateDiscussionInput!){ createDiscussion(input:$input){ discussion { number } } }', variables: { input: { repositoryId: repository.id, categoryId: category.id, title: 'idea: a usage tip of the week', body: 'Could we share a helpful CLI example each week?' } } });
+      if (discussion.body?.data?.createDiscussion?.discussion?.number !== 1) throw new Error(`community requires a fresh World and GitHub createDiscussion support: ${discussion.text}`);
+      const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json'));
+      schedule.jobs.push({ name: 'community', prompt: 'WAKE: COMMUNITY. Run the community skill: read the sources, answer where asked and preserve requests for the PM.', schedule: 'every 15m', skills: ['community'], deliver: 'local' });
+      await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, 'community: enable the community desk for this scenario');
+      ctx.log('community: question #1, request #2 and discussion #1 seeded through GitHub APIs');
+    }
     ctx.log(`the books hold the funder's credits and the Sponsors pool; main bounds ${MODEL} and ${PREVIOUS_MODEL}, names the live service and the owner's door (${door}); the brain thinks on ${PREVIOUS_MODEL} until the owner moves it`);
   },
   // The stack's environment beyond the kit's: the registry twin for what the brain installs, the registrar for the treasurer.
@@ -170,6 +192,7 @@ const hooks: Hooks = {
     },
   },
   conditions: {
+    answered: async (ctx, want) => { const w = want as { issue: number; includes: string }; const r = await github(ctx).get(`/repos/${ACCOUNT}/issues/${w.issue}/comments`); if (r.status !== 200) throw new Error(r.text); return r.body.some((c: { body?: string }) => String(c.body ?? '').includes(w.includes)); },
     // A phrase on main's ROADMAP.md, or CHANGELOG.md ({"changelog":"…"}), or any file ({"file":{"path":…,"includes":…}}).
     roadmap: async (ctx, want) => (await onMain(ctx, 'ROADMAP.md')).includes(String(want)),
     changelog: async (ctx, want) => (await onMain(ctx, 'CHANGELOG.md')).includes(String(want)),

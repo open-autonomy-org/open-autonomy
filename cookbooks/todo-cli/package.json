@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "todo": "bun src/cli.ts",
-    "check": "bun test"
+    "check": "bun build src/cli.ts examples/notes-http.ts --target=bun --outdir=.build"
   }
 }

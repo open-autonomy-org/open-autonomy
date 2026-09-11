@@ -1,4 +1,0 @@
-# The project's tests live under test/. The rehearsal's stages (rehearsal/model/stages/<key>/) carry the files the scripted
-# brain writes for a task, tests among them, which are not this checkout's tests until that task lands.
-[test]
-root = "test"

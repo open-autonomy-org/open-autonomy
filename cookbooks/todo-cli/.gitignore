@@ -69,3 +69,6 @@ hermes/release-review.md
 
 # The rehearsal world's state, when WORLD_STATE_ROOT is not set.
 .volter/
+
+# Compile-only check output.
+.build/
