@@ -407,11 +407,12 @@ template's default as a verified catalog. This discovery does not require starti
 model call. A missing or unusable subscription should be stated plainly when offering the platform options.
 
 When the owner already selected the subscription, retain that choice and verify its agreed model; a catalog
-comparison is not a prerequisite. The platform connection is still needed for reporting. File-based Codex
-credentials use `CODEX_HOME` (default `~/.codex`); keyring-only or ephemeral login does not establish a
-transferable host credential. Follow [Codex authentication](https://developers.openai.com/codex/auth) for
-the installed storage arrangement. Never print the credential or silently change the operator's global
-storage policy. The managed subscription step remains incomplete until its protected copy is usable.
+comparison is not a prerequisite. The platform connection is still needed for reporting. Verify access
+through the installed Codex app-server as the intended host service user, with the same `CODEX_HOME`
+(default `~/.codex`). Codex owns its configured credential storage, including keyring access; OA does not
+require a transferable credential file. Follow [Codex authentication](https://developers.openai.com/codex/auth)
+for the installed storage arrangement. Never print credentials or change the operator's global storage
+policy. The subscription step remains incomplete until that host process can use the current login.
 
 After applying the helper, reconcile `hermes/config.yaml` with the agreed provider and exact model;
 the helper's seeded provider defaults are not the owner's model selection. For platform-funded profiles,
