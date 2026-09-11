@@ -48,7 +48,7 @@ rotated with a short grace). For community interactions, export `REHEARSAL_COMMU
 (without `REHEARSAL_SCRUM` or `REHEARSAL_RELEASE`) before `up`. The seed creates a question and a documentation
 request as issues, and a usage-tip idea as a discussion through GitHub GraphQL. Run `hermes cron run community`,
 inspect the issue comments and discussion reply through the community door, then `say "what is todo-cli?"`
-and inspect the Discord reply. Run `hermes cron run pm` and read the sourced `community-usage` section on main's
+and inspect the Discord reply. Routine cron reports stay local in this scenario. Run `hermes cron run pm` and read the sourced `community-usage` section on main's
 ROADMAP.md after the planning PR lands. The next scrum can queue the matching documentation stage.
 The transferred `rehearsal/stories/community.jsonl` records this sequence. It requires the current Twin
 checkout's GraphQL discussion creation support (`TWINS_ROOT`); an older twin refuses the seed loudly. The world stays up between edits; the platform reloads on its own

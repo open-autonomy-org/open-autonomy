@@ -96,6 +96,7 @@ const hooks: Hooks = {
       const discussion = await human.post('/graphql', { query: 'mutation($input:CreateDiscussionInput!){ createDiscussion(input:$input){ discussion { number } } }', variables: { input: { repositoryId: repository.id, categoryId: category.id, title: 'idea: a usage tip of the week', body: 'Could we share a helpful CLI example each week?' } } });
       if (discussion.body?.data?.createDiscussion?.discussion?.number !== 1) throw new Error(`community requires a fresh World and GitHub createDiscussion support: ${discussion.text}`);
       const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json'));
+      for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local';
       schedule.jobs.push({ name: 'community', prompt: 'WAKE: COMMUNITY. Run the community skill: read the sources, answer where asked and preserve requests for the PM.', schedule: 'every 15m', skills: ['community'], deliver: 'local' });
       await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, 'community: enable the community desk for this scenario');
       ctx.log('community: question #1, request #2 and discussion #1 seeded through GitHub APIs');
