@@ -177,6 +177,13 @@ offsets already applied is ignored (`idempotent: true` in that event's result), 
 reads the session back and continues from its `next_seq`. The response is `{ ok, results: [{ id, ok,
 session | update, idempotent?, error? }] }`; the first failing event stops the batch.
 
+`Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
+acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
+The `./reporting` adapter consumes Supercode's message windows and explicit completion records, verifies
+the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence.
+History changes that conflict with the append-only destination require reconciliation; they are not
+silently treated as new offsets. Privacy policy accepts standard YAML lists and rejects malformed values.
+
 Public reads, no key:
 
 | Route | What |
@@ -239,33 +246,3 @@ proposals leave the committed roster unchanged; inspect a partially created bran
 
 Authority changes need owner-authorized provenance even after merging. Native Discord access and GitHub
 release protection are reconciled separately by the setup agent; a roster edit is not release approval.
-
-
-## Native Codex transport
-
-`@open-autonomy/sdk/codex-bridge` supplies `serveCodexBridge` for a host-owned native
-app-server backend and `forwardCodexStdio` for Hermes's existing stdio transport. The kit
-vendors the same module at `.open-autonomy/sdk/codex-bridge.ts`. It requires Bun.
-
-The host supplies an unpredictable project capability, an agreed model/provider, an absolute
-workspace and a remote execution environment. Each connection owns one backend and one ephemeral
-thread. The bridge accepts text turns and native turn controls, pins thread configuration, and
-refuses account, configuration, arbitrary filesystem, history and permission APIs. Host metadata
-and protocol errors are withheld. It verifies that the local execution environment is absent and
-the remote executor is ready before work and before accepting turn completion. Disconnection
-closes the session without an execution fallback.
-
-The listener binds to host loopback, rejects browser origins and authenticates before opening a
-backend. The runtime must supply a protected route from the container to that listener; it must
-not expose an unrestricted native app-server. `connect` owns backend process creation, bounded
-stdout framing, configuration and termination. Treat capabilities as credentials and retain them
-outside the repository and published output.
-
-This is a transport component, not an activated local runtime or proof of container isolation.
-The runner must still isolate every execution path, including native MCP, plugins and hooks,
-retain login and reporting on the host, and prove the acceptance checks in the kit's setup guide.
-The bridge does not choose authentication or billing; the installed Codex retains its own login.
-After verifying an outer container boundary, the host can opt into `externalSandbox: true`. The bridge
-then pins Codex's native `externalSandbox` turn policy with restricted network access. This avoids
-requiring a second Linux namespace sandbox inside the container; it does not establish isolation
-itself or allow a container client to override permissions.

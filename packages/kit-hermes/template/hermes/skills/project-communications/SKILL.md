@@ -48,7 +48,14 @@ An empty roster grants nobody authority; establish its first owner from the exis
 and owner-led setup, never merely from the helper's authenticated account. Preserve the owner's repository review policy. Verify the source of each authority grant: a merged
 agent-authored assertion alone does not establish human authorization.
 
-Before activation, verify that the owner is recognized on each enabled avenue, an ordinary member is not
+The current roster supports GitHub and Discord identities. Other channels, including Slack, may carry
+discussion and outreach, but cannot establish project authority in this kit. For those channels, agree
+during setup that direction, delegation and release decisions are confirmed by the person's verified
+GitHub account; record this routing policy here, without duplicating their IDs. Keep the original
+discussion as context and source the authoritative confirmation. Do not invent unsupported roster fields
+or treat a Slack display name as identity evidence.
+
+Before activation, verify that the owner is recognized on each agreed authority avenue, an ordinary member is not
 recognized as the owner, and the actual release reviewers match the agreement. Use the world for message
 rehearsals; do not send live test messages without authorization. Land the agreement and native settings,
 start/reload Hermes through the existing lifecycle, and verify what it loaded before reporting completion.
@@ -93,6 +100,32 @@ channels, DMs and stored session history. During setup, enforce this with servic
 Hermes access settings; do not grant administrative access that bypasses the boundary. Verify the bot's
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
 by a published run. Humans bring an appropriate public statement when private matters affect the project.
+
+## Strategy agreement
+
+During setup, establish two independent choices with the owner: when strategy runs (on demand,
+scheduled, or agreed events) and what it may decide (bounded autonomous scope or proposals for human
+decision). Record the objective, exclusions, research/input sources, decision-makers and actual discussion
+channel here in plain language, with the owner's source. Reuse existing roster identities and native
+permissions. No new policy schema or credential mechanism is needed.
+
+For example, a parity mandate names reference products/workflows and bounds; a daily discussion names
+the agreed participants and channel. Either can be scheduled or requested on demand. An issue tracker
+can supply explicit authorized requests to PM while strategy remains available on demand. Tracker
+presence, frequency, bot authorship and silence never grant scope authority. PM records explicit
+verified asks in all arrangements. Preserve the original request and obtain verified confirmation when
+the current roster cannot establish authority on that integration.
+
+Default until an owner agreement says otherwise: strategy is available on demand, prepares proposals
+for human decision, and has no automatic schedule or event trigger. The setup agent confirms or replaces
+this recommendation; it does not create a recurring job merely because the skill exists. Configure an
+agreed strategy job using native Hermes cron with skills: [strategy], or load strategy in a separate
+native chat session on request. Preserve existing schedules on upgrades; inspect live jobs for older
+scope-expanding PM prompts and reconcile their instructions without deleting history or checkpoints.
+
+An authorized strategy decision must fit both its mandate and the constitution. PM manages its delivery;
+PM does not assume strategy authority when it runs out of work. Requests needing new strategy activity
+follow the agreed activation policy. A policy change needs owner authority; neither agent may widen it.
 
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps

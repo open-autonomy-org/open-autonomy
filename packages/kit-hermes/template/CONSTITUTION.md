@@ -10,7 +10,10 @@ else it got right. Changing this file is the owner's act, never a task's.
 ## Invariants
 
 - **The roadmap holds the plan.** The owner sets direction and constraints. The Hermes PM maintains sourced
-  working notes in `ROADMAP.md`, reconciles contributions and decisions, and queues fleet work on kanban.
+  working notes in `ROADMAP.md`, records explicit authorized requests, reconciles progress and decisions,
+  and queues execution work on kanban. Strategy develops scope under the owner's agreed mandate;
+  activation and scope authority are independent. Constitutional fit constrains outcomes at conception
+  and implementations at merge; it does not authorize either agent to invent scope.
   Human implementation commitments require acceptance; human release review is mandatory.
 - **The agent is readable.** Its identity, skills and schedule live in `hermes/`; changing what it does is a
   commit anyone can read.
@@ -18,8 +21,12 @@ else it got right. Changing this file is the owner's act, never a task's.
   the platform and published, with what it was for.
 - **Done means true in the running system.** A task is done when its acceptance lines hold where the project is
   verified, not when code exists.
-- **No automated test runs for more than thirty seconds.** All of them together, ever. Behavior is verified by
-  driving the running system.
+- **No automated tests.** Automated tests accumulate permanent code and maintenance obligations. As agents
+  add more, that cruft compounds until maintaining tests can make progress in the repository impossible.
+  Do not write or run automated tests. No automated test code or persistent test harness may be committed
+  to main. Each develop agent must verify the feature it adds or changes through REPL-style manual usage
+  of the running product, inspecting actual results without writing permanent test code. Record the
+  actions, observations and limitations in the task handoff or PR, not a new test file.
 
 ## Out of scope
 

@@ -19,7 +19,7 @@ every session it works, every cent it spends and everything it ships is public.
 ```bash
 create-open-autonomy setup . --plan             # inspect after agreeing the development connections
 bun install                                    # first setup: install dependencies and commit the generated lockfile
-bun run check                                  # the project's own definition of green; inside its world when configured
+bun src/index.ts                               # operate the initial program interactively in its configured world
 ```
 
 Start with the [agent-led setup guide](.open-autonomy/SETUP.md): establish the project brief, accept or
@@ -31,3 +31,7 @@ Made with the Open Autonomy Hermes kit; `create-open-autonomy check .` says whet
 
 The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
 short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
+
+Each develop agent verifies its feature through REPL-style manual usage and reports actual observations
+in its handoff. Automated tests are banned; no permanent test code may be committed to main. See
+CONSTITUTION.md and CONTRIBUTING.md for the rationale and working practice.

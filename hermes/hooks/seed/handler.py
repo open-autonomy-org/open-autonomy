@@ -46,7 +46,8 @@ def _configured(var: str) -> bool:
 
 
 def _deliver_target(name: str, deliver) -> object:
-    platform = str(deliver).strip().lower() if isinstance(deliver, str) else ""
+    # `slack:<channel>` / `discord:<channel>`: the platform is the word before the colon.
+    platform = str(deliver).strip().lower().split(":", 1)[0] if isinstance(deliver, str) else ""
     needs = _PLATFORM_CREDENTIALS.get(platform)
     if not needs or any(_configured(v) for v in needs):
         return deliver
@@ -115,14 +116,27 @@ async def handle(event_type: str, context: dict) -> None:
             continue
         job = live_by_name.get(name)
         if job is not None:
-            if bool(spec.get("no_agent")) or ((job.get("model") or None) == model and (job.get("provider") or None) == provider):
+            # The seed is the job's definition: a prompt, a skill, a schedule, a monitor or a delivery that moved in
+            # the seed moves in the live job (its id, its history and its enabled state stay); the model pin follows
+            # config.yaml. What the seed does not name is left as the operator set it.
+            updates = {}
+            if not bool(spec.get("no_agent")) and ((job.get("model") or None) != model or (job.get("provider") or None) != provider):
+                updates.update({"model": model, "provider": provider})
+            for field, live_key in (("prompt", "prompt"), ("skills", "skills"), ("monitor_script", "monitor_script"), ("monitor_url", "monitor_url"), ("script", "script"), ("enabled_toolsets", "enabled_toolsets")):
+                if field in spec and (spec.get(field) or None) != (job.get(live_key) or None):
+                    updates[live_key] = spec.get(field) or None
+            if "deliver" in spec and _deliver_target(name, spec.get("deliver")) != job.get("deliver"):
+                updates["deliver"] = _deliver_target(name, spec.get("deliver"))
+            if "schedule" in spec and spec.get("schedule") != ((job.get("schedule") or {}).get("display") if isinstance(job.get("schedule"), dict) else job.get("schedule")):
+                updates["schedule"] = spec.get("schedule")
+            if not updates:
                 continue
             try:
-                update_job(job["id"], {"model": model, "provider": provider})
+                update_job(job["id"], updates)
                 repinned += 1
-                logger.info("seed: re-pinned job '%s' to %s / %s (config.yaml moved)", name, provider, model)
+                logger.info("seed: refreshed job '%s' from the seed (%s)", name, ", ".join(sorted(updates)))
             except Exception as e:
-                logger.error("seed: failed to re-pin job '%s': %s", name, e)
+                logger.error("seed: failed to refresh job '%s': %s", name, e)
             continue
         try:
             create_job(
@@ -150,3 +164,55 @@ async def handle(event_type: str, context: dict) -> None:
 
     if created or repinned:
         logger.info("seed: seeded %d job(s) from jobs.seed.json, re-pinned %d", created, repinned)
+    _seed_webhooks()
+
+
+def _seed_webhooks() -> None:
+    """The project-owned webhook routes (cron/webhooks.seed.json): a route per entry, created when absent, its
+    prompt, skills, deliver, events, script and toolsets refreshed from the seed, its secret kept once made.
+    The seed never carries a secret; the route's is generated here and lives only in the home's
+    webhook_subscriptions.json, where the sender's door reads it."""
+    import secrets as _secrets
+    seed_file = _hermes_home() / "cron" / "webhooks.seed.json"
+    if not seed_file.exists():
+        return
+    try:
+        data = json.loads(seed_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        logger.error("seed: failed to read %s: %s", seed_file, e)
+        return
+    routes = data.get("routes", []) if isinstance(data, dict) else data
+    routes = [r for r in routes if isinstance(r, dict) and r.get("name")]
+    if not routes:
+        return
+    try:
+        from hermes_cli.webhook import _load_subscriptions, _save_subscriptions
+    except Exception as e:  # pragma: no cover - import path depends on runtime
+        logger.error("seed: cannot import hermes_cli.webhook: %s", e)
+        return
+    subs = _load_subscriptions()
+    changed = 0
+    for spec in routes:
+        name = str(spec["name"]).strip().lower().replace(" ", "-")
+        existing = subs.get(name) or {}
+        route = {
+            "description": spec.get("description") or f"Seeded route: {name}",
+            "events": [str(e).strip() for e in (spec.get("events") or [])],
+            "secret": existing.get("secret") or _secrets.token_urlsafe(32),
+            "prompt": spec.get("prompt") or "",
+            "skills": [str(x).strip() for x in (spec.get("skills") or [])],
+            "deliver": _deliver_target(name, spec.get("deliver") or "log"),
+            "created_at": existing.get("created_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        if spec.get("script"):
+            route["script"] = str(spec["script"]).strip()
+        if spec.get("toolsets"):
+            route["toolsets"] = [str(x).strip() for x in spec["toolsets"]]
+        if spec.get("deliver_only"):
+            route["deliver_only"] = True
+        if {k: v for k, v in existing.items() if k != "created_at"} != {k: v for k, v in route.items() if k != "created_at"}:
+            subs[name] = route
+            changed += 1
+    if changed:
+        _save_subscriptions(subs)
+        logger.info("seed: seeded %d webhook route(s) from webhooks.seed.json", changed)

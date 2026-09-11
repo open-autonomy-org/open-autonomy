@@ -13,11 +13,13 @@
 // port as api.github.com, and the home's .env points GITHUB_API_URL there with GITHUB_TOKEN=valve — every comment the
 // desk posts is the app's, and the key never enters the agent.
 //
-// Legacy installations only: <secrets>/codex.json, when present, is the owner's ChatGPT/Codex subscription login (the Codex CLI's auth.json
-// tokens): the valve serves it on the third port, and the home's .env names it (HERMES_CODEX_BASE_URL) for a custom
-// provider in the project's config that speaks the Codex protocol — the model runs on the subscription, the login
-// never enters the agent. New setup never copies this file. Local Codex activation is blocked until
-// the host sidecar and container executor are integrated; it must not start the fleet as the operator.
+// The owner's Codex subscription is Hermes's own `openai-codex` provider, plain Hermes: bare on a laptop it runs on the
+// computer's login (the Codex CLI's, adopted into Hermes's store on the first start) and this script does only that. Where the login must stay out of the agent (a container)
+// or the model is a twin (a world), this script forwards: <secrets>/codex.json (the Codex CLI's auth.json tokens, the
+// setup's copy), when present, is served by the valve on the third port and refreshed there; HERMES_CODEX_BASE_URL in
+// this script's own environment names a world's model twin instead. Either way the home's .env points the provider
+// there and the home's auth store carries a stand-in credential, so the fleet's configuration is the same everywhere
+// and only what carries the login differs.
 //
 // The processes, in order:
 //   ssh-agent   holds <secrets>/deploy_key, its socket at <home>/ssh-agent.sock; the gateway pushes through it
@@ -36,7 +38,6 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { constants, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
-import { checkLocalCodexActivation } from './sdk/local-codex.ts';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -66,15 +67,6 @@ const developerKey = resolve(secrets, 'agent.env');
 if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
 const origin = arg('--origin') ?? process.env.ORIGIN;
 const as = arg('--as');
-const localCodex = argv.includes('--local-codex');
-// Check both the checkout and the committed home loaded below. Neither an
-// explicit flag nor a profile may activate the unisolated host runtime.
-function checkCodexRuntime(source: string): void {
-  const configs = ['config.yaml', 'profiles/treasurer/config.yaml'].map((file) => resolve(source, file))
-    .filter((file) => existsSync(file)).map((file) => Bun.YAML.parse(readFileSync(file, 'utf8')));
-  checkLocalCodexActivation(configs, localCodex);
-}
-checkCodexRuntime(resolve(project, 'hermes'));
 const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
 const baseUrl = `http://127.0.0.1:${valvePort}/v1`;
 const payUrl = `http://127.0.0.1:${valvePort + 1}/v1`;
@@ -185,7 +177,6 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, 'hermes');
-checkCodexRuntime(committed);
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -198,17 +189,73 @@ const githubApp = existsSync(resolve(secrets, 'github-app.json'));
 const managed = githubApp ? /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL|GITHUB_API_URL|GITHUB_TOKEN)=/ : /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX_BASE_URL)=/;
 const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !managed.test(l)) : [];
 // The Codex subscription's address goes in the .env too: Hermes loads the home's .env into every process it starts,
-// including the scheduler's job runners, which do not inherit the gateway's environment.
-const codexBase = !localCodex && existsSync(resolve(secrets, 'codex.json')) ? [`HERMES_CODEX_BASE_URL=http://127.0.0.1:${valvePort + 2}/backend-api/codex`] : [];
+// including the scheduler's job runners, which do not inherit the gateway's environment. A world names its model twin
+// in this script's environment; a container's login is the valve's third port; bare with neither, Hermes goes to the
+// subscription itself.
+const codexFile = resolve(secrets, 'codex.json');
+const codexPort = valvePort + 2;
+const codexForward = process.env.HERMES_CODEX_BASE_URL?.trim() || (existsSync(codexFile) ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
+const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
 const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
-// The agent's channels: <secrets>/channels.env (the setup writes it: the Discord bot and its channel) is this start's truth
-// for every DISCORD_* line; on the first start without it, what the environment says comes along instead.
+// The agent's channels: <secrets>/channels.env (the setup writes it: the Discord bot and its channel; an engagement
+// adds its Slack bot, its webhook platform, whatever it speaks) is this start's truth for every line it holds — a
+// channel is whatever platform the gateway reads from the home's .env, not a list this script knows; on the first
+// start without it, what the environment says comes along instead.
 const channelsFile = resolve(secrets, 'channels.env');
-if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => /^DISCORD_[A-Z_]+=/.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (/^DISCORD_[A-Z_]+=/.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
+const channelLine = /^[A-Z][A-Z0-9_]*=/;
+if (existsSync(channelsFile)) { const ch = readFileSync(channelsFile, 'utf8').split('\n').filter((l) => channelLine.test(l)); lines.splice(lines.length, 0, ...ch); for (let i = lines.length - ch.length - 1; i >= 0; i--) if (channelLine.test(lines[i]) && ch.some((c) => c.split('=')[0] === lines[i].split('=')[0])) lines.splice(i, 1); }
 else if (!existsSync(envFile)) for (const k of Object.keys(process.env).sort()) if (/^(DISCORD_|GITHUB_TOKEN$|GITHUB_API_URL$)/.test(k) && process.env[k]) lines.push(`${k}=${process.env[k]}`);
 writeFileSync(envFile, `${lines.join('\n')}\n`);
+// Hermes's own openai-codex provider takes its bearer and its address from its credential pool: the home's entries
+// first, and when the home has none, the user's global store (~/.hermes/auth.json), whose entry carries the real
+// service's address; with nothing usable it adopts the Codex CLI's login from $CODEX_HOME. Forwarded (a container's
+// valve, a world's twin), the home therefore carries a stand-in of its own — a pool entry and the singleton record,
+// both with the forward address and a token that is not a JWT, which Hermes sends as it is and never refreshes — and
+// the CLI's login is out of reach, so a twin can never be bypassed for the real service. Bare, the computer's login:
+// Hermes's own store when it has one, else the Codex CLI's adopted into it; a computer with no Codex login stops the
+// start, as a missing key does.
+const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
+if (onCodex) {
+  type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
+  const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
+  const holds = (s: Store): boolean => !!s.providers?.['openai-codex']?.tokens?.access_token || (s.credential_pool?.['openai-codex'] ?? []).some((e) => typeof e?.access_token === 'string' && !!e.access_token);
+  const authFile = resolve(home, 'auth.json');
+  const store = readStore(authFile);
+  if (codexForward) {
+    // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
+    // which would be a second entry pointing the wrong way; with no singleton it takes the pool, whose entry names
+    // the forward address itself, and the address in the home's .env agrees.
+    const now = new Date().toISOString();
+    if (store.providers?.['openai-codex']) delete store.providers['openai-codex'];
+    const pool = (store.credential_pool ??= {});
+    const entries = (pool['openai-codex'] ?? []).filter((e) => e?.id !== 'valve');
+    pool['openai-codex'] = [{ id: 'valve', label: 'the forwarded subscription', source: 'manual:valve', priority: 0, access_token: 'valve', refresh_token: 'valve', base_url: codexForward, inference_base_url: codexForward, last_refresh: now }, ...entries];
+    writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+    const noCli = resolve(home, 'codex-home-none');
+    mkdirSync(noCli, { recursive: true });
+    process.env.CODEX_HOME = noCli;
+    // Hermes reads the user's global store (~/.hermes/auth.json) into the pool only for a provider the home has no
+    // entry for; the stand-in is that entry, so the user's real login stays out. HOME stays the user's: a project's
+    // doors may live under it (Peak's ~/peak), and a container gives the agent its own HOME already.
+  } else if (!holds(store)) {
+    // Bare, the computer's login: the Codex CLI's (`codex login`, its auth.json under CODEX_HOME or ~/.codex), adopted
+    // into Hermes's own store the way Hermes's importer does it — Hermes then keeps and refreshes that session itself.
+    // The home's store alone counts: Hermes's model path reads it directly, never the user's global one.
+    const cliFile = resolve(process.env.CODEX_HOME?.trim() || resolve(homedir(), '.codex'), 'auth.json');
+    let cli: { tokens?: { access_token?: string; refresh_token?: string } } = {};
+    try { cli = JSON.parse(readFileSync(cliFile, 'utf8')); } catch { /* no CLI login */ }
+    if (cli.tokens?.access_token && cli.tokens.refresh_token) {
+      (store.providers ??= {})['openai-codex'] = { tokens: cli.tokens, last_refresh: new Date().toISOString() };
+      writeFileSync(authFile, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+      say(`the Codex subscription: the computer's login (${cliFile}) adopted into ${authFile}`);
+    } else {
+      console.error(`start: the model is the Codex subscription (provider openai-codex) and this computer has no Codex login — run \`codex login\` once, then start again`);
+      process.exit(1);
+    }
+  }
+}
 own(home);
 say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
@@ -220,23 +267,29 @@ writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\n
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
 if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
-// The Codex subscription: the valve holds the login and serves it on the third port; Hermes reaches it as a named
-// custom provider speaking the Codex protocol (base_url ${HERMES_CODEX_BASE_URL}, api_key `valve`), which the home's .env names.
-const codexFile = resolve(secrets, 'codex.json');
-const codexPort = valvePort + 2;
-if (!localCodex && existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
+// The Codex subscription: the valve holds the login and serves it on the third port, which the home's .env names.
+if (existsSync(codexFile)) keys.push('--codex', `${codexFile}:${codexPort}`);
 // The agent's GitHub identity: the valve mints the app's installation tokens and serves the desk's routes on the fourth port.
 const githubFile = resolve(secrets, 'github-app.json');
 if (githubApp) keys.push('--github-app', `${githubFile}:${valvePort + 3}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'sdk', 'valve.ts'), ...keys], {});
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
-//    .open-autonomy/package.json) are installed on the first start of a bare checkout.
+//    .open-autonomy/package.json) are installed when that file is not the one the last complete install satisfied:
+//    a stamp beside them names it, and a failed install leaves none, so node_modules alone is no evidence. (The
+//    lockfile is not the identity: a clone carries none, the kit ignores it.) An install that is already complete
+//    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
-if (!existsSync(resolve(import.meta.dir, 'node_modules'))) {
-  const install = Bun.spawnSync({ cmd: drop(['bun', 'install']), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
-  if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }
-  say(`reporter dependencies installed in ${import.meta.dir}`);
+{
+  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find(existsSync);
+  const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
+  const want = String(Bun.hash(readFileSync(resolve(import.meta.dir, 'package.json'))));
+  if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
+    const install = Bun.spawnSync({ cmd: drop(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])]), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
+    if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }
+    writeFileSync(stamp, `${want}\n`);
+    say(`reporter dependencies installed in ${import.meta.dir}`);
+  }
 }
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
 const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
@@ -261,6 +314,6 @@ setInterval(() => {
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, constants.signals.SIGUSR1);
 }, 5000);
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${localCodex ? '; installed local Codex (native app-server)' : existsSync(codexFile) ? `; legacy Codex proxy on :${codexPort}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
+say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubApp ? `; the GitHub App on :${valvePort + 3}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

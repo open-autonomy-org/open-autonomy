@@ -1,7 +1,7 @@
 ---
 name: develop
-description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. No tests for their own sake.
-version: 4.1.0
+description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. Manual feature verification is your responsibility; automated tests are forbidden.
+version: 4.3.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -12,7 +12,8 @@ metadata:
 # Develop
 
 You work one task from the board. `kanban_show` gives it to you: a title, and acceptance lines in its body.
-Read its roadmap reference for purpose, dependencies, human commitments and release gates.
+Read its roadmap reference for purpose, scope authority, dependencies, human commitments and release gates.
+A task or compatible constitutional goal does not authorize extra scope; report missing authorization to PM.
 Those lines define the execution handoff; the roadmap outcome can remain open after this task. You make every one true in the running system; code existing
 is not done.
 
@@ -24,21 +25,30 @@ is not done.
    supersedes your task, report the overlap for PM reconciliation before duplicating it. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
    what is out of scope is blocked, not built), `CONTRIBUTING.md` (how code is written here) and `AGENTS.md`.
    Read the code an acceptance line touches before you write.
-3. Build it. Match `CONTRIBUTING.md`. Write no test unless the acceptance line guards an invariant of the
-   constitution and `bun run check` stays under thirty seconds with it; behavior is verified by running the system,
-   never by a test written for the occasion.
-4. Verify every acceptance line by driving the running system where `AGENTS.md` says it is verified: in the
-   project's own twin world when it keeps one (`world/`), as its operator, one action at a time, reading what
-   comes back; otherwise by running the program itself. You cannot reach production and must not try. Run
-   `bun run check` once, green, before every push.
-5. Commit small, signed as the agent, the task id first in the subject:
+3. Build it. Match `CONTRIBUTING.md`. Automated tests are banned: their permanent code and maintenance
+   obligations compound as agents add more, eventually making repository progress impossible. Never write
+   or run automated tests, and never commit test code or a persistent test harness to main. This includes
+   regression tests, even for constitutional invariants.
+4. You are responsible for verifying the feature you add or change through REPL-style manual usage.
+   Drive the running system where `AGENTS.md` says it is verified: in the project's own twin world when
+   configured, otherwise by running the program itself. Use interactive commands or the actual UI, inspect
+   each result, and exercise relevant failure cases. Use disposable synthetic data; write no permanent test
+   code. Inspect command definitions before invoking them; never run automated tests through a check,
+   script or hook. You cannot reach production and must not try. Record what you did, what happened and
+   any unverified acceptance in the handoff. Source review alone does not demonstrate feature behavior.
+5. Before landing, review the final diff against the authorized outcome and every constitutional invariant.
+   An acceptance checklist or green check cannot waive either. Remove accidental scope expansion or block
+   for the needed decision; native reviewers apply the same scope and constitution check to the handoff.
+   Commit small, signed as the agent, the task id first in the subject:
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
 6. Push the branch once, when every acceptance line is true: `git push -u origin agent/<task id>`. The landing
    merges whatever is pushed, so a push mid-task lands half a feature on main; commit as often as you like, push
    at the handoff. The landing workflow opens the pull request and merges
    it when the checks pass. Never wait for it; never open a pull request; never push to `main`; never rewrite
    history. If the branch exists from an earlier attempt, push to `agent/<task id>-<YYYYMMDD-HHMM>`.
-7. Hand off: `kanban_request_review` naming the branch and the commit, and what is verified how. The handoff is the
+7. Hand off: `kanban_request_review` naming the branch and commit, the manual actions and observed
+   results for each acceptance line, and any limitations. Reviewers inspect that evidence and the diff;
+   reject added test code. Automated test output is not a substitute for your manual feature verification. The handoff is the
    only way you end a task: you never run `hermes kanban complete`, `reclaim`, `unblock`, `archive` or `edit` on
    any task, yours included — completing is the review lane's act after it has read your work, and a task you
    complete yourself was never reviewed. Name no reviewer:
@@ -81,5 +91,4 @@ conversation. From the terminal the CLI needs its home and its path named in ful
 
 ## Cost
 
-Every model call is metered to the project and public. Read before you write, run the check once, stop when
-verified.
+Every model call is metered to the project and public. Read before you write, manually verify the feature, and stop when verified.

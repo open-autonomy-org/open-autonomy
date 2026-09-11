@@ -148,11 +148,14 @@ if (command === 'poll' && doorless) {
   console.log(JSON.stringify(await github('POST', `/repos/${account}/issues/${rest[1]}/comments`, { body: rest[2] })));
 } else if (command === 'poll') {
   const since = cursor();
+  // GitHub can return an empty page for the epoch sentinel. The first poll has
+  // no lower bound; only send a since filter after a real poll was acknowledged.
+  const sinceQuery = since === '1970-01-01T00:00:00Z' ? '' : `since=${encodeURIComponent(since)}`;
   type Issue = { number: number; title: string; body: string | null; state: string; html_url: string; updated_at: string; pull_request?: unknown; user?: { login?: string } };
-  const issues = await pages<Issue>(`/repos/${account}/issues?state=all&since=${encodeURIComponent(since)}`);
+  const issues = await pages<Issue>(`/repos/${account}/issues?state=all${sinceQuery ? `&${sinceQuery}` : ''}`);
   for (const i of issues) {
     console.log(`NEW ${i.pull_request ? 'pull request' : 'issue'} ${JSON.stringify(i)}`);
-    const comments = await pages<{ body: string; html_url: string; created_at: string; updated_at: string; user?: { login?: string } }>(`/repos/${account}/issues/${i.number}/comments?since=${encodeURIComponent(since)}`);
+    const comments = await pages<{ body: string; html_url: string; created_at: string; updated_at: string; user?: { login?: string } }>(`/repos/${account}/issues/${i.number}/comments${sinceQuery ? `?${sinceQuery}` : ''}`);
     for (const c of comments) if (after(c.updated_at ?? c.created_at, since)) console.log(`NEW comment on #${i.number} ${JSON.stringify(c)}`);
   }
   for (const d of await discussions()) {

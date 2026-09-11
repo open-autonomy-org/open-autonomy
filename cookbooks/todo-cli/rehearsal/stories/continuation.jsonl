@@ -1,0 +1,11 @@
+{"act":"release-schedule","phase":"request-review"}
+{"job":"pm"}
+{"until":{"roadmap":"Release decision: request-review"},"budget":300}
+{"job":"pm"}
+{"until":{"channel":"Review release release-next"},"budget":120}
+{"act":"release-schedule","phase":"request-review","continue":true,"request":"add a task"}
+{"job":"pm"}
+{"until":{"roadmap":"Explicit owner request: add a task"},"budget":300}
+{"job":"pm"}
+{"until":{"board":{"title":"todo add appends an item"}},"budget":120}
+{"expect":{"roadmap":"Release decision: request-review"}}

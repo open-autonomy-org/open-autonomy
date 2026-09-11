@@ -1,6 +1,11 @@
 # This project's agent
 
-This is a Hermes home: persona, skills (`pm`, `develop`, `community`), profiles, configuration and cron seeds.
+This is a Hermes home: persona, skills (`strategy`, `pm`, `develop`, `community`), profiles, configuration and cron seeds.
+Strategy develops roadmap scope under the owner mandate recorded in the project-communications skill.
+It remains available on demand; an agreed native schedule or trigger can activate it automatically.
+Scheduling and decision authority are independent. PM always captures explicit authorized requests,
+but does not invent features from an empty board or the constitution.
+
 The PM runs an hourly scrum over `ROADMAP.md` (notable present/future intentions) and `CHANGELOG.md`
 (notable changes consolidated into main, separating Unreleased from released). It consolidates owner
 direction, community input, outside contributions and fleet activity, coordinates human commitments and

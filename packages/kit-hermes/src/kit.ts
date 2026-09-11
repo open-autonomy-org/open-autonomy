@@ -18,8 +18,8 @@ export interface KitRecord { kit: string; version: string; params: KitParams; di
 
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
-// its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's three).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|scrum\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+// its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|community\.ts|maintain\.ts|scrum\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -40,7 +40,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK is vendored into the generated repository under .open-autonomy/sdk, kit-owned, so
 // the reporter and the key tool run from a bare clone with no package to publish or install.
 const SDK_SRC = resolve(dirname(Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir)), 'src');
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts', 'valve.ts', 'team.ts', 'credentials.ts', 'local-codex.ts', 'codex-bridge.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'rails.ts', 'valve.ts', 'team.ts', 'credentials.ts', 'reporting.ts'];
 
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
 // the account as a URL path segment); binary-looking files pass through untouched.
@@ -128,6 +128,14 @@ export function upgrade(dir: string): Outcome {
     }
   }
   const out = write(dir, rendered, (rel) => (isOwned(rel) && !rec.divergences.includes(rel)) || rel === KIT_FILE || (rel === 'ROADMAP.md' && !existsSync(join(dir, rel))));
+  // Repair the exact empty-list spelling emitted by older kits. Other project
+  // policy, including malformed custom values, remains the owner's to resolve.
+  const policyFile = join(dir, '.open-autonomy/config.yaml');
+  if (existsSync(policyFile)) {
+    const policy = readFileSync(policyFile, 'utf8');
+    const repaired = policy.replace(/^  private:          # session ids or job names that never publish, whatever their kind\n    - \[\]\n(?=\s*\n)/m, '  private: []       # session IDs, job IDs or job names that never publish\n');
+    if (repaired !== policy) { writeFileSync(policyFile, repaired); out.written.push('.open-autonomy/config.yaml'); }
+  }
   const gone = retired(dir, rendered, rec);
   for (const rel of gone) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
   // A directory the retirement emptied goes too.

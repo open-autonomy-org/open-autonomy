@@ -32,12 +32,11 @@ AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (historical migration input),
-                     cron/jobs.seed.json (the PM, hourly; the community desk, every quarter hour), config.yaml (the model: the project's own choice), the seed hook
+                     cron/jobs.seed.json (the PM, hourly; the community desk, every quarter hour; a monitor job wakes only when its script's output changed), cron/webhooks.seed.json (routes that wake the agent on a signed POST, their secrets generated at seed time and kept in the home), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
-                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the agent's four
-                     processes, the one way it starts), the vendored SDK, kit.json (which kit, version and parameters made this repository)
-container/           the default for a real deployment (bare is for development and fast debugging): one image whose entrypoint is start.ts as root, dropping the gateway to the image's user; the pinned Hermes
-.github/workflows/   land.yml (the landing convention; contributors run the project check before pushing)
+                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
+container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
+.github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
 ```
 
 ## The guided setup
@@ -100,14 +99,18 @@ human review only for a ready, sourced PM release decision with a fixed candidat
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.
 
-The reporter beside it is keyless: it discovers the agent's sessions through supercode's harness SDK
-(`subscribeSessionIndex`, `follow`, `subscribeSessionActivity`) and publishes each one through the valve
-with the Open Autonomy SDK, attaching it to the task it serves. It publishes the rest the same way: the board
-(`workflowLoad`: every task as a roadmap item, and each task's lane, attempts, handoff and verdicts under it) and
-the agent's setup (its persona, model, schedule and skills). The platform reads no file of
-the agent's; everything a page shows about it came through the SDK. Scheduled runs publish by default;
-`.open-autonomy/config.yaml` names the private exceptions. The project's page shows every session, update
-and settled cent per item, live while a session runs.
+The reporter is an SDK-to-SDK publisher. Supercode supplies session discovery and paginated transcripts,
+native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's
+SDK batches and acknowledges delivery. Silence never ends a session, and a task's lane never invents
+a review verdict. The reporter reads repository-owned documents from committed main and applies the
+YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files.
+
+Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
+history-change events reconcile against Supercode and the destination's receipt. An upload failure stays
+retryable. If already-published history changes, the append-only destination cannot replace it: reporting
+stops for that session with an explicit reconciliation error rather than skipping or duplicating it.
+The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
+default, with private session/job exceptions and optional chat publication controlled by project policy.
 
 **Rails.** The agent's model calls need no configuration beyond the key. `rails:` in
 `.open-autonomy/config.yaml` opens the two others, off by default: a single-use card minted against the
@@ -116,15 +119,18 @@ for a listed partner within a bound. Both leave records on the public audit trai
 
 ## The world
 
-A project that talks to a vendor verifies against twins, never the vendor: `bun add -d @volter/twin-world @volter/twin-<vendor>`,
-a `world/world.json` naming them, `bunx volter-world up world/world.json`. The develop skill drives the running
-system in that world, one action at a time (this repository's own `world/` is the shape). Nothing an agent does
-reaches a real API.
+A project that talks to a vendor verifies against twins, never the vendor: the kit's rehearsal (`.open-autonomy/rehearsal/`,
+kept current by `upgrade`) brings the project's own world up — the twins its channels name in `rehearsal/world.json`, the
+model twin on its scripted brain, the backend copy, the brain's stack — and drives stories through it. The develop skill
+drives the running system in that world, one action at a time (this repository's own `world/` runs the same rehearsal in
+a cookbook). Nothing an agent does reaches a real API.
 
 ## Nothing in the agent's reach is a secret that matters
 
-The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Pushes sign through an ssh-agent the start script loads with
-one repository-scoped deploy key, which the gateway never holds. Delivery uses at most a Discord bot token. Every session's turns
+The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Managed deployments sign pushes through an ssh-agent
+loaded with one repository-scoped deploy key. Local Codex uses the project GitHub App through the host
+valve; startup checks its Git routes and Contents write grant before starting Hermes. The gateway
+holds neither credential. Delivery uses at most a Discord bot token. Every session's turns
 are published; the platform redacts secret-shaped text at intake as the second wall.
 
 ## Roadmap scrum upgrades
@@ -142,6 +148,16 @@ still equates the board and roadmap. No production or release permission changes
 kanban creation from a sourced, landed roadmap section marked `Dispatch: fleet`. Decisions, priorities,
 human commitments and release review stay with the Hermes skills, not a scheduler implemented by the kit.
 
+Strategy owns product-scope development under the owner's agreement in the existing project-communications
+skill. Activation (on demand, scheduled or agreed event) and authority (bounded autonomous decisions or
+proposals for human decision) are independent. The default is available on demand with proposals for human
+decision; no strategy cron job is seeded automatically. Native sessions and cron use the same strategy skill.
+PM always records explicit authorized requests, including from the agreed trackers, and manages delivery.
+PM may decompose an authorized outcome, but cannot create successor features from the constitution or an
+empty board. The constitution constrains scope at conception and implementation at merge. Upgrades add the
+skill without changing project-owned mandates or schedules; reconcile legacy PM-inferred drafts and old job
+prompts before dispatch. Keep strategic outcomes and unresolved proposals in ROADMAP.md, tasks in kanban.
+
 PM owns careful distillation: ROADMAP.md holds notable present/future intentions; CHANGELOG.md holds notable
 changes consolidated into main, separating Unreleased from released. Contributors need no special handoff
 or shared-document edit. Routine activity remains in source history. The native PM cron notepad carries
@@ -155,7 +171,18 @@ not a release trigger. Only a landed, ready PM decision with a fixed candidate w
 later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
 See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
 
-The local Codex setup choice uses the operator's installed CLI and allowance, without copying its login
-or provisioning remote hosting. Activation is blocked until the host sidecar and container executor are
-integrated and verified; native app-server transport alone does not isolate agent tools. Follow the
-generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks.
+The local Codex setup choice uses the operator's ChatGPT allowance on this computer. Both launch modes use
+the host valve, which asks the installed Codex for the current login through its app-server protocol.
+Codex owns credential storage and refresh; Hermes receives only a stand-in credential. OA keeps no
+project copy of the login. Run the host service as the signed-in user with the same `CODEX_HOME`. This choice does not provision remote
+hosting. The setup agent installs the local image and trusted host service, then verifies the
+project connections and development loop. Follow the
+generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks. The reporter
+can run on the host with `--container <id> --project <container checkout> --state-file <host cursor file>`
+and `HERMES_HOME=<container home>`. It reads through the container's native Supercode process; the host
+filters and publishes the stream, without copying SQLite files or mounting host credentials into the agent.
+
+Automated tests are banned: their accumulated code and maintenance become cruft that can prevent
+repository progress. Each develop agent verifies its feature through REPL-style manual usage of the
+running product, records observations in its handoff and commits no permanent test code. The shared
+develop skill and seeded constitution/contributor instructions carry this policy.

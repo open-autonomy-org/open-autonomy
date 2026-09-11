@@ -3,7 +3,7 @@
 # with `--as hermes`: the secrets mounted at /secrets are root's, and the gateway runs as the image's `hermes` user
 # and can reach no key. The checkout is cloned into /work/project on first boot; the home lives at /opt/data.
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
-FROM ${HERMES_IMAGE}
+FROM ${HERMES_IMAGE} AS managed
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*

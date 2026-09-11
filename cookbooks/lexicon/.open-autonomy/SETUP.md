@@ -17,6 +17,12 @@ workflow. Deterministic helpers perform bounded operations and check facts: the 
 command success, credential storage and access. Do not turn this guide into a configuration framework
 or treat discovered credentials as decisions.
 
+Automated tests are banned by the project constitution. Do not create or run them, including indirectly
+through check commands or hooks, and never commit test code to main. During setup, inspect any verification
+command before running it. Each develop agent demonstrates its feature through REPL-style manual usage
+without permanent test code and records observations in its handoff. This rule also applies to setup
+rehearsals; use interactive operation, not automated scenario runners.
+
 ## Orient before presenting setup
 
 Open Autonomy follows GitHub's organization structure: an OA organization is the GitHub organization,
@@ -229,7 +235,7 @@ outcome only after observing every listed result; otherwise keep the outstanding
   [x] PM contacted you and read your reply on GitHub
   [x] First bounded task landed and PM reconciled it
 
-  Planning       PM maintains ROADMAP.md and CHANGELOG.md
+  Planning       Strategy sets scope; PM manages delivery and CHANGELOG.md
   Human contact  GitHub issues
   Releases       Candidate-specific human review required
 ```
@@ -246,13 +252,28 @@ conversation has no accessible reference, identify the setup summary and establi
 before activation, reusing direction already given. An agent-written summary alone is not evidence of owner
 approval. For an existing project,
 read and preserve its established constitution and working conventions before proposing changes.
-PM owns the sourced roadmap and changelog after handoff. Do not invent a backlog during setup.
+PM manages the sourced roadmap and changelog after handoff and always captures explicit authorized
+requests. Strategy develops scope under the owner's mandate. Do not invent a backlog during setup.
+
+Establish strategy activation and authority separately in the existing project-communications skill.
+Recommend on-demand strategy preparing proposals for human decision unless the owner's instructions
+already establish another arrangement. Offer native recurring discussions/research or event triggers
+only when useful to that project; a schedule does not grant scope authority. An autonomous mandate
+states its objective and bounds (for example competitive parity and constitutional boundaries); collaborative strategy
+names the agreed decision-makers and channel. Reuse the verified roster, selected integrations and
+existing answers. Projects driven by explicit requests still have on-demand strategy available.
+
+Create or update a native strategy cron job only for an agreed schedule, loading skills: [strategy].
+On-demand strategy runs in a separate native session loading the same skill; it needs no idle recurring
+job, extra service, profile/model configuration or policy parser. Verify the actual installed skill and
+agreed activation. Check that PM can capture an authorized request without invoking strategy, and that
+an ordinary suggestion or an empty board does not become autonomous new scope.
 
 Reuse answers already given and present the recommended operating defaults together. Settle only what
 is missing and materially affects setup: working name/repository owner, the development host, the model
 arrangement and budget, human coordination destination, and owner/release reviewer. Keep the template's
 development conventions and native schedules unless the project requires a change. Architecture and
-feature questions can remain for PM; credentials or directories found on the machine are availability
+feature questions can remain for strategy under its mandate; credentials or directories found on the machine are availability
 evidence, not permission to use them for this project.
 
 Use a lowercase runtime slug such as `audit-desk` for `--project`: letters and digits separated by
@@ -276,6 +297,13 @@ a compatible starter; setup refuses that target before changing Git, policy or c
 
 ## Select development connections
 
+Before registering an App or collecting credentials, trace the chosen runtime's Git, model,
+communication and reporting paths. Establish where authentication lives and the permissions each
+path needs. Git authentication is the repository-scoped SSH deploy key wherever the fleet runs, bare or in the
+container, on any model; the community App needs Contents: read. Reuse existing project integrations; a
+completed registration is not proof that the fleet can use it. This is setup-agent judgment using the existing
+configuration, not another configuration file or user questionnaire.
+
 Recommend reuse of the organization's established communication space when available: for example,
 one Discord server or Slack workspace can serve several projects. Show the discovered space and its
 source, then propose the new project's own branded application/bot and a project channel or category.
@@ -295,8 +323,8 @@ project owner selects its enabled connections and reviewer. Shared space does no
 another project's private channels or to confidential human spaces.
 
 Run `create-open-autonomy setup . --plan` and reconcile its output with the agreed choices before
-running the mutating command. The CLI prepares GitHub repository access, a scoped push key, the platform
-connection and owner rules. Its optional development connections are the project's GitHub App, Discord,
+running the mutating command. The CLI prepares GitHub repository access, the selected Git authentication, the platform
+connection and owner rules. Its selectable development connections are the project's GitHub App, Discord,
 and an existing model subscription. Apply the decisions using the existing `--with` and `--without`
 options; `--yes` accepts the displayed defaults and is not a substitute for establishing owner authority.
 
@@ -323,8 +351,7 @@ Present model funding and fleet location together, using the guided setup format
   MODELS + FLEET
   ────────────────────────────────────────────────────────
   Local Codex     Uses your installed Codex and ChatGPT allowance
-                  Runs here; this computer must stay awake
-                  Activation pending the isolated runtime
+                  Runs here, bare or in the container; this computer must stay awake
   Open Autonomy   Uses the project's funded model allowance
                   Runs here or on an agreed, verified host
 
@@ -336,70 +363,36 @@ Adapt that recommendation to actual discovery. Never recommend a server the user
 Docker is running because its CLI exists, or offer remote hosting under the local Codex choice.
 Open Autonomy funding for a host is a separate metered spend requiring an available provider and agreed
 budget; the platform is not itself a hosting service. Product hosting is a later, separate decision.
+Verify a nonempty server version from the selected local Docker context before attempting a container
+build. Reuse an existing working local context; CLI availability alone does not verify the connection.
 
-Local Codex activation is currently unavailable. The required arrangement keeps Hermes, its workspace
-and every agent tool inside the container. A host sidecar connects the installed Codex, external
-services and reporting, with authentication retained by the host. The native remote executor prototype
-does not establish Docker isolation or complete this integration. The vendored
-`.open-autonomy/sdk/codex-bridge.ts` provides a restricted native stdio bridge with pinned model
-and environment checks; it still needs the host runner, protected container connection and
-container-local MCP integration before it can replace the activation guard. Do not run the fleet as the operator,
-offer bare execution as a substitute, or silently switch an agreed local choice to project-funded models.
+Local Codex is plain Hermes on its own `openai-codex` provider: the same agent loop, tools, board, skills
+and channels as any other model, with the model turn on the owner's ChatGPT allowance. The fleet looks
+the same wherever it runs; only what carries the login differs.
 
-An agreed local choice can be prepared using Hermes's existing `codex_app_server` transport. The setup
-agent edits both `hermes/config.yaml` and `hermes/profiles/treasurer/config.yaml` before applying the helper;
-these settings record the choice and do not authorize activation:
+- **Bare, on this computer:** the computer's login. The start script adopts the Codex CLI's login
+  (`codex login`) into Hermes's own store on the first start, as Hermes's importer does; Hermes keeps and
+  refreshes that session in the agent's home, the accepted trade of every bare fleet (`container/README.md`).
+  A computer with no Codex login cannot start.
+- **In the container:** the start script forwards. The root valve holds a copy of the login (codex.json
+  in the protected credential directory, written once by `--with subscription`, refreshed by the valve) and
+  serves the Codex protocol on its third port; the home's `.env` points the provider there and the home's
+  auth store carries a stand-in credential, so the login never enters the agent. Git goes through the
+  deploy key as in any container.
+- **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
+  forwarding points the provider at the twin's Responses door.
+
+`--with subscription` checks `codex login status` and writes both profiles' model block:
 
 ```yaml
 model:
   default: <exact model verified in local Codex>
-  provider: local-codex
-custom_providers:
-  - name: local-codex
-    base_url: http://127.0.0.1:1/v1
-    api_key: local-codex
-    api_mode: codex_app_server
+  provider: openai-codex
 ```
 
-This selects Hermes’s existing [Codex app-server](https://learn.chatgpt.com/docs/app-server) transport, not a new server. The non-secret key and unused loopback
-address satisfy Hermes's provider resolver without invoking its OAuth importer; the transport launches
-`codex app-server` over stdio. A mistaken HTTP path fails locally instead of spending through another
-provider. Preserve unrelated config and use `terminal.backend: local` with `home_mode: auto` or `real`.
-The pinned Hermes app-server runtime inherits Codex's model and permissions; it does not pass the Hermes
-model field to `thread/start`. Configure and verify the agreed model in Codex's project configuration,
-and keep both Hermes model labels consistent with it. Do not change the operator's global model default.
-
-The runtime integration must establish the native Hermes MCP callback inside the container and verify
-skills, Kanban access and project communication tools there. A YAML field or a remote shell endpoint
-alone does not establish that boundary: inspect all tool paths, including plugins, hooks and MCP tools.
-Do not migrate agent tools onto the host, import credentials, mount/copy `~/.codex` into a container, or
-add an OAuth proxy. Codex itself retains responsibility for login and refresh. Auxiliary model tools
-need an explicitly agreed connection or must be disabled; do not infer permission to use another
-discovered key.
-
-Setup's `--with subscription` validates this configuration and local ChatGPT login before provisioning,
-then checks `initialize`, `account/read` and `model/list` through the installed CLI. It uses project-scoped
-SQLite state under the operator's Open Autonomy state directory.
-
-> **Codex startup warning:** the installed Codex CLI can pause while preparing or indexing its local
-> database, especially with an existing session history. This work happens inside Codex, before its
-> app-server handshake completes. Setup waits up to three minutes; this is a wait limit, not a guarantee
-> that indexing will finish within it. A timeout alone does not mean the login is broken. Inspect
-> Codex startup/database progress before restarting it or requesting another sign-in.
-
-The probe sends no model
-turn or tool request, returns only the account type and agreed model, and never rewrites global choices
-or exports authentication. An explicit Codex environments.toml configuration must be reconciled before this probe;
-setup does not replace it. Setup reports activation as blocked, and the
-start script rejects `--local-codex` or a local Codex profile until the isolated integration is available.
-Before enabling that path, prove container execution, denial of host files and credentials, and failure
-without host fallback when the executor disconnects. Then prove `initialize`, `account/read` and one
-bounded turn through native Hermes with the operator's actual Codex, followed by PM and worker tools
-and host-side reporting. A successful CLI login status or a synthetic-provider test with a clean Codex
-home is not that proof; a timeout leaves activation incomplete and needs local diagnosis.
-Existing `codex-valve` fleets are legacy installations, not evidence of local Codex readiness: migrate
-only after the isolated runtime is implemented and verified. Old secret files are never imported or
-deleted by this selection.
+Reconcile the model with the owner's choice and what `codex` offers; do not change the operator's global
+Codex configuration. A fleet on the older `codex-valve` custom provider keeps working, forwarded the same
+way; switching it to `openai-codex` is one config edit.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
 lists only the current key's bounds, not the platform's available choices. If no authorized platform
@@ -510,8 +503,20 @@ server, creates channels, changes application branding, or grants participation 
 Finish the channel policy and remove any temporary setup permissions. The helper preserves existing
 native allowlists in channels.env and never rewrites cron delivery. Use the communication skill and
 native Hermes tools to configure access, history tools and each job's delivery according to the owner
-agreement. A delivered message alone does not prove discovery works. Declining a setup step does not
-disconnect an established provider; an agreed removal uses native configuration and lifecycle tools.
+agreement. `DISCORD_HOME_CHANNEL` selects a destination; it does not admit inbound messages. For
+agreed public project channels, set native `DISCORD_ALLOWED_CHANNELS` in the protected channels.env
+to those channel IDs (comma-separated), and set `discord.group_allow_from: ["*"]` in the existing
+Hermes config.yaml Discord block. The adapter restricts channels; the gateway separately admits
+group senders. Check these settings against the installed Hermes version, then reload through the
+runtime's existing lifecycle.
+Use the narrower agreed native role/user policy when that is the project policy; do not grant
+server-wide or DM access to make a channel test pass. Participation does not grant project authority.
+Verify a real inbound mention and thread reply from the confirmed account in the agreed channel,
+including native sender metadata and the agent's response, before enabling recurring jobs.
+A browser-driven test may use an
+authorized existing session; label it as an operator test rather than independent human approval.
+A delivered message alone does not prove discovery works. Declining a setup step does not disconnect
+an established provider; an agreed removal uses native configuration and lifecycle tools.
 
 The shared roster records verified human account IDs and the source of their authority. A setup
 operator's login is not automatically the owner or release reviewer. Browser identity, app ownership,
@@ -532,10 +537,32 @@ Replace the example destination and repository with the agreed runtime credentia
 The receiver prints a callback URL and state. Author the manifest from the project branding and GitHub's
 [documented manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
 use that callback as redirect_url, and pass the state on the registration URL.
-For this template, request issues/discussions write and metadata, pull_requests, contents, checks,
-statuses and actions read; no webhook or subscribed events are needed. Use the project page as the app
+For this template, request issues/discussions write and metadata, pull_requests, checks, statuses and
+actions read. Contents is read for a managed deployment using its SSH deploy key, or write for the
+local host runtime using the project App for HTTPS Git. Existing App installations need the owner to
+accept that permission change; setup must not assume a read-only installation can push. No webhook or
+subscribed events are needed. Use the project page as the app
 homepage. Register a private app under the agreed repository owner, then install it on the agreed repository.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
+
+For the local host runtime, keep the canonical GitHub origin and configure Git's native URL rewriting
+inside the container, as `hermes` with `HOME` set to its runtime home. Substitute the actual account and
+GitHub valve port (the base valve port plus three):
+
+```sh
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf https://github.com/OWNER/REPO
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf git@github.com:OWNER/REPO
+git config --global --add url.http://host.docker.internal:8790/OWNER/REPO.insteadOf ssh://git@github.com/OWNER/REPO
+```
+
+Inspect existing mappings first; reuse matching entries and reconcile an old port instead of accumulating
+settings. These mappings contain no credential and apply to Git in normal and worker checkouts. The host
+valve injects the repository-scoped App installation token. Do not forward the owner's general SSH agent
+or copy a token into a Git URL. Verify clone/fetch and a bounded branch push through this route in the
+World, then verify the agreed live connection before activation. A twin Git push proves transport and
+repository state; production permission approval is a separate setup check. After the first authenticated request,
+the valve’s `/healthz` reports the token’s Contents permission without revealing the token. Restart
+the valve after an approved permission change so the next request mints a token with that grant.
 
 The callback exchanges GitHub's temporary code and saves the app credential immediately. That is the
 end of the credential helper's responsibility. The browser agent installs the existing app, then verifies
@@ -582,12 +609,14 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
-For Open Autonomy models, use the kit's container deployment and its existing start script and
-supervisor. For local Codex, keep activation blocked until the host sidecar and container runtime above
-are implemented and verified; the current container entrypoint does not implement that split. Bare mode
-is for debugging, not a local Codex activation path. Verify Bun 1.3.10 or newer in the actual service and native
-Hermes terminal. Install the project's locked dependencies and run its own check in its verification
-environment. A fresh template includes its compiler; an existing project keeps its own working tooling.
+The fleet runs the same way on any model: bare with the start script, or in the managed Compose container
+(`container/README.md`). Local Codex adds nothing to prepare; in the container the start script forwards
+the subscription by itself.
+
+Verify Bun 1.3.10 or newer and the application's verification tools where the fleet runs before
+starting PM. Install locked project dependencies and run the project's check in that environment.
+The kit image includes `volter-world` on PATH.
+A fresh template includes its compiler; an existing project keeps its own working tooling.
 
 Establish the application's local world using this machine's World instructions. Seed vendor state
 through the vendor APIs and script judgments/faults with world handlers. Add twins as product
@@ -597,6 +626,13 @@ customer integrations, even when both happen to use the same vendor.
 For a product that operates on user-owned folders, the development checkout and the customer's data
 folder are different boundaries. Verify with synthetic workspaces; optional customer Git or storage sync
 does not authorize the fleet to read those accounts or require their credentials during development setup.
+
+For a World-managed stack, declare the complete peak resources: memory reservations are machine-wide
+and disk reservations belong to the filesystem they occupy. Diagnose capacity refusals through World
+before changing requirements. Make service commands safe after partial startup, preserving persistent
+volumes and handling an already-absent service. When stopping through a service manager, let the
+foreground process and World teardown finish before restarting; verify the native Hermes lifecycle
+record rather than assuming the service-unload command means shutdown has finished.
 
 No production credential is needed to prove application behavior locally. Initial setup does not
 recommend production provisioning merely because it finds a deployment manifest. At a later authorized
@@ -619,11 +655,11 @@ a treasurer credential alone cannot activate the fleet.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.
-These checks do not establish human authority or prove the fleet's scoped push key works. An unexpected
+These checks do not establish human authority or prove the fleet's selected Git credential works. An unexpected
 remote, inaccessible repository or failed command stops setup. The setup agent diagnoses the cause and
 reconciles the intended checkout; the helper does not rewrite remotes or infer recovery from a failed
 lookup. A missing repository can be created only from a checkout without an origin, after a GitHub 404.
-On reruns, setup also checks that the deploy key remains registered with write access. A revoked,
+For managed deployments, setup also checks on reruns that the deploy key remains registered with write access. A revoked,
 disabled or read-only key requires the setup agent to reconcile the intended access; setup does not
 restore a revoked registration or expand existing permissions automatically.
 
@@ -657,8 +693,12 @@ that a connected bot sees every thread. Consult native cron status, doctor, runs
 
 PM starts with the established constitution, roster, communication policy and operating configuration,
 plus the project's ordinary source history. It does not need setup notes or the setup agent's chat.
-Future product scope, architecture and release proposals are PM work; unfinished setup is not. PM reconciles the generic
-starter intention into a sourced initial roadmap and queues only ready work. The historical kanban seed
+Strategy handles product scope under the established mandate; PM handles authorized delivery,
+implementation sequencing and release proposals. The constitution is a conception/merge constraint,
+not a backlog generator. PM reconciles historical starter intentions against explicit authority; the
+hello seed alone grants none. Strategy's first invocation develops a coherent product-level plan when
+requested or triggered under its agreement; on-demand availability does not require running it during
+setup. PM can immediately record and deliver explicit authorized requests without a strategy meeting. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
 landing and subsequent PM reconciliation before claiming the development loop works. The actual first
 release still needs candidate-specific human review. Local applications and packages follow the artifact

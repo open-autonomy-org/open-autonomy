@@ -1,0 +1,12 @@
+{
+  "id": "__PROJECT__-rehearsal",
+  "description": "__PROJECT__'s rehearsal world: the GitHub and Discord twins the brain's channels name, the model twin serving the brain's scripted scenario (rehearsal/model/scenario.ts), the backend copy on those twins, and GitHub Actions played by the world for the landing convention. Nothing here calls a real API. Add a twin per channel the project speaks (${TWIN:jira}, ${TWIN:slack}, ${TWIN:stripe}, …).",
+  "env": {},
+  "services": [
+    { "id": "gateway", "type": "twin", "command": "bun", "args": ["${TWIN:openai}", "serve"], "port": 47711, "portReason": "the brain's provider is pointed here at stack start and a restart of the world must keep it", "injectEnv": "GATEWAY_TWIN_URL", "env": { "TWIN_OPENAI_SCENARIO": "${SCENARIO}" } },
+    { "id": "github", "type": "twin", "command": "bun", "args": ["${TWIN:github}", "serve"], "port": 47712, "portReason": "the brain's origin names this address at seed time and a restart of the world must keep it", "injectEnv": "GITHUB_TWIN_URL" },
+    { "id": "discord", "type": "twin", "command": "bun", "args": ["${TWIN:discord}", "serve"], "port": 47715, "portReason": "the brain reaches the twin's gateway websocket at this address and a restart of the world must keep it", "injectEnv": "DISCORD_TWIN_URL", "env": { "TWIN_DISCORD_GATEWAY_URL": "ws://127.0.0.1:47715/gateway" } },
+    { "id": "platform", "type": "process", "command": "bun", "args": ["${KIT_DIR}/platform.ts"], "port": 47713, "portReason": "the brain was given this address at seed time and a restart of the world must keep it", "portArg": false, "rootArg": "--persist-to", "injectEnv": "PLATFORM_URL", "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 300000, "intervalMs": 500 } },
+    { "id": "actions", "type": "process", "command": "bun", "args": ["${KIT_DIR}/actions.ts"], "port": 47714, "portReason": "pinned like the others so a restart of the world keeps every address", "portArg": false, "rootArg": false, "injectEnv": "ACTIONS_URL", "ready": { "httpUrl": "${url}/healthz", "timeoutMs": 30000, "intervalMs": 200 } }
+  ]
+}

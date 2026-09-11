@@ -8,8 +8,7 @@ platform: https://open-autonomy.org
 publish:
   runs: true        # sessions the schedule started (trigger: cron)
   chats: true       # conversations on a channel (Discord): the community's, published
-  private:          # session ids or job names that never publish, whatever their kind
-    - []
+  private: []       # session IDs, job IDs or job names that never publish
 
 # Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
