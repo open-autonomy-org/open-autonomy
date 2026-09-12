@@ -166,7 +166,8 @@ async function board(): Promise<RoadmapItem[] | undefined> {
   // review's verdict and an attempt's handoff, is a progress note on the item, published once each.
   for (const t of tasks) {
     const notes: Array<{ key: string; text: string; at?: string }> = [];
-    for (const r of t.reviews ?? []) notes.push({ key: `${t.id}:review:${r.at ?? ''}:${r.verdict}`, text: `review ${r.verdict}${r.by ? ` by ${r.by}` : ''}${r.reason ? `: ${r.reason}` : ''}`, at: r.at });
+    // A review's position in the board's append-only list keeps two rounds with the same verdict apart when the harness stamps no time.
+    (t.reviews ?? []).forEach((r, i) => notes.push({ key: `${t.id}:review:${i}:${r.at ?? ''}:${r.verdict}`, text: `review ${r.verdict}${r.by ? ` by ${r.by}` : ''}${r.reason ? `: ${r.reason}` : ''}`, at: r.at }));
     for (const a of t.attempts ?? []) if (a.handoff?.summary) notes.push({ key: `${t.id}:handoff:${a.id}`, text: `handoff (attempt ${a.id}${a.profile ? `, ${a.profile}` : ''}): ${a.handoff.summary}`, at: a.ended_at });
     for (const n of notes) {
       if (noted.has(n.key)) continue;

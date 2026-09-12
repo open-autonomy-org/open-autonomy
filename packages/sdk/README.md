@@ -120,7 +120,7 @@ offsets already applied is ignored (`idempotent: true` in that event's result), 
 reads the session back and continues from its `next_seq`. The response is `{ ok, results: [{ id, ok,
 session | update, idempotent?, error? }] }`; the first failing event stops the batch.
 
-Every write the client makes (`setup`, `docs`, `task`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answers
+Every write the client makes (`setup`, `docs`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answers
 the same way: `{ ok, status, error? }`, the platform's error code when refused, plus what the write returned.
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
