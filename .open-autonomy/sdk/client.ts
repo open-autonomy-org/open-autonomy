@@ -22,12 +22,6 @@ export type SessionOutcome = 'done' | 'failed';
 export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; modelProvider?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
 export interface Update { item: string; text: string; session?: string; at?: string }
-// The board's state for a roadmap item, as the agent's harness keeps it: the task's lane, every attempt at
-// it, the handoff and the review verdicts. Published by the reporter from the harness's own board.
-export interface TaskAttempt { id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; summary?: string }
-export interface TaskReview { verdict: 'requested' | 'approved' | 'changes_requested' | 'escalated'; by?: string; reason?: string; at?: string }
-export interface TaskState { item: string; task_id: string; lane: string; title?: string; assignee?: string; attempts: TaskAttempt[]; reviews: TaskReview[]; handoff?: { summary?: string; metadata?: unknown }; updated_at?: string }
-export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 // Who the agent is and how it runs, as its substrate publishes it: a persona (the identity text it runs
 // with), its model, its schedule, what it knows how to do, and how to run it. The platform shows this
 // beside the roadmap; it reads no harness's files for it.
@@ -170,13 +164,6 @@ export class OpenAutonomy {
   //   POST /v1/agent/events  type org.open-autonomy.agent.state  subject agent  { state, note? }
   async reportState(state: OperatingState, note?: string): Promise<WriteResult> {
     const { results: _r, ...w } = await this.put(STATE_EVENT_TYPE, 'agent', { state, note });
-    return w;
-  }
-
-  // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.
-  async task(t: TaskState): Promise<WriteResult> {
-    const { item, ...data } = t;
-    const { results: _r, ...w } = await this.put(TASK_EVENT_TYPE, item, data as unknown as Record<string, unknown>, data.updated_at);
     return w;
   }
 

@@ -332,20 +332,6 @@ export interface UpdateRecord {
   text: string;
   session?: string;
 }
-// The board's state for an item, as the project's reporter publishes it from the agent's harness: the task's
-// lane, every attempt, the handoff, the review verdicts. Replaced whole on each publish.
-export interface TaskRecord {
-  account: string;
-  item_id: string;
-  task_id: string;
-  lane: string;
-  title?: string;
-  assignee?: string;
-  attempts: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; summary?: string }>;
-  reviews: Array<{ verdict: string; by?: string; reason?: string; at?: string }>;
-  handoff?: { summary?: string; metadata?: unknown };
-  updated_at: string;
-}
 export interface ItemView {
   ok: true;
   account: string;
@@ -355,8 +341,6 @@ export interface ItemView {
   updates: UpdateRecord[];
   // The card and partner settlements attributed to this item's sessions: what the agent bought for it.
   purchases: CallRecord[];
-  // The board's state for the item, when the reporter has published one.
-  task?: TaskRecord;
   usd_cents: number;
 }
 
@@ -420,7 +404,6 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'session': return json(await this.getSession(s('account'), s('key')));
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
-      case 'task_put': return json(await this.taskPut(s('account'), s('item_id'), body.task as Record<string, unknown>));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
       case 'state': return json(this.stateView(s('account')));
       case 'state_request': return json(await this.stateRequest(s('account'), body.state, s('by'), body.reason));
@@ -992,8 +975,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
     const candidates = [[...calls.values()].flat(), await this.callsForItem(account, item_id)].flat();
     const purchases = [...new Map(candidates.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session)))).map((c) => [c.request_id, c])).values()];
-    const task = await this.ctx.storage.get<TaskRecord>(`task:${account}:${item_id}`);
-    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, ...(task ? { task } : {}), usd_cents };
+    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents };
   }
 
   // The agent's setup replaces what was there: its substrate publishes the whole record each time.
@@ -1041,19 +1023,6 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!Object.keys(profile).length) return { ok: false, error: 'invalid_docs' };
     await this.setProfile(account, profile);
     return { ok: true };
-  }
-
-  // The board's state for an item replaces what was there: the reporter publishes the whole task each time.
-  private async taskPut(account: string, item: string, task: Record<string, unknown>): Promise<{ ok: boolean; error?: string; task?: TaskRecord }> {
-    const item_id = itemId(item);
-    if (!item_id || !task || typeof task.task_id !== 'string' || typeof task.lane !== 'string') return { ok: false, error: 'invalid_task' };
-    const text = (v: unknown, max = 400): string | undefined => (typeof v === 'string' && v.trim() ? v.slice(0, max) : undefined);
-    const attempts = (Array.isArray(task.attempts) ? task.attempts : []).slice(-50).map((a: Record<string, unknown>) => ({ id: String(a.id ?? ''), profile: text(a.profile, 80), status: text(a.status, 40) ?? '', started_at: text(a.started_at, 40), ended_at: text(a.ended_at, 40), outcome: text(a.outcome, 40), summary: text(a.summary, 2000) }));
-    const reviews = (Array.isArray(task.reviews) ? task.reviews : []).slice(-50).map((r: Record<string, unknown>) => ({ verdict: text(r.verdict, 40) ?? 'requested', by: text(r.by, 80), reason: text(r.reason, 2000), at: text(r.at, 40) }));
-    const handoff = task.handoff && typeof task.handoff === 'object' ? { summary: text((task.handoff as Record<string, unknown>).summary, 4000), metadata: (task.handoff as Record<string, unknown>).metadata } : undefined;
-    const record: TaskRecord = { account, item_id, task_id: task.task_id.slice(0, 80), lane: task.lane.slice(0, 40), title: text(task.title, 200), assignee: text(task.assignee, 80), attempts, reviews, ...(handoff ? { handoff } : {}), updated_at: new Date().toISOString() };
-    await this.ctx.storage.put(`task:${account}:${item_id}`, record);
-    return { ok: true, task: record };
   }
 
   // Spend lands only on the session the caller named. A call can settle before the reporter announces that
@@ -1632,7 +1601,6 @@ export class LedgerClient {
   stateRequest(account: string, state: unknown, by: string, reason?: unknown) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl>('state_request', { account, state, by, reason }); }
   stateReport(account: string, state: unknown, note?: unknown) { return this.call<{ ok: boolean; error?: string } & AgentControl>('state_report', { account, state, note }); }
   docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
-  taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.call<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
   item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
