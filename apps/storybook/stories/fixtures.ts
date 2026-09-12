@@ -1,7 +1,6 @@
 // Real records from the live platform, captured 2026-09-12, shaped as the page receives them.
 import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { ProjectView, SessionSummary } from '../../../packages/backend/src/ledger';
-import type { Patronage } from '../../../packages/backend/src/page/parts';
 import oaBooks from '../fixtures/open-autonomy-books.json';
 import oaSessions from '../fixtures/open-autonomy-sessions.json';
 import oaRoadmap from '../fixtures/open-autonomy-roadmap.json';
@@ -31,11 +30,9 @@ export const pmTail = { key: (oaPm as any).session.key as string, turns: (oaPm a
 export const openAutonomy = {
   daily: (oaBooks as any).daily_spend_usd_cents as number[],
   v: view(oaBooks, { profile: { tagline: 'Tools for sustained autonomous agentic development: a checked-in agent that works the roadmap, a meter that keeps it running in the open, and public books that show where every call went.', avatar_url: 'https://avatars.githubusercontent.com/u/324310069?v=4', about_md: ABOUT, schedule_json: JSON.stringify({ jobs: [{ name: 'pm', schedule: 'every 60 min' }, { name: 'community', schedule: 'every 15 min' }] }), agent_harness: 'hermes', agent_model: 'gpt-5.6-sol', agent_provider: 'codex-valve' } }), sessions: (oaSessions as any).sessions as SessionSummary[], live: [] as string[], roadmap: road(oaRoadmap),
-  patronage: { tiers: [{ name: 'Supporter', usd_cents: 500 }, { name: 'Sponsor', usd_cents: 2500 }, { name: 'Backer', usd_cents: 10000 }], patrons: [], patron_count: 0, monthly_usd_cents: 0 } as Patronage,
 };
 export const hookline = {
   daily: (hlBooks as any).daily_spend_usd_cents as number[],
   v: view(hlBooks, { profile: { tagline: 'A webhook desk that answers every hook with a receipt, built by its own agent.', avatar_url: 'https://avatars.githubusercontent.com/u/324310069?v=4', about_md: 'Hookline is a webhook desk: every hook that lands gets a receipt, a place, and an answer. Its agent builds it in the open on the Open Autonomy platform.', schedule_json: JSON.stringify({ jobs: [{ name: 'pm', schedule: 'every 60 min' }] }), agent_harness: 'hermes', agent_model: 'zai/glm-5.3-flash', agent_provider: 'open-autonomy' } }),
   sessions: (hlSessions as any).sessions as SessionSummary[], live: [] as string[], roadmap: road(hlRoadmap),
-  patronage: { tiers: [{ name: 'Supporter', usd_cents: 500 }, { name: 'Sponsor', usd_cents: 2500 }, { name: 'Backer', usd_cents: 10000 }], patrons: [{ login: 'octocat', name: 'The Octocat', avatar_url: 'https://avatars.githubusercontent.com/u/583231?v=4' }, { login: 'yueranyuan', avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4' }, { login: 'alice' }], patron_count: 3, monthly_usd_cents: 3500 } as Patronage,
 };

@@ -2,12 +2,35 @@
 
 `bun run storybook` in this directory serves every page and part at http://localhost:6006, rendered from real
 records captured from the live platform (`fixtures/`). Pages are server-rendered hono/jsx; a story renders one to
-an HTML string. The source is `packages/backend/src/page/`: `theme.ts` (tokens and the one stylesheet), `parts.tsx`
-(each panel), `project.tsx` (the project page). Nothing here is wired to the books until a page is adopted by the
-router, so a design can move without the platform moving.
+an HTML string. Nothing here is wired to the router yet, so a design can move without the platform moving.
+
+## The core and an app around it
+
+Two story trees, because two things exist. **Core** is exactly what a self-hosted deployment serves: the source is
+`packages/backend/src/page/` (`theme.ts` the one stylesheet, `model.ts` roles, visibility and the slot contract,
+`parts.tsx` each panel, `project.tsx` the shell and Overview, `tabs.tsx` Work, Item, Sessions, Session, Books, Agent).
+The core knows givers (the books), team and owner (the roster) and everyone else. It knows nothing about patrons,
+tiers, sponsors, coupons or Explore, and carries no code for them switched off.
+
+**Platform** is the same pages with the platform's additions entering through the core's slots: the source is
+`apps/platform/src/page/patronage.tsx` (the ask, the tiers, subscribers on the wall, subscriptions in Money in,
+Explore in the bar). Which code ships is decided by which package a deployment mounts, at build time, as
+`apps/self-host` and `apps/platform` already do. There is no deployment flag.
+
+| Slot | Where | The platform puts |
+|---|---|---|
+| `nav` | the top bar | Explore |
+| `cta` | the top bar | Become a patron |
+| `meta` | the hero's facts line | patrons, per month (the core shows the balance instead) |
+| `side` | top of Overview's side column | the tiers |
+| `wall` | more chips on the givers wall | subscribers and sponsors |
+| `moneyIn` | rows in Books' money in | subscriptions |
+| `give` | Books | its own give doors |
+| `styles` | after the core's stylesheet | its own CSS |
+
+A slot is additive and inside the core's layout: an app cannot remove, reorder or rewrite what the core shows.
 
 ## The project: GitHub's frame, Kickstarter's campaign, Patreon's rhythm
-
 One address per thing, tabs for its depths, roles deciding what you see and may do, never a second site:
 
 | Address | What it is |
@@ -40,10 +63,11 @@ Reserved top-level names: `explore`, `give`, `v1`, `admin`, `settings`.
 
 ### Who sees what
 
-`viewer` is public, patron, team or owner. `visibility` is the owner's committed word (`dashboard:` in
-`.open-autonomy/config.yaml`), with three presets: **open** (everything public), **status** (transcripts and books for
-patrons, calls and the agent for the team), **private** (team and up). The deployment says whether it takes money;
-without it there is no rail, no wall and no ask, and Books still meters whatever funds the agent. On the platform,
+`viewer` is public, giver, team or owner: giver from the books, team and owner from the roster. `visibility` is the
+owner's word, proposed as a `dashboard:` section in `.open-autonomy/config.yaml` beside the bounds; the platform does
+not read it yet, so every deployment renders `open` today. Three presets: **open** (everything public), **status** (transcripts and books for
+givers, calls and the agent for the team), **private** (team and up). Whether a deployment takes money is
+which app it mounts, never a setting; Books meters whatever funds the agent either way. On the platform,
 visibility narrows the page, never the truth: the API is public reads. A private deployment is private by its own wall.
 
 ### States a story must cover

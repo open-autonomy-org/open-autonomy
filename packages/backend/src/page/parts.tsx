@@ -3,7 +3,7 @@
 import { raw } from 'hono/html';
 import { tenseOf, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import type { AgentControl, ProjectView, SessionSummary } from '../ledger.js';
-import { LOGO_SVG, fmtAgo, fmtDur, mdToSafeHtml, usd, usd0 } from '../ui.js';
+import { LOGO_SVG, fmtAgo, fmtDur, mdToSafeHtml, usd } from '../ui.js';
 import { leadParagraphs } from '../stream-view.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
@@ -11,37 +11,34 @@ export const ownerOf = (account: string): string => account.split('/')[0];
 // Addresses follow GitHub's: /owner, /owner/project, /owner/project/<tab>. A funder is /login.
 export const at = (account: string, ...rest: string[]): string => `/${account.split('/').map(encodeURIComponent).join('/')}${rest.length ? `/${rest.map(encodeURIComponent).join('/')}` : ''}`;
 
-export interface Patron { login: string; name?: string; avatar_url?: string; url?: string; amount_label?: string }
-export interface Tier { usd_cents: number; name: string }
-export interface Patronage { tiers: Tier[]; patrons: Patron[]; patron_count: number; monthly_usd_cents: number }
-// Money never arrives from nobody. A gift on the books names its giver (a funder's login, the org's grants pool, a
-// sponsor behind a coupon); each is a patron on the wall whether or not a subscription is behind them.
-export function withGivers(p: Patronage, v: Pick<ProjectView, 'envelopes' | 'feed' | 'granted_in_usd_cents'>, brand: string): Patronage {
-  const seen = new Set(p.patrons.map((x) => x.login.toLowerCase()));
-  const extra: Patron[] = [];
-  const add = (who: string | undefined, label?: string) => {
+// Money never arrives from nobody. A gift on the books names its giver: a funder's login, an org's grants pool, or,
+// for money the books hold with no name (an operator's mint), the deployment itself. The wall is these people.
+export interface Giver { login: string; name?: string; avatar_url?: string; url?: string; label?: string }
+export function giversOf(v: Pick<ProjectView, 'envelopes' | 'feed' | 'granted_in_usd_cents'>, brand: string): Giver[] {
+  const seen = new Set<string>();
+  const out: Giver[] = [];
+  const add = (who: string | undefined) => {
     if (!who) return;
     const login = who.startsWith('@') ? who.slice(1) : who;
     if (seen.has(login.toLowerCase())) return;
     seen.add(login.toLowerCase());
-    extra.push(who.includes('/') ? { login, name: who.endsWith('/grants') ? `${brand} grants` : who, url: `https://github.com/${who}` } : { login, avatar_url: `https://github.com/${login}.png`, ...(label ? { amount_label: label } : {}) });
+    out.push(who.includes('/') ? { login, name: who.endsWith('/grants') ? `${brand} grants` : who, url: `https://github.com/${who}` } : { login, avatar_url: `https://github.com/${encodeURIComponent(login)}.png` });
   };
   for (const e of v.envelopes ?? []) add(e.from);
   for (const f of v.feed ?? []) if (f.kind === 'grant' || f.kind === 'mint') { add(f.from); if (f.by) add(f.by); }
-  // Money the books hold without a named giver was minted by the deployment's operator: that operator is the giver.
-  if (!p.patrons.length && !extra.length && (v as { granted_in_usd_cents?: number }).granted_in_usd_cents! > 0) extra.push({ login: brand, name: brand, url: '/' });
-  return { ...p, patrons: [...p.patrons, ...extra], patron_count: p.patron_count + extra.length };
+  if (!out.length && v.granted_in_usd_cents > 0) out.push({ login: brand, name: brand, url: '/' });
+  return out;
 }
 export interface Schedule { name?: string; schedule?: string }
 
 // ---- the top bar -----------------------------------------------------------------------------------------------
-export function TopBar({ brand, cta = true, explore = true }: { brand: string; cta?: boolean; explore?: boolean }) {
+export function TopBar({ brand, nav, cta }: { brand: string; nav?: unknown; cta?: unknown }) {
   return (
     <div class="topbar"><div class="in">
       <a href="/" class="brand">{raw(LOGO_SVG)}<span>{brand}</span></a>
-      {explore ? <nav><a href="/explore">Explore</a></nav> : null}
+      {nav ? <nav>{nav}</nav> : null}
       <span class="grow" />
-      {cta ? <a class="btn small" href="#patron">Become a patron</a> : null}
+      {cta}
     </div></div>
   );
 }
@@ -75,7 +72,7 @@ export function coverStyle(url: string | undefined, seed = ''): string {
 }
 export const runwayWords = (days: number | null): string | null => (days === null ? null : days > 365 ? 'over a year of runway' : days === 1 ? '1 day of runway' : `${days} days of runway`);
 const parseScheduleText = (json: string | undefined): string => { try { const j = JSON.parse(json ?? '{}') as { jobs?: Schedule[] }; const jobs = Array.isArray(j.jobs) ? j.jobs.slice(0, 3) : []; return jobs.length ? ` · ${jobs.map((x) => `${x.name ?? 'job'} ${x.schedule ?? ''}`.trim()).join(' · ')}` : ''; } catch { return ''; } };
-export function Hero({ v, standing, patronage, runwayDays, quiet = false }: { v: ProjectView; standing: Standing; patronage: Patronage; runwayDays: number | null; quiet?: boolean }) {
+export function Hero({ v, standing, runwayDays, meta }: { v: ProjectView; standing: Standing; runwayDays: number | null; meta?: unknown }) {
   const name = nameOf(v.account);
   return (
     <>
@@ -88,8 +85,7 @@ export function Hero({ v, standing, patronage, runwayDays, quiet = false }: { v:
           {v.profile.agent_model ? <p class="built">Built by <b>{v.profile.agent_harness === 'hermes' ? 'a Hermes agent' : v.profile.agent_harness ?? 'its agent'}</b> on <b>{v.profile.agent_model}</b>{parseScheduleText(v.profile.schedule_json)}</p> : null}
           <div class="meta">
             <Pill standing={standing} />
-            {quiet ? null : <span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span>}
-            {quiet ? <span><b>{usd(v.balance_usd_cents)}</b> balance</span> : <span><b>{usd0(patronage.monthly_usd_cents)}</b>/mo</span>}
+            {meta ?? <span><b>{usd(v.balance_usd_cents)}</b> balance</span>}
             {runwayDays !== null ? <span>{runwayWords(runwayDays)}</span> : null}
             <a href={`https://github.com/${v.account}`} target="_blank" rel="noopener">{v.account} ↗</a>
           </div>
@@ -222,71 +218,31 @@ export function Shipped({ roadmap, account, now, max = 5 }: { roadmap: Roadmap; 
 }
 
 // ---- patrons wall ----------------------------------------------------------------------------------------------
-export function Wall({ patrons }: { patrons: Patron[] }) {
+export function Wall({ givers, more, title = 'Givers', empty = 'No one has given yet.' }: { givers: Giver[]; more?: unknown; title?: string; empty?: string }) {
   return (
     <div class="card">
-      <h2>Patrons</h2>
-      {patrons.length ? <div class="wall">{patrons.map((p) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : null}{p.name ?? p.login}</a>)}</div> : <p class="empty">No patrons yet. Be the first.</p>}
+      <h2>{title}</h2>
+      {givers.length || more ? <div class="wall">{givers.map((p) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : null}{p.name ?? p.login}</a>)}{more}</div> : <p class="empty">{empty}</p>}
     </div>
   );
 }
 
 // ---- funding: the one card that asks ----------------------------------------------------------------------------
-export function Funding({ v, patronage, standing, runwayDays, goalDays, ask = true }: { v: ProjectView; patronage: Patronage; standing: Standing; runwayDays: number | null; goalDays: number; ask?: boolean }) {
+export function Funding({ v, givers, standing, runwayDays, goalDays, headline, ask }: { v: ProjectView; givers: number; standing: Standing; runwayDays: number | null; goalDays: number; headline?: unknown; ask?: unknown }) {
   const frac = runwayDays === null ? 0 : Math.max(0, Math.min(1, runwayDays / goalDays));
   const tone = standing === 'exhausted' ? 'off' : runwayDays !== null && runwayDays < goalDays / 3 ? 'warn' : '';
   return (
     <div class="card fund" id="patron">
-      {patronage.monthly_usd_cents > 0
-        ? <div class="big">{usd0(patronage.monthly_usd_cents)}<span>/mo from {patronage.patron_count} {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span></div>
-        : <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{patronage.patron_count > 0 ? `, from ${patronage.patron_count} ${patronage.patron_count === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
+      {headline ?? <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{givers > 0 ? `, from ${givers} ${givers === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
       <div class="line">{standing === 'exhausted' ? 'The balance is spent. The next gift starts the agent again.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? `Over a year of runway at its current burn.` : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="stats">
-        {patronage.monthly_usd_cents > 0 ? <div class="stat"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div> : <div class="stat"><div class="v">{patronage.patron_count}</div><div class="l">{patronage.patron_count === 1 ? 'patron' : 'patrons'}</div></div>}
+        {headline ? <div class="stat"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div> : <div class="stat"><div class="v">{givers}</div><div class="l">{givers === 1 ? 'giver' : 'givers'}</div></div>}
         <div class="stat"><div class="v">{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
         <div class="stat"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
       </div>
-      {ask ? <a class="btn wide" href="#tiers">Become a patron</a> : null}
+      {ask}
       <p class="fine">Every spend is metered on public books. <a href={at(v.account, 'books')}>See the books →</a></p>
-    </div>
-  );
-}
-export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: Tier[]; owner: string; account: string; sponsor: string; polar: boolean; burn: number }) {
-  const days = (t: Tier) => (burn > 0 ? Math.round(t.usd_cents / burn) : null);
-  return (
-    <div class="card" id="tiers">
-      <h2>Become a patron</h2>
-      {polar ? <div class="tiers">{tiers.map((t, i) => {
-        const d = days(t);
-        return (
-          <div class={`tier${i === 1 ? ' feat' : ''}`}>
-            <div class="th"><span class="tn">{t.name}</span><span class="tp">{usd0(t.usd_cents)} <span>/mo</span></span></div>
-            <p>On the patrons wall{d !== null ? `; about ${d} day${d === 1 ? '' : 's'} of runway each month` : ''}.</p>
-            <form method="post" action="/v1/patrons/checkout"><input type="hidden" name="account" value={account} /><input type="hidden" name="tier" value={String(i)} /><button class={`btn${i === 1 ? '' : ' quiet'}`} type="submit" name="interval" value="month">Join for {usd0(t.usd_cents)}/mo</button></form>
-          </div>
-        );
-      })}</div> : <>
-        <div class="ladder">{tiers.map((t) => { const d = days(t); return <div class="rung"><span class="tn">{t.name}<span>On the patrons wall{d !== null ? `; about ${d} day${d === 1 ? '' : 's'} of runway a month` : ''}</span></span><span class="tp">{usd0(t.usd_cents)} <span>/mo</span></span></div>; })}</div>
-        <a class="btn wide" href={`https://github.com/sponsors/${owner}`}>Sponsor on GitHub</a>
-        {account !== sponsor ? <p class="fine" style="margin-top:10px">GitHub Sponsors funds {owner}'s pool; grants reach this project from there.</p> : null}
-      </>}
-      <details class="more">
-        <summary>Other ways to give</summary>
-        <div class="body">
-          <form class="form" method="post" action={`${at(account)}/give`}>
-            <input name="key" placeholder="your funder key" autocomplete="off" />
-            <input name="usd_cents" type="number" min={1} placeholder="cents" />
-            <input name="note" placeholder="a word, optional" maxlength={280} />
-            <button class="btn quiet" type="submit">Give grant credits</button>
-            <p class="fine">Funders hold grant credits on their own books and give them to a project they believe in.</p>
-          </form>
-          <form class="form" method="post" action={`${at(account)}/redeem`}>
-            <input name="code" placeholder="sponsor coupon" autocomplete="off" />
-            <button class="btn quiet" type="submit">Redeem</button>
-          </form>
-        </div>
-      </details>
     </div>
   );
 }
@@ -294,9 +250,8 @@ export const Foot = ({ brand }: { brand: string }) => <div class="foot"><span>Ev
 
 // ---- the project's tabs: GitHub's frame -------------------------------------------------------------------------
 export type Tab = 'overview' | 'work' | 'sessions' | 'books' | 'agent' | 'team';
-export const TABS: Array<{ id: Tab; label: string; least: 'public' | 'patron' | 'team' | 'owner' }> = [
-  { id: 'overview', label: 'Overview', least: 'public' }, { id: 'work', label: 'Work', least: 'public' }, { id: 'sessions', label: 'Sessions', least: 'public' },
-  { id: 'books', label: 'Books', least: 'public' }, { id: 'agent', label: 'Agent', least: 'team' }, { id: 'team', label: 'Team', least: 'public' },
+export const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'overview', label: 'Overview' }, { id: 'work', label: 'Work' }, { id: 'sessions', label: 'Sessions' }, { id: 'books', label: 'Books' }, { id: 'agent', label: 'Agent' }, { id: 'team', label: 'Team' },
 ];
 export function Tabs({ account, current, counts, show }: { account: string; current: Tab; counts: Partial<Record<Tab, string | number | undefined>>; show: (t: Tab) => boolean }) {
   return <div class="tabs">{TABS.filter((t) => show(t.id)).map((t) => <a class={t.id === current ? 'on' : ''} href={t.id === 'overview' ? at(account) : at(account, t.id)}>{t.label}{counts[t.id] !== undefined ? <span class="count">{counts[t.id]}</span> : null}</a>)}</div>;

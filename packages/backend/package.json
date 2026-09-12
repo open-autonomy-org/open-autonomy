@@ -11,6 +11,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ui": "./src/ui.tsx",
+    "./page/model": "./src/page/model.ts",
+    "./page/parts": "./src/page/parts.tsx",
+    "./page/project": "./src/page/project.tsx",
+    "./page/tabs": "./src/page/tabs.tsx",
+    "./page/theme": "./src/page/theme.ts",
     "./testing": "./test/env.ts"
   },
   "files": [
