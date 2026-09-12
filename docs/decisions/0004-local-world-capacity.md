@@ -1,16 +1,24 @@
-# ADR 0002: Local Worlds use actual capacity and backend limits
+# ADR 0004: Local Worlds use actual capacity and backend limits
 
-Status: Proposed. Acceptance requires independent review and merge. The owner subsequently
-authorized implementation and a local Evidence Desk recovery pilot; that authorization does
-not constitute acceptance of this ADR or a general package release. The corresponding World
-architecture change and its implementation are reviewed together upstream.
+Status: Proposed. Acceptance requires independent review and merge. Owner direction for this
+record is not yet established under the project communication agreement (see below); until a
+public direction statement exists, adoption of the new runtime by the kit stays held. The
+upstream World implementation landed separately as
+[volter-ai/twin PR 348](https://github.com/volter-ai/twin/pull/348) (merge `eec38833`); that
+landing is neither acceptance of this record nor a general package release, and no independent
+review of it is recorded on GitHub. A local Evidence Desk recovery ran on a pinned build of it;
+those are observations, recorded in the pull request, not acceptance.
 
 ## Context and authority
 
 On September 11, 2026, the owner asked why Evidence Desk would not start, challenged the World
 reservation system, and requested: “design the good solution.” This author has no public link
-to that conversation. The owner's subsequent “go” authorized implementation and local recovery,
-not production deployment or disruption of other runs.
+to that conversation. The owner's subsequent “go” was read as authorizing implementation and
+local recovery, not production deployment or disruption of other runs. Under the committed
+project communication agreement a private conversation, quoted or summarized by an agent, does
+not prove owner direction: a public statement from the verified roster owner, with its exact
+permalink and scope, is required before this record can be accepted, and this record cannot
+supply it.
 
 The observed failure was `16384 MiB required, 4506 MiB available`. Its installed operator
 runtime, `@volter/twin-world@0.1.7`, subtracts full declared storage peaks from current free
@@ -56,10 +64,13 @@ Hosted consumers remain pinned until their own admission contract is reviewed; n
 bump silently removes an operator's configured hosting bounds. This proposal neither designs
 that scheduler nor adds a second admission implementation to the local runtime.
 
-This refines “World owns container creation, resources and shutdown” in
-[ADR 0001](0001-runtime-boundary.md): resources means backend handles and explicit enforced
-limits, not a cooperative peak scheduler. It preserves that record's execution, credential,
-reporter and service-manager boundaries. Conflicts with World architecture's current admission
+This partially supersedes one reading of “World owns container creation, resources and
+shutdown” in [ADR 0001](0001-runtime-boundary.md): there, resources means backend handles and
+explicit enforced limits, not a cooperative peak scheduler. ADR 0001 carries the reciprocal
+reference. Its execution, credential, reporter and service-manager boundaries stand unchanged.
+[ADR 0002](0002-world-scenario.md) (rehearsal is an ordinary World scenario) and
+[ADR 0003](0003-operating-state-through-the-sdk.md) are independent of this record and
+compatible with it: both drive Worlds through ordinary World commands, which this record keeps. Conflicts with World architecture's current admission
 contract must be resolved upstream before implementation; this OA record cannot waive it.
 
 ## Startup and runtime behavior
@@ -200,7 +211,7 @@ controller. Operator diagnostics remain available even when the product stack ca
    as deprecated, non-enforced metadata with a visible warning; new configs omit it. Never
    reinterpret a former peak request as an OS limit. Remove synthetic capacity fields from
    the versioned report, preserving ownership inventory and diagnostics.
-3. Pin that reviewed runtime in the OA kit. Setup checks backend capabilities and native restart
+3. Pin that landed runtime in the OA kit, once this record is accepted. Setup checks backend capabilities and native restart
    policy. Preserve existing effective container limits and volume identities. Add detailed
    usage reporting independently; accurate recursive attribution is not a prerequisite for
    removing the broken arithmetic.
@@ -265,6 +276,7 @@ Record actual observations in the implementation PR, not persistent harness file
 
 ## Sources and constitution review
 
+The upstream change: [volter-ai/twin PR 348](https://github.com/volter-ai/twin/pull/348).
 Primary implementation evidence, at the World commit named above:
 [admission](https://github.com/volter-ai/twin/blob/2a9cf124f08a2e4435193c85543e6942e553c55e/packages/world-runtime/src/resources.ts),
 [lifecycle](https://github.com/volter-ai/twin/blob/2a9cf124f08a2e4435193c85543e6942e553c55e/packages/world-runtime/src/runtime.ts),
