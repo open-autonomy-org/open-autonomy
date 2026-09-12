@@ -4,6 +4,7 @@ import type { ProjectView, SessionSummary } from '../ledger.js';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { About, Foot, Funding, Hero, NextUp, Shipped, Tiers, TopBar, Wall, Workshop, standingOf, ownerOf, withGivers, type Patronage, type Schedule, type SessionTail } from './parts.js';
 import { CSS, FONTS } from './theme.js';
+import { esc } from '../ui.js';
 
 export interface ProjectPageData {
   brand: string;
@@ -49,5 +50,5 @@ export function ProjectPage(d: ProjectPageData) {
   );
 }
 export function projectDocument(d: ProjectPageData, render: (node: unknown) => string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${d.v.account.split('/')[1] ?? d.v.account} · ${d.brand}</title><style>${CSS}</style></head><body>${render(<ProjectPage {...d} />)}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${esc(d.v.account.split('/')[1] ?? d.v.account)} · ${esc(d.brand)}</title><style>${CSS}</style></head><body>${render(<ProjectPage {...d} />)}</body></html>`;
 }

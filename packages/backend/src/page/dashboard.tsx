@@ -53,6 +53,9 @@ function Agent({ v, schedule }: { v: ProjectView; schedule: Schedule[] }) {
     </div>
   );
 }
+// The owner's one control. Its form posts to a page route that is not served yet: today the owner's door is
+// `POST /v1/agent/state` on a steer key (ADR 0003). Serving this form means a signed-in owner and a steer key held by
+// the deployment; both are decisions outside this design.
 function Controls({ v, enc }: { v: ProjectView; enc: string }) {
   const desired = v.control?.desired?.state ?? 'running';
   return (
