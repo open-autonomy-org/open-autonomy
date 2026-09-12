@@ -103,10 +103,20 @@ export interface Account {
   moderation_reason?: string;
   // Read with the owner's config: what the deployed service reports against the repository's default branch.
   deployment?: LiveDeployment;
+  // The agent's operating state: the owner's word (a steer key's request) and the automation's answer (what it
+  // reported true of itself), kept apart. The platform records both and applies neither.
+  control?: AgentControl;
   // Keys an app's extension owns on the account (Open Autonomy's sponsors and tiers, for two): kept verbatim, opaque here.
   [extension: string]: unknown;
 }
-const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cents', 'consumed_usd_cents', 'envelopes', 'calls_total', 'last_call_ms', 'live_sessions', 'roadmap_revision', 'stripe_cardholder', 'bonus_usd_cents', 'usage', 'profile', 'goal_days', 'moderation', 'moderation_reason', 'deployment', 'daily_spend']);
+const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cents', 'consumed_usd_cents', 'envelopes', 'calls_total', 'last_call_ms', 'live_sessions', 'roadmap_revision', 'stripe_cardholder', 'bonus_usd_cents', 'usage', 'profile', 'goal_days', 'moderation', 'moderation_reason', 'deployment', 'daily_spend', 'control']);
+
+export type OperatingState = 'running' | 'paused';
+export interface AgentControl {
+  desired?: { state: OperatingState; at: string; by: string; reason?: string };
+  observed?: { state: OperatingState; at: string; note?: string };
+}
+const OPERATING_STATES: OperatingState[] = ['running', 'paused'];
 
 export interface LiveDeployment {
   commit: string | null;
@@ -401,6 +411,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
       case 'task_put': return json(await this.taskPut(s('account'), s('item_id'), body.task as Record<string, unknown>));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
+      case 'state': return json(this.stateView(s('account')));
+      case 'state_request': return json(await this.stateRequest(s('account'), body.state, s('by'), body.reason));
+      case 'state_report': return json(await this.stateReport(s('account'), body.state, body.note));
       case 'docs_put': return json(await this.docsPut(s('account'), body.docs as Record<string, unknown>));
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
@@ -983,6 +996,31 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return { ok: true };
   }
 
+  // ---- the operating state: the owner's word and the automation's answer -----------------------------------
+  // `POST /v1/agent/state` on a steer key records what the owner wants (running or paused); the automation reads it,
+  // applies it through its own machinery, and reports what is true of itself as `org.open-autonomy.agent.state`.
+  // The two never merge: the page shows a request beside its answer. Unrequested means running; unreported means unknown.
+  private stateView(account: string): { ok: true; account: string } & AgentControl {
+    const c = this.acct(account)?.control ?? {};
+    return { ok: true, account, ...(c.desired ? { desired: c.desired } : {}), ...(c.observed ? { observed: c.observed } : {}) };
+  }
+  private async stateRequest(account: string, state: unknown, by: string, reason: unknown): Promise<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl> {
+    if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
+    const a = this.ensureAcct(account);
+    const current = a.control?.desired?.state ?? 'running';
+    if (current === state && a.control?.desired) return { ok: true, unchanged: true, ...a.control };
+    a.control = { ...(a.control ?? {}), desired: { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) } };
+    await this.save();
+    return { ok: true, ...a.control };
+  }
+  private async stateReport(account: string, state: unknown, note: unknown): Promise<{ ok: boolean; error?: string } & AgentControl> {
+    if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
+    const a = this.ensureAcct(account);
+    a.control = { ...(a.control ?? {}), observed: { state: state as OperatingState, at: new Date().toISOString(), ...(typeof note === 'string' && note.trim() ? { note: note.slice(0, 400) } : {}) } };
+    await this.save();
+    return { ok: true, ...a.control };
+  }
+
   // The project's document, as its substrate publishes it: what the project is (the page's lead is its first
   // paragraph). What shipped is the timeline's past, never a document.
   private async docsPut(account: string, docs: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
@@ -1101,7 +1139,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private pulse(account: string): Pulse {
     const f = this.fundingSnapshot(account);
     const a = this.acct(account);
-    return { balance_usd_cents: f.balance_usd_cents, consumed_usd_cents: f.consumed_usd_cents, granted_in_usd_cents: f.granted_in_usd_cents, live: [...(a?.live_sessions ?? [])], roadmap_revision: a?.roadmap_revision ?? 0 };
+    return { balance_usd_cents: f.balance_usd_cents, consumed_usd_cents: f.consumed_usd_cents, granted_in_usd_cents: f.granted_in_usd_cents, live: [...(a?.live_sessions ?? [])], roadmap_revision: a?.roadmap_revision ?? 0, state: `${a?.control?.desired?.state ?? 'running'}/${a?.control?.observed?.state ?? ''}` };
   }
 
   fundingSnapshot(account: string): FundingSnapshot {
@@ -1182,6 +1220,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       burn_per_day_usd_cents: f.burn_per_day_usd_cents, runway_days: f.runway_days, runway_confident: f.runway_confident,
       live_sessions: [...(a?.live_sessions ?? [])],
       ...(a?.deployment ? { live: { ...a.deployment } } : {}),
+      ...(a?.control ? { control: { ...a.control } } : {}),
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       status: fundingStatus(f),
     };
@@ -1468,7 +1507,8 @@ function normalizeRoadmap(r: unknown): Roadmap | undefined {
   return { schema: typeof (r as Roadmap).schema === 'string' ? (r as Roadmap).schema : ROADMAP_SCHEMA, items };
 }
 
-export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; granted_in_usd_cents: number; live: string[]; roadmap_revision: number }
+// `state` is `<desired>/<observed>`, the observed half empty until the automation has reported.
+export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; granted_in_usd_cents: number; live: string[]; roadmap_revision: number; state: string }
 export interface FundingSnapshot {
   account: string;
   funded: boolean;
@@ -1512,6 +1552,7 @@ export interface DirectoryEntry {
   runway_confident: boolean;
   live_sessions: string[];
   live?: LiveDeployment;
+  control?: AgentControl;
   stripe_cardholder?: string;
   status: 'funded' | 'low' | 'unfunded';
 }
@@ -1573,6 +1614,9 @@ export class LedgerClient {
   session(account: string, key: string) { return this.call<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.call<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   setupPut(account: string, setup: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  state(account: string) { return this.call<{ ok: true; account: string } & AgentControl>('state', { account }); }
+  stateRequest(account: string, state: unknown, by: string, reason?: unknown) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl>('state_request', { account, state, by, reason }); }
+  stateReport(account: string, state: unknown, note?: unknown) { return this.call<{ ok: boolean; error?: string } & AgentControl>('state_report', { account, state, note }); }
   docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
   taskPut(account: string, itemId: string, task: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string; task?: TaskRecord }>('task_put', { account, item_id: itemId, task }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.call<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }

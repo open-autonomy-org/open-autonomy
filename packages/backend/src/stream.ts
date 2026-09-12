@@ -21,6 +21,8 @@ const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 // The project's documents: what it is and what shipped, published by its substrate from whatever files it keeps.
 const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
+// The agent's operating state as the automation reports it true of itself (running or paused), answering the owner's request.
+const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
 
 export async function agentEvents(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
@@ -49,6 +51,12 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     }
     if (e.type === DOCS_EVENT_TYPE) {
       const result = await ledger.docsPut(claims.account, data);
+      results.push({ id: e.id, ...result });
+      if (!result.ok) return json({ ok: false, results }, { status: 400 });
+      continue;
+    }
+    if (e.type === STATE_EVENT_TYPE) {
+      const result = await ledger.stateReport(claims.account, data.state, data.note);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;

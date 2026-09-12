@@ -225,6 +225,19 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);
     return json(r, { status: r.ok ? 200 : 400 });
   }
+  // The owner's word on the agent's operating state, on a steer-scoped key: running or paused, with a reason. The
+  // platform records it and applies nothing; the automation reads it back and reports what became true of itself.
+  if (path === '/v1/agent/state') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    const body = parseJson<{ state?: string; reason?: string }>(await req.text());
+    if (!body || typeof body.state !== 'string') return error('invalid_request');
+    const r = await ledger.stateRequest(claims.account, body.state, claims.kid, body.reason);
+    return json(r, { status: r.ok ? 200 : 400 });
+  }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { if (get()) return get()!; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { if (get()) return get()!; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { if (get()) return get()!; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { if (get()) return get()!; return json(await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }

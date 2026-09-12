@@ -35,9 +35,11 @@ const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
 const saved = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {};
 const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ? saved.published ?? {} : {};
+// The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
+const pausedJobs = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
 function saveState(): void {
   const temp = `${stateFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints }) + '\n', { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs] }) + '\n', { mode: 0o600 });
   renameSync(temp, stateFile);
 }
 
@@ -319,6 +321,38 @@ async function setup(): Promise<void> {
   const digest = JSON.stringify(s);
   if (digest !== setupDigest && await oa.setup(s)) setupDigest = digest;
 }
+// The owner's word on the operating state, read from the platform and applied through the harness's own schedule.
+// `paused` here means the scheduled runs (the funded work) stop: every enabled job is paused and remembered; a run in
+// flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
+// reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
+let reportedState = '', controlAt = 0, controlUnreadable = false;
+const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
+async function control(): Promise<void> {
+  const c = await oa.state(cfg.account);
+  if (!c) { if (!controlUnreadable) { controlUnreadable = true; log(`operating state unreadable through ${baseUrl}; the owner's word waits`); } return; }
+  controlUnreadable = false;
+  const desired = c.desired?.state ?? 'running';
+  let jobs = await sc.listJobs({ harness: 'hermes', homes });
+  if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
+  let changed = false;
+  if (desired === 'paused') {
+    for (const j of jobs.jobs) if (j.enabled) { await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); pausedJobs.add(j.id); saveState(); changed = true; }
+  } else {
+    for (const id of [...pausedJobs]) {
+      const j = jobs.jobs.find(x => x.id === id);
+      if (j && !j.enabled) { await sc.resumeJob({ harness: 'hermes', id, profile: j.profile ?? undefined, homes }); changed = true; }
+      pausedJobs.delete(id); saveState();
+    }
+  }
+  if (changed) jobs = await sc.listJobs({ harness: 'hermes', homes });
+  const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
+  const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
+  const running = liveRun();
+  const state = desired === 'paused' && !enabled.length && !running ? 'paused' : 'running';
+  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
+  const digest = `${state}|${note ?? ''}`;
+  if (digest !== reportedState && await oa.reportState(state, note)) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
+}
 let busy = false, dirty = false, quitting = false, documentsAt = 0;
 async function tick(): Promise<void> {
   if (busy || quitting) { dirty = true; return; }
@@ -329,6 +363,7 @@ async function tick(): Promise<void> {
       await nativeState();
       const present = await board();
       await sessions();
+      if (Date.now() - controlAt > 10_000) { await control(); controlAt = Date.now(); }
       if (Date.now() - documentsAt > 60_000) {
         refreshMain();
         await docs(); await timeline(present); await setup();

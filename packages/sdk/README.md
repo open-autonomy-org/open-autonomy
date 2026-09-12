@@ -98,6 +98,11 @@ when using a checkout's bundled tools. The credential destination remains outsid
   It opens, its turns append with an offset, and it ends with an optional outcome: a run has a verdict
   (`done` | `failed`), a chat does not. Several can be live at once.
 - **An update** is a short progress note on an item, optionally from a session.
+- **The operating state** is the one word of control, `running` or `paused`, in each direction. The owner requests it on
+  a `steer`-scoped key; the automation reads the request, applies it through its own machinery (the platform names no
+  method: not a scheduler, not a queue, not an interruption), and reports the state once it is true of itself. The
+  platform keeps the request and the answer apart and shows both: unrequested means running, unreported means unknown.
+  The Hermes kit's answer to `paused` is that the scheduled runs stop and a run in flight finishes; a channel still answers.
 - **The timeline** is one normalized document per project: every item of work the project has done, is doing
   or intends, in one language, whatever holds it natively. An item has a tense, past, present or future, a
   status within it, when it entered each, the release that shipped it or will, who, its proof (a commit), and its
@@ -172,6 +177,8 @@ intake; everything accepted is public.
      "data": { "task_id": "…", "lane": "review", "attempts": [{ "id": "1", "profile": "default", "status": "review_requested", "summary": "…" }], "reviews": [{ "verdict": "requested" }], "handoff": { "summary": "…" } } }
    { "type": "org.open-autonomy.agent.setup", "subject": "agent",
      "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "file-roadmap-item", "schedule": "every 360m" }], "skills": ["roadmap", "land"], "setup_md": "…" }
+   { "type": "org.open-autonomy.agent.state", "subject": "agent",
+     "data": { "state": "paused", "note": "scheduled runs paused: pm, community" } }
    "data": { "text": "…", "session": "<session key>" } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.session.ended", "subject": "<session key>",
@@ -200,7 +207,9 @@ Public reads, no key:
 | `GET /v1/accounts/:account/items/:item` | every session, update and settled cent on the item |
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
 | `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md? }` | the project's document, from whatever file the substrate keeps: what it is (the page leads with the first paragraph) |
-| `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision); stays open |
+| `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision, the operating state as `<desired>/<observed>`); stays open |
+| `GET /v1/accounts/:account/state` | the operating state: `desired` `{ state, at, by, reason? }` as the owner requested it, `observed` `{ state, at, note? }` as the automation last reported it; either absent until made |
+| `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true` |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |
 
