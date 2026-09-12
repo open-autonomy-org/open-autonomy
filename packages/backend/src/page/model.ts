@@ -28,3 +28,15 @@ export interface PageSlots {
   give?: unknown;     // doors in the Books (the platform: give credits, a coupon)
   styles?: string;    // the app's own CSS after the core's: a constant of the app, never computed from input
 }
+
+// The deployment's front: the grid of its projects. The core's words are "Projects" and how many; the platform's
+// are its pitch, its patrons in the figures, and each project's patrons on its card.
+export interface DirectorySlots {
+  front?: unknown;                   // the words above the figures (the platform: "Fund a project that builds itself.")
+  stripe?: unknown;                  // more figures after the core's (the platform: patrons, granted by funders)
+  card?: Record<string, unknown>;    // a project's facts line, by account (the platform: patrons, per month)
+  styles?: string;
+}
+// A name's page, GitHub's user or org page: what it owns here and what it gave. The core shows projects and the
+// giving books; the platform adds how to buy credits or sponsor.
+export interface AccountSlots { meta?: unknown; side?: unknown; main?: unknown; card?: Record<string, unknown>; styles?: string }

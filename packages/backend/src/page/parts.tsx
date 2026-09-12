@@ -217,7 +217,7 @@ export function Shipped({ roadmap, account, now, max = 5 }: { roadmap: Roadmap; 
   );
 }
 
-// ---- patrons wall ----------------------------------------------------------------------------------------------
+// ---- the givers wall: everyone who put money in ------------------------------------------------------------------
 export function Wall({ givers, more, title = 'Givers', empty = 'No one has given yet.' }: { givers: Giver[]; more?: unknown; title?: string; empty?: string }) {
   return (
     <div class="card">

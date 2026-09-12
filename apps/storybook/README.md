@@ -12,9 +12,12 @@ Two story trees, because two things exist. **Core** is exactly what a self-hoste
 The core knows givers (the books), team and owner (the roster) and everyone else. It knows nothing about patrons,
 tiers, sponsors, coupons or Explore, and carries no code for them switched off.
 
+The core also has the deployment's front (`directory.tsx`: the grid of its projects, the ones working now first) and a
+name's page (`account.tsx`: a GitHub login, org or person, one namespace: what it owns here and what it gave).
+
 **Platform** is the same pages with the platform's additions entering through the core's slots: the source is
 `apps/platform/src/page/patronage.tsx` (the ask, the tiers, subscribers on the wall, subscriptions in Money in,
-Explore in the bar). Which code ships is decided by which package a deployment mounts, at build time, as
+Explore in the bar; on the front, its pitch and its patrons; on a name's page, the door to buy credits or sponsor). Which code ships is decided by which package a deployment mounts, at build time, as
 `apps/self-host` and `apps/platform` already do. There is no deployment flag.
 
 | Slot | Where | The platform puts |
@@ -29,16 +32,23 @@ Explore in the bar). Which code ships is decided by which package a deployment m
 | `give` | Books | its own give doors |
 | `styles` | after the core's stylesheet | its own CSS, a constant of the app, built from the core's tokens |
 
-A slot is additive and inside the core's layout: an app cannot remove, reorder or rewrite what the core shows.
+A slot is additive and inside the core's layout: an app cannot remove, reorder or rewrite what the core shows. The
+front and a name's page have their own, smaller contracts:
+
+| Page | Slot | The platform puts |
+|---|---|---|
+| front | `front` | its words above the figures: "Fund a project that builds itself." (the core says "Projects") |
+| front | `stripe` | more figures: patrons; granted, by how many funders or from whose pool |
+| front, name | `card` | a project's facts line by account: patrons, per month (the core shows the balance) |
+| name | `meta`, `main`, `side` | Sponsor on GitHub for the org that owns the listing; Buy credits to give on a person's own page |
 
 ## The project: GitHub's frame, Kickstarter's campaign, Patreon's rhythm
 One address per thing, tabs for its depths, roles deciding what you see and may do, never a second site:
 
 | Address | What it is |
 |---|---|
-| `/explore` | the deployment's front (platform); a self-host with one project lands on it |
-| `/owner` | an org: its projects, its grants pool, its sponsors |
-| `/login` | a person: a funder's books |
+| `/` | the deployment's front: its projects as cards, the ones working now first; on the platform, Explore |
+| `/name` | a GitHub login, org or person, one namespace: its projects, its grants pool, its giving books |
 | `/owner/project` | Overview: the composed page below |
 | `/owner/project/work`, `…/work/:item` | the timeline as a board (promised, in progress, shipped), one item |
 | `/owner/project/sessions`, `…/sessions/:key` | the stream, live first; one transcript |
@@ -46,7 +56,7 @@ One address per thing, tabs for its depths, roles deciding what you see and may 
 | `/owner/project/agent` | who it is, how it runs, its state, the owner's one control |
 | `/owner/project/team` | the roster |
 
-Reserved top-level names: `explore`, `give`, `v1`, `admin`, `settings`.
+Reserved top-level names: `give`, `v1`, `admin`, `settings`; `/explore` is `/` on the platform.
 
 ### Overview: what each panel owns
 
