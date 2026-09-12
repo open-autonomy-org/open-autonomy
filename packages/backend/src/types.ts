@@ -38,8 +38,8 @@ export interface KeyClaims {
   account: string;
   models: string[];
   // What the key may do. `spend`: the model rail; `pay`: the card and partner rails (a treasurer's key, kept
-  // apart from the developer's); `narrate`: the development stream; `steer`: push a roadmap revision (an
-  // owner-side driver's key, which spends nothing); `give`: a funder's key, which moves grant credits from the
+  // apart from the developer's); `narrate`: the development stream, everything the automation says; `steer`: the owner's word (a
+  // roadmap revision, the operating state), an owner-side key which spends nothing; `give`: a funder's key, which moves grant credits from the
   // funder's own books to a project. Absent means spend + narrate.
   scopes?: KeyScope[];
   iat: string;
