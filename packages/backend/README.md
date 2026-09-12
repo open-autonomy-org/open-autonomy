@@ -33,6 +33,6 @@ access policy in front of `/` and `/p/*`; the API paths stay key-authenticated.
 ## The wire
 
 The routes and their shapes are documented in `packages/sdk/README.md`, which is the wire any language speaks:
-`/v1/agent/events`, `/v1/agent/roadmap`, `/v1/keys/*`, the model rail at `/v1/chat/completions`, `/v1/messages`
+`/v1/agent/events`, `/v1/agent/roadmap`, `/v1/agent/state`, `/v1/keys/*`, the model rail at `/v1/chat/completions`, `/v1/messages`
 and `/v1/responses`, the rails at `/v1/rails/card` and `/v1/rails/partner`, and the public reads under
 `/v1/accounts/:account`. `/admin/*` needs the admin token; `/webhooks/stripe` is the issuer's.

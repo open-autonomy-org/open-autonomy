@@ -113,6 +113,14 @@ stops for that session with an explicit reconciliation error rather than skippin
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
 default, with private session/job exceptions and optional chat publication controlled by project policy.
 
+The reporter is also where the owner's one word of control lands. `POST /v1/agent/state {"state":"paused"}` on a
+`steer`-scoped key (`bun .open-autonomy/mint-key.ts --scopes steer --out ~/.config/open-autonomy/steer.env` mints one,
+which spends nothing) records the request on the platform; the reporter reads it back through the valve and applies it
+through Hermes's own schedule: every enabled job paused and remembered, a run in flight left to finish, conversations on
+a channel still answered. It reports `paused` only once no job is enabled and no run is live, so the page shows "pause
+requested · still running" until then. `{"state":"running"}` resumes exactly the jobs it paused; a job the owner
+disabled on their own stays disabled. Stopping the service is the operator's other lever and stays invisible to the page.
+
 **Rails.** The agent's model calls need no configuration beyond the key. `rails:` in
 `.open-autonomy/config.yaml` opens the two others, off by default: a single-use card minted against the
 balance for a bounded amount at the owner's merchant categories, and a partner service's metered charge

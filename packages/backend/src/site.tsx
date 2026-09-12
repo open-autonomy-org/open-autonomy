@@ -2,9 +2,21 @@ import { raw } from 'hono/html';
 import { ROADMAP_SCHEMA, itemState, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { TEAM_SCOPES, type TeamMember } from '@open-autonomy/sdk/team';
 import type { TeamFile } from './team.js';
-import type { DirectoryEntry, Envelope, EnvelopePurpose, Flow, ItemView, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
+import type { AgentControl, DirectoryEntry, Envelope, EnvelopePurpose, Flow, ItemView, ProjectView, RoadmapRevision, SessionRecord, SessionSummary } from './ledger.js';
 import { ItemPage, LIVE_SCRIPT, SessionPage, SessionsPage, SetupPanel, Timeline, leadParagraphs, type TimelineQuery } from './stream-view.js';
-import { Icon, LOGO_SVG, fmtAgo, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
+import { Icon, LOGO_SVG, fmtAgo, fmtWhen, mdInlineToSafeHtml, mdToSafeHtml, render, usd, usd0 } from './ui.js';
+
+// The agent's operating state on the page: nothing while the owner asked nothing and the automation is not paused; the
+// owner's word beside the automation's answer when they differ; one word when they agree on paused. The platform shows
+// both records as they are; a request the automation has never answered says so.
+export function operatingLine(c: AgentControl | undefined): string | undefined {
+  const desired = c?.desired?.state ?? 'running', observed = c?.observed?.state;
+  const reason = c?.desired?.reason ? `: ${c.desired.reason}` : '';
+  const note = c?.observed?.note ? ` · ${c.observed.note}` : '';
+  if (desired === 'paused') return observed === 'paused' ? `paused by the owner ${fmtWhen(c!.desired!.at)}${reason}${note}` : `pause requested ${fmtWhen(c!.desired!.at)}${reason} · ${observed ? 'still running' : 'no answer from the agent yet'}`;
+  if (observed === 'paused') return c?.desired ? `resume requested ${fmtWhen(c.desired.at)}${reason} · still paused${note}` : `paused ${fmtWhen(c!.observed!.at)}${note}`;
+  return undefined;
+}
 
 // A project's page, server-rendered from the books: the timeline, the sessions, the items, the funding, the
 // setup, the team. No client JS beyond the live channel. Light theme, coral accent, generous whitespace.
@@ -295,6 +307,7 @@ function Project({ v, sessions, live, roadmap, revision, now, view, slots }: { v
               {repoUrl ? <><span class="sep">|</span><a class="repo-pill" href={repoUrl} target="_blank" rel="noopener"><Icon name="github" size={15} />{v.account}<span class="ext"><Icon name="linkExternal" size={11} /></span></a></> : null}
             </div>
             {v.live ? <p class="tag">{v.live.commit ? <>{`live: ${v.live.commit}`}{v.live.ahead === 0 ? ' · up to date' : v.live.ahead === null ? null : <> · <a href={`https://github.com/${v.account}/compare/${v.live.commit}...${v.live.head ?? 'main'}`} target="_blank" rel="noopener">{`main is ${v.live.ahead} changes ahead`}</a></>}</> : 'live: unreachable'}</p> : null}
+            {operatingLine(v.control) ? <p class="tag" data-operating>{operatingLine(v.control)}</p> : null}
           </div>
         </div>
         <div class="cols">
@@ -312,7 +325,7 @@ function Project({ v, sessions, live, roadmap, revision, now, view, slots }: { v
             <div class="panel">
               <h3>Funding</h3>
               <img src={`/v1/accounts/${enc}/runway.svg`} width="460" height="116" style={`max-width:100%;border-radius:12px;border:1px solid ${C.line}`} alt="funding runway" />
-              <div class="ledger" data-project={v.account} data-shape={JSON.stringify([live, revision?.revision ?? 0, v.granted_in_usd_cents])}>
+              <div class="ledger" data-project={v.account} data-shape={JSON.stringify([live, revision?.revision ?? 0, v.granted_in_usd_cents, `${v.control?.desired?.state ?? 'running'}/${v.control?.observed?.state ?? ''}`])}>
                 <div class="item"><div class="v" data-received>{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
                 {v.granted_out_usd_cents > 0 ? <div class="item"><div class="v">{usd(v.granted_out_usd_cents)}</div><div class="l">funded onward</div></div> : null}
                 <div class="item"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>

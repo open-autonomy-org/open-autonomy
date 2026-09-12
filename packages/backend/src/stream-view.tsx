@@ -322,7 +322,7 @@ export const LIVE_SCRIPT = `(() => {
     const es = new EventSource('/v1/accounts/' + enc(account) + '/events');
     es.addEventListener('project', (e) => {
       const d = JSON.parse(e.data);
-      if (JSON.stringify([d.live, d.roadmap_revision, d.granted_in_usd_cents]) !== shape) { es.close(); setTimeout(() => location.reload(), 800); return; }
+      if (JSON.stringify([d.live, d.roadmap_revision, d.granted_in_usd_cents, d.state]) !== shape) { es.close(); setTimeout(() => location.reload(), 800); return; }
       const set = (sel, v) => { const el = document.querySelector(sel); if (el) el.textContent = v; };
       set('[data-spent]', usd(d.consumed_usd_cents)); set('[data-balance]', usd(d.balance_usd_cents)); set('[data-received]', usd(d.granted_in_usd_cents));
     });

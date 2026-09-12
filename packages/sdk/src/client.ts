@@ -37,6 +37,15 @@ export const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 // leads with its first paragraph). What shipped is the timeline's past, published as items, never a document.
 export interface ProjectDocs { about_md?: string }
 export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
+// The agent's operating state, one word in each direction. The owner requests `running` or `paused` on a steer key; the
+// automation reads the request, applies it through its own machinery (the platform names no method), and reports the
+// state once it is true of itself. The platform keeps the two apart: unrequested means running, unreported means unknown.
+export type OperatingState = 'running' | 'paused';
+export interface AgentControl {
+  desired?: { state: OperatingState; at: string; by: string; reason?: string };
+  observed?: { state: OperatingState; at: string; note?: string };
+}
+export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
 
 export interface CloudEvent {
   specversion: '1.0';
@@ -138,6 +147,14 @@ export class OpenAutonomy {
     return r.results[0]?.ok === true;
   }
 
+  // What is true of the automation now (`running` | `paused`), with a word on what that means here. Reported only once
+  // true: the answer to the owner's request, never an echo of it.
+  //   POST /v1/agent/events  type org.open-autonomy.agent.state  subject agent  { state, note? }
+  async reportState(state: OperatingState, note?: string): Promise<boolean> {
+    const r = await this.send(event(STATE_EVENT_TYPE, 'agent', { state, note }));
+    return r.results[0]?.ok === true;
+  }
+
   // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.
   async task(t: TaskState): Promise<boolean> {
     const { item, ...data } = t;
@@ -159,6 +176,23 @@ export class OpenAutonomy {
   async item(account: string, itemId: string): Promise<ItemView> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/items/${encodeURIComponent(itemId)}`);
     return await res.json() as ItemView;
+  }
+
+  // The operating state as the platform holds it: the owner's request and the automation's answer, apart.
+  //   GET /v1/accounts/:account/state  → { desired?: { state, at, by, reason? }, observed?: { state, at, note? } }
+  async state(account: string): Promise<AgentControl | undefined> {
+    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/state`);
+    if (!res.ok) return undefined;
+    const { desired, observed } = await res.json() as AgentControl;
+    return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}) };
+  }
+  // The owner's word: run, or pause. Needs the `steer` scope, which a spending key does not carry. Recorded, not applied:
+  // the automation applies it and answers through `reportState`.
+  //   POST /v1/agent/state  (Authorization: Bearer <steer key>)  { state, reason? }
+  async requestState(state: OperatingState, reason?: string): Promise<{ ok: boolean; status: number; unchanged?: boolean; error?: string } & AgentControl> {
+    const res = await this.fetchImpl(`${this.base}/agent/state`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ state, reason }) });
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; unchanged?: boolean; error?: { code?: string } | string } & AgentControl;
+    return { ok: res.ok && body.ok === true, status: res.status, unchanged: body.unchanged, error: typeof body.error === 'string' ? body.error : body.error?.code, ...(body.desired ? { desired: body.desired } : {}), ...(body.observed ? { observed: body.observed } : {}) };
   }
 
   // The roadmap as the platform holds it: the current normalized revision, and its history.
