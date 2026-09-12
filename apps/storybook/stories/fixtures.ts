@@ -1,6 +1,6 @@
 // Real records from the live platform, captured 2026-09-12, shaped as the page receives them.
 import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import type { ProjectView, SessionSummary } from '../../../packages/backend/src/ledger';
+import type { DirectoryEntry, FunderView, ProjectView, SessionSummary } from '../../../packages/backend/src/ledger';
 import oaBooks from '../fixtures/open-autonomy-books.json';
 import oaSessions from '../fixtures/open-autonomy-sessions.json';
 import oaRoadmap from '../fixtures/open-autonomy-roadmap.json';
@@ -35,4 +35,22 @@ export const hookline = {
   daily: (hlBooks as any).daily_spend_usd_cents as number[],
   v: view(hlBooks, { profile: { tagline: 'A webhook desk that answers every hook with a receipt, built by its own agent.', avatar_url: 'https://avatars.githubusercontent.com/u/324310069?v=4', about_md: 'Hookline is a webhook desk: every hook that lands gets a receipt, a place, and an answer. Its agent builds it in the open on the Open Autonomy platform.', schedule_json: JSON.stringify({ jobs: [{ name: 'pm', schedule: 'every 60 min' }] }), agent_harness: 'hermes', agent_model: 'zai/glm-5.3-flash', agent_provider: 'open-autonomy' } }),
   sessions: (hlSessions as any).sessions as SessionSummary[], live: [] as string[], roadmap: road(hlRoadmap),
+};
+
+// The deployment's directory as the front and a name's page receive it: the two real projects, the org's grants pool.
+// `working` puts one project's pm run live. The funder's flows are illustrative: shaped as the books emit them,
+// against the real accounts; no real funder has given yet.
+export const pool: DirectoryEntry = { ...openAutonomy.v, account: 'open-autonomy-org/grants', is_project: false, listed: false, profile: {}, balance_usd_cents: 42_000, granted_in_usd_cents: 60_000, granted_out_usd_cents: 18_000, consumed_usd_cents: 0, live_sessions: [], status: 'funded' };
+export const entries: DirectoryEntry[] = [openAutonomy.v, hookline.v, pool];
+export const working = (es: DirectoryEntry[]): DirectoryEntry[] => es.map((e) => (e.account === openAutonomy.v.account ? { ...e, live_sessions: [pmTail.key] } : e));
+export const funder: FunderView = {
+  ok: true, found: true, account: '@octocat', login: 'octocat', credits_usd_cents: 1_500, bonus_usd_cents: 500, received_usd_cents: 4_000, given_usd_cents: 2_500,
+  given: [
+    { kind: 'grant', from: '@octocat', to: 'open-autonomy-org/hookline', amount_usd_cents: 1_500, note: 'for the receipts', ts: new Date(NOW - 2 * 86_400_000).toISOString() },
+    { kind: 'grant', from: '@octocat', to: 'open-autonomy-org/open-autonomy', amount_usd_cents: 1_000, ts: new Date(NOW - 9 * 86_400_000).toISOString() },
+  ],
+  received: [
+    { kind: 'mint', to: '@octocat', amount_usd_cents: 2_500, ts: new Date(NOW - 10 * 86_400_000).toISOString() },
+    { kind: 'grant', from: 'open-autonomy-org/grants', to: '@octocat', amount_usd_cents: 1_500, note: 'welcome bonus', ts: new Date(NOW - 10 * 86_400_000).toISOString() },
+  ],
 };
