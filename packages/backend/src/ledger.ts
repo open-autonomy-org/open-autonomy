@@ -963,8 +963,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const tsMs = typeof at === 'string' && Number.isFinite(Date.parse(at)) && Date.parse(at) <= now + 60_000 ? Date.parse(at) : now;
     const update: UpdateRecord = { id: given ?? crypto.randomUUID(), account, item_id, ts: new Date(tsMs).toISOString(), text: body, ...(typeof session === 'string' && session && session.length <= 200 ? { session } : {}) };
     const key = `update:${account}:${item_id}:${String(tsMs).padStart(13, '0')}:${update.id}`;
-    await this.ctx.storage.put(key, update);
-    if (given) await this.ctx.storage.put(`updateidx:${account}:${given}`, key);
+    // One storage operation for the record and its index: a stop between two writes could leave a record its id
+    // cannot find, and the next retry would append a second one.
+    await this.ctx.storage.put(given ? { [key]: update, [`updateidx:${account}:${given}`]: key } : { [key]: update });
     this.ensureAcct(account);
     await this.save();
     return { ok: true, update };
