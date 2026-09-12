@@ -1,0 +1,15 @@
+{
+  "name": "@open-autonomy/storybook",
+  "private": true,
+  "type": "module",
+  "description": "The platform's pages designed in the open: every component and every page state rendered from fixtures, before it is wired to the books.",
+  "scripts": {
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build": "storybook build"
+  },
+  "devDependencies": {
+    "@storybook/html-vite": "^9",
+    "storybook": "^9",
+    "vite": "^6"
+  }
+}

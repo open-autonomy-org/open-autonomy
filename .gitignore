@@ -77,3 +77,4 @@ hermes/scrum-queue.lock
 hermes/pm-cursor.json*
 hermes/community-cursor.json*
 hermes/release-review.md
+apps/storybook/storybook-static/
