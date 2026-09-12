@@ -17,8 +17,6 @@ const SESSION_EVENT_TYPES: Record<string, 'started' | 'turns' | 'ended'> = {
   'org.open-autonomy.session.ended': 'ended',
 };
 const UPDATE_EVENT_TYPE = 'org.open-autonomy.item.update';
-// The board's state for an item (its task's lane, attempts, handoff, reviews), replaced whole each time.
-const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
 // The agent's setup: who it is, its model, its schedule, what it knows — published by its substrate.
 const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 // The project's documents: what it is and what shipped, published by its substrate from whatever files it keeps.
@@ -68,12 +66,6 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     if (e.type === TIMELINE_EVENT_TYPE) {
       if (!data.roadmap || typeof data.source !== 'string') return error('invalid_timeline', 400);
       const result = await ledger.roadmapSet(claims.account, data.roadmap as Roadmap, data.source, typeof data.by === 'string' ? data.by : claims.kid);
-      results.push({ id: e.id, ...result });
-      if (!result.ok) return json({ ok: false, results }, { status: 400 });
-      continue;
-    }
-    if (e.type === TASK_EVENT_TYPE) {
-      const result = await ledger.taskPut(claims.account, e.subject, data);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;
@@ -143,7 +135,7 @@ export async function itemEvents(env: Env, account: string, itemId: string, req:
       let idle = 0;
       for (let i = 0; i < 1800; i += 1) {
         const item = await ledger.item(account, itemId);
-        const digest = JSON.stringify([item.live, item.task?.lane, item.task?.reviews.length, item.sessions.map((s) => [s.key, s.status, s.turn_count, s.calls]), item.updates.length, item.usd_cents]);
+        const digest = JSON.stringify([item.live, item.sessions.map((s) => [s.key, s.status, s.turn_count, s.calls]), item.updates.length, item.usd_cents]);
         if (digest !== last) {
           last = digest;
           send(`event: item${NL}data: ${JSON.stringify({ live: item.live, sessions: item.sessions.length, turn_count: item.sessions.reduce((n, s) => n + s.turn_count, 0), updates: item.updates.length, usd_cents: item.usd_cents })}${NL}${NL}`);

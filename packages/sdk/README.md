@@ -103,8 +103,6 @@ intake; everything accepted is public.
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.item.update", "subject": "<item id>",
    … }
-   { "type": "org.open-autonomy.item.task", "subject": "<item id>",
-     "data": { "task_id": "…", "lane": "review", "attempts": [{ "id": "1", "profile": "default", "status": "review_requested", "summary": "…" }], "reviews": [{ "verdict": "requested" }], "handoff": { "summary": "…" } } }
    { "type": "org.open-autonomy.agent.setup", "subject": "agent",
      "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "file-roadmap-item", "schedule": "every 360m" }], "skills": ["roadmap", "land"], "setup_md": "…" }
    { "type": "org.open-autonomy.agent.state", "subject": "agent",
