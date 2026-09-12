@@ -54,7 +54,7 @@ export function Overview(d: ProjectPageData) {
           <About md={d.v.profile.about_md} account={a} />
           {sees(d.viewer, d.visibility.sessions) ? <Workshop sessions={d.sessions} live={d.live} tail={sees(d.viewer, d.visibility.transcripts) ? d.tail : undefined} schedule={parseSchedule(d.v.profile.schedule_json)} standing={standing} control={d.v.control} daily={d.daily} account={a} now={d.now} /> : null}
           {sees(d.viewer, d.visibility.work) ? <><NextUp roadmap={d.roadmap} account={a} /><Shipped roadmap={d.roadmap} account={a} now={d.now} /></> : null}
-          {sees(d.viewer, d.visibility.books) ? <Wall givers={givers} more={d.slots?.wall} title={d.slots?.wall ? 'Patrons' : 'Givers'} /> : null}
+          {sees(d.viewer, d.visibility.books) ? <Wall givers={givers} more={d.slots?.wall} title={d.slots?.wallTitle} /> : null}
           {d.slots?.main}
         </div>
         <div class="side">

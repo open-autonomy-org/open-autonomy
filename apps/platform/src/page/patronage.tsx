@@ -4,25 +4,33 @@ import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { PageSlots } from '@open-autonomy/backend/page/model';
 import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
 import { usd0 } from '@open-autonomy/backend/ui';
+import { T } from '@open-autonomy/backend/page/theme';
 import type { Patron, PatronageView, Tier } from '../patronage.js';
 
+// The platform's own rules, from the core's tokens: the tiers, the ladder, and the fold under them.
 export const PATRONAGE_STYLES = `
 .tiers{display:flex;flex-direction:column;gap:10px}
-.tier{border:1.5px solid #e9e6e1;border-radius:14px;padding:16px 18px;background:#fff}
-.tier.feat{border-color:#ff424d;background:#fff1f2}
+.tier{border:1.5px solid ${T.line};border-radius:14px;padding:16px 18px;background:${T.panel}}
+.tier.feat{border-color:${T.accent};background:${T.accentWash}}
 .tier .th{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
 .tier .tn{font-weight:700;font-size:15px}
 .tier .tp{font-weight:800;font-size:18px;letter-spacing:-.02em}
-.tier .tp span{font-weight:500;font-size:12.5px;color:#76787d}
-.tier p{color:#3d3f44;font-size:13.5px;margin-bottom:12px}
+.tier .tp span{font-weight:500;font-size:12.5px;color:${T.muted}}
+.tier p{color:${T.body};font-size:13.5px;margin-bottom:12px}
 .tier .btn{width:100%}
-.ladder{display:flex;flex-direction:column;border:1.5px solid #e9e6e1;border-radius:14px;overflow:hidden;margin-bottom:12px;background:#fff}
-.ladder .rung{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:12px 16px;border-top:1px solid #e9e6e1}
+.ladder{display:flex;flex-direction:column;border:1.5px solid ${T.line};border-radius:14px;overflow:hidden;margin-bottom:12px;background:${T.panel}}
+.ladder .rung{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:12px 16px;border-top:1px solid ${T.line}}
 .ladder .rung:first-child{border-top:0}
 .ladder .rung .tn{font-weight:700;font-size:14.5px}
-.ladder .rung .tn span{display:block;font-weight:400;font-size:13px;color:#76787d}
+.ladder .rung .tn span{display:block;font-weight:400;font-size:13px;color:${T.muted}}
 .ladder .rung .tp{font-weight:800;font-size:16px;white-space:nowrap}
-.ladder .rung .tp span{font-weight:500;font-size:12px;color:#76787d}
+.ladder .rung .tp span{font-weight:500;font-size:12px;color:${T.muted}}
+details.more{border-top:1px solid ${T.line};margin-top:16px;padding-top:12px}
+details.more summary{cursor:pointer;color:${T.muted};font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin-right:4px;transition:transform .15s}
+details.more[open] summary::before{transform:rotate(45deg)}
+details.more .body{padding-top:12px;display:flex;flex-direction:column;gap:12px}
 `;
 
 export interface PlatformPage { account: string; patronage: PatronageView; polar: boolean; sponsor: string; burnPerMonth: number; roadmap: Roadmap }
@@ -77,6 +85,7 @@ export function projectSlots(p: PlatformPage): PageSlots {
     cta: <a class="btn small" href="#tiers">Become a patron</a>,
     meta: <><span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span><span><b>{usd0(monthly)}</b>/mo</span></>,
     side: <Tiers tiers={patronage.tiers} owner={ownerOf(account)} account={account} sponsor={p.sponsor} polar={p.polar} burn={p.burnPerMonth} />,
+    wallTitle: 'Patrons',
     wall: patronage.patrons.length ? <>{patronage.patrons.map(chip)}</> : undefined,
     moneyIn: patronage.patrons.length ? <>{patronage.patrons.map((x) => <li>{safeUrl(x.avatar_url) ? <img src={safeUrl(x.avatar_url)} alt="" /> : <span class="ph" />}<span class="who"><b>{x.name ?? x.login}</b><span>{x.amount_label ?? (x.kind === 'sponsor' ? 'GitHub sponsor' : x.kind === 'funder' ? 'grant credits' : 'patron')}</span></span><span class="amt" /></li>)}</> : undefined,
     styles: PATRONAGE_STYLES,

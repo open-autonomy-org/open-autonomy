@@ -232,7 +232,7 @@ export function Funding({ v, givers, standing, runwayDays, goalDays, headline, a
   const frac = runwayDays === null ? 0 : Math.max(0, Math.min(1, runwayDays / goalDays));
   const tone = standing === 'exhausted' ? 'off' : runwayDays !== null && runwayDays < goalDays / 3 ? 'warn' : '';
   return (
-    <div class="card fund" id="patron">
+    <div class="card fund">
       {headline ?? <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{givers > 0 ? `, from ${givers} ${givers === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
       <div class="line">{standing === 'exhausted' ? 'The balance is spent. The next gift starts the agent again.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? `Over a year of runway at its current burn.` : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>

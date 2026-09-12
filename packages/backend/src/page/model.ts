@@ -23,7 +23,8 @@ export interface PageSlots {
   side?: unknown;     // cards at the top of Overview's side column (the platform: the ask, the tiers)
   main?: unknown;     // cards after Overview's main column
   wall?: unknown;     // more people on the givers wall (the platform: subscribers)
+  wallTitle?: string; // what the wall is called when the app adds to it (the platform: Patrons)
   moneyIn?: unknown;  // rows in the Books' money in (the platform: subscriptions)
   give?: unknown;     // doors in the Books (the platform: give credits, a coupon)
-  styles?: string;    // the app's own CSS, after the core's
+  styles?: string;    // the app's own CSS after the core's: a constant of the app, never computed from input
 }

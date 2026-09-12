@@ -119,28 +119,6 @@ ul,ol{padding:0;list-style:none}
 .fund .btn{margin-top:16px}
 .fine{color:${T.muted};font-size:12.5px;margin-top:10px;line-height:1.45}
 .fine a{color:${T.accentInk};font-weight:600;white-space:nowrap}
-.tiers{display:flex;flex-direction:column;gap:10px}
-.tier{border:1.5px solid ${T.line};border-radius:14px;padding:16px 18px}
-.tier.feat{border-color:${T.accent};background:${T.accentWash}}
-.tier .th{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
-.tier .tn{font-weight:700;font-size:15px}
-.tier .tp{font-weight:800;font-size:18px;letter-spacing:-.02em}
-.tier .tp span{font-weight:500;font-size:12.5px;color:${T.muted}}
-.tier p{color:${T.body};font-size:13.5px;margin-bottom:12px}
-.tier .btn{width:100%}
-.ladder{display:flex;flex-direction:column;gap:0;border:1.5px solid ${T.line};border-radius:14px;overflow:hidden;margin-bottom:12px}
-.ladder .rung{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:12px 16px;border-top:1px solid ${T.line}}
-.ladder .rung:first-child{border-top:0}
-.ladder .rung .tn{font-weight:700;font-size:14.5px}
-.ladder .rung .tn span{display:block;font-weight:400;font-size:13px;color:${T.muted}}
-.ladder .rung .tp{font-weight:800;font-size:16px;white-space:nowrap}
-.ladder .rung .tp span{font-weight:500;font-size:12px;color:${T.muted}}
-details.more{border-top:1px solid ${T.line};margin-top:16px;padding-top:12px}
-details.more summary{cursor:pointer;color:${T.muted};font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
-details.more summary::-webkit-details-marker{display:none}
-details.more summary::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin-right:4px;transition:transform .15s}
-details.more[open] summary::before{transform:rotate(45deg)}
-details.more .body{padding-top:12px;display:flex;flex-direction:column;gap:12px}
 .form{display:flex;flex-direction:column;gap:8px}
 .form input{height:38px;border:1px solid ${T.line};border-radius:10px;padding:0 12px;font:inherit;font-size:14px}
 .form .fine{color:${T.muted};font-size:12.5px;line-height:1.45}

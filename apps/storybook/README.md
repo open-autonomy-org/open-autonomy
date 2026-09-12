@@ -23,10 +23,11 @@ Explore in the bar). Which code ships is decided by which package a deployment m
 | `cta` | the top bar | Become a patron |
 | `meta` | the hero's facts line | patrons, per month (the core shows the balance instead) |
 | `side` | top of Overview's side column | the tiers |
-| `wall` | more chips on the givers wall | subscribers and sponsors |
+| `main` | cards after Overview's main column | |
+| `wall`, `wallTitle` | more chips on the givers wall, and its name | subscribers and sponsors, "Patrons" |
 | `moneyIn` | rows in Books' money in | subscriptions |
 | `give` | Books | its own give doors |
-| `styles` | after the core's stylesheet | its own CSS |
+| `styles` | after the core's stylesheet | its own CSS, a constant of the app, built from the core's tokens |
 
 A slot is additive and inside the core's layout: an app cannot remove, reorder or rewrite what the core shows.
 
