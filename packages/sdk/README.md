@@ -100,16 +100,18 @@ intake; everything accepted is public.
      { "ts": "…", "role": "assistant", "tool": "terminal", "args": "{…}" },
      { "ts": "…", "role": "tool", "tool": "terminal", "result": "…" },
      { "ts": "…", "role": "assistant", "text": "…" } ] } },
- { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
+ { "specversion": "1.0", "id": "t_add:review:0:approved", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.item.update", "subject": "<item id>",
-   … }
-   { "type": "org.open-autonomy.agent.setup", "subject": "agent",
-     "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "file-roadmap-item", "schedule": "every 360m" }], "skills": ["roadmap", "land"], "setup_md": "…" }
-   { "type": "org.open-autonomy.agent.state", "subject": "agent",
-     "data": { "state": "paused", "note": "scheduled runs paused: pm, community" } }
-   { "type": "org.open-autonomy.timeline", "subject": "project",
-     "data": { "source": "hermes", "roadmap": { "schema": "open-autonomy.timeline.v1", "items": [ … ] } } }
-   "data": { "text": "…", "session": "<session key>" } },
+   "data": { "text": "review approved by the reviewer", "session": "<session key>" } },
+ { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
+   "type": "org.open-autonomy.agent.setup", "subject": "agent",
+   "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "pm", "schedule": "every 60m" }], "skills": ["pm", "develop"], "setup_md": "…" } },
+ { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
+   "type": "org.open-autonomy.agent.state", "subject": "agent",
+   "data": { "state": "paused", "note": "scheduled runs paused: pm, community" } },
+ { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
+   "type": "org.open-autonomy.timeline", "subject": "project",
+   "data": { "source": "hermes", "roadmap": { "schema": "open-autonomy.timeline.v1", "items": [] } } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.session.ended", "subject": "<session key>",
    "data": { "outcome": "done", "report": "…", "commit_sha": "7d30729", "item_id": "add", "ended_at": "…" } }]
@@ -117,7 +119,9 @@ intake; everything accepted is public.
 
 `seq` is the offset of the first turn in the session's own order: a retry or a reconnect that replays
 offsets already applied is ignored (`idempotent: true` in that event's result), so a reporter that restarts
-reads the session back and continues from its `next_seq`. The response is `{ ok, results: [{ id, ok,
+reads the session back and continues from its `next_seq`. An update's event `id` is its identity when the publisher
+chooses one: the same id again answers with the record already held (`idempotent: true`), so a note survives a lost
+acknowledgement or a restart without doubling; an update sent without a chosen id is a new update each time. The response is `{ ok, results: [{ id, ok,
 session | update, idempotent?, error? }] }`; the first failing event stops the batch.
 
 Every write the client makes (`setup`, `docs`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answers
