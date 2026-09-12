@@ -32,7 +32,7 @@ accepted decision records; conflicting directions require a sourced proposal and
 ## Working agreement
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a
-  `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current head is required before automatic merge.
+  `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current head is required before automatic merge. Independent means a fresh context, not a different agent or a later hour: the author dispatches its own reviewer the moment it pushes, with the review checklist in the develop skill, and merges on its verdict (owner ruling, 2026-09-12).
 - Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
