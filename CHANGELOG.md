@@ -1,7 +1,6 @@
 # Changelog
 
 ## Unreleased
-- **Project pages can be designed without changing the served site.** A new `apps/storybook` renders the proposed public project page, workshop, funding parts and role-sensitive owner dashboard from captured public records; the new backend page modules remain unwired pending separately authorized router adoption ([PR #629](https://github.com/open-autonomy-org/open-autonomy/pull/629)).
 - **Exhausted funds are not an owner pause.** A funded balance spent to zero is now `exhausted`, and the runway widget says spending stopped; `paused` remains the owner's operating-state word ([PR #618](https://github.com/open-autonomy-org/open-autonomy/pull/618)).
 - **One door for everything the automation says.** The timeline travels on the events door (`org.open-autonomy.timeline`, `timeline()`) like sessions, tasks, setup and the operating state; `POST /v1/agent/roadmap` is the owner's steer door alone, and the valve no longer forwards it. Every client write answers `{ ok, status, error? }`.
 - **An update has an identity.** A publisher that gives an update event an `id` can send it again after a lost acknowledgement or a restart and get the same record back, `idempotent`; the kit's reporter uses its note's key as that id.
