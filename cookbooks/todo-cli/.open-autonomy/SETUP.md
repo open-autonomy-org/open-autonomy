@@ -546,7 +546,7 @@ not a headless registration script. Use the standalone OA credential tool on the
 the development agent's access. It needs no checkout; the kit also bundles the same tool for convenience:
 
 ```sh
-bun .open-autonomy/sdk/credentials.ts receive --out /protected/project/github-app.json --github-app owner/repo
+bun .open-autonomy/credentials.ts receive --out /protected/project/github-app.json --github-app owner/repo
 ```
 
 Replace the example destination and repository with the agreed runtime credential directory and account.

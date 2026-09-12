@@ -59,10 +59,10 @@ or Slack workspace can be reused with a separately branded bot and appropriate c
 The agent records this in the existing communication policy and setup record; no second organization
 registry is required. Personal repositories need an owner-agreed organization target before setup proceeds.
 
-GitHub registration and installation stay with that browser agent. The SDK's standalone
-`open-autonomy-credentials` command receives the secret handoff into protected host storage; it does
-not need a repository or generate provider configuration. The kit bundles the same receiver under
-`.open-autonomy/sdk/credentials.ts`. The browser agent completes installation and verifies access through
+GitHub registration and installation stay with that browser agent. The kit's own
+`credentials.ts` tool receives the secret handoff into protected host storage; it does
+not need a repository or generate provider configuration. It is the kit-owned file
+`.open-autonomy/credentials.ts`. The browser agent completes installation and verifies access through
 the standalone valve before Hermes starts. The normal stack is started only after setup is complete.
 Follow the setup guide for the manifest permissions and the exact handoff.
 
@@ -99,6 +99,26 @@ worktree only while idle, and requests a complete stack restart after the upgrad
 human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.
+
+## Host tools
+
+Beside the vendored SDK, the kit's own host tools run outside the agent's credential boundary, each one file under
+`.open-autonomy/`, run with Bun from the checkout:
+
+- **The valve** (`.open-autonomy/valve.ts`) holds the project's key: `--key <file>:<port>`, one port per key file
+  (the developer's on 8787, the treasurer's on 8788), each file re-read when it changes so a rotated key needs no
+  restart, `/healthz` naming the key's expiry. The agent is pointed at the valve with the literal word `valve` as its
+  key and never sees the credential. It forwards the model routes, the narration route (`/v1/agent/events`), the
+  rails and public reads of the account, and refuses the rest. `--codex <port>` forwards the host's current Codex
+  ChatGPT login through Codex's own app-server protocol (`codex-auth.ts`): Codex owns storage and refresh, the kit
+  keeps no copy. `--github-app <file>:<port>` serves the agent's GitHub App identity as api.github.com for the desk.
+- **The credential handoff** (`.open-autonomy/credentials.ts`): `receive --out <protected file>` serves a loopback
+  page that saves what a person pastes, verbatim, owner-only, never overwriting; `receive --github-app owner/repo`
+  receives a GitHub App manifest callback instead; `capture` transfers one field from a page in the existing
+  normal browser straight to the receiver. The command prints an address or a receipt, never the secret. Destinations
+  are outside every Git checkout; `checkCredentialDirectory` is shared with `mint-key.ts` and the kit's setup.
+- **The Supercode adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
+  reporter uses to read native Hermes through Supercode's harness SDK and publish through the Open Autonomy SDK.
 
 The reporter is an SDK-to-SDK publisher. Supercode supplies session discovery and paginated transcripts,
 native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's

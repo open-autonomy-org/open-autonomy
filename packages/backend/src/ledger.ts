@@ -1,4 +1,4 @@
-import { parseModelsBound, parseSpendLimits, type SpendLimit } from '@open-autonomy/sdk/rails';
+import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';

@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, type TaskReview } from './sdk/client.ts';
-import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './sdk/reporting.ts';
+import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));

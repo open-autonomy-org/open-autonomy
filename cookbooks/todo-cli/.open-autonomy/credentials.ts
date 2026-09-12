@@ -204,7 +204,7 @@ if (import.meta.main) {
       console.log(json(await captureCredential({ out, browser: flag('--browser') ?? '', holder: flag('--holder') ?? '', page: flag('--page') ?? '', selector: flag('--selector') ?? '', field: flag('--field') as BrowserCapture['field'] })));
       process.exit(0);
     }
-    if (!out || argv[0] !== 'receive') throw new Error('Usage: open-autonomy-credentials receive --out /protected/file [--github-app owner/repo], or capture --out /protected/file --browser http://127.0.0.1:<controller-port> --holder <session> --page <exact-url> --selector <field> --field value|text|direct-text');
+    if (!out || argv[0] !== 'receive') throw new Error('Usage: bun .open-autonomy/credentials.ts receive --out /protected/file [--github-app owner/repo], or capture --out /protected/file --browser http://127.0.0.1:<controller-port> --holder <session> --page <exact-url> --selector <field> --field value|text|direct-text');
     const receiver = receiveCredential(out, flag('--github-app'));
     console.log(json(flag('--github-app') ? { callback: receiver.callback, state: receiver.state } : { url: receiver.url }));
     try { console.log(json(await receiver.done)); }

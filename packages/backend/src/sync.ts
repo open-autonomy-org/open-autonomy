@@ -1,4 +1,5 @@
-import { fromMilestones, parseRoadmapConfig, type Milestone } from '@open-autonomy/sdk/drivers';
+import { fromMilestones, type Milestone } from '@open-autonomy/sdk/drivers';
+import { parseRoadmapConfig } from './config.js';
 import { LedgerClient, type LiveDeployment } from './ledger.js';
 import type { Env } from './types.js';
 

@@ -6,7 +6,7 @@
 // platform from the agent's side. Held outside the agent's process, the key survives anything the agent prints
 // or commits, which is the whole point: everything the agent produces is public.
 //
-//   open-autonomy-valve --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex 8789]
+//   bun .open-autonomy/valve.ts --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex 8789]
 //                       [--github-app /secrets/github-app.json:8790] [--loopback]
 // Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
@@ -32,7 +32,7 @@ const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
 const githubArg = process.argv.includes('--github-app') ? String(process.argv[process.argv.indexOf('--github-app') + 1]) : undefined;
-if (!keys.length && !codexArg && !githubArg) { console.error('usage: open-autonomy-valve --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port>]'); process.exit(2); }
+if (!keys.length && !codexArg && !githubArg) { console.error('usage: bun .open-autonomy/valve.ts --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port>]'); process.exit(2); }
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};

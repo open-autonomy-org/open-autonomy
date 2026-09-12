@@ -1,4 +1,4 @@
-import { parseRailsConfig } from '@open-autonomy/sdk/rails';
+import { parseRailsConfig } from './config.js';
 import { error, json, methodNotAllowed, parseJson } from './http.js';
 import { LedgerClient, type CardRecord } from './ledger.js';
 import { stripe, stripeConfigured, verifyStripeSignature } from './stripe.js';

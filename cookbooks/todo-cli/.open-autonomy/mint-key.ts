@@ -14,7 +14,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { keyChallenge, keyMint, keyRotate } from './sdk/client.ts';
-import { checkCredentialDirectory } from './sdk/credentials.ts';
+import { checkCredentialDirectory } from './credentials.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const config = readFileSync(resolve(import.meta.dir, 'config.yaml'), 'utf8');

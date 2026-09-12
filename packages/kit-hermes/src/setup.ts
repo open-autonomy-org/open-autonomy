@@ -19,8 +19,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpath
 import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { checkCredentialDirectory } from '@open-autonomy/sdk/credentials';
-import { codexAccess } from '@open-autonomy/sdk/codex-auth';
+import { checkCredentialDirectory } from '../template/.open-autonomy/credentials.ts';
+import { codexAccess } from '../template/.open-autonomy/codex-auth.ts';
 import { readBranding } from './branding.ts';
 import { validateParams } from './kit.ts';
 
