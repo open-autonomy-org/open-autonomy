@@ -31,8 +31,8 @@ export function renderRunwaySvg(f: FundingSnapshot): string {
   let color = C.gray, frac = 0, headline: string, sub: string, note: string;
   if (!f.funded || budget <= 0) {
     headline = 'Not yet funded'; sub = 'Sponsor to start funding the agent'; note = 'runway = balance ÷ a Bayesian estimate of daily spend';
-  } else if (f.paused || remaining <= 0) {
-    color = C.red; headline = 'Funding needed — agent paused'; sub = `${usd(0)} left of ${usd(budget)} sponsored`; note = 'add funds to resume';
+  } else if (f.exhausted || remaining <= 0) {
+    color = C.red; headline = 'Funding needed — spending stopped'; sub = `${usd(0)} left of ${usd(budget)} sponsored`; note = 'add funds to resume';
   } else {
     frac = Math.max(0.02, Math.min(1, remaining / budget));
     color = frac > 0.25 ? C.green : C.amber;
