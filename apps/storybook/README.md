@@ -6,31 +6,47 @@ an HTML string. The source is `packages/backend/src/page/`: `theme.ts` (tokens a
 (each panel), `project.tsx` (the project page). Nothing here is wired to the books until a page is adopted by the
 router, so a design can move without the platform moving.
 
-## The project page: what each panel owns
+## The project: GitHub's frame, Kickstarter's campaign, Patreon's rhythm
 
-The page is one screen for a stranger deciding whether to fund, a patron checking in, or the owner glancing. Every
-detail is a link away. A control lives with the panel that owns its job; a shortcut names its home.
+One address per thing, tabs for its depths, roles deciding what you see and may do, never a second site:
 
-| Panel | Owns | Controls | Shortcuts (home elsewhere) |
+| Address | What it is |
+|---|---|
+| `/explore` | the deployment's front (platform); a self-host with one project lands on it |
+| `/owner` | an org: its projects, its grants pool, its sponsors |
+| `/login` | a person: a funder's books |
+| `/owner/project` | Overview: the composed page below |
+| `/owner/project/work`, `…/work/:item` | the timeline as a board (promised, in progress, shipped), one item |
+| `/owner/project/sessions`, `…/sessions/:key` | the stream, live first; one transcript |
+| `/owner/project/books` | money in with its givers, earmarks, the owner's bounds, every metered call |
+| `/owner/project/agent` | who it is, how it runs, its state, the owner's one control |
+| `/owner/project/team` | the roster |
+
+Reserved top-level names: `explore`, `give`, `v1`, `admin`, `settings`.
+
+### Overview: what each panel owns
+
+| Panel | Owns | Controls | Shortcuts |
 |---|---|---|---|
-| Top bar | the deployment: brand, Explore | | Become a patron → the funding card |
-| Hero | who the project is: cover, avatar, name, tagline, one word on the agent (running, working now, pause requested, paused, spending stopped, not yet funded), patrons, per month, runway | | the repository ↗ |
-| About | what the project is: its lead paragraph | | Read more → `/p/:account/about` |
-| Right now | what the agent is doing this minute: the live run, else the last run and the next fire, else the schedule; a pause, when the owner said so | | Every session → `/p/:account/sessions` |
-| Next up | what is intended: up to five items, titles and a status word, in progress first | | the roadmap → `/p/:account/roadmap` |
-| Recently shipped | what landed: up to five, newest first, with release and when | | all shipped → `/p/:account/roadmap?view=releases` |
-| Patrons | who pays: the wall | | |
-| Funding (side) | the money: patronage per month or the balance, runway against the goal, received and spent | Become a patron (→ tiers) | the books → `/p/:account/books` |
-| Become a patron (side) | how to give: the tiers, one button per door (Polar checkout per tier, or GitHub Sponsors once), and under "Other ways to give", grant credits and a coupon | Join / Sponsor on GitHub / Give / Redeem | |
-| Foot | the sub-pages | | the books, roadmap, sessions, the agent, team |
+| Top bar | the deployment: brand, Explore (platform) | | Become a patron → funding (deployments that take money) |
+| Hero | who the project is: cover, avatar, name, tagline, who builds it, the one word on the agent, patrons and per month (or the balance), runway | | the repository ↗ |
+| Tabs | the depths, with counts | | each tab |
+| About | the lead paragraph | | Read more → about |
+| The workshop | the live session and its latest turns; else the last run's own words, the next fire, thirty days of spend; else the pause; under it the recent runs as a feed | | Follow / Read the session; Every session → sessions |
+| Next up · Recently shipped | five titles each | | the roadmap → work |
+| Patrons | the wall: everyone who put money in | | |
+| Funding (side) | patronage per month or the balance, runway against the goal, three numbers | Become a patron → tiers | See the books → books |
+| Become a patron (side) | tiers; one door per kind; other ways to give under a fold | Join / Sponsor on GitHub / Give / Redeem | |
 
-What left the page, and where it lives now: acceptance lines (the item page), the timeline's views (`/roadmap`),
-session transcripts (`/sessions`), the agent's setup (`/setup`), envelopes, bounds, the gift feed and every metered
-call (`/books`), the changelog (nowhere: what shipped is the timeline's past). The page never reloads under the
-reader; numbers update in place.
+### Who sees what
 
-## States a story must cover
+`viewer` is public, patron, team or owner. `visibility` is the owner's committed word (`dashboard:` in
+`.open-autonomy/config.yaml`), with three presets: **open** (everything public), **status** (transcripts and books for
+patrons, calls and the agent for the team), **private** (team and up). The deployment says whether it takes money;
+without it there is no rail, no wall and no ask, and Books still meters whatever funds the agent. On the platform,
+visibility narrows the page, never the truth: the API is public reads. A private deployment is private by its own wall.
 
-Running, working now (a live run), pause requested (a run finishing), paused by the owner, spending stopped
-(balance at zero), not yet funded (no money, no runs, no roadmap); with patrons and without; GitHub Sponsors and
-Polar; long titles.
+### States a story must cover
+
+Running, working now, pause requested, paused by the owner, spending stopped, not yet funded; with patrons and
+without; GitHub Sponsors and Polar; platform and self-hosted; each preset as each viewer; long titles.

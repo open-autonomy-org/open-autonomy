@@ -145,5 +145,40 @@ details.more .body{padding-top:12px;display:flex;flex-direction:column;gap:12px}
 .form input{height:38px;border:1px solid ${T.line};border-radius:10px;padding:0 12px;font:inherit;font-size:14px}
 .form .fine{color:${T.muted};font-size:12.5px;line-height:1.45}
 .foot{margin-top:40px;color:${T.muted};font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;margin:22px 0 0;border-bottom:1px solid ${T.line};padding:0 8px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs a{display:inline-flex;align-items:center;gap:7px;padding:10px 12px 12px;font-weight:600;font-size:14px;color:${T.body};border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs a:hover{text-decoration:none;color:${T.ink}}
+.tabs a.on{color:${T.ink};border-bottom-color:${T.accent}}
+.tabs .count{background:${T.wash};border:1px solid ${T.line};border-radius:999px;padding:0 7px;font-size:12px;color:${T.muted};font-weight:600}
+.tabs a.on .count{color:${T.ink}}
+.ledger{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ledger .stat .v{font-family:Fraunces,Georgia,serif;font-size:24px;font-weight:600}
+.gifts li{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid ${T.line};font-size:14px}
+.gifts li:first-child{border-top:0}
+.gifts img,.gifts .ph{width:36px;height:36px;border-radius:50%;background:${T.wash}}
+.gifts .who b{font-weight:600}
+.gifts .who span{display:block;color:${T.muted};font-size:12.5px}
+.gifts .amt{font-weight:700;color:${T.green};white-space:nowrap}
+.table{width:100%;border-collapse:collapse;font-size:13.5px}
+.table th{text-align:left;color:${T.muted};font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:0 14px 8px 0;border-bottom:1px solid ${T.line}}
+.table th.n{text-align:right}
+.table td{padding:9px 14px 9px 0;border-bottom:1px solid ${T.line};vertical-align:top}
+.table th:last-child,.table td:last-child{padding-right:0}
+.table td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.table td.mono{font:12.5px "SF Mono",SFMono-Regular,Menlo,monospace;color:${T.body}}
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.board h3{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${T.muted};margin-bottom:10px}
+.brief{border:1px solid ${T.line};border-radius:12px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.brief .t{font-weight:600;font-size:14px;line-height:1.35}
+.brief .m{color:${T.muted};font-size:12.5px;margin-top:4px}
+.brief.hot{border-color:${T.accent};box-shadow:0 8px 24px -16px rgba(255,66,77,.5)}
+.turns{display:flex;flex-direction:column;gap:2px;font:13px/1.5 "SF Mono",SFMono-Regular,Menlo,monospace}
+.turns li{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid ${T.line}}
+.turns .role{color:${T.muted};font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;padding-top:2px}
+.turns .role.a{color:${T.accentInk}}
+.turns .body{white-space:pre-wrap;word-break:break-word;color:${T.ink}}
+.turns .body.tool{color:${T.muted}}
+@media(max-width:900px){.board{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:900px){.cols{grid-template-columns:1fr}.side{position:static}.cover{height:150px}.hero{grid-template-columns:72px 1fr;gap:14px}.avatar{width:72px;height:72px;border-radius:18px;margin-top:-30px}.hero .who{padding-top:6px}.hero h1{font-size:26px}}
 `;

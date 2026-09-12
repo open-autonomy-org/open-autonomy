@@ -8,6 +8,8 @@ import { leadParagraphs } from '../stream-view.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
 export const ownerOf = (account: string): string => account.split('/')[0];
+// Addresses follow GitHub's: /owner, /owner/project, /owner/project/<tab>. A funder is /login.
+export const at = (account: string, ...rest: string[]): string => `/${account.split('/').map(encodeURIComponent).join('/')}${rest.length ? `/${rest.map(encodeURIComponent).join('/')}` : ''}`;
 
 export interface Patron { login: string; name?: string; avatar_url?: string; url?: string; amount_label?: string }
 export interface Tier { usd_cents: number; name: string }
@@ -33,11 +35,11 @@ export function withGivers(p: Patronage, v: Pick<ProjectView, 'envelopes' | 'fee
 export interface Schedule { name?: string; schedule?: string }
 
 // ---- the top bar -----------------------------------------------------------------------------------------------
-export function TopBar({ brand, cta = true }: { brand: string; cta?: boolean }) {
+export function TopBar({ brand, cta = true, explore = true }: { brand: string; cta?: boolean; explore?: boolean }) {
   return (
     <div class="topbar"><div class="in">
       <a href="/" class="brand">{raw(LOGO_SVG)}<span>{brand}</span></a>
-      <nav><a href="/explore">Explore</a></nav>
+      {explore ? <nav><a href="/explore">Explore</a></nav> : null}
       <span class="grow" />
       {cta ? <a class="btn small" href="#patron">Become a patron</a> : null}
     </div></div>
@@ -98,13 +100,13 @@ export function Hero({ v, standing, patronage, runwayDays, quiet = false }: { v:
 }
 
 // ---- about: the lead paragraph, the rest a page ------------------------------------------------------------------
-export function About({ md, enc }: { md?: string; enc: string }) {
+export function About({ md, account }: { md?: string; account: string }) {
   const lead = leadParagraphs(md, 1);
   return (
     <div class="card">
       <h2>About</h2>
       {lead ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(lead) }} /> : <p class="empty">This project has not published what it is yet.</p>}
-      {(md ?? '').trim().length > lead.length ? <a class="more" href={`/p/${enc}/about`}>Read more →</a> : null}
+      {(md ?? '').trim().length > lead.length ? <a class="more" href={at(account, 'about')}>Read more →</a> : null}
     </div>
   );
 }
@@ -115,7 +117,7 @@ export function About({ md, enc }: { md?: string; enc: string }) {
 // feed the agent wrote.
 export type Turn = { ts?: string; role: string; text?: string; tool?: string; args?: string; result?: string };
 export interface SessionTail { key: string; turns: Turn[] }
-const firstLine = (s: string | undefined, max = 140): string => { const l = (s ?? '').split('\n').map((x) => x.trim()).find((x) => x && !/^[#\-*\[]/.test(x)) ?? (s ?? '').trim(); return l.length > max ? `${l.slice(0, max - 1)}…` : l; };
+export const firstLine = (s: string | undefined, max = 140): string => { const l = (s ?? '').split('\n').map((x) => x.trim()).find((x) => x && !/^[#\-*\[]/.test(x)) ?? (s ?? '').trim(); return l.length > max ? `${l.slice(0, max - 1)}…` : l; };
 // What a turn says in one line: the agent's words as written; a terminal call as its command; any other tool call
 // by name alone; a tool's result by its first line. JSON never reaches the page.
 const oneLine = (s: string | undefined, max = 160): string => { const t = (s ?? '').replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
@@ -139,7 +141,7 @@ export function Spark({ daily }: { daily: number[] }) {
     </>
   );
 }
-export function Workshop({ sessions, live, tail, schedule, standing, control, daily, enc, now }: { sessions: SessionSummary[]; live: string[]; tail?: SessionTail; schedule: Schedule[]; standing: Standing; control?: AgentControl; daily: number[]; enc: string; now: number }) {
+export function Workshop({ sessions, live, tail, schedule, standing, control, daily, account, now, feed = true }: { sessions: SessionSummary[]; live: string[]; tail?: SessionTail; schedule: Schedule[]; standing: Standing; control?: AgentControl; daily: number[]; account: string; now: number; feed?: boolean }) {
   const first = sessions.find((s) => live.includes(s.key));
   const last = sessions.find((s) => s.status === 'ended' && s.kind === 'run' && s.report && s.report !== '[SILENT]') ?? sessions.find((s) => s.status === 'ended' && s.kind === 'run');
   const next = schedule[0] ? `${schedule[0].name ?? 'the schedule'} fires ${schedule[0].schedule ?? 'on schedule'}` : undefined;
@@ -148,20 +150,20 @@ export function Workshop({ sessions, live, tail, schedule, standing, control, da
   if (standing === 'paused' || standing === 'requested') {
     const d = control?.desired;
     body = <>
-      <div class="head"><span class="pulse still" /><span>{standing === 'paused' ? 'Paused by the owner' : 'Pause requested by the owner'}</span><span class="spacer" /><a href={`/p/${enc}/sessions`}>Every session →</a></div>
+      <div class="head"><span class="pulse still" /><span>{standing === 'paused' ? 'Paused by the owner' : 'Pause requested by the owner'}</span><span class="spacer" /><a href={at(account, 'sessions')}>Every session →</a></div>
       <div class="quote">{d?.reason ? d.reason : standing === 'paused' ? 'The scheduled work is paused.' : 'The run in flight is finishing; then the schedule pauses.'}</div>
       <div class="next">{d?.at ? `since ${fmtAgo(d.at, now)}` : ''}{last ? ` · last run ${fmtAgo(last.started_at, now)}` : ''}</div>
       <Spark daily={daily} />
     </>;
   } else if (first) {
     body = <>
-      <div class="head"><span class="pulse" /><span>Live from the workshop</span><span class="spacer" /><a href={`/p/${enc}/sessions/${encodeURIComponent(first.key)}`}>Follow the session →</a></div>
-      <div class="sess"><span class="name">{first.source ?? first.kind}</span><span class="sub"><b>{fmtDur(first.started_at, undefined, now)}</b> in · <b>{first.turn_count}</b> turns · <b>{first.tool_calls}</b> tools · <b>{usd(first.usd_cents)}</b>{first.item_id ? <> · on <a href={`/p/${enc}/items/${encodeURIComponent(first.item_id)}`} style="color:#f2efea">{first.item_id}</a></> : null}</span></div>
+      <div class="head"><span class="pulse" /><span>Live from the workshop</span><span class="spacer" /><a href={at(account, 'sessions', first.key)}>Follow the session →</a></div>
+      <div class="sess"><span class="name">{first.source ?? first.kind}</span><span class="sub"><b>{fmtDur(first.started_at, undefined, now)}</b> in · <b>{first.turn_count}</b> turns · <b>{first.tool_calls}</b> tools · <b>{usd(first.usd_cents)}</b>{first.item_id ? <> · on <a href={at(account, 'work', first.item_id)} style="color:#f2efea">{first.item_id}</a></> : null}</span></div>
       {turns.length ? <ul class="ticker">{turns.map((l) => <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`line${l.tool ? ' tool' : ''}`}>{l.text}</span></li>)}</ul> : null}
     </>;
   } else if (last) {
     body = <>
-      <div class="head"><span class="pulse still" /><span>Last from the workshop</span><span class="spacer" /><a href={`/p/${enc}/sessions/${encodeURIComponent(last.key)}`}>Read the session →</a></div>
+      <div class="head"><span class="pulse still" /><span>Last from the workshop</span><span class="spacer" /><a href={at(account, 'sessions', last.key)}>Read the session →</a></div>
       <div class="sess"><span class="name">{last.source ?? last.kind}</span><span class="sub">{fmtAgo(last.started_at, now)} · <b>{last.outcome ?? 'ended'}</b> · {last.turn_count} turns · {usd(last.usd_cents)}</span></div>
       {last.report && last.report !== '[SILENT]' ? <div class="quote">{firstLine(last.report, 200)}</div> : null}
       {next ? <div class="next">{next}</div> : null}
@@ -187,34 +189,34 @@ export function Workshop({ sessions, live, tail, schedule, standing, control, da
   return (
     <div class="card" style="padding:14px">
       <div class="shop">{body}</div>
-      {recent.length ? <ul class="feed">{recent.map((s) => <li><span class="when">{fmtAgo(s.started_at, now)}</span><span class="src"><i class={s.outcome === 'failed' ? 'bad' : s.outcome ? '' : 'none'} />{s.source ?? s.kind}</span><span class="said"><a href={`/p/${enc}/sessions/${encodeURIComponent(s.key)}`}>{s.report && s.report !== '[SILENT]' ? firstLine(s.report, 120) : s.quiet_count && s.quiet_count > 1 ? `${s.quiet_count} quiet runs, nothing to report` : 'a quiet run, nothing to report'}</a></span></li>)}</ul> : null}
-      <a class="more" href={`/p/${enc}/sessions`} style="margin:10px 10px 0">Every session →</a>
+      {feed && recent.length ? <ul class="feed">{recent.map((s) => <li><span class="when">{fmtAgo(s.started_at, now)}</span><span class="src"><i class={s.outcome === 'failed' ? 'bad' : s.outcome ? '' : 'none'} />{s.source ?? s.kind}</span><span class="said"><a href={at(account, 'sessions', s.key)}>{s.report && s.report !== '[SILENT]' ? firstLine(s.report, 120) : s.quiet_count && s.quiet_count > 1 ? `${s.quiet_count} quiet runs, nothing to report` : 'a quiet run, nothing to report'}</a></span></li>)}</ul> : null}
+      {feed ? <a class="more" href={at(account, 'sessions')} style="margin:10px 10px 0">Every session →</a> : null}
     </div>
   );
 }
 
 // ---- next up and recently shipped: titles, never specs --------------------------------------------------------
 const word = (i: RoadmapItem): string => (i.status === 'active' ? 'in progress' : i.status === 'planned' ? 'planned' : 'proposed');
-export function NextUp({ roadmap, enc, max = 5 }: { roadmap: Roadmap; enc: string; max?: number }) {
+export function NextUp({ roadmap, account, max = 5 }: { roadmap: Roadmap; account: string; max?: number }) {
   const items = roadmap.items.filter((i) => tenseOf(i) !== 'past');
   const active = items.filter((i) => i.status === 'active'), rest = items.filter((i) => i.status !== 'active');
   const show = [...active, ...rest.filter((i) => i.status === 'planned'), ...rest.filter((i) => i.status !== 'planned')].slice(0, max);
   return (
     <div class="card">
       <h2>Next up</h2>
-      {show.length ? <div class="rows">{show.map((i) => <div class="row"><a class="t" href={`/p/${enc}/items/${encodeURIComponent(i.id)}`}>{i.title}</a><span class={`n${i.status === 'active' ? ' k' : ''}`}>{word(i)}</span></div>)}</div> : <p class="empty">Nothing planned yet.</p>}
-      {items.length > show.length ? <a class="more" href={`/p/${enc}/roadmap`}>{items.length - show.length} more on the roadmap →</a> : <a class="more" href={`/p/${enc}/roadmap`}>The roadmap →</a>}
+      {show.length ? <div class="rows">{show.map((i) => <div class="row"><a class="t" href={at(account, 'work', i.id)}>{i.title}</a><span class={`n${i.status === 'active' ? ' k' : ''}`}>{word(i)}</span></div>)}</div> : <p class="empty">Nothing planned yet.</p>}
+      {items.length > show.length ? <a class="more" href={at(account, 'work')}>{items.length - show.length} more on the roadmap →</a> : <a class="more" href={at(account, 'work')}>The roadmap →</a>}
     </div>
   );
 }
-export function Shipped({ roadmap, enc, now, max = 5 }: { roadmap: Roadmap; enc: string; now: number; max?: number }) {
+export function Shipped({ roadmap, account, now, max = 5 }: { roadmap: Roadmap; account: string; now: number; max?: number }) {
   const past = roadmap.items.filter((i) => tenseOf(i) === 'past').sort((a, b) => Date.parse(b.done_at ?? '') - Date.parse(a.done_at ?? '') || 0);
   const show = past.slice(0, max);
   return (
     <div class="card">
       <h2>Recently shipped</h2>
-      {show.length ? <div class="rows">{show.map((i) => <div class="row"><a class="t" href={`/p/${enc}/items/${encodeURIComponent(i.id)}`}>{i.title}</a><span class="n">{i.release ? `${i.release} · ` : ''}{i.done_at ? fmtAgo(i.done_at, now) : 'shipped'}</span></div>)}</div> : <p class="empty">Nothing shipped yet.</p>}
-      {past.length > show.length ? <a class="more" href={`/p/${enc}/roadmap?view=releases`}>All {past.length} shipped →</a> : null}
+      {show.length ? <div class="rows">{show.map((i) => <div class="row"><a class="t" href={at(account, 'work', i.id)}>{i.title}</a><span class="n">{i.release ? `${i.release} · ` : ''}{i.done_at ? fmtAgo(i.done_at, now) : 'shipped'}</span></div>)}</div> : <p class="empty">Nothing shipped yet.</p>}
+      {past.length > show.length ? <a class="more" href={`${at(account, 'work')}?view=releases`}>All {past.length} shipped →</a> : null}
     </div>
   );
 }
@@ -230,7 +232,7 @@ export function Wall({ patrons }: { patrons: Patron[] }) {
 }
 
 // ---- funding: the one card that asks ----------------------------------------------------------------------------
-export function Funding({ v, patronage, standing, runwayDays, goalDays }: { v: ProjectView; patronage: Patronage; standing: Standing; runwayDays: number | null; goalDays: number }) {
+export function Funding({ v, patronage, standing, runwayDays, goalDays, ask = true }: { v: ProjectView; patronage: Patronage; standing: Standing; runwayDays: number | null; goalDays: number; ask?: boolean }) {
   const frac = runwayDays === null ? 0 : Math.max(0, Math.min(1, runwayDays / goalDays));
   const tone = standing === 'exhausted' ? 'off' : runwayDays !== null && runwayDays < goalDays / 3 ? 'warn' : '';
   return (
@@ -245,8 +247,8 @@ export function Funding({ v, patronage, standing, runwayDays, goalDays }: { v: P
         <div class="stat"><div class="v">{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
         <div class="stat"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
       </div>
-      <a class="btn wide" href="#tiers">Become a patron</a>
-      <p class="fine">Every spend is metered on public books. <a href={`/p/${encodeURIComponent(v.account)}/books`}>See the books →</a></p>
+      {ask ? <a class="btn wide" href="#tiers">Become a patron</a> : null}
+      <p class="fine">Every spend is metered on public books. <a href={at(v.account, 'books')}>See the books →</a></p>
     </div>
   );
 }
@@ -272,14 +274,14 @@ export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: 
       <details class="more">
         <summary>Other ways to give</summary>
         <div class="body">
-          <form class="form" method="post" action={`/p/${encodeURIComponent(account)}/give`}>
+          <form class="form" method="post" action={`${at(account)}/give`}>
             <input name="key" placeholder="your funder key" autocomplete="off" />
             <input name="usd_cents" type="number" min={1} placeholder="cents" />
             <input name="note" placeholder="a word, optional" maxlength={280} />
             <button class="btn quiet" type="submit">Give grant credits</button>
             <p class="fine">Funders hold grant credits on their own books and give them to a project they believe in.</p>
           </form>
-          <form class="form" method="post" action={`/p/${encodeURIComponent(account)}/redeem`}>
+          <form class="form" method="post" action={`${at(account)}/redeem`}>
             <input name="code" placeholder="sponsor coupon" autocomplete="off" />
             <button class="btn quiet" type="submit">Redeem</button>
           </form>
@@ -288,4 +290,14 @@ export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: 
     </div>
   );
 }
-export const Foot = ({ enc }: { enc: string }) => <div class="foot"><a href={`/p/${enc}/books`}>The books</a><a href={`/p/${enc}/roadmap`}>Roadmap</a><a href={`/p/${enc}/sessions`}>Sessions</a><a href={`/p/${enc}/setup`}>The agent</a><a href={`/p/${enc}/team`}>Team</a></div>;
+export const Foot = ({ brand }: { brand: string }) => <div class="foot"><span>Every spend on these books is metered as it happens. {brand} shows; it does not steer.</span></div>;
+
+// ---- the project's tabs: GitHub's frame -------------------------------------------------------------------------
+export type Tab = 'overview' | 'work' | 'sessions' | 'books' | 'agent' | 'team';
+export const TABS: Array<{ id: Tab; label: string; least: 'public' | 'patron' | 'team' | 'owner' }> = [
+  { id: 'overview', label: 'Overview', least: 'public' }, { id: 'work', label: 'Work', least: 'public' }, { id: 'sessions', label: 'Sessions', least: 'public' },
+  { id: 'books', label: 'Books', least: 'public' }, { id: 'agent', label: 'Agent', least: 'team' }, { id: 'team', label: 'Team', least: 'public' },
+];
+export function Tabs({ account, current, counts, show }: { account: string; current: Tab; counts: Partial<Record<Tab, string | number | undefined>>; show: (t: Tab) => boolean }) {
+  return <div class="tabs">{TABS.filter((t) => show(t.id)).map((t) => <a class={t.id === current ? 'on' : ''} href={t.id === 'overview' ? at(account) : at(account, t.id)}>{t.label}{counts[t.id] !== undefined ? <span class="count">{counts[t.id]}</span> : null}</a>)}</div>;
+}
