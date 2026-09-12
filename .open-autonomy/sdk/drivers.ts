@@ -9,41 +9,6 @@ import { ROADMAP_SCHEMA, tenseOf, type Roadmap, type RoadmapItem, type RoadmapSt
 export type RoadmapSource = 'github-milestones' | 'jira';
 export const ROADMAP_SOURCES: readonly RoadmapSource[] = ['github-milestones', 'jira'];
 
-export interface RoadmapConfig {
-  // Absent: the platform pulls nothing; the substrate publishes.
-  source?: RoadmapSource;
-  github?: { repo?: string };
-  jira?: { base_url?: string; project?: string; jql?: string; done_transition?: string };
-}
-
-// `.open-autonomy/config.yaml`'s `roadmap:` block. The config's shape is small and fixed: a line reader.
-export function parseRoadmapConfig(yaml: string): RoadmapConfig {
-  const cfg: RoadmapConfig = {};
-  let block = '';
-  let sub = '';
-  for (const raw of yaml.split('\n')) {
-    const line = raw.replace(/\s+#.*$/, '').trimEnd();
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-    const top = /^([a-z_]+):\s*(.*)$/.exec(line);
-    if (top) { block = top[2] === '' ? top[1] : ''; sub = ''; continue; }
-    if (block !== 'roadmap') continue;
-    const l2 = /^  ([a-z_]+):\s*(.*)$/.exec(line);
-    if (l2) {
-      sub = l2[2] === '' ? l2[1] : '';
-      const v = l2[2].trim().replace(/^["']|["']$/g, '');
-      if (l2[1] === 'source' && (ROADMAP_SOURCES as readonly string[]).includes(v)) cfg.source = v as RoadmapSource;
-      continue;
-    }
-    const l3 = /^    ([a-z_]+):\s*(.+)$/.exec(line);
-    if (l3 && (sub === 'github' || sub === 'jira')) {
-      const v = l3[2].trim().replace(/^["']|["']$/g, '');
-      const target: Record<string, string> = (cfg[sub] ??= {});
-      target[l3[1]] = v;
-    }
-  }
-  return cfg;
-}
-
 export interface DriverConformance { source: RoadmapSource; cannot: string[] }
 
 export const CONFORMANCE: Record<RoadmapSource, string[]> = {
