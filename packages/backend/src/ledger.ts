@@ -1166,7 +1166,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const usable = (a?.envelopes ?? []).filter((e) => qualifies(e.purpose, next)).reduce((sum, e) => sum + e.balance_usd_cents, 0);
     const est = estimateRunway(Math.max(0, usable), daily.slice(0, -1));
     return {
-      account, funded, paused: funded && balance <= 0,
+      account, funded, exhausted: funded && balance <= 0,
       balance_usd_cents: balance, granted_in_usd_cents: grantedIn, granted_out_usd_cents: grantedOut, consumed_usd_cents: consumed,
       reserved_usd_cents: reserved, spendable_usd_cents: balance - reserved,
       usable_usd_cents: usable, envelopes: (a?.envelopes ?? []).filter((e) => e.balance_usd_cents > 0).map((e) => ({ ...e, purpose: clonePurpose(e.purpose) })),
@@ -1226,7 +1226,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       moderation: a?.moderation ?? 'listed',
       profile: displayProfile(a),
       goal_days: a?.goal_days ?? DEFAULT_GOAL_DAYS,
-      funded: f.funded, paused: f.paused,
+      funded: f.funded, exhausted: f.exhausted,
       balance_usd_cents: f.balance_usd_cents, granted_in_usd_cents: f.granted_in_usd_cents, granted_out_usd_cents: f.granted_out_usd_cents, consumed_usd_cents: f.consumed_usd_cents,
       burn_per_day_usd_cents: f.burn_per_day_usd_cents, runway_days: f.runway_days, runway_confident: f.runway_confident,
       live_sessions: [...(a?.live_sessions ?? [])],
@@ -1525,7 +1525,8 @@ export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; 
 export interface FundingSnapshot {
   account: string;
   funded: boolean;
-  paused: boolean;
+  // A funded balance spent to zero: spending stops until money comes in. Not the agent's operating state.
+  exhausted: boolean;
   balance_usd_cents: number;
   granted_in_usd_cents: number;
   granted_out_usd_cents: number;
@@ -1555,7 +1556,7 @@ export interface DirectoryEntry {
   profile: AccountProfile;
   goal_days: number;
   funded: boolean;
-  paused: boolean;
+  exhausted: boolean;
   balance_usd_cents: number;
   granted_in_usd_cents: number;
   granted_out_usd_cents: number;

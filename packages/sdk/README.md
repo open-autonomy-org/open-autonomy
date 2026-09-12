@@ -1,9 +1,10 @@
 # @open-autonomy/sdk
 
-The Open Autonomy SDK: how a project reports its own development to the platform, and the roadmap model
-every kit writes. Everything a project's page shows about its agent comes through this wire — the sessions,
-the roadmap, the board, the agent's setup — and nothing through the platform reading a harness's files, so
-any substrate can be a project: the Hermes kit and the file roadmap are starters, not the shape. Everything
+The Open Autonomy SDK: the interface an automation implements to be a project, in both directions. Up, it
+reports its own development (the sessions, the timeline, the agent's setup); down, it receives the owner's one
+word of control, running or paused, and answers with what is true. Everything a project's page shows about its
+agent comes through this wire and nothing through the platform reading a harness's files, so any substrate
+can be a project: the Hermes kit and the file roadmap are starters, not the shape. Everything
 here is one documented HTTP wire, shown raw below, so any language can do the same without this package.
 The Hermes kit vendors it into a generated repository under `.open-autonomy/sdk/`.
 
