@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
-import { Funding, NextUp, Now, Pill, Shipped, Tiers, Wall, type Standing } from '../../../packages/backend/src/page/parts';
+import { Funding, NextUp, Pill, Shipped, Tiers, Wall, Workshop, type Standing } from '../../../packages/backend/src/page/parts';
 import { render } from '../../../packages/backend/src/ui';
 import { CSS } from '../../../packages/backend/src/page/theme';
-import { NOW, hookline, openAutonomy } from './fixtures';
+import { NOW, hookline, openAutonomy, pmTail } from './fixtures';
 
 const wrap = (node: unknown, width = 640) => `<style>${CSS}</style><div style="padding:24px;max-width:${width}px">${render(node)}</div>`;
 const meta: Meta = { title: 'Parts' };
@@ -10,9 +10,10 @@ export default meta;
 type S = StoryObj;
 
 export const Pills: S = { render: () => wrap((['live', 'running', 'requested', 'paused', 'exhausted', 'unfunded'] as Standing[]).map((s) => `<span style="margin-right:10px">${render(Pill({ standing: s }))}</span>`).join('')) };
-export const NowLive: S = { render: () => wrap(Now({ sessions: hookline.sessions, live: [hookline.sessions[0].key], schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'live', enc: 'x', now: NOW })) };
-export const NowIdle: S = { render: () => wrap(Now({ sessions: openAutonomy.sessions, live: [], schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'running', enc: 'x', now: NOW })) };
-export const NowFirstRun: S = { render: () => wrap(Now({ sessions: [], live: [], schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'running', enc: 'x', now: NOW })) };
+export const WorkshopLive: S = { render: () => wrap(Workshop({ sessions: [{ ...openAutonomy.sessions.find((x) => x.key === pmTail.key)!, status: 'live', started_at: new Date(NOW - 4 * 60_000).toISOString() }, ...openAutonomy.sessions], live: [pmTail.key], tail: pmTail, schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'live', daily: openAutonomy.daily, enc: 'x', now: NOW }), 700) };
+export const WorkshopIdle: S = { render: () => wrap(Workshop({ sessions: openAutonomy.sessions, live: [], schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'running', daily: openAutonomy.daily, enc: 'x', now: NOW }), 700) };
+export const WorkshopPaused: S = { render: () => wrap(Workshop({ sessions: hookline.sessions, live: [], schedule: [], standing: 'paused', control: { desired: { state: 'paused', at: '2026-09-12T19:00:00Z', by: 'k', reason: 'holiday' } }, daily: hookline.daily, enc: 'x', now: NOW }), 700) };
+export const WorkshopFirstRun: S = { render: () => wrap(Workshop({ sessions: [], live: [], schedule: [{ name: 'pm', schedule: 'every 60 min' }], standing: 'running', daily: [], enc: 'x', now: NOW }), 700) };
 export const NextUpFive: S = { render: () => wrap(NextUp({ roadmap: openAutonomy.roadmap, enc: 'x' })) };
 export const NextUpEmpty: S = { render: () => wrap(NextUp({ roadmap: { schema: 'open-autonomy.timeline.v1', items: [] }, enc: 'x' })) };
 export const ShippedFive: S = { render: () => wrap(Shipped({ roadmap: openAutonomy.roadmap, enc: 'x', now: NOW })) };

@@ -9,9 +9,27 @@ import { leadParagraphs } from '../stream-view.js';
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
 export const ownerOf = (account: string): string => account.split('/')[0];
 
-export interface Patron { login: string; name?: string; avatar_url?: string; url?: string }
+export interface Patron { login: string; name?: string; avatar_url?: string; url?: string; amount_label?: string }
 export interface Tier { usd_cents: number; name: string }
 export interface Patronage { tiers: Tier[]; patrons: Patron[]; patron_count: number; monthly_usd_cents: number }
+// Money never arrives from nobody. A gift on the books names its giver (a funder's login, the org's grants pool, a
+// sponsor behind a coupon); each is a patron on the wall whether or not a subscription is behind them.
+export function withGivers(p: Patronage, v: Pick<ProjectView, 'envelopes' | 'feed' | 'granted_in_usd_cents'>, brand: string): Patronage {
+  const seen = new Set(p.patrons.map((x) => x.login.toLowerCase()));
+  const extra: Patron[] = [];
+  const add = (who: string | undefined, label?: string) => {
+    if (!who) return;
+    const login = who.startsWith('@') ? who.slice(1) : who;
+    if (seen.has(login.toLowerCase())) return;
+    seen.add(login.toLowerCase());
+    extra.push(who.includes('/') ? { login, name: who.endsWith('/grants') ? `${brand} grants` : who, url: `https://github.com/${who}` } : { login, avatar_url: `https://github.com/${login}.png`, ...(label ? { amount_label: label } : {}) });
+  };
+  for (const e of v.envelopes ?? []) add(e.from);
+  for (const f of v.feed ?? []) if (f.kind === 'grant' || f.kind === 'mint') { add(f.from); if (f.by) add(f.by); }
+  // Money the books hold without a named giver was minted by the deployment's operator: that operator is the giver.
+  if (!p.patrons.length && !extra.length && (v as { granted_in_usd_cents?: number }).granted_in_usd_cents! > 0) extra.push({ login: brand, name: brand, url: '/' });
+  return { ...p, patrons: [...p.patrons, ...extra], patron_count: p.patron_count + extra.length };
+}
 export interface Schedule { name?: string; schedule?: string }
 
 // ---- the top bar -----------------------------------------------------------------------------------------------
@@ -44,27 +62,32 @@ const STANDING: Record<Standing, { cls: string; word: string }> = {
 export const Pill = ({ standing }: { standing: Standing }) => <span class={`pill ${STANDING[standing].cls}`}><span class="dot" />{STANDING[standing].word}</span>;
 
 // ---- the hero ---------------------------------------------------------------------------------------------------
+// An image URL from a repository is untrusted: https only, no quote, paren, angle bracket, backslash or space.
+export const safeUrl = (u: string | undefined): string | undefined => (u && /^https:\/\/[^\s'"()<>\\]+$/.test(u) ? u : undefined);
 export function coverStyle(url: string | undefined, seed = ''): string {
-  if (url) return `background-image:url('${url.replace(/'/g, '%27')}')`;
+  const safe = safeUrl(url);
+  if (safe) return `background-image:url('${safe}')`;
   let h = 0; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const hue = h % 360;
   return `background:radial-gradient(ellipse at ${25 + (hue % 50)}% 45%, hsl(${350 + (hue % 20)} 85% 58%), #2a0f14 75%)`;
 }
 export const runwayWords = (days: number | null): string | null => (days === null ? null : days > 365 ? 'over a year of runway' : days === 1 ? '1 day of runway' : `${days} days of runway`);
-export function Hero({ v, standing, patronage, runwayDays }: { v: ProjectView; standing: Standing; patronage: Patronage; runwayDays: number | null }) {
+const parseScheduleText = (json: string | undefined): string => { try { const j = JSON.parse(json ?? '{}') as { jobs?: Schedule[] }; const jobs = Array.isArray(j.jobs) ? j.jobs.slice(0, 3) : []; return jobs.length ? ` · ${jobs.map((x) => `${x.name ?? 'job'} ${x.schedule ?? ''}`.trim()).join(' · ')}` : ''; } catch { return ''; } };
+export function Hero({ v, standing, patronage, runwayDays, quiet = false }: { v: ProjectView; standing: Standing; patronage: Patronage; runwayDays: number | null; quiet?: boolean }) {
   const name = nameOf(v.account);
   return (
     <>
       <div class="cover" style={coverStyle(v.profile.cover_url, v.account)} />
       <div class="hero">
-        {v.profile.avatar_url ? <img class="avatar" src={v.profile.avatar_url} alt="" /> : <div class="avatar" />}
+        {safeUrl(v.profile.avatar_url) ? <img class="avatar" src={safeUrl(v.profile.avatar_url)} alt="" /> : <div class="avatar" />}
         <div class="who">
           <h1>{name}</h1>
           <p class="tag">{v.profile.tagline ?? `${v.account}, building itself in the open.`}</p>
+          {v.profile.agent_model ? <p class="built">Built by <b>{v.profile.agent_harness === 'hermes' ? 'a Hermes agent' : v.profile.agent_harness ?? 'its agent'}</b> on <b>{v.profile.agent_model}</b>{parseScheduleText(v.profile.schedule_json)}</p> : null}
           <div class="meta">
             <Pill standing={standing} />
-            <span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span>
-            <span><b>{usd0(patronage.monthly_usd_cents)}</b>/mo</span>
+            {quiet ? null : <span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span>}
+            {quiet ? <span><b>{usd(v.balance_usd_cents)}</b> balance</span> : <span><b>{usd0(patronage.monthly_usd_cents)}</b>/mo</span>}
             {runwayDays !== null ? <span>{runwayWords(runwayDays)}</span> : null}
             <a href={`https://github.com/${v.account}`} target="_blank" rel="noopener">{v.account} ↗</a>
           </div>
@@ -86,24 +109,88 @@ export function About({ md, enc }: { md?: string; enc: string }) {
   );
 }
 
-// ---- right now: one line ----------------------------------------------------------------------------------------
-export function Now({ sessions, live, schedule, standing, control, enc, now }: { sessions: SessionSummary[]; live: string[]; schedule: Schedule[]; standing: Standing; control?: AgentControl; enc: string; now: number }) {
+// ---- the workshop: the live work, in the agent's own words ------------------------------------------------------
+// The page's centerpiece. Live: the session and its latest turns as they land. Idle: the last run's own report, when
+// the next job fires, and thirty days of spend as texture. Paused: the owner's word. Under it, the recent runs as a
+// feed the agent wrote.
+export type Turn = { ts?: string; role: string; text?: string; tool?: string; args?: string; result?: string };
+export interface SessionTail { key: string; turns: Turn[] }
+const firstLine = (s: string | undefined, max = 140): string => { const l = (s ?? '').split('\n').map((x) => x.trim()).find((x) => x && !/^[#\-*\[]/.test(x)) ?? (s ?? '').trim(); return l.length > max ? `${l.slice(0, max - 1)}…` : l; };
+// What a turn says in one line: the agent's words as written; a terminal call as its command; any other tool call
+// by name alone; a tool's result by its first line. JSON never reaches the page.
+const oneLine = (s: string | undefined, max = 160): string => { const t = (s ?? '').replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+const argOf = (tool: string | undefined, args: string | undefined): string => {
+  try { const a = JSON.parse(args ?? '{}') as Record<string, unknown>; const c = a.command ?? a.cmd ?? a.path ?? a.query ?? a.url; return typeof c === 'string' ? c : ''; } catch { return ''; }
+};
+const tickerLine = (t: Turn): { role: string; cls: string; text: string; tool: boolean } | null => {
+  if (t.role === 'assistant' && t.tool) { const a = argOf(t.tool, t.args); return a ? { role: 'agent', cls: 'a', text: oneLine(`${t.tool}: ${a}`), tool: true } : null; }
+  if (t.role === 'assistant') return t.text?.trim() ? { role: 'agent', cls: 'a', text: oneLine(t.text.replace(/^#+\s*/gm, '').replace(/\*\*/g, '')), tool: false } : null;
+  if (t.role === 'tool') { const r = (t.result ?? '').trim(); if (!r || r.startsWith('{') || r.startsWith('[')) return null; return { role: t.tool ?? 'tool', cls: '', text: oneLine(r.split('\n')[0]), tool: true }; }
+  return t.text?.trim() ? { role: t.role, cls: '', text: oneLine(t.text), tool: false } : null;
+};
+export function Spark({ daily }: { daily: number[] }) {
+  const last = daily.slice(-30);
+  const max = Math.max(1, ...last);
+  const week = last.slice(-7).reduce((a, b) => a + b, 0);
+  return (
+    <>
+      <div class="spark">{last.map((d, i) => <i class={d <= 0 ? 'zero' : i === last.length - 1 ? 'hot' : ''} style={`height:${Math.max(4, Math.round((d / max) * 100))}%`} />)}</div>
+      <div class="sparklabel"><span>spend, last {last.length} days</span><span>{usd(week)} this week</span></div>
+    </>
+  );
+}
+export function Workshop({ sessions, live, tail, schedule, standing, control, daily, enc, now }: { sessions: SessionSummary[]; live: string[]; tail?: SessionTail; schedule: Schedule[]; standing: Standing; control?: AgentControl; daily: number[]; enc: string; now: number }) {
   const first = sessions.find((s) => live.includes(s.key));
-  const last = sessions.find((s) => s.status === 'ended' && s.kind === 'run');
-  let line: unknown;
+  const last = sessions.find((s) => s.status === 'ended' && s.kind === 'run' && s.report && s.report !== '[SILENT]') ?? sessions.find((s) => s.status === 'ended' && s.kind === 'run');
+  const next = schedule[0] ? `${schedule[0].name ?? 'the schedule'} fires ${schedule[0].schedule ?? 'on schedule'}` : undefined;
+  const turns = (tail && first && tail.key === first.key ? tail.turns : []).map(tickerLine).filter((l): l is NonNullable<typeof l> => !!l).slice(-5);
+  let body: unknown;
   if (standing === 'paused' || standing === 'requested') {
     const d = control?.desired;
-    line = <><span class="what">{standing === 'paused' ? 'Paused' : 'Pause requested'}</span><span class="sub">{d?.at ? fmtAgo(d.at, now) : ''}{d?.reason ? ` · ${d.reason}` : ''}{standing === 'requested' ? ' · a run is finishing' : ''}</span></>;
+    body = <>
+      <div class="head"><span class="pulse still" /><span>{standing === 'paused' ? 'Paused by the owner' : 'Pause requested by the owner'}</span><span class="spacer" /><a href={`/p/${enc}/sessions`}>Every session →</a></div>
+      <div class="quote">{d?.reason ? d.reason : standing === 'paused' ? 'The scheduled work is paused.' : 'The run in flight is finishing; then the schedule pauses.'}</div>
+      <div class="next">{d?.at ? `since ${fmtAgo(d.at, now)}` : ''}{last ? ` · last run ${fmtAgo(last.started_at, now)}` : ''}</div>
+      <Spark daily={daily} />
+    </>;
   } else if (first) {
-    line = <><span class="what"><a href={`/p/${enc}/sessions/${encodeURIComponent(first.key)}`}>{first.source ?? first.kind}</a></span><span class="sub">running for {fmtDur(first.started_at, undefined, now)}{first.item_id ? <> · on <a href={`/p/${enc}/items/${encodeURIComponent(first.item_id)}`}>{first.item_id}</a></> : null} · {first.turn_count} turns</span></>;
+    body = <>
+      <div class="head"><span class="pulse" /><span>Live from the workshop</span><span class="spacer" /><a href={`/p/${enc}/sessions/${encodeURIComponent(first.key)}`}>Follow the session →</a></div>
+      <div class="sess"><span class="name">{first.source ?? first.kind}</span><span class="sub"><b>{fmtDur(first.started_at, undefined, now)}</b> in · <b>{first.turn_count}</b> turns · <b>{first.tool_calls}</b> tools · <b>{usd(first.usd_cents)}</b>{first.item_id ? <> · on <a href={`/p/${enc}/items/${encodeURIComponent(first.item_id)}`} style="color:#f2efea">{first.item_id}</a></> : null}</span></div>
+      {turns.length ? <ul class="ticker">{turns.map((l) => <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`line${l.tool ? ' tool' : ''}`}>{l.text}</span></li>)}</ul> : null}
+    </>;
   } else if (last) {
-    line = <><span class="what"><a href={`/p/${enc}/sessions/${encodeURIComponent(last.key)}`}>{last.source ?? last.kind}</a></span><span class="sub">{fmtAgo(last.started_at, now)} · {last.outcome ?? 'ended'}{schedule[0] ? ` · ${schedule[0].name ?? 'the schedule'} fires ${schedule[0].schedule ?? 'on schedule'}` : ''}</span></>;
-  } else if (schedule.length) {
-    line = <><span class="what">Waiting for its first run</span><span class="sub">{schedule.map((j) => `${j.name ?? 'job'} fires ${j.schedule ?? '?'}`).join(' · ')}</span></>;
+    body = <>
+      <div class="head"><span class="pulse still" /><span>Last from the workshop</span><span class="spacer" /><a href={`/p/${enc}/sessions/${encodeURIComponent(last.key)}`}>Read the session →</a></div>
+      <div class="sess"><span class="name">{last.source ?? last.kind}</span><span class="sub">{fmtAgo(last.started_at, now)} · <b>{last.outcome ?? 'ended'}</b> · {last.turn_count} turns · {usd(last.usd_cents)}</span></div>
+      {last.report && last.report !== '[SILENT]' ? <div class="quote">{firstLine(last.report, 200)}</div> : null}
+      {next ? <div class="next">{next}</div> : null}
+      <Spark daily={daily} />
+    </>;
   } else {
-    line = <span class="empty">No schedule published yet.</span>;
+    body = <>
+      <div class="head"><span class="pulse still" /><span>The workshop</span></div>
+      <div class="quote">{schedule.length ? 'Waiting for its first run.' : 'No schedule published yet.'}</div>
+      {next ? <div class="next">{next}</div> : null}
+    </>;
   }
-  return <div class="card"><h2>Right now</h2><div class="now">{line}</div><a class="more" href={`/p/${enc}/sessions`}>Every session →</a></div>;
+  // Consecutive quiet runs of one job fold into a single line; the feed is what the agent said, not its heartbeat.
+  const quiet = (s: SessionSummary) => !s.report || s.report === '[SILENT]';
+  const folded: Array<SessionSummary & { quiet_count?: number }> = [];
+  for (const s of sessions.filter((x) => x.status === 'ended' && x.kind === 'run' && !(first && x.key === first.key))) {
+    const prev = folded[folded.length - 1];
+    if (quiet(s) && prev && quiet(prev) && prev.source === s.source) { prev.quiet_count = (prev.quiet_count ?? 1) + 1; continue; }
+    folded.push({ ...s });
+    if (folded.length >= 5) break;
+  }
+  const recent = folded;
+  return (
+    <div class="card" style="padding:14px">
+      <div class="shop">{body}</div>
+      {recent.length ? <ul class="feed">{recent.map((s) => <li><span class="when">{fmtAgo(s.started_at, now)}</span><span class="src"><i class={s.outcome === 'failed' ? 'bad' : s.outcome ? '' : 'none'} />{s.source ?? s.kind}</span><span class="said"><a href={`/p/${enc}/sessions/${encodeURIComponent(s.key)}`}>{s.report && s.report !== '[SILENT]' ? firstLine(s.report, 120) : s.quiet_count && s.quiet_count > 1 ? `${s.quiet_count} quiet runs, nothing to report` : 'a quiet run, nothing to report'}</a></span></li>)}</ul> : null}
+      <a class="more" href={`/p/${enc}/sessions`} style="margin:10px 10px 0">Every session →</a>
+    </div>
+  );
 }
 
 // ---- next up and recently shipped: titles, never specs --------------------------------------------------------
@@ -137,7 +224,7 @@ export function Wall({ patrons }: { patrons: Patron[] }) {
   return (
     <div class="card">
       <h2>Patrons</h2>
-      {patrons.length ? <div class="wall">{patrons.map((p) => <a class="chip" href={p.url ?? `https://github.com/${p.login}`}>{p.avatar_url ? <img src={p.avatar_url} alt="" /> : null}{p.name ?? p.login}</a>)}</div> : <p class="empty">No patrons yet. Be the first.</p>}
+      {patrons.length ? <div class="wall">{patrons.map((p) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : null}{p.name ?? p.login}</a>)}</div> : <p class="empty">No patrons yet. Be the first.</p>}
     </div>
   );
 }
@@ -150,7 +237,7 @@ export function Funding({ v, patronage, standing, runwayDays, goalDays }: { v: P
     <div class="card fund" id="patron">
       {patronage.monthly_usd_cents > 0
         ? <div class="big">{usd0(patronage.monthly_usd_cents)}<span>/mo from {patronage.patron_count} {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span></div>
-        : <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{v.granted_in_usd_cents > 0 ? ', from grants' : ''}</span></div>}
+        : <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{patronage.patron_count > 0 ? `, from ${patronage.patron_count} ${patronage.patron_count === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
       <div class="line">{standing === 'exhausted' ? 'The balance is spent. The next gift starts the agent again.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? `Over a year of runway at its current burn.` : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="stats">
