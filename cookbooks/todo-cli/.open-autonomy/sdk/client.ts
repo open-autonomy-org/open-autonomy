@@ -98,14 +98,16 @@ export class OpenAutonomy {
   }
 
   // POST /v1/agent/events  (Authorization: Bearer <key>; body: one CloudEvent or an array)
-  async send(events: CloudEvent | CloudEvent[]): Promise<{ ok: boolean; status: number; results: EventResult[] }> {
+  async send(events: CloudEvent | CloudEvent[]): Promise<{ ok: boolean; status: number; error?: string; results: EventResult[] }> {
     const res = await this.fetchImpl(`${this.base}/agent/events`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/cloudevents-batch+json' },
       body: JSON.stringify(Array.isArray(events) ? events : [events]),
     });
-    const body = await res.json().catch(() => ({})) as { ok?: boolean; results?: EventResult[] };
-    return { ok: res.ok && body.ok === true, status: res.status, results: body.results ?? [] };
+    // A refusal before any event is read (no key, a wrong scope, a bad body) is the platform's top-level `{ error: { code } }`.
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; results?: EventResult[]; error?: { code?: string } | string };
+    const error = typeof body.error === 'string' ? body.error : body.error?.code;
+    return { ok: res.ok && body.ok === true, status: res.status, ...(error ? { error } : {}), results: body.results ?? [] };
   }
 
   // A session, as a small object that remembers its offset. `resume` reads the platform's own offset first,
@@ -130,7 +132,8 @@ export class OpenAutonomy {
   private async put(type: string, subject: string, data: Record<string, unknown>, time?: string): Promise<WriteResult & { results: EventResult[] }> {
     const r = await this.send(event(type, subject, data, time));
     const first = r.results[0];
-    return { ok: r.ok && first?.ok === true, status: r.status, ...(first?.error ? { error: first.error } : {}), results: r.results };
+    const error = first?.error ?? r.error;
+    return { ok: r.ok && first?.ok === true, status: r.status, ...(error ? { error } : {}), results: r.results };
   }
 
   // A grant: credits from this funder's books to a project's, once per idempotency key, with a word.

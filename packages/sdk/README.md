@@ -125,10 +125,7 @@ the same way: `{ ok, status, error? }`, the platform's error code when refused, 
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
-The `./reporting` adapter consumes Supercode's message windows and explicit completion records, verifies
-the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence.
-History changes that conflict with the append-only destination require reconciliation; they are not
-silently treated as new offsets. Privacy policy accepts standard YAML lists and rejects malformed values.
+The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Supercode's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
 
 Public reads, no key:
 
