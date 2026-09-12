@@ -336,8 +336,12 @@ async function control(): Promise<void> {
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   let changed = false;
   if (desired === 'paused') {
-    for (const j of jobs.jobs) if (j.enabled) { await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); pausedJobs.add(j.id); saveState(); changed = true; }
+    // Ownership is written before the harness is touched: a crash or a thrown call after Hermes applied the pause
+    // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
+    // which resume simply forgets.
+    for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); changed = true; }
   } else {
+    // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
     for (const id of [...pausedJobs]) {
       const j = jobs.jobs.find(x => x.id === id);
       if (j && !j.enabled) { await sc.resumeJob({ harness: 'hermes', id, profile: j.profile ?? undefined, homes }); changed = true; }
