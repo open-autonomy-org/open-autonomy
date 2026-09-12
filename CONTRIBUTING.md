@@ -44,7 +44,7 @@ alternatives and tradeoffs, consequences, original decision/evidence sources, an
 that cites the relevant clauses and explains compatibility. Link any records it supersedes.
 
 The author links the ADR from the architecture-changing PR; the record and implementation may share
-that PR. An independent agent reviews the decision against the current constitution and authorized
+that PR. An independent agent (any agent without the author's context; the author dispatches it on push rather than waiting for a scheduled beat) reviews the decision against the current constitution and authorized
 scope, then checks that the implementation follows it. Record that reasoning in the PR verdict. An
 ADR becomes accepted only after that review and merge; an Accepted label in an unmerged file confers
 no authority. Missing records, unresolved contradictions or constitutional violations require changes.
