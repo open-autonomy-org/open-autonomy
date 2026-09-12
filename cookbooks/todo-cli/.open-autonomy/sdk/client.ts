@@ -21,13 +21,9 @@ export type SessionOutcome = 'done' | 'failed';
 
 export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; modelProvider?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
-export interface Update { item: string; text: string; session?: string; at?: string }
-// The board's state for a roadmap item, as the agent's harness keeps it: the task's lane, every attempt at
-// it, the handoff and the review verdicts. Published by the reporter from the harness's own board.
-export interface TaskAttempt { id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; summary?: string }
-export interface TaskReview { verdict: 'requested' | 'approved' | 'changes_requested' | 'escalated'; by?: string; reason?: string; at?: string }
-export interface TaskState { item: string; task_id: string; lane: string; title?: string; assignee?: string; attempts: TaskAttempt[]; reviews: TaskReview[]; handoff?: { summary?: string; metadata?: unknown }; updated_at?: string }
-export const TASK_EVENT_TYPE = 'org.open-autonomy.item.task';
+// `id`, when the publisher gives one, is the update's identity: the same id again is the same update (the platform answers
+// `idempotent: true` with the record it already holds), so a note survives a lost acknowledgement or a restart without doubling.
+export interface Update { item: string; text: string; session?: string; at?: string; id?: string }
 // Who the agent is and how it runs, as its substrate publishes it: a persona (the identity text it runs
 // with), its model, its schedule, what it knows how to do, and how to run it. The platform shows this
 // beside the roadmap; it reads no harness's files for it.
@@ -46,6 +42,8 @@ export interface AgentControl {
   observed?: { state: OperatingState; at: string; note?: string };
 }
 export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
+// The timeline, published whole by the substrate: its source label and the normalized document (see ./roadmap).
+export const TIMELINE_EVENT_TYPE = 'org.open-autonomy.timeline';
 
 export interface CloudEvent {
   specversion: '1.0';
@@ -75,14 +73,16 @@ export function sessionEndedEvent(e: SessionEnd, source = 'open-autonomy-sdk'): 
   return event(EVENT_TYPES.ended, e.key, { outcome: e.outcome, report: e.report, commit_sha: e.commit, item_id: e.item, ended_at: e.endedAt }, e.endedAt, source);
 }
 export function updateEvent(u: Update, source = 'open-autonomy-sdk'): CloudEvent {
-  return event(EVENT_TYPES.update, u.item, { text: u.text, session: u.session }, u.at, source);
+  return { ...event(EVENT_TYPES.update, u.item, { text: u.text, session: u.session }, u.at, source), ...(u.id ? { id: u.id } : {}) };
 }
 
 function event(type: string, subject: string, data: Record<string, unknown>, time?: string, source = 'open-autonomy-sdk'): CloudEvent {
   return { specversion: '1.0', id: crypto.randomUUID(), source, type, subject, time: time ?? new Date().toISOString(), datacontenttype: 'application/json', data: Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) };
 }
 
-export interface EventResult { id?: string; ok: boolean; error?: string; idempotent?: boolean; session?: SessionSummary; update?: UpdateRecord }
+export interface EventResult { id?: string; ok: boolean; error?: string; idempotent?: boolean; session?: SessionSummary; update?: UpdateRecord; revision?: RoadmapRevision; unchanged?: boolean }
+// Every write answers the same way: whether the platform accepted it, the HTTP status, and the platform's error code when not.
+export interface WriteResult { ok: boolean; status: number; error?: string }
 export interface SessionSummary {
   key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string;
   model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents: number; calls: number; updated_at: string;
@@ -100,14 +100,16 @@ export class OpenAutonomy {
   }
 
   // POST /v1/agent/events  (Authorization: Bearer <key>; body: one CloudEvent or an array)
-  async send(events: CloudEvent | CloudEvent[]): Promise<{ ok: boolean; status: number; results: EventResult[] }> {
+  async send(events: CloudEvent | CloudEvent[]): Promise<{ ok: boolean; status: number; error?: string; results: EventResult[] }> {
     const res = await this.fetchImpl(`${this.base}/agent/events`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/cloudevents-batch+json' },
       body: JSON.stringify(Array.isArray(events) ? events : [events]),
     });
-    const body = await res.json().catch(() => ({})) as { ok?: boolean; results?: EventResult[] };
-    return { ok: res.ok && body.ok === true, status: res.status, results: body.results ?? [] };
+    // A refusal before any event is read (no key, a wrong scope, a bad body) is the platform's top-level `{ error: { code } }`.
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; results?: EventResult[]; error?: { code?: string } | string };
+    const error = typeof body.error === 'string' ? body.error : body.error?.code;
+    return { ok: res.ok && body.ok === true, status: res.status, ...(error ? { error } : {}), results: body.results ?? [] };
   }
 
   // A session, as a small object that remembers its offset. `resume` reads the platform's own offset first,
@@ -124,9 +126,17 @@ export class OpenAutonomy {
     return this.open(fallback);
   }
 
-  async update(u: Update): Promise<UpdateRecord | undefined> {
+  async update(u: Update): Promise<(UpdateRecord & { idempotent?: boolean }) | undefined> {
     const r = await this.send(updateEvent(u));
-    return r.results[0]?.update;
+    const first = r.results[0];
+    return first?.update ? { ...first.update, ...(first.idempotent ? { idempotent: true } : {}) } : undefined;
+  }
+  // One event, one answer in the common shape.
+  private async put(type: string, subject: string, data: Record<string, unknown>, time?: string): Promise<WriteResult & { results: EventResult[] }> {
+    const r = await this.send(event(type, subject, data, time));
+    const first = r.results[0];
+    const error = first?.error ?? r.error;
+    return { ok: r.ok && first?.ok === true, status: r.status, ...(error ? { error } : {}), results: r.results };
   }
 
   // A grant: credits from this funder's books to a project's, once per idempotency key, with a word.
@@ -136,30 +146,31 @@ export class OpenAutonomy {
   }
 
   // The agent's setup, replacing what was there.
-  async setup(s: AgentSetup): Promise<boolean> {
-    const r = await this.send(event(SETUP_EVENT_TYPE, 'agent', s as unknown as Record<string, unknown>));
-    return r.results[0]?.ok === true;
+  async setup(s: AgentSetup): Promise<WriteResult> {
+    const { results: _r, ...w } = await this.put(SETUP_EVENT_TYPE, 'agent', s as unknown as Record<string, unknown>);
+    return w;
   }
 
   // The project's documents, replacing what was there.
-  async docs(d: ProjectDocs): Promise<boolean> {
-    const r = await this.send(event(DOCS_EVENT_TYPE, 'project', d as unknown as Record<string, unknown>));
-    return r.results[0]?.ok === true;
+  async docs(d: ProjectDocs): Promise<WriteResult> {
+    const { results: _r, ...w } = await this.put(DOCS_EVENT_TYPE, 'project', d as unknown as Record<string, unknown>);
+    return w;
+  }
+
+  // The timeline, whole: the substrate's own label for where it came from and the normalized document. The books keep
+  // it revisioned (who, when, from which source, what changed); an unchanged document is not a revision.
+  //   POST /v1/agent/events  type org.open-autonomy.timeline  subject project  { source, roadmap, by? }
+  async timeline(roadmap: Roadmap, source: string, by?: string): Promise<WriteResult & { revision?: RoadmapRevision; unchanged?: boolean }> {
+    const { results, ...w } = await this.put(TIMELINE_EVENT_TYPE, 'project', { source, roadmap, by });
+    return { ...w, ...(results[0]?.revision ? { revision: results[0].revision } : {}), ...(results[0]?.unchanged ? { unchanged: true } : {}) };
   }
 
   // What is true of the automation now (`running` | `paused`), with a word on what that means here. Reported only once
   // true: the answer to the owner's request, never an echo of it.
   //   POST /v1/agent/events  type org.open-autonomy.agent.state  subject agent  { state, note? }
-  async reportState(state: OperatingState, note?: string): Promise<boolean> {
-    const r = await this.send(event(STATE_EVENT_TYPE, 'agent', { state, note }));
-    return r.results[0]?.ok === true;
-  }
-
-  // The board's state for an item: the task's lane, attempts, handoff and reviews, replacing what was there.
-  async task(t: TaskState): Promise<boolean> {
-    const { item, ...data } = t;
-    const r = await this.send(event(TASK_EVENT_TYPE, item, data as unknown as Record<string, unknown>, data.updated_at));
-    return r.results[0]?.ok === true;
+  async reportState(state: OperatingState, note?: string): Promise<WriteResult> {
+    const { results: _r, ...w } = await this.put(STATE_EVENT_TYPE, 'agent', { state, note });
+    return w;
   }
 
   // Public reads (no key): the stream, one session with its transcript, one item with everything on it.
@@ -189,7 +200,7 @@ export class OpenAutonomy {
   // The owner's word: run, or pause. Needs the `steer` scope, which a spending key does not carry. Recorded, not applied:
   // the automation applies it and answers through `reportState`.
   //   POST /v1/agent/state  (Authorization: Bearer <steer key>)  { state, reason? }
-  async requestState(state: OperatingState, reason?: string): Promise<{ ok: boolean; status: number; unchanged?: boolean; error?: string } & AgentControl> {
+  async requestState(state: OperatingState, reason?: string): Promise<WriteResult & { unchanged?: boolean } & AgentControl> {
     const res = await this.fetchImpl(`${this.base}/agent/state`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ state, reason }) });
     const body = await res.json().catch(() => ({})) as { ok?: boolean; unchanged?: boolean; error?: { code?: string } | string } & AgentControl;
     return { ok: res.ok && body.ok === true, status: res.status, unchanged: body.unchanged, error: typeof body.error === 'string' ? body.error : body.error?.code, ...(body.desired ? { desired: body.desired } : {}), ...(body.observed ? { observed: body.observed } : {}) };
@@ -206,10 +217,10 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}`);
     return ((await res.json()) as { revisions?: RoadmapRevision[] }).revisions ?? [];
   }
-  // An owner-side driver pushes the normalized roadmap it pulled from its tracker. Needs the `steer` scope,
-  // which a spending key does not carry.
+  // An owner-side driver pushes the normalized roadmap it pulled from its tracker. Needs the `steer` scope, which a
+  // spending key does not carry; a substrate publishing its own timeline uses `timeline` on the events door instead.
   //   POST /v1/agent/roadmap  (Authorization: Bearer <steer key>)  { source, roadmap, by? }
-  async pushRoadmap(roadmap: Roadmap, source: string, by?: string): Promise<{ ok: boolean; status: number; revision?: RoadmapRevision; unchanged?: boolean; error?: string }> {
+  async pushRoadmap(roadmap: Roadmap, source: string, by?: string): Promise<WriteResult & { revision?: RoadmapRevision; unchanged?: boolean }> {
     const res = await this.fetchImpl(`${this.base}/agent/roadmap`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ source, roadmap, by }) });
     const body = await res.json().catch(() => ({})) as { ok?: boolean; revision?: RoadmapRevision; unchanged?: boolean; error?: { code?: string } };
     return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, unchanged: body.unchanged, error: body.error?.code };

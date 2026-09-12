@@ -6,8 +6,8 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
-import { OpenAutonomy, type TaskReview } from './sdk/client.ts';
-import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './sdk/reporting.ts';
+import { OpenAutonomy } from './sdk/client.ts';
+import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -37,9 +37,11 @@ const saved = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')
 const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ? saved.published ?? {} : {};
 // The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
 const pausedJobs = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
+// The board's review verdicts and handoffs already published as notes on their items: an update is append-only, so a restart must not repeat one.
+const noted = new Set<string>(saved.version === 2 && Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
 function saveState(): void {
   const temp = `${stateFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs] }) + '\n', { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], noted: [...noted] }) + '\n', { mode: 0o600 });
   renameSync(temp, stateFile);
 }
 
@@ -124,8 +126,8 @@ async function sessions(): Promise<void> {
 // present from the board (through supercode's workflow layer) with the sessions serving it, the future from
 // ROADMAP.md. Unifying the three is this reporter's job; the platform reads no file and knows no board.
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
-// acceptance — and each task's board state (lane, attempts, handoff, review verdicts) is published under that
-// item whenever it changes. Review verdicts are exactly the SDK's recorded verdicts.
+// acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
+// progress note on it, published once.
 type BoardTask = { id: string; title?: string; body?: string; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
@@ -138,7 +140,6 @@ function commitOf(t: BoardTask): string | undefined {
   return value && /^[0-9a-f]{7,40}$/.test(value) ? value : undefined;
 }
 let nativeTasks: BoardTask[] = [];
-const boardDigests = new Map<string, string>();
 let timelineDigest = '';
 async function board(): Promise<RoadmapItem[] | undefined> {
   nativeTasks = [];
@@ -161,15 +162,19 @@ async function board(): Promise<RoadmapItem[] | undefined> {
       acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
     }) as RoadmapItem;
   });
+  // The board's lane is the item's status and its attempts are the item's sessions; what the timeline cannot say, a
+  // review's verdict and an attempt's handoff, is a progress note on the item, published once each: the note's key is the
+  // update's identity on the platform, so a retry after a lost acknowledgement, or a restart, lands on the same record.
   for (const t of tasks) {
-    const item = t.id;
-    const attempts = (t.attempts ?? []).map((a) => ({ id: a.id, profile: a.profile, status: a.status, started_at: a.started_at, ended_at: a.ended_at, outcome: a.outcome, summary: a.handoff?.summary }));
-    const reviews: TaskReview[] = (t.reviews ?? []).map((r) => ({ verdict: r.verdict as TaskReview['verdict'], by: r.by, reason: r.reason, at: r.at }));
-    const last = [...(t.attempts ?? [])].reverse().find((a) => a.handoff);
-    const state = { item, task_id: t.id, lane: t.lane, title: t.title, assignee: t.assignee, attempts, reviews, handoff: last?.handoff, updated_at: new Date().toISOString() };
-    const taskDigest = JSON.stringify({ ...state, updated_at: undefined });
-    if (boardDigests.get(t.id) === taskDigest) continue;
-    try { if (await oa.task(state)) { boardDigests.set(t.id, taskDigest); log(`board: ${t.id} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
+    const notes: Array<{ key: string; text: string; at?: string }> = [];
+    // A review's position in the board's append-only list keeps two rounds with the same verdict apart when the harness stamps no time.
+    (t.reviews ?? []).forEach((r, i) => notes.push({ key: `${t.id}:review:${i}:${r.at ?? ''}:${r.verdict}`, text: `review ${r.verdict}${r.by ? ` by ${r.by}` : ''}${r.reason ? `: ${r.reason}` : ''}`, at: r.at }));
+    for (const a of t.attempts ?? []) if (a.handoff?.summary) notes.push({ key: `${t.id}:handoff:${a.id}`, text: `handoff (attempt ${a.id}${a.profile ? `, ${a.profile}` : ''}): ${a.handoff.summary}`, at: a.ended_at });
+    for (const n of notes) {
+      if (noted.has(n.key)) continue;
+      try { const u = await oa.update({ item: t.id, text: n.text.slice(0, 2000), at: n.at, id: n.key }); if (u) { noted.add(n.key); saveState(); log(`board: ${t.id} · ${n.text.slice(0, 60)}${u.idempotent ? ' (already there)' : ''}`); } }
+      catch (e) { log(`board note failed for ${t.id}: ${(e as Error).message}`); }
+    }
   }
   return items;
 }
@@ -300,7 +305,7 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest) return;
-  const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
+  const r = await oa.timeline({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
   if (!r.ok) throw new Error(`Timeline publish refused: ${r.error ?? r.status}`);
   timelineDigest = digest;
 }
@@ -308,7 +313,7 @@ let docsDigest = '', setupDigest = '';
 async function docs(): Promise<void> {
   const d = { about_md: mainFile('CONSTITUTION.md') };
   const digest = JSON.stringify(d);
-  if (digest !== docsDigest && await oa.docs(d)) docsDigest = digest;
+  if (digest !== docsDigest && (await oa.docs(d)).ok) docsDigest = digest;
 }
 async function setup(): Promise<void> {
   const [jobs, skills, inventory] = await Promise.all([
@@ -319,7 +324,7 @@ async function setup(): Promise<void> {
     provider: providerOf(), schedule: jobs.jobs.map(j => ({ name: jobNames.get(j.id) ?? j.id, schedule: j.enabled ? j.schedule.display : `${j.schedule.display} (${j.state})`, description: j.payload.text ?? undefined })),
     skills: skills.filter(s => s.enabled !== false).map(s => s.name).sort(), setup_md: mainFile('hermes/README.md') };
   const digest = JSON.stringify(s);
-  if (digest !== setupDigest && await oa.setup(s)) setupDigest = digest;
+  if (digest !== setupDigest && (await oa.setup(s)).ok) setupDigest = digest;
 }
 // The owner's word on the operating state, read from the platform and applied through the harness's own schedule.
 // `paused` here means the scheduled runs (the funded work) stop: every enabled job is paused and remembered; a run in
@@ -355,7 +360,7 @@ async function control(): Promise<void> {
   const state = desired === 'paused' && !enabled.length && !running ? 'paused' : 'running';
   const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
   const digest = `${state}|${note ?? ''}`;
-  if (digest !== reportedState && await oa.reportState(state, note)) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
+  if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
 let busy = false, dirty = false, quitting = false, documentsAt = 0;
 async function tick(): Promise<void> {
