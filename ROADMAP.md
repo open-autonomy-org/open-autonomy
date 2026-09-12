@@ -57,7 +57,7 @@ Source: the verified owner's [PR #593 ruling](https://github.com/open-autonomy-o
 Completion:
 - Bare: `provider: openai-codex` in both profiles runs on the computer's login, the Codex CLI's adopted into Hermes's store on the first start; a computer without one cannot start.
 - Container: the start script forwards through the valve's Codex port with a stand-in credential in the home's auth store; the login never enters the agent. Proven by one turn in the managed container on a Docker host.
-- A world points the provider at its model twin through `HERMES_CODEX_BASE_URL`; the rehearsal engine sets it and a story passes on it.
+- The project-owned [World scenario](world/README.md) points the provider at its model twin through `HERMES_CODEX_BASE_URL`; a native agent turn passes through that endpoint.
 
 ## operating-state-sdk: The owner's running or paused word travels through the SDK
 
