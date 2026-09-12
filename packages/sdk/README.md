@@ -113,8 +113,9 @@ when using a checkout's bundled tools. The credential destination remains outsid
   locally is its own business: the Hermes kit keeps its past in `CHANGELOG.md`, its present on the Hermes board
   with the sessions serving it, and its future in `ROADMAP.md`; an engagement keeps all three in a client's
   tracker. Unifying those into the one language is the job of that substrate's SDK implementation, the reporter
-  or a driver, and of nothing on the platform (owner ruling, 2026-09-08). The wire still calls the document the
-  roadmap in its routes.
+  or a driver, and of nothing on the platform (owner ruling, 2026-09-08). A substrate publishes the whole document
+  on the events door (`org.open-autonomy.timeline`, `timeline()`); the books keep it revisioned. The wire still
+  calls the document the roadmap in its routes.
 
 Spend is attributed by the platform: Hermes names its session on each model request, so overlapping sessions
 each receive their own settled calls and cents and an item's page shows everything that touched it.
@@ -122,7 +123,7 @@ each receive their own settled calls and cents and an item's page shows everythi
 ## Drivers
 
 The platform holds one normalized roadmap per project, revisioned: who, when, from which source, what
-changed. Substrates feed it: a reporter publishing its board, or a driver. `github-milestones` is the
+changed. Substrates feed it: a reporter publishing its document on the events door, or an owner-side driver. `github-milestones` is the
 repository's milestones, pulled on sync with no credential (`fromMilestones`); it is the only source the platform pulls. `jira` is the project's
 epics, read owner-side where the credential is and pushed with `pushRoadmap` on a `steer`-scoped key
 (`fromJira`). Each driver declares its conformance, what its tracker cannot express (`CONFORMANCE`), and a
@@ -133,7 +134,7 @@ agent is tracker-blind: whatever the source, it works its own queue and narrates
 |---|---|
 | `GET /v1/accounts/:account/roadmap` | the current revision: `revision`, `ts`, `source`, `by`, `roadmap`, `changes`, `conformance` |
 | `GET /v1/accounts/:account/roadmap/revisions?limit=` | the history, newest first |
-| `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push; needs the `steer` scope; an unchanged roadmap is not a revision |
+| `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push on a `steer` key alone; an unchanged roadmap is not a revision. A substrate's own document goes through `POST /v1/agent/events` as `org.open-autonomy.timeline` |
 
 ## Rails
 
@@ -150,7 +151,7 @@ are bounded by the owner in `.open-autonomy/config.yaml` (`parseRailsConfig`) an
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
-Key scopes: `spend` (the rails), `narrate` (the stream), `steer` (a roadmap push). A key minted without
+Key scopes: `spend` (the rails), `narrate` (the events door: everything the automation says), `steer` (the owner's word: a roadmap push, the operating state). A key minted without
 `scopes` carries spend and narrate; `POST /v1/keys/mint {account, scopes: ["steer"]}` mints a driver's key
 that spends nothing.
 
@@ -180,6 +181,8 @@ intake; everything accepted is public.
      "data": { "harness": "hermes", "persona": "…", "model": "zai/glm-5.3-flash", "schedule": [{ "name": "file-roadmap-item", "schedule": "every 360m" }], "skills": ["roadmap", "land"], "setup_md": "…" }
    { "type": "org.open-autonomy.agent.state", "subject": "agent",
      "data": { "state": "paused", "note": "scheduled runs paused: pm, community" } }
+   { "type": "org.open-autonomy.timeline", "subject": "project",
+     "data": { "source": "hermes", "roadmap": { "schema": "open-autonomy.timeline.v1", "items": [ … ] } } }
    "data": { "text": "…", "session": "<session key>" } },
  { "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "…",
    "type": "org.open-autonomy.session.ended", "subject": "<session key>",
@@ -190,6 +193,9 @@ intake; everything accepted is public.
 offsets already applied is ignored (`idempotent: true` in that event's result), so a reporter that restarts
 reads the session back and continues from its `next_seq`. The response is `{ ok, results: [{ id, ok,
 session | update, idempotent?, error? }] }`; the first failing event stops the batch.
+
+Every write the client makes (`setup`, `docs`, `task`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answers
+the same way: `{ ok, status, error? }`, the platform's error code when refused, plus what the write returned.
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
@@ -228,8 +234,8 @@ registry can only revoke it or shorten it.
 
 `open-autonomy-valve`, the package's one binary, is a credential-injecting sidecar for the project's key: the key
 lives in a file only the valve reads, the agent is pointed at the valve's address with the literal word `valve`
-as its key, and the valve adds the real bearer at the edge. It forwards the model routes, the narration routes
-(`/v1/agent/events`, `/v1/agent/roadmap`), the rails and public reads of the account, and refuses the rest, so an
+as its key, and the valve adds the real bearer at the edge. It forwards the model routes, the narration route
+(`/v1/agent/events`), the rails and public reads of the account, and refuses the rest, so an
 agent whose output is public never possesses the one credential that spends its sponsors' money.
 
 ```bash
