@@ -117,6 +117,17 @@ export interface AgentControl {
   observed?: { state: OperatingState; at: string; note?: string };
 }
 const OPERATING_STATES: OperatingState[] = ['running', 'paused'];
+// The stored record, each half kept only when well-formed; a malformed half is dropped, never guessed.
+function normalizeControl(raw: unknown): AgentControl | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as { desired?: Record<string, unknown>; observed?: Record<string, unknown> };
+  const half = (h: Record<string, unknown> | undefined) => h && typeof h === 'object' && OPERATING_STATES.includes(h.state as OperatingState) && typeof h.at === 'string' ? h : undefined;
+  const desired = half(r.desired), observed = half(r.observed);
+  const out: AgentControl = {};
+  if (desired && typeof desired.by === 'string') out.desired = { state: desired.state as OperatingState, at: desired.at as string, by: desired.by, ...(typeof desired.reason === 'string' ? { reason: desired.reason } : {}) };
+  if (observed) out.observed = { state: observed.state as OperatingState, at: observed.at as string, ...(typeof observed.note === 'string' ? { note: observed.note } : {}) };
+  return out.desired || out.observed ? out : undefined;
+}
 
 export interface LiveDeployment {
   commit: string | null;
@@ -1341,6 +1352,8 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.moderation_reason === 'string') acct.moderation_reason = a.moderation_reason;
     const deployment = normalizeDeployment(a.deployment);
     if (deployment) acct.deployment = deployment;
+    const control = normalizeControl(a.control);
+    if (control) acct.control = control;
     if (!acct.envelopes.length) {
       const legacy = acct.granted_in_usd_cents - acct.granted_out_usd_cents - acct.consumed_usd_cents;
       if (legacy > 0) acct.envelopes.push({ id: `legacy:${id}`, purpose: { type: 'unrestricted' }, balance_usd_cents: legacy, created_at: new Date(0).toISOString() });
