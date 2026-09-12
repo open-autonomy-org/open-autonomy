@@ -104,7 +104,7 @@ export async function handleKeyChallenge(req: Request, env: Env): Promise<Respon
 }
 
 // POST /v1/keys/mint {account, models?, scopes?} → a key, if HEAD's claim file carries today's or yesterday's
-// code. `scopes: ["steer"]` mints an owner-side driver's key, which can push a roadmap and nothing else.
+// code. `scopes: ["steer"]` mints an owner-side driver's key, which can push a roadmap, request the operating state, and nothing else.
 export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
   const body = parseJson<{ account?: string; models?: string[]; scopes?: KeyScope[]; funder?: string; repo?: string }>(await req.text());

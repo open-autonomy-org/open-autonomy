@@ -169,7 +169,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     const state = { item, task_id: t.id, lane: t.lane, title: t.title, assignee: t.assignee, attempts, reviews, handoff: last?.handoff, updated_at: new Date().toISOString() };
     const taskDigest = JSON.stringify({ ...state, updated_at: undefined });
     if (boardDigests.get(t.id) === taskDigest) continue;
-    try { if (await oa.task(state)) { boardDigests.set(t.id, taskDigest); log(`board: ${t.id} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
+    try { if ((await oa.task(state)).ok) { boardDigests.set(t.id, taskDigest); log(`board: ${t.id} (${t.lane}, ${attempts.length} attempt(s), ${reviews.length} review(s))`); } } catch (e) { log(`board publish failed for ${t.id}: ${(e as Error).message}`); }
   }
   return items;
 }
@@ -300,7 +300,7 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest) return;
-  const r = await oa.pushRoadmap({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
+  const r = await oa.timeline({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
   if (!r.ok) throw new Error(`Timeline publish refused: ${r.error ?? r.status}`);
   timelineDigest = digest;
 }
@@ -308,7 +308,7 @@ let docsDigest = '', setupDigest = '';
 async function docs(): Promise<void> {
   const d = { about_md: mainFile('CONSTITUTION.md') };
   const digest = JSON.stringify(d);
-  if (digest !== docsDigest && await oa.docs(d)) docsDigest = digest;
+  if (digest !== docsDigest && (await oa.docs(d)).ok) docsDigest = digest;
 }
 async function setup(): Promise<void> {
   const [jobs, skills, inventory] = await Promise.all([
@@ -319,7 +319,7 @@ async function setup(): Promise<void> {
     provider: providerOf(), schedule: jobs.jobs.map(j => ({ name: jobNames.get(j.id) ?? j.id, schedule: j.enabled ? j.schedule.display : `${j.schedule.display} (${j.state})`, description: j.payload.text ?? undefined })),
     skills: skills.filter(s => s.enabled !== false).map(s => s.name).sort(), setup_md: mainFile('hermes/README.md') };
   const digest = JSON.stringify(s);
-  if (digest !== setupDigest && await oa.setup(s)) setupDigest = digest;
+  if (digest !== setupDigest && (await oa.setup(s)).ok) setupDigest = digest;
 }
 // The owner's word on the operating state, read from the platform and applied through the harness's own schedule.
 // `paused` here means the scheduled runs (the funded work) stop: every enabled job is paused and remembered; a run in
@@ -355,7 +355,7 @@ async function control(): Promise<void> {
   const state = desired === 'paused' && !enabled.length && !running ? 'paused' : 'running';
   const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
   const digest = `${state}|${note ?? ''}`;
-  if (digest !== reportedState && await oa.reportState(state, note)) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
+  if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
 let busy = false, dirty = false, quitting = false, documentsAt = 0;
 async function tick(): Promise<void> {

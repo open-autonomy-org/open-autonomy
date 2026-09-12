@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // The valve: a credential-injecting sidecar for one Open Autonomy key per port. The key lives in a file only this
 // process reads; the agent is configured with this address and the literal word `valve` as its key, and sees no
-// credential. Only the routes an agent legitimately uses pass — the model routes, the narration routes (the stream,
-// the roadmap), the rails, and public reads of its own account — so key management and admin never reach the
+// credential. Only the routes an agent legitimately uses pass — the model routes, the narration route, the rails, and
+// public reads of its own account — so key management and admin never reach the
 // platform from the agent's side. Held outside the agent's process, the key survives anything the agent prints
 // or commits, which is the whole point: everything the agent produces is public.
 //
@@ -63,9 +63,9 @@ function announce(file: string, token: string | undefined): void {
 }
 const base = (file: string): string => (keyEnv(file).OPEN_AUTONOMY_BASE_URL || 'https://open-autonomy.org/v1').replace(/\/$/, '');
 const key = (file: string): string | undefined => keyEnv(file).OPEN_AUTONOMY_KEY;
-// The model routes, the narration routes (the stream and the roadmap), and the two other rails (a card, a partner charge): the platform
+// The model routes, the narration route (everything the automation says), and the two other rails (a card, a partner charge): the platform
 // bounds each rail by the owner's config, and every settlement lands on the public audit trail.
-const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/catalog', '/v1/agent/events', '/v1/agent/roadmap', '/v1/rails/card', '/v1/rails/partner']);
+const FORWARDED = new Set(['/v1/chat/completions', '/v1/messages', '/v1/responses', '/v1/models', '/v1/catalog', '/v1/agent/events', '/v1/rails/card', '/v1/rails/partner']);
 // Public reads the reporter needs: to resume where the platform is (its own account's sessions), and the owner's word on
 // the operating state (its own account's state), which it applies and answers.
 const isPublicRead = (path: string, method: string) => method === 'GET' && /^\/v1\/accounts\/[^/]+(?:$|\/(sessions|items|state)(\/|$))/.test(path);

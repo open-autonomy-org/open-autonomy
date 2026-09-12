@@ -213,13 +213,13 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
 
   // ---- the development stream ----
   if (path === '/v1/agent/events') return agentEvents(req, env);
-  // An owner-side driver's push: the normalized roadmap, on a steer-scoped key. The account is the key's.
+  // An owner-side driver's push: the normalized roadmap, on a steer-scoped key. The account is the key's. What the
+  // automation itself publishes goes through the events door as org.open-autonomy.timeline, never here.
   if (path === '/v1/agent/roadmap') {
     if (req.method !== 'POST') return methodNotAllowed();
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    // A substrate narrates the roadmap it works (narrate); an owner-side driver steers it (steer).
-    if (!hasScope(claims, 'steer') && !hasScope(claims, 'narrate')) return error('scope_required', 403, { scope: 'narrate' });
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
     const body = parseJson<{ source?: string; roadmap?: Roadmap; by?: string }>(await req.text());
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);

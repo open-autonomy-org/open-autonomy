@@ -44,7 +44,7 @@ describe('the backend, one smoke test per surface', () => {
     const { token } = await mintKey(env, 'acme/app', ['zai/glm-5.3-flash', 'other/model']);
     const auth = { authorization: `Bearer ${token}` };
     const roadmap = (status: string) => ({ source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', title: 'todo add', status, acceptance: [] }, { id: 'other', title: 'other work', status: 'planned', acceptance: [] }] } });
-    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: auth, body: roadmap('active') })).status).toBe(200);
+    expect((await request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce('timeline', 'project', roadmap('active')) })).status).toBe(200);
     expect((await requestJson(env, '/admin/accounts/root/grant', { headers: admin, body: { to: 'acme/app', amount_usd_cents: 500, for: { item: 'missing' } } })).error).toBe('no_such_item');
     expect((await requestJson(env, '/admin/accounts/root/grant', { headers: admin, body: { to: 'acme/app', amount_usd_cents: 500, key: 'item-gift', for: { item: 'add' } } })).ok).toBe(true);
     const post = (subject: string, item_id: string) => request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce('session.started', subject, { session_kind: 'run', item_id }) });
@@ -64,7 +64,7 @@ describe('the backend, one smoke test per surface', () => {
     const before = await requestJson(env, '/v1/accounts/acme%2Fapp');
     expect(before.envelopes.map((e: any) => e.purpose)).toEqual(expect.arrayContaining([{ type: 'item', item: 'add' }, { type: 'models', models: ['other/model'] }]));
     expect(before.usable_usd_cents).toBe(0);
-    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: auth, body: roadmap('done') })).status).toBe(200);
+    expect((await request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce('timeline', 'project', roadmap('done')) })).status).toBe(200);
     const after = await requestJson(env, '/v1/accounts/acme%2Fapp');
     expect(after.balance_usd_cents).toBeCloseTo(before.balance_usd_cents, 6);
     expect(after.usable_usd_cents).toBeGreaterThan(0);
@@ -139,12 +139,13 @@ describe('the backend, one smoke test per surface', () => {
     expect(await (await request(env, '/p/acme%2Fapp/items/add')).text()).toContain('review: requested → approved');
   });
 
-  test('the roadmap: a substrate narrates its file through the key, the milestones driver on sync, an owner-side push on a steer key; scopes hold', async () => {
+  test('the roadmap: a substrate narrates its timeline through the events door, the milestones driver on sync, an owner-side push on a steer key alone; scopes hold', async () => {
     const env = useEnv(testEnv());
     github.repos['acme/app'] = { description: 'x' };
     await fund(env, 'acme/app', 100);
     const narrate = (await mintKey(env)).token;
-    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${narrate}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', title: 'todo add', status: 'planned', acceptance: [] }] } } })).status).toBe(200);
+    expect((await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${narrate}` }, body: ce('timeline', 'project', { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', title: 'todo add', status: 'planned', acceptance: [] }] } }) })).status).toBe(200);
+    expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${narrate}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [] } } })).status).toBe(403);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/roadmap')).revision).toMatchObject({ revision: 1, source: 'file' });
     github.files['acme/app:.open-autonomy/config.yaml'] = 'roadmap:\n  source: github-milestones\n';
     github.milestones['acme/app'] = [{ number: 1, title: 'Search', state: 'open', due_on: null, created_at: '2026-09-01T00:00:00Z' }];
@@ -206,7 +207,7 @@ describe('the backend, one smoke test per surface', () => {
     github.repos['acme/app'] = { description: 'A todo list that builds itself', html_url: 'https://github.com/acme/app' };
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
     const { token } = await mintKey(env);
-    await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', phase: '1', status: 'active', title: 'todo add appends an item', acceptance: ['It appends.'] }, { id: 'shipped-1', tense: 'past', status: 'done', title: 'todo init makes a store', release: 'v0.1.0', done_at: '2026-09-01T00:00:00Z', commit: 'abcdef1234567', home: 'changelog', links: [{ kind: 'github-pr', url: 'https://github.com/acme/app/pull/7', label: '#7' }, { kind: 'jira', url: 'https://acme.atlassian.net/browse/ACME-12', label: 'ACME-12' }], acceptance: [] }] } } });
+    await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('timeline', 'project', { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [{ id: 'add', phase: '1', status: 'active', title: 'todo add appends an item', acceptance: ['It appends.'] }, { id: 'shipped-1', tense: 'past', status: 'done', title: 'todo init makes a store', release: 'v0.1.0', done_at: '2026-09-01T00:00:00Z', commit: 'abcdef1234567', home: 'changelog', links: [{ kind: 'github-pr', url: 'https://github.com/acme/app/pull/7', label: '#7' }, { kind: 'jira', url: 'https://acme.atlassian.net/browse/ACME-12', label: 'ACME-12' }], acceptance: [] }] } }) });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('session.started', 'run-1', { session_kind: 'run', item_id: 'add' }) });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('project.docs', 'project', { about_md: '# acme\n\nA todo list built by its own agent.' }) });
     expect(await (await request(env, '/')).text()).toContain('acme/app');

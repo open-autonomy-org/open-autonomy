@@ -1,12 +1,14 @@
 import { error, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims } from './keys.js';
+import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { LedgerClient, type SessionEvent } from './ledger.js';
 import { redactDeep } from './redact.js';
 import { hasScope, type Env } from './types.js';
 
 // The development stream's intake and live channels. The reporter speaks CloudEvents 1.0 (one event or a
 // batch): sessions are org.open-autonomy.session.{started,turns,ended} with the session key as `subject`;
-// updates are org.open-autonomy.item.update with the item id as `subject`. The account is the key's own,
+// updates are org.open-autonomy.item.update with the item id as `subject`; the timeline is org.open-autonomy.timeline
+// with `project` as `subject`. Everything the automation says enters here. The account is the key's own,
 // never the event's. Everything published is public: secret-shaped text is stripped at intake.
 
 const SESSION_EVENT_TYPES: Record<string, 'started' | 'turns' | 'ended'> = {
@@ -23,6 +25,8 @@ const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 // The agent's operating state as the automation reports it true of itself (running or paused), answering the owner's request.
 const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
+// The timeline as the substrate publishes it: one normalized document of its work, revisioned by the books.
+const TIMELINE_EVENT_TYPE = 'org.open-autonomy.timeline';
 
 export async function agentEvents(req: Request, env: Env): Promise<Response> {
   if (req.method !== 'POST') return methodNotAllowed();
@@ -57,6 +61,13 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     }
     if (e.type === STATE_EVENT_TYPE) {
       const result = await ledger.stateReport(claims.account, data.state, data.note);
+      results.push({ id: e.id, ...result });
+      if (!result.ok) return json({ ok: false, results }, { status: 400 });
+      continue;
+    }
+    if (e.type === TIMELINE_EVENT_TYPE) {
+      if (!data.roadmap || typeof data.source !== 'string') return error('invalid_timeline', 400);
+      const result = await ledger.roadmapSet(claims.account, data.roadmap as Roadmap, data.source, typeof data.by === 'string' ? data.by : claims.kid);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;
