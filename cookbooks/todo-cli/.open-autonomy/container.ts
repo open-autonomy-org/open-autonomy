@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
-import { codexAccess } from './sdk/codex-auth.ts';
-import { checkCredentialDirectory } from './sdk/credentials.ts';
+import { codexAccess } from './codex-auth.ts';
+import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
 import { prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
 
@@ -62,7 +62,7 @@ export async function startContainer(options: {
     const ports = [port, port + 1];
     const args = keys.flatMap((file, i) => ['--key', `${file}:${port + i}`]);
     // Git must be available before fetching the committed model/configuration.
-    own('github valve', ['bun', resolve(import.meta.dir, 'sdk/valve.ts'), '--loopback', '--github-app', `${github}:${port + 3}`]);
+    own('github valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', '--github-app', `${github}:${port + 3}`]);
     await ready(async () => {
       try { return (await fetch(`http://127.0.0.1:${port + 3}/healthz`, { signal: AbortSignal.timeout(1000) })).ok; }
       catch { return false; }
@@ -78,7 +78,7 @@ export async function startContainer(options: {
     const codexBase = onCodex ? (twin || `${host}:${port + 2}/backend-api/codex`) : '';
     if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
     if (onCodex && !twin) args.push('--codex', String(port + 2));
-    own('valve', ['bun', resolve(import.meta.dir, 'sdk/valve.ts'), '--loopback', ...args]);
+    own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...args]);
     await ready(async () => {
       try { return (await Promise.all(ports.map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
       catch { return false; }

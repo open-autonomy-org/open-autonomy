@@ -1,7 +1,7 @@
 // Publication policy and delivery only. Supercode owns native reconstruction and lifecycle.
 import { createHash } from 'node:crypto';
 import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter-ai-dev/supercode-harness-sdk';
-import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './client.ts';
+import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
 
 export interface PublicationPolicy { runs: boolean; chats: boolean; private: string[] }
 export function publicationPolicy(value: unknown): PublicationPolicy {

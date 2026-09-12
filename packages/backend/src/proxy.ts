@@ -1,4 +1,4 @@
-import { parseModelsBound } from '@open-autonomy/sdk/rails';
+import { parseModelsBound } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './http.js';
 import { LedgerClient } from './ledger.js';
 import { estimateInputTokensFromBody, MAX_OUTPUT_TOKENS, priceTable, reservePrice, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
