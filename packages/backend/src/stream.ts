@@ -40,7 +40,7 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
     if (!e || typeof e !== 'object' || e.specversion !== '1.0' || typeof e.type !== 'string' || typeof e.subject !== 'string' || !e.subject) return error('invalid_cloudevent', 400);
     const data = redactDeep(e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
     if (e.type === UPDATE_EVENT_TYPE) {
-      const result = await ledger.postUpdate(claims.account, e.subject, String(data.text ?? ''), typeof data.session === 'string' ? data.session : undefined, typeof e.time === 'string' ? e.time : undefined);
+      const result = await ledger.postUpdate(claims.account, e.subject, String(data.text ?? ''), typeof data.session === 'string' ? data.session : undefined, typeof e.time === 'string' ? e.time : undefined, typeof e.id === 'string' ? e.id : undefined);
       results.push({ id: e.id, ...result });
       if (!result.ok) return json({ ok: false, results }, { status: 400 });
       continue;

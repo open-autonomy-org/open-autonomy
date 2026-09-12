@@ -403,7 +403,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'sessions': return json(await this.listSessions(s('account'), Number(body.limit)));
       case 'session': return json(await this.getSession(s('account'), s('key')));
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
-      case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at));
+      case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at, body.id));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
       case 'state': return json(this.stateView(s('account')));
       case 'state_request': return json(await this.stateRequest(s('account'), body.state, s('by'), body.reason));
@@ -946,15 +946,25 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // A short progress update on a work item. `update:<account>:<item>:<ms>:<id>`: one prefix lists an
-  // item's updates newest first, the account prefix lists them all.
-  private async postUpdate(account: string, item: string, text: unknown, session?: unknown, at?: unknown): Promise<{ ok: boolean; error?: string; update?: UpdateRecord }> {
+  // item's updates newest first, the account prefix lists them all. The event's id is the update's identity:
+  // `updateidx:<account>:<id>` points at the record, so the same id again (a retry after a lost acknowledgement,
+  // a restarted publisher) answers with what is already there, `idempotent`, and nothing doubles.
+  private async postUpdate(account: string, item: string, text: unknown, session?: unknown, at?: unknown, id?: unknown): Promise<{ ok: boolean; error?: string; idempotent?: boolean; update?: UpdateRecord }> {
     const item_id = itemId(item);
     const body = clipText(text, MAX_UPDATE_TEXT);
     if (!item_id || !body) return { ok: false, error: 'invalid_update' };
+    const given = typeof id === 'string' && id.trim() && id.length <= 200 ? id : undefined;
+    if (given) {
+      const at_key = await this.ctx.storage.get<string>(`updateidx:${account}:${given}`);
+      const existing = at_key ? await this.ctx.storage.get<UpdateRecord>(at_key) : undefined;
+      if (existing) return { ok: true, idempotent: true, update: existing };
+    }
     const now = Date.now();
     const tsMs = typeof at === 'string' && Number.isFinite(Date.parse(at)) && Date.parse(at) <= now + 60_000 ? Date.parse(at) : now;
-    const update: UpdateRecord = { id: crypto.randomUUID(), account, item_id, ts: new Date(tsMs).toISOString(), text: body, ...(typeof session === 'string' && session && session.length <= 200 ? { session } : {}) };
-    await this.ctx.storage.put(`update:${account}:${item_id}:${String(tsMs).padStart(13, '0')}:${update.id}`, update);
+    const update: UpdateRecord = { id: given ?? crypto.randomUUID(), account, item_id, ts: new Date(tsMs).toISOString(), text: body, ...(typeof session === 'string' && session && session.length <= 200 ? { session } : {}) };
+    const key = `update:${account}:${item_id}:${String(tsMs).padStart(13, '0')}:${update.id}`;
+    await this.ctx.storage.put(key, update);
+    if (given) await this.ctx.storage.put(`updateidx:${account}:${given}`, key);
     this.ensureAcct(account);
     await this.save();
     return { ok: true, update };
@@ -1601,7 +1611,7 @@ export class LedgerClient {
   stateRequest(account: string, state: unknown, by: string, reason?: unknown) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl>('state_request', { account, state, by, reason }); }
   stateReport(account: string, state: unknown, note?: unknown) { return this.call<{ ok: boolean; error?: string } & AgentControl>('state_report', { account, state, note }); }
   docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
-  postUpdate(account: string, itemId: string, text: string, session?: string, at?: string) { return this.call<{ ok: boolean; error?: string; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at }); }
+  postUpdate(account: string, itemId: string, text: string, session?: string, at?: string, id?: string) { return this.call<{ ok: boolean; error?: string; idempotent?: boolean; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at, id }); }
   item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
   roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }

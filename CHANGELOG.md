@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **An update has an identity.** A publisher that gives an update event an `id` can send it again after a lost acknowledgement or a restart and get the same record back, `idempotent`; the kit's reporter uses its note's key as that id.
 - **The board is not a shape the platform knows.** The `item.task` event (lanes, attempts, review verdicts, handoffs) is gone: the lane is the item's status, the attempts are its sessions, and the kit's reporter publishes each review verdict and handoff once as an update on the item. The item page's board panel went with it.
 - **The SDK is the interface and nothing else** ([ADR 0005](docs/decisions/0005-the-sdk-is-the-interface.md)). `@open-autonomy/sdk` 3.0 keeps the client, the timeline codec and drivers, the roster model and the key helpers, and depends on nothing. The host tools moved to the kit as its own files under `.open-autonomy/` (`valve.ts`, `credentials.ts`, `codex-auth.ts`, `reporting.ts`), the owner's config parsers to the backend; the `open-autonomy-valve` and `open-autonomy-credentials` binaries are gone, run them with Bun from the checkout.
 - **One door for everything the automation says.** The timeline travels on the events door (`org.open-autonomy.timeline`, `timeline()`) like sessions, tasks, setup and the operating state; `POST /v1/agent/roadmap` is the owner's steer door alone, and the valve no longer forwards it. Every client write answers `{ ok, status, error? }`. The books' exhausted-balance flag is `exhausted`, no longer a second meaning of `paused`.

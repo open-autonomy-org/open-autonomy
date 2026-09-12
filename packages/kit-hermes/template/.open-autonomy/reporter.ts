@@ -163,7 +163,8 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     }) as RoadmapItem;
   });
   // The board's lane is the item's status and its attempts are the item's sessions; what the timeline cannot say, a
-  // review's verdict and an attempt's handoff, is a progress note on the item, published once each.
+  // review's verdict and an attempt's handoff, is a progress note on the item, published once each: the note's key is the
+  // update's identity on the platform, so a retry after a lost acknowledgement, or a restart, lands on the same record.
   for (const t of tasks) {
     const notes: Array<{ key: string; text: string; at?: string }> = [];
     // A review's position in the board's append-only list keeps two rounds with the same verdict apart when the harness stamps no time.
@@ -171,7 +172,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     for (const a of t.attempts ?? []) if (a.handoff?.summary) notes.push({ key: `${t.id}:handoff:${a.id}`, text: `handoff (attempt ${a.id}${a.profile ? `, ${a.profile}` : ''}): ${a.handoff.summary}`, at: a.ended_at });
     for (const n of notes) {
       if (noted.has(n.key)) continue;
-      try { if (await oa.update({ item: t.id, text: n.text.slice(0, 2000), at: n.at })) { noted.add(n.key); saveState(); log(`board: ${t.id} · ${n.text.slice(0, 60)}`); } }
+      try { const u = await oa.update({ item: t.id, text: n.text.slice(0, 2000), at: n.at, id: n.key }); if (u) { noted.add(n.key); saveState(); log(`board: ${t.id} · ${n.text.slice(0, 60)}${u.idempotent ? ' (already there)' : ''}`); } }
       catch (e) { log(`board note failed for ${t.id}: ${(e as Error).message}`); }
     }
   }

@@ -21,7 +21,9 @@ export type SessionOutcome = 'done' | 'failed';
 
 export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; modelProvider?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
-export interface Update { item: string; text: string; session?: string; at?: string }
+// `id`, when the publisher gives one, is the update's identity: the same id again is the same update (the platform answers
+// `idempotent: true` with the record it already holds), so a note survives a lost acknowledgement or a restart without doubling.
+export interface Update { item: string; text: string; session?: string; at?: string; id?: string }
 // Who the agent is and how it runs, as its substrate publishes it: a persona (the identity text it runs
 // with), its model, its schedule, what it knows how to do, and how to run it. The platform shows this
 // beside the roadmap; it reads no harness's files for it.
@@ -71,7 +73,7 @@ export function sessionEndedEvent(e: SessionEnd, source = 'open-autonomy-sdk'): 
   return event(EVENT_TYPES.ended, e.key, { outcome: e.outcome, report: e.report, commit_sha: e.commit, item_id: e.item, ended_at: e.endedAt }, e.endedAt, source);
 }
 export function updateEvent(u: Update, source = 'open-autonomy-sdk'): CloudEvent {
-  return event(EVENT_TYPES.update, u.item, { text: u.text, session: u.session }, u.at, source);
+  return { ...event(EVENT_TYPES.update, u.item, { text: u.text, session: u.session }, u.at, source), ...(u.id ? { id: u.id } : {}) };
 }
 
 function event(type: string, subject: string, data: Record<string, unknown>, time?: string, source = 'open-autonomy-sdk'): CloudEvent {
@@ -124,9 +126,10 @@ export class OpenAutonomy {
     return this.open(fallback);
   }
 
-  async update(u: Update): Promise<UpdateRecord | undefined> {
+  async update(u: Update): Promise<(UpdateRecord & { idempotent?: boolean }) | undefined> {
     const r = await this.send(updateEvent(u));
-    return r.results[0]?.update;
+    const first = r.results[0];
+    return first?.update ? { ...first.update, ...(first.idempotent ? { idempotent: true } : {}) } : undefined;
   }
   // One event, one answer in the common shape.
   private async put(type: string, subject: string, data: Record<string, unknown>, time?: string): Promise<WriteResult & { results: EventResult[] }> {
