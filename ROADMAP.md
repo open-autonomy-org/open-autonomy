@@ -30,6 +30,7 @@ Dependencies and risks:
 - PR #496 fails closed when committed Hermes configuration cannot be loaded after an interrupted task, but Docker ownership transition remains statically reviewed and committed provenance for every executable runtime file is not established.
 - Local Codex in the container is unverified: the start script's forwarding through the valve's Codex port has not yet carried one real model turn on a Docker host.
 - The owner must state publicly whether PR #597/ADR 0001 supersedes the PR #593 ruling, specifically whether bare operation may use host valve/Codex app-server forwarding and whether the host reporter/valve remain. The merged diff and its agent review establish implementation and review facts, not the missing authority source.
+- Owner-authored PR #611 proposes kit 2.9.0, SDK 2.5.0 and backend 0.2.0 for the operating-state outcome below. Until its exact head receives independent review and lands, its scope and version bumps are not part of the release candidate.
 - The giving UI requires `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET`; production activation remains a separate held outcome until their approved installation and a live check are evidenced.
 
 Sources: withdrawn candidates [`7f9ba08f`](https://github.com/open-autonomy-org/open-autonomy/commit/7f9ba08fb4b14ee50ae57195c8b0b312dbe9da4e) and [`ad41f1b5`](https://github.com/open-autonomy-org/open-autonomy/commit/ad41f1b5d97d14e1d3a620a9c8f46e159e2d4b45), [PR #449](https://github.com/open-autonomy-org/open-autonomy/pull/449), [PR #461](https://github.com/open-autonomy-org/open-autonomy/pull/461), [PR #463](https://github.com/open-autonomy-org/open-autonomy/pull/463), [PR #464](https://github.com/open-autonomy-org/open-autonomy/pull/464), [PR #465](https://github.com/open-autonomy-org/open-autonomy/pull/465), [PR #468](https://github.com/open-autonomy-org/open-autonomy/pull/468), [PRs #492–#496](https://github.com/open-autonomy-org/open-autonomy/pull/496), [PR #499](https://github.com/open-autonomy-org/open-autonomy/pull/499), [PR #500](https://github.com/open-autonomy-org/open-autonomy/pull/500), [PR #506](https://github.com/open-autonomy-org/open-autonomy/pull/506), [PR #509](https://github.com/open-autonomy-org/open-autonomy/pull/509), [PRs #513–#515](https://github.com/open-autonomy-org/open-autonomy/pull/515), [PRs #518–#522](https://github.com/open-autonomy-org/open-autonomy/pull/522), `hermes:task/t_71c39b4b`, [package release procedure](packages/kit-hermes/README.md), and [.open-autonomy/PRODUCTION.md](.open-autonomy/PRODUCTION.md).
@@ -57,6 +58,18 @@ Completion:
 - Bare: `provider: openai-codex` in both profiles runs on the computer's login, the Codex CLI's adopted into Hermes's store on the first start; a computer without one cannot start.
 - Container: the start script forwards through the valve's Codex port with a stand-in credential in the home's auth store; the login never enters the agent. Proven by one turn in the managed container on a Docker host.
 - A world points the provider at its model twin through `HERMES_CODEX_BASE_URL`; the rehearsal engine sets it and a story passes on it.
+
+## operating-state-sdk: The owner's running or paused word travels through the SDK
+
+Status: owner-authored implementation and ADR 0003 are open in PR #611; independent exact-head architecture and implementation review is pending.
+Dispatch: hold
+
+Source: verified owner `yueranyuan` authored and signed both commits in [PR #611](https://github.com/open-autonomy-org/open-autonomy/pull/611); proposed [ADR 0003](https://github.com/open-autonomy-org/open-autonomy/blob/3d24d1244263f39170465b3a91ec4c73ef3615e1/docs/decisions/0003-operating-state-through-the-sdk.md) separates the owner's desired state from the automation's observed state. The ADR's quoted private conversation is not used as authority evidence.
+
+Completion:
+- A `steer`-scoped owner request records `running` or `paused`; an arbitrary automation reads it through the SDK, applies it by its own method and reports the truth through the SDK, while the platform only records and displays desired versus observed state.
+- The Hermes kit stops scheduled work without interrupting a live run, reports paused only when no job is enabled or running, and resumes exactly the jobs it paused; state survives reload and failures remain visible.
+- Independent review verifies the exact implementation and ADR against the constitution, including the unexercised live-run pause window, before merge. Release, publication and deployment remain separate gates.
 
 ## give-auth-production: Activate and verify the signed-in giving page in production
 
