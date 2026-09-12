@@ -49,6 +49,18 @@ Completion:
 - Reconcile reviewed manifests at create-open-autonomy 2.10.0, `@open-autonomy/sdk` 3.0.0 and `@open-autonomy/backend` 0.3.0, upgrade this repository and every cookbook normally, and inspect all three package tarballs.
 - Run the canonical root check, hand off for independent review and report the remaining Docker, delayed-review, live-GitHub and executable-provenance gaps. Do not publish, tag or deploy.
 
+## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
+
+Status: ready corrective work. PR #622's two-line governance clarification is owner-authorized and constitution-compatible, but it merged after its commit author approved their own work; that development-review gate cannot be repaired retroactively.
+Dispatch: fleet
+
+Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull/622), owner self-review [5188012108](https://github.com/open-autonomy-org/open-autonomy/pull/622#pullrequestreview-5188012108), and independent post-merge audit `hermes:task/t_ec574a74`.
+
+Completion:
+- Revert only PR #622's two documentation lines on a fresh branch from current main; a fresh-context agent submits/read-backs exact-head GitHub App approval before that revert merges.
+- Only after the reviewed revert lands, reapply the same owner-authorized wording on a second fresh branch; another fresh-context agent submits/read-backs exact-head GitHub App approval before the re-land merges.
+- Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge; release remains held until this correction completes.
+
 ## local-codex-plain: The bare and containerized fleets look the same; the container forwards
 
 Status: the verified owner publicly affirmed accepted ADR 0001 when closing the superseded PR #594, resolving the recorded authority conflict in favor of PR #597's host-service boundary. Acceptance remains held for the container turn, model-twin Responses proof and review of the current host-tool relocation stack.
