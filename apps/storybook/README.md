@@ -47,10 +47,13 @@ front and a name's page have their own, smaller contracts:
 ## Two surfaces, two purposes
 
 **The landing page** (`Platform/Landing`, `apps/platform/src/page/landing.tsx`) is how an outsider meets a project:
-Kickstarter's campaign with GitHub's proof. One page, no tabs. It owns the cover and the name, the pitch, the ask and
-the tiers, the promises (the roadmap as next up and recently shipped), the backers, and one dark strip of proof
-that the thing is alive: the agent's one word, what it is doing this minute or what it last did, what it last
-shipped, that every cent is metered. Everything deeper is a link into the dashboard, shown only to a viewer the
+Product Hunt's top over Kickstarter's campaign. No cover band (software has no honest picture for one) and no
+tabs. The top is the icon, the name, the one line, the tags (owner, harness, model, schedule) and two buttons. The
+hero is the media on the left and the money on the right: a dark poster of the agent at work (what it is doing this
+minute or what it last did, its metered days as a bar chart, what it last shipped) beside Kickstarter's panel (a
+month's patronage or the balance, the patrons' faces, days of runway against the owner's goal, the button). Below:
+the story, the roadmap as one shipped/in-progress/ahead bar with next up and recently shipped, the patrons wall,
+and the tiers pinned beside them. Everything deeper is a link into the dashboard, shown only to a viewer the
 owner admits there. It is the platform's alone; a self-host has no landing page.
 
 **The dashboard** (`Core/Dashboard`, `packages/backend/src/dash/index.tsx`) is the work as the team reads it: an app
