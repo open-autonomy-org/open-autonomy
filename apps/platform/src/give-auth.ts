@@ -1,15 +1,15 @@
 import { at, base64url, constantTimeEqual, fromBase64url, grantsAccount, hmac, proposeTeamEdit, type TeamEdit } from '@open-autonomy/backend';
 import type { Env } from './types.ts';
 
-// GitHub OAuth for the human giving page. Its short-lived cookie carries only the verified login,
-// expiry and whether that login administered the org grants pool when they signed in — never an API key.
+// GitHub OAuth for the human giving page and for every page's viewer. Its short-lived cookie carries only the verified
+// login and account id, expiry and whether that login administered the org grants pool when they signed in — never an API key.
 
 const SESSION_COOKIE = 'oa_give_session';
 const STATE_COOKIE = 'oa_give_state';
 const SESSION_SECONDS = 8 * 60 * 60;
 const STATE_SECONDS = 10 * 60;
 
-export interface GiveSession { login: string; exp: number; grants_admin: boolean }
+export interface GiveSession { login: string; id?: string; exp: number; grants_admin: boolean }
 
 const oauthBase = (env: Env): string => env.GITHUB_OAUTH_BASE ?? 'https://github.com';
 const cookieValue = (req: Request, name: string): string | undefined => req.headers.get('cookie')?.split(';').map((v) => v.trim()).find((v) => v.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -37,7 +37,9 @@ export async function giveSession(req: Request, env: Env): Promise<GiveSession |
   return session && /^[a-z\d](?:[a-z\d-]{0,38})$/i.test(session.login) && typeof session.grants_admin === 'boolean' ? session : undefined;
 }
 
-export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit): Promise<Response> {
+// `next` is where the sign-in returns: a path on this deployment, never elsewhere.
+export const safeNext = (next: string | null | undefined): string | undefined => (next && /^\/(?!\/)[^\s]*$/.test(next) ? next : undefined);
+export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const state = crypto.randomUUID();
   const exp = Math.floor(Date.now() / 1000) + STATE_SECONDS;
@@ -46,7 +48,7 @@ export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit): P
   target.searchParams.set('redirect_uri', new URL('/give/callback', req.url).toString());
   target.searchParams.set('state', state);
   if (team) target.searchParams.set('scope', 'public_repo');
-  const payload = await signPayload(env, { state, exp, ...(team ? { team } : {}) });
+  const payload = await signPayload(env, { state, exp, ...(team ? { team } : {}), ...(safeNext(next) ? { next: safeNext(next) } : {}) });
   if (payload.length > 3800) return new Response('This team edit is too large. Shorten the source note and try again.', { status: 400 });
   return redirect(target.toString(), `${STATE_COOKIE}=${payload}; ${cookieAttrs(req, '/give/callback', STATE_SECONDS)}`);
 }
@@ -54,7 +56,7 @@ export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit): P
 export async function finishGiveLogin(req: Request, env: Env): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const url = new URL(req.url);
-  const expected = await verifyPayload<{ state: string; exp: number; team?: TeamEdit }>(env, cookieValue(req, STATE_COOKIE));
+  const expected = await verifyPayload<{ state: string; exp: number; team?: TeamEdit; next?: string }>(env, cookieValue(req, STATE_COOKIE));
   const supplied = url.searchParams.get('state') ?? '';
   if (!expected || !supplied || !constantTimeEqual(expected.state, supplied)) return new Response('GitHub sign-in refused: invalid or expired OAuth state.', { status: 401 });
   const redirectUri = new URL('/give/callback', req.url).toString();
@@ -87,10 +89,10 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
     headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${env.GITHUB_TOKEN}`, 'user-agent': 'open-autonomy' },
   }) : undefined;
   const membership = await membershipResponse?.json().catch(() => ({})) as { role?: string; state?: string } | undefined;
-  const session: GiveSession = { login, exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
-  return redirect(new URL('/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/give', SESSION_SECONDS)}`);
+  const session: GiveSession = { login, ...(Number.isSafeInteger(user.id) ? { id: String(user.id) } : {}), exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
+  return redirect(new URL(safeNext(expected.next) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/', SESSION_SECONDS)}`);
 }
 
 export function endGiveLogin(req: Request): Response {
-  return redirect(new URL('/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/give', 0)}`);
+  return redirect(new URL(safeNext(new URL(req.url).searchParams.get('next')) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/', 0)}`);
 }

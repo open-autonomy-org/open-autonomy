@@ -39,7 +39,7 @@ export function Account(d: AccountPageData) {
     : gives ? 'Gives to projects here.' : 'Nothing here yet.';
   return (
     <>
-      <TopBar brand={d.brand} />
+      <TopBar brand={d.brand} nav={d.slots?.nav} />
       <div class="page">
         <div class="acct">
           <img class="av" src={`https://github.com/${encodeURIComponent(d.name)}.png?size=160`} alt="" />

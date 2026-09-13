@@ -2,7 +2,7 @@
 // pages through its slots and nowhere else. A self-host never imports this file.
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { DirectoryEntry } from '@open-autonomy/backend';
-import type { AccountSlots, DirectorySlots, PageSlots } from '@open-autonomy/backend/page/model';
+import type { AccountSlots, DirectorySlots, PageSlots, Viewer } from '@open-autonomy/backend/page/model';
 import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
 import { usd0 } from '@open-autonomy/backend/ui';
 import { T } from '@open-autonomy/backend/page/theme';
@@ -34,7 +34,10 @@ details.more[open] summary::before{transform:rotate(45deg)}
 details.more .body{padding-top:12px;display:flex;flex-direction:column;gap:12px}
 `;
 
-export interface PlatformPage { account: string; patronage: PatronageView; polar: boolean; sponsor: string; burnPerMonth: number; roadmap: Roadmap }
+export interface PlatformPage { account: string; patronage: PatronageView; polar: boolean; sponsor: string; burnPerMonth: number; roadmap: Roadmap; who?: Viewer; here?: string }
+
+// The bar's links: Explore, and who is signed in or the door to sign in, returning here.
+export const whoNav = (who: Viewer | undefined, here = '/') => <><a href="/">Explore</a>{who ? <a href={at(who.login)}>@{who.login}</a> : <a href={`/give/login?next=${encodeURIComponent(here)}`}>Sign in</a>}</>;
 
 // The tiers: Polar checkout per tier, or GitHub Sponsors once. Other ways to give fold under the tiers.
 export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: Tier[]; owner: string; account: string; sponsor: string; polar: boolean; burn: number }) {
@@ -82,7 +85,7 @@ export function projectSlots(p: PlatformPage): PageSlots {
   const { patronage, account } = p;
   const monthly = patronage.monthly_usd_cents;
   return {
-    nav: <a href="/">Explore</a>,
+    nav: whoNav(p.who, p.here),
     cta: <a class="btn small" href="#tiers">Become a patron</a>,
     meta: <><span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span><span><b>{usd0(monthly)}</b>/mo</span></>,
     side: <Tiers tiers={patronage.tiers} owner={ownerOf(account)} account={account} sponsor={p.sponsor} polar={p.polar} burn={p.burnPerMonth} />,

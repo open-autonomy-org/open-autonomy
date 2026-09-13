@@ -8,7 +8,7 @@ import { LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configure
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
-import { accountSlots, directorySlots, projectSlots } from './page/patronage.tsx';
+import { accountSlots, directorySlots, projectSlots, whoNav } from './page/patronage.tsx';
 import { renderGivePage, type GivePageData } from './page/give.tsx';
 import { handleSponsorsWebhook } from './sponsors.ts';
 import { sponsorAccount, type Env } from './types.ts';
@@ -25,7 +25,7 @@ export const app: App = {
     const { path, url, ledger, get, dec, privateHtml } = t;
     const patronage = new Patronage(ledger);
     // ---- the human giving page: GitHub proves a login, the same grant moves the money ----
-    if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env); }
+    if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env, undefined, url.searchParams.get('next') ?? undefined); }
     if (path === '/give/callback') { if (get()) return get()!; return finishGiveLogin(req, env); }
     if (path === '/give/logout') { if (get()) return get()!; return endGiveLogin(req); }
     if (path === '/give') {
@@ -111,21 +111,22 @@ export const app: App = {
     return undefined;
   },
   page: {
+    // The give page's GitHub sign-in names the viewer on every page.
+    async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
     async project(account, view, t) {
       const [p, road] = await Promise.all([new Patronage(t.ledger).view(account), t.ledger.roadmap(account)]);
-      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP });
+      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname });
     },
     async directory(entries, t) {
       const patronage = new Patronage(t.ledger);
       const views = await Promise.all(entries.filter((e) => e.is_project && e.listed).map(async (e) => [e.account, await patronage.view(e.account)] as const));
-      return directorySlots(entries, Object.fromEntries(views), t.grantsAccount);
+      return { ...directorySlots(entries, Object.fromEntries(views), t.grantsAccount), nav: whoNav(t.who, t.url.pathname) };
     },
     async account(name, entries, _funder, t) {
       const patronage = new Patronage(t.ledger);
       const owned = entries.filter((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
       const views = await Promise.all(owned.map(async (e) => [e.account, await patronage.view(e.account)] as const));
-      // Whether the viewer is this person is not known to the core yet: the door to buy credits shows on every person's page.
-      return accountSlots({ name, sponsor: sponsorAccount(t.env as Env), polar: polarConfigured(t.env as Env), self: !owned.length, entries, patronage: Object.fromEntries(views) });
+      return { ...accountSlots({ name, sponsor: sponsorAccount(t.env as Env), polar: polarConfigured(t.env as Env), self: Boolean(t.who && t.who.login.toLowerCase() === name.toLowerCase()), entries, patronage: Object.fromEntries(views) }), nav: whoNav(t.who, t.url.pathname) };
     },
   },
   identity: { begin: (req, env, intent) => beginGiveLogin(req, env as Env, intent as TeamEdit) },

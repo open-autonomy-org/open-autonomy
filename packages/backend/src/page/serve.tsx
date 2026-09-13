@@ -12,18 +12,20 @@ import { pageConfig } from './brand.js';
 import { Account } from './account.js';
 import { Directory } from './directory.js';
 import { renderMessage } from './message.js';
-import { sees, visibilityOf, type AccountSlots, type DirectorySlots, type PageSlots, type Role, type Visibility } from './model.js';
-import { accountAt, nameOf, type SessionTail } from './parts.js';
+import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type PageSlots, type Viewer, type Visibility } from './model.js';
+import { accountAt, at, nameOf, type SessionTail } from './parts.js';
 import { Overview, document, type ProjectPageData } from './project.js';
 import { Agent, Books, Doc, Item, Session, Sessions, Team, Work } from './tabs.js';
 
 // What an app puts on the pages: slots per page, computed per request. Absent, the core's page stands alone.
 export interface PageApp {
+  // Who is looking, if the app has an identity door (the platform: its GitHub sign-in). Absent: everyone is the public.
+  viewer?(req: Request, tools: PageTools): Promise<Viewer | undefined>;
   project?(account: string, view: ProjectView, tools: PageTools): Promise<PageSlots>;
   directory?(entries: DirectoryEntry[], tools: PageTools): Promise<DirectorySlots>;
   account?(name: string, entries: DirectoryEntry[], funder: FunderView | undefined, tools: PageTools): Promise<AccountSlots>;
 }
-export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response> }
+export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response>; who?: Viewer }
 
 const NO_STORE = { 'cache-control': 'no-store' };
 const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
@@ -31,7 +33,7 @@ const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 // (the platform's give, redeem, thanks) hold to the same shapes so they can never shadow a fixed door either.
 export const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 export const REPO = /^[A-Za-z0-9._-]{1,100}$/;
-const TABS = new Set(['work', 'sessions', 'books', 'agent', 'team', 'about']);
+const TABS = new Set(['work', 'sessions', 'books', 'agent', 'team', 'about', 'state']);
 // Which panel of the owner's word a tab address answers to; a transcript is the sessions tab's deeper panel.
 const GATE: Record<string, keyof Visibility> = { about: 'overview', work: 'work', sessions: 'sessions', transcript: 'transcripts', books: 'books', agent: 'agent', team: 'team' };
 // Names no page may take: every fixed door of this worker, and what an app may add in front of it.
@@ -44,8 +46,10 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const { brand } = pageConfig();
   const now = Date.now();
   const seg = url.pathname.split('/').slice(1).map(dec);
-  const viewer: Role = 'public'; // the core has no identity door; an app's may narrow the page for a giver, the team, the owner
   const isGet = req.method === 'GET' || req.method === 'HEAD';
+  if (url.pathname === '/' || (seg.length >= 1 && seg.length <= 4 && LOGIN.test(seg[0]))) tools.who = await app.viewer?.(req, tools);
+  const who = tools.who;
+  const viewer = 'public' as const; // the front and a name's page read the same to everyone; a project's role is the project's
 
   // ---- the front ----
   if (url.pathname === '/') {
@@ -73,20 +77,34 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const account = accountAt(seg[0], seg[1]);
   const tab = seg[2];
   if (tab !== undefined && !TABS.has(tab)) return undefined;
-  if ((tab === undefined || tab === 'about' || tab === 'books' || tab === 'agent') && seg.length > 3) return undefined;
-  if (!isGet && tab !== 'team') return methodNotAllowed();
+  if (tab !== 'work' && tab !== 'sessions' && seg.length > 3) return undefined;
+  if (tab === 'state' ? req.method !== 'POST' : !isGet && tab !== 'team') return methodNotAllowed();
   const view = await ledger.project(account);
   if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
   if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
+  const role = roleOf(who, view);
+  // The owner's one control: running or paused, with a reason, from the roster's owner signed in at the page. The
+  // request is recorded as the owner's; the automation applies it its own way and answers through the SDK.
+  if (tab === 'state') {
+    if (req.headers.get('origin') !== url.origin) return error('invalid_origin', 403);
+    if (role !== 'owner') return privateHtml(renderMessage(account, false, 'Not the owner', `Only an owner on ${nameOf(account)}'s roster, signed in, may pause or resume its agent.`), 403);
+    const form = await req.formData();
+    const state = String(form.get('state') ?? '');
+    if (state !== 'running' && state !== 'paused') return error('invalid_request');
+    const reason = String(form.get('reason') ?? '').trim().slice(0, 400) || undefined;
+    const r = await ledger.stateRequest(account, state, `@${who!.login}`, reason);
+    if (!r.ok) return privateHtml(renderMessage(account, false, 'Not recorded', `The request was refused: ${r.error}.`), 400);
+    return new Response(null, { status: 303, headers: { location: at(account, 'agent'), ...NO_STORE } });
+  }
   // The owner's word holds on every address, not only the tab bar: a panel the viewer may not see is not there.
   const visibility = visibilityOf(view.profile.config_yaml);
   const gate = tab === 'sessions' && seg.length === 4 ? 'transcript' : tab ?? 'about';
-  if (!sees(viewer, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' ? 'page' : gate} is not open to everyone.`), 404);
+  if (!sees(role, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' ? 'page' : gate} is not open to ${who ? `@${who.login}` : 'everyone'}.`), 404);
   const base = async (limit: number): Promise<ProjectPageData> => {
     const [stream, road, funding, slots] = await Promise.all([ledger.sessions(account, limit), ledger.roadmap(account), ledger.funding(account), app.project?.(account, view, tools) ?? Promise.resolve({} as PageSlots)]);
     const first = stream.live[0];
     const tail: SessionTail | undefined = first ? await ledger.session(account, first).then((r) => (r.session ? { key: first, turns: r.session.turns.slice(-40) } : undefined)) : undefined;
-    return { brand, viewer, visibility, v: view, sessions: stream.sessions, live: stream.live, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, revision: road.revision?.revision, tail, daily: funding.daily_spend_usd_cents, now, slots };
+    return { brand, viewer: role, visibility, v: view, sessions: stream.sessions, live: stream.live, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, revision: road.revision?.revision, tail, daily: funding.daily_spend_usd_cents, now, slots };
   };
   const page = (title: string, d: ProjectPageData, node: unknown, status = 200) => privateHtml(document(title === nameOf(account) ? title : `${title} · ${nameOf(account)}`, brand, render(node), d.slots?.styles), status);
 
