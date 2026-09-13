@@ -29,8 +29,8 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
 // The owner's word on who sees what: the `dashboard:` section of .open-autonomy/config.yaml beside the bounds, read
 // with the rest of the repository's config. Absent, the public sees the roadmap and the books (every spend is metered
 // on public books, by the constitution) and the team sees the rest: the sessions, the transcripts, the agent.
-// Narrowing is composition, never secrecy: on the platform the API stays public reads; a private deployment is
-// private by its own wall.
+// The word holds on the pages and on the SDK's read doors alike: a closed panel answers 404 to a request without the
+// project's own key or an admitted signed-in viewer.
 export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role }
 export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibility> = {
   roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public' },

@@ -174,7 +174,7 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
 //     visibility: status
 //     books: public
 //
-// Narrowing is composition, never secrecy: the API stays what the deployment's own wall makes it.
+// The word holds on the pages and on the SDK's read doors alike; the books stay public under every preset but private.
 export const DASHBOARD_ROLES = ['public', 'giver', 'team', 'owner'] as const;
 export const DASHBOARD_PANELS = ['overview', 'work', 'sessions', 'transcripts', 'books', 'calls', 'agent', 'team'] as const;
 export type DashboardRole = typeof DASHBOARD_ROLES[number];

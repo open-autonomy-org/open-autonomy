@@ -148,6 +148,8 @@ Public reads, no key:
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |
 
+Every read door of a project answers according to the owner's word on visibility (the `dashboard:` block of its `.open-autonomy/config.yaml`, a preset then a role per panel): the roadmap and an item are the `work` panel, the session list and the account's event stream the `sessions` panel, a session and its event stream the `transcripts` panel, the metered calls the `calls` panel, the funding figures and the runway and activity widgets the `books` panel, the now widget and the operating state the `overview` panel. A panel closed to the public answers 404 unless the request carries the project's own key or, on a deployment with a sign-in, a viewer on its roster whom the panel admits. The default preset, `roadmap`, keeps sessions, transcripts and the agent's setup to the team.
+
 Keys, the adopter way: `GET /v1/keys/challenge?account=owner/repo` names a claim to commit to
 `.open-autonomy-claim` on the default branch; `POST /v1/keys/mint {account, models?}` mints once the file
 is at HEAD; `POST /v1/keys/rotate` with the current key mints a successor and leaves the old one a day of

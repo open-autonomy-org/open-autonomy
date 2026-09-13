@@ -116,21 +116,21 @@ export function Overview({ d }: { d: DashData }) {
     <Shell d={d} title="Overview">
       <div class="oa-two">
         <div class="oa-col">
-          <Panel title={first ? 'Working now' : 'Sessions'} more={['Every session →', href(a, 'sessions')]}>
+          <Panel title={first ? 'Working now' : 'Sessions'} more={sees(d.viewer, d.visibility.sessions) ? ['Every session →', href(a, 'sessions')] : undefined}>
             {first && sees(d.viewer, d.visibility.transcripts) ? <div class="scui-root oa-kit oa-tail"><Transcript d={d} s={first} state={state} adapter={adapter} /></div> : null}
-            <div class="scui-root oa-kit oa-list"><SessionList state={{ ...state, sessions: state.sessions.slice(0, 8) }} adapter={adapter} onOpen={(r) => go(href(a, 'sessions', r.key))} labels={LABELS} /></div>
+            {state.sessions.length ? <div class="scui-root oa-kit oa-list"><SessionList state={{ ...state, sessions: state.sessions.slice(0, 8) }} adapter={adapter} onOpen={(r) => { if (sees(d.viewer, d.visibility.sessions)) go(href(a, 'sessions', r.key)); }} labels={LABELS} /></div> : <p class="oa-empty">{sees(d.viewer, d.visibility.sessions) ? 'No sessions yet.' : 'Nothing running this minute. The sessions are not open to this view.'}</p>}
           </Panel>
         </div>
         <div class="oa-col">
           <Spend d={d} />
-          <Panel title="Board" more={['Whole board →', href(a, 'board')]}>
+          {sees(d.viewer, d.visibility.work) ? <Panel title="Board" more={['Whole board →', href(a, 'board')]}>
             <div class="oa-kpis three">
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'in progress').length}</div><div class="l">in progress</div></div>
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">promised</div></div>
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'shipped').length}</div><div class="l">shipped</div></div>
             </div>
             <div class="scui-root oa-kit"><WorkflowList tasks={ahead} onOpen={(k) => go(href(a, 'board', k))} /></div>
-          </Panel>
+          </Panel> : null}
           {sees(d.viewer, d.visibility.agent) && jobs.length ? <Panel title="Agent" more={['Details →', href(a, 'agent')]}><div class="scui-root oa-kit"><Jobs d={d} jobs={jobs} compact /></div></Panel> : null}
         </div>
       </div>

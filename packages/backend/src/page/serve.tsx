@@ -118,17 +118,26 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const gate = door === 'about' ? 'about' : page === undefined ? 'overview' : page === 'sessions' && key !== undefined ? 'transcript' : page;
   if (!sees(role, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' || gate === 'overview' ? 'page' : gate} is not open to ${who ? `@${who.login}` : 'everyone'}.`), 404);
   const [stream, road, funding] = await Promise.all([ledger.sessions(account, page === 'sessions' ? 100 : 50), ledger.roadmap(account), ledger.funding(account)]);
-  const roadmap = road.revision?.roadmap ?? EMPTY_ROADMAP;
+  // What a page carries is what its viewer may see, panel by panel, not only what it draws: a viewer kept out of
+  // the sessions gets the live ones by identity and standing alone (no report), out of the work no roadmap.
+  const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
+  const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
 
   // ---- the landing page: the app's, when it has one; the dashboard otherwise ----
   if (door === undefined || door === 'about') {
-    if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions: stream.sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about' }, tools));
+    if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about' }, tools));
   }
   const dash: DashPage = page ?? 'overview';
   const transcripts = sees(role, visibility.transcripts);
   const first = stream.live[0];
   const tail = transcripts && first && dash !== 'sessions' ? await ledger.session(account, first).then((r) => (r.session ? { key: first, turns: r.session.turns.slice(-40) } : undefined)) : undefined;
-  const d: DashData = { brand, viewer: role, visibility, v: view, sessions: stream.sessions, live: stream.live, roadmap, tail, daily: funding.daily_spend_usd_cents, now, page: dash };
+  // The view itself carries the books' detail and the agent's setup; each stays behind its own panel.
+  const shown: ProjectView = {
+    ...view,
+    ...(sees(role, visibility.books) ? {} : { feed: [], envelopes: [], bounds: { models: [], limits: [] } }),
+    profile: sees(role, visibility.agent) ? view.profile : { ...view.profile, setup_md: undefined, soul_md: undefined, agent_runtime: undefined, agent_skills: undefined, config_yaml: undefined },
+  };
+  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions, live: stream.live, roadmap, tail, daily: funding.daily_spend_usd_cents, now, page: dash };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {
