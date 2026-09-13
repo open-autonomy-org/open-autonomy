@@ -100,7 +100,10 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // ---- the World definition ----
   const executor = join(release, 'container', 'executor.ts');
   const world = { id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
-    stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 16384 },
+    // What the host writes for this World: the reporter's state, World's own bookkeeping and the logs, a few
+    // hundred megabytes at most; the executor's home and checkout are Docker volumes on the engine's disk. The
+    // bound is admission against the state root's free space, so it names the host's need, not the container's.
+    stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 2048 },
     services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
     env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
