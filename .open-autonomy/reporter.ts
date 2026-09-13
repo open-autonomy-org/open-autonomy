@@ -78,11 +78,22 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   if (!d.live_status && d.updated_at_ms && Date.now() - d.updated_at_ms > 6 * 3600_000) return { endedAt: new Date(d.updated_at_ms).toISOString() };
   return undefined;
 }
+// Native state is a second or two of the host's disk per read, and a tick comes every five seconds and on every
+// session event: read it at most every thirty seconds, or right after a failed read, and a session's end is
+// still noticed within that. A read is given a minute, and one retry when Hermes's own atomic rewrite of a file
+// leaves a name missing for an instant.
+let nativeAt = 0, nativeOk = false;
 async function nativeState(): Promise<void> {
-  const [orchestration, history] = await Promise.all([
-    sc.orchestrationLoad({ root: home, flavor: 'hermes' }),
-    sc.listRuns({ harness: 'hermes', homes, limit: 500 }),
+  if (nativeOk && Date.now() - nativeAt < 30_000) return;
+  nativeOk = false;
+  const read = () => Promise.all([
+    sc.orchestrationLoad({ root: home, flavor: 'hermes' }, { timeoutMs: 60_000 }),
+    sc.listRuns({ harness: 'hermes', homes, limit: 500 }, { timeoutMs: 60_000 }),
   ]);
+  let result: Awaited<ReturnType<typeof read>>;
+  try { result = await read(); }
+  catch (e) { if (!/No such file or directory/.test((e as Error).message)) throw e; await Bun.sleep(300); result = await read(); }
+  const [orchestration, history] = result;
   if (history.sources.some(s => s.state === 'unreadable')) throw new Error('Native run ledger unreadable');
   const next = orchestration.orchestration.profiles as Record<string, Profile>;
   if (!next || !next.default) throw new Error('Native profile state unavailable');
@@ -91,6 +102,7 @@ async function nativeState(): Promise<void> {
   runs = new Map(history.runs.filter(r => r.session_id).map(r => [r.session_id!, r]));
   jobNames.clear();
   for (const profile of Object.values(profiles)) for (const [id, job] of Object.entries(profile.jobs)) jobNames.set(id, job.residue?.name ?? id);
+  nativeAt = Date.now(); nativeOk = true;
 }
 async function watch(d: SessionDescriptor): Promise<void> {
   const key = d.locator.session_id;
