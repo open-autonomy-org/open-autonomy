@@ -333,8 +333,7 @@ function printStart(s: Situation, opts: Opts): void {
     say(`  bun .open-autonomy/start.ts --secrets ${opts.secrets}   (keep it running under launchd or systemd; .open-autonomy/PRODUCTION.md and container/README.md say how)`);
   } else {
     if (!s.docker) say('  A working Docker connection is not verified; select or start a local runtime before starting the container.');
-    say('  Follow container/README.md: build and start the World executor, prepare its checkout, then start the existing valve and reporter on this host.');
-    say(`  bun .open-autonomy/start.ts --container oa-${s.project} --secrets ${opts.secrets}`);
+    say(`  create-open-autonomy runtime ${s.dir} --secrets ${opts.secrets} --prepare-volumes   (container/README.md: the host runtime from this checkout; build the image, then load the printed service unit)`);
   }
   say('  An existing fleet uses its supported graceful reload after the changes land. Verify the loaded skill/config and connected platforms before reporting setup complete.');
 }

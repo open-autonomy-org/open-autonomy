@@ -29,7 +29,7 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { constants, tmpdir } from 'node:os';
+import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, resolve } from 'node:path';
 
@@ -270,7 +270,9 @@ const env = agentEnv();
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
 }
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl } });
+// What runs the agent, for its page: bare on this host, and which kit. Never a credential.
+const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts } });
 const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');

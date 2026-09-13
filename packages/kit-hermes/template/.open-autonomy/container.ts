@@ -2,7 +2,7 @@
 // stay here; only native Hermes runs in the prepared World executor. This module
 // owns its child processes, not container provisioning or restart policy.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { codexAccess } from './codex-auth.ts';
@@ -92,11 +92,14 @@ export async function startContainer(options: {
     await writeContainerEnvironment({ container, home, env });
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
+    // What runs the agent, for its page: the mode, the kit, the executor's image, this host. Never a credential.
+    const inspected = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname() });
     let reportReady!: () => void;
     const reporterReady = new Promise<void>(resolve => { reportReady = resolve; });
     own('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--container', container,
       '--config', reportConfig, '--project', workspace, '--state-file', resolve(state, 'reporter-state.json')], {
-      env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve' },
+      env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime },
       ipc(message) { if (message?.type === 'reporter-ready') reportReady(); },
     });
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);

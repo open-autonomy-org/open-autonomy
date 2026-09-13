@@ -24,6 +24,8 @@ const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cf
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
 const log = (message: string) => console.log(`reporter: ${message}`);
+// What runs the agent, as the start script says (mode, kit, executor, host): published with the setup, never a credential.
+const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONOMY_RUNTIME ?? ''); return r && (r.mode === 'container' || r.mode === 'bare') ? r : undefined; } catch { return undefined; } })();
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
 const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, container!, ...cmd];
@@ -322,7 +324,7 @@ async function setup(): Promise<void> {
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   const s = { harness: 'hermes', persona: profiles.default.persona?.text, model: inventory.profiles.find(p => p.name === 'default')?.model ?? undefined,
     provider: providerOf(), schedule: jobs.jobs.map(j => ({ name: jobNames.get(j.id) ?? j.id, schedule: j.enabled ? j.schedule.display : `${j.schedule.display} (${j.state})`, description: j.payload.text ?? undefined })),
-    skills: skills.filter(s => s.enabled !== false).map(s => s.name).sort(), setup_md: mainFile('hermes/README.md') };
+    skills: skills.filter(s => s.enabled !== false).map(s => s.name).sort(), setup_md: mainFile('hermes/README.md'), ...(runtimeFacts ? { runtime: runtimeFacts } : {}) };
   const digest = JSON.stringify(s);
   if (digest !== setupDigest && (await oa.setup(s)).ok) setupDigest = digest;
 }

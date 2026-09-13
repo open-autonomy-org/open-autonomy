@@ -1,6 +1,6 @@
 {
   "kit": "hermes",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "params": {
     "project": "open-autonomy",
     "account": "open-autonomy-org/open-autonomy"
