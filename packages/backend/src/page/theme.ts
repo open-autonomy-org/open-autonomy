@@ -182,6 +182,7 @@ ul,ol{padding:0;list-style:none}
 .brief .t{font-weight:600;font-size:14px;line-height:1.35}
 .brief .m{color:${T.muted};font-size:12.5px;margin-top:4px}
 .brief.hot{border-color:${T.accent};box-shadow:0 8px 24px -16px rgba(255,66,77,.5)}
+.board details.rest summary{cursor:pointer;color:${T.muted};font-size:13px;font-weight:600;margin:4px 0 10px}
 .turns{display:flex;flex-direction:column;gap:2px;font:13px/1.5 "SF Mono",SFMono-Regular,Menlo,monospace}
 .turns li{display:grid;grid-template-columns:84px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px solid ${T.line}}
 .turns .role{color:${T.muted};font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;padding-top:2px}

@@ -52,7 +52,7 @@ export function Directory(d: DirectoryPageData) {
   const projects = byStanding(listed(d.entries));
   return (
     <>
-      <TopBar brand={d.brand} />
+      <TopBar brand={d.brand} nav={d.slots?.nav} />
       <div class="page">
         <div class="front">
           {d.slots?.front ?? <><h1>Projects</h1><p class="lede">{projects.length === 1 ? 'One project builds itself here.' : `${projects.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}

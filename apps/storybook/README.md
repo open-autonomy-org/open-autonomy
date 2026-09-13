@@ -74,9 +74,9 @@ Reserved top-level names: `give`, `v1`, `admin`, `settings`; `/explore` is `/` o
 
 ### Who sees what
 
-`viewer` is public, giver, team or owner: giver from the books, team and owner from the roster. `visibility` is the
-owner's word, proposed as a `dashboard:` section in `.open-autonomy/config.yaml` beside the bounds; the platform does
-not read it yet, so every deployment renders `open` today. Three presets: **open** (everything public), **status** (transcripts and books for
+`viewer` is public, giver, team or owner: an app's identity door names the login (the platform's GitHub sign-in); the project's own records say what it is to them, owner or team from the committed roster, giver from the books. A self-host has no door and serves the public view. `visibility` is the
+owner's word, the `dashboard:` section of `.open-autonomy/config.yaml` beside the bounds, read with the rest of the
+repository's config; absent, everything is open. Three presets: **open** (everything public), **status** (transcripts and books for
 givers, calls and the agent for the team), **private** (team and up). Whether a deployment takes money is
 which app it mounts, never a setting; Books meters whatever funds the agent either way. On the platform,
 visibility narrows the page, never the truth: the API is public reads. A private deployment is private by its own wall.
