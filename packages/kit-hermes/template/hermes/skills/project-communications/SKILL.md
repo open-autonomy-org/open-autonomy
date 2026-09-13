@@ -99,7 +99,7 @@ The fleet works in public. Any confidential human space stays outside its access
 channels, DMs and stored session history. During setup, enforce this with service permissions and native
 Hermes access settings; do not grant administrative access that bypasses the boundary. Verify the bot's
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
-by a published run. Humans bring an appropriate public statement when private matters affect the project.
+by a published run. Humans bring an appropriate public statement when private matters affect the project. Direction given in a coding session on the owner's own machine, under the owner's login, is verified direction from that login: the session is its link, and the record quotes its scope, never its contents.
 
 ## Strategy agreement
 
