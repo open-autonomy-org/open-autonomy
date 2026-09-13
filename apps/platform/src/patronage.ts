@@ -3,7 +3,7 @@
 // patrons wall. Every operation runs inside the one Durable Object through the backend's extension registry,
 // on the same accounts and flows; what it keeps on an account is its own (`sponsors`, `sponsors_active`,
 // `tiers`, `polar_products`) and on the state (`coupons`), persisted beside the core's keys and opaque to it.
-import { LedgerClient, LimitLedger, type Account, type AccountProfile, type EnvelopePurpose, type Flow, type LedgerCore, type Sponsor } from '@open-autonomy/backend';
+import { LedgerClient, LimitLedger, at, type Account, type AccountProfile, type EnvelopePurpose, type Flow, type LedgerCore, type Sponsor } from '@open-autonomy/backend';
 
 export type { Sponsor };
 export interface Tier { usd_cents: number; name: string }
@@ -62,8 +62,8 @@ function projectPatronsOf(flows: Flow[], account: string, profileOf: (id: string
   const out: Patron[] = [];
   for (const [from, total] of byFrom) {
     const label = `granted $${(total / 100).toFixed(2)}`;
-    if (from.startsWith('@')) out.push({ kind: 'funder', login: from.slice(1), name: from, avatar_url: `https://github.com/${encodeURIComponent(from.slice(1))}.png?size=52`, url: `/p/${encodeURIComponent(from)}`, amount_label: label });
-    else out.push({ kind: 'project', login: from, name: from, avatar_url: profileOf(from).avatar_url, url: `/p/${encodeURIComponent(from)}`, amount_label: label });
+    if (from.startsWith('@')) out.push({ kind: 'funder', login: from.slice(1), name: from, avatar_url: `https://github.com/${encodeURIComponent(from.slice(1))}.png?size=52`, url: at(from), amount_label: label });
+    else out.push({ kind: 'project', login: from, name: from, avatar_url: profileOf(from).avatar_url, url: at(from), amount_label: label });
   }
   return out;
 }

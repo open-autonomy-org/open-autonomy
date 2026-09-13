@@ -165,3 +165,34 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
   }
   return cfg;
 }
+
+// `.open-autonomy/config.yaml`'s `dashboard:` block: the owner's word on who sees what on the project's pages. A
+// preset (`open`, `status`, `private`; `open` when absent) and, under it, a role per panel that overrides the preset:
+//
+//   dashboard:
+//     visibility: status
+//     books: public
+//
+// Narrowing is composition, never secrecy: the API stays what the deployment's own wall makes it.
+export const DASHBOARD_ROLES = ['public', 'giver', 'team', 'owner'] as const;
+export const DASHBOARD_PANELS = ['overview', 'work', 'sessions', 'transcripts', 'books', 'calls', 'agent', 'team'] as const;
+export type DashboardRole = typeof DASHBOARD_ROLES[number];
+export type DashboardPanel = typeof DASHBOARD_PANELS[number];
+export interface DashboardConfig { visibility?: 'open' | 'status' | 'private'; panels: Partial<Record<DashboardPanel, DashboardRole>> }
+export function parseDashboardConfig(yaml: string): DashboardConfig {
+  const cfg: DashboardConfig = { panels: {} };
+  let block = '';
+  for (const raw of yaml.split('\n')) {
+    const line = raw.replace(/\s+#.*$/, '').trimEnd();
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const top = /^([a-z_]+):\s*(.*)$/.exec(line);
+    if (top) { block = top[2] === '' ? top[1] : ''; continue; }
+    if (block !== 'dashboard') continue;
+    const l2 = /^  ([a-z_]+):\s*(.+)$/.exec(line);
+    if (!l2) continue;
+    const v = l2[2].trim().replace(/^["']|["']$/g, '');
+    if (l2[1] === 'visibility' && (v === 'open' || v === 'status' || v === 'private')) cfg.visibility = v;
+    else if ((DASHBOARD_PANELS as readonly string[]).includes(l2[1]) && (DASHBOARD_ROLES as readonly string[]).includes(v)) cfg.panels[l2[1] as DashboardPanel] = v as DashboardRole;
+  }
+  return cfg;
+}

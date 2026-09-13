@@ -1,13 +1,12 @@
-import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
+import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
-import { LedgerClient, type AccountProfile, type FunderView, type Moderation, type ProjectView, type Sponsor } from './ledger.js';
+import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
-import { renderDirectory, renderDocPage, renderItemPage, renderMessage, renderProject, renderSessionPage, renderSessionsPage, renderTeamPage, type ProjectSlots } from './site.js';
-import { readTeamEdit, readTeamFile, validTeamAccount } from './team.js';
+import { servePages, type PageApp } from './page/serve.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
-import { isStale, syncAllStale, syncProfile } from './sync.js';
+import { syncAllStale, syncProfile } from './sync.js';
 import { grantsAccount, hasScope, type Env } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg } from './widgets.js';
@@ -33,12 +32,8 @@ export interface RouteTools {
 }
 export interface App {
   route?(req: Request, env: Env, ctx: ExecutionContext, tools: RouteTools): Promise<Response | undefined>;
-  page?: {
-    // What the app puts on a project's page: panels beside the books, a line in the header.
-    project?(account: string, view: ProjectView, tools: RouteTools): Promise<ProjectSlots>;
-    // A giver's own page (`/p/@login`); absent, the books answer as JSON.
-    funder?(view: FunderView, tools: RouteTools): Promise<Response | undefined>;
-  };
+  // What the app puts on the pages: a project's slots, the front's, a name's. See PageApp.
+  page?: PageApp;
   // The identity door for a human act on a page (a team roster edit begins here). Absent: the page is read-only.
   identity?: { begin(req: Request, env: Env, intent: unknown): Promise<Response> };
   scheduled?(event: ScheduledController, env: Env): Promise<void>;
@@ -75,7 +70,6 @@ export async function give(env: Env, from: string, to: unknown, usdCents: unknow
 }
 export const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
-const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 
 export async function route(req: Request, env: Env, ctx: ExecutionContext, app: App = {}): Promise<Response> {
   const url = new URL(req.url);
@@ -90,70 +84,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const answered = await app.route?.(req, env, ctx, tools);
   if (answered) return answered;
 
-  // ---- the site: the deployment's projects, each on its page ----
-  if (path === '/') {
-    if (get()) return get()!;
-    const { entries } = await ledger.directory();
-    for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
-    return html(renderDirectory(entries));
-  }
   let m: RegExpMatchArray | null;
-  if ((m = path.match(/^\/p\/(.+)\/team$/))) {
-    const account = dec(m[1]);
-    if (!validTeamAccount(account)) return error('invalid_account', 400);
-    const view = await ledger.project(account);
-    if (!view.found) return privateHtml(renderMessage(account, false, 'No such project', 'This project is not listed.'), 404);
-    if (req.method === 'POST') {
-      if (req.headers.get('origin') !== url.origin) return error('invalid_origin', 403);
-      if (Number(req.headers.get('content-length')) > 16_000) return error('form_too_large', 413);
-      if (!app.identity) return privateHtml(renderMessage(account, false, 'Team change not started', 'This deployment has no identity door for editing the roster on the page; edit the committed config instead.'), 501);
-      try { return await app.identity.begin(req, env, readTeamEdit(account, await req.formData())); }
-      catch (e) { return privateHtml(renderMessage(account, false, 'Team change not started', (e as Error).message), 400); }
-    }
-    if (get()) return get()!;
-    try {
-      const file = await readTeamFile(env, account);
-      return privateHtml(renderTeamPage(account, file, url.searchParams.get('edit') ?? undefined, undefined, Boolean(app.identity)));
-    } catch (e) { return privateHtml(renderTeamPage(account, undefined, undefined, (e as Error).message), 503); }
-  }
-  // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
-  if ((m = path.match(/^\/p\/(.+)\/about$/))) {
-    const account = dec(m[1]);
-    const view = await ledger.project(account);
-    if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
-    return html(renderDocPage(account, 'About', view.profile.about_md));
-  }
-  if ((m = path.match(/^\/p\/(.+)\/sessions$/))) {
-    if (get()) return get()!;
-    const account = dec(m[1]);
-    const view = await ledger.project(account);
-    if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
-    const stream = await ledger.sessions(account, 100);
-    return html(renderSessionsPage(account, stream.sessions, stream.live, Date.now()));
-  }
-  if ((m = path.match(/^\/p\/(.+)\/sessions\/([^/]+)$/))) {
-    if (get()) return get()!;
-    const got = await ledger.session(dec(m[1]), dec(m[2]));
-    if (!got.ok || !got.session) return html(renderMessage(dec(m[1]), false, 'No such session', 'Nothing was narrated under that key.'), 404);
-    return html(renderSessionPage(dec(m[1]), got.session, Date.now()));
-  }
-  if ((m = path.match(/^\/p\/(.+)\/items\/([^/]+)$/))) {
-    if (get()) return get()!;
-    const [view, item, road] = await Promise.all([ledger.project(dec(m[1])), ledger.item(dec(m[1]), dec(m[2])), ledger.roadmap(dec(m[1]))]);
-    if (!view.found) return html(renderMessage(dec(m[1]), false, 'No such project', `No project found for ${dec(m[1])}.`), 404);
-    return html(renderItemPage(view, item, road.revision?.roadmap ?? EMPTY_ROADMAP, Date.now()));
-  }
-  if ((m = path.match(/^\/p\/(.+)$/))) {
-    if (get()) return get()!;
-    const account = dec(m[1]);
-    if (account.startsWith('@')) { const f = await ledger.funder(account); if (!f.found) return html(renderMessage(account, false, 'No such funder', `No funder found for ${account}.`), 404); return (await app.page?.funder?.(f, tools)) ?? json(f, { headers: NO_STORE }); }
-    const view = await ledger.project(account);
-    if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
-    if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
-    const [stream, road, slots] = await Promise.all([ledger.sessions(account, 50), ledger.roadmap(account), app.page?.project?.(account, view, tools) ?? Promise.resolve({})]);
-    return html(renderProject(view, stream.sessions, stream.live, road.revision?.roadmap ?? EMPTY_ROADMAP, road.revision, { view: url.searchParams.get('view') ?? undefined, sort: url.searchParams.get('sort') ?? undefined }, slots));
-  }
-
   // ---- admin: through the reviewed workflow only ----
   if (path.startsWith('/admin/')) {
     if (!isAdmin(req, env)) return error('auth_failed', 401);
@@ -300,5 +231,8 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     // The gateway's own shape when nothing was read from it: passed through, so the catalog is never silently empty.
     return unique.length ? json({ object: 'list', data: unique.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: first });
   }
+  // ---- the pages, last: GitHub's addresses over the books ----
+  const served = await servePages(req, env, ctx, app.page ?? {}, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity), beginIdentity: app.identity ? (r, intent) => app.identity!.begin(r, env, intent) : undefined });
+  if (served) return served;
   return error('not_found', 404);
 }

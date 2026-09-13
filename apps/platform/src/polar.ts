@@ -1,5 +1,5 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, error, grantsAccount, html, isFunder, json, methodNotAllowed, parseJson, purposeSentence, renderMessage, type EnvelopePurpose, type Sponsor } from '@open-autonomy/backend';
+import { LedgerClient, at, error, grantsAccount, html, isFunder, json, methodNotAllowed, parseJson, purposeSentence, renderMessage, type EnvelopePurpose, type Sponsor } from '@open-autonomy/backend';
 import { Patronage, type Tier } from './patronage.ts';
 import type { Env } from './types.ts';
 
@@ -80,7 +80,7 @@ export async function patronCheckout(req: Request, env: Env): Promise<Response> 
   const origin = new URL(req.url).origin;
   const created = await polar<{ id?: string; url?: string }>(env, 'POST', '/v1/checkouts/', {
     products: [products[`${tier}:${packs}${purposeSuffix(marked.purpose)}`]],
-    success_url: `${origin}/p/${encodeURIComponent(account)}/thanks?checkout_id={CHECKOUT_ID}`,
+    success_url: `${origin}${at(account, 'thanks')}?checkout_id={CHECKOUT_ID}`,
     metadata: { account, tier: String(tier), interval: packs, for: JSON.stringify(marked.purpose), choice },
   });
   if (!created.ok || !created.body.id || !created.body.url) return error('checkout_unavailable', 502);
@@ -119,7 +119,7 @@ export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOr
   return { ok: minted.ok, minted: !minted.idempotent, account };
 }
 
-// GET /p/:account/thanks?checkout_id= — where Polar sends the patron back. The checkout is read from Polar
+// GET /:owner/:project/thanks?checkout_id= (or /:login/thanks) — where Polar sends the patron back. The checkout is read from Polar
 // and its paid order settled, so the books are right even if the webhook is late.
 export async function thanksPage(env: Env, account: string, checkoutId: string | null): Promise<Response> {
   const ledger = new LedgerClient(env.LIMITS);

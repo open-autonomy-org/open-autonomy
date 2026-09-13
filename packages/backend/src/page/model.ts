@@ -1,18 +1,21 @@
+import { parseDashboardConfig } from '../config.js';
+
 // What composes a project's pages in the core: who is looking and what the owner opened to whom. The core knows
 // givers (the books), team and owner (the roster) and everyone else; it knows nothing an app adds around it.
 export type Role = 'public' | 'giver' | 'team' | 'owner';
 const RANK: Record<Role, number> = { public: 0, giver: 1, team: 2, owner: 3 };
 export const sees = (viewer: Role, least: Role): boolean => RANK[viewer] >= RANK[least];
 
-// The owner's word on who sees what. Proposed home: a `dashboard:` section in .open-autonomy/config.yaml beside the
-// bounds; the platform does not read it yet, so today every deployment renders the `open` preset. Narrowing is
-// composition, never secrecy: on the platform the API stays public reads; a private deployment is private by its own wall.
+// The owner's word on who sees what: the `dashboard:` section of .open-autonomy/config.yaml beside the bounds, read
+// with the rest of the repository's config. Absent, everything is open. Narrowing is composition, never secrecy: on
+// the platform the API stays public reads; a private deployment is private by its own wall.
 export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role }
 export const PRESETS: Record<'open' | 'status' | 'private', Visibility> = {
   open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public' },
   status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public' },
   private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team' },
 };
+export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? 'open'], ...c.panels }; };
 
 // Where an app mounted around the core may add to a page. Every slot is additive and inside the core's layout: an
 // app can put a button in the bar or a card in a column; it cannot remove, reorder or rewrite what the core shows.

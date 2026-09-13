@@ -40,7 +40,7 @@ The project's agent runs the Hermes kit as anywhere (`create-open-autonomy`), wi
 
 ## Who may look
 
-The API is key-authenticated and the admin routes take the token; the pages (`/`, `/p/*`) are open to anyone
+The API is key-authenticated and the admin routes take the token; the pages (`/`, `/<name>`, `/<owner>/<project>`) are open to anyone
 who can reach the worker. For a private deployment put an access policy in front of those two paths at the
 edge (Cloudflare Access on the worker's route, an allow list of your people) and leave `/v1/*`, `/admin/*` and
 `/webhooks/*` to their own authentication. The worker holds no notion of a viewer; that is the edge's job.
