@@ -79,3 +79,6 @@ hermes/release-review.md
 
 # The rehearsal world's state, when it lives in the checkout (WORLD_STATE_ROOT unset)
 .volter/
+
+# The agent's task worktrees, made by the board inside its checkout.
+.worktrees/

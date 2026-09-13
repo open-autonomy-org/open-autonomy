@@ -81,3 +81,6 @@ apps/storybook/storybook-static/
 
 # A deployment's built assets (the dashboard bundle and the kit's stylesheet): `bun run build` makes them.
 apps/*/public/
+
+# The agent's task worktrees, made by the board inside its checkout.
+.worktrees/
