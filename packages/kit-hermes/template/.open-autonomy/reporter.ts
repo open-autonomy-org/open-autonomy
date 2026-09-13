@@ -441,8 +441,12 @@ const query = { harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], h
 const index = await sc.subscribeSessionIndex(query);
 for (const d of index.initial) descriptors.set(d.locator.session_id, d);
 // The host can start Hermes once SDK discovery and native state are readable.
-// Historical publication may take minutes; replay is not a readiness condition.
-await nativeState();
+// Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
+// gateway that just drained (a restart onto a moved main) reads as unreadable for a moment: that is a wait, not a death.
+for (let attempt = 1; ; attempt++) {
+  try { await nativeState(); break; }
+  catch (e) { if (attempt >= 20) throw e; log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
+}
 process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
 let cursor: string | undefined;
