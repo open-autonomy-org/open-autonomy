@@ -115,7 +115,7 @@ export const app: App = {
     async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
     async project(account, view, t) {
       const [p, road] = await Promise.all([new Patronage(t.ledger).view(account), t.ledger.roadmap(account)]);
-      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname + t.url.search });
+      return projectSlots({ account, profile: view.profile, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname + t.url.search });
     },
     async directory(entries, t) {
       const patronage = new Patronage(t.ledger);

@@ -4,7 +4,7 @@ import { raw } from 'hono/html';
 import { tenseOf, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import type { AgentControl, ProjectView, SessionSummary } from '../ledger.js';
 import type { EnvelopePurpose } from '../ledger.js';
-import { LOGO_SVG, fmtAgo, fmtDur, mdToSafeHtml, usd } from '../ui.js';
+import { LOGO_SVG, fmtAgo, fmtDur, usd } from '../ui.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
 export const ownerOf = (account: string): string => account.split('/')[0];
@@ -25,24 +25,6 @@ export function purposeSentence(account: string, purpose: EnvelopePurpose, roadm
   return purpose.type === 'any' ? 'anything the agent spends on' : `whatever ${nameOf(account)} needs`;
 }
 
-// Money never arrives from nobody. A gift on the books names its giver: a funder's login, an org's grants pool, or,
-// for money the books hold with no name (an operator's mint), the deployment itself. The wall is these people.
-export interface Giver { login: string; name?: string; avatar_url?: string; url?: string; label?: string }
-export function giversOf(v: Pick<ProjectView, 'envelopes' | 'feed' | 'granted_in_usd_cents'>, brand: string): Giver[] {
-  const seen = new Set<string>();
-  const out: Giver[] = [];
-  const add = (who: string | undefined) => {
-    if (!who) return;
-    const login = who.startsWith('@') ? who.slice(1) : who;
-    if (seen.has(login.toLowerCase())) return;
-    seen.add(login.toLowerCase());
-    out.push(who.includes('/') ? { login, name: who.endsWith('/grants') ? `${brand} grants` : who, url: `https://github.com/${who}` } : { login, avatar_url: `https://github.com/${encodeURIComponent(login)}.png` });
-  };
-  for (const e of v.envelopes ?? []) add(e.from);
-  for (const f of v.feed ?? []) if (f.kind === 'grant' || f.kind === 'mint') { add(f.from); if (f.by) add(f.by); }
-  if (!out.length && v.granted_in_usd_cents > 0) out.push({ login: brand, name: brand, url: '/' });
-  return out;
-}
 export interface Schedule { name?: string; schedule?: string }
 
 // ---- the top bar -----------------------------------------------------------------------------------------------
@@ -89,37 +71,21 @@ export function coverStyle(url: string | undefined, seed = ''): string {
 }
 export const runwayWords = (days: number | null): string | null => (days === null ? null : days > 365 ? 'over a year of runway' : days === 1 ? '1 day of runway' : `${days} days of runway`);
 const parseScheduleText = (json: string | undefined): string => { try { const j = JSON.parse(json ?? '{}') as { jobs?: Schedule[] }; const jobs = Array.isArray(j.jobs) ? j.jobs.slice(0, 3) : []; return jobs.length ? ` · ${jobs.map((x) => `${x.name ?? 'job'} ${x.schedule ?? ''}`.trim()).join(' · ')}` : ''; } catch { return ''; } };
-export function Hero({ v, standing, runwayDays, meta }: { v: ProjectView; standing: Standing; runwayDays: number | null; meta?: unknown }) {
-  const name = nameOf(v.account);
+export function Header({ v, standing, runwayDays, meta }: { v: ProjectView; standing: Standing; runwayDays: number | null; meta?: unknown }) {
   return (
-    <>
-      <div class="cover" style={coverStyle(v.profile.cover_url, v.account)} />
-      <div class="hero">
-        {safeUrl(v.profile.avatar_url) ? <img class="avatar" src={safeUrl(v.profile.avatar_url)} alt="" /> : <div class="avatar" />}
-        <div class="who">
-          <h1>{name}</h1>
-          <p class="tag">{v.profile.tagline ?? `${v.account}, building itself in the open.`}</p>
-          {v.profile.agent_model ? <p class="built">Built by <b>{v.profile.agent_harness === 'hermes' ? 'a Hermes agent' : v.profile.agent_harness ?? 'its agent'}</b> on <b>{v.profile.agent_model}</b>{parseScheduleText(v.profile.schedule_json)}</p> : null}
-          <div class="meta">
-            <Pill standing={standing} />
-            {meta ?? <span><b>{usd(v.balance_usd_cents)}</b> balance</span>}
-            {runwayDays !== null ? <span>{runwayWords(runwayDays)}</span> : null}
-            <a href={`https://github.com/${v.account}`} target="_blank" rel="noopener">{v.account} ↗</a>
-          </div>
+    <div class="head">
+      {safeUrl(v.profile.avatar_url) ? <img class="avatar" src={safeUrl(v.profile.avatar_url)} alt="" /> : <div class="avatar" />}
+      <div class="who">
+        <h1>{nameOf(v.account)}</h1>
+        {v.profile.tagline ? <p class="tag">{v.profile.tagline}</p> : null}
+        {v.profile.agent_model ? <p class="built">Built by <b>{v.profile.agent_harness === 'hermes' ? 'a Hermes agent' : v.profile.agent_harness ?? 'its agent'}</b> on <b>{v.profile.agent_model}</b>{parseScheduleText(v.profile.schedule_json)}</p> : null}
+        <div class="meta">
+          <Pill standing={standing} />
+          {meta ?? <span><b data-balance>{usd(v.balance_usd_cents)}</b> balance</span>}
+          {runwayDays !== null ? <span>{runwayWords(runwayDays)}</span> : null}
+          <a href={`https://github.com/${v.account}`} target="_blank" rel="noopener">{v.account} ↗</a>
         </div>
       </div>
-    </>
-  );
-}
-
-// ---- about: the lead paragraph, the rest a page ------------------------------------------------------------------
-export function About({ md, account }: { md?: string; account: string }) {
-  const lead = leadParagraphs(md, 1);
-  return (
-    <div class="card">
-      <h2>About</h2>
-      {lead ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(lead) }} /> : <p class="empty">This project has not published what it is yet.</p>}
-      {(md ?? '').trim().length > lead.length ? <a class="more" href={at(account, 'about')}>Read more →</a> : null}
     </div>
   );
 }
@@ -236,32 +202,21 @@ export function Shipped({ roadmap, account, now, max = 5 }: { roadmap: Roadmap; 
   );
 }
 
-// ---- the givers wall: everyone who put money in ------------------------------------------------------------------
-export function Wall({ givers, more, title = 'Givers', empty = 'No one has given yet.' }: { givers: Giver[]; more?: unknown; title?: string; empty?: string }) {
-  return (
-    <div class="card">
-      <h2>{title}</h2>
-      {givers.length || more ? <div class="wall">{givers.map((p) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : null}{p.name ?? p.login}</a>)}{more}</div> : <p class="empty">{empty}</p>}
-    </div>
-  );
-}
-
-// ---- funding: the one card that asks ----------------------------------------------------------------------------
-export function Funding({ v, givers, standing, runwayDays, goalDays, headline, ask }: { v: ProjectView; givers: number; standing: Standing; runwayDays: number | null; goalDays: number; headline?: unknown; ask?: unknown }) {
+// ---- the budget: what the books hold, how long it lasts ----------------------------------------------------------
+export function Budget({ v, standing, runwayDays, goalDays }: { v: ProjectView; standing: Standing; runwayDays: number | null; goalDays: number }) {
   const frac = runwayDays === null ? 0 : Math.max(0, Math.min(1, runwayDays / goalDays));
   const tone = standing === 'exhausted' ? 'off' : runwayDays !== null && runwayDays < goalDays / 3 ? 'warn' : '';
   return (
     <div class="card fund">
-      {headline ?? <div class="big"><span data-balance>{usd(v.balance_usd_cents)}</span><span> in the bank{givers > 0 ? `, from ${givers} ${givers === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
-      <div class="line">{standing === 'exhausted' ? 'The balance is spent. The next gift starts the agent again.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? `Over a year of runway at its current burn.` : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
+      <div class="big"><span data-balance>{usd(v.balance_usd_cents)}</span><span> in the bank</span></div>
+      <div class="line">{standing === 'exhausted' ? 'The balance is spent; spending stops until money comes in.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? 'Over a year of runway at its current burn.' : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="stats">
-        {headline ? <div class="stat"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div> : <div class="stat"><div class="v">{givers}</div><div class="l">{givers === 1 ? 'giver' : 'givers'}</div></div>}
-        <div class="stat"><div class="v" data-received>{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
+        <div class="stat"><div class="v" data-received>{usd(v.granted_in_usd_cents)}</div><div class="l">put in</div></div>
         <div class="stat"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
+        <div class="stat"><div class="v">{goalDays}d</div><div class="l">runway goal</div></div>
       </div>
-      {ask}
-      <p class="fine">Every spend is metered on public books. <a href={at(v.account, 'books')}>See the books →</a></p>
+      <p class="fine">Every spend is metered on these books. <a href={at(v.account, 'books')}>See the books →</a></p>
     </div>
   );
 }

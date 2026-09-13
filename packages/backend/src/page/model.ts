@@ -27,27 +27,33 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
 }
 
 // The owner's word on who sees what: the `dashboard:` section of .open-autonomy/config.yaml beside the bounds, read
-// with the rest of the repository's config. Absent, everything is open. Narrowing is composition, never secrecy: on
-// the platform the API stays public reads; a private deployment is private by its own wall.
+// with the rest of the repository's config. Absent, the public sees the roadmap and the books (every spend is metered
+// on public books, by the constitution) and the team sees the rest: the sessions, the transcripts, the agent.
+// Narrowing is composition, never secrecy: on the platform the API stays public reads; a private deployment is
+// private by its own wall.
 export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role }
-export const PRESETS: Record<'open' | 'status' | 'private', Visibility> = {
+export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibility> = {
+  roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public' },
   open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public' },
   status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public' },
   private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team' },
 };
-export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? 'open'], ...c.panels }; };
+export const DEFAULT_PRESET = 'roadmap' as const;
+export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
 
-// Where an app mounted around the core may add to a page. Every slot is additive and inside the core's layout: an
-// app can put a button in the bar or a card in a column; it cannot remove, reorder or rewrite what the core shows.
+// Where an app mounted around the core may add to a page. The core's page is a dashboard: what the agent is doing,
+// what it shipped, what the books hold. Everything that makes it a campaign (a cover, a pitch, an ask, a wall of
+// patrons) is an app's, entering here. Every slot is additive and inside the core's layout: an app can put a button
+// in the bar or a card in a column; it cannot remove, reorder or rewrite what the core shows.
 export interface PageSlots {
   nav?: unknown;      // links in the top bar (the platform: Explore)
   cta?: unknown;      // one button in the top bar (the platform: Become a patron)
-  meta?: unknown;     // facts in the hero's line (the platform: patrons, per month)
-  side?: unknown;     // cards at the top of Overview's side column (the platform: the ask, the tiers)
+  cover?: unknown;    // above the header (the platform: the project's cover image, a campaign's face)
+  meta?: unknown;     // facts in the header's line (the platform: patrons, per month)
+  lead?: unknown;     // cards at the top of Overview's main column (the platform: About, the project's pitch)
+  side?: unknown;     // cards at the top of Overview's side column (the platform: the tiers, the patrons wall)
   main?: unknown;     // cards after Overview's main column
-  wall?: unknown;     // more people on the givers wall (the platform: subscribers)
-  wallTitle?: string; // what the wall is called when the app adds to it (the platform: Patrons)
-  moneyIn?: unknown;  // rows in the Books' money in (the platform: subscriptions)
+  moneyIn?: unknown;  // rows in the Books' money in (the platform: subscriptions, grants from funders)
   give?: unknown;     // doors in the Books (the platform: give credits, a coupon)
   styles?: string;    // the app's own CSS after the core's: a constant of the app, never computed from input
 }
