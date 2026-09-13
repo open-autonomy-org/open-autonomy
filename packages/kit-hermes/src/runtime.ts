@@ -47,7 +47,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (out(run(['git', 'status', '--porcelain', '--', '.open-autonomy', 'container'], dir))) throw new Error('.open-autonomy or container/ has uncommitted changes; the runtime is cut from a landed revision');
   const home = homedir();
   // A unit this verb wrote is rewritten onto the new release; one made by hand is the operator's to move aside first.
-  const unitPath = join(home, 'Library', 'LaunchAgents', `org.open-autonomy.${project}.plist`);
+  const label = `org.open-autonomy.${project}`;
+  const unitPath = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
   if (existsSync(unitPath) && !readFileSync(unitPath, 'utf8').includes(MARK)) throw new Error(`${unitPath} exists and was not written by this verb; move it aside to let the kit own the service`);
   const runtimeDir = resolve(opts.runtime ?? join(home, '.local/state/open-autonomy', account, 'runtime'));
   const secrets = resolve(opts.secrets ?? join(home, '.config/open-autonomy', account));
@@ -92,7 +93,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
       services: [{ id: 'build', type: 'external', cwd: resolve(dir), external: { up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } }],
       ...(opts.dockerHost ? { env: { DOCKER_HOST: opts.dockerHost } } : {}) };
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
-    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --root ${root}   (then doctor and down ${project}-image)`);
+    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-file ${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }
 
   // ---- the World definition ----
@@ -109,7 +110,6 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     bun, join(kitDir, 'start.ts'), '--container', container, '--state', join(runtimeDir, 'state'), '--secrets', secrets, '--config', join(kitDir, 'config.yaml'), '--valve', String(opts.valve)];
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
-  const label = `org.open-autonomy.${project}`;
   const unit = unitPath;
   mkdirSync(dirname(unit), { recursive: true });
   const rewrite = existsSync(unit);

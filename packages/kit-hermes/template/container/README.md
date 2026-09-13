@@ -35,7 +35,7 @@ must be in the protected credential directory first.
    build reservation and keeps the image). Adjust the declared resources to the actual build before starting.
 3. Put the checkout on its volume once, before the unit is loaded. The executor only sleeps until the host starts
    Hermes, so bring it up through World and step in as its user:
-   `bun <release>/.open-autonomy/node_modules/@volter/twin-world/src/cli.ts up <runtime>/world.json --root <runtime>/world`,
+   `bun <release>/.open-autonomy/node_modules/@volter/twin-world/src/cli.ts up <runtime>/world.json --env-file <runtime>/world.env --root <runtime>/world`,
    then `docker exec -it --user hermes oa-<project> sh`; there, the repository-specific Git URL rewriting shown in
    SETUP.md and the clone of the canonical repository into `/work/project`; then World `down`. A temporary valve on
    the host proves both Git routes; stop it before startup. Startup only fetches and checks out inside that clone.
