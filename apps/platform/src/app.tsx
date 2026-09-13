@@ -1,17 +1,19 @@
 // The open platform as an app around the backend: its doors onto money in (GitHub Sponsors, Polar, grant
-// credits, coupons), the explore page, the human giving page, the patrons wall on every project, and the
-// GitHub login that lets an owner edit a roster on the page. Everything here is tried before the core's
+// credits, coupons), the human giving page, and the GitHub login that lets an owner edit a roster on the page;
+// on the core's pages, its slots: the pitch and the patrons on Explore, the tiers and the patrons wall on a
+// project, the doors to buy credits or sponsor on a name's page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
 import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, authedClaims, configurePage, configureSync, error, hasScope, html, isStale, json, methodNotAllowed, parseJson, renderMessage, syncProfile, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
+import { LedgerClient, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
-import { PATRON_STYLES, nav, projectSlots, renderExplore, renderFunder, renderGivePage, type GivePageData } from './site.tsx';
+import { accountSlots, directorySlots, projectSlots } from './page/patronage.tsx';
+import { renderGivePage, type GivePageData } from './page/give.tsx';
 import { handleSponsorsWebhook } from './sponsors.ts';
 import { sponsorAccount, type Env } from './types.ts';
 
-configurePage({ brand: 'open-autonomy', nav, styles: PATRON_STYLES });
+configurePage({ brand: 'open-autonomy' });
 // Every page here is public: a private repository's front page is never served by it.
 configureSync({ privateRepositories: 'refuse' });
 const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
@@ -22,7 +24,6 @@ export const app: App = {
     const env = coreEnv as Env;
     const { path, url, ledger, get, dec, privateHtml } = t;
     const patronage = new Patronage(ledger);
-    configurePage({ grants: t.grantsAccount });
     // ---- the human giving page: GitHub proves a login, the same grant moves the money ----
     if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env); }
     if (path === '/give/callback') { if (get()) return get()!; return finishGiveLogin(req, env); }
@@ -51,36 +52,31 @@ export const app: App = {
       } else if (req.method !== 'GET') return methodNotAllowed();
       return privateHtml(renderGivePage(await givePageData(ledger, t, session, message)), message?.ok === false ? 400 : 200);
     }
-    // ---- explore: every listed project with its patrons ----
-    if (path === '/') {
-      if (get()) return get()!;
-      const { entries } = await ledger.directory();
-      for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
-      const listed = entries.filter((e) => e.listed);
-      const views = await Promise.all(listed.map(async (e) => [e.account, await patronage.view(e.account)] as const));
-      return html(renderExplore(entries, Object.fromEntries(views), t.grantsAccount));
-    }
-    let m: RegExpMatchArray | null;
     // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
-    if ((m = path.match(/^\/p\/(.+)\/give$/))) {
+    // A project's own doors on the platform: /owner/project/give, /owner/project/redeem; Polar's return at
+    // /owner/project/thanks or /login/thanks for a funder buying credits.
+    const door = path.match(/^\/([^/]+)(?:\/([^/]+))?\/(give|redeem|thanks)$/);
+    const at = door ? accountAt(dec(door[1]), door[2] === undefined ? undefined : dec(door[2])) : '';
+    if (door && door[3] === 'give') {
       if (req.method !== 'POST') return methodNotAllowed();
-      const account = dec(m[1]);
+      const account = at;
       const form = await req.formData();
       const claims = await authedClaims(new Request(req.url, { headers: { authorization: `Bearer ${String(form.get('key') ?? '').trim()}` } }), env);
       if (!claims || !hasScope(claims, 'give')) return html(renderMessage(account, false, 'Not given', 'That is not a funder key. Prove your GitHub login with the claim file and mint one: GET /v1/keys/challenge?funder=<login>.'), 401);
       const r = await t.give(claims.account, account, Number(form.get('usd_cents')), String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`, String(form.get('for') ?? '').trim() || undefined);
       return html(renderMessage(account, r.ok, r.ok ? 'Given' : 'Not given', r.ok ? `${claims.account} granted $${(Number(form.get('usd_cents')) / 100).toFixed(2)} to ${account}. It is on the books and on the page.` : r.error === 'insufficient_balance' ? `${claims.account} holds fewer credits than that.` : `The gift was refused: ${r.error}.`), r.ok ? 200 : 400);
     }
-    if ((m = path.match(/^\/p\/(.+)\/redeem$/))) {
+    if (door && door[3] === 'redeem') {
       if (req.method !== 'POST') return methodNotAllowed();
-      const account = dec(m[1]);
+      const account = at;
       const code = String((await req.formData()).get('code') ?? '').trim();
       if (!code) return html(renderMessage(account, false, 'Coupon not redeemed', 'Enter a coupon code.'), 400);
       const result = await patronage.couponRedeem(code, account);
       const message = result.ok ? `Added $${((result.amount_usd_cents ?? 0) / 100).toFixed(2)} to ${account}.` : redeemMessage(result.error);
       return html(renderMessage(account, result.ok, result.ok ? 'Coupon redeemed' : 'Coupon not redeemed', message), result.ok ? 200 : 400);
     }
-    if ((m = path.match(/^\/p\/(.+)\/thanks$/))) { if (get()) return get()!; return thanksPage(env, dec(m[1]), url.searchParams.get('checkout_id')); }
+    if (door && door[3] === 'thanks') { if (get()) return get()!; return thanksPage(env, at, url.searchParams.get('checkout_id')); }
+    let m: RegExpMatchArray | null;
     // ---- admin: coupons, the monthly accrual by hand, a project's tiers; through the reviewed workflow only ----
     if (path === '/admin/coupons') {
       if (!t.isAdmin()) return error('auth_failed', 401);
@@ -115,9 +111,20 @@ export const app: App = {
   page: {
     async project(account, view, t) {
       const [p, road] = await Promise.all([new Patronage(t.ledger).view(account), t.ledger.roadmap(account)]);
-      return projectSlots({ v: view, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), grants: t.grantsAccount });
+      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP });
     },
-    async funder(f, t) { return html(renderFunder(f, t.grantsAccount, polarConfigured(t.env as Env))); },
+    async directory(entries, t) {
+      const patronage = new Patronage(t.ledger);
+      const views = await Promise.all(entries.filter((e) => e.is_project && e.listed).map(async (e) => [e.account, await patronage.view(e.account)] as const));
+      return directorySlots(entries, Object.fromEntries(views), t.grantsAccount);
+    },
+    async account(name, entries, _funder, t) {
+      const patronage = new Patronage(t.ledger);
+      const owned = entries.filter((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
+      const views = await Promise.all(owned.map(async (e) => [e.account, await patronage.view(e.account)] as const));
+      // Whether the viewer is this person is not known to the core yet: the door to buy credits shows on every person's page.
+      return accountSlots({ name, sponsor: sponsorAccount(t.env as Env), polar: polarConfigured(t.env as Env), self: !owned.length, entries, patronage: Object.fromEntries(views) });
+    },
   },
   identity: { begin: (req, env, intent) => beginGiveLogin(req, env as Env, intent as TeamEdit) },
   // Monthly: credit the sponsor account with its active recurring sponsorships, idempotent on the month.

@@ -28,7 +28,7 @@ only between accounts (`grant`, on a key with the `give` scope). Every public do
 Open Autonomy's patronage registers its operations with `LimitLedger.extend`, answers its own routes before the
 core's through `App.route`, and fills the page's slots. What an app keeps on the books is persisted beside the
 core's keys and never read or dropped by it. A private deployment mounts `worker()` with no app and puts an
-access policy in front of `/` and `/p/*`; the API paths stay key-authenticated.
+access policy in front of the pages (`/`, `/<name>`, `/<owner>/<project>` and its tabs); the API paths under `/v1` stay key-authenticated.
 
 ## The wire
 

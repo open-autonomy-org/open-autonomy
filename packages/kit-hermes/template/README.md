@@ -1,12 +1,12 @@
 # __PROJECT__
 
-[![funding](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/runway.svg)](https://open-autonomy.org/p/__ACCOUNT_ENC__)
-[![now](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/now.svg)](https://open-autonomy.org/p/__ACCOUNT_ENC__)
-[![roadmap](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/roadmap.svg)](https://open-autonomy.org/p/__ACCOUNT_ENC__)
+[![funding](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/runway.svg)](https://open-autonomy.org/__ACCOUNT__)
+[![now](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/now.svg)](https://open-autonomy.org/__ACCOUNT__)
+[![roadmap](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/roadmap.svg)](https://open-autonomy.org/__ACCOUNT__)
 [![activity](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/activity.svg)](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/calls)
 
 This project builds itself. Its Hermes PM reconciles `ROADMAP.md` and queues work for the fleet,
-funded through [Open Autonomy](https://open-autonomy.org/p/__ACCOUNT_ENC__), where
+funded through [Open Autonomy](https://open-autonomy.org/__ACCOUNT__), where
 every session it works, every cent it spends and everything it ships is public.
 
 - `CONSTITUTION.md` says what the project is and must remain; `ROADMAP.md` holds sourced plans and outstanding outcomes, and the board holds fleet execution; `CONTRIBUTING.md` is how code is written here, the bar every change is reviewed against.

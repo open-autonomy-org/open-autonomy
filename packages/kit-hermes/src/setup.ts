@@ -464,5 +464,5 @@ export async function setup(dir: string, raw: Partial<Opts>): Promise<void> {
   if (st.doors.subscription === 'yes') await stepSubscription(s, opts, st);
   if (opts.with.includes('sponsors') && st.doors.sponsors === 'later') say(`\nSponsors: when the platform routes ${s.owner}'s listing, setup again wires the webhook.`);
   printStart(s, opts);
-  say(`\nThe page after activation: https://open-autonomy.org/p/${encodeURIComponent(s.account)}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
+  say(`\nThe page after activation: https://open-autonomy.org/${s.account}. \`create-open-autonomy setup\` again adds a deferred door or repairs a step; it does not start or restart the fleet.`);
 }

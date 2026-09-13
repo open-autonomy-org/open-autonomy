@@ -21,15 +21,15 @@ describe('the open platform, one smoke test per door', () => {
     expect((await request(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 300 } })).status).toBe(402);
     expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${give}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(403);
     expect((await requestJson(env, '/v1/funders/pat')).given_usd_cents).toBe(300);
-    expect(await (await request(env, '/p/acme%2Fapp')).text()).toContain('Granted by @pat — I believe in it');
-    expect(await (await request(env, '/p/%40pat')).text()).toContain('Granted to');
+    expect(await (await request(env, '/acme/app')).text()).toContain('Granted by @pat — I believe in it');
+    expect(await (await request(env, '/pat')).text()).toContain('Granted to');
     // Self-funding: a credit pack bought through Polar lands on the funder's books; the org matches a tenth from its
     // grants account as bonus credits, which go only to projects the funder does not own.
     await requestJson(env, '/admin/accounts/open-autonomy-org%2Fgrants/mint', { headers: admin, method: 'POST', body: { amount_usd_cents: 1000, key: 'org-1' } });
     const opened = await requestJson(env, '/v1/patrons/checkout', { method: 'POST', body: { account: '@pat', tier: 0, interval: 'once' } });
     polar.checkouts[opened.checkout_id].status = 'confirmed';
     polar.orders.push({ id: 'ord_pat', paid: true, total_amount: 1000, checkout_id: opened.checkout_id, customer_id: 'cus_1', billing_reason: 'purchase' });
-    expect((await request(env, `/p/%40pat/thanks?checkout_id=${opened.checkout_id}`)).status).toBe(200);
+    expect((await request(env, `/pat/thanks?checkout_id=${opened.checkout_id}`)).status).toBe(200);
     const pat = await requestJson(env, '/v1/funders/pat');
     expect(pat).toMatchObject({ credits_usd_cents: 200 + 1000 + 100, bonus_usd_cents: 100 });
     github.repos['pat/app'] = { description: 'mine' };
@@ -85,9 +85,9 @@ describe('the open platform, one smoke test per door', () => {
     // The patron pays at Polar.
     polar.checkouts.chk_1.status = 'confirmed';
     polar.orders.push({ id: 'ord_1', paid: true, total_amount: 500, checkout_id: 'chk_1', customer_id: 'cus_1', billing_reason: 'purchase' });
-    for (let i = 0; i < 2; i++) expect((await request(env, '/p/acme%2Fapp/thanks?checkout_id=chk_1')).status).toBe(200);
+    for (let i = 0; i < 2; i++) expect((await request(env, '/acme/app/thanks?checkout_id=chk_1')).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(600);
-    expect((await request(env, '/p/acme%2Fapp')).text()).resolves.toContain('@pat');
+    expect((await request(env, '/acme/app')).text()).resolves.toContain('@pat');
     const hook = async (payload: string, secret = env.POLAR_WEBHOOK_SECRET!) => {
       const id = 'msg_1'; const ts = String(Math.floor(Date.now() / 1000));
       const key = await crypto.subtle.importKey('raw', Uint8Array.from(atob(secret.slice(6)), (c) => c.charCodeAt(0)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -108,7 +108,7 @@ describe('the open platform, one smoke test per door', () => {
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
     await mintKey(env);
     expect(await (await request(env, '/')).text()).toContain('A todo list that builds itself');
-    const page = await (await request(env, '/p/acme%2Fapp')).text();
+    const page = await (await request(env, '/acme/app')).text();
     expect(page).toContain('Become a patron');
     expect(page).toContain('patrons');
   });

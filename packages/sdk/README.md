@@ -172,7 +172,7 @@ account and a source for the identity links and authority. A populated roster ne
 verified GitHub account. Empty seeded rosters grant nobody authority.
 
 The platform reads this owner configuration from the repository, just as it reads funding bounds; a
-narration key cannot replace it. `/p/:account/team` resolves it through this SDK model. Owners can edit
+narration key cannot replace it. `/:owner/:project/team` resolves it through this SDK model. Owners can edit
 one member at a time, sign in with GitHub and create a draft PR. The short-lived OAuth flow uses the
 human's token only during the callback, never stores it, and never merges or writes the default branch.
 GitHub asks for `public_repo` access for this action. The giving page retains its existing sign-in flow.

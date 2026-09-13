@@ -1,5 +1,7 @@
-// The project's depths, one panel each at full size: the work, the sessions, the books, the agent.
+// The project's depths, one panel each at full size: the work, the sessions, the books, the agent, the team, a document.
 import type { ItemView, SessionRecord, SessionSummary } from '../ledger.js';
+import type { TeamFile } from '../team.js';
+import { TEAM_SCOPES, type TeamMember } from '@open-autonomy/sdk/team';
 import { tenseOf, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from '../ui.js';
 import { Pill, Workshop, at, firstLine, giversOf, safeUrl, standingOf, type Turn } from './parts.js';
@@ -86,9 +88,9 @@ export function Session({ d, s }: { d: ProjectPageData; s: SessionRecord }) {
             <div class="now" style="margin-bottom:10px"><span class="pill live" style={s.status === 'live' ? '' : 'display:none'}><span class="dot" />live</span><span class="what" style="font-family:Fraunces,Georgia,serif;font-size:22px">{s.source ?? s.kind}</span><span class="sub">{fmtWhen(s.started_at)}{s.ended_at ? ` → ${fmtDur(s.started_at, s.ended_at, d.now)}` : ` · ${fmtDur(s.started_at, undefined, d.now)} so far`}{s.item_id ? <> · on <a href={at(a, 'work', s.item_id)}>{s.item_id}</a></> : null}</span></div>
             {s.report && s.report !== '[SILENT]' ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(s.report) }} /> : null}
           </div>
-          <div class="card"><h2>Transcript · {s.turns.length} turns</h2><ul class="turns">{s.turns.map((t) => { const l = line(t); return <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`body${l.tool ? ' tool' : ''}`}>{l.body}</span></li>; })}</ul></div>
+          <div class="card"><h2>Transcript · <span data-turns>{s.turns.length}</span> turns</h2><ul class="turns" data-transcript data-account={a} data-session={s.key} data-seq={String(s.turns.reduce((m, t) => (typeof t.seq === 'number' && t.seq > m ? t.seq : m), -1))} style={s.status === 'live' ? '' : undefined}>{s.turns.map((t) => { const l = line(t); return <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`body${l.tool ? ' tool' : ''}`}>{l.body}</span></li>; })}</ul></div>
         </div>
-        <div class="side"><div class="card"><h2>This session</h2><div class="stats" style="grid-template-columns:1fr 1fr"><div class="stat"><div class="v">{usd(s.usd_cents)}</div><div class="l">metered</div></div><div class="stat"><div class="v">{s.calls}</div><div class="l">model calls</div></div></div>{s.commit_sha ? <p class="fine">landed as {shortSha(s.commit_sha)}</p> : null}</div></div>
+        <div class="side"><div class="card"><h2>This session</h2><div class="stats" style="grid-template-columns:1fr 1fr"><div class="stat"><div class="v" data-cents>{usd(s.usd_cents)}</div><div class="l">metered</div></div><div class="stat"><div class="v">{s.calls}</div><div class="l">model calls</div></div></div>{s.commit_sha ? <p class="fine">landed as {shortSha(s.commit_sha)}</p> : null}</div></div>
       </div>
     </Shell>
   );
@@ -145,6 +147,63 @@ export function Agent(d: ProjectPageData) {
           <div class="card"><h2>State</h2><div class="now"><Pill standing={standing} /></div>{d.v.control?.observed ? <p class="fine">The agent last said <b>{d.v.control.observed.state}</b>{d.v.control.observed.note ? `: ${d.v.control.observed.note}` : ''} · {fmtAgo(d.v.control.observed.at, d.now)}</p> : <p class="fine">The agent has not reported its state.</p>}{d.v.control?.desired ? <p class="fine">The owner asked for <b>{d.v.control.desired.state}</b> · {fmtAgo(d.v.control.desired.at, d.now)}{d.v.control.desired.reason ? `: ${d.v.control.desired.reason}` : ''}</p> : null}</div>
           <div class="card"><h2>Runs on</h2><ul class="rows"><li class="row"><span class="t">{d.v.profile.agent_harness ?? 'its harness'}</span><span class="n">{d.v.profile.agent_model ?? 'a model'}{d.v.profile.agent_provider ? ` · ${d.v.profile.agent_provider}` : ''}</span></li>{schedule.map((j) => <li class="row"><span class="t">{j.name ?? 'job'}</span><span class="n">fires {j.schedule ?? '?'}</span></li>)}{skills.length ? <li class="row"><span class="t">knows</span><span class="n">{skills.join(' · ')}</span></li> : null}</ul></div>
           {sees(d.viewer, 'owner') ? <div class="card"><h2>Owner</h2><p class="fine" style="margin:0 0 10px">The one word of control. The agent applies it its own way and answers; the page shows the request beside the answer. This form's route is not served yet; today the door is <code>POST /v1/agent/state</code> on a steer key.</p><form class="form" method="post" action={`${at(a)}/state`}><input name="reason" placeholder={desired === 'paused' ? 'why resume (optional)' : 'why pause (optional)'} maxlength={400} /><button class={`btn${desired === 'paused' ? '' : ' quiet'}`} type="submit" name="state" value={desired === 'paused' ? 'running' : 'paused'}>{desired === 'paused' ? 'Resume the agent' : 'Pause the agent'}</button></form></div> : null}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ---- a document in full: what the project is -------------------------------------------------------------------
+export function Doc({ d, title, md }: { d: ProjectPageData; title: string; md?: string }) {
+  return (
+    <Shell d={d} current="overview">
+      <div class="card" style="margin-top:20px;max-width:760px"><h2>{title}</h2>{md?.trim() ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(md) }} /> : <p class="empty">Not published yet.</p>}</div>
+    </Shell>
+  );
+}
+
+// ---- the team: the roster the repository commits, and the door to change it -------------------------------------
+const TEAM_LABELS: Record<string, string> = { owner: 'Owner', direction: 'Project direction', moderation: 'Moderation', 'release-review': 'Release review' };
+export function Team({ d, file, editing, failure, configured }: { d: ProjectPageData; file?: TeamFile; editing?: string; failure?: string; configured: boolean }) {
+  const a = d.v.account;
+  const base = at(a, 'team');
+  const member = file?.team.members.find((m) => m.id === editing);
+  const edit = Boolean(file?.team.members.length && (editing === 'new' || member));
+  const input = (name: string, title: string, value = '', required = false, max = 80) => <label class="field">{title}<input name={name} value={value} required={required} maxlength={max} /></label>;
+  return (
+    <Shell d={d} current="team">
+      <div class="cols" style="grid-template-columns:minmax(0,1fr) 340px">
+        <div class="main">
+          {failure ? <div class="card" role="alert"><p class="empty">{failure}</p></div> : null}
+          {!file ? <div class="card"><p class="empty">The committed roster is unavailable. Changes are disabled until it can be read.</p></div>
+            : !file.team.members.length ? <div class="card"><h2>Team</h2><p class="empty">No team recorded yet. The setup agent establishes the first owner's verified accounts and authority; then owners manage the team here.</p></div>
+            : file.team.members.map((m: TeamMember) => <div class="card">
+              <div class="row" style="padding:0;border:0"><span class="t" style="font-size:17px;font-weight:700">{m.name}</span><span class="n">{m.scopes.length ? m.scopes.map((x) => TEAM_LABELS[x] ?? x).join(' · ') : 'Contributor'}</span></div>
+              <div class="wall" style="margin-top:10px">{m.github ? <a class="chip" href={`https://github.com/${encodeURIComponent(m.github.login)}`}><img src={`https://github.com/${encodeURIComponent(m.github.login)}.png?size=52`} alt="" />@{m.github.login}</a> : null}{m.discord ? <a class="chip" href={`https://discord.com/users/${encodeURIComponent(m.discord.id)}`}>Discord · {m.discord.name}</a> : null}</div>
+              <p class="fine" style="overflow-wrap:anywhere">{m.source}</p>
+              <p class="fine"><a href={`${base}?edit=${encodeURIComponent(m.id)}`}>Edit {m.name} →</a></p>
+            </div>)}
+          {edit && file ? <div class="card" id="editor">
+            <h2>{member ? `Edit ${member.name}` : 'Add teammate'}</h2>
+            <form class="form" method="post" action={base}>
+              <input type="hidden" name="sha" value={file.sha} /><input type="hidden" name="id" value={member?.id ?? ''} />
+              {input('name', 'Name', member?.name, true)}
+              {input('github_login', 'GitHub username', member?.github?.login)}
+              {input('github_id', 'GitHub account ID (kept for a renamed account; clear it only to link a different one)', member?.github?.id, false, 20)}
+              {input('discord_id', 'Discord user ID or profile link', member?.discord?.id)}
+              {input('discord_name', 'Discord name', member?.discord?.name)}
+              <fieldset class="field"><legend>Authority</legend>{TEAM_SCOPES.map((scope) => <label class="check"><input type="checkbox" name="scopes" value={scope} checked={member?.scopes.includes(scope)} /> {TEAM_LABELS[scope]}</label>)}</fieldset>
+              <label class="field">Identity and authority source<textarea name="source" required maxlength={500}>{member?.source ?? ''}</textarea></label>
+              <p class="fine">A public source link or a specific owner confirmation establishing whose accounts these are and what they may decide.</p>
+              <label class="check"><input type="checkbox" name="attest" value="yes" required /> I confirm these account links and permissions, or the removal of this person.</label>
+              <p class="fine">Continue with GitHub to open a draft pull request. Only a recorded owner can authorize this change; it takes effect when merged on GitHub. GitHub asks for public repository access to create the change under your account.</p>
+              {configured ? <div class="wall"><button class="btn" name="operation" value="save">Continue with GitHub</button>{member ? <button class="btn quiet" name="operation" value="remove">Remove teammate</button> : null}</div> : <p class="empty" role="status">GitHub sign-in is not configured on this deployment.</p>}
+              <p class="fine"><a href={base}>Cancel</a></p>
+            </form>
+          </div> : null}
+        </div>
+        <div class="side">
+          <div class="card"><h2>The roster</h2><p class="fine" style="margin:0">{file ? <>From the <a href={`https://github.com/${a}/blob/${encodeURIComponent(file.head)}/.open-autonomy/config.yaml`}>committed roster</a>. Release authority still requires human review of the specific release.</> : 'The people behind the project and the decisions they can make, from the repository.'}</p>{file?.team.members.length && !edit ? <a class="btn quiet wide" style="margin-top:14px" href={`${base}?edit=new`}>Add teammate</a> : null}</div>
         </div>
       </div>
     </Shell>

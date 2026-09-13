@@ -2,7 +2,7 @@
 
 `bun run storybook` in this directory serves every page and part at http://localhost:6006, rendered from real
 records captured from the live platform (`fixtures/`). Pages are server-rendered hono/jsx; a story renders one to
-an HTML string. Nothing here is wired to the router yet, so a design can move without the platform moving.
+an HTML string. The same modules serve the site: `packages/backend/src/page/serve.tsx` routes them, so a story is the served page with the records held still.
 
 ## The core and an app around it
 

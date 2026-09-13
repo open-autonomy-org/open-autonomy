@@ -3,13 +3,27 @@
 import { raw } from 'hono/html';
 import { tenseOf, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import type { AgentControl, ProjectView, SessionSummary } from '../ledger.js';
+import type { EnvelopePurpose } from '../ledger.js';
 import { LOGO_SVG, fmtAgo, fmtDur, mdToSafeHtml, usd } from '../ui.js';
-import { leadParagraphs } from '../stream-view.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
 export const ownerOf = (account: string): string => account.split('/')[0];
-// Addresses follow GitHub's: /owner, /owner/project, /owner/project/<tab>. A funder is /login.
-export const at = (account: string, ...rest: string[]): string => `/${account.split('/').map(encodeURIComponent).join('/')}${rest.length ? `/${rest.map(encodeURIComponent).join('/')}` : ''}`;
+// Addresses follow GitHub's: /name for a login (an org or a person; the books call a person's account `@login`),
+// /owner/project for a project, /owner/project/<tab> for its depths. `accountAt` reads an address back.
+export const at = (account: string, ...rest: string[]): string => `/${account.replace(/^@/, '').split('/').map(encodeURIComponent).join('/')}${rest.length ? `/${rest.map(encodeURIComponent).join('/')}` : ''}`;
+export const accountAt = (owner: string, project?: string): string => (project ? `${owner}/${project}` : `@${owner}`);
+// What the project is, as its substrate published it: the first paragraphs of its document.
+export function leadParagraphs(md: string | undefined, max = 2): string {
+  if (!md) return '';
+  return md.split('\n').filter((l) => !/^#/.test(l)).join('\n').trim().split(/\n{2,}/).slice(0, max).join('\n\n').trim();
+}
+// An earmark's purpose as a sentence: what a gift is for.
+export function purposeSentence(account: string, purpose: EnvelopePurpose, roadmap?: Roadmap): string {
+  if (purpose.type === 'item') return `the task '${roadmap?.items.find((i) => i.id === purpose.item)?.title ?? purpose.item}'`;
+  if (purpose.type === 'models') return `model calls on ${purpose.models.join(', ')}`;
+  if (purpose.type === 'model') return 'model calls only';
+  return purpose.type === 'any' ? 'anything the agent spends on' : `whatever ${nameOf(account)} needs`;
+}
 
 // Money never arrives from nobody. A gift on the books names its giver: a funder's login, an org's grants pool, or,
 // for money the books hold with no name (an operator's mint), the deployment itself. The wall is these people.
@@ -61,8 +75,8 @@ const STANDING: Record<Standing, { cls: string; word: string }> = {
 export const Pill = ({ standing }: { standing: Standing }) => <span class={`pill ${STANDING[standing].cls}`}><span class="dot" />{STANDING[standing].word}</span>;
 
 // ---- the hero ---------------------------------------------------------------------------------------------------
-// An image URL from a repository is untrusted: https only, no quote, paren, angle bracket, backslash or space.
-export const safeUrl = (u: string | undefined): string | undefined => (u && /^https:\/\/[^\s'"()<>\\]+$/.test(u) ? u : undefined);
+// A URL from a record is untrusted: https, or a path on this deployment; no quote, paren, angle bracket, backslash or space.
+export const safeUrl = (u: string | undefined): string | undefined => (u && /^(?:https:\/\/|\/(?!\/))[^\s'"()<>\\]*$/.test(u) ? u : undefined);
 export function coverStyle(url: string | undefined, seed = ''): string {
   const safe = safeUrl(url);
   if (safe) return `background-image:url('${safe}')`;
@@ -111,7 +125,7 @@ export function About({ md, account }: { md?: string; account: string }) {
 // The page's centerpiece. Live: the session and its latest turns as they land. Idle: the last run's own report, when
 // the next job fires, and thirty days of spend as texture. Paused: the owner's word. Under it, the recent runs as a
 // feed the agent wrote.
-export type Turn = { ts?: string; role: string; text?: string; tool?: string; args?: string; result?: string };
+export type Turn = { seq?: number; ts?: string; role: string; text?: string; tool?: string; args?: string; result?: string };
 export interface SessionTail { key: string; turns: Turn[] }
 export const firstLine = (s: string | undefined, max = 140): string => { const l = (s ?? '').split('\n').map((x) => x.trim()).find((x) => x && !/^[#\-*\[]/.test(x)) ?? (s ?? '').trim(); return l.length > max ? `${l.slice(0, max - 1)}…` : l; };
 // What a turn says in one line: the agent's words as written; a terminal call as its command; any other tool call
@@ -120,7 +134,7 @@ const oneLine = (s: string | undefined, max = 160): string => { const t = (s ?? 
 const argOf = (tool: string | undefined, args: string | undefined): string => {
   try { const a = JSON.parse(args ?? '{}') as Record<string, unknown>; const c = a.command ?? a.cmd ?? a.path ?? a.query ?? a.url; return typeof c === 'string' ? c : ''; } catch { return ''; }
 };
-const tickerLine = (t: Turn): { role: string; cls: string; text: string; tool: boolean } | null => {
+export const tickerLine = (t: Turn): { role: string; cls: string; text: string; tool: boolean } | null => {
   if (t.role === 'assistant' && t.tool) { const a = argOf(t.tool, t.args); return a ? { role: 'agent', cls: 'a', text: oneLine(`${t.tool}: ${a}`), tool: true } : null; }
   if (t.role === 'assistant') return t.text?.trim() ? { role: 'agent', cls: 'a', text: oneLine(t.text.replace(/^#+\s*/gm, '').replace(/\*\*/g, '')), tool: false } : null;
   if (t.role === 'tool') { const r = (t.result ?? '').trim(); if (!r || r.startsWith('{') || r.startsWith('[')) return null; return { role: t.tool ?? 'tool', cls: '', text: oneLine(r.split('\n')[0]), tool: true }; }
@@ -141,7 +155,9 @@ export function Workshop({ sessions, live, tail, schedule, standing, control, da
   const first = sessions.find((s) => live.includes(s.key));
   const last = sessions.find((s) => s.status === 'ended' && s.kind === 'run' && s.report && s.report !== '[SILENT]') ?? sessions.find((s) => s.status === 'ended' && s.kind === 'run');
   const next = schedule[0] ? `${schedule[0].name ?? 'the schedule'} fires ${schedule[0].schedule ?? 'on schedule'}` : undefined;
-  const turns = (tail && first && tail.key === first.key ? tail.turns : []).map(tickerLine).filter((l): l is NonNullable<typeof l> => !!l).slice(-5);
+  const shown = tail && first && tail.key === first.key ? tail.turns : [];
+  const turns = shown.map(tickerLine).filter((l): l is NonNullable<typeof l> => !!l).slice(-5);
+  const seq = shown.reduce((m, t) => (typeof t.seq === 'number' && t.seq > m ? t.seq : m), -1);
   let body: unknown;
   if (standing === 'paused' || standing === 'requested') {
     const d = control?.desired;
@@ -154,8 +170,8 @@ export function Workshop({ sessions, live, tail, schedule, standing, control, da
   } else if (first) {
     body = <>
       <div class="head"><span class="pulse" /><span>Live from the workshop</span><span class="spacer" /><a href={at(account, 'sessions', first.key)}>Follow the session →</a></div>
-      <div class="sess"><span class="name">{first.source ?? first.kind}</span><span class="sub"><b>{fmtDur(first.started_at, undefined, now)}</b> in · <b>{first.turn_count}</b> turns · <b>{first.tool_calls}</b> tools · <b>{usd(first.usd_cents)}</b>{first.item_id ? <> · on <a href={at(account, 'work', first.item_id)} style="color:#f2efea">{first.item_id}</a></> : null}</span></div>
-      {turns.length ? <ul class="ticker">{turns.map((l) => <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`line${l.tool ? ' tool' : ''}`}>{l.text}</span></li>)}</ul> : null}
+      <div class="sess"><span class="name">{first.source ?? first.kind}</span><span class="sub"><b>{fmtDur(first.started_at, undefined, now)}</b> in · <b data-turns>{first.turn_count}</b> turns · <b>{first.tool_calls}</b> tools · <b data-cents>{usd(first.usd_cents)}</b>{first.item_id ? <> · on <a href={at(account, 'work', first.item_id)} style="color:#f2efea">{first.item_id}</a></> : null}</span></div>
+      <ul class="ticker" data-ticker data-account={account} data-session={first.key} data-seq={String(seq)} style={turns.length ? '' : 'display:none'}>{turns.map((l) => <li><span class={`role ${l.cls}`}>{l.role}</span><span class={`line${l.tool ? ' tool' : ''}`}>{l.text}</span></li>)}</ul>
     </>;
   } else if (last) {
     body = <>
@@ -233,13 +249,13 @@ export function Funding({ v, givers, standing, runwayDays, goalDays, headline, a
   const tone = standing === 'exhausted' ? 'off' : runwayDays !== null && runwayDays < goalDays / 3 ? 'warn' : '';
   return (
     <div class="card fund">
-      {headline ?? <div class="big">{usd(v.balance_usd_cents)}<span> in the bank{givers > 0 ? `, from ${givers} ${givers === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
+      {headline ?? <div class="big"><span data-balance>{usd(v.balance_usd_cents)}</span><span> in the bank{givers > 0 ? `, from ${givers} ${givers === 1 ? 'giver' : 'givers'}` : ''}</span></div>}
       <div class="line">{standing === 'exhausted' ? 'The balance is spent. The next gift starts the agent again.' : runwayDays === null ? 'No runs yet, so no burn to measure.' : runwayDays > 365 ? `Over a year of runway at its current burn.` : `About ${runwayDays} days of runway at its current burn; the goal is ${goalDays}.`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="stats">
         {headline ? <div class="stat"><div class="v">{usd(v.balance_usd_cents)}</div><div class="l">balance</div></div> : <div class="stat"><div class="v">{givers}</div><div class="l">{givers === 1 ? 'giver' : 'givers'}</div></div>}
-        <div class="stat"><div class="v">{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
-        <div class="stat"><div class="v">{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
+        <div class="stat"><div class="v" data-received>{usd(v.granted_in_usd_cents)}</div><div class="l">received</div></div>
+        <div class="stat"><div class="v" data-spent>{usd(v.consumed_usd_cents)}</div><div class="l">spent</div></div>
       </div>
       {ask}
       <p class="fine">Every spend is metered on public books. <a href={at(v.account, 'books')}>See the books →</a></p>
