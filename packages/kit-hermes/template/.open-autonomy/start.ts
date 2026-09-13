@@ -119,7 +119,17 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   });
   return proc;
 }
-for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { ending = true; for (const c of children) c.proc.kill(); setTimeout(() => process.exit(0), 300); });
+// Leave only once every child is gone: launchd starts the successor the moment this process exits, and a gateway still
+// winding down (a tick in flight) makes that successor find it "already running" and die at once.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, async () => {
+  if (ending) return;
+  ending = true;
+  for (const c of children) c.proc.kill();
+  const bound = new Promise<void>((done) => setTimeout(done, 15_000));
+  await Promise.race([Promise.all(children.map((c) => c.proc.exited)), bound]);
+  for (const c of children) if (c.proc.exitCode === null && c.proc.signalCode === null) c.proc.kill('SIGKILL');
+  process.exit(0);
+});
 
 mkdirSync(home, { recursive: true });
 own(home);
