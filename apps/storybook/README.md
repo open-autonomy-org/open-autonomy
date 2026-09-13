@@ -17,11 +17,13 @@ and the tiers pinned beside them. Money in is GitHub Sponsors and grant credits.
 the dashboard, shown only to a viewer the owner admits there. It is the platform's alone; a self-host has no
 landing page.
 
-**The dashboard** (`Core/Dashboard`, `packages/backend/src/dash/index.tsx`) is the work as the team reads it: an app
-shell with a rail of panels, a top strip of the facts that matter every minute (the word, the balance, the runway,
-today's spend), and pages: Overview (now, spend, recent runs, the board's shape, the agent with the owner's control),
-Sessions and one session's transcript, the Board, the Books with every metered call, the Agent, the Team. Its scale
-and structure are its own, not the landing page's. The `dashboard:` block in `.open-autonomy/config.yaml` decides
+**The dashboard** (`Core/Dashboard`, `packages/backend/src/dash/`) is the work as the team reads it, built from
+Supercode's UI kit (`@volter-ai-dev/supercode-ui`): the kit's session inventory and conversation carry the sessions
+and a transcript, its workflow board carries the roadmap, its job details, runs and pause carry the schedule and
+the owner's one control; `model.ts` projects the SDK's records into the kit's models, `app.tsx` is the Preact app
+around them (the rail, the facts strip, the money, the roster) in the kit's own tokens, light and dark. The worker
+renders the same tree and the browser hydrates it, where a live session's turns land as they are narrated. Its
+scale and structure are its own, not the landing page's. The `dashboard:` block in `.open-autonomy/config.yaml` decides
 which panels each role sees and whether the public sees any of it (`packages/backend/src/page/model.ts` holds the
 presets: roadmap by default, open, status, private); a self-host serves this and nothing else.
 
