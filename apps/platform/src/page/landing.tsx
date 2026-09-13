@@ -5,12 +5,11 @@
 // metered days. Everything deeper (transcripts, every call, the agent's setup, the owner's control) is the
 // dashboard's, a link away for whoever the owner admits.
 import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import type { ProjectView, SessionSummary } from '@open-autonomy/backend';
-import { fmtAgo, fmtDur, mdToSafeHtml, usd, usd0 } from '@open-autonomy/backend/ui';
+import type { LandingBase, ProjectView, SessionSummary } from '@open-autonomy/backend';
+import { esc, fmtAgo, fmtDur, mdToSafeHtml, render, usd, usd0 } from '@open-autonomy/backend/ui';
 import { Foot, Pill, TopBar, at, firstLine, leadParagraphs, nameOf, ownerOf, safeUrl, standingOf } from '@open-autonomy/backend/page/parts';
 import { T, FONTS } from '@open-autonomy/backend/page/theme';
-import type { Viewer } from '@open-autonomy/backend/page/model';
-import { esc } from '@open-autonomy/backend/ui';
+import { sees, type Viewer } from '@open-autonomy/backend/page/model';
 import type { Patron, PatronageView } from '../patronage.js';
 import { PATRONAGE_STYLES, Tiers, whoNav } from './patronage.js';
 
@@ -341,6 +340,33 @@ export function Landing(d: LandingData) {
   );
 }
 
+// The whole story: the project's document in full, in the landing page's dress, for the reader who wants it all.
+export function About(d: LandingData) {
+  const a = d.v.account;
+  return (
+    <>
+      <TopBar brand={d.brand} nav={whoNav(d.who, at(a, 'about'))} cta={<a class="btn small" href={at(a)}>{nameOf(a)} →</a>} />
+      <div class="page">
+        <div class="ident">
+          {safeUrl(d.v.profile.avatar_url) ? <img class="avatar" src={safeUrl(d.v.profile.avatar_url)} alt="" /> : <div class="avatar" />}
+          <div class="who"><h1>{nameOf(a)}</h1><p class="tag">{d.v.profile.tagline ?? ''}</p></div>
+        </div>
+        <div class="main" style="max-width:76ch;margin-top:32px">
+          {d.v.profile.about_md?.trim() ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.about_md) }} /> : <p class="empty">This project has not published what it is yet.</p>}
+        </div>
+        <Foot brand={d.brand} />
+      </div>
+    </>
+  );
+}
+
 export function landingDocument(title: string, brand: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${esc(title)} · ${esc(brand)}</title><style>${LANDING_CSS}</style></head><body>${body}</body></html>`;
+}
+
+// The page as the core's router asks for it: the core's records and who is looking, the platform's patronage.
+// The dashboard is offered to whoever the owner admits to its overview.
+export function landingPage(base: LandingBase, p: { brand: string; patronage: PatronageView; polar: boolean; sponsor: string }): string {
+  const d: LandingData = { brand: p.brand, v: base.view, sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
+  return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)));
 }

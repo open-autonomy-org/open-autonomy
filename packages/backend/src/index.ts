@@ -7,11 +7,11 @@ export { worker, route, give, isAdmin, fundingAccount, type App, type RouteTools
 export { LimitLedger, LedgerClient, type LedgerCore, type LedgerOp, type Account, type AccountProfile, type DirectoryEntry, type Envelope, type EnvelopePurpose, type Flow, type FunderView, type FundingSnapshot, type ItemView, type LedgerState, type Moderation, type ProjectView, type RoadmapRevision, type SessionRecord, type SessionSummary, type Sponsor } from './ledger.ts';
 export { configurePage, pageConfig } from './page/brand.ts';
 export { renderMessage } from './page/message.tsx';
-export { document } from './page/project.tsx';
+export { document } from './page/document.ts';
 export { TopBar, Foot, at, accountAt, nameOf, ownerOf, coverStyle, safeUrl, purposeSentence } from './page/parts.tsx';
 export { T, CSS, FONTS } from './page/theme.ts';
-export { PRESETS, sees, visibilityOf, type Role, type Visibility, type PageSlots, type DirectorySlots, type AccountSlots } from './page/model.ts';
-export { LOGIN, REPO, RESERVED, type PageApp, type PageTools } from './page/serve.tsx';
+export { PRESETS, sees, visibilityOf, type Role, type Visibility, type DirectorySlots, type AccountSlots } from './page/model.ts';
+export { LOGIN, REPO, RESERVED, type LandingBase, type PageApp, type PageTools } from './page/serve.tsx';
 export { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, mdInlineToSafeHtml, render, usd, usd0 } from './ui.tsx';
 export { error, html, json, methodNotAllowed, parseJson, base64url, fromBase64url, hmac, constantTimeEqual } from './http.ts';
 export { authedClaims, signKey } from './keys.ts';

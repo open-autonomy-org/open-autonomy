@@ -1,11 +1,8 @@
 // The platform's additions to the core's pages: the ask, the tiers, the subscribers, Explore. They enter the core's
 // pages through its slots and nowhere else. A self-host never imports this file.
-import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { DirectoryEntry } from '@open-autonomy/backend';
-import type { AccountSlots, DirectorySlots, PageSlots, Viewer } from '@open-autonomy/backend/page/model';
-import { at, coverStyle, leadParagraphs, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
-import { mdToSafeHtml } from '@open-autonomy/backend/ui';
-import type { AccountProfile } from '@open-autonomy/backend';
+import type { AccountSlots, DirectorySlots, Viewer } from '@open-autonomy/backend/page/model';
+import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
 import { usd0 } from '@open-autonomy/backend/ui';
 import { T } from '@open-autonomy/backend/page/theme';
 import type { Patron, PatronageView, Tier } from '../patronage.js';
@@ -37,16 +34,6 @@ details.more summary::before{content:"";width:6px;height:6px;border-right:1.5px 
 details.more[open] summary::before{transform:rotate(45deg)}
 details.more .body{padding-top:12px;display:flex;flex-direction:column;gap:12px}
 `;
-
-export interface PlatformPage { account: string; profile: Pick<AccountProfile, 'cover_url' | 'about_md'>; patronage: PatronageView; polar: boolean; sponsor: string; burnPerMonth: number; roadmap: Roadmap; who?: Viewer; here?: string }
-
-// The campaign's face: the cover above the header, the pitch at the top of the page, the patrons on the wall.
-export const Cover = ({ account, url }: { account: string; url?: string }) => <div class="cover" style={coverStyle(url, account)} />;
-export function About({ md, account }: { md?: string; account: string }) {
-  const lead = leadParagraphs(md, 1);
-  return <div class="card"><h2>About</h2>{lead ? <div class="prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(lead) }} /> : <p class="empty">This project has not published what it is yet.</p>}{(md ?? '').trim().length > lead.length ? <a class="more" href={at(account, 'about')}>Read more →</a> : null}</div>;
-}
-export const Patrons = ({ patrons }: { patrons: Patron[] }) => <div class="card"><h2>Patrons</h2>{patrons.length ? <div class="wall">{patrons.map(chip)}</div> : <p class="empty">No patrons yet. Be the first.</p>}</div>;
 
 // The bar's links: Explore, and who is signed in or the door to sign in, returning here.
 export const whoNav = (who: Viewer | undefined, here = '/') => <><a href="/">Explore</a>{who ? <a href={at(who.login)}>@{who.login}</a> : <a href={`/give/login?next=${encodeURIComponent(here)}`}>Sign in</a>}</>;
@@ -93,22 +80,6 @@ export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: 
 const chip = (p: Patron) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : null}{p.name ?? p.login}</a>;
 
 // What the platform puts into the core's slots on a project's pages.
-export function projectSlots(p: PlatformPage): PageSlots {
-  const { patronage, account } = p;
-  const monthly = patronage.monthly_usd_cents;
-  return {
-    nav: whoNav(p.who, p.here),
-    cta: <a class="btn small" href="#tiers">Become a patron</a>,
-    cover: <Cover account={account} url={p.profile.cover_url} />,
-    meta: <><span><b>{patronage.patron_count}</b> {patronage.patron_count === 1 ? 'patron' : 'patrons'}</span><span><b>{usd0(monthly)}</b>/mo</span></>,
-    lead: <About md={p.profile.about_md} account={account} />,
-    side: <><Tiers tiers={patronage.tiers} owner={ownerOf(account)} account={account} sponsor={p.sponsor} polar={p.polar} burn={p.burnPerMonth} /><Patrons patrons={patronage.patrons} /></>,
-    moneyIn: patronage.patrons.length ? <>{patronage.patrons.map((x) => <li>{safeUrl(x.avatar_url) ? <img src={safeUrl(x.avatar_url)} alt="" /> : <span class="ph" />}<span class="who"><b>{x.name ?? x.login}</b><span>{x.amount_label ?? (x.kind === 'sponsor' ? 'GitHub sponsor' : x.kind === 'funder' ? 'grant credits' : 'patron')}</span></span><span class="amt" /></li>)}</> : undefined,
-    styles: PATRONAGE_STYLES,
-  };
-}
-
-// Explore: the core's directory with the platform's pitch, its patrons in the figures, and each project's patrons on
 // its card. A grant on the platform came from a funder or an org's pool; the figures say from how many.
 const NONE: PatronageView = { tiers: [], patrons: [], patron_count: 0, monthly_usd_cents: 0, sponsors: [], polar_products: {} };
 const facts = (entries: DirectoryEntry[], patronage: Record<string, PatronageView>): Record<string, unknown> =>

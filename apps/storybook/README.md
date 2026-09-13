@@ -40,9 +40,6 @@ into them through the core's slots; a self-host serves them bare.
 | `/owner/project/dashboard` | the dashboard's Overview, then `…/dashboard/{sessions,board,books,agent,team}`, `…/sessions/:key`, `…/board/:item` |
 | `/owner/project/about` | the project's document in full |
 
-The landing page's and the dashboard's addresses are the design's; the router still serves the earlier project
-page until the wiring lands.
-
 ### States a story must cover
 
 Running, working now, pause requested, paused by the owner, spending stopped, not yet funded; with patrons and

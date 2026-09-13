@@ -86,7 +86,7 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
       const location = await proposeTeamEdit(env, expected.team, tokenBody.access_token, { id: String(user.id), login }, expected.state);
       return new Response(null, { status: 302, headers: { ...headers, location } });
     } catch (e) {
-      return new Response(`Team change was not completed: ${(e as Error).message}\nReturn to ${at(expected.team.account, 'team')}. If a branch was created, inspect it before retrying.`, { status: 409, headers });
+      return new Response(`Team change was not completed: ${(e as Error).message}\nReturn to ${at(expected.team.account, 'dashboard', 'team')}. If a branch was created, inspect it before retrying.`, { status: 409, headers });
     }
   }
   // A scope-free OAuth token proves identity but cannot read organization roles. The platform's

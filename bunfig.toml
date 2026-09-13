@@ -1,0 +1,4 @@
+# One copy of every package, hoisted, as the worker bundle and the browser bundle need: preact and its server
+# renderer peer on each other, and the isolated linker splits that cycle into two preacts.
+[install]
+linker = "hoisted"

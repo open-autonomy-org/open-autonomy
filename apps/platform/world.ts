@@ -54,6 +54,8 @@ if (process.env.POLAR_TWIN_URL) {
   vars.POLAR_ACCESS_TOKEN = 'polar_at_world';
   vars.POLAR_WEBHOOK_SECRET = `whsec_${Buffer.from('world-polar-secret').toString('base64')}`;
 }
+// The dashboard's browser half is built into the assets before the worker starts, as a deployment's `build` does.
+execFileSync('bun', ['run', 'build'], { cwd: import.meta.dir, stdio: 'inherit' });
 const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () => new Response('') }); const p = s.port; s.stop(true); return p; })();
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);

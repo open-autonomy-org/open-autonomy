@@ -41,23 +41,6 @@ export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibili
 export const DEFAULT_PRESET = 'roadmap' as const;
 export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
 
-// Where an app mounted around the core may add to a page. The core's page is a dashboard: what the agent is doing,
-// what it shipped, what the books hold. Everything that makes it a campaign (a cover, a pitch, an ask, a wall of
-// patrons) is an app's, entering here. Every slot is additive and inside the core's layout: an app can put a button
-// in the bar or a card in a column; it cannot remove, reorder or rewrite what the core shows.
-export interface PageSlots {
-  nav?: unknown;      // links in the top bar (the platform: Explore)
-  cta?: unknown;      // one button in the top bar (the platform: Become a patron)
-  cover?: unknown;    // above the header (the platform: the project's cover image, a campaign's face)
-  meta?: unknown;     // facts in the header's line (the platform: patrons, per month)
-  lead?: unknown;     // cards at the top of Overview's main column (the platform: About, the project's pitch)
-  side?: unknown;     // cards at the top of Overview's side column (the platform: the tiers, the patrons wall)
-  main?: unknown;     // cards after Overview's main column
-  moneyIn?: unknown;  // rows in the Books' money in (the platform: subscriptions, grants from funders)
-  give?: unknown;     // doors in the Books (the platform: give credits, a coupon)
-  styles?: string;    // the app's own CSS after the core's: a constant of the app, never computed from input
-}
-
 // The deployment's front: the grid of its projects. The core's words are "Projects" and how many; the platform's
 // are its pitch, its patrons in the figures, and each project's patrons on its card.
 export interface DirectorySlots {
