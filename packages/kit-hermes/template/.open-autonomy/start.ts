@@ -150,7 +150,9 @@ if (!existsSync(resolve(project, '.git'))) {
   // left as it is; the next attempt starts from a fresh main itself. A failed fetch or snapshot stops startup:
   // the supervisor can retry, but unlanded configuration must not become the running home.
   const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
-  const status = git('status', '--porcelain');
+  // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked
+  // changes are a killed attempt's work.
+  const status = git('status', '--porcelain', '--untracked-files=no');
   if (status.exitCode !== 0 || git('fetch', '-q', 'origin').exitCode !== 0) { console.error('start: cannot inspect and fetch the committed configuration; startup stopped, retry when Git access is restored'); process.exit(1); }
   if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
