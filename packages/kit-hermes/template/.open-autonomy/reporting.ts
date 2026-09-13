@@ -43,6 +43,7 @@ export class TranscriptPublisher {
     private checkpoint?: PublicationCheckpoint, private readonly save?: (checkpoint: PublicationCheckpoint) => void) {}
 
   publish(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
+    if (this.checkpoint?.endedAt) return Promise.resolve(this.checkpoint); // ended and published: append-only, so nothing more can follow
     if (this.pending) return this.pending; // the next observation carries any newer completion
     const work = this.reconcile(completion);
     this.pending = work;

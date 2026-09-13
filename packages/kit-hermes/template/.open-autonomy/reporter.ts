@@ -125,6 +125,7 @@ async function sessions(): Promise<void> {
   for (const [key, d] of descriptors) {
     if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
+    if (checkpoints[key]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
     try {
       let publisher = publishers.get(key);
