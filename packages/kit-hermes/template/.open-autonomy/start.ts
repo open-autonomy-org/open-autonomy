@@ -281,12 +281,28 @@ spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', r
 const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
+// What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
+// seeds, the kit) reaches the running stack without anyone on the host. Every ten minutes the checkout's main is
+// fetched; when it moved and the board is quiet, the stack drains and restarts onto it, the same path a kit
+// upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
+let mainCheckedAt = 0, mainMoved: string | undefined;
 setInterval(() => {
-  if (ending || restarting || !existsSync(restartRequest)) return;
-  let request: { version?: string };
-  try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
-  catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
-  if (!request.version || request.version === runningKit.version) { rmSync(restartRequest, { force: true }); return; }
+  if (ending || restarting) return;
+  let request: { version?: string } | undefined;
+  if (existsSync(restartRequest)) {
+    try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
+    catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
+    if (!request?.version || request.version === runningKit.version) { rmSync(restartRequest, { force: true }); request = undefined; }
+  }
+  if (!request && Date.now() - mainCheckedAt > 10 * 60_000) {
+    mainCheckedAt = Date.now();
+    const g = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+    if (g('status', '--porcelain', '--untracked-files=no').stdout.toString().trim()) return;
+    if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
+    const head = g('rev-parse', 'HEAD').stdout.toString().trim(), main = g('rev-parse', 'origin/main').stdout.toString().trim();
+    mainMoved = head && main && head !== main ? main.slice(0, 8) : undefined;
+  }
+  if (!request && !mainMoved) return;
   const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
   if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
   try {
@@ -295,7 +311,7 @@ setInterval(() => {
   } catch { say('cannot decode the board; kit restart waits'); return; }
   restarting = true;
   rmSync(restartRequest, { force: true });
-  say(`kit ${request.version} landed; asking Hermes to drain before restarting the stack`);
+  say(request ? `kit ${request.version} landed; asking Hermes to drain before restarting the stack` : `main moved to ${mainMoved}; asking Hermes to drain before restarting the stack onto it`);
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, constants.signals.SIGUSR1);
