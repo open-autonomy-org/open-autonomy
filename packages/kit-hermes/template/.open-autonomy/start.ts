@@ -200,6 +200,9 @@ const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
 if (onCodex && !codexTwin) await codexAccess();
+// A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
+// address: every run would fail on a connection error, silently. Say so where the operator reads.
+if (!onCodex && !codexTwin && ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && readFileSync(resolve(home, f), 'utf8').includes('HERMES_CODEX_BASE_URL'))) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; set `model.provider: openai-codex` and drop the custom provider, or every run fails to connect');
 const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
