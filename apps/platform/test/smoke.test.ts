@@ -21,8 +21,8 @@ describe('the open platform, one smoke test per door', () => {
     expect((await request(env, '/v1/grants/give', { method: 'POST', headers: { authorization: `Bearer ${give}` }, body: { to: 'acme/app', usd_cents: 300 } })).status).toBe(402);
     expect((await request(env, '/v1/chat/completions', { headers: { authorization: `Bearer ${give}` }, body: { model: 'zai/glm-5.3-flash', messages: [] } })).status).toBe(403);
     expect((await requestJson(env, '/v1/funders/pat')).given_usd_cents).toBe(300);
-    expect(await (await request(env, '/acme/app')).text()).toContain('Granted by @pat — I believe in it');
-    expect(await (await request(env, '/pat')).text()).toContain('Granted to');
+    expect(await (await request(env, '/acme/app')).text()).toContain('>pat<');
+    expect(await (await request(env, '/pat')).text()).toContain('Given');
     // Self-funding: a credit pack bought through Polar lands on the funder's books; the org matches a tenth from its
     // grants account as bonus credits, which go only to projects the funder does not own.
     await requestJson(env, '/admin/accounts/open-autonomy-org%2Fgrants/mint', { headers: admin, method: 'POST', body: { amount_usd_cents: 1000, key: 'org-1' } });

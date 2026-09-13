@@ -27,7 +27,7 @@ for (const doc of DOCS) {
     if (/^(https?:|\$|-|bun |curl |docker |git |create-open-autonomy|npm |TWINS_ROOT|WORLD_|SUPERCODE_|OPEN_AUTONOMY_)/.test(ref) || /\s/.test(ref)) {
       continue;
     }
-    if (ref.startsWith('/v1/') || ref.startsWith('/admin/') || ref.startsWith('/p/') || ref.startsWith('/webhooks/')) {
+    if (ref.startsWith('/v1/') || ref.startsWith('/admin/') || ref.startsWith('/webhooks/')) {
       if (!routeExists(ref)) problems.push(`${doc}: route \`${ref}\` is not served`);
       continue;
     }

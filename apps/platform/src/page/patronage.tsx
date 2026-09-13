@@ -104,9 +104,10 @@ export function directorySlots(entries: DirectoryEntry[], patronage: Record<stri
   const patrons = projects.reduce((s, e) => s + p(e.account).patron_count, 0);
   const funders = entries.filter((e) => e.account.startsWith('@') && e.granted_out_usd_cents > 0).length;
   const granted = entries.filter((e) => e.account.startsWith('@') || e.account === grants).reduce((s, e) => s + e.granted_out_usd_cents, 0);
+  const pooled = entries.some((e) => e.account === grants && e.granted_out_usd_cents > 0);
   return {
     front: <><h1>Fund a project that builds itself.</h1><p class="lede">Each project here runs its own agent on a roadmap it keeps in its repository. Back one, and every session it works, every cent it spends and everything it ships is on its page.</p></>,
-    stripe: <><div><span class="n">{patrons}</span><span class="k">{patrons === 1 ? 'patron' : 'patrons'}</span></div>{granted > 0 ? <div><span class="n">{usd0(granted)}</span><span class="k">{funders ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'}` : `granted from ${ownerOf(grants)}'s pool`}</span></div> : null}</>,
+    stripe: <><div><span class="n">{patrons}</span><span class="k">{patrons === 1 ? 'patron' : 'patrons'}</span></div>{granted > 0 ? <div><span class="n">{usd0(granted)}</span><span class="k">{funders && pooled ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'} and ${ownerOf(grants)}'s pool` : funders ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'}` : `granted from ${ownerOf(grants)}'s pool`}</span></div> : null}</>,
     card: facts(entries, patronage),
     styles: PATRONAGE_STYLES,
   };

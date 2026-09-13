@@ -4,7 +4,7 @@
 // project, the doors to buy credits or sponsor on a name's page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
 import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
-import { LedgerClient, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
+import { LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
@@ -53,9 +53,11 @@ export const app: App = {
       return privateHtml(renderGivePage(await givePageData(ledger, t, session, message)), message?.ok === false ? 400 : 200);
     }
     // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
-    // A project's own doors on the platform: /owner/project/give, /owner/project/redeem; Polar's return at
-    // /owner/project/thanks or /login/thanks for a funder buying credits.
-    const door = path.match(/^\/([^/]+)(?:\/([^/]+))?\/(give|redeem|thanks)$/);
+    // A project's own doors on the platform: /owner/project/give, /owner/project/redeem; Polar's return at /owner/project/thanks or
+    // /login/thanks for a funder buying credits. The segments hold to the core's shapes and reserved names, so a
+    // fixed door such as /v1/funders/give is never shadowed.
+    const m0 = path.match(/^\/([^/]+)(?:\/([^/]+))?\/(give|redeem|thanks)$/);
+    const door = m0 && LOGIN.test(dec(m0[1])) && !RESERVED.has(dec(m0[1]).toLowerCase()) && (m0[2] === undefined || REPO.test(dec(m0[2]))) ? m0 : null;
     const at = door ? accountAt(dec(door[1]), door[2] === undefined ? undefined : dec(door[2])) : '';
     if (door && door[3] === 'give') {
       if (req.method !== 'POST') return methodNotAllowed();

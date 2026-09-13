@@ -2,7 +2,7 @@
 // `/owner/project` a project and `/owner/project/<tab>` its depths. Tried last, after every door with a fixed name,
 // so a name can never shadow one. An app mounted around the core fills each page's slots through `App.page`.
 import type { DirectoryEntry, FunderView, LedgerClient, ProjectView } from '../ledger.js';
-import { error, html } from '../http.js';
+import { error, html, methodNotAllowed } from '../http.js';
 import { readTeamEdit, readTeamFile, validTeamAccount } from '../team.js';
 import { isStale, syncProfile } from '../sync.js';
 import type { Env } from '../types.js';
@@ -12,7 +12,7 @@ import { pageConfig } from './brand.js';
 import { Account } from './account.js';
 import { Directory } from './directory.js';
 import { renderMessage } from './message.js';
-import { visibilityOf, type AccountSlots, type DirectorySlots, type PageSlots, type Role } from './model.js';
+import { sees, visibilityOf, type AccountSlots, type DirectorySlots, type PageSlots, type Role, type Visibility } from './model.js';
 import { accountAt, nameOf, type SessionTail } from './parts.js';
 import { Overview, document, type ProjectPageData } from './project.js';
 import { Agent, Books, Doc, Item, Session, Sessions, Team, Work } from './tabs.js';
@@ -27,9 +27,13 @@ export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAcc
 
 const NO_STORE = { 'cache-control': 'no-store' };
 const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
-// A login: GitHub's rule. A project's name: what a repository may be called.
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
-const REPO = /^[A-Za-z0-9._-]{1,100}$/;
+// A login: GitHub's rule. A project's name: what a repository may be called. An app's own doors under a project
+// (the platform's give, redeem, thanks) hold to the same shapes so they can never shadow a fixed door either.
+export const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+export const REPO = /^[A-Za-z0-9._-]{1,100}$/;
+const TABS = new Set(['work', 'sessions', 'books', 'agent', 'team', 'about']);
+// Which panel of the owner's word a tab address answers to; a transcript is the sessions tab's deeper panel.
+const GATE: Record<string, keyof Visibility> = { about: 'overview', work: 'work', sessions: 'sessions', transcript: 'transcripts', books: 'books', agent: 'agent', team: 'team' };
 // Names no page may take: every fixed door of this worker, and what an app may add in front of it.
 export const RESERVED = new Set(['v1', 'admin', 'webhooks', 'give', 'explore', 'settings', 'healthz', 'favicon.svg', 'favicon.ico', 'assets', 'static']);
 const dec = (s: string): string => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -68,14 +72,21 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if (!REPO.test(seg[1])) return undefined;
   const account = accountAt(seg[0], seg[1]);
   const tab = seg[2];
+  if (tab !== undefined && !TABS.has(tab)) return undefined;
+  if ((tab === undefined || tab === 'about' || tab === 'books' || tab === 'agent') && seg.length > 3) return undefined;
+  if (!isGet && tab !== 'team') return methodNotAllowed();
   const view = await ledger.project(account);
   if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
   if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
+  // The owner's word holds on every address, not only the tab bar: a panel the viewer may not see is not there.
+  const visibility = visibilityOf(view.profile.config_yaml);
+  const gate = tab === 'sessions' && seg.length === 4 ? 'transcript' : tab ?? 'about';
+  if (!sees(viewer, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' ? 'page' : gate} is not open to everyone.`), 404);
   const base = async (limit: number): Promise<ProjectPageData> => {
     const [stream, road, funding, slots] = await Promise.all([ledger.sessions(account, limit), ledger.roadmap(account), ledger.funding(account), app.project?.(account, view, tools) ?? Promise.resolve({} as PageSlots)]);
     const first = stream.live[0];
     const tail: SessionTail | undefined = first ? await ledger.session(account, first).then((r) => (r.session ? { key: first, turns: r.session.turns.slice(-40) } : undefined)) : undefined;
-    return { brand, viewer, visibility: visibilityOf(view.profile.config_yaml), v: view, sessions: stream.sessions, live: stream.live, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, tail, daily: funding.daily_spend_usd_cents, now, slots };
+    return { brand, viewer, visibility, v: view, sessions: stream.sessions, live: stream.live, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, revision: road.revision?.revision, tail, daily: funding.daily_spend_usd_cents, now, slots };
   };
   const page = (title: string, d: ProjectPageData, node: unknown, status = 200) => privateHtml(document(title === nameOf(account) ? title : `${title} · ${nameOf(account)}`, brand, render(node), d.slots?.styles), status);
 
@@ -88,12 +99,10 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
       try { return await tools.beginIdentity(req, readTeamEdit(account, await req.formData())); }
       catch (e) { return privateHtml(renderMessage(account, false, 'Team change not started', (e as Error).message), 400); }
     }
-    if (!isGet) return undefined;
     const d = await base(20);
     try { const file = await readTeamFile(env, account); return page('Team', d, Team({ d, file, editing: url.searchParams.get('edit') ?? undefined, configured: tools.identity })); }
     catch (e) { return page('Team', d, Team({ d, failure: (e as Error).message, configured: tools.identity }), 503); }
   }
-  if (!isGet) return undefined;
   if (tab === undefined) { const d = await base(50); return page(nameOf(account), d, Overview(d)); }
   if (tab === 'about' && seg.length === 3) { const d = await base(20); return page('About', d, Doc({ d, title: 'About', md: view.profile.about_md })); }
   if (tab === 'work' && seg.length === 3) { const d = await base(20); return page('Work', d, Work(d)); }

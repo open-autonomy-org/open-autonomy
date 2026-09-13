@@ -1,6 +1,6 @@
 // The page keeps up with the books without a reload where it can: the workshop's ticker and the transcript append
 // turns as the session narrates them; the money updates in place. It reloads once when the page's shape changes:
-// a session starts or ends, the owner pauses or resumes, spending stops. Follows a transcript unless the reader
+// a session starts or ends, the owner pauses or resumes, the roadmap moves. Follows a transcript unless the reader
 // has scrolled up. Served inline; nothing is fetched from anywhere but this worker.
 export const LIVE = `(() => {
   if (!('EventSource' in window)) return;
@@ -44,7 +44,7 @@ export const LIVE = `(() => {
     es.addEventListener('status', (e) => { const s = JSON.parse(e.data); set('[data-turns]', String(s.turn_count)); set('[data-cents]', usd(s.usd_cents)); if (s.status !== 'live') { es.close(); later(); } });
     es.onerror = () => {};
   }
-  // The project: money in place; a new shape (a session starting or ending, a pause, spending stopped) reloads once.
+  // The project: money in place; a new shape (a session starting or ending, a pause, a roadmap revision) reloads once.
   const project = $('[data-project]');
   if (project) {
     const es = new EventSource('/v1/accounts/' + enc(project.dataset.project) + '/events');
@@ -53,7 +53,7 @@ export const LIVE = `(() => {
       set('[data-balance]', usd(d.balance_usd_cents)); set('[data-spent]', usd(d.consumed_usd_cents)); set('[data-received]', usd(d.granted_in_usd_cents));
       const shape = JSON.parse(project.dataset.shape);
       const state = String(d.state || ''); const [desired, observed] = state.includes('/') ? state.split('/') : [state, ''];
-      if (JSON.stringify(d.live) !== JSON.stringify(shape[0]) || (desired && desired !== shape[1]) || (observed && observed !== shape[2])) { es.close(); later(); }
+      if (JSON.stringify(d.live) !== JSON.stringify(shape[0]) || (desired && desired !== shape[1]) || (observed && observed !== shape[2]) || (d.roadmap_revision || 0) !== shape[3]) { es.close(); later(); }
     });
     es.onerror = () => {};
   }

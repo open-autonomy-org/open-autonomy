@@ -11,7 +11,7 @@ export { document } from './page/project.tsx';
 export { TopBar, Foot, at, accountAt, nameOf, ownerOf, coverStyle, safeUrl, purposeSentence } from './page/parts.tsx';
 export { T, CSS, FONTS } from './page/theme.ts';
 export { PRESETS, sees, visibilityOf, type Role, type Visibility, type PageSlots, type DirectorySlots, type AccountSlots } from './page/model.ts';
-export { type PageApp, type PageTools } from './page/serve.tsx';
+export { LOGIN, REPO, RESERVED, type PageApp, type PageTools } from './page/serve.tsx';
 export { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, mdInlineToSafeHtml, render, usd, usd0 } from './ui.tsx';
 export { error, html, json, methodNotAllowed, parseJson, base64url, fromBase64url, hmac, constantTimeEqual } from './http.ts';
 export { authedClaims, signKey } from './keys.ts';

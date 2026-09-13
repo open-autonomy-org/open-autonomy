@@ -16,6 +16,7 @@ export interface ProjectPageData {
   sessions: SessionSummary[];
   live: string[];
   roadmap: Roadmap;
+  revision?: number;
   tail?: SessionTail;
   daily: number[];
   now: number;
@@ -33,7 +34,7 @@ export function Shell({ d, current, children }: { d: ProjectPageData; current: T
   return (
     <>
       <TopBar brand={d.brand} nav={d.slots?.nav} cta={d.slots?.cta} />
-      <div class="page" data-project={d.v.account} data-shape={JSON.stringify([d.live, d.v.control?.desired?.state ?? 'running', d.v.control?.observed?.state ?? '', d.v.exhausted, d.v.funded])}>
+      <div class="page" data-project={d.v.account} data-shape={JSON.stringify([d.live, d.v.control?.desired?.state ?? 'running', d.v.control?.observed?.state ?? '', d.revision ?? 0])}>
         <Hero v={d.v} standing={standing} runwayDays={runway} meta={d.slots?.meta} />
         <Tabs account={d.v.account} current={current} show={show} counts={{ work: open, sessions: d.live.length ? `${d.live.length} live` : d.sessions.length }} />
         {children}
