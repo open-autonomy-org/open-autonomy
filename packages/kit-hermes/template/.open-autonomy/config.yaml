@@ -32,6 +32,14 @@ spend:
     - { window: 30d, usd_cents: 6000 }
     - { window: 1m, calls: 60 }
 
+# Who sees what on the project's pages: a preset, then a role per panel that overrides it. Roles: public, giver
+# (whose money is on the books), team and owner (the roster above). Presets: open (everything public, the default
+# when this block is absent), status (transcripts and books for givers; calls and the agent for the team), private
+# (team and up). Narrowing is composition, never secrecy: the platform's API stays public reads.
+# dashboard:
+#   visibility: status
+#   books: public
+
 # The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
 # bound is set. Every rail leaves a record on the public audit trail naming itself.
 rails:

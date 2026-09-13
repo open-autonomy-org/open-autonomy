@@ -47,19 +47,21 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const now = Date.now();
   const seg = url.pathname.split('/').slice(1).map(dec);
   const isGet = req.method === 'GET' || req.method === 'HEAD';
-  if (url.pathname === '/' || (seg.length >= 1 && seg.length <= 4 && LOGIN.test(seg[0]))) tools.who = await app.viewer?.(req, tools);
-  const who = tools.who;
+  // Who is looking is asked of the app only for an address this router serves, never for one falling through.
+  const identify = async () => { tools.who = await app.viewer?.(req, tools); return tools.who; };
   const viewer = 'public' as const; // the front and a name's page read the same to everyone; a project's role is the project's
 
   // ---- the front ----
   if (url.pathname === '/') {
     if (!isGet) return undefined;
+    await identify();
     const { entries } = await ledger.directory();
     for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
     const slots = await app.directory?.(entries, tools);
     return html(document(brand, brand, render(Directory({ brand, viewer, entries, now, slots })), slots?.styles));
   }
   if (seg.length < 1 || seg.length > 4 || RESERVED.has(seg[0].toLowerCase()) || !LOGIN.test(seg[0])) return undefined;
+  const who = await identify();
 
   // ---- a name: an org's projects, a person's giving ----
   if (seg.length === 1) {
