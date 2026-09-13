@@ -1,0 +1,32 @@
+{
+  "name": "@open-autonomy/cli",
+  "version": "0.1.0",
+  "description": "oa: Open Autonomy on the command line. A project's word, money and sessions; the owner's pause and resume; keys.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-autonomy-org/open-autonomy.git",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "bin": {
+    "oa": "./src/oa.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.0",
+    "@open-autonomy/sdk": "workspace:*",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "typescript": "^5.9.0"
+  }
+}

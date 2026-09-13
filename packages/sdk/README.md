@@ -138,7 +138,9 @@ Public reads, no key:
 |---|---|
 | `GET /v1/accounts/:account/sessions?limit=` | the stream, newest first, and `live`: the keys live now |
 | `GET /v1/accounts/:account/sessions/:key` | one session with its transcript tail and `next_seq` |
-| `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes |
+| `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes (`follow()` iterates them) |
+| `GET /v1/accounts/:account` | the books: the balance, what came in and went out, the burn, the runway, the owner's bounds (`funding()`) |
+| `GET /v1/accounts/:account/calls?limit=` | every metered call, newest first (`calls()`) |
 | `GET /v1/accounts/:account/items/:item` | every session, update and settled cent on the item |
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
 | `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md? }` | the project's document, from whatever file the substrate keeps: what it is (the page leads with the first paragraph) |
