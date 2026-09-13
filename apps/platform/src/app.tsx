@@ -115,18 +115,18 @@ export const app: App = {
     async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
     async project(account, view, t) {
       const [p, road] = await Promise.all([new Patronage(t.ledger).view(account), t.ledger.roadmap(account)]);
-      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname });
+      return projectSlots({ account, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname + t.url.search });
     },
     async directory(entries, t) {
       const patronage = new Patronage(t.ledger);
       const views = await Promise.all(entries.filter((e) => e.is_project && e.listed).map(async (e) => [e.account, await patronage.view(e.account)] as const));
-      return { ...directorySlots(entries, Object.fromEntries(views), t.grantsAccount), nav: whoNav(t.who, t.url.pathname) };
+      return { ...directorySlots(entries, Object.fromEntries(views), t.grantsAccount), nav: whoNav(t.who, t.url.pathname + t.url.search) };
     },
     async account(name, entries, _funder, t) {
       const patronage = new Patronage(t.ledger);
       const owned = entries.filter((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
       const views = await Promise.all(owned.map(async (e) => [e.account, await patronage.view(e.account)] as const));
-      return { ...accountSlots({ name, sponsor: sponsorAccount(t.env as Env), polar: polarConfigured(t.env as Env), self: Boolean(t.who && t.who.login.toLowerCase() === name.toLowerCase()), entries, patronage: Object.fromEntries(views) }), nav: whoNav(t.who, t.url.pathname) };
+      return { ...accountSlots({ name, sponsor: sponsorAccount(t.env as Env), polar: polarConfigured(t.env as Env), self: Boolean(t.who && t.who.login.toLowerCase() === name.toLowerCase()), entries, patronage: Object.fromEntries(views) }), nav: whoNav(t.who, t.url.pathname + t.url.search) };
     },
   },
   identity: { begin: (req, env, intent) => beginGiveLogin(req, env as Env, intent as TeamEdit) },

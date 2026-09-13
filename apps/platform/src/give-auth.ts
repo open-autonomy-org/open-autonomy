@@ -39,9 +39,10 @@ export async function giveSession(req: Request, env: Env): Promise<GiveSession |
 
 // `next` is where the sign-in returns: a path on this deployment, never elsewhere. Resolved the way a browser
 // resolves it (a backslash is a slash to a WHATWG parser, dot segments collapse), kept only when the origin is
-// this one, and handed on as the resolved absolute URL itself so nothing is resolved a second time.
+// this one, and handed on as the resolved absolute URL itself so nothing is resolved a second time; the same check
+// reads it back from the signed state, where it is already absolute. The origin comparison is the whole rule.
 export const safeNext = (next: string | null | undefined, base: string): string | undefined => {
-  if (!next || !next.startsWith('/')) return undefined;
+  if (!next || /\s/.test(next)) return undefined;
   try { const u = new URL(next, base); return u.origin === new URL(base).origin ? u.href : undefined; } catch { return undefined; }
 };
 export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
@@ -99,6 +100,9 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
   return redirect(new URL(safeNext(expected.next, req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/', SESSION_SECONDS)}`);
 }
 
+// Signing out clears the cookie on the site and the one an earlier sign-in set under /give alone.
 export function endGiveLogin(req: Request): Response {
-  return redirect(new URL(safeNext(new URL(req.url).searchParams.get('next'), req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/', 0)}`);
+  const res = redirect(new URL(safeNext(new URL(req.url).searchParams.get('next'), req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/', 0)}`);
+  res.headers.append('set-cookie', `${SESSION_COOKIE}=; ${cookieAttrs(req, '/give', 0)}`);
+  return res;
 }
