@@ -64,9 +64,12 @@ export function standingOf(v: Pick<ProjectView, 'funded' | 'exhausted' | 'contro
   if (desired === 'paused' && observed === 'paused') return 'paused';
   if (desired === 'paused') return 'requested';
   if (observed === 'paused') return 'paused';
+  // A session in flight is the one fact that outranks the books: an agent on its owner's own subscription works
+  // with no platform funds at all, and a working agent is working.
+  if (live.length) return 'live';
   if (v.exhausted) return 'exhausted';
   if (!v.funded) return 'unfunded';
-  return live.length ? 'live' : 'running';
+  return 'running';
 }
 const STANDING: Record<Standing, { cls: string; word: string }> = {
   live: { cls: 'live', word: 'Working now' }, running: { cls: 'ok', word: 'Running' }, requested: { cls: 'warn', word: 'Pause requested' },

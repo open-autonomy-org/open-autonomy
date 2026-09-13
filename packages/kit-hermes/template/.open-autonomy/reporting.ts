@@ -69,14 +69,20 @@ export class TranscriptPublisher {
     }
     const remote = await this.oa.session(this.account, key);
     const seq = remote?.next_seq ?? 0;
-    if (!this.checkpoint && seq > (remote?.turns.length ?? 0)) throw new Error(`${key}: publication checkpoint missing for history outside the destination tail; reconciliation required`);
-    if (seq > turns.length || (this.checkpoint && this.checkpoint.seq <= seq && digest(turns.slice(0, this.checkpoint.seq)) !== this.checkpoint.digest)) {
-      throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
-    }
-    // Also verify the destination's retained tail, including recovery from an old
-    // reporter or a lost upload response. Never equate an offset with matching text.
-    for (const t of remote?.turns ?? []) {
-      if (t.seq === undefined || !turns[t.seq] || canonical(t) !== canonical(turns[t.seq])) throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
+    const ended = completion ?? nativeCompletion;
+    // The destination is append-only. When what it holds no longer matches what the source says (an older reporter,
+    // a lost acknowledgement), no turn is rewritten. But a session that has ended is ended: its end is published
+    // over the transcript as it stands, so the books never call a finished session live.
+    const diverged = (!this.checkpoint && seq > (remote?.turns.length ?? 0))
+      || seq > turns.length || (this.checkpoint && this.checkpoint.seq <= seq && digest(turns.slice(0, this.checkpoint.seq)) !== this.checkpoint.digest)
+      || (remote?.turns ?? []).some((t) => t.seq === undefined || !turns[t.seq] || canonical(t) !== canonical(turns[t.seq]));
+    if (diverged) {
+      if (!ended || !remote || remote.status !== 'live') throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
+      await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });
+      const checkpoint: PublicationCheckpoint = { seq, digest: digest(turns.slice(0, Math.min(seq, turns.length))), endedAt: ended.endedAt };
+      this.checkpoint = checkpoint;
+      this.save?.(checkpoint);
+      return checkpoint;
     }
     const session = remote ? new Session(this.oa, key, seq) : await this.oa.open(this.start);
     if (session.seq !== seq) throw new Error(`${key}: destination advanced; retry reconciliation`);
@@ -88,7 +94,6 @@ export class TranscriptPublisher {
       this.save?.(this.checkpoint);
     }
     const checkpoint: PublicationCheckpoint = { seq: session.seq, digest: digest(turns) };
-    const ended = completion ?? nativeCompletion;
     if (ended) {
       await session.end({ ...ended, report, item: this.start.item });
       checkpoint.endedAt = ended.endedAt;
