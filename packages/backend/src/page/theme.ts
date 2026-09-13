@@ -16,9 +16,9 @@ h1,h2,h3,p,ul,ol{margin:0}
 ul,ol{padding:0;list-style:none}
 .topbar{background:${T.panel};border-bottom:1px solid ${T.line};position:sticky;top:0;z-index:5}
 .topbar .in{max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:22px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:-.01em}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:-.01em;white-space:nowrap}
 .brand svg{width:24px;height:24px}
-.topbar nav{display:flex;gap:18px;color:${T.muted};font-weight:500}
+.topbar nav{display:flex;gap:18px;color:${T.muted};font-weight:500;white-space:nowrap}
 .topbar .grow{flex:1}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;border:1.5px solid ${T.accent};background:${T.accent};color:#fff;font-weight:700;font-size:14px;white-space:nowrap;cursor:pointer}
 .btn:hover{background:${T.accentInk};border-color:${T.accentInk};text-decoration:none}
@@ -190,5 +190,6 @@ ul,ol{padding:0;list-style:none}
 .turns .body{white-space:pre-wrap;word-break:break-word;color:${T.ink}}
 .turns .body.tool{color:${T.muted}}
 @media(max-width:900px){.board{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.topbar .in{gap:12px;padding:0 14px}.topbar nav{gap:12px;font-size:14px}.brand{font-size:15px}.brand svg{width:20px;height:20px}.btn.small{padding:0 10px}}
 @media(max-width:900px){.front h1{font-size:32px}.stripe{gap:22px}.acct h1{font-size:28px}.acct .av{width:64px;height:64px}.cols{grid-template-columns:1fr}.side{position:static}.cover{height:150px}.hero{grid-template-columns:72px 1fr;gap:14px}.avatar{width:72px;height:72px;border-radius:18px;margin-top:-30px}.hero .who{padding-top:6px}.hero h1{font-size:26px}}
 `;
