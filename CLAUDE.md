@@ -16,6 +16,8 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
   generated repository is self-contained (the SDK is vendored into it).
+- `packages/cli/` — `@open-autonomy/cli`: `oa`, the platform's doors on the command line: a project's status, sessions (a transcript,
+  followed while live), roadmap and books; the owner's `pause` and `resume` on a steer key; `key mint` and `key rotate`.
 - `cookbooks/todo-cli/` — the canonical reference project, made with the kit: CLI development plus community,
   setup, team and release scenarios. Its `cookbooks/todo-cli/examples/notes-http.ts` is a focused HTTP service without another kit copy.
   Verify fresh installation in a disposable generated project.
