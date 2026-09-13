@@ -130,7 +130,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict></plist>
 `, { mode: 0o644 });
-  const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}`, `launchctl kickstart -k gui/$(id -u)/${label}   (a running service, onto the new release)`];
+  // launchd reads a unit at bootstrap and never again: a rewritten unit is loaded by bootout then bootstrap, never by
+  // kickstart, which restarts the definition it already holds.
+  const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}   (first load, and again after every release: launchd holds the unit it read)`];
   say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
   say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
 }
