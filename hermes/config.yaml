@@ -26,6 +26,11 @@ compression:
 
 agent:
   max_turns: 160
+  # The browser the agent drives is its own: the isolated headless one the browser tools spawn. The browser-use
+  # harness attaches to a Chrome already running on the host, which on a shared machine is a person's, prompting
+  # on their screen; it stays off.
+  disabled_toolsets:
+    - browser-use
 
 # The board (Hermes Kanban) the schedule files roadmap items on. Its dispatcher runs inside the gateway and
 # the review lane verifies every handoff; the interval is how soon a filed task is picked up.
