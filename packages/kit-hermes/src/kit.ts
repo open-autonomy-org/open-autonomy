@@ -24,7 +24,7 @@ export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel)
 
 export function validateParams(p: Partial<KitParams>): KitParams {
   if (!p.project || p.project.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.project)) throw new Error('project: use a lowercase runtime slug of at most 64 characters (letters and digits separated by hyphens), such as audit-desk; put the display name in branding/brand.json');
-  if (!p.account || !/^[^/\s]+\/[^/\s]+$/.test(p.account)) throw new Error('account: owner/repo, the GitHub repository the platform funds');
+  if (!p.account || !/^[\w.-]+\/[\w.-]+$/.test(p.account)) throw new Error('account: owner/repo, the GitHub repository the platform funds');
   return { project: p.project, account: p.account };
 }
 

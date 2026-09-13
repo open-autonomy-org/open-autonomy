@@ -26,11 +26,13 @@ import { KIT, check, readKit } from './kit.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
+const MARK = 'written by create-open-autonomy runtime';
 const run = (cmd: string[], cwd?: string, timeout = 120_000) => spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout });
 const ok = (r: ReturnType<typeof run>): boolean => r.status === 0;
 const out = (r: ReturnType<typeof run>): string => (r.stdout ?? '').trim();
 
 export function runtime(dir: string, opts: RuntimeOpts): void {
+  if (platform() !== 'darwin') throw new Error('the runtime writes a launchd unit; a systemd unit comes with the first Linux host');
   const rec = readKit(dir);
   const { project, account } = rec.params;
   if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
@@ -91,7 +93,6 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   }
 
   // ---- the World definition ----
-  if (platform() !== 'darwin') throw new Error('the runtime writes a launchd unit; a systemd unit comes with the first Linux host');
   const executor = join(release, 'container', 'executor.ts');
   const world = { id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
     stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 16384 },
@@ -108,11 +109,13 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const label = `org.open-autonomy.${project}`;
   const unit = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
   mkdirSync(dirname(unit), { recursive: true });
+  // A unit this verb wrote is rewritten onto the new release; one made by hand is the operator's to move aside first.
   const rewrite = existsSync(unit);
+  if (rewrite && !readFileSync(unit, 'utf8').includes(MARK)) throw new Error(`${unit} exists and was not written by this verb; move it aside to let the kit own the service`);
   const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   writeFileSync(unit, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
+<plist version="1.0"><!-- ${MARK} --><dict>
   <key>Label</key><string>${label}</string>
   <key>ProgramArguments</key><array>${command.map((a) => `<string>${xml(a)}</string>`).join('')}</array>
   <key>WorkingDirectory</key><string>${xml(runtimeDir)}</string>
