@@ -31,7 +31,9 @@ try {
     const doors = (name: string): Door[] => (flag(name) ?? '').split(',').map((d) => d.trim()).filter(Boolean) as Door[];
     await setup(target, { plan: argv.includes('--plan'), yes: argv.includes('--yes'), with: doors('--with'), without: doors('--without'), secrets: flag('--secrets') ? resolve(flag('--secrets')!) : undefined, bare: argv.includes('--bare'), accountId: flag('--account-id') });
   } else if (verb === 'runtime') {
-    runtime(target, { runtime: flag('--runtime'), secrets: flag('--secrets'), valve: Number(flag('--valve') ?? 8787), provider: flag('--provider'), dockerHost: flag('--docker-host'), prepareVolumes: argv.includes('--prepare-volumes') });
+    const valve = Number(flag('--valve') ?? 8787);
+    if (!Number.isInteger(valve) || valve < 1024 || valve > 65532) throw new Error('--valve needs an unprivileged port with three above it');
+    runtime(target, { runtime: flag('--runtime'), secrets: flag('--secrets'), valve, provider: flag('--provider'), dockerHost: flag('--docker-host'), prepareVolumes: argv.includes('--prepare-volumes') });
   } else if (verb === 'check') {
     const out = check(target);
     if (out.drift.length) { for (const d of out.drift) console.error(d); console.error(`kit drift: ${out.drift.length} file(s). Run \`create-open-autonomy upgrade ${dir}\`; the kit is the source and its files are never edited in place (name a file in .open-autonomy/kit.json divergences to take it over).`); process.exit(1); }

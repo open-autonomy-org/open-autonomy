@@ -36,6 +36,10 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
   const drift = check(dir).drift;
   if (drift.length) throw new Error(`the kit-owned files have drifted (${drift.length}); upgrade and land them first:\n  ${drift.join('\n  ')}`);
+  // The host runs the kit's reviewed code. A file the project took over under .open-autonomy/ or container/ is the
+  // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first.
+  const taken = rec.divergences.filter((d) => d.startsWith('.open-autonomy/') || d.startsWith('container/'));
+  if (taken.length) throw new Error(`the project has taken over host files the runtime would ship (${taken.join(', ')}); reconcile them with the kit before cutting a release`);
   const rev = out(run(['git', 'rev-parse', 'HEAD'], dir));
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);
   if (out(run(['git', 'status', '--porcelain', '--', '.open-autonomy', 'container'], dir))) throw new Error('.open-autonomy or container/ has uncommitted changes; the runtime is cut from a landed revision');
@@ -55,8 +59,10 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const kitDir = join(release, '.open-autonomy');
   if (!existsSync(join(kitDir, 'start.ts'))) {
     mkdirSync(release, { recursive: true, mode: 0o750 });
-    const archive = spawnSync('sh', ['-c', `git archive HEAD .open-autonomy container/executor.ts | tar -x -C "${release}"`], { cwd: dir, encoding: 'utf8' });
-    if (archive.status !== 0) throw new Error(`could not extract the kit at ${rev.slice(0, 8)}: ${(archive.stderr ?? '').trim()}`);
+    const archive = spawnSync('git', ['archive', 'HEAD', '.open-autonomy', 'container/executor.ts'], { cwd: dir, maxBuffer: 256 * 1024 * 1024 });
+    if (archive.status !== 0) throw new Error(`could not archive the kit at ${rev.slice(0, 8)}: ${archive.stderr?.toString().trim()}`);
+    const extract = spawnSync('tar', ['-x', '-C', release], { input: archive.stdout });
+    if (extract.status !== 0) throw new Error(`could not extract the kit into ${release}: ${extract.stderr?.toString().trim()}`);
     const install = run(['bun', 'install', '--no-save'], kitDir, 300_000);
     if (!ok(install)) throw new Error(`bun install in ${kitDir} failed: ${(install.stderr ?? '').trim()}`);
     writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: KIT.version }, null, 2)}\n`);
@@ -72,7 +78,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     if (!ok(docker(['image', 'inspect', '--format', '{{.Id}}', image]))) say(`image ${image}: missing; build it with the printed World command`);
     for (const v of volumes) {
       if (ok(docker(['volume', 'inspect', '--format', '{{.Name}}', v]))) continue;
-      if (opts.prepareVolumes) { const c = docker(['volume', 'create', v]); if (!ok(c)) throw new Error(`could not create volume ${v}: ${(c.stderr ?? '').trim()}`); say(`volume ${v}: created (empty; the first boot clones the checkout and makes the home)`); }
+      if (opts.prepareVolumes) { const c = docker(['volume', 'create', v]); if (!ok(c)) throw new Error(`could not create volume ${v}: ${(c.stderr ?? '').trim()}`); say(`volume ${v}: created, empty; clone the repository into the checkout volume as container/README.md says before loading the unit`); }
       else say(`volume ${v}: missing; --prepare-volumes creates it once`);
     }
   }
@@ -102,6 +108,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const label = `org.open-autonomy.${project}`;
   const unit = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
   mkdirSync(dirname(unit), { recursive: true });
+  const rewrite = existsSync(unit);
   const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   writeFileSync(unit, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -119,6 +126,6 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
 </dict></plist>
 `, { mode: 0o644 });
   const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}`, `launchctl kickstart -k gui/$(id -u)/${label}   (a running service, onto the new release)`];
-  say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
+  say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
   say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
 }

@@ -21,6 +21,7 @@ The executor's lifecycle is the kit's `container/executor.ts`, called by World f
 it starts the one container by name with `--init`, a read-only root, dropped capabilities and resource limits,
 and stops it on `down`. It never creates the volumes or the image: an empty home would be a new agent with the
 old name. It can resume a provider first (`--provider colima:<profile>`) and use another daemon (`--docker-host`).
+If a container with the executor's name survives a World that died, `up` refuses; `docker stop` it yourself.
 
 ## Prepare and start
 

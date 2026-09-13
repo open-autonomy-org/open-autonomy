@@ -27,7 +27,9 @@ export interface Update { item: string; text: string; session?: string; at?: str
 // Who the agent is and how it runs, as its substrate publishes it: a persona (the identity text it runs
 // with), its model, its schedule, what it knows how to do, and how to run it. The platform shows this
 // beside the roadmap; it reads no harness's files for it.
-export interface AgentSetup { harness?: string; persona?: string; model?: string; provider?: string; schedule?: Array<{ name: string; schedule: string; description?: string }>; skills?: string[]; setup_md?: string }
+// What runs the agent: in a container (an executor World owns) or bare on a host; which kit; the executor's image; the host's name.
+export interface AgentRuntime { mode: 'container' | 'bare'; kit?: string; executor?: string; host?: string }
+export interface AgentSetup { harness?: string; persona?: string; model?: string; provider?: string; schedule?: Array<{ name: string; schedule: string; description?: string }>; skills?: string[]; setup_md?: string; runtime?: AgentRuntime }
 export const SETUP_EVENT_TYPE = 'org.open-autonomy.agent.setup';
 // The project's documents, from whatever files the substrate keeps: what the project is (`about_md`; the page
 // leads with its first paragraph). What shipped is the timeline's past, published as items, never a document.
