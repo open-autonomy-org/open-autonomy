@@ -7,12 +7,12 @@
 //   <runtime>/releases/kit-<rev>/    the kit at the checkout's HEAD (.open-autonomy and container/executor.ts),
 //                                    its dependencies installed: the trusted host copy a changed checkout does not touch
 //   <runtime>/world.json             the World definition: the executor service and its environment
-//   <runtime>/build-world.json       the image build through World (--build), against the reviewed checkout
+//   <runtime>/build-world.json       the image build through World, against the reviewed checkout
 //   <runtime>/state/                 the host reporter's state; <runtime>/world/ World's own state root
-//   the service unit                 launchd (macOS) or systemd --user (Linux): World `run` with the foreground command
+//   the launchd unit                 World `run` with the foreground command (a systemd unit when a Linux host exists)
 //
-//   create-open-autonomy runtime <dir> [--runtime <dir>] [--secrets <dir>] [--valve <port>] [--image <ref>]
-//                                      [--provider colima:<profile>] [--docker-host <url>] [--prepare-volumes] [--build]
+//   create-open-autonomy runtime <dir> [--runtime <dir>] [--secrets <dir>] [--valve <port>] [--provider colima:<profile>]
+//                                      [--docker-host <url>] [--prepare-volumes]
 //
 // Run it again after `upgrade` lands: a new release is cut and the unit points at it; the running service keeps
 // the old release until the service manager restarts it (the commands are printed, never run). It creates the
@@ -20,11 +20,11 @@
 // executor refuses to start without them.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir, hostname, platform } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { KIT, check, readKit } from './kit.ts';
 
-export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; image?: string; provider?: string; dockerHost?: string; prepareVolumes: boolean; build: boolean }
+export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
 const run = (cmd: string[], cwd?: string, timeout = 120_000) => spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout });
 const ok = (r: ReturnType<typeof run>): boolean => r.status === 0;
@@ -44,7 +44,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const secrets = resolve(opts.secrets ?? join(home, '.config/open-autonomy', account));
   const root = join(runtimeDir, 'world');
   const container = `oa-${project}`;
-  const image = opts.image ?? `${project}-agent:local`;
+  const image = `${project}-agent:local`;
   const volumes = [`${container}-home`, `${container}-checkout`];
   const dockerEnv = { ...process.env, ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) };
   const docker = (args: string[]) => spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, env: dockerEnv });
@@ -69,14 +69,14 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // ---- the executor's image and volumes ----
   if (!ok(docker(['version', '--format', '{{.Server.Version}}']))) say(`docker: not reachable${opts.dockerHost ? ` at ${opts.dockerHost}` : ''}; the checks below are skipped until it is`);
   else {
-    if (!ok(docker(['image', 'inspect', '--format', '{{.Id}}', image]))) say(`image ${image}: missing; build it with the printed World command (--build writes the definition)`);
+    if (!ok(docker(['image', 'inspect', '--format', '{{.Id}}', image]))) say(`image ${image}: missing; build it with the printed World command`);
     for (const v of volumes) {
       if (ok(docker(['volume', 'inspect', '--format', '{{.Name}}', v]))) continue;
       if (opts.prepareVolumes) { const c = docker(['volume', 'create', v]); if (!ok(c)) throw new Error(`could not create volume ${v}: ${(c.stderr ?? '').trim()}`); say(`volume ${v}: created (empty; the first boot clones the checkout and makes the home)`); }
       else say(`volume ${v}: missing; --prepare-volumes creates it once`);
     }
   }
-  if (opts.build) {
+  {
     const build = { id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down releases the build reservation and keeps the image.', resources: { memoryMiB: 4096, writableStorageMiB: 16384 },
       services: [{ id: 'build', type: 'external', cwd: resolve(dir), external: { up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } }],
       ...(opts.dockerHost ? { env: { DOCKER_HOST: opts.dockerHost } } : {}) };
@@ -85,6 +85,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   }
 
   // ---- the World definition ----
+  if (platform() !== 'darwin') throw new Error('the runtime writes a launchd unit; a systemd unit comes with the first Linux host');
   const executor = join(release, 'container', 'executor.ts');
   const world = { id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
     stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 16384 },
@@ -98,13 +99,11 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     bun, join(kitDir, 'start.ts'), '--container', container, '--state', join(runtimeDir, 'state'), '--secrets', secrets, '--config', join(kitDir, 'config.yaml'), '--valve', String(opts.valve)];
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
-  let unit: string, load: string[];
-  if (platform() === 'darwin') {
-    const label = `org.open-autonomy.${project}`;
-    unit = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
-    mkdirSync(dirname(unit), { recursive: true });
-    const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    writeFileSync(unit, `<?xml version="1.0" encoding="UTF-8"?>
+  const label = `org.open-autonomy.${project}`;
+  const unit = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
+  mkdirSync(dirname(unit), { recursive: true });
+  const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  writeFileSync(unit, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>${label}</string>
@@ -119,33 +118,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict></plist>
 `, { mode: 0o644 });
-    load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}`, `launchctl kickstart -k gui/$(id -u)/${label}   (a running service, onto the new release)`];
-  } else {
-    const name = `open-autonomy-${project}`;
-    const unitDir = join(home, '.config', 'systemd', 'user');
-    mkdirSync(unitDir, { recursive: true });
-    unit = join(unitDir, `${name}.service`);
-    const quote = (a: string) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : `"${a.replace(/(["\\$])/g, '\\$1')}"`);
-    writeFileSync(unit, `[Unit]
-Description=Open Autonomy agent ${account} (native Hermes in an executor; host valves and reporter)
-
-[Service]
-Type=simple
-WorkingDirectory=${runtimeDir}
-Environment=PATH=${path}
-ExecStart=${command.map(quote).join(' ')}
-Restart=on-failure
-RestartSec=60
-TimeoutStopSec=30
-StandardOutput=append:${log}
-StandardError=append:${log}
-
-[Install]
-WantedBy=default.target
-`, { mode: 0o644 });
-    load = [`systemctl --user daemon-reload && systemctl --user enable --now ${name}`, `systemctl --user restart ${name}   (a running service, onto the new release)`];
-  }
-  writeFileSync(join(runtimeDir, 'runtime.json'), `${JSON.stringify({ kit: KIT.version, revision: rev, release, unit, image, volumes, container, host: hostname(), valve: opts.valve, written_at: new Date().toISOString() }, null, 2)}\n`);
+  const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}`, `launchctl kickstart -k gui/$(id -u)/${label}   (a running service, onto the new release)`];
   say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
   say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
 }

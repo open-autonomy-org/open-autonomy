@@ -12,23 +12,22 @@ Open Autonomy SDK. Bare `start.ts` is for development and twin rehearsals; it is
 ```
 <runtime>/releases/kit-<rev>/   the kit at that revision, its dependencies installed: the trusted host copy
 <runtime>/world.json            World's definition: the executor service and its environment
-<runtime>/build-world.json      the image build through World (--build)
+<runtime>/build-world.json      the image build through World
 <runtime>/state/, world/        the host reporter's state; World's own state root
-the service unit                launchd (macOS) or systemd --user (Linux)
+the launchd unit                World `run` with the host command in the foreground
 ```
 
 The executor's lifecycle is the kit's `container/executor.ts`, called by World for `up`, `status` and `down`:
-it starts the one container with `--init`, a read-only root, dropped capabilities and resource limits, remembers
-what it made in an ownership receipt beside World's instance data, and retires exactly that on `down`. It never
-creates the volumes or the image: an empty home would be a new agent with the old name. It can resume a
-provider first (`--provider colima:<profile>`) and use another daemon (`--docker-host`).
+it starts the one container by name with `--init`, a read-only root, dropped capabilities and resource limits,
+and stops it on `down`. It never creates the volumes or the image: an empty home would be a new agent with the
+old name. It can resume a provider first (`--provider colima:<profile>`) and use another daemon (`--docker-host`).
 
 ## Prepare and start
 
 The setup agent follows [SETUP.md](../.open-autonomy/SETUP.md); the platform keys and the project's GitHub App
 must be in the protected credential directory first.
 
-1. `create-open-autonomy runtime <checkout> --secrets <credentials> --prepare-volumes --build` from a landed
+1. `create-open-autonomy runtime <checkout> --secrets <credentials> --prepare-volumes` from a landed
    revision. It cuts the release, creates the two volumes once, writes the World definition and the unit, and
    prints the build command.
 2. Build the image with the printed World command (`up` the build definition; `doctor`; `down` releases the
