@@ -9,6 +9,8 @@
 //   bun .open-autonomy/community.ts comment <issue> <text…>       # a comment on an issue
 //   bun .open-autonomy/community.ts discuss <discussion> <text…>  # a comment on a discussion
 //   bun .open-autonomy/community.ts mark                          # the last look is now
+//   bun .open-autonomy/community.ts latest                        # the newest activity on GitHub, as stable bytes: the
+//                                                                 # monitor job's source, so the agent wakes only on change
 //   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
@@ -146,6 +148,18 @@ if (command === 'poll' && doorless) {
   console.log(JSON.stringify(await github('PATCH', `/repos/${account}/issues/${rest[1]}`, { state: 'closed' })));
 } else if (command === 'issue' && rest[0] === 'remind' && /^\d+$/.test(rest[1] ?? '') && rest[2]) {
   console.log(JSON.stringify(await github('POST', `/repos/${account}/issues/${rest[1]}/comments`, { body: rest[2] })));
+} else if (command === 'latest') {
+  // The monitor job's source: when the newest issue, pull request or discussion last changed. Stable bytes between
+  // arrivals, so the scheduler wakes the agent once per arrival and never for nothing. No cursor is touched.
+  if (doorless) console.log('latest: no GitHub door');
+  else {
+    const [issue] = await github<Array<{ updated_at: string; number: number }>>('GET', `/repos/${account}/issues?state=all&sort=updated&direction=desc&per_page=1`);
+    const d = await graphql<{ repository: { discussions: { nodes: Array<{ number: number; updatedAt: string }> } } }>(
+      `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { discussions(first: 1, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes { number updatedAt } } } }`, { owner, name });
+    const disc = d.repository?.discussions?.nodes?.[0];
+    console.log(`latest issue ${issue ? `#${issue.number} ${issue.updated_at}` : 'none'}`);
+    console.log(`latest discussion ${disc ? `#${disc.number} ${disc.updatedAt}` : 'none'}`);
+  }
 } else if (command === 'poll') {
   const since = cursor();
   // GitHub can return an empty page for the epoch sentinel. The first poll has
