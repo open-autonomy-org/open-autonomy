@@ -4,7 +4,7 @@ import type { TeamFile } from '../team.js';
 import { TEAM_SCOPES, type TeamMember } from '@open-autonomy/sdk/team';
 import { tenseOf, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from '../ui.js';
-import { Pill, Workshop, at, firstLine, giversOf, safeUrl, standingOf, type Turn } from './parts.js';
+import { Pill, Workshop, at, firstLine, safeUrl, standingOf, type Turn } from './parts.js';
 import { Shell, parseSchedule, type ProjectPageData } from './project.js';
 import { sees } from './model.js';
 
@@ -96,10 +96,9 @@ export function Session({ d, s }: { d: ProjectPageData; s: SessionRecord }) {
   );
 }
 
-// ---- books: the campaign's ledger, GitHub's precision ----------------------------------------------------------
+// ---- books: the ledger, GitHub's precision ----------------------------------------------------------
 export function Books({ d, calls }: { d: ProjectPageData; calls: Array<{ ts: string; model?: string; rail?: string; usd_cents: number; session?: string; merchant?: string }> }) {
   const a = d.v.account;
-  const givers = giversOf(d.v, d.brand);
   const gifts = [...(d.v.feed ?? [])].filter((f) => f.kind === 'grant' || f.kind === 'mint');
   return (
     <Shell d={d} current="books">
@@ -107,7 +106,7 @@ export function Books({ d, calls }: { d: ProjectPageData; calls: Array<{ ts: str
         <div class="card">
           <h2>The books</h2>
           <div class="ledger">
-            <div class="stat"><div class="v">{usd(d.v.granted_in_usd_cents)}</div><div class="l">received{givers.length ? `, from ${givers.length} ${givers.length === 1 ? 'giver' : 'givers'}` : ''}</div></div>
+            <div class="stat"><div class="v">{usd(d.v.granted_in_usd_cents)}</div><div class="l">put in</div></div>
             <div class="stat"><div class="v">{usd(d.v.consumed_usd_cents)}</div><div class="l">spent, every cent metered</div></div>
             <div class="stat"><div class="v">{usd(d.v.balance_usd_cents)}</div><div class="l">balance</div></div>
             <div class="stat"><div class="v">{d.v.runway_days === null ? '—' : d.v.runway_days > 365 ? '1y+' : `${Math.round(d.v.runway_days)}d`}</div><div class="l">runway · goal {d.v.goal_days}d</div></div>
@@ -115,7 +114,7 @@ export function Books({ d, calls }: { d: ProjectPageData; calls: Array<{ ts: str
         </div>
         <div class="cols" style="margin-top:0">
           <div class="main">
-            <div class="card"><h2>Money in</h2>{gifts.length || d.slots?.moneyIn ? <ul class="gifts">{d.slots?.moneyIn}{gifts.map((g) => <li>{g.from?.startsWith('@') && safeUrl(`https://github.com/${encodeURIComponent(g.from.slice(1))}.png`) ? <img src={`https://github.com/${encodeURIComponent(g.from.slice(1))}.png`} alt="" /> : <span class="ph" />}<span class="who"><b>{g.from?.startsWith('@') ? g.from.slice(1) : g.from ?? d.brand}</b><span>{g.kind === 'grant' ? 'grant' : 'minted'}{g.by ? ` · passed on by ${g.by}` : ''} · {fmtAgo(g.ts, d.now)}</span></span><span class="amt">+{usd(g.amount_usd_cents)}</span></li>)}</ul> : <p class="empty">{d.v.granted_in_usd_cents > 0 ? `${usd(d.v.granted_in_usd_cents)} was minted by ${d.brand} before gifts named their giver.` : 'Nothing yet.'}</p>}</div>
+            <div class="card"><h2>Money in</h2>{gifts.length || d.slots?.moneyIn ? <ul class="gifts">{d.slots?.moneyIn}{gifts.map((g) => <li><span class="ph" /><span class="who"><b>{g.from ? g.from.replace(/^@/, '') : 'the operator'}</b><span>{g.kind === 'grant' ? 'a grant' : 'added'}{g.by ? ` · passed on by ${g.by}` : ''} · {fmtAgo(g.ts, d.now)}</span></span><span class="amt">+{usd(g.amount_usd_cents)}</span></li>)}</ul> : <p class="empty">{d.v.granted_in_usd_cents > 0 ? `${usd(d.v.granted_in_usd_cents)} was minted by ${d.brand} before gifts named their giver.` : 'Nothing yet.'}</p>}</div>
             {d.slots?.give}
             {d.v.envelopes.length ? <div class="card"><h2>Earmarked</h2><ul class="rows">{d.v.envelopes.map((e) => <li class="row"><span class="t">{e.purpose.type === 'item' ? <>for <a href={at(a, 'work', e.purpose.item)}>{e.purpose.item}</a></> : e.purpose.type === 'models' ? `for ${e.purpose.models.join(', ')}` : e.purpose.type === 'model' ? 'for model calls' : 'for anything'}{e.from ? ` · from ${e.from}` : ''}</span><span class="n">{usd(e.balance_usd_cents)} left</span></li>)}</ul></div> : null}
             {sees(d.viewer, d.visibility.calls) ? <div class="card"><h2>Every metered call</h2>{calls.length ? <table class="table"><thead><tr><th>when</th><th>what</th><th>session</th><th class="n">cost</th></tr></thead><tbody>{calls.map((c) => <tr><td style="white-space:nowrap">{fmtAgo(c.ts, d.now)}</td><td>{c.rail === 'card' ? `card · ${c.merchant ?? ''}` : c.rail === 'partner' ? 'partner' : c.model ?? 'model'}</td><td class="mono">{c.session ? <a href={at(a, 'sessions', c.session)}>{c.session.slice(0, 24)}</a> : '—'}</td><td class="n">{usd(c.usd_cents)}</td></tr>)}</tbody></table> : <p class="empty">No call yet.</p>}<a class="more" href={`/v1/accounts/${encodeURIComponent(a)}/calls`}>The audit trail as JSON →</a></div> : null}

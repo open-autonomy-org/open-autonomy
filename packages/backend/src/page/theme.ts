@@ -27,16 +27,15 @@ ul,ol{padding:0;list-style:none}
 .btn.wide{width:100%}
 .btn.small{height:32px;padding:0 12px;font-size:13px}
 .page{max-width:1120px;margin:0 auto;padding:0 24px 64px}
-.cover{height:220px;border-radius:0 0 20px 20px;background-size:cover;background-position:center}
-.hero{display:grid;grid-template-columns:96px minmax(0,1fr);gap:22px;align-items:start;padding:0 8px}
-.avatar{width:96px;height:96px;border-radius:24px;border:4px solid ${T.wash};background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08);object-fit:cover;flex:none;margin-top:-44px;position:relative}
-.hero .who{min-width:0;padding-top:16px}
-.hero h1{font-family:Fraunces,Georgia,serif;font-size:40px;font-weight:600;letter-spacing:-.015em;line-height:1.05;margin:0 0 8px;font-variation-settings:"opsz" 40}
-.hero .built{color:${T.muted};font-size:13.5px;margin-top:8px}
-.hero .built b{color:${T.body};font-weight:600}
-.hero .tag{color:${T.body};font-size:16px;max-width:60ch}
-.hero .meta,.acct .meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:12px;color:${T.muted};font-size:14px}
-.hero .meta b,.acct .meta b{color:${T.ink};font-weight:700}
+.head{display:flex;gap:18px;align-items:flex-start;padding:28px 8px 0}
+.avatar{width:64px;height:64px;border-radius:16px;background:#fff;border:1px solid ${T.line};object-fit:cover;flex:none}
+.head .who{min-width:0}
+.head h1{font-family:Fraunces,Georgia,serif;font-size:30px;font-weight:600;letter-spacing:-.015em;line-height:1.1;font-variation-settings:"opsz" 30}
+.head .tag{color:${T.body};font-size:15px;margin-top:4px;max-width:70ch}
+.head .built{color:${T.muted};font-size:13.5px;margin-top:6px}
+.head .built b{color:${T.body};font-weight:600}
+.head .meta,.acct .meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:10px;color:${T.muted};font-size:14px}
+.head .meta b,.acct .meta b{color:${T.ink};font-weight:700}
 .pill{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px 0 9px;border-radius:999px;font-size:13px;font-weight:600;background:${T.wash};color:${T.body};border:1px solid ${T.line}}
 .pill .dot{width:8px;height:8px;border-radius:50%;background:${T.gray}}
 .pill.live{background:${T.greenWash};color:${T.green};border-color:transparent}
@@ -154,7 +153,7 @@ ul,ol{padding:0;list-style:none}
 .form .field textarea{min-height:90px;resize:vertical}
 .form .check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:400}
 .foot{margin-top:40px;color:${T.muted};font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
-.tabs{display:flex;gap:4px;margin:22px 0 0;border-bottom:1px solid ${T.line};padding:0 8px;overflow-x:auto;scrollbar-width:none}
+.tabs{display:flex;gap:4px;margin:18px 0 0;border-bottom:1px solid ${T.line};padding:0 8px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tabs a{display:inline-flex;align-items:center;gap:7px;padding:10px 12px 12px;font-weight:600;font-size:14px;color:${T.body};border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .tabs a:hover{text-decoration:none;color:${T.ink}}
@@ -191,5 +190,5 @@ ul,ol{padding:0;list-style:none}
 .turns .body.tool{color:${T.muted}}
 @media(max-width:900px){.board{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:480px){.topbar .in{gap:12px;padding:0 14px}.topbar nav{gap:12px;font-size:14px}.brand{font-size:15px}.brand svg{width:20px;height:20px}.btn.small{padding:0 10px}}
-@media(max-width:900px){.front h1{font-size:32px}.stripe{gap:22px}.acct h1{font-size:28px}.acct .av{width:64px;height:64px}.cols{grid-template-columns:1fr}.side{position:static}.cover{height:150px}.hero{grid-template-columns:72px 1fr;gap:14px}.avatar{width:72px;height:72px;border-radius:18px;margin-top:-30px}.hero .who{padding-top:6px}.hero h1{font-size:26px}}
+@media(max-width:900px){.front h1{font-size:32px}.stripe{gap:22px}.acct h1{font-size:28px}.acct .av{width:64px;height:64px}.cols{grid-template-columns:1fr}.side{position:static}.head{gap:12px}.avatar{width:48px;height:48px;border-radius:12px}.head h1{font-size:24px}}
 `;
