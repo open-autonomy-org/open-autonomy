@@ -88,7 +88,9 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if (tab === 'state') {
     if (req.headers.get('origin') !== url.origin) return error('invalid_origin', 403);
     if (role !== 'owner') return privateHtml(renderMessage(account, false, 'Not the owner', `Only an owner on ${nameOf(account)}'s roster, signed in, may pause or resume its agent.`), 403);
-    const form = await req.formData();
+    if (Number(req.headers.get('content-length')) > 4_000) return error('form_too_large', 413);
+    let form: FormData;
+    try { form = await req.formData(); } catch { return error('invalid_request'); }
     const state = String(form.get('state') ?? '');
     if (state !== 'running' && state !== 'paused') return error('invalid_request');
     const reason = String(form.get('reason') ?? '').trim().slice(0, 400) || undefined;

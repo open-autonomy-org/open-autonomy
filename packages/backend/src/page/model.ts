@@ -11,17 +11,18 @@ export const sees = (viewer: Role, least: Role): boolean => RANK[viewer] >= RANK
 // Who is looking, as an app's identity door names them: a GitHub login, and its account id when the door learned
 // it. The core has no door of its own; a self-host serves everyone the public view. What a login is to a project
 // comes from the project's own records: the roster in its committed config (owner, then any member as team), the
-// books (a giver). Never from a key.
+// books (a giver: whose money it is, never who passed it on). A roster member is matched by GitHub account id alone,
+// the one thing a rename keeps; a door that learned no id names no owner. Never from a key.
 export interface Viewer { login: string; id?: string }
 export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' | 'envelopes' | 'feed'>): Role {
   if (!who) return 'public';
   const login = who.login.toLowerCase();
   let members: ReturnType<typeof parseTeamConfig>['members'] = [];
   try { members = parseTeamConfig(v.profile.config_yaml ?? '').members; } catch { members = []; }
-  const mine = members.filter((m) => m.github && (who.id && m.github.id ? m.github.id === who.id : m.github.login.toLowerCase() === login));
+  const mine = who.id ? members.filter((m) => m.github?.id === who.id) : [];
   if (mine.some((m) => m.scopes.includes('owner'))) return 'owner';
   if (mine.length) return 'team';
-  const gave = [...(v.envelopes ?? []).map((e) => e.from), ...(v.feed ?? []).flatMap((f) => [f.from, f.by])].some((x) => x?.toLowerCase() === `@${login}`);
+  const gave = [...(v.envelopes ?? []).map((e) => e.from), ...(v.feed ?? []).map((f) => f.from)].some((x) => x?.toLowerCase() === `@${login}`);
   return gave ? 'giver' : 'public';
 }
 

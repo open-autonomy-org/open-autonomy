@@ -228,7 +228,7 @@ export function Shipped({ roadmap, account, now, max = 5 }: { roadmap: Roadmap; 
     <div class="card">
       <h2>Recently shipped</h2>
       {show.length ? <div class="rows">{show.map((i) => <div class="row"><a class="t" href={at(account, 'work', i.id)}>{i.title}</a><span class="n">{i.release ? `${i.release} · ` : ''}{i.done_at ? fmtAgo(i.done_at, now) : 'shipped'}</span></div>)}</div> : <p class="empty">Nothing shipped yet.</p>}
-      {past.length > show.length ? <a class="more" href={`${at(account, 'work')}?view=releases`}>All {past.length} shipped →</a> : null}
+      {past.length > show.length ? <a class="more" href={at(account, 'work')}>All {past.length} shipped →</a> : null}
     </div>
   );
 }

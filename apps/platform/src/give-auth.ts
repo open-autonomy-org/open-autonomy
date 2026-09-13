@@ -37,8 +37,12 @@ export async function giveSession(req: Request, env: Env): Promise<GiveSession |
   return session && /^[a-z\d](?:[a-z\d-]{0,38})$/i.test(session.login) && typeof session.grants_admin === 'boolean' ? session : undefined;
 }
 
-// `next` is where the sign-in returns: a path on this deployment, never elsewhere.
-export const safeNext = (next: string | null | undefined): string | undefined => (next && /^\/(?!\/)[^\s]*$/.test(next) ? next : undefined);
+// `next` is where the sign-in returns: a path on this deployment, never elsewhere. Resolved the way a browser
+// resolves it (a backslash is a slash to a WHATWG parser), and kept only when the origin is this one.
+export const safeNext = (next: string | null | undefined, base: string): string | undefined => {
+  if (!next || !next.startsWith('/')) return undefined;
+  try { const u = new URL(next, base); return u.origin === new URL(base).origin ? `${u.pathname}${u.search}${u.hash}` : undefined; } catch { return undefined; }
+};
 export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const state = crypto.randomUUID();
@@ -48,7 +52,8 @@ export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, ne
   target.searchParams.set('redirect_uri', new URL('/give/callback', req.url).toString());
   target.searchParams.set('state', state);
   if (team) target.searchParams.set('scope', 'public_repo');
-  const payload = await signPayload(env, { state, exp, ...(team ? { team } : {}), ...(safeNext(next) ? { next: safeNext(next) } : {}) });
+  const back = safeNext(next, req.url);
+  const payload = await signPayload(env, { state, exp, ...(team ? { team } : {}), ...(back ? { next: back } : {}) });
   if (payload.length > 3800) return new Response('This team edit is too large. Shorten the source note and try again.', { status: 400 });
   return redirect(target.toString(), `${STATE_COOKIE}=${payload}; ${cookieAttrs(req, '/give/callback', STATE_SECONDS)}`);
 }
@@ -90,9 +95,9 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
   }) : undefined;
   const membership = await membershipResponse?.json().catch(() => ({})) as { role?: string; state?: string } | undefined;
   const session: GiveSession = { login, ...(Number.isSafeInteger(user.id) ? { id: String(user.id) } : {}), exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
-  return redirect(new URL(safeNext(expected.next) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/', SESSION_SECONDS)}`);
+  return redirect(new URL(safeNext(expected.next, req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/', SESSION_SECONDS)}`);
 }
 
 export function endGiveLogin(req: Request): Response {
-  return redirect(new URL(safeNext(new URL(req.url).searchParams.get('next')) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/', 0)}`);
+  return redirect(new URL(safeNext(new URL(req.url).searchParams.get('next'), req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=; ${cookieAttrs(req, '/', 0)}`);
 }
