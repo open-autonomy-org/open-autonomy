@@ -33,9 +33,13 @@ must be in the protected credential directory first.
    prints the build command.
 2. Build the image with the printed World command (`up` the build definition; `doctor`; `down` releases the
    build reservation and keeps the image). Adjust the declared resources to the actual build before starting.
-3. As the executor's `hermes` user, configure the repository-specific Git URL rewriting shown in SETUP.md and
-   clone the canonical repository into `/work/project` (a temporary valve on the host proves both Git routes;
-   stop it before startup). Never mount the Docker socket or host credentials into the executor.
+3. Put the checkout on its volume once, before the unit is loaded. The executor only sleeps until the host starts
+   Hermes, so bring it up through World and step in as its user:
+   `bun <release>/.open-autonomy/node_modules/@volter/twin-world/src/cli.ts up <runtime>/world.json --root <runtime>/world`,
+   then `docker exec -it --user hermes oa-<project> sh`; there, the repository-specific Git URL rewriting shown in
+   SETUP.md and the clone of the canonical repository into `/work/project`; then World `down`. A temporary valve on
+   the host proves both Git routes; stop it before startup. Startup only fetches and checks out inside that clone.
+   Never mount the Docker socket or host credentials into the executor.
 4. Load the printed unit. The host command stops its owned gateway when its control connection closes and
    exits when a required service dies; a non-zero exit (native restart, exit 75) restarts it through the
    service manager; a clean stop stays down. World must be healthy before the entrypoint runs.

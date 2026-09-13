@@ -46,6 +46,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);
   if (out(run(['git', 'status', '--porcelain', '--', '.open-autonomy', 'container'], dir))) throw new Error('.open-autonomy or container/ has uncommitted changes; the runtime is cut from a landed revision');
   const home = homedir();
+  // A unit this verb wrote is rewritten onto the new release; one made by hand is the operator's to move aside first.
+  const unitPath = join(home, 'Library', 'LaunchAgents', `org.open-autonomy.${project}.plist`);
+  if (existsSync(unitPath) && !readFileSync(unitPath, 'utf8').includes(MARK)) throw new Error(`${unitPath} exists and was not written by this verb; move it aside to let the kit own the service`);
   const runtimeDir = resolve(opts.runtime ?? join(home, '.local/state/open-autonomy', account, 'runtime'));
   const secrets = resolve(opts.secrets ?? join(home, '.config/open-autonomy', account));
   const root = join(runtimeDir, 'world');
@@ -107,11 +110,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
   const label = `org.open-autonomy.${project}`;
-  const unit = join(home, 'Library', 'LaunchAgents', `${label}.plist`);
+  const unit = unitPath;
   mkdirSync(dirname(unit), { recursive: true });
-  // A unit this verb wrote is rewritten onto the new release; one made by hand is the operator's to move aside first.
   const rewrite = existsSync(unit);
-  if (rewrite && !readFileSync(unit, 'utf8').includes(MARK)) throw new Error(`${unit} exists and was not written by this verb; move it aside to let the kit own the service`);
   const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   writeFileSync(unit, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
