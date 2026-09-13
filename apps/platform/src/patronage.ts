@@ -92,6 +92,16 @@ LimitLedger.extend({
     await core.save();
     return { ok: true, active_sponsors: Object.keys(a.sponsors_active).length };
   },
+  // A patron who paid through Polar: on the wall by name; a subscription also among the active sponsors.
+  patron_record: async (core, body) => {
+    const account = s(body, 'account'); const sponsor = body.sponsor as Sponsor | undefined;
+    if (!account || !sponsor?.login) return { ok: false, error: 'invalid_sponsor' };
+    const a = own(core.ensureAcct(account));
+    upsertSponsor(a.sponsors ??= [], sponsor);
+    if (sponsor.monthly_usd_cents) (a.sponsors_active ??= {})[sponsor.login] = { login: sponsor.login, name: sponsor.name, url: sponsor.url, avatar_url: sponsor.avatar_url, monthly_usd_cents: Math.max(0, Math.floor(sponsor.monthly_usd_cents)) };
+    await core.save();
+    return { ok: true };
+  },
   sponsor_remove: async (core, body) => {
     const a = core.acct(s(body, 'account'));
     if (a) { delete (own(a).sponsors_active ?? {})[s(body, 'login')]; await core.save(); }
@@ -174,6 +184,7 @@ export class Patronage {
   view(account: string) { return this.ledger.call<PatronageView & { ok: true }>('patronage', { account }); }
   sponsorUpsert(account: string, sponsor: Sponsor) { return this.ledger.call<{ ok: boolean; active_sponsors?: number; error?: string }>('sponsor_upsert', { account, sponsor }); }
   sponsorRemove(account: string, login: string) { return this.ledger.call<{ ok: boolean }>('sponsor_remove', { account, login }); }
+  patronRecord(account: string, sponsor: Sponsor) { return this.ledger.call<{ ok: boolean; error?: string }>('patron_record', { account, sponsor }); }
   accrue(account: string, key: string) { return this.ledger.call<{ ok: boolean; credited?: boolean; idempotent?: boolean; monthly_total_usd_cents?: number }>('accrue', { account, key }); }
   couponCreate(input: { amount_usd_cents: number; from?: string; sponsor?: Sponsor; code?: string; expires_at?: string }) { return this.ledger.call<{ ok: boolean; coupon?: Coupon; error?: string }>('coupon_create', input); }
   couponList() { return this.ledger.call<{ ok: boolean; coupons: Coupon[] }>('coupon_list'); }
