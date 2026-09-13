@@ -73,9 +73,11 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   // the bounded native run ledger. An absent outcome stays absent.
   const binding = bindings.get(d.locator.session_id);
   if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
-  // A session Hermes never closed (its process killed under it) has no native end and never will. Not proven
-  // running by the host and silent for six hours, it ended when it last spoke; an absent outcome stays absent.
-  if (!d.live_status && d.updated_at_ms && Date.now() - d.updated_at_ms > 6 * 3600_000) return { endedAt: new Date(d.updated_at_ms).toISOString() };
+  // A session Hermes never closed (its process killed under it) has no native end and never will. When the host
+  // proves it (the fire's pid is gone while its ledger still says running), it ended when it last spoke; failing
+  // that proof, six silent hours say the same. An absent outcome stays absent.
+  const abandoned = d.activity?.evidence?.native_state === 'abandoned';
+  if (!d.live_status && d.updated_at_ms && (abandoned || Date.now() - d.updated_at_ms > 6 * 3600_000)) return { endedAt: new Date(d.updated_at_ms).toISOString() };
   return undefined;
 }
 // Native state is a second or two of the host's disk per read, and a tick comes every five seconds and on every
