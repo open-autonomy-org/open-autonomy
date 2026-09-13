@@ -17,7 +17,8 @@ export async function setState(d: Doors, state: 'running' | 'paused', opts: { re
     fail(`the platform refused: ${r.error ?? r.status}`);
   }
   if (d.json) { console.log(JSON.stringify(r, null, 2)); return; }
-  spin?.stop(`${d.acct}: ${state === 'paused' ? c.red('paused') : c.green('running')} ${dim(`· recorded${r.unchanged ? ', unchanged' : ''} · by ${r.desired?.by ?? d.key.kind ?? 'this key'}`)}`);
+  const recorded = `${d.acct}: ${state === 'paused' ? c.red('paused') : c.green('running')} ${dim(`· recorded${r.unchanged ? ', unchanged' : ''} · by ${r.desired?.by ?? d.key.kind ?? 'this key'}`)}`;
+  if (spin) spin.stop(recorded); else console.log(recorded);
   // The automation answers on its next tick (the kit's reporter: within ten seconds or so).
   const already = r.observed?.state === state;
   if (already) { console.log(`  ${dim('observed')} ${state}${r.observed?.note ? dim(` · ${r.observed.note}`) : ''}`); return; }
@@ -28,9 +29,11 @@ export async function setState(d: Doors, state: 'running' | 'paused', opts: { re
     await new Promise((res) => setTimeout(res, 2000));
     const now = await d.oa.state(d.acct);
     if (now?.observed?.state === state && Date.parse(now.observed.at) >= Date.parse(r.desired?.at ?? '0')) {
-      wait?.stop(`  ${dim('observed')} ${state} ${dim(`· ${ago(now.observed.at)}${now.observed.note ? ` · ${now.observed.note}` : ''}`)}`);
+      const answered = `  ${dim('observed')} ${state} ${dim(`· ${ago(now.observed.at)}${now.observed.note ? ` · ${now.observed.note}` : ''}`)}`;
+      if (wait) wait.stop(answered); else console.log(answered);
       return;
     }
   }
-  wait?.stop(dim(`  not answered within ${opts.wait}s; the word is recorded and the page says "${state === 'paused' ? 'Pause requested' : 'Running'}" until the automation answers (oa status ${d.acct})`));
+  const late = dim(`  not answered within ${opts.wait}s; the word is recorded and the page says "${state === 'paused' ? 'Pause requested' : 'Running'}" until the automation answers (oa status ${d.acct})`);
+  if (wait) wait.stop(late); else console.log(late);
 }
