@@ -72,7 +72,11 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   // A session's native end is authoritative even when its old cron fire has left
   // the bounded native run ledger. An absent outcome stays absent.
   const binding = bindings.get(d.locator.session_id);
-  return binding?.ended_at ? { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined } : undefined;
+  if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
+  // A session Hermes never closed (its process killed under it) has no native end and never will. Not proven
+  // running by the host and silent for six hours, it ended when it last spoke; an absent outcome stays absent.
+  if (!d.live_status && d.updated_at_ms && Date.now() - d.updated_at_ms > 6 * 3600_000) return { endedAt: new Date(d.updated_at_ms).toISOString() };
+  return undefined;
 }
 async function nativeState(): Promise<void> {
   const [orchestration, history] = await Promise.all([
