@@ -8,7 +8,7 @@ const config: StorybookConfig = {
   viteFinal: async (cfg) => ({
     ...cfg,
     esbuild: { ...(cfg.esbuild ?? {}), jsx: 'automatic', jsxImportSource: 'hono/jsx' },
-    resolve: { ...(cfg.resolve ?? {}), alias: { ...((cfg.resolve as { alias?: Record<string, string> })?.alias ?? {}), '@open-autonomy/sdk': resolve(process.cwd(), '../../packages/sdk/src'), '@open-autonomy/backend/page': resolve(process.cwd(), '../../packages/backend/src/page'), '@open-autonomy/backend/ui': resolve(process.cwd(), '../../packages/backend/src/ui.tsx'), '@open-autonomy/backend': resolve(process.cwd(), '../../packages/backend/src/index.ts') } },
+    resolve: { ...(cfg.resolve ?? {}), dedupe: ['preact'], alias: { ...((cfg.resolve as { alias?: Record<string, string> })?.alias ?? {}), '@open-autonomy/sdk': resolve(process.cwd(), '../../packages/sdk/src'), '@open-autonomy/backend/page': resolve(process.cwd(), '../../packages/backend/src/page'), '@open-autonomy/backend/ui': resolve(process.cwd(), '../../packages/backend/src/ui.tsx'), '@open-autonomy/backend': resolve(process.cwd(), '../../packages/backend/src/index.ts') } },
     server: { ...(cfg.server ?? {}), fs: { allow: [resolve(process.cwd(), '../..')] } },
   }),
 };
