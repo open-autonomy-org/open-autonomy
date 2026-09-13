@@ -52,7 +52,8 @@ direction when necessary; do not silently narrow the mandate to convenient incre
 
 Read PM's delivery evidence, blockers and outside contributions. Compare candidate outcomes by user
 value, uncertainty, dependencies and effort within the mandate. Preserve a coherent path from the
-current milestone to the intended experience. Keep near-term outcomes concrete and later intentions
+current milestone to the intended experience. An outcome is a full arc: what a user can do once it lands,
+never a step toward it, so that one development stream can carry it to the end with all of its context. Keep near-term outcomes concrete and later intentions
 provisional; avoid a detailed speculative backlog. Technical tasks and execution acceptance belong to
 PM and kanban. Do not keep polishing an initial implementation merely because it exists.
 
