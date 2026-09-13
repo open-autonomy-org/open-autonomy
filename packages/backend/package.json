@@ -1,6 +1,6 @@
 {
   "name": "@open-autonomy/backend",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The backend: one Cloudflare Worker's core that holds each project's funds in an account tree, meters every spend through its rails, carries the development stream and the timeline, and serves a project's page. Open Autonomy's public platform and a private deployment run the same backend.",
   "license": "Apache-2.0",
   "repository": {
@@ -16,13 +16,15 @@
     "./page/directory": "./src/page/directory.tsx",
     "./page/model": "./src/page/model.ts",
     "./page/parts": "./src/page/parts.tsx",
-    "./page/project": "./src/page/project.tsx",
-    "./page/tabs": "./src/page/tabs.tsx",
     "./page/theme": "./src/page/theme.ts",
-    "./testing": "./test/env.ts"
+    "./testing": "./test/env.ts",
+    "./page/document": "./src/page/document.ts",
+    "./dash": "./src/dash/index.tsx",
+    "./build-dash": "./scripts/build-dash.ts"
   },
   "files": [
     "src",
+    "scripts",
     "test/env.ts",
     "README.md"
   ],
@@ -45,5 +47,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "bin": {
+    "open-autonomy-dash-assets": "scripts/build-dash.ts"
   }
 }
