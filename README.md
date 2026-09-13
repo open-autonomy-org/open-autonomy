@@ -2,9 +2,9 @@
 
 ![open-autonomy](docs/banner.png)
 
-[![funding](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/runway.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
-[![now](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/now.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
-[![roadmap](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/roadmap.svg)](https://open-autonomy.org/p/open-autonomy-org%2Fopen-autonomy)
+[![funding](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/runway.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
+[![now](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/now.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
+[![roadmap](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/roadmap.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
 [![activity](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/activity.svg)](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/calls)
 
 **A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,

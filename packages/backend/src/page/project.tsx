@@ -5,6 +5,7 @@ import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { esc } from '../ui.js';
 import { About, Foot, Funding, Hero, NextUp, Shipped, Tabs, TopBar, Wall, Workshop, giversOf, standingOf, type Schedule, type SessionTail, type Tab } from './parts.js';
 import { CSS, FONTS } from './theme.js';
+import { LIVE } from './live.js';
 import { PRESETS, sees, type PageSlots, type Role, type Visibility } from './model.js';
 
 export interface ProjectPageData {
@@ -15,6 +16,7 @@ export interface ProjectPageData {
   sessions: SessionSummary[];
   live: string[];
   roadmap: Roadmap;
+  revision?: number;
   tail?: SessionTail;
   daily: number[];
   now: number;
@@ -32,7 +34,7 @@ export function Shell({ d, current, children }: { d: ProjectPageData; current: T
   return (
     <>
       <TopBar brand={d.brand} nav={d.slots?.nav} cta={d.slots?.cta} />
-      <div class="page">
+      <div class="page" data-project={d.v.account} data-shape={JSON.stringify([d.live, d.v.control?.desired?.state ?? 'running', d.v.control?.observed?.state ?? '', d.revision ?? 0])}>
         <Hero v={d.v} standing={standing} runwayDays={runway} meta={d.slots?.meta} />
         <Tabs account={d.v.account} current={current} show={show} counts={{ work: open, sessions: d.live.length ? `${d.live.length} live` : d.sessions.length }} />
         {children}
@@ -66,5 +68,5 @@ export function Overview(d: ProjectPageData) {
   );
 }
 export function document(title: string, brand: string, body: string, styles = ''): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${esc(title)} · ${esc(brand)}</title><style>${CSS}${styles}</style></head><body>${body}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${esc(title)} · ${esc(brand)}</title><style>${CSS}${styles}</style></head><body>${body}<script>${LIVE}</script></body></html>`;
 }

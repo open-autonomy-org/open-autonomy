@@ -149,6 +149,10 @@ ul,ol{padding:0;list-style:none}
 .form{display:flex;flex-direction:column;gap:8px}
 .form input{height:38px;border:1px solid ${T.line};border-radius:10px;padding:0 12px;font:inherit;font-size:14px}
 .form .fine{color:${T.muted};font-size:12.5px;line-height:1.45}
+.form .field{display:flex;flex-direction:column;gap:5px;font-size:13.5px;font-weight:600;color:${T.body};border:0;padding:0;margin:0}
+.form .field input,.form .field textarea{font-weight:400;width:100%;border:1px solid ${T.line};border-radius:10px;padding:8px 12px;font:inherit;font-size:14px;color:${T.ink}}
+.form .field textarea{min-height:90px;resize:vertical}
+.form .check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:400}
 .foot{margin-top:40px;color:${T.muted};font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
 .tabs{display:flex;gap:4px;margin:22px 0 0;border-bottom:1px solid ${T.line};padding:0 8px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}

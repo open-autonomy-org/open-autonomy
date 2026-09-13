@@ -136,7 +136,7 @@ describe('the backend, one smoke test per surface', () => {
     expect((await request(env, '/v1/agent/events', { method: 'POST', headers: auth, body: ce({ task_id: 't_1', lane: 'done', attempts: [{ id: '1', profile: 'default', status: 'review_requested', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved', by: 'default' }] }) })).status).toBe(200);
     const item = await requestJson(env, '/v1/accounts/acme%2Fapp/items/add');
     expect(item.task).toMatchObject({ lane: 'done', attempts: [{ id: '1', summary: 'pushed agent/add' }], reviews: [{ verdict: 'requested' }, { verdict: 'approved' }] });
-    expect(await (await request(env, '/p/acme%2Fapp/items/add')).text()).toContain('review: requested → approved');
+    expect(await (await request(env, '/acme/app/work/add')).text()).toContain('Sessions on it');
   });
 
   test('the roadmap: a substrate narrates its file through the key, the milestones driver on sync, an owner-side push on a steer key; scopes hold', async () => {
@@ -210,13 +210,13 @@ describe('the backend, one smoke test per surface', () => {
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('session.started', 'run-1', { session_kind: 'run', item_id: 'add' }) });
     await request(env, '/v1/agent/events', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: ce('project.docs', 'project', { about_md: '# acme\n\nA todo list built by its own agent.' }) });
     expect(await (await request(env, '/')).text()).toContain('acme/app');
-    for (const [path, expected] of [['/p/acme%2Fapp', 'todo add appends an item'], ['/p/acme%2Fapp', 'built by its own agent'], ['/p/acme%2Fapp/about', 'built by its own agent'], ['/p/acme%2Fapp', 'todo init makes a store'], ['/p/acme%2Fapp?view=list&sort=title', 'abcdef1'], ['/p/acme%2Fapp/items/shipped-1', 'acme.atlassian.net/browse/ACME-12'], ['/p/acme%2Fapp?view=releases', 'v0.1.0'], ['/p/acme%2Fapp?view=timeline', 'September 2026'], ['/p/acme%2Fapp/sessions', '/sessions/run-1'], ['/p/acme%2Fapp/sessions/run-1', 'new EventSource('], ['/p/acme%2Fapp/items/add', 'It appends.']]) {
+    for (const [path, expected] of [['/acme/app', 'todo add appends an item'], ['/acme/app', 'built by its own agent'], ['/acme/app/about', 'built by its own agent'], ['/acme/app', 'todo init makes a store'], ['/acme/app/work', 'abcdef1'], ['/acme/app/work/shipped-1', 'acme.atlassian.net/browse/ACME-12'], ['/acme/app/work', 'v0.1.0'], ['/acme/app/sessions', '/sessions/run-1'], ['/acme/app/sessions/run-1', 'new EventSource('], ['/acme/app/work/add', 'It appends.']]) {
       const res = await request(env, path);
       expect(res.status).toBe(200);
       expect((await res.text()).includes(expected)).toBe(true);
     }
     for (const w of ['runway', 'roadmap', 'activity', 'now']) expect((await request(env, `/v1/accounts/acme%2Fapp/${w}.svg`)).headers.get('content-type')).toContain('image/svg+xml');
-    expect((await request(env, '/p/nobody%2Fnothing')).status).toBe(404);
+    expect((await request(env, '/nobody/nothing')).status).toBe(404);
   });
   test("an app's state on the books survives the core's loader: what the backend does not own it keeps, across a restart and an export", async () => {
     const env = useEnv(testEnv());

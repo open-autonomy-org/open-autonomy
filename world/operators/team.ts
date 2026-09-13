@@ -21,7 +21,7 @@ if (process.argv[2] === 'seed') {
   const owner = team.members[0];
   const form = new URLSearchParams({ sha: process.argv[2] === 'stale' ? '0'.repeat(40) : file.body.sha, id: owner.id, name: 'World owner renamed', github_login: owner.github!.login, github_id: owner.github!.id, discord_id: owner.discord!.id, discord_name: owner.discord!.name, source: owner.source, attest: 'yes', operation: 'save' });
   for (const scope of owner.scopes) form.append('scopes', scope);
-  const begin = await fetch(`${platform}/p/${encodeURIComponent(ACCOUNT)}/team`, { method: 'POST', headers: { origin: platform }, body: form, redirect: 'manual' });
+  const begin = await fetch(`${platform}/${ACCOUNT}/team`, { method: 'POST', headers: { origin: platform }, body: form, redirect: 'manual' });
   console.log('begin', begin.status);
   if (begin.status !== 302) { console.log(await begin.text()); process.exit(1); }
   const authorize = new URL(begin.headers.get('location')!);
@@ -61,6 +61,6 @@ if (process.argv[2] === 'seed') {
   console.log('world transfer', (await gh.put(route, { message: 'World owner transfers authority', sha: file.body.sha, content: Buffer.from(replaceTeamConfig(Buffer.from(file.body.content, 'base64').toString(), current)).toString('base64'), branch: 'main' })).status);
   console.log('Run propose again as the original OAuth user; it must refuse without a branch or PR.');
 } else {
-  const result = await fetch(`${platform}/p/${encodeURIComponent(ACCOUNT)}/team`);
+  const result = await fetch(`${platform}/${ACCOUNT}/team`);
   console.log('team page', result.status, ((await result.text()).match(/<main[\s\S]*?<\/main>/)?.[0] ?? 'No main content').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(-2400));
 }
