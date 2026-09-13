@@ -106,6 +106,8 @@ export async function settleOrder(env: Env, ledger: LedgerClient, order: PolarOr
   let purpose: EnvelopePurpose | undefined = stored?.purpose;
   if (!purpose && typeof order.metadata?.for === 'string') purpose = parseJson<EnvelopePurpose>(order.metadata.for) ?? undefined;
   const minted = await ledger.mint(account, amount, `polar:order:${order.id}`, sponsor, purpose);
+  // The money is on the books by the mint; the patron is on the wall by this record, as the extension's own.
+  if (minted.ok && !minted.idempotent) await new Patronage(ledger).patronRecord(account, sponsor);
   // A funder who buys credits is matched by the org from its own grants account — only what it holds, and only
   // as bonus credits for other people's projects. That is how funding spreads.
   const percent = Number(env.GRANT_MATCH_PERCENT ?? 10);
