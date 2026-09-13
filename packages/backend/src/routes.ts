@@ -5,6 +5,7 @@ import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { servePages, type PageApp } from './page/serve.js';
+import { roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { syncAllStale, syncProfile } from './sync.js';
 import { grantsAccount, hasScope, type Env } from './types.js';
@@ -168,21 +169,35 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.stateRequest(claims.account, body.state, claims.kid, body.reason);
     return json(r, { status: r.ok ? 200 : 400 });
   }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { if (get()) return get()!; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { if (get()) return get()!; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { if (get()) return get()!; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { if (get()) return get()!; return json(await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) return sessionEvents(env, dec(m[1]), dec(m[2]), req);
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { if (get()) return get()!; const r = await ledger.session(dec(m[1]), dec(m[2])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) return itemEvents(env, dec(m[1]), dec(m[2]), req);
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) return accountEvents(env, dec(m[1]), req);
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { if (get()) return get()!; return json(await ledger.item(dec(m[1]), dec(m[2])), { headers: NO_STORE }); }
-  if (path === '/v1/funding/sessions') { if (get()) return get()!; return json(await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
+  // The owner's word on visibility holds on these doors as on the pages: a panel the viewer may not see is not
+  // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else is
+  // the public. Answered 404 like the pages, never 403: the closed panel is not announced.
+  const admits = async (account: string, panel: keyof Visibility): Promise<Response | null> => {
+    const view = await ledger.project(account);
+    if (!view.found) return null;
+    const visibility = visibilityOf(view.profile.config_yaml);
+    if (sees('public', visibility[panel])) return null;
+    const claims = await authedClaims(req, env);
+    if (claims && claims.account.toLowerCase() === account.toLowerCase()) return null;
+    const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
+    return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
+  };
+  const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? admits(account, panel);
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; return sessionEvents(env, dec(m[1]), dec(m[2]), req); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; const r = await ledger.session(dec(m[1]), dec(m[2])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return itemEvents(env, dec(m[1]), dec(m[2]), req); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return accountEvents(env, dec(m[1]), req); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.item(dec(m[1]), dec(m[2])), { headers: NO_STORE }); }
+  if (path === '/v1/funding/sessions') { const c = await closed(fundingAccount(env), 'sessions'); if (c) return c; return json(await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
 
-  // ---- the books, public ----
+  // ---- the books ----
   const calls = async (account: string) => json(await ledger.calls(account, Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined), { headers: NO_STORE });
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/))) { if (get()) return get()!; return calls(dec(m[1])); }
-  if (path === '/v1/funding/calls') { if (get()) return get()!; return calls(fundingAccount(env)); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/))) { const c = await closed(dec(m[1]), 'calls'); if (c) return c; return calls(dec(m[1])); }
+  if (path === '/v1/funding/calls') { const c = await closed(fundingAccount(env), 'calls'); if (c) return c; return calls(fundingAccount(env)); }
   const widget = async (account: string, kind: string): Promise<Response> => {
     if (kind === 'runway') return new Response(renderRunwaySvg(await ledger.funding(account)), { headers: SVG });
     if (kind === 'activity') return new Response(renderActivitySvg(await ledger.funding(account)), { headers: SVG });
@@ -190,10 +205,10 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const [stream, view] = await Promise.all([ledger.sessions(account, 20), ledger.project(account)]);
     return new Response(renderNowSvg(stream.sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
   };
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { if (get()) return get()!; return widget(dec(m[1]), m[2]); }
-  if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { if (get()) return get()!; return widget(fundingAccount(env), m[1]); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)$/))) { if (get()) return get()!; return json(await ledger.funding(dec(m[1]))); }
-  if (path === '/v1/funding') { if (get()) return get()!; return json(await ledger.funding(fundingAccount(env))); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(dec(m[1]), m[2] === 'now' ? 'overview' : m[2] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(dec(m[1]), m[2]); }
+  if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(fundingAccount(env), m[1] === 'now' ? 'overview' : m[1] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(fundingAccount(env), m[1]); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'books'); if (c) return c; return json(await ledger.funding(dec(m[1]))); }
+  if (path === '/v1/funding') { const c = await closed(fundingAccount(env), 'books'); if (c) return c; return json(await ledger.funding(fundingAccount(env))); }
 
   // ---- the model rail: a stock provider SDK pointed at this host ----
   if (path === '/v1/messages' || path === '/v1/chat/completions' || path === '/v1/responses') {
