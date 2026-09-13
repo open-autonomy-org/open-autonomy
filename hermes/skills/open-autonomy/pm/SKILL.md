@@ -254,12 +254,18 @@ mark a newer poll because an older plan landed. Keep other source checkpoints in
 rule. The native notepad is bounded (16 KiB per value, 64 KiB per job): keep cursors, unresolved pointers and
 current gaps, not full transcripts. Resolve/prune entries when full; never discard unreviewed evidence.
 
-Queue a bounded amount of ready work from the landed roadmap:
-`bun .open-autonomy/scrum.ts queue <outcome-id> <work-key> <title> <body> [parent-task-id]`.
-The helper attaches a pinned roadmap source and native idempotency key, including archived-task lookup.
-Check the board first: new keys cannot justify duplicate work. Reuse keys on retries and parent dependencies
-for work sharing a checkout. Reconcile obsolete queued work through the supported CLI with an explanation;
-workers hand off to native review, which alone completes execution. PM coordinates; it doesn't implement.
+Queue ready work from the landed roadmap, one task per outcome:
+`bun .open-autonomy/scrum.ts queue <outcome-id> <title> <body>`.
+A task is the whole arc of its outcome, however large. One development stream then holds every piece of
+context the outcome needs and hands over a finished outcome, not a step toward one; every split costs the next
+worker a context it has to rebuild, and the pieces never quite meet. This is the common failure of an AI PM,
+and the one to be vigilant against: never cut an outcome into phases, slices, increments, follow-ups or
+"first a CLI, then the rest". Optimize for as few tasks as possible. Only genuinely distinct workstreams are
+distinct tasks, and a distinct workstream is a distinct roadmap outcome; the helper hands back the outcome's
+existing task instead of creating a second. The helper attaches a pinned roadmap source and the native
+idempotency key, including archived-task lookup; a retry finds its task. Reconcile obsolete queued work
+through the supported CLI with an explanation; workers hand off to native review, which alone completes
+execution. PM coordinates; it doesn't implement.
 
 ## Keep the installation moving
 

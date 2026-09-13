@@ -139,8 +139,12 @@ if (command === 'note') {
   }
   console.log('Planning work landed; only explicitly reviewed source checkpoints advanced.');
 } else if (command === 'queue') {
-  const [outcome, key, title, body, parent] = args;
-  if (!outcome || !validId(outcome) || !key || !validId(key) || !title || !body) throw new Error('queue requires outcome-id, stable work-key, title, acceptance body and optional parent task');
+  // One task per outcome, whatever its size. A workstream holds every piece of context its outcome needs and hands
+  // over a finished outcome; every split costs the next worker a context it has to rebuild. An outcome that already
+  // has a task gets that task back (a retry, a duplicate, a "phase two"), never a second one; only a cancelled task
+  // makes room. Distinct workstreams are distinct outcomes in ROADMAP.md.
+  const [outcome, title, body] = args;
+  if (!outcome || !validId(outcome) || !title || !body) throw new Error('queue requires outcome-id, title and acceptance body');
   git('fetch', '-q', 'origin', 'main');
   const commit = git('rev-parse', 'origin/main');
   const roadmap = git('show', `${commit}:ROADMAP.md`);
@@ -149,10 +153,11 @@ if (command === 'note') {
   if (!/^Dispatch: fleet\s*$/m.test(section)) throw new Error(`${outcome} is not marked Dispatch: fleet; unresolved and human work must not dispatch`);
   if (!/\[[^\]]+\]\((?:https:\/\/[^)\s]+|hermes:[^)\s]+|[^)\s]+\.(?:md|json)(?:#[^)]*)?)\)/.test(section)) throw new Error(`${outcome} has no source link; source the plan before dispatch`);
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--archived', '--json'])) as Array<{ id: string; status: string; body?: string; idempotency_key?: string }>;
-  const marker = `<!-- roadmap:${outcome}:${key} -->`;
-  const existing = tasks.find((t) => t.body?.includes(marker) || t.idempotency_key === `roadmap:${outcome}:${key}`);
+  const marker = `<!-- roadmap:${outcome} -->`;
+  const key = `roadmap:${outcome}`;
+  const existing = tasks.filter((t) => t.body?.includes(marker) || t.body?.includes(`<!-- roadmap:${outcome}:`) || t.idempotency_key === key || t.idempotency_key?.startsWith(`${key}:`))
+    .find((t) => t.status !== 'cancelled');
   if (existing) { console.log(JSON.stringify(existing)); process.exit(0); }
   const config = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8')) as { account: string };
-  // The lookup includes archived tasks; native idempotency also covers normal retries.
-  console.log(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\nRoadmap: https://github.com/${config.account}/blob/${commit}/ROADMAP.md (${outcome})\n${body}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--skill', 'develop', '--created-by', 'pm', '--idempotency-key', `roadmap:${outcome}:${key}`, ...(parent ? ['--parent', parent] : []), '--json']));
-} else throw new Error('usage: scrum.ts prepare | changes [offset] | sessions [offset] | session <id> [offset] | finish <snapshot-id> [main] [sessions] [note:<id>] | note <source> <author> <text> | queue <outcome-id> <work-key> <title> <body> [parent]');
+  console.log(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\nRoadmap: https://github.com/${config.account}/blob/${commit}/ROADMAP.md (${outcome})\n${body}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--skill', 'develop', '--created-by', 'pm', '--idempotency-key', key, '--json']));
+} else throw new Error('usage: scrum.ts prepare | changes [offset] | sessions [offset] | session <id> [offset] | finish <snapshot-id> [main] [sessions] [note:<id>] | note <source> <author> <text> | queue <outcome-id> <title> <body>');
