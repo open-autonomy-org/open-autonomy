@@ -92,13 +92,12 @@ LimitLedger.extend({
     await core.save();
     return { ok: true, active_sponsors: Object.keys(a.sponsors_active).length };
   },
-  // A patron who paid through Polar: on the wall by name; a subscription also among the active sponsors.
+  // A patron who paid through Polar: on the wall by name. Never among the active sponsors, whose monthly amounts the
+  // accrual mints: Polar bills its own subscriptions, order by order, and each order is its own mint.
   patron_record: async (core, body) => {
     const account = s(body, 'account'); const sponsor = body.sponsor as Sponsor | undefined;
     if (!account || !sponsor?.login) return { ok: false, error: 'invalid_sponsor' };
-    const a = own(core.ensureAcct(account));
-    upsertSponsor(a.sponsors ??= [], sponsor);
-    if (sponsor.monthly_usd_cents) (a.sponsors_active ??= {})[sponsor.login] = { login: sponsor.login, name: sponsor.name, url: sponsor.url, avatar_url: sponsor.avatar_url, monthly_usd_cents: Math.max(0, Math.floor(sponsor.monthly_usd_cents)) };
+    upsertSponsor(own(core.ensureAcct(account)).sponsors ??= [], sponsor);
     await core.save();
     return { ok: true };
   },
