@@ -24,7 +24,9 @@ cut a tag.
 `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`, `MODEL_GATEWAY_API_KEY`, optionally `GITHUB_TOKEN`; and the
 money paths' `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `GITHUB_SPONSORS_WEBHOOK_SECRET`; and the giving page's OAuth app credentials `GITHUB_OAUTH_CLIENT_ID`,
-`GITHUB_OAUTH_CLIENT_SECRET` plus its dedicated cookie-signing `GIVE_SESSION_HMAC_SECRET`. Every one is held as a
+`GITHUB_OAUTH_CLIENT_SECRET` plus its dedicated cookie-signing `GIVE_SESSION_HMAC_SECRET` (GitHub refuses secret names
+that start with `GITHUB_`, so the environment holds those three under `SPONSORS_WEBHOOK_SECRET`, `OAUTH_CLIENT_ID` and
+`OAUTH_CLIENT_SECRET`; the sync installs them under the worker's names). Every one is held as a
 `production` environment secret and a Worker secret. `admin.yml` installs the admin token with `sync-admin-token`
 and the money paths with `sync-secrets` (it installs whichever are set). The cardholder's billing address is the var `ISSUING_BILLING_ADDRESS_JSON` in `wrangler.toml`; with it
 unset the card rail refuses. `/admin/status` reports `owed_usd_cents`, every account's balance summed: what the
