@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run build && bunx wrangler dev",
-    "build": "bun ../../packages/backend/scripts/build-dash.ts ./public/assets",
+    "build": "bun build.ts ./public/assets",
     "deploy": "bun run build && bunx wrangler deploy --var DEPLOY_COMMIT:$(git rev-parse --short HEAD)",
     "typecheck": "bunx tsc --noEmit",
     "check": "bunx tsc --noEmit"
