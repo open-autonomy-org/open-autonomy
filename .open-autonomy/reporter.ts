@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
-import { OpenAutonomy } from './sdk/client.ts';
+import { OpenAutonomy, Session } from './sdk/client.ts';
 import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -364,7 +364,29 @@ async function control(): Promise<void> {
   const digest = `${state}|${note ?? ''}`;
   if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
-let busy = false, dirty = false, quitting = false, documentsAt = 0;
+let busy = false, dirty = false, quitting = false, documentsAt = 0, orphansAt = 0;
+// A session the platform holds as live whose native record is gone (a run killed with its host, a store pruned)
+// would stay live forever: nothing narrates its end. Absent from discovery for five minutes, it ended: the reporter
+// says so at the platform's last turn of it, with no outcome, since none was recorded.
+const missingSince = new Map<string, number>();
+async function orphans(): Promise<void> {
+  const { live } = await oa.sessions(cfg.account, 200);
+  for (const key of live) {
+    if (descriptors.has(key) || stopped.has(key)) { missingSince.delete(key); continue; }
+    const since = missingSince.get(key) ?? Date.now();
+    missingSince.set(key, since);
+    if (Date.now() - since < 5 * 60_000) continue;
+    try {
+      const remote = await oa.session(cfg.account, key);
+      if (!remote || remote.status !== 'live') { stopped.add(key); continue; }
+      const endedAt = remote.turns.at(-1)?.ts ?? remote.started_at;
+      await new Session(oa, key, remote.next_seq).end({ endedAt });
+      if (checkpoints[key]) { checkpoints[key].endedAt = endedAt; saveState(); }
+      stopped.add(key); missingSince.delete(key);
+      log(`${key}: native record gone; ended at its last turn`);
+    } catch (e) { log(`${key}: orphan not ended (${(e as Error).message})`); }
+  }
+}
 async function tick(): Promise<void> {
   if (busy || quitting) { dirty = true; return; }
   busy = true;
@@ -374,6 +396,7 @@ async function tick(): Promise<void> {
       await nativeState();
       const present = await board();
       await sessions();
+      if (Date.now() - orphansAt > 60_000) { await orphans(); orphansAt = Date.now(); }
       if (Date.now() - controlAt > 10_000) { await control(); controlAt = Date.now(); }
       if (Date.now() - documentsAt > 60_000) {
         refreshMain();
