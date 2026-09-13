@@ -71,7 +71,7 @@ export function Account(d: AccountPageData) {
             {pool ? <div class="card fund">
               <div class="big">{usd(pool.balance_usd_cents)}<span> in the grants pool</span></div>
               <div class="line">{d.name}'s pool gives on to its projects; {usd(pool.granted_out_usd_cents)} given so far.</div>
-              <p class="fine"><a href={at(pool.account, 'books')}>The pool's books →</a></p>
+              <p class="fine"><a href={at(pool.account, 'dashboard', 'books')}>The pool's books →</a></p>
             </div> : null}
             {d.slots?.side}
           </div>

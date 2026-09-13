@@ -21,3 +21,7 @@ class_name = "LimitLedger"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LimitLedger"]
+
+# The dashboard's browser half, built by `bun run build` from the backend's source; never edited, never committed.
+[assets]
+directory = "./public"

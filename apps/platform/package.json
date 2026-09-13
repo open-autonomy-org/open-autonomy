@@ -1,12 +1,13 @@
 {
   "name": "@open-autonomy/platform",
   "version": "2.0.0",
-  "description": "Open Autonomy's public platform: the backend with patronage on top \u2014 money in from GitHub Sponsors, Polar and grant credits, the explore page, the patrons wall \u2014 deployed as one Cloudflare Worker.",
+  "description": "Open Autonomy's public platform: the backend with patronage on top — money in from GitHub Sponsors, Polar and grant credits, the explore page, the patrons wall — deployed as one Cloudflare Worker.",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bunx wrangler dev",
-    "deploy": "bunx wrangler deploy --var DEPLOY_COMMIT:$(git rev-parse --short HEAD)",
+    "dev": "bun run build && bunx wrangler dev",
+    "build": "bun ../../packages/backend/scripts/build-dash.ts ./public/assets",
+    "deploy": "bun run build && bunx wrangler deploy --var DEPLOY_COMMIT:$(git rev-parse --short HEAD)",
     "test": "bun test test/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "check": "bun test test/*.test.ts && bunx tsc --noEmit"

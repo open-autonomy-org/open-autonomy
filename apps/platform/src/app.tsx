@@ -3,12 +3,12 @@
 // on the core's pages, its slots: the pitch and the patrons on Explore, the tiers and the patrons wall on a
 // project, the doors to buy credits or sponsor on a name's page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
-import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
-import { accountSlots, directorySlots, projectSlots, whoNav } from './page/patronage.tsx';
+import { accountSlots, directorySlots, whoNav } from './page/patronage.tsx';
+import { landingPage } from './page/landing.tsx';
 import { renderGivePage, type GivePageData } from './page/give.tsx';
 import { handleSponsorsWebhook } from './sponsors.ts';
 import { sponsorAccount, type Env } from './types.ts';
@@ -16,7 +16,6 @@ import { sponsorAccount, type Env } from './types.ts';
 configurePage({ brand: 'open-autonomy' });
 // Every page here is public: a private repository's front page is never served by it.
 configureSync({ privateRepositories: 'refuse' });
-const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 const NO_STORE = { 'cache-control': 'no-store' };
 
 export const app: App = {
@@ -113,9 +112,10 @@ export const app: App = {
   page: {
     // The give page's GitHub sign-in names the viewer on every page.
     async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
-    async project(account, view, t) {
-      const [p, road] = await Promise.all([new Patronage(t.ledger).view(account), t.ledger.roadmap(account)]);
-      return projectSlots({ account, profile: view.profile, patronage: p, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env), burnPerMonth: view.burn_per_day_usd_cents * 30, roadmap: road.revision?.roadmap ?? EMPTY_ROADMAP, who: t.who, here: t.url.pathname + t.url.search });
+    // The project's landing page and its whole story: the campaign around the core's records.
+    async landing(base, t) {
+      const patronage = await new Patronage(t.ledger).view(base.account);
+      return landingPage(base, { brand: 'open-autonomy', patronage, polar: polarConfigured(t.env as Env), sponsor: sponsorAccount(t.env as Env) });
     },
     async directory(entries, t) {
       const patronage = new Patronage(t.ledger);

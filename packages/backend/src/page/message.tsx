@@ -2,7 +2,7 @@
 import { render } from '../ui.js';
 import { pageConfig } from './brand.js';
 import { Foot, TopBar, at } from './parts.js';
-import { document } from './project.js';
+import { document } from './document.js';
 
 export function renderMessage(account: string, ok: boolean, title: string, message: string): string {
   const { brand } = pageConfig();

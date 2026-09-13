@@ -252,15 +252,45 @@ export function Books({ d }: { d: DashData }) {
   );
 }
 
+// The roster from the committed config, and the owner's door to change it: a form that continues with GitHub and
+// opens a pull request; the change takes effect when merged.
+const TEAM_LABELS: Record<string, string> = { owner: 'Owner', direction: 'Project direction', moderation: 'Moderation', 'release-review': 'Release review' };
 export function Team({ d }: { d: DashData }) {
-  const LABELS: Record<string, string> = { owner: 'Owner', direction: 'Project direction', moderation: 'Moderation', 'release-review': 'Release review' };
+  const a = d.v.account;
+  const r = d.roster;
+  const base = href(a, 'team');
+  const members = r?.members ?? [];
+  const member = members.find((m) => m.id === r?.editing);
+  const edit = Boolean(r && members.length && (r.editing === 'new' || member));
+  const field = (name: string, title: string, value = '', required = false, max = 80) => <label class="oa-field">{title}<input name={name} value={value} required={required} maxlength={max} /></label>;
   return (
     <Shell d={d} title="Team">
       <div class="oa-grid">
         <Panel title="The roster" span={8}>
-          {d.team?.length ? <table class="oa-table"><thead><tr><th>Person</th><th>Accounts</th><th>Authority</th><th>Verified by</th></tr></thead><tbody>{d.team.map((m) => <tr><td><b>{m.name}</b></td><td>{m.github ? <a class="oa-chip" href={`https://github.com/${encodeURIComponent(m.github.login)}`}><img src={`https://github.com/${encodeURIComponent(m.github.login)}.png?size=48`} alt="" />@{m.github.login}</a> : null}{m.discord ? <span class="oa-chip">{m.discord.name}</span> : null}</td><td>{m.scopes.map((s) => LABELS[s] ?? s).join(' · ')}</td><td class="oa-muted">{m.source}</td></tr>)}</tbody></table> : <p class="oa-empty">No roster published.</p>}
+          {r?.failure ? <p class="oa-empty" role="alert">{r.failure}</p> : null}
+          {!r || r.members === undefined ? <p class="oa-empty">The committed roster is unavailable. Changes are disabled until it can be read.</p>
+            : !members.length ? <p class="oa-empty">No team recorded yet. The setup agent establishes the first owner's verified accounts and authority; then owners manage the team here.</p>
+            : <table class="oa-table"><thead><tr><th>Person</th><th>Accounts</th><th>Authority</th><th>Verified by</th>{sees(d.viewer, 'owner') ? <th /> : null}</tr></thead><tbody>{members.map((m) => <tr><td><b>{m.name}</b></td><td>{m.github ? <a class="oa-chip" href={`https://github.com/${encodeURIComponent(m.github.login)}`}><img src={`https://github.com/${encodeURIComponent(m.github.login)}.png?size=48`} alt="" />@{m.github.login}</a> : null}{m.discord ? <span class="oa-chip">{m.discord.name}</span> : null}</td><td>{m.scopes.length ? m.scopes.map((s) => TEAM_LABELS[s] ?? s).join(' · ') : 'Contributor'}</td><td class="oa-muted">{m.source}</td>{sees(d.viewer, 'owner') ? <td class="n"><a href={`${base}?edit=${encodeURIComponent(m.id)}`}>Edit</a></td> : null}</tr>)}</tbody></table>}
+          {sees(d.viewer, 'owner') && members.length && !edit ? <p class="oa-fine" style="margin-top:12px"><a href={`${base}?edit=new`}>Add a teammate →</a></p> : null}
         </Panel>
-        <Panel title="Changing it" span={4}><p class="oa-fine">The roster lives in the project's committed configuration; an owner edits it there. Release authority still requires a human's review of the specific release.</p></Panel>
+        <Panel title="Changing it" span={4}><p class="oa-fine">{r?.head ? <>From the <a href={`https://github.com/${a}/blob/${encodeURIComponent(r.head)}/.open-autonomy/config.yaml`}>committed roster</a>. </> : null}The roster lives in the project's committed configuration; an owner changes it here, through GitHub, as a pull request. Release authority still requires a human's review of the specific release.</p></Panel>
+        {edit && r ? <Panel title={member ? `Edit ${member.name}` : 'Add a teammate'} span={8}>
+          <form class="oa-form" method="post" action={base}>
+            <input type="hidden" name="sha" value={r.sha ?? ''} /><input type="hidden" name="id" value={member?.id ?? ''} />
+            {field('name', 'Name', member?.name, true)}
+            {field('github_login', 'GitHub username', member?.github?.login)}
+            {field('github_id', 'GitHub account ID (kept for a renamed account; clear it only to link a different one)', member?.github?.id, false, 20)}
+            {field('discord_id', 'Discord user ID or profile link', member?.discord?.id)}
+            {field('discord_name', 'Discord name', member?.discord?.name)}
+            <fieldset class="oa-field"><legend>Authority</legend>{Object.entries(TEAM_LABELS).map(([scope, label]) => <label class="oa-check"><input type="checkbox" name="scopes" value={scope} checked={member?.scopes.includes(scope as never)} /> {label}</label>)}</fieldset>
+            <label class="oa-field">Identity and authority source<textarea name="source" required maxlength={500}>{member?.source ?? ''}</textarea></label>
+            <p class="oa-fine">A public source link or a specific owner confirmation establishing whose accounts these are and what they may decide.</p>
+            <label class="oa-check"><input type="checkbox" name="attest" value="yes" required /> I confirm these account links and permissions, or the removal of this person.</label>
+            <p class="oa-fine">Continue with GitHub to open a draft pull request. Only a recorded owner can authorize this change; it takes effect when merged on GitHub. GitHub asks for public repository access to create the change under your account.</p>
+            {r.configured ? <div class="oa-actions"><button class="oa-btn" name="operation" value="save">Continue with GitHub</button>{member ? <button class="oa-btn quiet" name="operation" value="remove">Remove teammate</button> : null}</div> : <p class="oa-empty" role="status">GitHub sign-in is not configured on this deployment; edit the committed config instead.</p>}
+            <p class="oa-fine"><a href={base}>Cancel</a></p>
+          </form>
+        </Panel> : null}
       </div>
     </Shell>
   );
@@ -363,6 +393,15 @@ ul,ol{padding:0;list-style:none}
 .oa-prose ul{list-style:disc;padding-left:18px}
 .oa-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px 0 3px;border-radius:999px;border:1px solid var(--scui-border);background:var(--scui-bg);font-size:12.5px;font-weight:600}
 .oa-chip img{width:20px;height:20px;border-radius:50%}
+.oa-form{display:flex;flex-direction:column;gap:10px;max-width:560px}
+.oa-field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;border:0;padding:0;margin:0}
+.oa-field input,.oa-field textarea{font:inherit;font-weight:400;width:100%;border:1px solid var(--scui-border);border-radius:8px;padding:7px 10px;background:var(--scui-bg);color:var(--scui-fg)}
+.oa-field textarea{min-height:84px;resize:vertical}
+.oa-field legend{padding:0;margin-bottom:4px}
+.oa-check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400}
+.oa-actions{display:flex;gap:8px;flex-wrap:wrap}
+.oa-btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border-radius:8px;border:1px solid var(--scui-accent);background:var(--scui-accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.oa-btn.quiet{background:var(--scui-bg);color:var(--scui-fg);border-color:var(--scui-border-strong)}
 .oa-ident{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .oa-ident b{display:block;font-size:15px}.oa-ident span{color:var(--scui-muted);font-size:12.5px}
 .oa-kit.scui-root{--scui-width:100%;--scui-height:auto;width:100%;height:auto;display:block;border:0;border-radius:0;overflow:visible;background:transparent}

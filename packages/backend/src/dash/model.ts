@@ -23,7 +23,9 @@ export interface DashData {
   daily: number[];
   now: number;
   calls?: CallRecord[];
-  team?: TeamMember[];
+  // The committed roster as the team page holds it: its members and the commit they were read at, which member
+  // is being edited, why it could not be read, and whether this deployment has an identity door for a change.
+  roster?: { members?: TeamMember[]; sha?: string; head?: string; editing?: string; failure?: string; configured: boolean };
   page: DashPage;
   // The address's depth: one session's whole record on the sessions page, one item's id on the board.
   session?: SessionRecord;

@@ -78,3 +78,6 @@ hermes/pm-cursor.json*
 hermes/community-cursor.json*
 hermes/release-review.md
 apps/storybook/storybook-static/
+
+# A deployment's built assets (the dashboard bundle and the kit's stylesheet): `bun run build` makes them.
+apps/*/public/
