@@ -99,7 +99,11 @@ const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `
 const inherited = (): Record<string, string> => { const env: Record<string, string> = {}; for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('HERMES_')) env[k] = v; return env; };
 // TERMINAL_CWD: a conversation's shell (a channel message answered live) starts in the checkout, as a task's does —
 // Hermes would otherwise start it in the home, where the agent finds its own files and none of the project's.
-const agentEnv = (): Record<string, string> => ({ ...inherited(), HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
+// Bare mode gives the agent what the container gave it: the kit's own tools (the World CLI among them) on PATH, and a
+// data root outside the checkout, beside its home, for its verification World, scratch and whatever must stay off the
+// tree (OPEN_AUTONOMY_DATA; the container mounts the same at /opt/data).
+const data = resolve(home, '..', 'data');
+const agentEnv = (): Record<string, string> => ({ ...inherited(), PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
@@ -133,6 +137,8 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, async () => {
 
 mkdirSync(home, { recursive: true });
 own(home);
+mkdirSync(data, { recursive: true });
+own(data);
 
 // 1. ssh-agent, as the agent (an agent only answers its own uid, or root): the key is added by us, from a file
 //    the agent cannot read, and lives in the agent's memory alone.
