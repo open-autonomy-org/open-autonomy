@@ -156,10 +156,12 @@ export interface AccountProfile {
   agent_model?: string;
   agent_provider?: string;
   agent_skills?: string;
+  // What runs the agent, as its substrate says: `{mode, kit, executor, host}` (org.open-autonomy.agent.setup's `runtime`).
+  agent_runtime?: string;
   // The project's `.open-autonomy/config.yaml`: its rails bounds and roadmap source, as the owner set them.
   config_yaml?: string;
 }
-const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'config_yaml'] as const;
+const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'agent_runtime', 'config_yaml'] as const;
 
 export interface Flow {
   kind: 'mint' | 'grant' | 'consume' | 'release';
@@ -995,7 +997,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const text = (v: unknown, max: number): string | undefined => (typeof v === 'string' ? v.slice(0, max) : undefined);
     const schedule = Array.isArray(setup.schedule) ? setup.schedule.slice(0, 20).filter((j: unknown) => j && typeof j === 'object').map((j: Record<string, unknown>) => ({ name: text(j.name, 80), schedule: text(j.schedule, 80), prompt: text(j.description, 400) })) : [];
     const skills = Array.isArray(setup.skills) ? setup.skills.filter((k: unknown) => typeof k === 'string').slice(0, 50).map((k: string) => k.slice(0, 80)) : [];
-    const profile: Partial<AccountProfile> = { soul_md: text(setup.persona, 20_000) ?? '', setup_md: text(setup.setup_md, 20_000) ?? '', schedule_json: JSON.stringify({ jobs: schedule }), agent_harness: text(setup.harness, 40) ?? '', agent_model: text(setup.model, 120) ?? '', agent_provider: text(setup.provider, 40) ?? '', agent_skills: skills.join(',') };
+    const runtimeOf = (r: unknown): string => { if (!r || typeof r !== 'object') return ''; const x = r as Record<string, unknown>; if (x.mode !== 'container' && x.mode !== 'bare') return ''; return JSON.stringify({ mode: x.mode, ...(text(x.kit, 40) ? { kit: text(x.kit, 40) } : {}), ...(text(x.executor, 200) ? { executor: text(x.executor, 200) } : {}), ...(text(x.host, 80) ? { host: text(x.host, 80) } : {}) }); };
+    const profile: Partial<AccountProfile> = { soul_md: text(setup.persona, 20_000) ?? '', setup_md: text(setup.setup_md, 20_000) ?? '', schedule_json: JSON.stringify({ jobs: schedule }), agent_harness: text(setup.harness, 40) ?? '', agent_model: text(setup.model, 120) ?? '', agent_provider: text(setup.provider, 40) ?? '', agent_skills: skills.join(',') , agent_runtime: runtimeOf(setup.runtime) };
     await this.setProfile(account, profile);
     return { ok: true };
   }
