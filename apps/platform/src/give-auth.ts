@@ -38,10 +38,11 @@ export async function giveSession(req: Request, env: Env): Promise<GiveSession |
 }
 
 // `next` is where the sign-in returns: a path on this deployment, never elsewhere. Resolved the way a browser
-// resolves it (a backslash is a slash to a WHATWG parser), and kept only when the origin is this one.
+// resolves it (a backslash is a slash to a WHATWG parser, dot segments collapse), kept only when the origin is
+// this one, and handed on as the resolved absolute URL itself so nothing is resolved a second time.
 export const safeNext = (next: string | null | undefined, base: string): string | undefined => {
   if (!next || !next.startsWith('/')) return undefined;
-  try { const u = new URL(next, base); return u.origin === new URL(base).origin ? `${u.pathname}${u.search}${u.hash}` : undefined; } catch { return undefined; }
+  try { const u = new URL(next, base); return u.origin === new URL(base).origin ? u.href : undefined; } catch { return undefined; }
 };
 export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
