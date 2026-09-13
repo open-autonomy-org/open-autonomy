@@ -44,43 +44,31 @@ front and a name's page have their own, smaller contracts:
 | front, name | `card` | a project's facts line by account: patrons, per month (the core shows the balance) |
 | name | `meta`, `main`, `side` | Sponsor on GitHub for the org that owns the listing; Buy credits to give on a person's own page |
 
-## The project: GitHub's frame, Kickstarter's campaign, Patreon's rhythm
-One address per thing, tabs for its depths, roles deciding what you see and may do, never a second site:
+## Two surfaces, two purposes
+
+**The landing page** (`Platform/Landing`, `apps/platform/src/page/landing.tsx`) is how an outsider meets a project:
+Kickstarter's campaign with GitHub's proof. One page, no tabs. It owns the cover and the name, the pitch, the ask and
+the tiers, the promises (the roadmap as next up and recently shipped), the backers, and one dark strip of proof
+that the thing is alive: the agent's one word, what it is doing this minute or what it last did, what it last
+shipped, that every cent is metered. Everything deeper is a link into the dashboard, shown only to a viewer the
+owner admits there. It is the platform's alone; a self-host has no landing page.
+
+**The dashboard** (`Core/Dashboard`, `packages/backend/src/dash/index.tsx`) is the work as the team reads it: an app
+shell with a rail of panels, a top strip of the facts that matter every minute (the word, the balance, the runway,
+today's spend), and pages: Overview (now, spend, recent runs, the board's shape, the agent with the owner's control),
+Sessions and one session's transcript, the Board, the Books with every metered call, the Agent, the Team. Its scale
+and structure are its own, not the landing page's. The `dashboard:` block decides which panels each role sees, and
+whether the public sees any of it; a self-host serves this and nothing else.
 
 | Address | What it is |
 |---|---|
-| `/` | the deployment's front: its projects as cards, the ones working now first; on the platform, Explore |
-| `/name` | a GitHub login, org or person, one namespace: its projects, its grants pool, its giving books |
-| `/owner/project` | Overview: the composed page below |
-| `/owner/project/work`, `…/work/:item` | the timeline as a board (promised, in progress, shipped), one item |
-| `/owner/project/sessions`, `…/sessions/:key` | the stream, live first; one transcript |
-| `/owner/project/books` | money in with its givers, earmarks, the owner's bounds, every metered call |
-| `/owner/project/agent` | who it is, how it runs, its state, the owner's one control |
-| `/owner/project/team` | the roster |
+| `/` | the deployment's front: the platform's Explore; a self-host lists its projects |
+| `/name` | a GitHub login, org or person: its projects, its grants pool, its giving books |
+| `/owner/project` | the landing page (platform) |
+| `/owner/project/dashboard` | the dashboard's Overview, then `…/dashboard/{sessions,board,books,agent,team}`, `…/sessions/:key`, `…/board/:item` |
+| `/owner/project/about` | the project's document in full |
 
-Reserved top-level names: `give`, `v1`, `admin`, `settings`; `/explore` is `/` on the platform.
-
-### Overview: what each panel owns
-
-| Panel | Owns | Controls | Shortcuts |
-|---|---|---|---|
-| Top bar | the deployment: brand, Explore (platform) | | Become a patron → funding (deployments that take money) |
-| Header | who the project is: avatar, name, tagline, who builds it, the one word on the agent, the balance (or the platform's patrons), runway | | the repository ↗ |
-| Tabs | the depths, with counts | | each tab |
-| The workshop | the live session and its latest turns; else the last run's own words, the next fire, thirty days of spend; else the pause; under it the recent runs as a feed | | Follow / Read the session; Every session → sessions |
-| Next up · Recently shipped | five titles each | | the roadmap → work |
-| Budget (side) | the balance, runway against the goal, put in and spent | | See the books → books |
-| Cover, About, tiers, patrons (platform) | the campaign: the cover, the pitch, the tiers with other ways to give under a fold, the patrons wall | Join / Sponsor on GitHub / Give / Redeem | |
-
-### Who sees what
-
-`viewer` is public, giver, team or owner: an app's identity door names the login (the platform's GitHub sign-in); the project's own records say what it is to them, owner or team from the committed roster, giver from the books. A self-host has no door and serves the public view. `visibility` is the
-owner's word, the `dashboard:` section of `.open-autonomy/config.yaml` beside the bounds, read with the rest of the
-repository's config. Four presets: **roadmap** (the default when the block is absent: the roadmap and the books to
-everyone, the sessions, transcripts and the agent to the team), **open** (everything public), **status** (transcripts
-and books for givers, calls and the agent for the team), **private** (team and up). Whether a deployment takes money is
-which app it mounts, never a setting; Books meters whatever funds the agent either way. On the platform,
-visibility narrows the page, never the truth: the API is public reads. A private deployment is private by its own wall.
+The dashboard's addresses are the design's; the router still serves the earlier tabbed page until the wiring lands.
 
 ### States a story must cover
 
