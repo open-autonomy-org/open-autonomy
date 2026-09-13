@@ -39,7 +39,7 @@ export function TopBar({ brand, nav, cta }: { brand: string; nav?: unknown; cta?
 
 // ---- the one word on the agent ----------------------------------------------------------------------------------
 export type Standing = 'live' | 'running' | 'requested' | 'paused' | 'exhausted' | 'unfunded';
-export function standingOf(v: Pick<ProjectView, 'funded' | 'exhausted' | 'control'>, live: string[]): Standing {
+export function standingOf(v: Pick<ProjectView, 'funded' | 'exhausted' | 'control'> & { profile?: { agent_provider?: string } }, live: string[]): Standing {
   const desired = v.control?.desired?.state ?? 'running', observed = v.control?.observed?.state;
   if (desired === 'paused' && observed === 'paused') return 'paused';
   if (desired === 'paused') return 'requested';
@@ -47,8 +47,11 @@ export function standingOf(v: Pick<ProjectView, 'funded' | 'exhausted' | 'contro
   // A session in flight is the one fact that outranks the books: an agent on its owner's own subscription works
   // with no platform funds at all, and a working agent is working.
   if (live.length) return 'live';
-  if (v.exhausted) return 'exhausted';
-  if (!v.funded) return 'unfunded';
+  // The books decide only when the model is the platform's rail. An agent whose model is its owner's own
+  // provider (the setup names it) runs on no platform funds; empty books say nothing about its life.
+  const ownModel = Boolean(v.profile?.agent_provider) && v.profile?.agent_provider !== 'open-autonomy';
+  if (v.exhausted && !ownModel) return 'exhausted';
+  if (!v.funded && !ownModel) return 'unfunded';
   return 'running';
 }
 const STANDING: Record<Standing, { cls: string; word: string }> = {

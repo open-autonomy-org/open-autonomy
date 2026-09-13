@@ -27,14 +27,17 @@ export const days = (n: number | null): string => (n === null ? '—' : n > 365 
 
 // ---- the one word on the agent ------------------------------------------------------------------------------------
 export type Standing = 'live' | 'running' | 'requested' | 'paused' | 'exhausted' | 'unfunded';
-export function standingOf(v: { funded: boolean; exhausted: boolean }, live: string[], control?: { desired?: { state: string }; observed?: { state: string } }): Standing {
+export function standingOf(v: { funded: boolean; exhausted: boolean }, live: string[], control?: { desired?: { state: string }; observed?: { state: string; at?: string } }): Standing {
   const desired = control?.desired?.state ?? 'running', observed = control?.observed?.state;
   if (desired === 'paused' && observed === 'paused') return 'paused';
   if (desired === 'paused') return 'requested';
   if (observed === 'paused') return 'paused';
   if (live.length) return 'live';
-  if (v.exhausted) return 'exhausted';
-  if (!v.funded) return 'unfunded';
+  // Empty books decide only when nothing else speaks: an automation that has reported itself running lately runs
+  // on its owner's own model, as the platform's own pages read it.
+  const reported = observed === 'running' && control?.observed?.at !== undefined && Date.now() - Date.parse(control.observed.at) < 6 * 3600_000;
+  if (v.exhausted && !reported) return 'exhausted';
+  if (!v.funded && !reported) return 'unfunded';
   return 'running';
 }
 const WORD: Record<Standing, [string, (s: string) => string]> = {
