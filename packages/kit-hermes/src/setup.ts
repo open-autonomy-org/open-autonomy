@@ -172,7 +172,11 @@ function stepGitHub(s: Situation, opts: Opts, st: SetupState): void {
     throw new Error(`${s.account} already exists but this directory has no origin. Clone the existing repository or reconcile this checkout before setup; no remote was changed.`);
   }
   setupGit(s, 'fetch', '-q', 'origin');
-  mark(s.dir, st, 'github', `${s.account}, signed in as ${s.login}`);
+  // The landing workflow arms GitHub's auto-merge on every pull request it opens and lets the required approval
+  // release it; a repository without auto-merge lets no landing through once main requires that approval.
+  const merge = gh(['api', '-X', 'PATCH', `repos/${s.account}`, '-F', 'allow_auto_merge=true']);
+  if (!merge.ok) throw new Error(`Cannot enable auto-merge on ${s.account}: ${merge.err}`);
+  mark(s.dir, st, 'github', `${s.account}, signed in as ${s.login}, auto-merge on`);
 }
 
 function stepDeployKey(s: Situation, opts: Opts, st: SetupState): void {
