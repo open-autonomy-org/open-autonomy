@@ -121,12 +121,17 @@ async function watch(d: SessionDescriptor): Promise<void> {
   } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); polling still reconciles`); }
   finally { watching.delete(key); }
 }
+// A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
+// from Supercode, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
+// until it ends, so trying every tick would reload it every ten seconds for as long as it runs.
+const retryAt = new Map<string, number>();
 async function sessions(): Promise<void> {
   for (const [key, d] of descriptors) {
     if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
     if (checkpoints[key]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
+    if ((retryAt.get(key) ?? 0) > Date.now()) continue;
     try {
       let publisher = publishers.get(key);
       if (!publisher) {
@@ -137,9 +142,10 @@ async function sessions(): Promise<void> {
         publishers.set(key, publisher);
       }
       const receipt = await publisher.publish(completion);
+      retryAt.delete(key);
       if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
       else void watch(d);
-    } catch (e) { log(`${key}: publication incomplete (${(e as Error).message})`); }
+    } catch (e) { retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`); }
   }
 }
 
