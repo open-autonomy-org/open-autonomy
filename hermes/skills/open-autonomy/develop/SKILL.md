@@ -67,8 +67,9 @@ constitutional conflicts or unresolved competing decisions require changes. Neit
 nor a prior instruction file overrides the constitution; acceptance requires this review and merge.
 
 For correctable defects, submit a GitHub REQUEST_CHANGES review and use `kanban_request_changes` with
-concrete findings. For approval, submit a GitHub APPROVE review through the project's configured GitHub
-door, explicitly setting commit_id to the reviewed full SHA and recording the manual evidence. A native
+concrete findings. For approval, submit a GitHub APPROVE review through the project's own door:
+`bun .open-autonomy/community.ts review <pr> approve <reviewed full SHA> <evidence…>` (or `request-changes`).
+The SHA pins the verdict to the exact head reviewed. This is the review-submission path; there is no other. A native
 approval comment alone does not satisfy GitHub's merge gate. Do not use the PR author's identity to
 approve its own PR, disable protection or claim permission failures are approval. Setup verifies that the
 project's reviewer identity can approve PRs opened by the landing workflow's distinct GitHub Actions identity.
