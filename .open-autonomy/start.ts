@@ -301,6 +301,9 @@ const restartRequest = resolve(home, 'kit-restart.json');
 // seeds, the kit) reaches the running stack without anyone on the host. Every ten minutes the checkout's main is
 // fetched; when it moved and the board is quiet, the stack drains and restarts onto it, the same path a kit
 // upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
+// Moved means origin/main is no longer what this stack started on. HEAD is not the measure: a developer run checks
+// out its own task branch in this checkout, and that is work in progress, not a reason to restart under it.
+const startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
 let mainCheckedAt = 0, mainMoved: string | undefined;
 setInterval(() => {
   if (ending || restarting) return;
@@ -315,8 +318,8 @@ setInterval(() => {
     const g = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
     if (g('status', '--porcelain', '--untracked-files=no').stdout.toString().trim()) return;
     if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
-    const head = g('rev-parse', 'HEAD').stdout.toString().trim(), main = g('rev-parse', 'origin/main').stdout.toString().trim();
-    mainMoved = head && main && head !== main ? main.slice(0, 8) : undefined;
+    const main = g('rev-parse', 'origin/main').stdout.toString().trim();
+    mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
   const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
