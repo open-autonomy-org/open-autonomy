@@ -40,10 +40,12 @@ const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ?
 // The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
 const pausedJobs = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
 // The board's review verdicts and handoffs already published as notes on their items: an update is append-only, so a restart must not repeat one.
+// The board tasks this reporter deferred on the owner's word, so `running` promotes exactly those.
+const pausedTasks = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_tasks) ? saved.paused_tasks.filter((id: unknown) => typeof id === 'string') : []);
 const noted = new Set<string>(saved.version === 2 && Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
 function saveState(): void {
   const temp = `${stateFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], noted: [...noted] }) + '\n', { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], paused_tasks: [...pausedTasks], noted: [...noted] }) + '\n', { mode: 0o600 });
   renameSync(temp, stateFile);
 }
 
@@ -358,6 +360,8 @@ async function setup(): Promise<void> {
 // flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
 // reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
 let reportedState = '', controlAt = 0, controlUnreadable = false;
+const kanban = (...args: string[]): string => { const r = Bun.spawnSync({ cmd: ['hermes', 'kanban', ...args], stdout: 'pipe', stderr: 'pipe' }); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
+const boardTasks = (): Array<{ id: string; status: string }> => { try { const t = JSON.parse(kanban('list', '--json')); return Array.isArray(t) ? t : []; } catch { return []; } };
 const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
 async function control(): Promise<void> {
   const c = await oa.state(cfg.account);
@@ -372,6 +376,9 @@ async function control(): Promise<void> {
     // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
     // which resume simply forgets.
     for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); changed = true; }
+    // The board is funded work too: its dispatcher would keep starting queued tasks. Each one waiting to be picked up is
+    // deferred (a run in flight still finishes) and remembered, so `running` promotes exactly those.
+    for (const t of boardTasks()) if (t.status === 'todo' && !pausedTasks.has(t.id)) { pausedTasks.add(t.id); saveState(); kanban('schedule', t.id, 'paused by the owner'); }
   } else {
     // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
     for (const id of [...pausedJobs]) {
@@ -379,13 +386,15 @@ async function control(): Promise<void> {
       if (j && !j.enabled) { await sc.resumeJob({ harness: 'hermes', id, profile: j.profile ?? undefined, homes }); changed = true; }
       pausedJobs.delete(id); saveState();
     }
+    for (const id of [...pausedTasks]) { if (boardTasks().some(t => t.id === id && t.status === 'scheduled')) kanban('promote', id, 'resumed by the owner'); pausedTasks.delete(id); saveState(); }
   }
   if (changed) jobs = await sc.listJobs({ harness: 'hermes', homes });
   const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
   const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
   const running = liveRun();
   const state = desired === 'paused' && !enabled.length && !running ? 'paused' : 'running';
-  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
+  const deferred = pausedTasks.size ? `; ${pausedTasks.size} board task${pausedTasks.size === 1 ? '' : 's'} deferred` : '';
+  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}${deferred}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
   const digest = `${state}|${note ?? ''}`;
   if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
