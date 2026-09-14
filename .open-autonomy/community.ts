@@ -184,6 +184,12 @@ if (command === 'poll' && doorless) {
   const n = Number(rest[0]);
   const c = await github<{ id: number }>('POST', `/repos/${account}/issues/${n}/comments`, { body: rest.slice(1).join(' ') });
   console.log(`commented on #${n} (${c.id})`);
+} else if (command === 'review' && /^\d+$/.test(rest[0] ?? '') && ['approve', 'request-changes'].includes(rest[1] ?? '') && /^[0-9a-f]{40}$/.test(rest[2] ?? '') && rest.length >= 4) {
+  // The reviewer's verdict on a pull request, as the project's own App: the merge gate GitHub enforces. The commit is
+  // the exact head reviewed, so a later push cannot inherit the approval.
+  const n = Number(rest[0]);
+  const r = await github<{ id: number; state: string }>('POST', `/repos/${account}/pulls/${n}/reviews`, { event: rest[1] === 'approve' ? 'APPROVE' : 'REQUEST_CHANGES', commit_id: rest[2], body: rest.slice(3).join(' ') });
+  console.log(`reviewed #${n} at ${rest[2].slice(0, 8)}: ${r.state} (${r.id})`);
 } else if (command === 'discuss' && rest.length >= 2) {
   const n = Number(rest[0]);
   const d = (await discussions()).find((x) => x.number === n);
@@ -196,6 +202,6 @@ if (command === 'poll' && doorless) {
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }
