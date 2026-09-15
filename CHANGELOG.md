@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **The kit record keeps itself in step.** Correcting the number once was not enough: the next kit release drifted it again within the hour. A pre-commit hook in `.githooks` sets `.open-autonomy/kit.json` to the version in `packages/kit-hermes` and stages the correction, so this repository's page cannot report a kit nobody is running. Enable it with `git config core.hooksPath .githooks`.
 - **The health door tells the truth.** `/healthz` answered `ok` with a 200 through a twelve-minute Durable Object outage on 2026-09-15, while every page and every read door returned 500: it never touched the store. It now reads the funding account's pulse under a two-second bound, reports what the store did, and answers 503 when the store cannot answer.
 - **This repository's own kit record says what it runs.** `.open-autonomy/kit.json` still read 2.11.1 while the boilerplate beside it was the 2.11.17 template, so our own project page reported a kit version nobody was running. The record tracks the kit this repository publishes.
 - **A permanently diverged session settles instead of retrying forever.** Hermes rewrites a long run's earlier turns when it compresses, and the platform is append-only, so such a session could never be reconciled: our own reporter was reloading 33 of them from Supercode every minute, some first published on 6 September. When the platform's record is no longer live there is nothing left to publish, so the reporter settles at its checkpoint and stops. Kit 2.11.18.
