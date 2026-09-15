@@ -78,7 +78,22 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const ledger = new LedgerClient(env.LIMITS);
   const get = (): Response | null => (req.method === 'GET' ? null : methodNotAllowed());
 
-  if (path === '/healthz') return json({ ok: true, commit: env.DEPLOY_COMMIT ? env.DEPLOY_COMMIT.slice(0, 7) : null });
+  // A health door that answers without touching the store says nothing about health: through a twelve-minute
+  // Durable Object outage on 2026-09-15 every page and every read door returned 500 while this one returned ok.
+  // Read the funding account's pulse under a short bound, say what happened, and answer 503 when the store cannot.
+  if (path === '/healthz') {
+    const at = Date.now();
+    let store = 'ok';
+    try {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        ledger.pulse(fundingAccount(env)),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('store did not answer in 2s')), 2000); }),
+      ]).finally(() => clearTimeout(timer));
+    } catch (err) { store = err instanceof Error ? err.message.slice(0, 160) : 'store unreadable'; }
+    const ok = store === 'ok';
+    return json({ ok, store, ms: Date.now() - at, commit: env.DEPLOY_COMMIT ? env.DEPLOY_COMMIT.slice(0, 7) : null }, { status: ok ? 200 : 503 });
+  }
   if (path === '/favicon.svg') return new Response(LOGO_SVG, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=86400' } });
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
   const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env) };
