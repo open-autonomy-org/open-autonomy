@@ -42,7 +42,17 @@ function walk(dir: string, base = dir): string[] {
 // into the generated repository under .open-autonomy/sdk, kit-owned, so the reporter and the key tool run from a
 // bare clone with no package to publish or install. The host tools beside it (the valve, the credential handoff,
 // the Codex connection, the Supercode adapter) are the kit's own files.
-const SDK_SRC = resolve(dirname(Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir)), 'src');
+// A generated project reads the platform through the SDK this kit vendors into it. The published kit pins that
+// dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
+// that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
+// 'not_open'. Refuse to vendor below the floor rather than write a client that fails months later on the host.
+const SDK_MIN = '3.1.0';
+const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
+const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
+const order = (v: string): number[] => v.split('.').map(Number);
+const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
+const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
+if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
 const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts'];
 
 // Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,

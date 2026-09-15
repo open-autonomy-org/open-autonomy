@@ -55,5 +55,21 @@ jobs:
           for p in packages/sdk packages/backend packages/kit-hermes packages/cli; do
             name=$(bun -e "console.log(require('./$p/package.json').name)"); v=$(bun -e "console.log(require('./$p/package.json').version)")
             if npm view "$name@$v" version >/dev/null 2>&1; then echo "$name@$v is already on the registry"; continue; fi
+            # A workspace dependency is pinned to the version in this checkout, here, not left to the publisher's
+            # substitution: create-open-autonomy vendors the SDK it was built with into every project it makes, and a
+            # stale pin ships a client that cannot read what the project needs.
+            bun -e '
+              const fs = require("fs");
+              const p = process.argv[1] + "/package.json", m = JSON.parse(fs.readFileSync(p, "utf8"));
+              for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
+                for (const [name, range] of Object.entries(m[field] ?? {})) {
+                  if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
+                  const dir = name.replace("@open-autonomy/", "packages/");
+                  const v = JSON.parse(fs.readFileSync(dir + "/package.json", "utf8")).version;
+                  m[field][name] = v; console.log(`pinned ${name} ${range} -> ${v}`);
+                }
+              }
+              fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
+            ' "$p"
             (cd "$p" && bun publish --access public --registry https://registry.npmjs.org/)
           done
