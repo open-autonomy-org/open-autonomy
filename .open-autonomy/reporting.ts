@@ -78,7 +78,17 @@ export class TranscriptPublisher {
       || seq > turns.length || (this.checkpoint && this.checkpoint.seq <= seq && digest(turns.slice(0, this.checkpoint.seq)) !== this.checkpoint.digest)
       || (remote?.turns ?? []).some((t) => t.seq === undefined || !turns[t.seq] || canonical(t) !== canonical(turns[t.seq]));
     if (diverged) {
-      if (!ended || !remote || remote.status !== 'live') throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
+      // A destination that is no longer live cannot be reconciled and never will be: the source's earlier turns were
+      // rewritten (Hermes compresses a long run) and nothing may be rewritten here. What the platform holds is the
+      // record. Settle it at the checkpoint instead of reloading the whole session from the source every minute for
+      // the rest of the install's life, which is what retrying a permanent divergence amounts to.
+      if (remote && remote.status !== 'live') {
+        const settled: PublicationCheckpoint = { seq, digest: digest(turns.slice(0, Math.min(seq, turns.length))), endedAt: ended?.endedAt ?? remote.ended_at ?? new Date().toISOString() };
+        this.checkpoint = settled;
+        this.save?.(settled);
+        return settled;
+      }
+      if (!ended || !remote) throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
       await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });
       const checkpoint: PublicationCheckpoint = { seq, digest: digest(turns.slice(0, Math.min(seq, turns.length))), endedAt: ended.endedAt };
       this.checkpoint = checkpoint;
