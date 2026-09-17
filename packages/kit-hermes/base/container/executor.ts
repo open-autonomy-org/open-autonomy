@@ -4,7 +4,10 @@
 // start without them. Everything it needs arrives in World's environment (world.json `env`):
 //   OA_EXECUTOR_CONTAINER   the container's name (oa-<project>)
 //   OA_EXECUTOR_IMAGE       the image the runtime built (<project>-agent:local)
-//   OA_EXECUTOR_VOLUMES     the home and checkout volumes, comma-separated
+//   OA_EXECUTOR_VOLUMES     the volumes, comma-separated: two bare names are the home and the checkout (a project);
+//                           `name=/target` entries name their mount points (a fleet: the home and one checkout per project)
+//   OA_EXECUTOR_MEMORY      optional: the container's memory limit (Docker's syntax; 1536m when absent)
+//   OA_EXECUTOR_CPUS        optional: the container's CPU limit (2 when absent)
 //   OA_EXECUTOR_PROVIDER    optional: a provider to resume before Docker answers (colima:<profile>)
 //   DOCKER_HOST             which daemon, as Docker reads it
 import { spawnSync } from 'node:child_process';
@@ -17,10 +20,18 @@ if (!['up', 'status', 'down'].includes(phase ?? '')) throw new Error('expected u
 const env = (name: string): string => { const v = process.env[name]?.trim(); if (!v) throw new Error(`${name} is required in the World definition`); return v; };
 const container = env('OA_EXECUTOR_CONTAINER');
 const image = env('OA_EXECUTOR_IMAGE');
-const volumes = env('OA_EXECUTOR_VOLUMES').split(',').map((v) => v.trim()).filter(Boolean);
+const declared = env('OA_EXECUTOR_VOLUMES').split(',').map((v) => v.trim()).filter(Boolean);
 const provider = process.env.OA_EXECUTOR_PROVIDER?.trim();
+const memory = process.env.OA_EXECUTOR_MEMORY?.trim() || '1536m';
+const cpus = process.env.OA_EXECUTOR_CPUS?.trim() || '2';
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
-if (!NAME.test(container) || volumes.length !== 2 || !volumes.every((v) => NAME.test(v))) throw new Error('The executor needs a container name and its two volumes');
+// Two bare names are the project shape (home, checkout); named targets are a fleet's, one per mount.
+const mounts: Array<{ volume: string; target: string }> = declared.every((v) => !v.includes('='))
+  ? (declared.length === 2 ? [{ volume: declared[0], target: '/opt/data' }, { volume: declared[1], target: '/work/project' }] : [])
+  : declared.map((v) => { const [volume, target] = v.split('='); return { volume, target }; });
+if (!NAME.test(container) || !mounts.length || !mounts.every((m) => NAME.test(m.volume) && /^\/(opt\/data|work\/[a-z0-9][a-z0-9_-]*)$/.test(m.target))) throw new Error('The executor needs a container name and its volumes: two bare names (home, checkout) or name=/opt/data and name=/work/<project> entries');
+if (!/^\d+[kmg]?$/.test(memory) || !/^\d+(\.\d+)?$/.test(cpus)) throw new Error('OA_EXECUTOR_MEMORY and OA_EXECUTOR_CPUS take Docker\'s own values');
+const volumes = mounts.map((m) => m.volume);
 if (!/^[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$/.test(image)) throw new Error('The executor needs an image reference');
 const call = (command: string, args: string[], timeout = 30_000) => spawnSync(command, args, { encoding: 'utf8', timeout, env: process.env });
 const must = (r: ReturnType<typeof call>, what: string): string => { if (r.status !== 0) throw new Error(`${what}: ${(r.stderr || r.error?.message || r.stdout || `exit ${r.status}`).trim()}`); return r.stdout.trim(); };
@@ -39,11 +50,11 @@ try {
     must(docker(['image', 'inspect', '--format', '{{.Id}}', image]), `image ${image} is missing; build it with the runtime's build definition`);
     if (exists()) throw new Error(`${container} already exists (a run World lost track of); stop it yourself with docker stop ${container}, then start again`);
     must(docker(['run', '--init', '--detach', '--rm', '--name', container,
-      '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '256', '--memory', '1536m', '--cpus', '2',
+      '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(256 * Math.max(1, mounts.length - 1)), // per checkout; the project shape keeps 256 '--memory', memory, '--cpus', cpus,
       '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456',
-      '--mount', `type=volume,source=${volumes[0]},target=/opt/data`, '--mount', `type=volume,source=${volumes[1]},target=/work/project`,
+      ...mounts.flatMap((m) => ['--mount', `type=volume,source=${m.volume},target=${m.target}`]),
       image], 60_000), 'executor start');
-    console.log(`${container} up on ${image}; home and checkout volumes retained`);
+    console.log(`${container} up on ${image}; ${mounts.length} volume(s) retained`);
   } else if (phase === 'status') {
     console.log(must(docker(['inspect', '--format', '{{.State.Running}}', container]), 'status'));
   } else if (exists()) {

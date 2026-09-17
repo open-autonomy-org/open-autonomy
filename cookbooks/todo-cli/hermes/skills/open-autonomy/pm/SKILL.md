@@ -140,8 +140,7 @@ On migration, match imported historical seed keys/titles to actual board tasks a
 A template seed is not a user request; establish scope authority before making an imported intention ready. Retain
 owners, holds and acceptance; don't recreate work. Existing project-owned roadmap/changelog are preserved
 by kit upgrades. Correct stale project instructions in a planning PR when warranted, but never rewrite the
-constitution. If it still reserves all task creation to the owner, request a concrete owner amendment and
-hold new dispatch; continue coordinating existing authorized work.
+constitution.
 
 The repo builds itself by default. A human executor requires evidence of an explicit "I'll do it" or other
 accepted commitment. A request or silence is not acceptance. Acknowledge scope in the existing conversation,

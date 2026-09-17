@@ -28,7 +28,8 @@ const log = (message: string) => console.log(`reporter: ${message}`);
 const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONOMY_RUNTIME ?? ''); return r && (r.mode === 'container' || r.mode === 'bare') ? r : undefined; } catch { return undefined; } })();
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, container!, ...cmd];
+// HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
 const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
 const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
@@ -323,13 +324,20 @@ function refreshMain(): void {
   if (rev.exitCode !== 0) throw new Error('Committed main unavailable');
   mainRevision = rev.stdout.toString().trim();
 }
+// A document the project keeps is read from committed main; one it does not keep is simply absent (an organization
+// keeps no changelog; a project may keep no constitution yet). Any other failure to read is an error, never silence.
 function mainFile(name: string): string | undefined {
   if (!mainRevision) return undefined;
+  const exists = run(['git', '-C', projectDir, 'cat-file', '-e', `${mainRevision}:${name}`]);
+  if (exists.exitCode !== 0) return undefined;
   const r = run(['git', '-C', projectDir, 'show', `${mainRevision}:${name}`]);
   if (r.exitCode !== 0) throw new Error(`Cannot read committed ${name}`);
   return r.stdout.toString();
 }
+// `timeline: none` in the config: the project's own driver (or, for an organization, its projects) owns the timeline;
+// the reporter publishes sessions, setup and documents only.
 async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
+  if (cfg.timeline === 'none') return;
   if (!present) return;
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);

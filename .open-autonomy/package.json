@@ -1,5 +1,5 @@
 {
-  "name": "open-autonomy-open-autonomy",
+  "name": "open-autonomy-host",
   "private": true,
   "type": "module",
   "description": "The project's runtime dependencies: Supercode and its harness SDK for native agent state, and World tooling for isolated application verification. The Open Autonomy SDK (the interface) is vendored beside them under sdk/; the host tools (the valve, the credential handoff, the Codex connection, the Supercode adapter) are the kit's own files here.",

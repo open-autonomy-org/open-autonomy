@@ -175,20 +175,54 @@ export class OpenAutonomy {
     return w;
   }
 
-  // Public reads (no key): the stream, one session with its transcript, one item with everything on it.
+  // Reads: the stream, one session with its transcript, one item with everything on it, the books. Each answers
+  // according to the owner's word on visibility; the key rides along when there is one, since a panel closed to
+  // the public opens to the project's own key (and a closed one answers 404, `not_open`).
+  private reader(): HeadersInit { return this.opts.key && this.opts.key !== 'valve' ? { authorization: `Bearer ${this.opts.key}` } : {}; }
+  private async read<T>(path: string): Promise<T> {
+    const res = await this.fetchImpl(`${this.base}${path}`, { headers: this.reader() });
+    if (!res.ok) { const body = await res.json().catch(() => ({})) as { error?: { code?: string } | string }; const code = typeof body.error === 'string' ? body.error : body.error?.code; throw new ReadError(res.status, code ?? `http_${res.status}`); }
+    return await res.json() as T;
+  }
   async sessions(account: string, limit = 30): Promise<{ live: string[]; sessions: SessionSummary[] }> {
-    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}`);
-    return await res.json() as { live: string[]; sessions: SessionSummary[] };
+    return this.read(`/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}`);
   }
   async session(account: string, key: string): Promise<SessionRecord | undefined> {
-    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}`);
-    if (res.status === 404) return undefined;
-    if (!res.ok) throw new Error(`read session ${key}: ${res.status}`);
-    return ((await res.json()) as { session?: SessionRecord }).session;
+    try { return (await this.read<{ session?: SessionRecord }>(`/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}`)).session; }
+    catch (e) { if (e instanceof ReadError && e.status === 404 && e.code !== 'not_open') return undefined; throw e; }
   }
   async item(account: string, itemId: string): Promise<ItemView> {
-    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/items/${encodeURIComponent(itemId)}`);
-    return await res.json() as ItemView;
+    return this.read(`/accounts/${encodeURIComponent(account)}/items/${encodeURIComponent(itemId)}`);
+  }
+  //   GET /v1/accounts/:account         the books: the balance, what came in and went out, the burn and the runway
+  //   GET /v1/accounts/:account/calls   every metered call, newest first
+  async funding(account: string): Promise<FundingView> {
+    return this.read(`/accounts/${encodeURIComponent(account)}`);
+  }
+  async calls(account: string, limit = 50): Promise<{ calls: CallRecord[] }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/calls?limit=${limit}`);
+  }
+  // A session's turns as they land, from an offset: Server-Sent Events `turn` and `status`, until the session ends
+  // or the caller stops iterating.
+  async *follow(account: string, key: string, after = -1): AsyncGenerator<SessionEvent> {
+    const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}/events?after=${after}`, { headers: { ...this.reader(), accept: 'text/event-stream' } });
+    if (!res.ok || !res.body) throw new ReadError(res.status, `http_${res.status}`);
+    const reader = res.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let at: number;
+      while ((at = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, at); buffer = buffer.slice(at + 2);
+        let event = 'message', data = '';
+        for (const line of block.split('\n')) { if (line.startsWith('event:')) event = line.slice(6).trim(); else if (line.startsWith('data:')) data += line.slice(5).trim(); }
+        if (!data) continue;
+        let parsed: unknown; try { parsed = JSON.parse(data); } catch { continue; }
+        if (event === 'turn') yield { event: 'turn', turn: parsed as Turn & { seq?: number } };
+        else if (event === 'status') { const s = parsed as { status: 'live' | 'ended'; turn_count: number; usd_cents: number }; yield { event: 'status', ...s }; if (s.status !== 'live') return; }
+      }
+    }
   }
 
   // The operating state as the platform holds it: the owner's request and the automation's answer, apart.
@@ -228,6 +262,20 @@ export class OpenAutonomy {
     return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, unchanged: body.unchanged, error: body.error?.code };
   }
 }
+
+// A read the platform refused, with its status and code (`not_open`: a panel the owner keeps from this viewer).
+export class ReadError extends Error {
+  constructor(readonly status: number, readonly code: string) { super(`${code} (${status})`); this.name = 'ReadError'; }
+}
+export type SessionEvent = { event: 'turn'; turn: Turn & { seq?: number } } | { event: 'status'; status: 'live' | 'ended'; turn_count: number; usd_cents: number };
+export interface FundingView {
+  account: string; funded: boolean; exhausted: boolean;
+  balance_usd_cents: number; granted_in_usd_cents: number; granted_out_usd_cents: number; consumed_usd_cents: number;
+  burn_per_day_usd_cents: number; runway_days: number | null; runway_confident: boolean; days_observed: number;
+  calls_total: number; last_call_at: string | null; daily_spend_usd_cents: number[];
+  bounds: { models: string[]; limits: Array<{ window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }> };
+}
+export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
 
 export interface RoadmapRevision {
   revision: number;

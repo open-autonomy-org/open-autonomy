@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter-ai-dev/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
-import { OpenAutonomy } from './sdk/client.ts';
+import { OpenAutonomy, Session } from './sdk/client.ts';
 import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -40,10 +40,12 @@ const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ?
 // The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
 const pausedJobs = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
 // The board's review verdicts and handoffs already published as notes on their items: an update is append-only, so a restart must not repeat one.
+// The board tasks this reporter deferred on the owner's word, so `running` promotes exactly those.
+const pausedTasks = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_tasks) ? saved.paused_tasks.filter((id: unknown) => typeof id === 'string') : []);
 const noted = new Set<string>(saved.version === 2 && Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
 function saveState(): void {
   const temp = `${stateFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], noted: [...noted] }) + '\n', { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], paused_tasks: [...pausedTasks], noted: [...noted] }) + '\n', { mode: 0o600 });
   renameSync(temp, stateFile);
 }
 
@@ -72,13 +74,30 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   // A session's native end is authoritative even when its old cron fire has left
   // the bounded native run ledger. An absent outcome stays absent.
   const binding = bindings.get(d.locator.session_id);
-  return binding?.ended_at ? { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined } : undefined;
+  if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
+  // A session Hermes never closed (its process killed under it) has no native end and never will. When the host
+  // proves it (the fire's pid is gone while its ledger still says running), it ended when it last spoke; failing
+  // that proof, six silent hours say the same. An absent outcome stays absent.
+  const abandoned = d.activity?.evidence?.native_state === 'abandoned';
+  if (!d.live_status && d.updated_at_ms && (abandoned || Date.now() - d.updated_at_ms > 6 * 3600_000)) return { endedAt: new Date(d.updated_at_ms).toISOString() };
+  return undefined;
 }
+// Native state is a second or two of the host's disk per read, and a tick comes every five seconds and on every
+// session event: read it at most every thirty seconds, or right after a failed read, and a session's end is
+// still noticed within that. A read is given a minute, and one retry when Hermes's own atomic rewrite of a file
+// leaves a name missing for an instant.
+let nativeAt = 0, nativeOk = false;
 async function nativeState(): Promise<void> {
-  const [orchestration, history] = await Promise.all([
-    sc.orchestrationLoad({ root: home, flavor: 'hermes' }),
-    sc.listRuns({ harness: 'hermes', homes, limit: 500 }),
+  if (nativeOk && Date.now() - nativeAt < 30_000) return;
+  nativeOk = false;
+  const read = () => Promise.all([
+    sc.orchestrationLoad({ root: home, flavor: 'hermes' }, { timeoutMs: 60_000 }),
+    sc.listRuns({ harness: 'hermes', homes, limit: 500 }, { timeoutMs: 60_000 }),
   ]);
+  let result: Awaited<ReturnType<typeof read>>;
+  try { result = await read(); }
+  catch (e) { if (!/No such file or directory/.test((e as Error).message)) throw e; await Bun.sleep(300); result = await read(); }
+  const [orchestration, history] = result;
   if (history.sources.some(s => s.state === 'unreadable')) throw new Error('Native run ledger unreadable');
   const next = orchestration.orchestration.profiles as Record<string, Profile>;
   if (!next || !next.default) throw new Error('Native profile state unavailable');
@@ -87,6 +106,7 @@ async function nativeState(): Promise<void> {
   runs = new Map(history.runs.filter(r => r.session_id).map(r => [r.session_id!, r]));
   jobNames.clear();
   for (const profile of Object.values(profiles)) for (const [id, job] of Object.entries(profile.jobs)) jobNames.set(id, job.residue?.name ?? id);
+  nativeAt = Date.now(); nativeOk = true;
 }
 async function watch(d: SessionDescriptor): Promise<void> {
   const key = d.locator.session_id;
@@ -103,11 +123,17 @@ async function watch(d: SessionDescriptor): Promise<void> {
   } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); polling still reconciles`); }
   finally { watching.delete(key); }
 }
+// A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
+// from Supercode, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
+// until it ends, so trying every tick would reload it every ten seconds for as long as it runs.
+const retryAt = new Map<string, number>();
 async function sessions(): Promise<void> {
   for (const [key, d] of descriptors) {
     if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
+    if (checkpoints[key]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
+    if ((retryAt.get(key) ?? 0) > Date.now()) continue;
     try {
       let publisher = publishers.get(key);
       if (!publisher) {
@@ -118,9 +144,10 @@ async function sessions(): Promise<void> {
         publishers.set(key, publisher);
       }
       const receipt = await publisher.publish(completion);
+      retryAt.delete(key);
       if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
       else void watch(d);
-    } catch (e) { log(`${key}: publication incomplete (${(e as Error).message})`); }
+    } catch (e) { retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`); }
   }
 }
 
@@ -296,13 +323,20 @@ function refreshMain(): void {
   if (rev.exitCode !== 0) throw new Error('Committed main unavailable');
   mainRevision = rev.stdout.toString().trim();
 }
+// A document the project keeps is read from committed main; one it does not keep is simply absent (an organization
+// keeps no changelog; a project may keep no constitution yet). Any other failure to read is an error, never silence.
 function mainFile(name: string): string | undefined {
   if (!mainRevision) return undefined;
+  const exists = run(['git', '-C', projectDir, 'cat-file', '-e', `${mainRevision}:${name}`]);
+  if (exists.exitCode !== 0) return undefined;
   const r = run(['git', '-C', projectDir, 'show', `${mainRevision}:${name}`]);
   if (r.exitCode !== 0) throw new Error(`Cannot read committed ${name}`);
   return r.stdout.toString();
 }
+// `timeline: none` in the config: the project's own driver (or, for an organization, its projects) owns the timeline;
+// the reporter publishes sessions, setup and documents only.
 async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
+  if (cfg.timeline === 'none') return;
   if (!present) return;
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
@@ -333,6 +367,8 @@ async function setup(): Promise<void> {
 // flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
 // reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
 let reportedState = '', controlAt = 0, controlUnreadable = false;
+const kanban = (...args: string[]): string => { const r = Bun.spawnSync({ cmd: ['hermes', 'kanban', ...args], stdout: 'pipe', stderr: 'pipe' }); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
+const boardTasks = (): Array<{ id: string; status: string }> => { try { const t = JSON.parse(kanban('list', '--json')); return Array.isArray(t) ? t : []; } catch { return []; } };
 const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
 async function control(): Promise<void> {
   const c = await oa.state(cfg.account);
@@ -347,6 +383,9 @@ async function control(): Promise<void> {
     // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
     // which resume simply forgets.
     for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); changed = true; }
+    // The board is funded work too: its dispatcher would keep starting queued tasks. Each one waiting to be picked up is
+    // deferred (a run in flight still finishes) and remembered, so `running` promotes exactly those.
+    for (const t of boardTasks()) if (t.status === 'todo' && !pausedTasks.has(t.id)) { pausedTasks.add(t.id); saveState(); kanban('schedule', t.id, 'paused by the owner'); }
   } else {
     // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
     for (const id of [...pausedJobs]) {
@@ -354,17 +393,41 @@ async function control(): Promise<void> {
       if (j && !j.enabled) { await sc.resumeJob({ harness: 'hermes', id, profile: j.profile ?? undefined, homes }); changed = true; }
       pausedJobs.delete(id); saveState();
     }
+    for (const id of [...pausedTasks]) { if (boardTasks().some(t => t.id === id && t.status === 'scheduled')) kanban('promote', id, 'resumed by the owner'); pausedTasks.delete(id); saveState(); }
   }
   if (changed) jobs = await sc.listJobs({ harness: 'hermes', homes });
   const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
   const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
   const running = liveRun();
   const state = desired === 'paused' && !enabled.length && !running ? 'paused' : 'running';
-  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
+  const deferred = pausedTasks.size ? `; ${pausedTasks.size} board task${pausedTasks.size === 1 ? '' : 's'} deferred` : '';
+  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}${deferred}` : desired === 'paused' ? `pausing: ${running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
   const digest = `${state}|${note ?? ''}`;
   if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
-let busy = false, dirty = false, quitting = false, documentsAt = 0;
+let busy = false, dirty = false, quitting = false, documentsAt = 0, orphansAt = 0;
+// A session the platform holds as live whose native record is gone (a run killed with its host, a store pruned)
+// would stay live forever: nothing narrates its end. Absent from discovery for five minutes, it ended: the reporter
+// says so at the platform's last turn of it, with no outcome, since none was recorded.
+const missingSince = new Map<string, number>();
+async function orphans(): Promise<void> {
+  const { live } = await oa.sessions(cfg.account, 200);
+  for (const key of live) {
+    if (descriptors.has(key) || stopped.has(key)) { missingSince.delete(key); continue; }
+    const since = missingSince.get(key) ?? Date.now();
+    missingSince.set(key, since);
+    if (Date.now() - since < 5 * 60_000) continue;
+    try {
+      const remote = await oa.session(cfg.account, key);
+      if (!remote || remote.status !== 'live') { stopped.add(key); continue; }
+      const endedAt = remote.turns.at(-1)?.ts ?? remote.started_at;
+      await new Session(oa, key, remote.next_seq).end({ endedAt });
+      if (checkpoints[key]) { checkpoints[key].endedAt = endedAt; saveState(); }
+      stopped.add(key); missingSince.delete(key);
+      log(`${key}: native record gone; ended at its last turn`);
+    } catch (e) { log(`${key}: orphan not ended (${(e as Error).message})`); }
+  }
+}
 async function tick(): Promise<void> {
   if (busy || quitting) { dirty = true; return; }
   busy = true;
@@ -374,6 +437,7 @@ async function tick(): Promise<void> {
       await nativeState();
       const present = await board();
       await sessions();
+      if (Date.now() - orphansAt > 60_000) { await orphans(); orphansAt = Date.now(); }
       if (Date.now() - controlAt > 10_000) { await control(); controlAt = Date.now(); }
       if (Date.now() - documentsAt > 60_000) {
         refreshMain();
@@ -399,8 +463,12 @@ const query = { harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], h
 const index = await sc.subscribeSessionIndex(query);
 for (const d of index.initial) descriptors.set(d.locator.session_id, d);
 // The host can start Hermes once SDK discovery and native state are readable.
-// Historical publication may take minutes; replay is not a readiness condition.
-await nativeState();
+// Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
+// gateway that just drained (a restart onto a moved main) reads as unreadable for a moment: that is a wait, not a death.
+for (let attempt = 1; ; attempt++) {
+  try { await nativeState(); break; }
+  catch (e) { if (attempt >= 20) throw e; log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
+}
 process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
 let cursor: string | undefined;
