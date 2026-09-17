@@ -37,6 +37,14 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
     else if (opts.prepareVolumes) { const r = docker(['volume', 'create', v]); if (r.status !== 0) throw new Error(`volume ${v}: ${r.stderr.trim()}`); say(`volume ${v}: created`); }
     else say(`volume ${v}: missing; --prepare-volumes creates it once`);
   }
+  // A checkout volume mounts at a path the image does not carry, so Docker leaves its root to root; the executor runs
+  // with every capability dropped and cannot chown it. The volume is made the agent's once, here, from the image.
+  if (opts.prepareVolumes) for (const m of mounts.slice(1)) {
+    const [v, target] = m.split('=');
+    const r = spawnSync('docker', ['run', '--rm', '--user', '0', '--mount', `type=volume,source=${v},target=${target}`, opts.image, 'sh', '-c', `chown 10000:10000 ${target}`], { encoding: 'utf8', timeout: 60_000, env: dockerEnv });
+    if (r.status !== 0) throw new Error(`volume ${v}: cannot make it the agent's: ${r.stderr.trim()}`);
+    say(`volume ${v}: the agent's`);
+  }
   writeFileSync(join(runtimeDir, 'fleet.json'), `${JSON.stringify({ container, projects: projects.map(({ account, origin }) => ({ account, origin })) }, null, 2)}\n`);
   const executor = resolve(import.meta.dir, '..', 'base', 'container', 'executor.ts');
   // What the host writes for this World is the reporters' state and World's bookkeeping; the home and checkouts are
