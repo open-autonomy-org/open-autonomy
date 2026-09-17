@@ -39,7 +39,9 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   }
   writeFileSync(join(runtimeDir, 'fleet.json'), `${JSON.stringify({ container, projects: projects.map(({ account, origin }) => ({ account, origin })) }, null, 2)}\n`);
   const executor = resolve(import.meta.dir, '..', 'base', 'container', 'executor.ts');
-  const world = { id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, resources: { memory: opts.memory ?? '3g', storage: '0' },
+  // What the host writes for this World is the reporters' state and World's bookkeeping; the home and checkouts are
+  // Docker volumes on the engine's disk. The bound names the host's need, as the project runtime's does.
+  const world = { id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 2048 },
     services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
     env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: opts.memory ?? '3g', OA_EXECUTOR_CPUS: opts.cpus ?? '2',
       ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
