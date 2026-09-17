@@ -36,13 +36,13 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const rec = readKit(dir);
   const { project, account } = rec.params;
   if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
-  const drift = check(dir).drift;
-  if (drift.length) throw new Error(`the kit-owned files have drifted (${drift.length}); upgrade and land them first:\n  ${drift.join('\n  ')}`);
-  // The host runs the kit's reviewed code. Code the project took over under .open-autonomy/ or container/ is the
+  const status = check(dir);
+  if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
+  // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
   // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A
-  // document the project took over (its production guide, its setup notes) ships nothing and passes.
-  const taken = rec.divergences.filter((d) => (d.startsWith('.open-autonomy/') || d.startsWith('container/')) && !/\.md$/i.test(d));
-  if (taken.length) throw new Error(`the project has taken over host files the runtime would ship (${taken.join(', ')}); reconcile them with the kit before cutting a release`);
+  // document the project changed (its production guide, its setup notes) ships nothing and passes.
+  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d));
+  if (code.length) throw new Error(`the project's host files differ from the kit's (${code.join('; ')}); the runtime ships the kit's reviewed code: reconcile them before cutting a release`);
   const rev = out(run(['git', 'rev-parse', 'HEAD'], dir));
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);
   if (out(run(['git', 'status', '--porcelain', '--', '.open-autonomy', 'container'], dir))) throw new Error('.open-autonomy or container/ has uncommitted changes; the runtime is cut from a landed revision');

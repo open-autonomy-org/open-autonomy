@@ -91,4 +91,6 @@ the daily ones; it is the same memo, not a second job.
 
 Inspect `hermes cron list`, `runs` and `incidents` for a missed cycle or a delivery that did not reach the
 channel; a memo prepared but not delivered is not a memo. Run `bun .open-autonomy/maintain.ts upgrade`,
-then `restart`, for idle kit maintenance.
+then `restart`, for idle kit maintenance; the upgrade merges the kit's change into this repository's files
+three-way, and a file where both moved is left with conflict markers in the upgrade worktree for you to
+resolve, keeping the organization's intent and the kit's change, before it is pushed.

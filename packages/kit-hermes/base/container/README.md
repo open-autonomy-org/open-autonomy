@@ -55,7 +55,7 @@ Use unique directories under `/opt/data/artifact-verification` for extracted exe
 release-review artifacts during recovery. Never solve capacity failures by deleting worker files or weakening
 limits.
 
-Upgrade through `create-open-autonomy upgrade`, review the change, land it, then `create-open-autonomy runtime`
+Upgrade through `create-open-autonomy upgrade` (a three-way merge; resolve any marked conflict), review the change, land it, then `create-open-autonomy runtime`
 again: a new release is cut and the unit points at it; the running service keeps the old release until the
 service manager restarts it (the commands are printed, never run). Verify the reported kit version on the page
 and a native operation. Existing project-owned divergence files require explicit reconciliation; do not erase

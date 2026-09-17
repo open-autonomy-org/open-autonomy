@@ -5,5 +5,5 @@
 - **Git.** Never push to main, rewrite history or force-push. Plan on `agent/scrum-<date>` from fresh `origin/main`; push to open a pull request; the repository's landing takes it from there.
 - **Sources.** Git, pull requests, issues and discussions through `.open-autonomy/community.ts`, the agreed channels, and the sessions the reporter follows. Confidential channels are outside scope. Cite what you claim.
 - **Secrets.** There are none for you to use; never read or print `.env` files or key material. Your sessions are published.
-- **Do not edit** `LICENSE`, `.github/workflows/`, `container/`, `.open-autonomy/reporter.ts`, or anything under `hermes/` except a skill a task asks you to improve.
+- **Do not edit** `container/`, `.open-autonomy/reporter.ts`, or anything under `hermes/` except a skill a task asks you to improve.
 - **Cost.** Your calls are metered and public. Read before writing; stop when the record is true.
