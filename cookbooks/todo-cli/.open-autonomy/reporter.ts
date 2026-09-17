@@ -323,13 +323,20 @@ function refreshMain(): void {
   if (rev.exitCode !== 0) throw new Error('Committed main unavailable');
   mainRevision = rev.stdout.toString().trim();
 }
+// A document the project keeps is read from committed main; one it does not keep is simply absent (an organization
+// keeps no changelog; a project may keep no constitution yet). Any other failure to read is an error, never silence.
 function mainFile(name: string): string | undefined {
   if (!mainRevision) return undefined;
+  const exists = run(['git', '-C', projectDir, 'cat-file', '-e', `${mainRevision}:${name}`]);
+  if (exists.exitCode !== 0) return undefined;
   const r = run(['git', '-C', projectDir, 'show', `${mainRevision}:${name}`]);
   if (r.exitCode !== 0) throw new Error(`Cannot read committed ${name}`);
   return r.stdout.toString();
 }
+// `timeline: none` in the config: the project's own driver (or, for an organization, its projects) owns the timeline;
+// the reporter publishes sessions, setup and documents only.
 async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
+  if (cfg.timeline === 'none') return;
   if (!present) return;
   const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);

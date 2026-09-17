@@ -1,0 +1,198 @@
+# The slim executor: the same Hermes, git, bun and .open-autonomy tools as `Dockerfile`,
+# with everything a HEADLESS daily PM agent never reaches taken back out. The daily PM
+# skews (manage-project, manage-organization) talk to a model and to git; they never open
+# a browser, never render an image or a video, never speak, never join a chat platform.
+#
+# Use this file exactly like `Dockerfile` (same build context, `packages/kit-hermes/base`):
+#     docker build -f container/Dockerfile.slim -t <tag> packages/kit-hermes/base
+#
+# ---------------------------------------------------------------------------------------
+# WHAT IS REMOVED, AND BY WHICH MECHANISM
+# ---------------------------------------------------------------------------------------
+# Every removal below is either a package manager uninstalling a package it installed, a
+# cache tool clearing its own cache, or a directory whose location Hermes itself declares.
+# Nothing is deleted out from under Hermes without Hermes also being told, through its own
+# plugins denylist, that the capability is gone.
+#
+# 1. Browser automation.
+#    `apt-get purge` never installed it; the bytes are Playwright's chromium shell, which
+#    the base image put under $PLAYWRIGHT_BROWSERS_PATH — a path Hermes declares itself.
+#    That directory is removed and PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops a re-download.
+#    The three cloud browser backends are denied in the seeded config.
+#    The system half of that install — xvfb, the mesa software-GL stack and chromium's
+#    CJK/emoji font set — is purged with apt in the second group below.
+#    PUT BACK: drop the `rm -rf "$PLAYWRIGHT_BROWSERS_PATH"` line, drop the second apt
+#    purge group, drop `browser/*` from the denylist, and add
+#    `npx playwright install --with-deps chromium --only-shell`, which re-fetches both
+#    halves on its own.
+#
+# 2. Image, video and audio generation, and the media toolchain behind them.
+#    `apt-get purge ffmpeg` (apt's own uninstall) takes the codec, filter and GPU/mesa
+#    libraries with it via `autoremove --purge`. The image_gen and video_gen plugin
+#    backends are denied in the seeded config so Hermes reports them off rather than
+#    failing at call time.
+#    PUT BACK: remove `ffmpeg` from the purge list and `image_gen/*`, `video_gen/*` from
+#    the denylist.
+#
+# 3. Desktop / GUI / chat-platform Python SDKs.
+#    `uv pip uninstall` — uv's own uninstall against the venv uv itself created — removes
+#    the optional extras the base image eager-installed: [messaging] (telegram, discord,
+#    slack, qrcode, brotli), [matrix] (mautrix, python-olm, asyncpg), [bedrock] (boto3 /
+#    botocore), [azure-identity], [google] (google-api-python-client, whose baked API
+#    discovery cache alone is 95 MB), [youtube], [hindsight] and [otlp]. The bundled
+#    platform plugins that would import them are already lazy in the base image, so
+#    nothing loads them at start; the denylist makes the absence explicit.
+#    PUT BACK for one of them: delete that package from the `uv pip uninstall` list and
+#    rebuild — e.g. keep boto3/botocore to restore the Bedrock provider. There is no venv
+#    surgery to undo; the base layer still has the wheels' metadata pinned in uv.lock.
+#
+# 4. The dashboard/TUI SOURCE trees and their npm build dependencies.
+#    /opt/hermes/node_modules, /opt/hermes/web and /opt/hermes/ui-tui exist in the base
+#    image only to BUILD the dashboard and TUI bundles. The built dashboard bundle stays
+#    (HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist), so `hermes dashboard` still
+#    serves. The prebuilt TUI bundle goes with ui-tui/, so `hermes --tui` is not available
+#    in this image — the executor is driven over the SDK transport, never interactively.
+#    PUT BACK: drop those three paths from the cleanup and drop the HERMES_TUI_DIR unset.
+#
+# 5. The Photon (iMessage) sidecar's baked node_modules, 118 MB, under the photon platform
+#    plugin. The plugin is denied in the seeded config; its sidecar deps go with it.
+#    PUT BACK: drop `platforms/photon` from the denylist and run
+#    `npm ci` in /opt/hermes/plugins/platforms/photon/sidecar.
+#
+# 6. The C/C++ build toolchain (gcc, g++, make, cmake, python3-dev, libffi-dev,
+#    libolm-dev) and docker-cli, by `apt-get purge` + `autoremove --purge`. The base image
+#    already sets HERMES_DISABLE_LAZY_INSTALLS=1, so nothing compiles at runtime, and the
+#    executor is documented never to receive a Docker socket.
+#    PUT BACK: remove the package from the purge list.
+#
+# 7. Build caches and package documentation: `uv cache clean` and `npm cache clean` (each
+#    tool clearing its own cache), /root/.bun, and /usr/share/doc + /usr/share/man.
+#
+# ---------------------------------------------------------------------------------------
+# WHY THIS IS A TWO-STAGE BUILD
+# ---------------------------------------------------------------------------------------
+# Deleting a file in a child layer does not shrink an image — it adds a whiten-out entry on
+# top of the bytes, which stay in the parent layer forever. The prune therefore happens in
+# the `pruned` stage and the final stage copies that stage's finished root filesystem once,
+# so the removals are real bytes off the image. Image metadata (ENV, USER, VOLUME,
+# ENTRYPOINT) does not survive a filesystem copy and is restated at the bottom; the values
+# are the base image's own, unchanged except where a removal above requires it.
+
+ARG HERMES_IMAGE=hermes-agent:v2026.8.31
+
+FROM ${HERMES_IMAGE} AS pruned
+USER root
+
+# ---- identical to container/Dockerfile from here ----
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+ARG BUN_VERSION=1.3.10
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
+    && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
+COPY .open-autonomy /opt/agent/.open-autonomy
+RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
+RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
+RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
+# ---- end of the shared steps ----
+
+# (3) uv uninstalls the optional extras it installed. Listed one per line so a single
+# package can be handed back by deleting its line. `|| true` per package so a base-image
+# bump that drops one of them does not fail the build.
+RUN set -eu; \
+    for pkg in \
+        google-api-python-client google-auth-oauthlib google-auth-httplib2 \
+        boto3 botocore s3transfer jmespath \
+        azure-identity azure-core msal msal-extensions \
+        mautrix python-olm asyncpg aiosqlite aiohttp-socks \
+        python-telegram-bot discord.py slack-bolt slack-sdk qrcode brotlicffi PyNaCl \
+        youtube-transcript-api hindsight-client \
+        opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+        opentelemetry-exporter-otlp-proto-common opentelemetry-proto \
+    ; do \
+        uv pip uninstall --python /opt/hermes/.venv/bin/python "$pkg" || true; \
+    done
+
+# (1)(2)(6) apt purges what apt installed, and autoremove takes the orphaned libraries
+# (ffmpeg's codecs, mesa/LLVM, the compiler runtimes) with them. The second group is the
+# system half of `playwright install --with-deps chromium`: a headless X server, chromium's
+# buffer-management and software-GL stack (libgbm1 has no reverse dependency left at all,
+# and mesa-libgallium + libllvm19 + libz3-4 — 178 MB — cascade out behind it) and the
+# CJK/emoji font set chromium renders with. With the browser shell gone in (1) none of it
+# has a consumer; `apt-cache rdepends --installed` names xvfb as the only thing that ever
+# wanted libgl1, and nothing at all as wanting libgbm1.
+RUN set -eu; \
+    apt-get purge -y --auto-remove \
+        ffmpeg gcc g++ make cmake python3-dev libffi-dev libolm-dev docker-cli \
+        xvfb libgl1-mesa-dri libgbm1 \
+        fonts-liberation fonts-noto-color-emoji fonts-unifont fonts-wqy-zenhei \
+        fonts-ipafont-gothic fonts-tlwg-loma-otf fonts-freefont-ttf \
+        xfonts-utils xfonts-scalable xfonts-encodings \
+    && apt-get autoremove -y --purge \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# (1)(4)(5)(7) The remaining trees, each named for what it is.
+RUN set -eu; \
+    rm -rf "${PLAYWRIGHT_BROWSERS_PATH:-/opt/hermes/.playwright}"; \
+    rm -rf /opt/hermes/node_modules /opt/hermes/web /opt/hermes/ui-tui; \
+    rm -rf /opt/hermes/plugins/platforms/photon/sidecar/node_modules; \
+    uv cache clean || true; \
+    npm cache clean --force 2>/dev/null || true; \
+    rm -rf /root/.bun /root/.npm /root/.cmake /root/.cache; \
+    rm -rf /usr/share/doc /usr/share/man
+
+# Tell Hermes, through its own `hermes plugins disable` command, which bundled plugin keys
+# are gone. The command writes the `plugins.disabled` denylist into $HERMES_HOME/config.yaml;
+# we point it at a scratch home and then copy the result over the image's first-boot seed
+# (/opt/hermes/cli-config.yaml.example, which docker/stage2-hook.sh copies into a fresh
+# HERMES_HOME), so every home this image ever creates starts with the denylist in place.
+# Keys are the path-derived plugin keys, never bare names: `image_gen/xai` and
+# `model-providers/xai` share a name and only the key distinguishes them.
+# The memory providers under plugins/memory are NOT listed: they are `exclusive`-kind and
+# the loader never imports them at all — one is chosen by `memory.provider` config.
+# Model providers are likewise left alone; the PM skews need a model.
+RUN set -eu; \
+    mkdir -p /tmp/seed && chown hermes:hermes /tmp/seed; \
+    for key in \
+        browser/browser_use browser/browserbase browser/firecrawl \
+        image_gen/deepinfra image_gen/fal image_gen/krea image_gen/openai \
+        image_gen/openai-codex image_gen/openrouter image_gen/xai \
+        video_gen/deepinfra video_gen/fal video_gen/xai \
+        spotify google_meet teams_pipeline observability/langfuse \
+        platforms/photon platforms/matrix platforms/discord platforms/telegram \
+        platforms/slack platforms/whatsapp platforms/simplex platforms/line \
+        platforms/wecom platforms/dingtalk platforms/feishu platforms/teams \
+        platforms/google_chat platforms/irc platforms/mattermost platforms/buzz \
+        platforms/raft \
+    ; do \
+        HERMES_HOME=/tmp/seed hermes plugins disable "$key" >/dev/null 2>&1 || true; \
+    done; \
+    test -f /tmp/seed/config.yaml; \
+    cp /tmp/seed/config.yaml /opt/hermes/cli-config.yaml.example; \
+    chmod 0644 /opt/hermes/cli-config.yaml.example; \
+    rm -rf /tmp/seed
+
+# The prune is done. Copy the finished root filesystem once so the deletions above are
+# bytes off the image rather than whiteouts on top of them.
+FROM scratch
+COPY --from=pruned / /
+
+# Image metadata, restated: a filesystem copy carries no ENV/USER/VOLUME/ENTRYPOINT.
+# These are the base image's own values (see the upstream Hermes Dockerfile), with the
+# HERMES_WRITE_SAFE_ROOT and PATH additions this kit's Dockerfile makes, plus the two
+# changes the removals above require: no TUI bundle, and no Playwright download.
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
+ENV HERMES_HOME=/opt/data
+ENV HERMES_DISABLE_LAZY_INSTALLS=1
+ENV HERMES_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV npm_config_install_links=false
+# Keep native file writes within the Hermes home and this project checkout.
+ENV HERMES_WRITE_SAFE_ROOT="/opt/data:/work/project"
+ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+WORKDIR /opt/hermes
+VOLUME [ "/opt/data" ]
+USER root
+ENTRYPOINT ["sleep", "infinity"]

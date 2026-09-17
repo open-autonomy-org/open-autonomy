@@ -196,12 +196,22 @@ if (command === 'poll' && doorless) {
   if (!d) throw new Error(`no discussion #${n}`);
   const out = await graphql<{ addDiscussionComment: { comment: { id: string } } }>(`mutation($discussionId: ID!, $body: String!) { addDiscussionComment(input: { discussionId: $discussionId, body: $body }) { comment { id } } }`, { discussionId: d.id, body: rest.slice(1).join(' ') });
   console.log(`replied on discussion #${n} (${out.addDiscussionComment.comment.id})`);
+} else if (command === 'discussion-new' && rest.length >= 3) {
+  // A new discussion in one of this repository's categories, as the project's own App: the organization skew's
+  // memo, or any post a skill makes on its own repository. The body comes from a file, never an argument.
+  const [slug, title, file] = rest;
+  if (!/^[a-z0-9-]+$/.test(slug) || !existsSync(file)) throw new Error('discussion-new <category-slug> <title> <body-file>');
+  const r = await graphql<{ repository: { id: string; discussionCategories: { nodes: Array<{ id: string; slug: string }> } } }>(`query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id discussionCategories(first: 25) { nodes { id slug } } } }`, { owner, name });
+  const category = r.repository.discussionCategories.nodes.find((c) => c.slug === slug);
+  if (!category) throw new Error(`no discussion category ${slug} on ${account} (have: ${r.repository.discussionCategories.nodes.map((c) => c.slug).join(', ')})`);
+  const out = await graphql<{ createDiscussion: { discussion: { number: number; url: string } } }>(`mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) { createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) { discussion { number url } } }`, { repositoryId: r.repository.id, categoryId: category.id, title, body: readFileSync(file, 'utf8') });
+  console.log(`discussion #${out.createDiscussion.discussion.number}: ${out.createDiscussion.discussion.url}`);
 } else if (command === 'mark') {
   if (!existsSync(pendingFile)) throw new Error('mark requires a successful poll for this desk');
   writeFileSync(cursorFile, readFileSync(pendingFile, 'utf8'));
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }
