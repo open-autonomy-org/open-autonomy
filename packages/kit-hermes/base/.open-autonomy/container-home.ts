@@ -106,3 +106,61 @@ for profile in [home,home/'profiles/treasurer']:
     with os.fdopen(fd,'w') as stream:json.dump(store,stream)
 `, options);
 }
+
+/** A workspace volume that holds no checkout yet is cloned from the project's origin, inside the executor, through
+ *  whatever Git route the executor has (the valve's GitHub port for a private repository). A populated one is left. */
+export async function ensureContainerClone(options: { container: string; workspace: string; origin: string }): Promise<'cloned' | 'present'> {
+  if (!/^(https?:\/\/|git@)[\w.@:/-]+$/.test(options.origin)) throw new Error('The origin must be an https or ssh Git address');
+  const output = await python(options.container, String.raw`
+import json,os,pathlib,subprocess,sys
+s=json.load(sys.stdin);workspace=pathlib.Path(s['workspace']);assert workspace.is_absolute() and workspace != pathlib.Path('/')
+if (workspace/'.git').exists(): print('present'); sys.exit(0)
+assert not any(workspace.iterdir()) if workspace.exists() else True
+subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env={**os.environ,'GIT_TERMINAL_PROMPT':'0'},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=300)
+print('cloned')
+`, options);
+  return output.trim() as 'cloned' | 'present';
+}
+
+/** A file the host composes into a home: the fleet's default profile config, nothing a project committed. */
+export async function writeContainerText(options: { container: string; home: string; name: string; text: string }): Promise<void> {
+  if (!/^[a-z][a-z0-9_.-]*$/.test(options.name)) throw new Error('A plain file name is required');
+  await python(options.container, String.raw`
+import json,os,pathlib,sys,tempfile
+s=json.load(sys.stdin);home=pathlib.Path(s['home']);assert home.is_absolute() and home != pathlib.Path('/')
+home.mkdir(parents=True,exist_ok=True)
+path=home/s['name'];assert not path.is_symlink()
+fd,temp=tempfile.mkstemp(prefix='.'+s['name']+'-',dir=home)
+try:
+    with os.fdopen(fd,'w') as stream: stream.write(s['text'])
+    os.replace(temp,path)
+finally:
+    if os.path.exists(temp): os.unlink(temp)
+`, options);
+}
+
+/** The kit's seed hook fires once, on the default profile, at gateway startup; a served profile's schedule is seeded
+ *  by the host running that same hook under the profile's home, in the project's checkout (a job's working directory
+ *  is the seeding process's). */
+export async function seedContainerProfile(options: { container: string; home: string; workspace: string }): Promise<string> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container)) throw new Error('A container name or ID is required.');
+  const { spawn } = await import('node:child_process');
+  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', '-w', options.workspace, '-e', `HERMES_HOME=${options.home}`, '-e', `HOME=${options.home}`, options.container, '/opt/hermes/.venv/bin/python', '-c', String.raw`
+import asyncio,importlib.util,logging,os,pathlib,sys
+logging.basicConfig(level=logging.INFO,format='%(message)s',stream=sys.stdout)
+sys.path.insert(0,'/opt/hermes')
+home=pathlib.Path(os.environ['HERMES_HOME'])
+hook=home/'hooks'/'seed'/'handler.py'
+if not hook.is_file(): print('seed: no hook in this home'); sys.exit(0)
+spec=importlib.util.spec_from_file_location('seed_handler',hook);mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
+asyncio.run(mod.handle('gateway:startup',{}))
+`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const out: Buffer[] = []; let err = '';
+  child.stdout.on('data', (c) => out.push(c)); child.stderr.on('data', (c) => { err = (err + c.toString()).slice(-2000); });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
+  try {
+    const code = await new Promise<number>((resolve) => { child.once('error', () => resolve(1)); child.once('exit', (c) => resolve(c ?? 1)); });
+    if (code !== 0) throw new Error(`seeding the profile's schedule failed: ${err.trim()}`);
+    return Buffer.concat(out).toString().trim();
+  } finally { clearTimeout(timer); }
+}

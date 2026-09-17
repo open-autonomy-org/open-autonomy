@@ -23,6 +23,18 @@ create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
 create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
 
+## Several projects together: a fleet
+
+A project runs alone with its own `start.ts`; several run together with one: `start.ts --fleet <fleet.json>` composes
+one executor's home from each project's own `hermes/` (each a Hermes profile, served by one multiplexed gateway), one
+valve on the host holding each project's key on its own port (and each project's GitHub App on its own), one reporter
+per project publishing to its own account, and one Codex login forwarded to every profile. Nothing about a project
+changes; it can run alone tomorrow ([ADR 0006](../../docs/decisions/0006-the-kit-is-a-lineage.md)).
+`create-open-autonomy fleet <runtime-dir> --name <fleet> --image <image> --project owner/repo=<origin> …` writes the
+definition and World's executor definition with one volume per checkout, and prints the two commands, World up and
+the host start; a fleet starts by an explicit command and never at login. Each project's credentials live at
+`~/.config/open-autonomy/<owner>/<repo>/` as when it runs alone.
+
 ## From npm
 
 Three packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend` and `create-open-autonomy`, each at its own version.

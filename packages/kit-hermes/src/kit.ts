@@ -29,7 +29,7 @@ export function validateSkew(s: unknown): Skew {
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {

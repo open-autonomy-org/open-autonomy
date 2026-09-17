@@ -4,6 +4,7 @@
 // stack; legacy --as privilege dropping remains available for existing installations.
 //
 //   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
+//   bun .open-autonomy/start.ts --fleet <fleet.json> [--valve <port>]     several projects together (fleet.ts)
 //
 // <secrets>/github-app.json, when present, is the agent's own GitHub identity for its community desk (a GitHub App
 // installed on the repository: app_id, installation_id, repository, private_key): the valve serves it on the fourth
@@ -37,6 +38,11 @@ const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 // A managed executor keeps credentials, reporting and supervision on this host.
 // The bare entrypoint below remains the development/rehearsal path.
+if (arg('--fleet')) {
+  const { startFleet } = await import('./fleet.ts');
+  const runtime = await startFleet({ definition: resolve(arg('--fleet')!), port: Number(arg('--valve') ?? 8787), secretsRoot: arg('--secrets-root'), stateRoot: arg('--state-root') });
+  process.exit(await runtime.exited);
+}
 if (arg('--container')) {
   const { startContainer } = await import('./container.ts');
   const runtime = await startContainer({ container: arg('--container')!, project: arg('--project'),
