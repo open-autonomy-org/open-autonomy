@@ -41,7 +41,7 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   // with every capability dropped and cannot chown it. The volume is made the agent's once, here, from the image.
   if (opts.prepareVolumes) for (const m of mounts.slice(1)) {
     const [v, target] = m.split('=');
-    const r = spawnSync('docker', ['run', '--rm', '--user', '0', '--mount', `type=volume,source=${v},target=${target}`, opts.image, 'sh', '-c', `chown 10000:10000 ${target}`], { encoding: 'utf8', timeout: 60_000, env: dockerEnv });
+    const r = spawnSync('docker', ['run', '--rm', '--user', '0', '--entrypoint', 'sh', '--mount', `type=volume,source=${v},target=${target}`, opts.image, '-c', `chown 10000:10000 ${target}`], { encoding: 'utf8', timeout: 60_000, env: dockerEnv });
     if (r.status !== 0) throw new Error(`volume ${v}: cannot make it the agent's: ${r.stderr.trim()}`);
     say(`volume ${v}: the agent's`);
   }
