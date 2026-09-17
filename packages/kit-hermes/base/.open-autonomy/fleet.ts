@@ -99,7 +99,7 @@ export async function startFleet(options: { definition: string; port: number; se
     let onCodex = false;
     const configs = new Map<string, string>();
     for (const p of projects) {
-      const clone = await ensureContainerClone({ container, workspace: p.workspace, origin: p.origin });
+      const clone = await ensureContainerClone({ container, workspace: p.workspace, origin: p.origin, home: p.home, ...(p.github ? { door: `${host}:${p.github}/${p.account}` } : {}) });
       const prepared = await prepareContainerHome({ container, home: p.home, workspace: p.workspace });
       if ((Bun.YAML.parse(prepared.config) as any)?.account !== p.account) throw new Error(`${p.workspace} names another account than ${p.account}`);
       configs.set(p.name, prepared.config);

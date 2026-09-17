@@ -107,16 +107,30 @@ for profile in [home,home/'profiles/treasurer']:
 `, options);
 }
 
-/** A workspace volume that holds no checkout yet is cloned from the project's origin, inside the executor, through
- *  whatever Git route the executor has (the valve's GitHub port for a private repository). A populated one is left. */
-export async function ensureContainerClone(options: { container: string; workspace: string; origin: string }): Promise<'cloned' | 'present'> {
+/** A workspace volume that holds no checkout yet is cloned from the project's origin, inside the executor; a populated
+ *  one is left. With a `door` (the valve's GitHub port for this repository, as the executor reaches it), Git under the
+ *  profile's home is told to reach the canonical origin through it — the clone's remote stays the canonical address,
+ *  and every fetch and push under HOME=<home> (the prepare step's, a job's) goes through the door, credential-free. */
+export async function ensureContainerClone(options: { container: string; workspace: string; origin: string; home?: string; door?: string }): Promise<'cloned' | 'present'> {
   if (!/^(https?:\/\/|git@)[\w.@:/-]+$/.test(options.origin)) throw new Error('The origin must be an https or ssh Git address');
+  if (options.door && !/^https?:\/\/[\w.-]+(:\d+)?\/[\w.-]+\/[\w.-]+$/.test(options.door)) throw new Error('The door must be an http address naming owner/repo');
   const output = await python(options.container, String.raw`
 import json,os,pathlib,subprocess,sys
 s=json.load(sys.stdin);workspace=pathlib.Path(s['workspace']);assert workspace.is_absolute() and workspace != pathlib.Path('/')
+env={**os.environ,'GIT_TERMINAL_PROMPT':'0'}
+door=s.get('door');home=s.get('home')
+if door and home:
+    home=pathlib.Path(home);assert home.is_absolute() and home != pathlib.Path('/');home.mkdir(parents=True,exist_ok=True)
+    env['HOME']=str(home)
+    canon=s['origin'];bare=canon[:-4] if canon.endswith('.git') else canon
+    path=bare.split('github.com',1)[1].lstrip(':/') if 'github.com' in bare else None
+    forms=[canon,bare]+([f'https://github.com/{path}',f'https://github.com/{path}.git',f'git@github.com:{path}',f'git@github.com:{path}.git',f'ssh://git@github.com/{path}'] if path else [])
+    have=subprocess.run(['git','config','--global','--get-all',f'url.{door}.insteadOf'],env=env,capture_output=True,text=True).stdout.split()
+    for f in dict.fromkeys(forms):
+        if f not in have: subprocess.check_call(['git','config','--global','--add',f'url.{door}.insteadOf',f],env=env)
 if (workspace/'.git').exists(): print('present'); sys.exit(0)
 assert not any(workspace.iterdir()) if workspace.exists() else True
-subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env={**os.environ,'GIT_TERMINAL_PROMPT':'0'},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=300)
+subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=300)
 print('cloned')
 `, options);
   return output.trim() as 'cloned' | 'present';
