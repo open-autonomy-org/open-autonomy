@@ -70,7 +70,7 @@ What exists (source audit, same day, `main` at eafe027e):
   seeded once and are the project's; the one kit-owned file that carries one,
   `.open-autonomy/package.json`, drops it so the host package is the same bytes in every project. Only a
   plain-git lineage with no engine would need identity out of the files; the engine does not.
-- **A project is a branch off its skew.** `kit.json` records `kit: <skew>` and the kit version. A
+- **A project is a branch off its skew.** `kit.json` records the kit (`hermes`), its `skew` and the kit version. A
   project's edits to kit files are commits, first-class, not drift and not a declaration. `check`'s
   drift error and the `divergences` list are retired.
 - **Upgrade is a three-way merge.** Ancestor: the render at the recorded version. Theirs: the render at
@@ -107,7 +107,8 @@ three-day review as a memo variant are decided in the company repository's own r
 ## Consequences
 
 - Kit 3.0: `template/` becomes `base/` plus `skews/{self-build,manage-project,manage-organization}/`;
-  `create` and `adopt` take `--skew`; `kit.json` records it; `check` and `upgrade` become the merge.
+  `create` and `adopt` take `--skew`; `kit.json` records it; `check` and `upgrade` render the recorded
+  skew now and become the merge next. `community.ts`, the door to issues and discussions, stays in base.
   Existing projects (this repository, todo-cli, hookline, evidence-desk, peak-autonomy) record
   `self-build` on their next upgrade and merge, with any conflict resolved by an agent in that project.
 - The PM skill loses the constitution-reading clause and the amendment request; the README's upgrade
