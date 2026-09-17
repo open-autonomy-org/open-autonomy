@@ -205,7 +205,16 @@ if (command === 'ship') {
     console.log(`Resuming the preserved upgrade at ${worktree}.`);
   } else git('worktree', 'add', '-b', branch, worktree, 'origin/main');
   const stagedVersion = record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).version;
-  if (stagedVersion !== latest) run(['bunx', `create-open-autonomy@${latest}`, 'upgrade', '.'], worktree);
+  if (stagedVersion !== latest) {
+    // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
+    // session; the next `maintain.ts upgrade` resumes here, and the kit's check below refuses to push a marked file.
+    const up = Bun.spawnSync({ cmd: ['bunx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env, stdout: 'pipe', stderr: 'pipe' });
+    const said = `${up.stdout.toString()}${up.stderr.toString()}`.trim();
+    if (up.exitCode === 2) { console.log(`${said}\nThe upgrade left conflicts in ${worktree}. Resolve each marked file there, keeping this project's intent and the kit's change, then run \`maintain.ts upgrade\` again.`); process.exit(2); }
+    if (up.exitCode !== 0) throw new Error(`create-open-autonomy@${latest} upgrade failed: ${said}`);
+    console.log(said);
+  }
+  run(['bunx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
   run(['bun', 'install', '--frozen-lockfile'], worktree);
   run(['bun', 'run', 'check'], worktree);
   if (!idle()) throw new Error(`a task started during the upgrade; ${worktree} is preserved and has not been pushed`);
