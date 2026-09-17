@@ -63,7 +63,10 @@ What exists (source audit, same day, `main` at eafe027e):
   CONSTITUTION, AGENTS.md). `render(base) ⊕ render(skew)`: a later key wins. A skew replaces or adds
   whole files and never carries a textual patch against a base file. If a skew would have to delete a
   base file, that file was never base: develop, strategy, community, pm, the kanban seed, the community
-  monitor, scrum.ts and community.ts move down into self-build.
+  monitor and scrum.ts move down into self-build (`community.ts`, the door to issues and discussions, is a
+  door every skew uses and stays). The base inventory above is indicative, not exhaustive: the kit's
+  `OWNED` rule is the authority, and a skew may override a base-seeded file whole (the organization skew
+  overrides `.open-autonomy/config.yaml`).
 - **Identity stays where it is rendered, and never conflicts.** The merge's ancestor and theirs are
   both renders with the project's own parameters, so a `__PROJECT__` or `__ACCOUNT__` substitution is
   identical on both sides and can never be a conflict. Of the nine files that carry a token, eight are
@@ -72,7 +75,8 @@ What exists (source audit, same day, `main` at eafe027e):
   plain-git lineage with no engine would need identity out of the files; the engine does not.
 - **A project is a branch off its skew.** `kit.json` records the kit (`hermes`), its `skew` and the kit version. A
   project's edits to kit files are commits, first-class, not drift and not a declaration. `check`'s
-  drift error and the `divergences` list are retired.
+  drift error and the `divergences` list are retired when the merge-based upgrade lands; until then
+  `check` and `upgrade` render the recorded skew and a taken-over file is named in `divergences`.
 - **Upgrade is a three-way merge.** Ancestor: the render at the recorded version. Theirs: the render at
   the new version. Ours: the project's file. Clean hunks apply mechanically; a hunk both sides changed
   is a conflict, left in place on an upgrade branch for an agent in the project's own session to
@@ -82,6 +86,15 @@ What exists (source audit, same day, `main` at eafe027e):
   skew and no private-skew mechanism; a second engagement decides then whether it forks from
   peak-autonomy or from self-build. The mechanisms Peak's history relies on, `seats` and the
   tracker-owned timeline, are doors and stay in base.
+
+- **Several projects may run together as a fleet.** One executor, one multiplexed gateway serving each
+  project's own `hermes/` as a profile, one valve holding each project's key on its own port, one
+  reporter per project. This bends one invariant and names it: the profiles share one user, one
+  filesystem and one network, and the valve answers by port, so any profile can reach any sibling's
+  key, doors and home. A key still spends only its own balance and stops at zero, but which profile spent
+  it is not enforced inside a fleet. A fleet is therefore for projects of one organization that trust
+  each other, opens no treasurer door, and a project that must not be readable by its siblings runs
+  alone.
 
 ## What this record extrapolates beyond the owner's words
 
