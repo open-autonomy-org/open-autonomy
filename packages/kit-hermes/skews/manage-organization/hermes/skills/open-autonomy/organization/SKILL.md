@@ -17,20 +17,18 @@ channel, the roster and who may decide.
 
 ## 1. Gather
 
-For each project under `organization.projects` in `.open-autonomy/config.yaml` (an account, and where
-one exists on this machine, a checkout path):
+For each project under `organization.projects` in `.open-autonomy/config.yaml` (an account and its
+checkout path; in a fleet every project's checkout is a sibling of yours under `/work/<repo>`):
 
 - Fetch its `origin/main` and read `git log --format='%H %an: %s' --name-only <cursor>..origin/main` in
   pages of 100, from the cursor the notepad keeps for that project
   (`hermes cron notepad <job> get cursor:<account>`); the first cycle has none and reads the last seven
-  days. A project with no checkout here is read through the GitHub door
-  (`bun .open-autonomy/community.ts read 'commits?since=<iso>&per_page=100'` against that repository).
-- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main`.
-- Read what it says on the platform: `oa status <account>`, `oa roadmap <account>`, `oa sessions <account>`
-  and `oa books <account>` (the SDK's doors; a project whose panels are closed to you answers `not open to
-  this view`, which is a fact for the memo, not a gap to work around).
-- Compare the two: git is what happened, the timeline is what the project claims. A roadmap that lags its
-  git, or git that lags its roadmap, is a finding.
+  days. A project with no checkout is a gap the memo names, not a door to invent.
+- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main`: what the project says is planned, active and
+  shipped, and what its completion lines say done means.
+- Compare the two: git is what happened, the roadmap is what the project claims. A roadmap that lags its
+  git, or git that lags its roadmap, is a finding. The platform's pages are the projects' own and are
+  private to their keys; you read no project through the platform.
 
 Read the organization's channel since the last memo, and this repository's home, project pages and latest
 daily record. Keep one coverage line in the notepad per source; an unreadable source is a gap and is named
@@ -72,10 +70,10 @@ Concise but complete: leave out what does not change a decision, never compress 
 table or on their own line. Every claim cites its source.
 
 Posting is an act, not the run's output: the memo exists only when it is in the channel. Where the
-agreement names a GitHub Discussion, create it through the door the agreement names:
-`gh api graphql -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){ createDiscussion(input:{repositoryId:$r,
-categoryId:$c, title:$t, body:$b}) { discussion { url } } }' -F r=<repository node id> -F c=<category id>
--F 't=Memo — <date>' -F b=<the memo>`; where it names a chat, use Hermes's native `send_message`. Read the
+agreement names a GitHub Discussion on this repository, create it through the community door:
+`bun .open-autonomy/community.ts discussion-new <category-slug> 'Memo — <date>' <file holding the memo>`,
+which answers the Discussion's address. Where the agreement names a chat platform, use Hermes's native
+`send_message`; that needs the platform's SDK in the image (the slim image carries none). Read the
 door's answer and keep the memo's address; a memo you composed but did not post is a failed cycle, and the
 run's final text is not a channel. If the agreement names no channel yet, the memo still posts to the
 placeholder the agreement gives, and the agenda's first question is which channel the owner wants.

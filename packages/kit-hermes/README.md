@@ -33,7 +33,12 @@ changes; it can run alone tomorrow ([ADR 0006](../../docs/decisions/0006-the-kit
 `create-open-autonomy fleet <runtime-dir> --name <fleet> --image <image> --project owner/repo=<origin> …` writes the
 definition and World's executor definition with one volume per checkout, and prints the two commands, World up and
 the host start; a fleet starts by an explicit command and never at login. Each project's credentials live at
-`~/.config/open-autonomy/<owner>/<repo>/` as when it runs alone.
+`~/.config/open-autonomy/<owner>/<repo>/` as when it runs alone. What a fleet bends: its profiles share one
+user, one filesystem and one network, and the valve answers by port, so any profile can reach any sibling's
+key, GitHub door and home. A fleet is for projects of one organization that trust each other; a project that
+must not be readable by its siblings runs alone. A fleet opens no treasurer door, so nothing in it pays.
+`container/Dockerfile.slim` is the image for headless daily PM skews whose channel is GitHub; a chat
+platform needs the full `Dockerfile` image.
 
 ## From npm
 

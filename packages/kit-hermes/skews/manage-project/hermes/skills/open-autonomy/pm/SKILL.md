@@ -96,8 +96,8 @@ only after that poll's inputs are accounted for. A failed scrum advances nothing
 
 Inspect `hermes cron list`, `runs` and `incidents` for missed scrums and delivery errors; recover coverage
 before advancing a cursor. Run `bun .open-autonomy/maintain.ts upgrade`, then `restart`, for idle kit
-maintenance; an upgrade that leaves conflicts is resolved in this project's own session and landed like
-any change. Report notable changes, stalled outcomes and the asks sent; this report is operational output,
+maintenance; the kit rewrites its own files, and a file this project has taken over is named in
+`.open-autonomy/kit.json`'s `divergences` so the upgrade leaves it. Report notable changes, stalled outcomes and the asks sent; this report is operational output,
 not a journal.
 
 ## Contact people

@@ -14,6 +14,9 @@ publish:
 
 state_file: reporter-state.json
 
+# The organization's timeline is its projects'; the reporter publishes sessions, setup and documents only.
+timeline: none
+
 # The organization's projects: the accounts the daily cycle gathers, and where a checkout exists on this
 # machine, its path. A project with no path is read through the GitHub door.
 organization:

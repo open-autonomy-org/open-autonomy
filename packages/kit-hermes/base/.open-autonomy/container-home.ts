@@ -2,7 +2,7 @@
 // Values travel on Docker stdin, never command arguments or inherited host env.
 import { spawn } from 'node:child_process';
 
-async function python(container: string, script: string, input: unknown): Promise<string> {
+async function python(container: string, script: string, input: unknown, bound = 60_000): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('A container name or ID is required.');
   const child = spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.on('error', () => {});
@@ -12,7 +12,7 @@ async function python(container: string, script: string, input: unknown): Promis
   // Scripts print only fixed diagnostics; input and environment values never appear.
   let diagnostic = '';
   child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString()).slice(-2000); });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
+  const timer = setTimeout(() => child.kill('SIGKILL'), bound);
   try {
     const code = await new Promise<number>(resolve => { child.once('error', () => resolve(1)); child.once('exit', code => resolve(code ?? 1)); });
     if (code !== 0) throw new Error(`Executor preparation failed; Hermes was not started. ${diagnostic.trim()}`);
@@ -52,6 +52,14 @@ with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
         elif target.exists(): shutil.rmtree(target)
     # State databases, cron execution state and native .env files belong to the runtime.
     shutil.copytree(source,home,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.env'))
+# The image's own account of what it lacks (a slim image's plugin denylist, seeded at /opt/hermes/cli-config.yaml.example)
+# joins a committed config that says nothing about plugins, so a removed capability is reported off, never failed at call time.
+seed=pathlib.Path('/opt/hermes/cli-config.yaml.example')
+cfg=home/'config.yaml'
+if seed.is_file() and cfg.is_file():
+    disabled=((yaml.safe_load(seed.read_text()) or {}).get('plugins') or {}).get('disabled')
+    text=cfg.read_text()
+    if disabled and 'plugins:' not in text: cfg.write_text(text.rstrip('\n')+'\n\n# From the image: the plugins it does not carry.\n'+yaml.safe_dump({'plugins':{'disabled':disabled}},sort_keys=False))
 models=[(yaml.safe_load((home/p).read_text()) or {}).get('model',{}) for p in ['config.yaml','profiles/treasurer/config.yaml']]
 print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'models':models}))
 `, options);
@@ -130,9 +138,9 @@ if door and home:
         if f not in have: subprocess.check_call(['git','config','--global','--add',f'url.{door}.insteadOf',f],env=env)
 if (workspace/'.git').exists(): print('present'); sys.exit(0)
 assert not any(workspace.iterdir()) if workspace.exists() else True
-subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=300)
+subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=1500)
 print('cloned')
-`, options);
+`, options, 1_560_000); // a first clone of a large repository takes minutes; nothing else here does
   return output.trim() as 'cloned' | 'present';
 }
 

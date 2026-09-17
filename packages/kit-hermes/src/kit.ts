@@ -184,4 +184,3 @@ function write(dir: string, files: Map<string, Buffer>, should: (rel: string) =>
   return { written, skipped, drift: [] };
 }
 
-export const templateFiles = (): string[] => walk(TEMPLATE);

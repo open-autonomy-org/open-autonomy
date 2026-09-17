@@ -41,7 +41,7 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   // with every capability dropped and cannot chown it. The volume is made the agent's once, here, from the image.
   if (opts.prepareVolumes) for (const m of mounts.slice(1)) {
     const [v, target] = m.split('=');
-    const r = spawnSync('docker', ['run', '--rm', '--user', '0', '--entrypoint', 'sh', '--mount', `type=volume,source=${v},target=${target}`, opts.image, '-c', `chown 10000:10000 ${target}`], { encoding: 'utf8', timeout: 60_000, env: dockerEnv });
+    const r = spawnSync('docker', ['run', '--rm', '--user', '0', '--entrypoint', 'sh', '--mount', `type=volume,source=${v},target=${target}`, opts.image, '-c', `chown hermes:hermes ${target}`], { encoding: 'utf8', timeout: 60_000, env: dockerEnv });
     if (r.status !== 0) throw new Error(`volume ${v}: cannot make it the agent's: ${r.stderr.trim()}`);
     say(`volume ${v}: the agent's`);
   }
@@ -49,9 +49,11 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   const executor = resolve(import.meta.dir, '..', 'base', 'container', 'executor.ts');
   // What the host writes for this World is the reporters' state and World's bookkeeping; the home and checkouts are
   // Docker volumes on the engine's disk. The bound names the host's need, as the project runtime's does.
-  const world = { id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 2048 },
+  const memory = opts.memory ?? '3g';
+  const memoryMiB = (() => { const m = /^(\d+)([kmg]?)$/.exec(memory); if (!m) throw new Error('--memory takes Docker\'s own value, e.g. 3g'); const n = Number(m[1]); return m[2] === 'g' ? n * 1024 : m[2] === 'k' ? Math.ceil(n / 1024) : m[2] === 'm' ? n : Math.ceil(n / 1048576); })();
+  const world = { id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB, writableStorageMiB: 512 * (projects.length + 1) },
     services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
-    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: opts.memory ?? '3g', OA_EXECUTOR_CPUS: opts.cpus ?? '2',
+    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: memory, OA_EXECUTOR_CPUS: opts.cpus ?? '2',
       ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
   if (!existsSync(join(runtimeDir, 'world.env'))) writeFileSync(join(runtimeDir, 'world.env'), '');
