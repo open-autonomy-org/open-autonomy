@@ -88,9 +88,12 @@ confirm the artifact shipped before moving Unreleased lines under a version.
 ## Land
 
 Commit warranted roadmap and changelog changes on a branch from fresh `origin/main`, named
-`agent/scrum-<date>`, and push; the repository's own landing takes it from there. Never push main. After
-landing, advance the notepad's `main` cursor to the snapshot you reviewed and run `community.ts mark pm`
-only after that poll's inputs are accounted for. A failed scrum advances nothing.
+`agent/scrum-<date>`, and land them the way this repository lands changes: where a landing workflow or
+a review gate exists, push the branch and let it land; where the repository takes direct pushes to main
+(`CONTRIBUTING.md` says so, or no workflow and no rule stands on main), push the branch to main yourself
+and delete it, since a planning branch nobody lands is a memo nobody reads. Never force-push and never
+rewrite main. After landing, advance the notepad's `main` cursor to the snapshot you reviewed and run
+`community.ts mark pm` only after that poll's inputs are accounted for. A failed scrum advances nothing.
 
 ## Keep the installation moving
 
