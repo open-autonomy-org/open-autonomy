@@ -47,7 +47,9 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
       ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
   if (!existsSync(join(runtimeDir, 'world.env'))) writeFileSync(join(runtimeDir, 'world.env'), '');
-  const start = resolve(import.meta.dir, '..', 'base', '.open-autonomy', 'start.ts');
+  // The start runs from a rendered kit (a project's .open-autonomy/ carries kit.json and the installed host tools),
+  // never from the kit's template: the organization's own checkout is the natural one.
+  const start = '<a rendered project>/.open-autonomy/start.ts';
   say(`fleet ${opts.name}: ${runtimeDir}\n  definition: ${join(runtimeDir, 'fleet.json')} (${projects.map((p) => p.account).join(', ')})\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${opts.image}; ${mounts.length} volumes)\n` +
     `  up:    bun <twin-world cli> up ${join(runtimeDir, 'world.json')} --env-file ${join(runtimeDir, 'world.env')} --root <world root>\n` +
     `  start: bun ${start} --fleet ${join(runtimeDir, 'fleet.json')} --valve 8787\n  down:  the World's down; nothing starts this fleet but these two commands`);
