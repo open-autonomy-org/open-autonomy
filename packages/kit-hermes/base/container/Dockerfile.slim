@@ -19,8 +19,12 @@
 #    the base image put under $PLAYWRIGHT_BROWSERS_PATH — a path Hermes declares itself.
 #    That directory is removed and PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops a re-download.
 #    The three cloud browser backends are denied in the seeded config.
-#    PUT BACK: drop the `rm -rf "$PLAYWRIGHT_BROWSERS_PATH"` line, drop `browser/*` from
-#    the denylist, and add `npx playwright install --with-deps chromium --only-shell`.
+#    The system half of that install — xvfb, the mesa software-GL stack and chromium's
+#    CJK/emoji font set — is purged with apt in the second group below.
+#    PUT BACK: drop the `rm -rf "$PLAYWRIGHT_BROWSERS_PATH"` line, drop the second apt
+#    purge group, drop `browser/*` from the denylist, and add
+#    `npx playwright install --with-deps chromium --only-shell`, which re-fetches both
+#    halves on its own.
 #
 # 2. Image, video and audio generation, and the media toolchain behind them.
 #    `apt-get purge ffmpeg` (apt's own uninstall) takes the codec, filter and GPU/mesa
@@ -108,11 +112,21 @@ RUN set -eu; \
         uv pip uninstall --python /opt/hermes/.venv/bin/python "$pkg" || true; \
     done
 
-# (2)(6) apt purges what apt installed, and autoremove takes the orphaned libraries
-# (ffmpeg's codecs, mesa/LLVM, the compiler runtimes) with them.
+# (1)(2)(6) apt purges what apt installed, and autoremove takes the orphaned libraries
+# (ffmpeg's codecs, mesa/LLVM, the compiler runtimes) with them. The second group is the
+# system half of `playwright install --with-deps chromium`: a headless X server, chromium's
+# buffer-management and software-GL stack (libgbm1 has no reverse dependency left at all,
+# and mesa-libgallium + libllvm19 + libz3-4 — 178 MB — cascade out behind it) and the
+# CJK/emoji font set chromium renders with. With the browser shell gone in (1) none of it
+# has a consumer; `apt-cache rdepends --installed` names xvfb as the only thing that ever
+# wanted libgl1, and nothing at all as wanting libgbm1.
 RUN set -eu; \
     apt-get purge -y --auto-remove \
         ffmpeg gcc g++ make cmake python3-dev libffi-dev libolm-dev docker-cli \
+        xvfb libgl1-mesa-dri libgbm1 \
+        fonts-liberation fonts-noto-color-emoji fonts-unifont fonts-wqy-zenhei \
+        fonts-ipafont-gothic fonts-tlwg-loma-otf fonts-freefont-ttf \
+        xfonts-utils xfonts-scalable xfonts-encodings \
     && apt-get autoremove -y --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -134,6 +148,9 @@ RUN set -eu; \
 # HERMES_HOME), so every home this image ever creates starts with the denylist in place.
 # Keys are the path-derived plugin keys, never bare names: `image_gen/xai` and
 # `model-providers/xai` share a name and only the key distinguishes them.
+# The memory providers under plugins/memory are NOT listed: they are `exclusive`-kind and
+# the loader never imports them at all — one is chosen by `memory.provider` config.
+# Model providers are likewise left alone; the PM skews need a model.
 RUN set -eu; \
     mkdir -p /tmp/seed && chown hermes:hermes /tmp/seed; \
     for key in \
@@ -147,7 +164,6 @@ RUN set -eu; \
         platforms/wecom platforms/dingtalk platforms/feishu platforms/teams \
         platforms/google_chat platforms/irc platforms/mattermost platforms/buzz \
         platforms/raft \
-        memory/hindsight \
     ; do \
         HERMES_HOME=/tmp/seed hermes plugins disable "$key" >/dev/null 2>&1 || true; \
     done; \
