@@ -69,10 +69,22 @@ Post one message in the organization's channel, in this order, each part present
    and the options if there are options. Nothing else asks the owner anything.
 
 Concise but complete: leave out what does not change a decision, never compress what does. Numbers go in a
-table or on their own line. Every claim cites its source. Then update this repository's home summary and
-today's daily record from the same evidence, commit on `agent/cycle-<date>` from fresh `origin/main`, and
-push; the repository's landing takes it from there. Advance each project's cursor in the notepad to the
-snapshot you read only after the memo is posted; a failed cycle advances nothing.
+table or on their own line. Every claim cites its source.
+
+Posting is an act, not the run's output: the memo exists only when it is in the channel. Where the
+agreement names a GitHub Discussion, create it through the door the agreement names:
+`gh api graphql -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){ createDiscussion(input:{repositoryId:$r,
+categoryId:$c, title:$t, body:$b}) { discussion { url } } }' -F r=<repository node id> -F c=<category id>
+-F 't=Memo — <date>' -F b=<the memo>`; where it names a chat, use Hermes's native `send_message`. Read the
+door's answer and keep the memo's address; a memo you composed but did not post is a failed cycle, and the
+run's final text is not a channel. If the agreement names no channel yet, the memo still posts to the
+placeholder the agreement gives, and the agenda's first question is which channel the owner wants.
+
+Then update this repository's home summary and today's daily record from the same evidence, commit on
+`agent/cycle-<date>` from fresh `origin/main` in a worktree of your own, and land it the way this
+repository lands changes; when it has landed, remove the worktree and delete the branch. Advance each
+project's cursor in the notepad to the snapshot you read only after the memo is posted; a failed cycle
+advances nothing.
 
 On the cadence the runbook names for the targets review, the memo carries the review's sections in place of
 the daily ones; it is the same memo, not a second job.
