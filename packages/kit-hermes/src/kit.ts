@@ -12,10 +12,19 @@ import { dirname, join, relative, resolve } from 'node:path';
 // The kit's version is the package's: one number, in package.json, that a release bumps.
 export const KIT = { name: 'hermes', version: (JSON.parse(readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8')) as { version: string }).version } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
-const TEMPLATE = resolve(import.meta.dir, '..', 'template');
+// The kit is a lineage (docs/decisions/0006): an abstract base every subject runs, and one skew laid over it, whole
+// files, a later key winning. A skew is what its PM does and to whom; a PM knows only its own skew.
+export const SKEWS = ['self-build', 'manage-project', 'manage-organization'] as const;
+export type Skew = (typeof SKEWS)[number];
+const BASE = resolve(import.meta.dir, '..', 'base');
+const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
 
 export interface KitParams { project: string; account: string }
-export interface KitRecord { kit: string; version: string; params: KitParams; divergences: string[] }
+export interface KitRecord { kit: string; skew: Skew; version: string; params: KitParams; divergences: string[] }
+export function validateSkew(s: unknown): Skew {
+  if (typeof s !== 'string' || !(SKEWS as readonly string[]).includes(s)) throw new Error(`skew: one of ${SKEWS.join(', ')}`);
+  return s as Skew;
+}
 
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
@@ -55,13 +64,14 @@ const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
 if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
 const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts'];
 
-// Every template file, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__` (and `__ACCOUNT_ENC__`,
-// the account as a URL path segment); binary-looking files pass through untouched.
-export function render(params: KitParams): Map<string, Buffer> {
-  validateParams(params);
+// Every base file, then every file of the skew over it, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__`
+// (and `__ACCOUNT_ENC__`, the account as a URL path segment); binary-looking files pass through untouched. A
+// substitution is identical in every render with the same parameters, so it never conflicts in an upgrade.
+export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
+  validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
-  for (const rel of walk(TEMPLATE)) {
-    const raw = readFileSync(join(TEMPLATE, rel));
+  for (const dir of [BASE, SKEW_DIR(skew)]) for (const rel of walk(dir)) {
+    const raw = readFileSync(join(dir, rel));
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
     const out_rel = rel === '_gitignore' ? '.gitignore' : rel;
@@ -69,7 +79,7 @@ export function render(params: KitParams): Map<string, Buffer> {
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
-  out.set(KIT_FILE, Buffer.from(`${JSON.stringify({ kit: KIT.name, version: KIT.version, params, divergences: [] } satisfies KitRecord, null, 2)}\n`));
+  out.set(KIT_FILE, Buffer.from(`${JSON.stringify({ kit: KIT.name, skew, version: KIT.version, params, divergences: [] } satisfies KitRecord, null, 2)}\n`));
   return out;
 }
 
@@ -78,28 +88,29 @@ export function readKit(dir: string): KitRecord {
   if (!existsSync(p)) throw new Error(`${p} is missing: not a repository this kit made (create or adopt it first)`);
   const rec = JSON.parse(readFileSync(p, 'utf8')) as KitRecord;
   if (rec.kit !== KIT.name) throw new Error(`${p} names kit ${rec.kit}, not ${KIT.name}`);
-  return { ...rec, params: validateParams(rec.params), divergences: Array.isArray(rec.divergences) ? rec.divergences : [] };
+  // A record older than the skews was made by the one brain there was: it is self-build.
+  return { ...rec, skew: validateSkew(rec.skew ?? 'self-build'), params: validateParams(rec.params), divergences: Array.isArray(rec.divergences) ? rec.divergences : [] };
 }
 
 export interface Outcome { written: string[]; skipped: string[]; drift: string[] }
 
 // create: every file, into an empty or new directory.
-export function create(dir: string, params: KitParams): Outcome {
+export function create(dir: string, params: KitParams, skew: Skew = 'self-build'): Outcome {
   if (existsSync(dir) && readdirSync(dir).filter((n) => n !== '.git').length) throw new Error(`${dir} is not empty: use adopt for an existing repository`);
-  return write(dir, render(params), () => true);
+  return write(dir, render(params, skew), () => true);
 }
 
 // adopt: into an existing repository, writing only what is missing. The project's own files stay.
-export function adopt(dir: string, params: KitParams): Outcome {
+export function adopt(dir: string, params: KitParams, skew: Skew = 'self-build'): Outcome {
   if (!existsSync(dir)) throw new Error(`${dir} does not exist`);
-  return write(dir, render(params), (rel) => !existsSync(join(dir, rel)));
+  return write(dir, render(params, skew), (rel) => !existsSync(join(dir, rel)));
 }
 
 // check: the kit-owned files against a fresh render of the recorded parameters. A file the project has
 // deliberately taken over is named in kit.json's `divergences` and is left out.
 export function check(dir: string): Outcome {
   const rec = readKit(dir);
-  const rendered = render(rec.params);
+  const rendered = render(rec.params, rec.skew);
   const drift: string[] = [];
   for (const [rel, want] of rendered) {
     if (!isOwned(rel) || rec.divergences.includes(rel)) continue;
@@ -128,7 +139,7 @@ function retired(dir: string, rendered: Map<string, Buffer>, rec: KitRecord): st
 // upgrade: check, then rewrite the drifted kit-owned files and stamp the kit version.
 export function upgrade(dir: string): Outcome {
   const rec = readKit(dir);
-  const rendered = render(rec.params);
+  const rendered = render(rec.params, rec.skew);
   const before = check(dir);
   // Migrate only missing planning notes, using this project's seed rather than
   // the template's hello task. The live board is reconciled by PM, never by upgrade.
@@ -153,8 +164,9 @@ export function upgrade(dir: string): Outcome {
   for (const rel of gone) { rmSync(join(dir, rel), { force: true }); out.written.push(`${rel} (retired)`); }
   // A directory the retirement emptied goes too.
   for (const rel of [...new Set(gone.map((r) => dirname(r)))]) { try { if (!readdirSync(join(dir, rel)).length) rmSync(join(dir, rel), { recursive: true }); } catch { /* gone */ } }
-  // The record keeps the project's divergences; only the version moves.
-  writeFileSync(join(dir, KIT_FILE), `${JSON.stringify({ ...rec, version: KIT.version } satisfies KitRecord, null, 2)}\n`);
+  // The record keeps the project's divergences and its skew; only the version moves (a record older than the
+  // skews gains the one it was always on).
+  writeFileSync(join(dir, KIT_FILE), `${JSON.stringify({ kit: rec.kit, skew: rec.skew, version: KIT.version, params: rec.params, divergences: rec.divergences } satisfies KitRecord, null, 2)}\n`);
   return { ...out, drift: before.drift };
 }
 

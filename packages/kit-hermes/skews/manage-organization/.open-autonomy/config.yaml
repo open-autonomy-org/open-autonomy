@@ -1,0 +1,37 @@
+# The organization's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and
+# the key tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the organization's own.
+account: __ACCOUNT__
+platform: https://open-autonomy.org
+
+# Shared human roster, managed on the Team page after agent-led setup establishes the owner.
+team: {"members": []}
+
+# What the reporter publishes. The daily cycle publishes by default; private exceptions are named here.
+publish:
+  runs: true
+  chats: false
+  private: []
+
+state_file: reporter-state.json
+
+# The organization's projects: the accounts the daily cycle gathers, and where a checkout exists on this
+# machine, its path. A project with no path is read through the GitHub door.
+organization:
+  projects: []
+  # - account: owner/repo
+  #   checkout: /absolute/path/to/checkout
+
+# The models the agent's funds may buy on the platform's model rail, and the limits its funds run under.
+models: []
+spend:
+  limits:
+    - { window: 1d, usd_cents: 500 }
+    - { window: 30d, usd_cents: 6000 }
+    - { window: 1m, calls: 60 }
+rails:
+  card:
+    max_usd_cents: 0
+    categories: []
+  partner:
+    max_usd_cents: 0
+    partners: []

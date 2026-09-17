@@ -99,7 +99,11 @@ const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `
 const inherited = (): Record<string, string> => { const env: Record<string, string> = {}; for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('HERMES_')) env[k] = v; return env; };
 // TERMINAL_CWD: a conversation's shell (a channel message answered live) starts in the checkout, as a task's does —
 // Hermes would otherwise start it in the home, where the agent finds its own files and none of the project's.
-const agentEnv = (): Record<string, string> => ({ ...inherited(), HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
+// Bare mode gives the agent what the container gave it: the kit's own tools (the World CLI among them) on PATH, and a
+// data root outside the checkout, beside its home, for its verification World, scratch and whatever must stay off the
+// tree (OPEN_AUTONOMY_DATA; the container mounts the same at /opt/data).
+const data = resolve(home, '..', 'data');
+const agentEnv = (): Record<string, string> => ({ ...inherited(), PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
@@ -119,10 +123,22 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   });
   return proc;
 }
-for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { ending = true; for (const c of children) c.proc.kill(); setTimeout(() => process.exit(0), 300); });
+// Leave only once every child is gone: launchd starts the successor the moment this process exits, and a gateway still
+// winding down (a tick in flight) makes that successor find it "already running" and die at once.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, async () => {
+  if (ending) return;
+  ending = true;
+  for (const c of children) c.proc.kill();
+  const bound = new Promise<void>((done) => setTimeout(done, 15_000));
+  await Promise.race([Promise.all(children.map((c) => c.proc.exited)), bound]);
+  for (const c of children) if (c.proc.exitCode === null && c.proc.signalCode === null) c.proc.kill('SIGKILL');
+  process.exit(0);
+});
 
 mkdirSync(home, { recursive: true });
 own(home);
+mkdirSync(data, { recursive: true });
+own(data);
 
 // 1. ssh-agent, as the agent (an agent only answers its own uid, or root): the key is added by us, from a file
 //    the agent cannot read, and lives in the agent's memory alone.
@@ -150,7 +166,9 @@ if (!existsSync(resolve(project, '.git'))) {
   // left as it is; the next attempt starts from a fresh main itself. A failed fetch or snapshot stops startup:
   // the supervisor can retry, but unlanded configuration must not become the running home.
   const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
-  const status = git('status', '--porcelain');
+  // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked
+  // changes are a killed attempt's work.
+  const status = git('status', '--porcelain', '--untracked-files=no');
   if (status.exitCode !== 0 || git('fetch', '-q', 'origin').exitCode !== 0) { console.error('start: cannot inspect and fetch the committed configuration; startup stopped, retry when Git access is restored'); process.exit(1); }
   if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
@@ -198,6 +216,9 @@ const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
 if (onCodex && !codexTwin) await codexAccess();
+// A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
+// address: every run would fail on a connection error, silently. Say so where the operator reads.
+if (!onCodex && !codexTwin && ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && readFileSync(resolve(home, f), 'utf8').includes('HERMES_CODEX_BASE_URL'))) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; set `model.provider: openai-codex` and drop the custom provider, or every run fails to connect');
 const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubApp ? [`GITHUB_API_URL=http://127.0.0.1:${valvePort + 3}`, 'GITHUB_TOKEN=valve'] : [];
@@ -276,12 +297,31 @@ spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', r
 const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
+// What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
+// seeds, the kit) reaches the running stack without anyone on the host. Every ten minutes the checkout's main is
+// fetched; when it moved and the board is quiet, the stack drains and restarts onto it, the same path a kit
+// upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
+// Moved means origin/main is no longer what this stack started on. HEAD is not the measure: a developer run checks
+// out its own task branch in this checkout, and that is work in progress, not a reason to restart under it.
+const startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+let mainCheckedAt = 0, mainMoved: string | undefined;
 setInterval(() => {
-  if (ending || restarting || !existsSync(restartRequest)) return;
-  let request: { version?: string };
-  try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
-  catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
-  if (!request.version || request.version === runningKit.version) { rmSync(restartRequest, { force: true }); return; }
+  if (ending || restarting) return;
+  let request: { version?: string } | undefined;
+  if (existsSync(restartRequest)) {
+    try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
+    catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
+    if (!request?.version || request.version === runningKit.version) { rmSync(restartRequest, { force: true }); request = undefined; }
+  }
+  if (!request && Date.now() - mainCheckedAt > 10 * 60_000) {
+    mainCheckedAt = Date.now();
+    const g = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+    if (g('status', '--porcelain', '--untracked-files=no').stdout.toString().trim()) return;
+    if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
+    const main = g('rev-parse', 'origin/main').stdout.toString().trim();
+    mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
+  }
+  if (!request && !mainMoved) return;
   const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
   if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
   try {
@@ -290,7 +330,7 @@ setInterval(() => {
   } catch { say('cannot decode the board; kit restart waits'); return; }
   restarting = true;
   rmSync(restartRequest, { force: true });
-  say(`kit ${request.version} landed; asking Hermes to drain before restarting the stack`);
+  say(request ? `kit ${request.version} landed; asking Hermes to drain before restarting the stack` : `main moved to ${mainMoved}; asking Hermes to drain before restarting the stack onto it`);
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, constants.signals.SIGUSR1);
