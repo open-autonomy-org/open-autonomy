@@ -7,7 +7,7 @@
 // or commits, which is the whole point: everything the agent produces is public.
 //
 //   bun .open-autonomy/valve.ts --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex 8789]
-//                       [--github-app /secrets/github-app.json:8790] [--loopback]
+//                       [--github-app /secrets/github-app.json:8790 [--github-app /secrets/other-app.json:8791]] [--loopback]
 // Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
@@ -31,8 +31,11 @@ import { codexAccess, type CodexAccess } from './codex-auth.ts';
 const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
-const githubArg = process.argv.includes('--github-app') ? String(process.argv[process.argv.indexOf('--github-app') + 1]) : undefined;
-if (!keys.length && !codexArg && !githubArg) { console.error('usage: bun .open-autonomy/valve.ts --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port>]'); process.exit(2); }
+// Each GitHub App record is served on its own port: `--github-app <file>:<port>`, repeatable, exactly as `--key` is.
+// One installation per port, each with its own installation token, so two installations never share a credential.
+const githubApps: Array<{ file: string; port: number }> = [];
+for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--github-app') { const [file, port] = String(process.argv[i + 1]).split(':'); githubApps.push({ file, port: Number(port || 8790 + githubApps.length) }); }
+if (!keys.length && !codexArg && !githubApps.length) { console.error('usage: bun .open-autonomy/valve.ts --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port> [--github-app <app.json>:<port> …]]'); process.exit(2); }
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -134,9 +137,7 @@ if (codexArg) {
 
 // ── The GitHub App ─────────────────────────────────────────────────────────────────────────────────────────────
 interface GitHubApp { app_id: number | string; installation_id?: number | string; repository: string; private_key: string; api?: string }
-if (githubArg) {
-  const [file, portRaw] = githubArg.split(':');
-  const port = Number(portRaw || 8790);
+for (const { file, port } of githubApps) {
   const read = (): GitHubApp => {
     const doc = JSON.parse(readFileSync(file, 'utf8')) as Partial<GitHubApp>;
     if (!doc.app_id || !doc.repository || !doc.private_key) throw new Error(`${file}: needs app_id, repository (owner/name) and private_key (the app's PEM)`);
