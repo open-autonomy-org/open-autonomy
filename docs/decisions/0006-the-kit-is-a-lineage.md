@@ -64,10 +64,12 @@ What exists (source audit, same day, `main` at eafe027e):
   whole files and never carries a textual patch against a base file. If a skew would have to delete a
   base file, that file was never base: develop, strategy, community, pm, the kanban seed, the community
   monitor, scrum.ts and community.ts move down into self-build.
-- **Identity lives in config.** `.open-autonomy/config.yaml` carries `account` today and gains
-  `project`; the nine templated files stop carrying `__PROJECT__` and `__ACCOUNT__`, so every rendered
-  file is byte-identical across projects and the engine substitutes nothing. What displays a name reads
-  it from config.
+- **Identity stays where it is rendered, and never conflicts.** The merge's ancestor and theirs are
+  both renders with the project's own parameters, so a `__PROJECT__` or `__ACCOUNT__` substitution is
+  identical on both sides and can never be a conflict. Of the nine files that carry a token, eight are
+  seeded once and are the project's; the one kit-owned file that carries one,
+  `.open-autonomy/package.json`, drops it so the host package is the same bytes in every project. Only a
+  plain-git lineage with no engine would need identity out of the files; the engine does not.
 - **A project is a branch off its skew.** `kit.json` records `kit: <skew>` and the kit version. A
   project's edits to kit files are commits, first-class, not drift and not a declaration. `check`'s
   drift error and the `divergences` list are retired.
@@ -84,8 +86,8 @@ What exists (source audit, same day, `main` at eafe027e):
 ## What this record extrapolates beyond the owner's words
 
 The file-level split of base and skews (which files are base), the name `manage-project` for the
-posture the owner called "manage", the three-way merge with the recorded render as ancestor, moving
-identity into config, and the retirement of `check`'s drift error and `divergences` are this author's
+posture the owner called "manage", the three-way merge with the recorded render as ancestor, and the
+retirement of `check`'s drift error and `divergences` are this author's
 design to satisfy the rulings above, not rulings themselves. The memo's fixed shape and the
 three-day review as a memo variant are decided in the company repository's own record
 (`volter-ai/volter`, decision 0014).
@@ -97,9 +99,8 @@ three-day review as a memo variant are decided in the company repository's own r
 - Skews as textual patches on base files. Rejected: a patch rots the first time the base moves and an
   upgrade cannot reason about it; whole files duplicate prose, which is cheap.
 - Skews as git branches with projects merging from upstream, no engine at all. Not now: the engine's
-  render is the ancestor a merge needs and identity tokens would conflict on every upgrade until they
-  leave the files; once they have, the lineage model and plain git coincide and the engine may shrink
-  to the merge.
+  render is the ancestor a merge needs, and with no engine the identity tokens would have to leave the
+  files first; the engine keeps the merge and the render together.
 - A private skew source for Peak. Rejected by the owner: Peak's privacy is its repository's; a project
   with local commits needs no skew.
 
