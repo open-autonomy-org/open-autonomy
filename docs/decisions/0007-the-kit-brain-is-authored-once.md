@@ -109,6 +109,8 @@ until the one after `v0.4.39`: 0.4.39 was cut before the second review's fixes.
      - Each keeps its live `pm`/`cycle` job: `apply` matches it by name, and the seed hook made it with the
        same fields.
      - Each keeps its cursor: the notepad is the same store.
+     - A checkout reached through a symlink may show one `workdir` edit on the first apply (`apply`
+       canonicalizes the path; the hook stored it as given), then `unchanged`: expected, not a failure.
   4. Another target, when Supercode's doors answer for it.
 
 ## What this record extrapolates beyond the owner's words
