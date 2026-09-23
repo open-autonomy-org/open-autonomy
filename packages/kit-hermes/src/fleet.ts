@@ -25,13 +25,15 @@ export async function upgradeFleet(file: string): Promise<boolean> {
     const dir = mkdtempSync(join(tmpdir(), `oa-upgrade-${p.account.split('/')[1]}-`));
     const git = (...args: string[]) => {
       const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', timeout: 300_000 });
-      if (r.status !== 0) throw new Error(`${p.account}: git ${args[0]} failed: ${(r.stderr || r.stdout).trim()}`);
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${(r.stderr || r.stdout).trim()}`);
       return r.stdout.trim();
     };
     try {
       git('clone', '-q', '--depth', '1', p.origin, '.');
       const from = readKit(dir).version;
       if (from === KIT.version) { say(`${p.account}: at ${from}`); rmSync(dir, { recursive: true, force: true }); continue; }
+      // How this repository lands, read from main as cloned, before the upgrade can touch the landing workflow.
+      const branch = existsSync(join(dir, '.github/workflows/land.yml'));
       const u = await upgrade(dir);
       if (u.conflicts.length) {
         all = false;
@@ -40,7 +42,6 @@ export async function upgradeFleet(file: string): Promise<boolean> {
       }
       git('add', '-A');
       git('commit', '-q', '-m', `kit-${u.to}: take the kit upgrade`);
-      const branch = existsSync(join(dir, '.github/workflows/land.yml'));
       git('push', '-q', 'origin', branch ? `HEAD:refs/heads/land/kit-${u.to}` : 'HEAD:main');
       say(`${p.account}: ${from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept, ${u.retired.length} retired; ${branch ? `pushed land/kit-${u.to} for its landing workflow` : 'landed on main'}`);
       for (const k of u.kept) say(`  kept: ${k}`);

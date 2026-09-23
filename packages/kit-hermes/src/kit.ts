@@ -92,7 +92,9 @@ export function readKit(dir: string): KitRecord {
   if (!existsSync(p)) throw new Error(`${p} is missing: not a repository this kit made (create or adopt it first)`);
   const rec = JSON.parse(readFileSync(p, 'utf8')) as Partial<KitRecord>;
   if (rec.kit !== KIT.name) throw new Error(`${p} names kit ${rec.kit}, not ${KIT.name}`);
-  if (typeof rec.version !== 'string' || !rec.version) throw new Error(`${p} records no kit version`);
+  // The version names the ancestor an upgrade fetches from the registry: a release number and nothing else, never a
+  // dependency spec or a path.
+  if (typeof rec.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(rec.version)) throw new Error(`${p} records no kit release version (x.y.z)`);
   // A record older than the skews was made by the one brain there was: it is self-build.
   return { kit: rec.kit, skew: validateSkew(rec.skew ?? 'self-build'), version: rec.version, params: validateParams(rec.params ?? {}) };
 }
@@ -158,8 +160,8 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     const seedFile = join(dir, 'hermes/kanban.seed.json');
     if (existsSync(seedFile)) {
       const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };
-      const notes = seed.tasks.map((t) => `## ${t.key}: ${t.title}\n\nStatus: historical intention; reconcile with the live board and landed work.\nDispatch: hold\n\nSource: [committed seed](hermes/kanban.seed.json)\n${t.held ? `Held: ${t.held}\n` : ''}${t.acceptance?.length ? `Acceptance:\n${t.acceptance.map((a) => `- ${a}`).join('\n')}\n` : ''}`).join('\n');
-      put(join(dir, 'ROADMAP.md'), 'ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nNotable intentions maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks stay authoritative until reconciled.\n\n${notes}`));
+      const notes = seed.tasks.map((t) => `## ${t.key}: ${t.title}\n\nStatus: historical intention; reconcile with the live board and landed work.\nDispatch: hold\n\nSource: [committed seed](hermes/kanban.seed.json), key \`${t.key}\`. This is not evidence of current priority or completion.\n${t.held ? `\nExisting hold: ${t.held}\n` : ''}\nCompletion:\n${(t.acceptance ?? []).map((a) => `- ${a}`).join('\n')}\n`).join('\n');
+      put(join(dir, 'ROADMAP.md'), 'ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nNotable intentions maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.\n\n${notes}\nPM must reconcile this import against landed history and the live board before dispatch. Distill notable landed changes into CHANGELOG.md; retain outstanding release and verification outcomes here. Routine activity stays in source history.\n`));
       out.written.push('ROADMAP.md');
     }
   }
@@ -192,7 +194,7 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   const policyFile = join(dir, '.open-autonomy/config.yaml');
   if (existsSync(policyFile)) {
     const policy = readFileSync(policyFile, 'utf8');
-    const repaired = policy.replace(/^  private:          # session ids or job names that never publish, whatever their kind\n    - \[\]\n(?=\s*\n)/m, '  private: []       # session IDs, job IDs or job names that never publish, whatever their kind\n');
+    const repaired = policy.replace(/^  private:          # session ids or job names that never publish, whatever their kind\n    - \[\]\n(?=\s*\n)/m, '  private: []       # session IDs, job IDs or job names that never publish\n');
     if (repaired !== policy) { writeFileSync(policyFile, repaired); out.written.push('.open-autonomy/config.yaml'); }
   }
   writeFileSync(join(dir, KIT_FILE), record({ ...rec, version: KIT.version }));

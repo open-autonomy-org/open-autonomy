@@ -22,7 +22,8 @@ function fetchKit(version: string): string {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'open-autonomy-kit-ancestor', private: true, dependencies: { 'create-open-autonomy': version } }, null, 2)}\n`);
   const r = spawnSync('bun', ['install', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 180_000 });
-  if (r.status !== 0 || !existsSync(pkg)) throw new Error(`create-open-autonomy@${version}, the kit this project last took, could not be fetched into ${dir}: ${(r.stderr || r.stdout || 'no output').trim().split('\n').pop()}. The merge needs its render as the ancestor.`);
+  const got = existsSync(pkg) ? JSON.parse(readFileSync(pkg, 'utf8')) as { name?: string; version?: string } : {};
+  if (r.status !== 0 || got.name !== 'create-open-autonomy' || got.version !== version) throw new Error(`create-open-autonomy@${version}, the kit this project last took, could not be fetched into ${dir}: ${(r.stderr || r.stdout || 'no output').trim().split('\n').pop()}. The merge needs its render as the ancestor.`);
   return dir;
 }
 

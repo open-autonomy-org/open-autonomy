@@ -221,18 +221,25 @@ if (command === 'ship') {
   }
   if (!idle()) throw new Error(`a task started during the upgrade; ${worktree} is preserved and has not been pushed`);
   run(['git', 'add', '-A'], worktree);
-  // Older adopters ignore every hook except seed; the new kit hook is source, not runtime state.
-  run(['git', 'add', '-f', 'hermes/hooks/escalate/HOOK.yaml', 'hermes/hooks/escalate/handler.py'], worktree);
   if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
-  // Land it the way this repository lands changes: a branch its landing workflow takes, or, where no landing workflow
-  // stands, main itself. An upgrade branch nobody lands is an upgrade that never happens. A rule that refuses the
-  // push fails it here, loudly, with the worktree preserved.
-  if (existsSync(resolve(worktree, '.github/workflows/land.yml'))) {
+  // Land it the way this repository lands changes, read from main as it stands, never from the upgrade's result: a
+  // branch its landing workflow takes, or, where main carries no landing workflow, main itself. An upgrade branch
+  // nobody lands is an upgrade that never happens. A rule that refuses the push fails it here, loudly, with the
+  // worktree preserved.
+  git('fetch', '-q', 'origin', 'main');
+  if (Bun.spawnSync({ cmd: ['git', 'cat-file', '-e', 'origin/main:.github/workflows/land.yml'], cwd: project }).exitCode === 0) {
     run(['git', 'push', '-u', 'origin', branch], worktree);
     git('worktree', 'remove', worktree);
     reviewUpgrade(branch);
     console.log(`Pushed ${branch}; the landing workflow opens its pull request. Workflow changes need the owner's review.`);
   } else {
+    // Main moves while a conflict waits for its resolution (the PM lands its planning commits there directly), so the
+    // upgrade goes on top of main as it is now. A rebase that cannot apply leaves the worktree for the PM.
+    const rebase = Bun.spawnSync({ cmd: ['git', 'rebase', 'origin/main'], cwd: worktree, stdout: 'pipe', stderr: 'pipe' });
+    if (rebase.exitCode !== 0) {
+      Bun.spawnSync({ cmd: ['git', 'rebase', '--abort'], cwd: worktree });
+      throw new Error(`the upgrade does not apply on main as it now stands; ${worktree} is preserved: bring it onto origin/main, then run \`maintain.ts upgrade\` again`);
+    }
     run(['git', 'push', 'origin', 'HEAD:main'], worktree);
     git('worktree', 'remove', worktree);
     git('branch', '-D', branch);
