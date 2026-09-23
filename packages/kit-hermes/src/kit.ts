@@ -14,8 +14,6 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
-import { parseTeamConfig } from '@open-autonomy/sdk/team';
-import { parseSeamsConfig } from '@open-autonomy/sdk/seams';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
 export const KIT = { name: 'hermes', version: (JSON.parse(readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8')) as { version: string }).version } as const;
@@ -64,7 +62,8 @@ function walk(dir: string, base = dir): string[] {
 // A generated project reads the platform through the SDK this kit vendors into it. The published kit pins that
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
-// 'not_open'. Refuse to vendor below the floor rather than write a client that fails months later on the host.
+// 'not_open', and 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads.
+// Refuse to vendor below the floor rather than write a client that fails months later on the host.
 const SDK_MIN = '3.2.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
@@ -149,6 +148,9 @@ function declarations(dir: string): string[] {
   if (!existsSync(at)) return [];
   const text = readFileSync(at, 'utf8');
   const out: string[] = [];
+  // Loaded here, after the SDK version gate above, so an SDK too old to have seams.ts fails with that gate's message.
+  const { parseTeamConfig } = require(join(SDK_SRC, 'team.ts')) as typeof import('@open-autonomy/sdk/team');
+  const { parseSeamsConfig } = require(join(SDK_SRC, 'seams.ts')) as typeof import('@open-autonomy/sdk/seams');
   let scopes = new Set<string>();
   try { scopes = new Set(parseTeamConfig(text).members.flatMap((m) => m.scopes)); } catch (e) { out.push((e as Error).message); }
   try {

@@ -6,6 +6,8 @@
 import { TEAM_SCOPES, configSection, type TeamScope } from './team.ts';
 
 export const SEAM_DOORS = ['commit', 'code-host-gate', 'platform-key'] as const;
+// Moderation acts through a chat platform's own permissions and grants no decision authority, so it holds no seam.
+export const SEAM_SCOPES = TEAM_SCOPES.filter((s) => s !== 'moderation');
 export type SeamDoor = typeof SEAM_DOORS[number];
 export interface Seam { id: string; scope: TeamScope; door: SeamDoor; record: string }
 export interface VendorAccount { id: string; vendor: string; account: string }
@@ -30,12 +32,12 @@ export function validateSeams(value: unknown): Seams {
     if (!ident(s.id)) throw new Error(`Seam ${i + 1} needs an id of lowercase letters, digits and dashes.`);
     if (ids.has(s.id)) throw new Error(`Seam ${s.id} is declared twice.`);
     ids.add(s.id);
-    if (!(TEAM_SCOPES as readonly unknown[]).includes(s.scope)) throw new Error(`Seam ${s.id} names scope ${JSON.stringify(s.scope)}; a seam is held by a roster scope: ${TEAM_SCOPES.join(', ')}.`);
+    if (!(SEAM_SCOPES as readonly unknown[]).includes(s.scope)) throw new Error(`Seam ${s.id} names scope ${JSON.stringify(s.scope)}; a seam is held by a roster scope with decision authority: ${SEAM_SCOPES.join(', ')}. Moderation grants none.`);
     if (!(SEAM_DOORS as readonly unknown[]).includes(s.door)) throw new Error(`Seam ${s.id} acts through ${JSON.stringify(s.door)}; the only doors are ${SEAM_DOORS.join(', ')} (ADR 0008). Chat carries requests, never the record of an act.`);
     if (!label(s.record, 300)) throw new Error(`Seam ${s.id} must say where its acts are recorded.`);
     return { id: s.id, scope: s.scope as TeamScope, door: s.door as SeamDoor, record: s.record };
   });
-  const accounts = (value.vendor_accounts ?? []) as unknown[];
+  const accounts = (value.vendor_accounts === undefined ? [] : value.vendor_accounts) as unknown[];
   if (!Array.isArray(accounts)) throw new Error('vendor_accounts must be a list.');
   const aids = new Set<string>();
   const vendor_accounts = accounts.map((a, i): VendorAccount => {

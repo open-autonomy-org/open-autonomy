@@ -47,8 +47,8 @@ try {
   } else if (verb === 'check') {
     const s = check(target);
     for (const d of s.diverged) console.log(`  ${d}`);
-    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${KIT.name} ${KIT.version}: ${target}: fix the project's declarations above`); process.exit(1); }
     if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
+    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${KIT.name} ${KIT.version}: ${target}: fix the project's declarations above`); process.exit(1); }
     if (!s.current) { console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
     console.log(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
   } else {

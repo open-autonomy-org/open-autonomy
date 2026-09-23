@@ -194,6 +194,7 @@ The project's `seams` section in `.open-autonomy/config.yaml` declares where peo
 its acts go through (`commit`, `code-host-gate` or `platform-key`; chat is never a door) and where its acts are
 `record`ed, plus `vendor_accounts` (`id`, `vendor`, `account`) whose administrators are people in scope. It is a JSON
 value like `team`. `parseSeamsConfig(configText)` returns the declaration or `null` when there is none, and refuses
-unknown fields, scopes outside the roster's vocabulary and any other door. Import it from `@open-autonomy/sdk/seams` or
+unknown fields, any scope but `owner`, `direction` and `release-review` (moderation grants no decision authority)
+and any other door. Import it from `@open-autonomy/sdk/seams` or
 the kit's vendored `.open-autonomy/sdk/seams.ts`. `create-open-autonomy check` also reports a seam whose scope no roster
 member holds.
