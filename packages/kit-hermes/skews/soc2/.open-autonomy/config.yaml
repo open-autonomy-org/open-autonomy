@@ -1,0 +1,61 @@
+# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and the key
+# tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the project's own.
+account: __ACCOUNT__
+platform: https://open-autonomy.org
+
+# Shared human roster, managed on the project's Team page after agent-led setup establishes the owner.
+# JSON is a YAML value; keep this section in the SDK Team editor's JSON format. IDs are strings.
+team: {"members": []}
+
+# Where people act (docs/decisions/0008 in open-autonomy-org/open-autonomy): each seam's roster scope, the door its acts
+# go through, and where they are recorded; and the vendor accounts whose administrators are people in scope. Add every
+# account the project runs on (its deploy target, its model provider) under vendor_accounts. JSON is a YAML value;
+# `create-open-autonomy check` holds this section to the rules.
+seams: {"seams": [{"id": "roster", "scope": "owner", "door": "commit", "record": ".open-autonomy/config.yaml team, changed through a reviewed pull request"}, {"id": "spending-bounds", "scope": "owner", "door": "commit", "record": ".open-autonomy/config.yaml spend and rails"}, {"id": "direction", "scope": "direction", "door": "commit", "record": "GitHub issues and comments by the verified account of a member holding direction, and ROADMAP.md as landed; chat is a request"}, {"id": "release-approval", "scope": "release-review", "door": "code-host-gate", "record": "The production environment's deployment approvals, whose required reviewers are the members holding release-review"}, {"id": "production-deploy", "scope": "owner", "door": "code-host-gate", "record": "deploy-v* tags (org admins only) and the production environment's approvals"}, {"id": "pause", "scope": "owner", "door": "platform-key", "record": "The project's books on the Open Autonomy platform"}, {"id": "incidents", "scope": "owner", "door": "commit", "record": "records/incidents/"}, {"id": "break-glass", "scope": "owner", "door": "commit", "record": "records/break-glass/"}, {"id": "credentials", "scope": "owner", "door": "commit", "record": "records/credentials/"}, {"id": "escalations", "scope": "owner", "door": "commit", "record": "records/escalations/"}], "vendor_accounts": [{"id": "github", "vendor": "github", "account": "__OWNER__"}]}
+
+# What the reporter publishes. Work sessions (the scheduled runs, the funded work) publish by default; the
+# private exceptions are named here. Anything listed under `private` is never sent.
+publish:
+  runs: true        # sessions the schedule started (trigger: cron)
+  chats: false      # conversations on a channel (Discord, a terminal)
+  private: []       # session IDs, job IDs or job names that never publish
+
+# Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
+# environment), and where it keeps its own cursor (beside this file).
+state_file: reporter-state.json
+
+# The models the project's funds may buy on the platform's model rail: a bound the platform reads from this file and
+# holds whatever a key was minted with. Empty: any model the gateway serves (`GET /v1/catalog` lists them).
+models: [zai/glm-5.3-flash]
+
+# The limits the project's funds run under on the platform's model rail, each over its own rolling window, all held at
+# once, the call that would cross one refused with its name: the money (usd_cents), the pace (calls) or the volume
+# (tokens, in and out), for everything or for one model (`model:`). Windows: 1m…60m, 1h…24h, 1d…31d. The kit's
+# defaults: five dollars a day, sixty a month, and a pace no runaway loop keeps up.
+spend:
+  limits:
+    - { window: 1d, usd_cents: 500 }
+    - { window: 30d, usd_cents: 6000 }
+    - { window: 1m, calls: 60 }
+
+# Who sees what on the project's pages and through the SDK's read doors (a closed panel answers 404 without the
+# project's key or an admitted signed-in viewer): a preset, then a role per panel that overrides it. Roles: public, giver
+# (whose money is on the books), team and owner (the roster above). Presets: roadmap (the default when this block is
+# absent: the roadmap and the books to everyone, the sessions, transcripts and the agent to the team), open
+# (everything public), status (transcripts and books for givers; calls and the agent for the team), private (team
+# and up). The books stay public under every preset but private: every spend is metered on public books.
+# dashboard:
+#   visibility: open
+#   agent: team
+
+# The rails the agent may spend through beyond model calls, and the owner's bounds on each. Off unless a
+# bound is set. Every rail leaves a record on the public audit trail naming itself.
+rails:
+  card:                       # a single-use virtual card minted against the balance (Stripe Issuing)
+    max_usd_cents: 0          # the most one card may be minted for
+    categories: []            # Stripe merchant categories a card may pay at, e.g. [computer_software_stores]
+  partner:                    # a partner service settling a metered charge against the balance
+    max_usd_cents: 0          # the most one charge may be
+    partners: []              # the partner ids allowed to settle
+# seats: ~/work/seats   # a directory under which workers open Claude Code sessions, one worktree per task: followed
+#                       # from this user's ~/.claude and published as runs of the task, on the seat's own subscription

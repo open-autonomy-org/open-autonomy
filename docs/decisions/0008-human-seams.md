@@ -52,6 +52,9 @@ is the complete set of people who can act.
 
 - **Scope: the SOC2 template.** The kit gains a `soc2` template (a skew beside `manage-project`,
   `manage-organization` and `self-build`) that is SOC2 ready out of the box with Evidence Desk as its program.
+  It is self-build with a layer: the kit renders base, then `self-build`, then `soc2`, so its PM is self-build's and
+  only the files the seams change (config, PRODUCTION.md, the communications skill, `records/`, `COMPLIANCE.md`)
+  differ.
   It declares its seams and holds to every rule below. The kit's seam codec is available to any project;
   no other template is required to declare seams or change how it works today.
 
