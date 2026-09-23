@@ -11,7 +11,7 @@ as stated under Consequences. Supersedes nothing.
 **Authorization.** The owner's coding conversation of September 23, 2026, about Evidence Desk working with
 Open Autonomy ([evidence-desk#114](https://github.com/open-autonomy-org/evidence-desk/issues/114)):
 - "we still need some people - but the people plug in at very small few controlled places";
-- "the seams have to be extremely well specified in OA".
+- "the seams have to be extremely well specified in OA";
 - "the aim here is to have open autonomy templates that can use evidence desk to become 'soc2 ready' out of
   the box (knowing that this will require onboarding quizzes and surveys for the humans who use it etc.)".
 
