@@ -1,0 +1,144 @@
+# ADR 0007: The kit ships an agent-setup package; Supercode's applier renders it into the harness
+
+Status: Proposed. Accepted only upon independent constitution review and merge of this record with its
+first implementation; proposed until both occur.
+
+Amends [ADR 0006](0006-the-kit-is-a-lineage.md) (what a project's brain carries, and what an upgrade
+retires) and [ADR 0001](0001-runtime-boundary.md) (what the host does before the gateway starts), each as
+stated under Consequences. Supersedes neither.
+
+## Context and sources
+
+**Authorization.** The owner's coding conversation of September 23, 2026, in this repository (no public
+permalink; the quotations record scope, not independent approval).
+- "can we set the template with that IR and compile INTO the 3 types?" and "yes proceed".
+- The constitution, amended ("yes amend", [#706](https://github.com/open-autonomy-org/open-autonomy/pull/706)):
+  "the kit renders its brain for the harness the owner picks and never implements one."
+- "a project's spec is a file in its repository", reached by the kit's three-way merge; "most of MY projects
+  switch to supercode - for other people they probably are more comfortable with hermes"; "our system is
+  actually smart about what to do"; "be super sure about the IR"; "set a goal to complete all steps".
+
+**The IR.** Supercode's accepted
+[agent-setup IR](https://github.com/volter-ai/supercode/blob/main/docs/architecture/content-spec-status.md),
+derived from 269 elements of thirteen real setups (this repository's own agent and Hookline among them) and
+a fresh adversarial review ([plan](https://github.com/volter-ai/supercode/blob/main/docs/plans/content-spec-status.md)).
+What this record uses from it:
+- a package is the one source: content files (persona, skills, hooks, plugins, gate scripts) are their own
+  declaration; declared records (jobs, `Inference`, harness settings under `extensions.<harness>`) sit
+  beside them; a harness's config files are rendered into the home, never committed;
+- one manager per field: the package (this repository, whoever committed), the operator (a pause is an
+  overlay), the agent, the runtime (custody, the workspace), the harness; a write by anyone else is a
+  conflict reported to the manager;
+- `Inference`: named models with default and unattended pointers, and a key only by its custody name;
+- the applier (`orchestrator apply`, Supercode `sdk/orchestrator/apply`): records owned by harness id
+  against a base in the applier's own state per home, through the harness's own functions (Hermes's cron
+  and config functions under its own interpreter), a home with no state plan-only until provisioned or
+  adopted, `delete` only through a reviewed plan.
+
+**The kit today** (this repository at 13a18c29).
+- `base/hermes/config.yaml` and `base/hermes/profiles/treasurer/config.yaml` carry the model route (the
+  valve's `OPEN_AUTONOMY_BASE_URL` / `OPEN_AUTONOMY_PAY_URL`, `api_mode: chat_completions`), the terminal,
+  memory off, compression, `agent.max_turns`, the disabled `browser-use` toolset and the board's dispatch.
+- Each skew's `hermes/cron/jobs.seed.json` declares its jobs; the seed hook
+  (`base/hermes/hooks/seed`) creates them by name at gateway start, re-pins every job's model and
+  provider to `config.yaml`'s route, pins `workdir` to the checkout, and refreshes a job whose seed changed.
+- `start.ts` fills the home (`~/.local/state/open-autonomy/<owner>/<repo>/home`) from the checkout's
+  `hermes/` and starts the gateway there.
+
+## Decision
+
+- **The package.** Each project carries `.open-autonomy/setup.json`, the declared records of its agent
+  setup, one entry per profile (`default`, and the treasurer):
+  - `inference`: the named model `project` (provider `custom`, the model, `endpoint:
+    OPEN_AUTONOMY_BASE_URL` and `credential: OPEN_AUTONOMY_KEY` by custody name, `api_mode`), the
+    default and unattended pointers; the treasurer's own model on `OPEN_AUTONOMY_PAY_URL`;
+  - `jobs`: each skew's jobs, keyed by name, each naming the model `project` and the workspace as its
+    `workdir`;
+  - `extensions.hermes`: the Hermes-only settings `config.yaml` carries today, in Hermes's own dotted key
+    names.
+
+  Content stays as files under `hermes/`: `SOUL.md`, skills, the session-attribution plugin, and
+  self-build's gate script.
+- **Rendered, never committed.** `hermes/config.yaml`, the treasurer's `config.yaml`,
+  `hermes/cron/jobs.seed.json` and the seed hook leave the kit. At every start, before the gateway,
+  `start.ts` runs the applier once per profile against that profile's home: provisioning the home on its
+  first start, resolving the parameters (the workspace is the checkout's path) and applying. The applier's
+  report goes to the start log; its conflicts are the agent's to act on (capture back into
+  `setup.json` by a commit, or restore by leaving the declaration).
+- **What the seed hook did, the applier does by the IR's rules.** A changed model reaches every job
+  because each job names the model `project` and the pointer moves (`act`); the workspace reaches every job
+  as its declared `workdir`; a job whose declaration changed is edited through `update_job`; a job the
+  agent or an operator changed is reported, not overwritten. What the hook did that the IR refuses —
+  falling back to `local` delivery when a platform has no credential — goes: Hermes's own preflight
+  blocks such a run, once alerted.
+- **Upgrade.** The kit's three-way merge carries `setup.json` like any file. The first start on the new
+  layout finds a home with no apply state and live jobs the seed hook made: the runtime adopts each job the
+  package declares by its key, once (an explicit per-home act), and the next apply converges them.
+- **Targets.** `hermes` is the target the kit renders for today. The same package applies to the
+  orchestrator (`--orchestrator <root>`), whose workers are Claude Code or Codex; offering it as a kit
+  target waits on an ADR 0001 amendment naming its scheduler, image and reporter.
+- **The fleet.** A fleet gateway's profile names are flat, so the composer namespaces each project's
+  profiles by the repository (`<repo>` and `<repo>-treasurer`) and rewrites the references, never
+  dropping one. A treasurer in a fleet gets its own pay door on the valve, as it has alone.
+
+## What this record extrapolates beyond the owner's words
+
+The owner directed that the template be written once and rendered for the harness picked, that a
+project's spec be a file its repository merges, and that the IR be derived from real setups; Supercode's
+IR is accepted. The following are this author's design, marked so:
+- the file name and shape of `setup.json`, and one entry per profile;
+- applying at every start, before the gateway, per profile;
+- dropping the seed hook's `local` delivery fallback;
+- the runtime adopting the seed hook's jobs once on the first start after the upgrade;
+- namespacing fleet profiles as `<repo>-<profile>`, and the fleet's treasurer pay door.
+
+Unverified until the order of proof below runs:
+- that the adopted seed-hook jobs converge on the next apply (by reading: the hook pinned the same
+  model, provider and workdir, and Hermes stores the same schedule);
+- that the rendered `config.yaml` (written through Hermes's `save_config`) serves the gateway as the
+  committed one did.
+
+## Order of proof
+
+Each step is a hand-run walk in a World; a step that fails stops the ones after it.
+1. A Supercode release carrying the applier, pinned by the host package.
+2. A disposable manage-project project on this change: its start provisions, applies, and `jobs list`
+   shows `pm` pinned to `project`'s model with the checkout as workdir; a second start reports `stamp`.
+3. The same project with its home already seeded by the old hook: the first start adopts `pm`, the next
+   converges; its notepad cursor is untouched.
+4. `create-open-autonomy upgrade --fleet` takes the nine repositories onto it; the fleet (when the owner
+   starts it) composes `<repo>` and `<repo>-treasurer` profiles.
+
+## Alternatives and tradeoffs
+
+- **Supercode's name-keyed `jobs apply` and `model-route apply` (this record's earlier draft).** Removed
+  from Supercode: they matched jobs by name, drove Hermes's CLI (which exits 0 on failure) and kept no
+  base, so a renamed job was created twice and a live edit was silently reverted.
+- **Keep `config.yaml` committed beside the package.** Two copies of one fact: an edit to either is
+  ambiguous. The IR makes the package the one source.
+- **Keep the seed hook.** It is Hermes-only, re-pins on every start with no record of who changed what,
+  and cannot tell an agent's edit from drift.
+
+## Consequences
+
+- **ADR 0006, amended:** a project's brain is its content files plus `.open-autonomy/setup.json`;
+  `hermes/config.yaml`, the treasurer's config, the job seeds and the seed hook are retired by the
+  upgrade; `kit.json` records the target (`hermes` when absent).
+- **ADR 0001, amended:** the host runs the applier before the gateway, in bare and container mode alike;
+  the applier's state lives beside the home under the open-autonomy state directory. Nothing else moves.
+- **Nothing changes on the platform, the wire or metering.** Every model call still goes through the
+  valve; the session-attribution plugin stays.
+
+## Constitution review (by the author; the independent review follows on the pull request)
+
+- **Every spend is metered on public books.** Compatible: the route is still the valve's, referenced by
+  custody name, and the treasurer's pay door is the valve's second port as today.
+- **Only the SDK is real; the platform shows, does not steer.** Compatible: the reporter is unchanged.
+- **Authority comes from the repository.** Strengthened: the agent setup is one committed file, and a live
+  change the repository did not make is reported rather than kept silently.
+- **Nothing in an agent's reach is a secret that matters.** Compatible: `setup.json` carries custody names,
+  never values; the applier never writes a custody value.
+- **No automated tests; nothing develops against a real API.** Compatible: each proof step is a hand-run
+  walk in a World.
+- **Out of scope (as amended in #706).** Compatible: the kit declares a package and implements no harness;
+  Supercode's applier is its tool.
