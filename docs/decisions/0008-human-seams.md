@@ -13,7 +13,9 @@ Open Autonomy ([evidence-desk#114](https://github.com/open-autonomy-org/evidence
 - "we still need some people - but the people plug in at very small few controlled places";
 - "the seams have to be extremely well specified in OA";
 - "the aim here is to have open autonomy templates that can use evidence desk to become 'soc2 ready' out of
-  the box (knowing that this will require onboarding quizzes and surveys for the humans who use it etc.)".
+  the box (knowing that this will require onboarding quizzes and surveys for the humans who use it etc.)";
+- on the result that a project on such a template can engage a CPA almost immediately (Type I once its policies,
+  seams and onboarding exist; Type II observation from launch): "good - that is the aim - let's lock it down".
 
 The purpose the owner gave: a project that runs on Open Autonomy should be able to show an auditor (SOC2 and
 similar) where people act, that they act nowhere else, and what they did, from its own records rather than
@@ -33,11 +35,16 @@ specified, and where the act is recorded:
 | Moderation | `moderation` | native Discord permissions | Discord | prose; grants no decision authority |
 | Key minting and rotation | the owner | `oa key mint` / `rotate` | the platform (unverified here) | CLI |
 | Credential custody | the owner | writes a custody file beside the home | none | setup guide |
+| Incident declaration and closure | not assigned | none | none | not modelled |
+| Break-glass change to production outside the flow | not assigned | none; not declared impossible either | none | not modelled |
+| Credential lifecycle (mint, rotate, revoke, including agent identities) | the owner | vendor consoles, `oa key` | partly the platform; dates otherwise unrecorded | not modelled |
+| Escalation response under the project's SLA | whoever the community bot's policy reaches | the community bot, then chat | Discord | the policy in the repository; the response is not recorded durably |
 | Vendor account administration (GitHub org, Cloudflare, Discord server, model accounts) | whoever holds it | each vendor's console | the vendor's own audit log, if any | not modelled |
 
 The first four are well specified: a typed record or a native gate, one door, a durable record. Release
 approval and direction depend on an agent's judgment of a chat message and leave no record an outsider can
-check. Credential custody and vendor administration are not modelled at all, so nothing shows that the roster
+check. Incidents, break-glass, the credential lifecycle, escalation responses, credential custody and vendor
+administration are not modelled, so nothing shows that the roster
 is the complete set of people who can act.
 
 ## Decision
@@ -53,6 +60,11 @@ is the complete set of people who can act.
 - **Direction takes effect through door (a) or a durable, attributable record.** Direction given in chat or in
   a coding session binds once it is recorded as an issue or comment by the roster member's verified account, or
   as a commit the owner lands. PM acts on the record, not the conversation.
+- **Four seams are added.** Incident declaration and closure, and a break-glass production change (or its
+  declared impossibility), are acts through door (a) with a record in the repository. Each credential's mint,
+  rotation and revocation is recorded through door (a) by its custodian, named by custody name only. An
+  escalation's response under the SLA is recorded in the repository by the community bot's policy, with the
+  time the obligation arose and the time it was met.
 - **The seams are declared.** `.open-autonomy/config.yaml` gains a `seams:` section, the owner's document:
   each seam's name, the roster scope that may act, its door, where its record lives, and the vendor accounts
   whose administrators count as people in scope. Unknown keys fail strict validation, as `team` does.
@@ -67,6 +79,7 @@ author's design, marked so:
 - the three doors as the complete list, and chat never counting as a record;
 - collapsing release approval onto the tag and environment acts;
 - the direction rule, including that a coding-session instruction binds only once recorded;
+- the four added seams and how each is recorded;
 - a `seams:` section in `config.yaml` and its fields;
 - vendor accounts named in the declaration, with completeness checked by an outside reader.
 
@@ -83,6 +96,8 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
    those records.
 3. Direction given in a session is acted on only after its issue record exists.
 4. A synthetic vendor account with an admin outside the roster is reported by a reader of the declaration.
+5. A synthetic incident, a break-glass change, a credential rotation and an escalation each leave their record
+   in the repository, and a reader lists them.
 
 ## Alternatives and tradeoffs
 
