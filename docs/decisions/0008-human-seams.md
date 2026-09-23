@@ -15,7 +15,8 @@ Open Autonomy ([evidence-desk#114](https://github.com/open-autonomy-org/evidence
 - "the aim here is to have open autonomy templates that can use evidence desk to become 'soc2 ready' out of
   the box (knowing that this will require onboarding quizzes and surveys for the humans who use it etc.)";
 - on the result that a project on such a template can engage a CPA almost immediately (Type I once its policies,
-  seams and onboarding exist; Type II observation from launch): "good - that is the aim - let's lock it down".
+  seams and onboarding exist; Type II observation from launch): "good - that is the aim - let's lock it down";
+- "now not every open autonomy template must be soc2 ready - just the soc2 one".
 
 The purpose the owner gave: a project that runs on Open Autonomy should be able to show an auditor (SOC2 and
 similar) where people act, that they act nowhere else, and what they did, from its own records rather than
@@ -49,6 +50,11 @@ is the complete set of people who can act.
 
 ## Decision
 
+- **Scope: the SOC2 template.** The kit gains a `soc2` template (a skew beside `manage-project`,
+  `manage-organization` and `self-build`) that is SOC2 ready out of the box with Evidence Desk as its program.
+  It declares its seams and holds to every rule below. The kit's seam codec is available to any project;
+  no other template is required to declare seams or change how it works today.
+
 - **A seam is one of three doors, nothing else.** A person's act takes effect only as (a) a commit by a roster
   member to a declared file, merged under the repository's rules; (b) a native gate of the code host with a
   named required reviewer (an environment approval, a protected tag); or (c) a platform door that requires a
@@ -80,7 +86,7 @@ author's design, marked so:
 - collapsing release approval onto the tag and environment acts;
 - the direction rule, including that a coding-session instruction binds only once recorded;
 - the four added seams and how each is recorded;
-- a `seams:` section in `config.yaml` and its fields;
+- a `seams:` section in `config.yaml` and its fields, and a `soc2` skew as the template's form;
 - vendor accounts named in the declaration, with completeness checked by an outside reader.
 
 What has run, and where the evidence stops: nothing. The table above is read from this repository's files and
@@ -92,7 +98,7 @@ pause, resume and key minting are named from the CLI's documentation, not read.
 Each step is a hand-run walk in a World; a step that fails stops the ones after it.
 1. The codec validates a `seams:` declaration and refuses an unknown key, an unknown scope or a door outside
    the three.
-2. A kit project declares its seams; a release is approved only by tag and environment, and PM's report cites
+2. A project created from the `soc2` template declares its seams; a release is approved only by tag and environment, and PM's report cites
    those records.
 3. Direction given in a session is acted on only after its issue record exists.
 4. A synthetic vendor account with an admin outside the roster is reported by a reader of the declaration.
@@ -110,13 +116,14 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 
 ## Consequences
 
-- `project-communications` loses release approval by chat reply and gains the direction rule; PRODUCTION.md
-  names the tag and environment acts as the release approval.
-- `config.yaml` gains `seams:`; the kit's three-way merge carries it like `team`.
+- In the `soc2` template, `project-communications` loses release approval by chat reply and gains the direction
+  rule, and PRODUCTION.md names the tag and environment acts as the release approval. Other templates keep
+  their current text.
+- `config.yaml` may carry `seams:`, required in the `soc2` template; the kit's three-way merge carries it like `team`.
 - A roster member acts at door (a) only through a verified GitHub account; a Discord-only member can hold
   moderation but cannot act at a seam that needs a commit, and their onboarding records need the same account.
-- A kit template that declares its seams and runs Evidence Desk's setup is the out-of-the-box SOC2-ready
-  project the owner named; the template follows this record's acceptance.
+- The `soc2` template, declaring its seams and running Evidence Desk's setup, is the out-of-the-box SOC2-ready
+  project the owner named; it follows this record's acceptance.
 - A project that declares its seams can hand an auditor its seam list, its records and a completeness check;
   Evidence Desk's `open-autonomy-ingestion` reads the declaration.
 
