@@ -1,7 +1,7 @@
 {
   "kit": "hermes",
   "skew": "self-build",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "params": {
     "project": "open-autonomy",
     "account": "open-autonomy-org/open-autonomy"
