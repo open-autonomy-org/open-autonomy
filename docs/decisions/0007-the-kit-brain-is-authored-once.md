@@ -99,9 +99,16 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
   emits interpolations. That mode is a precondition of step (1) below, and the kit never works around it.
 - **self-build stays Hermes.** Its board and dispatcher have no IR noun. It renders as today and refuses
   any other target until the orchestrator has a board.
-- **Skills speak verbs every target has.** Each of the five `hermes cron` calls in the board-free skews
-  becomes the Supercode verb that reads the same record for any harness (`jobs`, `runs`), mounted for
-  the worker. This applies to the `hermes` render too, so all targets share one skill text.
+- **Skills speak verbs every target has.** The five `hermes cron` calls in the board-free skews are of two
+  kinds (measured in step (1)).
+  - Three read jobs, fires and failures (`hermes cron list`, `runs`, `incidents`). They become
+    Supercode's `jobs list` and `runs list`, which read the same records for every harness, and a failure
+    is a fire whose status failed. This applies to the `hermes` render too, so all targets share one
+    skill text.
+  - Two read the PM's cursor from the job's notepad (`hermes cron notepad <job> get …`): how far it has
+    read since its last run. No Supercode verb and no IR noun holds per-job memory. Until Supercode offers
+    a job-notepad verb over every target's store, those two lines stay Hermes's, and the board-free skews
+    render only for `hermes`. That verb is a precondition of any other target.
 - **Metering is per worker harness, not per target.** A target that runs "any harness" as its worker
   (the orchestrator) needs the valve route for each worker harness it may run.
   - `create` refuses a worker harness that has no route through the valve.
@@ -116,18 +123,32 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
 - **Upgrades keep their shape.** The three-way merge (ADR 0006, kit 3.1.0) runs on rendered files, and
   the ancestor is the recorded version rendered for the recorded target.
 - **Order of proof**, each step a hand-run walk. A step that fails stops the ones after it.
-  1. **Fact-finders.**
-     - The published harness answers `export` for a manage-project source and emits interpolations, not
-       values.
-     - A Hermes worker can run the `jobs`/`runs` verbs that replace its `hermes cron` calls.
-     - The reporter reads the orchestrator's sessions through the same Supercode discovery it uses for
-       Hermes.
-     - The orchestrator package is released.
+  1. **Fact-finders.** Measured on 2026-09-23 with the published `@volter-ai-dev/supercode` 0.4.36, on a
+     scratch manage-project render (never committed): `import` from its Hermes home, then `export` back
+     to Hermes, then a file-by-file comparison.
+     - **Answered, yes:** the published harness answers `import` and `export`. The `${…}` interpolations in
+       both profiles' configs come back as literal strings and the vault stays empty, so no
+       interpolation-emitting export mode is needed. Both personas return byte-identical. Both configs are
+       re-encoded, confirming step (2)'s placement.
+     - **Answered, with a correction:** the codec accepts only Hermes's runtime job shape. It refused the
+       kit's seed, first for a missing `id` and then for the string schedule `"every 24h"` ("expected an
+       object"). See the jobs placement in step (2).
+     - **Answered, partly:** the published CLI's `jobs list` reads a Hermes home's jobs, and `runs list`
+       reads fires. It has no `incidents` verb and no job notepad. See "Skills speak verbs every target
+       has".
+     - **Open:** whether the reporter reads the orchestrator's sessions through the same Supercode
+       discovery it uses for Hermes. This needs the orchestrator running a worker, so it is measured
+       with step (3).
+     - **Open, and held:** releasing the orchestrator package. No target but `hermes` can run the
+       board-free skews until the job-notepad verb exists, so releasing it now would publish a runtime
+       nothing can use.
   2. **The `hermes` render matches today except for the named lines.** From the IR source, it must differ
-     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. Four things the
+     from kit 3.1.0's render only in the three skill lines that move to Supercode verbs. Four things the
      kit controls keep the rest identical:
-     - It lays what the export writes where the kit ships it today: the exported `cron/jobs.json` becomes
-       `hermes/cron/jobs.seed.json`, the file base's seed hook reads, just as it lays the skills.
+     - The source's jobs are in the IR's (Hermes's runtime) shape: an `id` and a parsed schedule. The
+       kit's `hermes/cron/jobs.seed.json` is the kit's own format, which the seed hook turns into runtime
+       jobs through Hermes. So the kit writes the seed from the source's jobs: each entry's name, prompt,
+       schedule display and skills. It does not lay the exported `cron/jobs.json`.
      - The source for a Hermes render declares no worker, so the codec adds no `worker`, `expiry` or `home`
        key to `config.yaml`.
      - Each profile's persona source (the skew's `SOUL.md` and the treasurer's) is that `SOUL.md` text
@@ -141,7 +162,7 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
      Any other difference fails this step and is fixed at its cause, in the kit's placement or in
      Supercode's codec; the bar is never widened to admit it. The comparison is a manual diff that is never
      committed. For each of the nine repositories, the upgrade is an ordinary three-way merge of those
-     lines.
+     three lines.
   3. **manage-project on the `orchestrator` target**, with one profile and one cron, runs its daily scrum
      in a World. It publishes through the reporter, and a settled spend appears on the project's ledger.
   4. **`openclaw` last.**
