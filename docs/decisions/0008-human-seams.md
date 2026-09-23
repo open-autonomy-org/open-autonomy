@@ -12,6 +12,8 @@ as stated under Consequences. Supersedes nothing.
 Open Autonomy ([evidence-desk#114](https://github.com/open-autonomy-org/evidence-desk/issues/114)):
 - "we still need some people - but the people plug in at very small few controlled places";
 - "the seams have to be extremely well specified in OA".
+- "the aim here is to have open autonomy templates that can use evidence desk to become 'soc2 ready' out of
+  the box (knowing that this will require onboarding quizzes and surveys for the humans who use it etc.)".
 
 The purpose the owner gave: a project that runs on Open Autonomy should be able to show an auditor (SOC2 and
 similar) where people act, that they act nowhere else, and what they did, from its own records rather than
@@ -96,6 +98,10 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 - `project-communications` loses release approval by chat reply and gains the direction rule; PRODUCTION.md
   names the tag and environment acts as the release approval.
 - `config.yaml` gains `seams:`; the kit's three-way merge carries it like `team`.
+- A roster member acts at door (a) only through a verified GitHub account; a Discord-only member can hold
+  moderation but cannot act at a seam that needs a commit, and their onboarding records need the same account.
+- A kit template that declares its seams and runs Evidence Desk's setup is the out-of-the-box SOC2-ready
+  project the owner named; the template follows this record's acceptance.
 - A project that declares its seams can hand an auditor its seam list, its records and a completeness check;
   Evidence Desk's `open-autonomy-ingestion` reads the declaration.
 
