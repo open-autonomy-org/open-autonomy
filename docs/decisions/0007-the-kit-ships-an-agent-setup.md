@@ -106,22 +106,26 @@ IR is accepted. The following are this author's design, marked so:
 - failing the start when a profile's Inference does not land, and reporting a dropped setting rather than
   clearing it.
 
-Unverified until the order of proof below runs:
-- that the adopted seed-hook jobs converge on the next apply (by reading: the hook pinned the same
-  model, provider and workdir, and Hermes stores the same schedule);
-- that the rendered `config.yaml` (written through Hermes's `save_config`) serves the gateway as the
-  committed one did.
+What has run, and where the evidence stops: steps 2 and 3 below ran as bounded hand walks through the kit's
+own `applyAgent` and the pinned Hermes (v2026.8.31), not yet in a World. Step 2: a fresh home made from the
+cookbook's `hermes/` and `agent.json` created `pm` on `zai/glm-5.3-flash` with the checkout as workdir, a
+second apply said nothing, and the rendered `model:` block equals the old committed one. Step 3: a copy of
+this repository's live home adopted `pm` and `community` under their ids, kept their pauses and model pins,
+wrote only `cron.model`, left the notepad byte-identical, and the second apply said nothing. A bad
+`inference.default` stopped the apply. Unverified: the gateway serving from the rendered `config.yaml`
+(read, not run: Hermes's own `save_config` wrote it) until our own agent's first start on this change.
 
 ## Order of proof
 
-Each step is a hand-run walk in a World; a step that fails stops the ones after it.
-1. A Supercode release carrying the applier, pinned by the host package.
-2. A disposable manage-project project on this change: its start provisions, applies, and `jobs list`
-   shows `pm` pinned to `project`'s model with the checkout as workdir; a second start reports `stamp`.
-3. The same project with its home already seeded by the old hook: the first start adopts `pm`, the next
-   converges; its notepad cursor is untouched.
-4. `create-open-autonomy upgrade --fleet` takes the nine repositories onto it; the fleet (when the owner
-   starts it) composes `<repo>` and `<repo>-<profile>` profiles.
+Each step is a hand-run walk; a step that fails stops the ones after it.
+1. A Supercode release carrying the applier, pinned by the host package (`^0.2.2`).
+2. A fresh project home: its start provisions, applies, and `jobs list` shows `pm` pinned to `project`'s
+   model with the checkout as workdir; a second start reports nothing.
+3. A home already seeded by the old hook: the first start adopts `pm`, the next converges; its notepad is
+   untouched.
+4. The fleet host moves to this kit before `create-open-autonomy upgrade --fleet` takes the nine
+   repositories onto it (an older host reads `hermes/config.yaml`, which the upgrade retires); the fleet,
+   when the owner starts it, composes `<repo>` and `<repo>-<profile>` profiles.
 
 ## Alternatives and tradeoffs
 

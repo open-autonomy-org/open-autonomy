@@ -212,7 +212,8 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   if (existsSync(lock) && [...out.written, ...out.merged].includes(hostPackage)) {
     const r = spawnSync('bun', ['install', '--lockfile-only'], { cwd: join(dir, '.open-autonomy'), encoding: 'utf8', timeout: 120_000 });
     if (r.status === 0) out.written.push('.open-autonomy/bun.lock');
-    else out.kept.push(`.open-autonomy/bun.lock: could not be re-resolved for the new package.json (${(r.stderr || r.error?.message || '').trim().slice(-200)}); run \`bun install\` in .open-autonomy, or the start's frozen install refuses`);
+    // a lock left stale is a start that refuses: held like a conflict, so nothing lands until it is re-resolved
+    else out.conflicts.push(`.open-autonomy/bun.lock (could not be re-resolved: ${(r.stderr || r.error?.message || '').trim().slice(-200)}; run \`bun install\` in .open-autonomy)`);
   }
   // Repair the exact empty-list spelling emitted by older kits. Other project
   // policy, including malformed custom values, remains the owner's to resolve.
