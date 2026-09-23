@@ -9,7 +9,7 @@ import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
 import { mergeImageDenylist, prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
-import { agentModels, applyAgent, type Setup } from './agent.ts';
+import { agentModels, applyAgent, parseAgent } from './agent.ts';
 
 export async function startContainer(options: {
   container: string; project?: string; home?: string; secrets?: string; state?: string; config?: string; port: number;
@@ -72,7 +72,7 @@ export async function startContainer(options: {
     const prepared = await prepareContainerHome({ container, home, workspace });
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
     if (!prepared.agent) throw new Error('No .open-autonomy/agent.json at the committed revision; run `create-open-autonomy upgrade` (docs/decisions/0007)');
-    const agentSetup = JSON.parse(prepared.agent) as Setup;
+    const agentSetup = parseAgent(prepared.agent, 'origin/main:.open-autonomy/agent.json');
     const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
     // Let native Codex startup finish before starting the fleet; its database
     // maintenance is not an authentication RPC timeout.

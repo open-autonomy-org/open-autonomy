@@ -12,12 +12,13 @@
 // Inside the executor: the fleet home is /opt/data, its default profile an empty shell that only holds the gateway's
 // multiplex flag; each project is /opt/data/profiles/<repo> (synced from its checkout's hermes/ at origin/main on
 // every start) with its checkout at /work/<repo>. On this host, each project's credentials are
-// <secrets-root>/<owner>/<repo>/ (agent.env; treasurer.env and github-app.json when it has them) and its reporter
+// <secrets-root>/<owner>/<repo>/ (agent.env; github-app.json when it has one) and its reporter
 // state <state-root>/<owner>/<repo>/host/. Ports from --valve (8787): the Codex forward on +2; project i's key on
-// +4(i+1), its treasurer's pay door on +4(i+1)+1 (when <secrets-root>/<owner>/<repo>/treasurer.env exists), its
-// GitHub door on +4(i+1)+3. Profile names are flat in one gateway (docs/decisions/0007): a project's nested profiles
-// are composed as <repo>-<profile> beside it (the treasurer as <repo>-treasurer), never dropped; each profile's setup
-// is its project's .open-autonomy/agent.json entry, applied into its home before the gateway starts.
+// +4(i+1), its GitHub door on +4(i+1)+3. Profile names are flat in one gateway (docs/decisions/0007): a project's
+// nested profiles are composed as <repo>-<profile> beside it, never dropped; each profile's setup is its project's
+// .open-autonomy/agent.json entry, applied into its home before the gateway starts. A fleet opens no treasurer door:
+// work is routed to a profile by its bare name, which a composed <repo>-treasurer is not, so nothing in a fleet pays;
+// every profile's pay address is its key's, which spends and stops at zero.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -25,10 +26,10 @@ import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
 import { ensureContainerClone, mergeImageDenylist, prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord, writeContainerText } from './container-home.ts';
-import { agentModels, applyAgent, type Setup } from './agent.ts';
+import { agentModels, applyAgent, parseAgent, type Setup } from './agent.ts';
 
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/; // Hermes's own profile id rule
-type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; pay?: number; github?: number };
+type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; github?: number };
 
 export async function startFleet(options: { definition: string; port: number; secretsRoot?: string; stateRoot?: string }) {
   const def = JSON.parse(readFileSync(options.definition, 'utf8')) as { container?: string; projects?: Array<{ account?: string; origin?: string }> };
@@ -58,7 +59,6 @@ export async function startFleet(options: { definition: string; port: number; se
     mkdirSync(state, { recursive: true, mode: 0o700 });
     const base = port + 4 * (i + 1);
     projects.push({ account: p.account, origin: p.origin, name, secrets, state, home: `${fleetHome}/profiles/${name}`, workspace: `/work/${name}`, key: base,
-      ...(existsSync(resolve(secrets, 'treasurer.env')) ? { pay: base + 1 } : {}),
       ...(existsSync(resolve(secrets, 'github-app.json')) ? { github: base + 3 } : {}) });
   }
   if (!projects.length) throw new Error('fleet.json names no projects');
@@ -113,7 +113,7 @@ export async function startFleet(options: { definition: string; port: number; se
       const prepared = await prepareContainerHome({ container, home: p.home, workspace: p.workspace });
       if ((Bun.YAML.parse(prepared.config) as any)?.account !== p.account) throw new Error(`${p.workspace} names another account than ${p.account}`);
       if (!prepared.agent) throw new Error(`${p.account}: no .open-autonomy/agent.json at ${prepared.revision.slice(0, 8)}; run \`create-open-autonomy upgrade\` there (docs/decisions/0007)`);
-      const setup = JSON.parse(prepared.agent) as Setup;
+      const setup = parseAgent(prepared.agent, `${p.account}:.open-autonomy/agent.json`);
       agents.set(p.name, setup);
       for (const profile of Object.keys(setup.profiles).filter((n) => n !== 'default')) {
         const flat = `${p.name}-${profile}`;
@@ -139,8 +139,7 @@ export async function startFleet(options: { definition: string; port: number; se
         if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
         await writeContainerEnvironment({ container, home, env: {
           HOME: home, HERMES_HOME: home, TERMINAL_CWD: p.workspace, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${home}/codex-home-none`,
-          // the treasurer pays on its own door; without treasurer.env its pay address is the key's, which never pays
-          OPEN_AUTONOMY_BASE_URL: `${host}:${p.key}/v1`, OPEN_AUTONOMY_PAY_URL: `${host}:${p.pay ?? p.key}/v1`, OPEN_AUTONOMY_KEY: 'valve',
+          OPEN_AUTONOMY_BASE_URL: `${host}:${p.key}/v1`, OPEN_AUTONOMY_PAY_URL: `${host}:${p.key}/v1`, OPEN_AUTONOMY_KEY: 'valve',
           HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':'),
           ...(p.github ? { GITHUB_API_URL: `${host}:${p.github}`, GITHUB_TOKEN: 'valve' } : {}) } });
         await writeContainerKitRecord({ container, home, version: kit.version });
@@ -160,10 +159,10 @@ export async function startFleet(options: { definition: string; port: number; se
     await writeContainerEnvironment({ container, home: fleetHome, env: { HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none` } });
     if (onCodex) await prepareContainerSubscription({ container, home: fleetHome, baseUrl: codexBase });
     // 6. The valve: every project's key on its own port, the Codex forward once.
-    const keyArgs = projects.flatMap((p) => ['--key', `${resolve(p.secrets, 'agent.env')}:${p.key}`, ...(p.pay ? ['--key', `${resolve(p.secrets, 'treasurer.env')}:${p.pay}`] : [])]);
+    const keyArgs = projects.flatMap((p) => ['--key', `${resolve(p.secrets, 'agent.env')}:${p.key}`]);
     if (onCodex && !twin) keyArgs.push('--codex', String(port + 2));
     own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keyArgs]);
-    await ready(async () => (await Promise.all(projects.flatMap((p) => [healthy(p.key), ...(p.pay ? [healthy(p.pay)] : [])]))).every(Boolean), 'the credential valves');
+    await ready(async () => (await Promise.all(projects.map((p) => healthy(p.key)))).every(Boolean), 'the credential valves');
     // 7. One reporter per project, each watching its own profile home, publishing to its own account.
     const inspected = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname(), fleet: container });
@@ -184,7 +183,7 @@ export async function startFleet(options: { definition: string; port: number; se
       // Every checkout is a place the agents write; the image names only the project shape's.
       HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':') } });
     void gateway.exited.then((code) => { if (!ending) void stop(code === 75 ? 75 : 1); });
-    say(`${composed.size} profile(s) of ${projects.length} project(s) on ${container}, kit ${kit.version}: ${projects.map((p) => `${p.name} key :${p.key}${p.pay ? ` pay :${p.pay}` : ''}${p.github ? ` github :${p.github}` : ''}`).join(', ')}${onCodex ? `; the Codex login on :${port + 2}` : ''}. The profiles share one user and one network: a fleet is for projects of one organization that trust each other.`);
+    say(`${composed.size} profile(s) of ${projects.length} project(s) on ${container}, kit ${kit.version}: ${projects.map((p) => `${p.name} key :${p.key}${p.github ? ` github :${p.github}` : ''}`).join(', ')}${onCodex ? `; the Codex login on :${port + 2}` : ''}. The profiles share one user and one network: a fleet is for projects of one organization that trust each other.`);
     return { exited, close: () => stop(0), restart: () => gateway?.restart() };
   } catch (error) { await stop(1); throw error; }
 }

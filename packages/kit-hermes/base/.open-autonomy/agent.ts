@@ -4,6 +4,7 @@
 // kept beside the home. Content (the persona, skills, plugins, scripts) is copied from hermes/ as before.
 //
 //   readAgent(project)          the package, or null for a project still on the committed config
+//   parseAgent(text, where)     the same checks over a setup read anywhere else
 //   agentModels(setup)          every named model, for the start's Codex detection
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
@@ -17,10 +18,14 @@ const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export function readAgent(project: string): Setup | null {
   const file = resolve(project, '.open-autonomy', 'agent.json');
-  if (!existsSync(file)) return null;
-  const setup = JSON.parse(readFileSync(file, 'utf8')) as Setup;
-  if (!setup?.profiles?.default) throw new Error(`${file}: a setup declares at least the default profile`);
-  for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${file}: ${name} is not a Hermes profile name`);
+  return existsSync(file) ? parseAgent(readFileSync(file, 'utf8'), file) : null;
+}
+
+/** The setup from its text, wherever it was read (a checkout, origin/main, an executor): its profile names become paths. */
+export function parseAgent(text: string, where: string): Setup {
+  const setup = JSON.parse(text) as Setup;
+  if (!setup?.profiles?.default) throw new Error(`${where}: a setup declares at least the default profile`);
+  for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${where}: ${name} is not a Hermes profile name`);
   return setup;
 }
 
@@ -58,11 +63,16 @@ export async function applyAgent(options: {
       applier.provision({ homeId, root: options.stateRoot });
     }
     const done = await applier.apply({ ...common, spec: spec as never, params });
-    for (const r of done.applied) lines.push(`${profile}: ${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`);
-    // what apply reports rather than does is the agent's to act on (a conflict to capture back or restore)
-    for (const r of done.rows.filter((row: { action: string }) => ['conflict', 'unowned', 'deleted', 'still-live', 'harness-error'].includes(row.action))) {
-      lines.push(`${profile}: ${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`);
-    }
+    type Row = { key: string; action: string; detail?: string };
+    const line = (r: Row) => `${profile}: ${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`;
+    // every act, and every row apply reports rather than does (a conflict to capture back, a refusal to fix): only
+    // a converged row goes unsaid, and the acts' own rows are said once, by what they did
+    const acted = new Set(done.applied.map((r: Row) => r.key));
+    for (const r of done.applied as Row[]) lines.push(line(r));
+    for (const r of done.rows as Row[]) if (r.action !== 'stamp' && !acted.has(r.key) && !['act', 'create'].includes(r.action)) lines.push(line(r));
+    // a model that did not land is a gateway on Hermes's default: the start stops rather than run it
+    const unrendered = [...done.rows, ...done.applied].filter((r: Row) => r.key.startsWith('inference') && ['refused', 'not-applied', 'plan-only'].includes(r.action));
+    if (unrendered.length) throw new Error(`the ${profile} profile's Inference was not applied: ${unrendered.map(line).join('; ')}`);
   }
   return lines;
 }

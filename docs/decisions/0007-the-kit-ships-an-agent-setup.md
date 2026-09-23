@@ -63,14 +63,18 @@ What this record uses from it:
   `hermes/cron/jobs.seed.json` and the seed hook leave the kit. At every start, before the gateway,
   `start.ts` runs the applier once per profile against that profile's home: provisioning the home on its
   first start, resolving the parameters (the workspace is the checkout's path) and applying. The applier's
-  report goes to the start log; its conflicts are the agent's to act on (capture back into
-  `agent.json` by a commit, or restore by leaving the declaration).
+  report goes to the start log, every row that is not converged; its conflicts are the agent's to act on
+  (capture back into `agent.json` by a commit, or restore by leaving the declaration). A profile whose
+  Inference was refused or read back other than declared stops the start: a gateway on an unrendered home
+  runs on Hermes's default model. A setting dropped from `agent.json` stays in the home (Hermes has no
+  function that unsets a key) and is reported `still-live` at every start until it is set or resolved.
 - **What the seed hook did, the applier does by the IR's rules.** A changed model reaches every job
   because each job names the model `project` and the pointer moves (`act`); the workspace reaches every job
   as its declared `workdir`; a job whose declaration changed is edited through `update_job`; a job the
   agent or an operator changed is reported, not overwritten. What the hook did that the IR refuses —
   falling back to `local` delivery when a platform has no credential — goes: Hermes's own preflight
-  blocks such a run, once alerted.
+  blocks such a run, once alerted. Its webhook seed (`hermes/cron/webhooks.seed.json`, which no project
+  carries) goes with it: a route is the agent's act through `hermes webhook`, its secret the home's.
 - **Upgrade.** A project on the old layout gets its `.open-autonomy/agent.json` derived by the upgrade from
   its own files — `hermes/config.yaml`'s model (a `${NAME}` endpoint or key becomes its custody name; a
   literal URL or the valve's `valve` key stays literal), every other key as `extensions.hermes.config`,
@@ -84,10 +88,10 @@ What this record uses from it:
   orchestrator (`--orchestrator <root>`), whose workers are Claude Code or Codex; offering it as a kit
   target waits on an ADR 0001 amendment naming its scheduler, image and reporter.
 - **The fleet.** A fleet gateway's profile names are flat, so the composer namespaces each project's
-  profiles by the repository (`<repo>` and `<repo>-treasurer`), never dropping one: a name that would not
-  be a Hermes profile id, or would collide, refuses the composition. A treasurer in a fleet gets its own pay
-  door on the valve (the project's fourth-port block's second port, its `treasurer.env`), as it has alone.
-  This is a money path: the owner reads it before the kit's release.
+  profiles by the repository (`<repo>` and `<repo>-<profile>`), never dropping one: a name that would not
+  be a Hermes profile id, or would collide, refuses the composition. A fleet still opens no pay door: work
+  reaches a profile by its bare name, which `<repo>-treasurer` is not, so every profile's pay address is its
+  key's, which spends and stops at zero. Nothing in this record moves money.
 
 ## What this record extrapolates beyond the owner's words
 
@@ -98,7 +102,9 @@ IR is accepted. The following are this author's design, marked so:
 - applying at every start, before the gateway, per profile;
 - dropping the seed hook's `local` delivery fallback;
 - the runtime adopting the seed hook's jobs once on the first start after the upgrade;
-- namespacing fleet profiles as `<repo>-<profile>`, and the fleet's treasurer pay door.
+- namespacing fleet profiles as `<repo>-<profile>`;
+- failing the start when a profile's Inference does not land, and reporting a dropped setting rather than
+  clearing it.
 
 Unverified until the order of proof below runs:
 - that the adopted seed-hook jobs converge on the next apply (by reading: the hook pinned the same
@@ -115,7 +121,7 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 3. The same project with its home already seeded by the old hook: the first start adopts `pm`, the next
    converges; its notepad cursor is untouched.
 4. `create-open-autonomy upgrade --fleet` takes the nine repositories onto it; the fleet (when the owner
-   starts it) composes `<repo>` and `<repo>-treasurer` profiles.
+   starts it) composes `<repo>` and `<repo>-<profile>` profiles.
 
 ## Alternatives and tradeoffs
 
@@ -131,7 +137,10 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 
 - **ADR 0006, amended:** a project's brain is its content files plus `.open-autonomy/agent.json`;
   `hermes/config.yaml`, the treasurer's config, the job seeds and the seed hook are retired by the
-  upgrade; `kit.json` records the target (`hermes` when absent).
+  upgrade. `agent.json`, which holds the model, is kit-owned: the kit's three-way merge carries it, so a
+  project's own edits survive an upgrade and an upgrade that changes the same lines is a conflict for the
+  project to resolve. This reverses ADR 0006's "the config is the project's" for the model and settings;
+  the project still decides them, by the merge. The target is `hermes`; a second target amends this record.
 - **ADR 0001, amended:** the host runs the applier before the gateway, in bare and container mode alike;
   the applier's state lives beside the home under the open-autonomy state directory. Nothing else moves.
 - **Nothing changes on the platform, the wire or metering.** Every model call still goes through the

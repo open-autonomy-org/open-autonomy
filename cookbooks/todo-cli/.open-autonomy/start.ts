@@ -29,7 +29,7 @@
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
-import { agentModels, applyAgent, readAgent, type Setup } from './agent.ts';
+import { agentModels, applyAgent, parseAgent, readAgent, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -208,7 +208,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 const agentSetup: Setup | null = (() => {
   if (!committedFrom) return readAgent(project);
   const shown = Bun.spawnSync({ cmd: drop(['git', 'show', 'origin/main:.open-autonomy/agent.json']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
-  return shown.exitCode === 0 ? JSON.parse(shown.stdout.toString()) as Setup : null;
+  return shown.exitCode === 0 ? parseAgent(shown.stdout.toString(), 'origin/main:.open-autonomy/agent.json') : null;
 })();
 if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
 
