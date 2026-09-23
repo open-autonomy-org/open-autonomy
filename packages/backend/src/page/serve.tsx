@@ -142,6 +142,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // run reports only when the owner opens the sessions to everyone, links only into panels open to everyone.
   if (door === 'updates.xml') {
     const open = (panel: keyof Visibility) => sees('public', visibility[panel]);
+    // A page the owner keeps from the public has no feed at all, for anyone: a cached answer can never say it exists.
+    if (!open('overview')) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone, so it has no feed.`), 404);
     const feed = atomFeed({ origin: url.origin, account, title: `${nameOf(account)} · ${brand}`, page: at(account),
       updates: updatesOf(open('sessions') ? stream.sessions : [], open('work') ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP),
       board: open('work') ? (item) => at(account, 'dashboard', 'board', item) : undefined,
