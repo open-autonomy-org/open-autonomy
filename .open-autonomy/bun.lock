@@ -5,7 +5,7 @@
     "": {
       "name": "open-autonomy-open-autonomy",
       "dependencies": {
-        "@volter-ai-dev/supercode": "^0.4.36",
+        "@volter-ai-dev/supercode": "^0.4.57",
         "@volter-ai-dev/supercode-harness-sdk": "^0.3.26",
         "@volter-ai-dev/supercode-orchestrator": "^0.2.2",
         "@volter/twin": "0.1.3",
@@ -21,17 +21,17 @@
   "packages": {
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
 
-    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.36", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.36", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.36", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.36", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.36", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.36" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-stS5rvEznFrhyJVUrx4A8L7dA9r5xRBiU+T1ZtYkjhZC8aDyiWfoqFBqriyTbPC/G/ptlKLaJh4c5EKZjP++Mw=="],
+    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.57", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.57", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.57", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.57", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.57", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.57" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-Lh+SNIO9AA/w+Kiiroe5XbxxfTcRU6QCTncj31hL7lG90rbazYYDZWaozSBw7t72kK0EdojaR7MdG0ZFredERA=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.36", "", { "os": "darwin", "cpu": "arm64" }, "sha512-WD/PwEcjBYEsRplWfIcRTTjv+qOAEQOJB1jFcL9vO5CtslN9d0S4fTgawbvhPkVpDflOiOraCtxRQoHPvbD7MA=="],
+    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.57", "", { "os": "darwin", "cpu": "arm64" }, "sha512-bS9Sz7kfg1gtcGY4/NFuFr77/Q3cDv3ugYexQP7UgUsoCkbfp9qc9jH8JfNfylI8Lw3Jb8LNeC9Q2ipKepPh9Q=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.36", "", { "os": "darwin", "cpu": "x64" }, "sha512-I7i9Zg45+CZy/Ru2v9r18s6mCdysVfGQiuLs0IA019OOBS3IM+67IPJuWv2f1DGqgHGXqkv50raVX7LMuly2MA=="],
+    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.57", "", { "os": "darwin", "cpu": "x64" }, "sha512-jbFWThYFq4WVgCdPUCjh166GXfZftFsa8sdvBT/EnTcTPNqR+lExXntL1q0v4IVaaY2RPUp2opZ64t3jtJaSlg=="],
 
-    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.36", "", { "os": "linux", "cpu": "arm64" }, "sha512-3Gqlsb1Hw/Ek+ohvgw4Hc2q+hZxLDYajRZwJW00FgPII1fYgHZhmNNq+4S4ihwcTDwvgVf2AYG18l5U+w9PKwA=="],
+    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.57", "", { "os": "linux", "cpu": "arm64" }, "sha512-6O/W9ORA3LdvIiBbO6aU3hokeygazpZKlgEW15JoulNcO4zFK8U4cDnJfLJXPc38nzBFW2cTXvXPdg5dfAxivA=="],
 
-    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.36", "", { "os": "linux", "cpu": "x64" }, "sha512-G/cZPmkRJhks71lHS1NoAnNGddqLlBSRdV3KY4qZPaJn5vwnxZxdfVRABUPEwWOSEYRwBx3BMm6rZVRuB3ZiIA=="],
+    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.57", "", { "os": "linux", "cpu": "x64" }, "sha512-s7rsjkLV44NQSliAiVXgszZE/EzXt7BaHz2pVjr+59Sko/vqfdak+KENeyTJTNR/gX8+zyKasQjH5Z27JhgRXA=="],
 
-    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.36", "", { "os": "win32", "cpu": "x64" }, "sha512-sZoE3cFSjYpHA0nsBQBhNt2hl2JRfFP8dq7RJ3WsNBNHJPhT01XFI5z+pSSw2TA0Ncbs/5A4R6henuzX6N5rzQ=="],
+    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.57", "", { "os": "win32", "cpu": "x64" }, "sha512-du+uL4RpZvwwlQKl6ajPj+OPbnG0ZvmBFlRw9D7LeqBLHtTzcJ131EHU3wxlVRyvuAoFMctwwToaHRlHhOi3UA=="],
 
     "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.27", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-+Rzx+UqQpg+HEBmVfRCd+NLFh7K8p6439Mztk6wmak5hus/2nqqebseoHJmFHSKfAzpMwQSe4z641+jVcFAJMA=="],
 

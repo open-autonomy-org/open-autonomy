@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The project's runtime dependencies: Supercode, its harness SDK for native agent state and its applier (the orchestrator package) for the agent's setup, and World tooling for isolated application verification. The Open Autonomy SDK (the interface) is vendored beside them under sdk/; the host tools (the valve, the credential handoff, the Codex connection, the Supercode adapter) are the kit's own files here.",
   "dependencies": {
-    "@volter-ai-dev/supercode": "^0.4.36",
+    "@volter-ai-dev/supercode": "^0.4.57",
     "@volter-ai-dev/supercode-harness-sdk": "^0.3.26",
     "@volter-ai-dev/supercode-orchestrator": "^0.2.2",
     "@volter/twin": "0.1.3",
