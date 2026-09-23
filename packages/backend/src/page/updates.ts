@@ -18,7 +18,7 @@ export function updatesOf(sessions: SessionSummary[], roadmap: Roadmap, max = 20
 // The same updates as an Atom feed a reader can follow. `origin` makes every link absolute.
 export function atomFeed(o: { origin: string; account: string; title: string; page: string; board?: (item: string) => string; session?: (key: string) => string; updates: Update[] }): string {
   const abs = (p: string) => `${o.origin}${p}`;
-  const updated = o.updates[0]?.ts ?? new Date(0).toISOString();
+  const updated = o.updates[0]?.ts ?? new Date().toISOString();
   const entry = (u: Update) => {
     const link = u.kind === 'shipped' && u.item && o.board ? abs(o.board(u.item)) : u.session && o.session ? abs(o.session(u.session)) : abs(o.page);
     return `<entry><id>${esc(`${abs(o.page)}#${u.id}`)}</id><title>${esc(u.kind === 'shipped' ? `Shipped: ${u.title}` : u.title)}</title><updated>${esc(new Date(u.ts).toISOString())}</updated><link href="${esc(link)}"/>${u.text ? `<summary>${esc(u.text)}</summary>` : ''}</entry>`;
