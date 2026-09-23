@@ -122,9 +122,18 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
        Hermes.
      - The orchestrator package is released.
   2. **The `hermes` render matches today except for the named lines.** From the IR source, it must differ
-     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. The comparison is
-     a manual diff that is never committed. For each of the nine repositories, the upgrade is an ordinary
-     three-way merge of those lines.
+     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. Three things the
+     kit controls keep the rest identical:
+     - It lays what the export writes where the kit ships it today: the exported `cron/jobs.json` becomes
+       `hermes/cron/jobs.seed.json`, the file base's seed hook reads, just as it lays the skills.
+     - The source for a Hermes render declares no worker, so the codec adds no `worker`, `expiry` or `home`
+       key to `config.yaml`.
+     - The persona source is the skew's `SOUL.md` text verbatim, so the `AGENTS.md` → `SOUL.md` rename
+       returns the same bytes.
+     Any other difference fails this step and is fixed at its cause, in the kit's placement or in
+     Supercode's codec; the bar is never widened to admit it. The comparison is a manual diff that is never
+     committed. For each of the nine repositories, the upgrade is an ordinary three-way merge of those
+     lines.
   3. **manage-project on the `orchestrator` target**, with one profile and one cron, runs its daily scrum
      in a World. It publishes through the reporter, and a settled spend appears on the project's ledger.
   4. **`openclaw` last.**
@@ -189,8 +198,9 @@ The step (1) items are unverified. They are fact-finders, not findings.
   reporter can read the orchestrator's sessions.
 - **Authority comes from the repository.** Compatible. Bounds stay in `.open-autonomy/config.yaml`.
 - **Nothing in an agent's reach is a secret that matters.** Compatible only if renders carry
-  interpolations and never a value, which the Decision requires and step (1) verifies. Nothing new lands
-  in the committed tree beyond the files the kit renders today.
+  interpolations and never a value, which the Decision requires and step (1) verifies. No credential value
+  lands in the committed tree under any target (the `orchestrator` target adds its `orchestrator/` folder,
+  whose files carry references only).
 - **No automated tests; nothing develops against a real API.** Compatible. Each proof step is a hand-run
   walk in a World, and the step (2) diff is a manual comparison that is never committed.
 - **Out of scope (as amended in #706).** Compatible:
