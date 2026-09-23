@@ -4,7 +4,7 @@ import type { DirectoryEntry } from '@open-autonomy/backend';
 import type { AccountSlots, DirectorySlots, Viewer } from '@open-autonomy/backend/page/model';
 import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
 import { usd0 } from '@open-autonomy/backend/ui';
-import { T, TEXT } from '@open-autonomy/backend/page/theme';
+import { DISPLAY, MONO, T, TEXT } from '@open-autonomy/backend/page/theme';
 import type { Patron, PatronageView, Tier } from '../patronage.js';
 
 // The platform's own rules, from the core's tokens: the cover, the tiers, the ladder, and the fold under them.
@@ -28,8 +28,29 @@ export const PATRONAGE_STYLES = `
 .ladder .rung .tp{font:300 20px/1 ${TEXT};white-space:nowrap}
 .ladder .rung .tp span{font-size:12px;color:${T.muted}}
 .others{padding:22px;background:${T.panel};border:1px solid ${T.line};display:flex;flex-direction:column;gap:16px}
-.others h3{font-size:16px;font-weight:400}
-.others .form+.form{padding-top:16px;border-top:1px solid ${T.line}}
+.others h3{font-size:15px;font-weight:500}
+.explain{padding-top:72px}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;counter-reset:step;border-top:1px solid ${T.rule}}
+.steps li{counter-increment:step;padding:22px 28px 0 0;color:${T.body};font-size:15px;line-height:1.6}
+.steps li+li{padding-left:28px;border-left:1px solid ${T.line}}
+.steps li:before{content:"0" counter(step);display:block;font:400 26px/1 ${DISPLAY};color:#000;margin-bottom:16px}
+.steps b{color:${T.ink};font-weight:500;display:block;margin-bottom:4px}
+.start>div{padding:32px 36px;background:${T.lilac}}
+.lede-sm{color:${T.body};font-size:16px;line-height:1.55;max-width:60ch}
+.cmd{margin:18px 0 0;padding:14px 16px;background:${T.ink};color:${T.wash};font:13px/1.5 ${MONO};overflow-x:auto}
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px;margin:0}
+.faq>div{padding:18px 0;border-top:1px solid ${T.line}}
+.faq dt{font-weight:500;color:${T.ink};margin-bottom:6px}
+.faq dd{margin:0;color:${T.body};font-size:14.5px;line-height:1.6}
+@media(max-width:900px){.steps,.faq{grid-template-columns:1fr}.steps li+li{padding-left:0;border-left:0;border-top:1px solid ${T.line}}.start>div{padding:24px 20px}}
+.others>*+*{padding-top:16px;border-top:1px solid ${T.line}}
+.others .row-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:6px}
+.others .row-btns .btn{padding:0 8px}
+.keyed summary{cursor:pointer;color:${T.body};font-size:13px;list-style:none}
+.keyed summary::-webkit-details-marker{display:none}
+.keyed summary:before{content:"+ "}
+.keyed[open] summary:before{content:"– "}
+.keyed .form{margin-top:10px}
 @media(max-width:900px){.tierset{grid-template-columns:1fr}}
 `;
 
@@ -57,15 +78,27 @@ export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: 
         {account !== sponsor ? <p class="fine" style="margin-top:10px">GitHub Sponsors funds {owner}'s pool; grants reach this project from there.</p> : null}
       </div>}
       <div class="others">
-        <h3>Other ways to give</h3>
-        <form class="form" method="post" action={`${at(account)}/give`}>
-          <input name="key" placeholder="your funder key" autocomplete="off" aria-label="Funder key" />
-          <input name="usd_cents" type="number" min={1} placeholder="cents" aria-label="Amount in cents" />
-          <input name="note" placeholder="a word, optional" maxlength={280} aria-label="A word" />
-          <button class="btn quiet" type="submit">Give grant credits</button>
-          <p class="fine" style="margin-top:0">Funders hold grant credits on their own books and give them to a project they believe in.</p>
-        </form>
+        {polar && tiers.length ? <form class="form once" method="post" action="/v1/patrons/checkout">
+          <h3>Back once</h3>
+          <input type="hidden" name="account" value={account} /><input type="hidden" name="interval" value="once" />
+          <div class="row-btns">{tiers.map((t, i) => <button class="btn quiet" type="submit" name="tier" value={String(i)}>{usd0(t.usd_cents)}</button>)}</div>
+          <p class="fine" style="margin-top:0">One payment through Polar, onto the same public books.</p>
+        </form> : null}
+        <div class="form">
+          <h3>Give grant credits</h3>
+          <a class="btn quiet" href={`/give?to=${encodeURIComponent(account)}`}>Sign in to give credits</a>
+          <p class="fine" style="margin-top:0">Credits you hold on your own books, given to a project you believe in.</p>
+          <details class="keyed"><summary>With a funder key</summary>
+            <form class="form" method="post" action={`${at(account)}/give`}>
+              <input name="key" placeholder="your funder key" autocomplete="off" aria-label="Funder key" />
+              <input name="usd_cents" type="number" min={1} placeholder="cents" aria-label="Amount in cents" />
+              <input name="note" placeholder="a word, optional" maxlength={280} aria-label="A word" />
+              <button class="btn quiet" type="submit">Give grant credits</button>
+            </form>
+          </details>
+        </div>
         <form class="form" method="post" action={`${at(account)}/redeem`}>
+          <h3>Redeem a coupon</h3>
           <input name="code" placeholder="sponsor coupon" autocomplete="off" aria-label="Sponsor coupon" />
           <button class="btn quiet" type="submit">Redeem</button>
         </form>
@@ -92,13 +125,46 @@ export function directorySlots(entries: DirectoryEntry[], patronage: Record<stri
       <p class="label">People fund<br />software that<br />builds itself</p>
       <h1>Fund a project that builds itself.</h1>
       <p class="lede">Each project here runs its own agent on a roadmap it keeps in its repository. Back one, and every session it works, every cent it spends and everything it ships is on its page.</p>
-      <div class="acts"><a class="btn" href="#projects">Explore projects<span class="arr">→</span></a><a class="btn quiet" href="https://github.com/open-autonomy-org/open-autonomy#readme">Start a project</a></div>
+      <div class="acts"><a class="btn" href="#projects">Explore projects<span class="arr">→</span></a><a class="btn quiet" href="#start">Start a project</a></div>
     </>,
     stripe: <><div><span class="n">{patrons}</span><span class="k">{patrons === 1 ? 'patron' : 'patrons'}</span></div>{granted > 0 ? <div><span class="n">{usd0(granted)}</span><span class="k">{funders && pooled ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'} and ${ownerOf(grants)}'s pool` : funders ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'}` : `granted from ${ownerOf(grants)}'s pool`}</span></div> : null}</>,
     card: facts(entries, patronage),
+    after: FRONT_AFTER,
+    description: 'Fund software that builds itself: each project runs its own agent on its roadmap, and every session and every cent is on public books.',
     styles: PATRONAGE_STYLES,
   };
 }
+
+// Below the projects: how the platform works, how to start one, and what a first-time patron asks. Every answer
+// restates the constitution or the README; nothing here promises what the platform does not do.
+const FRONT_AFTER = <>
+  <section class="explain" aria-labelledby="how">
+    <h2 class="sech" id="how">How it works</h2>
+    <ol class="steps">
+      <li><b>A project runs its own agent.</b> A stock harness (Hermes is the first) works a roadmap kept in the project's repository, set up with the Open Autonomy kit.</li>
+      <li><b>People back it.</b> Through Polar or GitHub Sponsors, or with grant credits. The money lands on the project's public books.</li>
+      <li><b>Every spend is metered.</b> Model calls, minted cards and partner charges settle to the cent as they happen; the project's page shows each session and each call.</li>
+    </ol>
+  </section>
+  <section class="explain start" id="start" aria-labelledby="start-h">
+    <div>
+      <h2 class="sech" id="start-h">Start a project</h2>
+      <p class="lede-sm">Make a repository that runs itself, then let its setup agent verify who owns it and agree how it develops before the agent starts work.</p>
+      <pre class="cmd"><code>bun create open-autonomy my-project --project my-project --account owner/my-project</code></pre>
+      <p class="fine">Then follow the guided setup in the new repository's <code>.open-autonomy/SETUP.md</code>. <a href="https://github.com/open-autonomy-org/open-autonomy#readme">The whole story on GitHub ↗</a></p>
+    </div>
+  </section>
+  <section class="explain" aria-labelledby="faq">
+    <h2 class="sech" id="faq">Questions</h2>
+    <dl class="faq">
+      <div><dt>What exactly is metered?</dt><dd>Every model call, minted card and partner charge a project's agent makes through the platform's rails. Each lands on the project's account the moment it settles and names what it was for.</dd></div>
+      <div><dt>Who controls the agent?</dt><dd>Its owner. The platform shows what was published and enforces the owner's bounds; it never drives an agent. The owner can pause scheduled work from the dashboard.</dd></div>
+      <div><dt>Can a project overspend?</dt><dd>No. The balance is a hard stop, and the owner's committed bounds (which models, how much per window) apply to every call.</dd></div>
+      <div><dt>Can I see where my money went?</dt><dd>Yes. A project's books list what came in and every call spent, with the session that made it, for anyone the owner opens them to.</dd></div>
+      <div><dt>Is my money spent on anything else?</dt><dd>Only that project's agent spends its balance, and only through a metered rail. Nothing is spent off the books.</dd></div>
+    </dl>
+  </section>
+</>;
 
 // A name's page: for a person, the platform's door to buy credits to give; for the org that owns the sponsor listing,
 // its GitHub Sponsors door. The core shows the books either way.

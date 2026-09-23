@@ -102,6 +102,7 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
         <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
         <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
         <p class="oa-keys"><kbd>j</kbd><kbd>k</kbd><span>rows</span><kbd>/</kbd><span>search</span></p>
+        {d.door?.in ? <a class="oa-signin" href={d.door.in}>Sign in with GitHub</a> : d.door?.who ? <p class="oa-signed">@{d.door.who}{d.door.out ? <> · <a href={d.door.out}>Sign out</a></> : null}</p> : null}
         <div class="oa-role"><b>{ROLE_WORDS[d.viewer]}</b>{d.viewer === 'public' ? 'What the owner opened to everyone.' : d.viewer === 'owner' ? 'Everything, and the one control.' : 'What the owner opened to the team.'} <a href={at(a)}>Project page →</a></div>
       </aside>
       <div class="oa-body">
@@ -171,6 +172,45 @@ function Transcript({ d, s, state, adapter }: { d: DashData; s: { key: string; t
 const SLOTS: MessengerSlots = { header: () => null, footer: () => null };
 
 // ---- the pages ------------------------------------------------------------------------------------------------------
+// What needs someone's eye, from the facts this page already carries: the owner's word not yet taken, money
+// running out or stopped, a bound nearly used, failed runs, work proposed and not yet planned, a quiet schedule.
+// Each line says what is true and links to where it is seen in full; nothing here is an instruction to the agent.
+interface Attention { tone: 'hot' | 'warn' | 'note'; text: string; href: string; go: string }
+function attentionOf(d: DashData): Attention[] {
+  const a = d.v.account;
+  const out: Attention[] = [];
+  const standing = standingOf(d.v, d.live);
+  const rw = runway(d);
+  if (standing === 'requested') out.push({ tone: 'warn', text: `Pause requested ${d.v.control?.desired?.at ? fmtAgo(d.v.control.desired.at, d.now) : ''}; the agent has not reported it paused yet.`, href: href(a, 'agent'), go: 'Agent' });
+  if (standing === 'exhausted') out.push({ tone: 'hot', text: 'Spending stopped: the balance is spent. Nothing on the platform can be spent until money comes in.', href: href(a, 'books'), go: 'Books' });
+  if (standing === 'unfunded') out.push({ tone: 'note', text: 'Not yet funded: the agent spends nothing on the platform until money comes in.', href: href(a, 'books'), go: 'Books' });
+  if (rw !== null && standing !== 'exhausted' && rw < d.v.goal_days / 3) out.push({ tone: 'warn', text: `${rw} ${rw === 1 ? 'day' : 'days'} of runway left, under a third of the ${d.v.goal_days}-day goal.`, href: href(a, 'books'), go: 'Books' });
+  for (const l of d.v.bounds.limits) {
+    const frac = l.usd_cents ? l.used.usd_cents / l.usd_cents : l.calls ? l.used.calls / l.calls : l.tokens ? l.used.tokens / l.tokens : 0;
+    if (frac >= 0.8) out.push({ tone: frac >= 1 ? 'hot' : 'warn', text: `${l.model ? `${l.model}: ` : ''}${Math.round(frac * 100)}% of the ${l.usd_cents !== undefined ? usd(l.usd_cents) : l.calls !== undefined ? `${l.calls}-call` : `${l.tokens}-token`} limit per ${l.window} is used.`, href: href(a, 'books'), go: 'Books' });
+  }
+  if (sees(d.viewer, d.visibility.sessions)) {
+    const week = d.sessions.filter((x) => x.outcome === 'failed' && d.now - Date.parse(x.ended_at ?? x.started_at) < 7 * 86_400_000);
+    if (week.length) out.push({ tone: 'hot', text: `${week.length} ${week.length === 1 ? 'run' : 'runs'} failed in the last seven days, the latest ${fmtAgo(week[0].ended_at ?? week[0].started_at, d.now)}.`, href: `${href(a, 'sessions')}?show=failed`, go: 'Sessions' });
+    const last = d.sessions.find((x) => x.kind === 'run');
+    const quiet = last ? d.now - Date.parse(last.ended_at ?? last.started_at) : null;
+    if (!paused(d.v) && jobsOf(d).length && quiet !== null && quiet > 2 * 86_400_000 && !d.live.length) out.push({ tone: 'warn', text: `No scheduled run in ${fmtAgo(last!.ended_at ?? last!.started_at, d.now).replace(/ ago$/, '')}, though the agent is not paused.`, href: href(a, 'agent'), go: 'Agent' });
+  }
+  if (sees(d.viewer, d.visibility.work)) {
+    const proposed = d.roadmap.items.filter((i) => i.status === 'proposed').length;
+    if (proposed) out.push({ tone: 'note', text: `${proposed} ${proposed === 1 ? 'item is' : 'items are'} proposed and not yet planned.`, href: href(a, 'board'), go: 'Board' });
+  }
+  return out;
+}
+function Attend({ d }: { d: DashData }) {
+  const items = attentionOf(d);
+  return (
+    <Panel title="Needs attention">
+      {items.length ? <ul class="oa-attend">{items.map((x) => <li class={x.tone}><i /><span class="t">{x.text}</span><a href={x.href}>{x.go} →</a></li>)}</ul> : <p class="oa-empty">Nothing needs attention: the agent is running within its bounds, and no run failed this week.</p>}
+    </Panel>
+  );
+}
+
 export function Overview({ d }: { d: DashData }) {
   const a = d.v.account;
   const state = useMemo(() => uiState(d, sees(d.viewer, d.visibility.transcripts) ? d.tail : undefined), [d]);
@@ -183,6 +223,7 @@ export function Overview({ d }: { d: DashData }) {
     <Shell d={d} title="Overview">
       <div class="oa-two">
         <div class="oa-col">
+          <Attend d={d} />
           <Panel title={first ? 'Working now' : 'Sessions'} more={sees(d.viewer, d.visibility.sessions) ? ['Every session →', href(a, 'sessions')] : undefined}>
             {first && sees(d.viewer, d.visibility.transcripts) ? <div class="scui-root oa-kit oa-tail"><Transcript d={d} s={first} state={state} adapter={adapter} /></div> : null}
             {state.sessions.length ? <div class="scui-root oa-kit oa-list"><SessionList state={{ ...state, sessions: latestPerJob(state.sessions).slice(0, 8) }} adapter={adapter} onOpen={(r) => { if (sees(d.viewer, d.visibility.sessions)) go(href(a, 'sessions', r.key)); }} labels={LABELS} /></div> : <p class="oa-empty">{sees(d.viewer, d.visibility.sessions) ? 'No sessions yet.' : 'Nothing running this minute. The sessions are not open to this view.'}</p>}
@@ -211,10 +252,21 @@ export function Sessions({ d }: { d: DashData }) {
   const state = useMemo(() => uiState(d, sees(d.viewer, d.visibility.transcripts) ? s : undefined), [d, s]);
   const adapter = useMemo(() => watcher(d), [d]);
   const rec = d.session;
+  // The filter narrows the list the kit shows; the rows are the same records the unfiltered page lists.
+  const jobNames = [...new Set(d.sessions.filter((x) => x.kind === 'run' && x.source).map((x) => x.source!))].slice(0, 6);
+  const keep = new Set(d.sessions.filter((x) => (d.filter?.show === 'live' ? d.live.includes(x.key) || x.status === 'live' : d.filter?.show === 'failed' ? x.outcome === 'failed' : true) && (!d.filter?.job || x.source === d.filter.job)).map((x) => x.key));
+  const shown = d.filter ? { ...state, sessions: state.sessions.filter((r) => keep.has(r.key)) } : state;
   return (
     <Shell d={d} title={rec ? `${rec.source ?? rec.kind} · ${fmtWhen(rec.started_at)}` : 'Sessions'}>
       <div class="oa-messenger" data-pane={rec ? 'chat' : 'list'}>
-        <div class="scui-root oa-kit oa-list"><SessionList state={state} adapter={adapter} onOpen={(r) => go(href(a, 'sessions', r.key))} focusKey={s?.key ?? null} labels={LABELS} /></div>
+        <div class="oa-listcol">
+          <nav class="oa-filters" aria-label="Show">{[['All', undefined, undefined], ['Live', 'live', undefined], ['Failed', 'failed', undefined], ...jobNames.map((j) => [j, undefined, j])].map(([label, show, job]) => {
+            const on = (d.filter?.show ?? undefined) === show && (d.filter?.job ?? undefined) === job;
+            const q = show ? `?show=${show}` : job ? `?job=${encodeURIComponent(job)}` : '';
+            return <a class={on ? 'on' : ''} aria-current={on ? 'true' : undefined} href={`${href(a, 'sessions')}${q}`}>{label}</a>;
+          })}</nav>
+          <div class="scui-root oa-kit oa-list"><SessionList state={shown} adapter={adapter} onOpen={(r) => go(href(a, 'sessions', r.key))} focusKey={s?.key ?? null} labels={LABELS} /></div>
+        </div>
         <div class="scui-root oa-kit oa-chat">
           {rec ? <div class="oa-chathead">
             <span><b>{usd(rec.usd_cents)}</b> metered</span><span><b>{rec.calls}</b> model calls</span><span><b>{fmtDur(rec.started_at, rec.ended_at, d.now)}</b> {rec.status === 'live' ? 'so far' : 'run'}</span>
@@ -239,6 +291,7 @@ export function Board({ d }: { d: DashData }) {
   const [selected, setSelected] = useState<string | null>(d.item ?? null);
   return (
     <Shell d={d} title="Board">
+      <p class="oa-under">The work lands as pull requests on GitHub: <a href={`https://github.com/${a}/pulls`} target="_blank" rel="noopener">open ↗</a> · <a href={`https://github.com/${a}/pulls?q=is%3Apr+is%3Amerged`} target="_blank" rel="noopener">merged ↗</a></p>
       <div class="scui-root oa-kit oa-board"><WorkflowBoard board={board} selectedKey={selected} onSelect={(k) => { setSelected(k); if (typeof history !== 'undefined') history.replaceState(null, '', k ? href(a, 'board', k) : href(a, 'board')); }} onOpenSession={(k) => go(href(a, 'sessions', k))} initialLayout="board" /></div>
     </Shell>
   );
@@ -269,6 +322,8 @@ function Jobs({ d, jobs, compact }: { d: DashData; jobs: JobModel[]; compact?: b
     </div>
   );
 }
+const PANEL_WORDS = { overview: 'overview and project page', work: 'roadmap and board', sessions: 'session list', transcripts: 'transcripts', books: 'books', calls: 'every metered call', agent: 'agent and its setup', team: 'team' } as const;
+const WHO_WORDS: Record<Role, string> = { public: 'open to everyone', giver: 'givers and the team', team: 'the team', owner: 'the owner only' };
 export function Agent({ d }: { d: DashData }) {
   const c = d.v.control;
   const jobs = jobsOf(d);
@@ -289,6 +344,13 @@ export function Agent({ d }: { d: DashData }) {
           </ul>
         </Panel>
         <Panel title="Jobs and runs" span={8}>{jobs.length ? <div class="scui-root oa-kit"><Jobs d={d} jobs={jobs} /></div> : <p class="oa-empty">No schedule published yet.</p>}</Panel>
+        <Panel title="The owner's settings" more={['config.yaml ↗', `https://github.com/${d.v.account}/blob/HEAD/.open-autonomy/config.yaml`]} span={12}>
+          <div class="oa-settings">
+            <ul class="oa-rows"><li><span class="t">runway goal</span><span class="n">{d.v.goal_days} days</span></li>{sees(d.viewer, d.visibility.books) ? <>{d.v.bounds.models.length ? <li><span class="t">models the funds may buy</span><span class="n">{d.v.bounds.models.join(', ')}</span></li> : null}{d.v.bounds.limits.length ? d.v.bounds.limits.map((l) => <li><span class="t">limit{l.model ? ` · ${l.model}` : ''}</span><span class="n">{[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per {l.window}</span></li>) : <li><span class="t">limits</span><span class="n">none beyond the balance</span></li>}</> : <li><span class="t">bounds</span><span class="n">shown with the books</span></li>}</ul>
+            <ul class="oa-rows">{(Object.keys(PANEL_WORDS) as Array<keyof typeof PANEL_WORDS>).map((k) => <li><span class="t">{PANEL_WORDS[k]}</span><span class="n">{WHO_WORDS[d.visibility[k]]}</span></li>)}</ul>
+          </div>
+          <p class="oa-fine" style="margin-top:8px">The owner's committed word, read from the repository's configuration; change it there, by commit.</p>
+        </Panel>
         <Panel title="Who it is" span={4}>{d.v.profile.soul_md ? <div class="oa-prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.soul_md) }} /> : <p class="oa-empty">Not published yet.</p>}</Panel>
         <Panel title="How it runs" span={8}>{d.v.profile.setup_md ? <div class="oa-prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.setup_md) }} /> : <p class="oa-empty">Not published yet.</p>}</Panel>
       </div>
@@ -296,11 +358,38 @@ export function Agent({ d }: { d: DashData }) {
   );
 }
 
+// Settled cents grouped by one key: the books' own figures summed, never an estimate.
+function groupBy<T>(rows: T[], key: (r: T) => string, cents: (r: T) => number): Array<[string, number, number]> {
+  const m = new Map<string, [number, number]>();
+  for (const r of rows) { const k = key(r); const v = m.get(k) ?? [0, 0]; m.set(k, [v[0] + cents(r), v[1] + 1]); }
+  return [...m.entries()].map(([k, [c, n]]) => [k, c, n] as [string, number, number]).sort((a, b) => b[1] - a[1]);
+}
+function Breakdown({ title, rows }: { title: string; rows: Array<[string, number, number]> }) {
+  const top = rows.slice(0, 8), max = Math.max(1, ...top.map((r) => r[1]));
+  return <div class="oa-break"><h3>{title}</h3>{top.length ? <ul>{top.map(([k, c, n]) => <li><span class="t" title={k}>{k}</span><span class="bar"><i style={`width:${Math.round((c / max) * 100)}%`} /></span><span class="n">{usd(c)}<small> · {n}</small></span></li>)}</ul> : <p class="oa-empty">Nothing yet.</p>}</div>;
+}
+// The calls on this page as a spreadsheet, made in the browser from the rows already here.
+const csvOf = (d: DashData): string => [['when', 'rail', 'what', 'input_tokens', 'output_tokens', 'session', 'usd_cents'], ...(d.calls ?? []).map((c) => [c.ts, c.rail, c.rail === 'model' ? c.model ?? '' : c.rail === 'card' ? `${c.merchant ?? ''} ${c.category ?? ''}`.trim() : `${c.partner ?? ''} ${c.unit ?? ''}`.trim(), String(c.input_tokens ?? ''), String(c.output_tokens ?? ''), c.session ?? '', String(c.usd_cents)])].map((r) => r.map((v) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(',')).join('\n');
+function useCsv(d: DashData) {
+  useEffect(() => {
+    const click = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement | null)?.closest?.('a[href="#calls.csv"]');
+      if (!link) return;
+      e.preventDefault();
+      const url = URL.createObjectURL(new Blob([csvOf(d)], { type: 'text/csv' }));
+      const save = Object.assign(document.createElement('a'), { href: url, download: `${d.v.account.replace('/', '-')}-calls.csv` });
+      save.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    document.addEventListener('click', click);
+    return () => document.removeEventListener('click', click);
+  }, [d]);
+}
 export function Books({ d }: { d: DashData }) {
   const a = d.v.account;
   const gifts = (d.v.feed ?? []).filter((f: Flow) => f.kind === 'grant' || f.kind === 'mint');
   const purpose = (e: Envelope) => (e.purpose.type === 'item' ? `for ${e.purpose.item}` : e.purpose.type === 'models' ? `for ${e.purpose.models.join(', ')}` : e.purpose.type === 'model' ? 'for model calls' : 'for anything');
   const session = (key: string | undefined): SessionSummary | undefined => (key ? d.sessions.find((s) => s.key === key) : undefined);
+  useCsv(d);
   return (
     <Shell d={d} title="Books">
       <div class="oa-grid">
@@ -310,12 +399,17 @@ export function Books({ d }: { d: DashData }) {
           <div class="oa-kpi"><div class="v">{usd(d.v.balance_usd_cents)}</div><div class="l">balance</div></div>
           <div class="oa-kpi"><div class="v">{usd(d.v.burn_per_day_usd_cents)}</div><div class="l">burn a day</div></div>
         </div></Panel>
+        {sees(d.viewer, d.visibility.sessions) ? <Panel title={`Where it went · the last ${d.sessions.length} sessions`} span={12}><div class="oa-split3">
+          <Breakdown title="By task" rows={groupBy(d.sessions.filter((x) => x.item_id), (x) => d.roadmap.items.find((i) => i.id === x.item_id)?.title ?? x.item_id!, (x) => x.usd_cents)} />
+          <Breakdown title="By job" rows={groupBy(d.sessions, (x) => x.source ?? x.kind, (x) => x.usd_cents)} />
+          <Breakdown title={`By model · the last ${d.calls?.length ?? 0} calls`} rows={groupBy(d.calls ?? [], (c) => c.rail === 'model' ? c.model ?? 'model' : c.rail === 'card' ? `card · ${c.merchant ?? 'a merchant'}` : `partner · ${c.partner ?? 'a partner'}`, (c) => c.usd_cents)} />
+        </div></Panel> : null}
         <Panel title="Money in" span={6}>{gifts.length ? <table class="oa-table"><thead><tr><th>When</th><th>From</th><th>What</th><th class="n">Amount</th></tr></thead><tbody>{gifts.map((g) => <tr><td class="nowrap">{fmtAgo(g.ts, d.now)}</td><td>{g.from ? g.from.replace(/^@/, '') : g.sponsor_login ?? 'the operator'}</td><td>{g.kind === 'mint' ? (g.coupon ? 'a coupon' : g.sponsor_login ? 'sponsorship' : 'credits') : g.note ? `a grant · “${g.note}”` : 'a grant'}</td><td class="n">{usd(g.amount_usd_cents)}</td></tr>)}</tbody></table> : <p class="oa-empty">Nothing has come in yet.</p>}</Panel>
         <Panel title="Earmarked · the owner's bounds" span={6}>
           {d.v.envelopes.length ? <ul class="oa-rows">{d.v.envelopes.map((e: Envelope) => <li><span class="t">{purpose(e)}{e.from ? ` · from ${e.from.replace(/^@/, '')}` : ''}</span><span class="n">{usd(e.balance_usd_cents)}</span></li>)}</ul> : <p class="oa-empty">Nothing earmarked.</p>}
-          <ul class="oa-rows" style="margin-top:14px">{d.v.bounds.models.length ? <li><span class="t">models</span><span class="n">{d.v.bounds.models.join(', ')}</span></li> : null}{d.v.bounds.limits.map((l) => <li><span class="t">{l.model ? `${l.model} · ` : ''}{[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? ` calls` : '', l.tokens !== undefined ? ` tokens` : ''].filter(Boolean).join(', ')} per {l.window}</span><span class="n">used {usd(l.used.usd_cents)}</span></li>)}</ul>
+          <ul class="oa-rows" style="margin-top:14px">{d.v.bounds.models.length ? <li><span class="t">models</span><span class="n">{d.v.bounds.models.join(', ')}</span></li> : null}{d.v.bounds.limits.map((l) => <li><span class="t">{l.model ? `${l.model} · ` : ''}{[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per {l.window}</span><span class="n">used {[l.usd_cents !== undefined ? usd(l.used.usd_cents) : '', l.calls !== undefined ? `${l.used.calls} calls` : '', l.tokens !== undefined ? `${l.used.tokens} tokens` : ''].filter(Boolean).join(', ')}</span></li>)}</ul>
         </Panel>
-        {sees(d.viewer, d.visibility.calls) ? <Panel title="Every metered call" span={12}>{d.calls?.length ? <div class="oa-tw"><table class="oa-table"><thead><tr><th>When</th><th>What</th><th>Session</th><th class="n">Cost</th></tr></thead><tbody>{d.calls.map((c) => <tr><td class="nowrap">{fmtAgo(c.ts, d.now)}</td><td>{c.rail === 'model' ? <>{c.model ?? 'model'}{c.input_tokens !== undefined ? <span class="oa-muted"> · {c.input_tokens} in / {c.output_tokens ?? 0} out</span> : null}</> : c.rail === 'card' ? `${c.merchant ?? 'a merchant'} · ${c.category ?? 'card'}` : `${c.partner ?? 'a partner'} · ${c.unit ?? ''}`}</td><td class="clip">{c.session ? <a href={href(a, 'sessions', c.session)}>{session(c.session)?.source ?? c.session}</a> : <span class="oa-muted">no session</span>}</td><td class="n">{usd(c.usd_cents)}</td></tr>)}</tbody></table></div> : <p class="oa-empty">No calls on the books yet.</p>}</Panel> : null}
+        {sees(d.viewer, d.visibility.calls) ? <Panel title="Every metered call" more={d.calls?.length ? ['Download CSV', '#calls.csv'] : undefined} span={12}>{d.calls?.length ? <div class="oa-tw"><table class="oa-table"><thead><tr><th>When</th><th>What</th><th>Session</th><th class="n">Cost</th></tr></thead><tbody>{d.calls.map((c) => <tr><td class="nowrap">{fmtAgo(c.ts, d.now)}</td><td>{c.rail === 'model' ? <>{c.model ?? 'model'}{c.input_tokens !== undefined ? <span class="oa-muted"> · {c.input_tokens} in / {c.output_tokens ?? 0} out</span> : null}</> : c.rail === 'card' ? `${c.merchant ?? 'a merchant'} · ${c.category ?? 'card'}` : `${c.partner ?? 'a partner'} · ${c.unit ?? ''}`}</td><td class="clip">{c.session ? <a href={href(a, 'sessions', c.session)}>{session(c.session)?.source ?? c.session}</a> : <span class="oa-muted">no session</span>}</td><td class="n">{usd(c.usd_cents)}</td></tr>)}</tbody></table></div> : <p class="oa-empty">No calls on the books yet.</p>}</Panel> : null}
       </div>
     </Shell>
   );
@@ -386,7 +480,7 @@ export const DASH_CSS = `
 @font-face{font-family:"Iosevka Slab";src:url(/assets/fonts/iosevka-slab-light.woff) format("woff");font-weight:100 450;font-display:swap}
 @font-face{font-family:"Iosevka Slab";src:url(/assets/fonts/iosevka-slab-regular.woff) format("woff");font-weight:451 900;font-display:swap}
 :root,.scui-root{--oa-lime:#e3f5a3;--oa-lilac:#e8e4f0;--oa-hot:#ff5a1f;--oa-rule:#b4b7ba;--oa-display:Michroma,Eurostile,sans-serif;--oa-label:"DM Sans",ui-sans-serif,system-ui,sans-serif;
---scui-bg:#f8f9f5;--scui-bg-raised:#fbfbf8;--scui-fill:#1414140d;--scui-fg:#161a24;--scui-muted:#737882;--scui-prose-fg:#3d4150;--scui-border:#dcddda;--scui-border-strong:#161a24;--scui-accent:#161a24;--scui-accent-fg:#f8f9f5;--scui-positive:#58761a;--scui-warning:#a2600a;--scui-danger:#c2410c;
+--scui-bg:#f8f9f5;--scui-bg-raised:#fbfbf8;--scui-fill:#1414140d;--scui-fg:#161a24;--scui-muted:#656a72;--scui-prose-fg:#3d4150;--scui-border:#dcddda;--scui-border-strong:#161a24;--scui-accent:#161a24;--scui-accent-fg:#f8f9f5;--scui-positive:#58761a;--scui-warning:#a2600a;--scui-danger:#c2410c;
 --scui-font:"Iosevka Slab",ui-monospace,SFMono-Regular,Menlo,monospace;--scui-font-mono:"Iosevka Slab",ui-monospace,SFMono-Regular,Menlo,monospace;--scui-heading-font:var(--oa-display);--scui-heading-weight:400;--scui-line-height:1.45;
 --scui-text-2xs:10.5px;--scui-text-xs:11.5px;--scui-text-sm:12px;--scui-text-md:12.5px;--scui-text-lg:12.5px;--scui-text-base:12.5px;--scui-text-xl:14px;--scui-text-2xl:16px;--scui-text-3xl:17px;--scui-text-4xl:22px;--scui-text-5xl:30px;
 --scui-radius:0;--scui-radius-xs:0;--scui-radius-sm:0;--scui-radius-md:0;--scui-radius-lg:0;--scui-radius-xl:0;--scui-radius-2xl:0;--scui-shadow-sm:none;--scui-shadow-md:0 0 0 1px #161a24;
@@ -414,7 +508,7 @@ a{color:inherit;text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:3px}
 h1,h2,h3,p,ul,ol{margin:0}
 ul,ol{padding:0;list-style:none}
-kbd{display:inline-grid;min-width:15px;height:15px;place-items:center;padding:0 3px;border:1px solid #dcddda;border-bottom-width:2px;color:#737882;font:400 9.5px/1 var(--scui-font)}
+kbd{display:inline-grid;min-width:15px;height:15px;place-items:center;padding:0 3px;border:1px solid #dcddda;border-bottom-width:2px;color:#656a72;font:400 9.5px/1 var(--scui-font)}
 button:active:not(:disabled){transform:translateY(1px)}
 button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2px}
 .oa-dash{display:grid;grid-template-columns:188px minmax(0,1fr);min-height:100vh}
@@ -424,7 +518,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-brand svg{width:16px;height:16px;flex:none}
 .oa-proj{display:flex;align-items:center;gap:9px;padding:8px 6px;border-top:1px solid #dcddda;border-bottom:1px solid #dcddda}
 .oa-proj .n{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
-.oa-proj .o{color:#737882;font-size:11px}
+.oa-proj .o{color:#656a72;font-size:11px}
 .oa-rail nav{display:flex;flex-direction:column;gap:1px}
 .oa-rail nav a{display:flex;align-items:center;gap:8px;height:26px;padding:0 6px 0 8px;color:#3d4150}
 .oa-rail nav a:before{content:"";width:6px;height:6px;flex:none;border:1px solid transparent}
@@ -437,20 +531,24 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-rail nav a.on:before{border-color:currentColor;background:currentColor}
 .oa-rail nav a.on kbd{border-color:#0000002e;color:#3d4150}
 .oa-rail nav .c{padding:0 5px;background:var(--oa-lilac);color:#34324a;font-size:10.5px;line-height:15px}
-.oa-keys{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:auto;padding:8px 4px 0;border-top:1px solid #dcddda;color:#737882;font-size:10.5px}
+.oa-keys{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:auto;padding:8px 4px 0;border-top:1px solid #dcddda;color:#656a72;font-size:10.5px}
 .oa-keys span{margin-right:6px}
-.oa-role{color:#737882;font-size:11px;line-height:1.45;padding:0 4px}
+.oa-signin{display:flex;align-items:center;justify-content:center;height:28px;border:1px solid #161a24;color:#161a24;font-size:12px}
+.oa-signin:hover{background:#161a24;color:#f8f9f5;text-decoration:none}
+.oa-signed{padding:0 4px;color:#3d4150;font-size:11.5px}
+.oa-signed a{text-decoration:underline;text-underline-offset:3px}
+.oa-role{color:#656a72;font-size:11px;line-height:1.45;padding:0 4px}
 .oa-role b{display:block;color:#161a24;font-weight:500}
 .oa-role a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
 .oa-body{min-width:0;padding:0 18px 32px}
 .oa-top{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;height:48px;margin:0 -18px 14px;padding:0 18px;background:#f8f9f5;border-bottom:1px solid var(--oa-rule)}
 .oa-top h1{font:400 16px/1 var(--oa-display);letter-spacing:-.02em;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .oa-top .grow{flex:1}
-.oa-facts{display:flex;gap:0;color:#737882;font-size:11.5px;white-space:nowrap}
+.oa-facts{display:flex;gap:0;color:#656a72;font-size:11.5px;white-space:nowrap}
 .oa-facts span{padding:0 10px;border-left:1px solid #dcddda}
 .oa-facts span:first-child{border-left:0}
 .oa-facts b{color:#161a24;font-weight:500}
-.oa-jump{display:inline-flex;align-items:center;justify-content:space-between;gap:18px;width:190px;height:26px;padding:0 5px 0 9px;border:1px solid #dcddda;background:#fbfbf8;color:#737882;font:inherit;cursor:pointer}
+.oa-jump{display:inline-flex;align-items:center;justify-content:space-between;gap:18px;width:190px;height:26px;padding:0 5px 0 9px;border:1px solid #dcddda;background:#fbfbf8;color:#656a72;font:inherit;cursor:pointer}
 .oa-jump:hover{border-color:#161a24;color:#161a24}
 .oa-pill{display:inline-flex;align-items:center;gap:7px;height:22px;padding:0 8px;font:500 11px/1 var(--oa-label);background:#f1f1ec;color:#3d4150;white-space:nowrap}
 .oa-pill i{width:7px;height:7px;background:#a9adb2}
@@ -472,16 +570,16 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-kpi+.oa-kpi{border-left:1px solid #dcddda}
 .oa-kpi .v{font:400 21px/1.1 var(--oa-label);letter-spacing:-.02em}
 .oa-kpi .v.ok{color:#58761a}.oa-kpi .v.warn{color:#a2600a}
-.oa-kpi .l{color:#737882;font-size:11px}
+.oa-kpi .l{color:#656a72;font-size:11px}
 .oa-spark{display:flex;align-items:flex-end;gap:2px;height:42px;margin-top:10px;border-bottom:1px solid #161a24}
 .oa-spark i{flex:1;display:block;background:#161a24;opacity:.7;min-height:1px}
 .oa-spark i.hot{background:var(--oa-hot);opacity:1}.oa-spark i.zero{background:#b4b7ba;opacity:.4}
-.oa-sparklabel{display:flex;justify-content:space-between;color:#737882;font-size:10.5px;margin-top:5px}
+.oa-sparklabel{display:flex;justify-content:space-between;color:#656a72;font-size:10.5px;margin-top:5px}
 .oa-rows{display:flex;flex-direction:column;border:1px solid #dcddda}
 .oa-rows li{display:flex;align-items:baseline;gap:12px;padding:6px 10px;border-top:1px solid #dcddda}
 .oa-rows li:first-child{border-top:0}
 .oa-rows .t{flex:1;min-width:0}
-.oa-rows .n{color:#737882;font-size:11.5px;text-align:right}
+.oa-rows .n{color:#656a72;font-size:11.5px;text-align:right}
 .oa-rows .n a{text-decoration:underline;text-underline-offset:3px}
 .oa-table{width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dcddda}
 .oa-table th{text-align:left;font:500 9.5px/1 var(--oa-label);letter-spacing:.24em;text-transform:uppercase;color:#5f656b;padding:8px 10px;border-bottom:1px solid #b4b7ba;background:#fbfbf8}
@@ -492,9 +590,9 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-table td.clip{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oa-table a{text-decoration:underline;text-underline-offset:3px}
 .oa-tw{overflow-x:auto}
-.oa-muted{color:#737882}
-.oa-empty{color:#737882;font-size:12px;padding:8px 0}
-.oa-fine{color:#737882;font-size:11.5px;line-height:1.5}
+.oa-muted{color:#656a72}
+.oa-empty{color:#656a72;font-size:12px;padding:8px 0}
+.oa-fine{color:#656a72;font-size:11.5px;line-height:1.5}
 .oa-fine a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
 .oa-prose{font-size:12.5px;line-height:1.6;color:#3d4150;border:1px solid #dcddda;padding:10px 12px;background:#fbfbf8}
 .oa-prose p+p{margin-top:8px}
@@ -513,7 +611,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-btn{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 12px;border:1px solid #161a24;background:#161a24;color:#f8f9f5;font:inherit;cursor:pointer}
 .oa-btn.quiet{background:transparent;color:#161a24}
 .oa-ident{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dcddda;border-bottom:0}
-.oa-ident b{display:block;font:400 14px/1.2 var(--oa-display);color:#000}.oa-ident span{color:#737882;font-size:11.5px}
+.oa-ident b{display:block;font:400 14px/1.2 var(--oa-display);color:#000}.oa-ident span{color:#656a72;font-size:11.5px}
 .oa-ident+.oa-rows{border-top:1px solid #dcddda}
 .oa-kit.scui-root{--scui-width:100%;--scui-height:auto;width:100%;height:auto;display:block;border:0;border-radius:0;overflow:visible;background:transparent}
 .oa-kit .scui-list{width:100%}
@@ -521,18 +619,41 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-tail.scui-root{border:1px solid #dcddda;overflow:hidden;background:#fbfbf8;margin-bottom:10px;max-height:380px;display:flex;flex-direction:column}
 .oa-tail .scui-conversation-wrap{max-height:380px}
 .oa-messenger{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;align-items:start;min-height:calc(100vh - 80px);border:1px solid #dcddda}
-.oa-messenger .oa-list.scui-root{border:0;border-right:1px solid #dcddda}
-.oa-chathead{display:flex;flex-wrap:wrap;gap:0;padding:8px 12px;border-bottom:1px solid #dcddda;color:#737882;font-size:11.5px}
+.oa-listcol{min-width:0;border-right:1px solid #dcddda}
+.oa-messenger .oa-list.scui-root{border:0}
+.oa-filters{display:flex;flex-wrap:wrap;gap:4px;padding:8px 8px 6px;border-bottom:1px solid #dcddda}
+.oa-filters a{padding:2px 7px;border:1px solid #dcddda;font-size:11.5px;color:#3d4150}
+.oa-filters a:hover{text-decoration:none;border-color:#161a24}
+.oa-filters a.on{background:var(--oa-lime);border-color:var(--oa-lime);color:#161a24}
+.oa-chathead{display:flex;flex-wrap:wrap;gap:0;padding:8px 12px;border-bottom:1px solid #dcddda;color:#656a72;font-size:11.5px}
 .oa-chathead span{padding:0 10px;border-left:1px solid #dcddda}
 .oa-chathead span:first-child{padding-left:0;border-left:0}
 .oa-chathead b{color:#161a24;font-weight:500}
 .oa-chathead a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
-.oa-messenger .oa-list.scui-root{position:sticky;top:62px;max-height:calc(100vh - 80px);display:flex;flex-direction:column}
+.oa-listcol{position:sticky;top:62px;max-height:calc(100vh - 80px);display:flex;flex-direction:column}
+.oa-listcol .oa-list.scui-root{flex:1;min-height:0;display:flex;flex-direction:column}
 .oa-messenger .oa-chat.scui-root{position:sticky;top:62px;height:calc(100vh - 80px);background:#f8f9f5;display:flex;flex-direction:column;overflow:hidden}
 .oa-chat .scui-conversation-wrap{flex:1;min-height:0;display:flex;flex-direction:column}
 .oa-chat .scui-conversation{flex:1;min-height:0;overflow:auto}
 .oa-messenger .oa-chat .oa-empty{padding:20px}
 /* Mixed lists of tasks as ruled rows: the key, the title, its status. */
+.oa-under{margin:-4px 0 10px;color:#656a72;font-size:11.5px}
+.oa-under a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
+.oa-split3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid #dcddda}
+.oa-break{padding:10px 12px;min-width:0}
+.oa-break+.oa-break{border-left:1px solid #dcddda}
+.oa-break h3{font:500 9.5px/1 var(--oa-label);letter-spacing:.24em;text-transform:uppercase;color:#5f656b;margin-bottom:8px}
+.oa-break li{display:grid;grid-template-columns:minmax(0,1fr) 60px auto;align-items:center;gap:8px;padding:3px 0}
+.oa-break .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oa-break .bar{height:5px;background:#f1f1ec}.oa-break .bar i{display:block;height:100%;background:#161a24}
+.oa-break .n{text-align:right;white-space:nowrap}.oa-break .n small{color:#656a72}
+.oa-settings{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.oa-attend{border:1px solid #dcddda}
+.oa-attend li{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:baseline;gap:10px;padding:7px 10px;border-top:1px solid #dcddda}
+.oa-attend li:first-child{border-top:0}
+.oa-attend i{width:8px;height:8px;background:#a9adb2;align-self:center}
+.oa-attend .hot i{background:var(--oa-hot)}.oa-attend .warn i{background:#f2b04a}.oa-attend .note i{background:#b3a6e0}
+.oa-attend a{color:#3d4150;font-size:11.5px;white-space:nowrap}
 .oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) auto;--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
 .oa-board.scui-root{border:1px solid #dcddda;background:#f8f9f5;overflow:hidden;min-height:60vh}
 .oa-jobs{display:flex;flex-direction:column;gap:10px}
@@ -541,7 +662,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-job:first-child{border-top:0}
 .oa-job:hover{background:#f1f1ec}
 .oa-job.on{background:var(--oa-lime)}
-.oa-job b{font-weight:500}.oa-job span{color:#737882;font-size:11.5px}
+.oa-job b{font-weight:500}.oa-job span{color:#656a72;font-size:11.5px}
 .oa-job em{margin-left:auto;font-style:normal;font-size:10.5px;padding:1px 6px;background:#e7e6e5;color:#464a59}
 .oa-job em.scheduled{background:#e9fac1;color:#424a33}.oa-job em.paused{background:#fcf0dc;color:#a2600a}
 .oa-jobopen{display:flex;flex-direction:column;gap:10px;padding:10px;border:1px solid #dcddda;border-top:0;background:#fbfbf8}
@@ -552,10 +673,10 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-palette-list{max-height:360px;margin:0;padding:4px;overflow:auto;list-style:none}
 .oa-palette-item{display:grid;grid-template-columns:84px minmax(0,1fr) auto;align-items:center;gap:10px;height:28px;padding:0 8px;cursor:pointer}
 .oa-palette-item[aria-selected=true]{background:var(--oa-lime)}
-.oa-palette-item .k{color:#737882;font-size:10.5px;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oa-palette-item .k{color:#656a72;font-size:10.5px;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oa-palette-item .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.oa-palette-item .l b{margin-right:8px;color:#737882;font-weight:400}
-.oa-palette-empty{padding:10px 8px;color:#737882}
+.oa-palette-item .l b{margin-right:8px;color:#656a72;font-weight:400}
+.oa-palette-empty{padding:10px 8px;color:#656a72}
 @media(prefers-reduced-motion:reduce){.oa-pill.live i{animation:none}}
-@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 10px;border-right:0;border-bottom:1px solid var(--oa-rule)}.oa-proj,.oa-keys,.oa-role{display:none}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:1px}.oa-rail nav a kbd{display:none}.oa-body{padding:0 12px 28px}.oa-top{margin:0 -12px 12px;padding:6px 12px;height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px}.oa-facts{flex-wrap:wrap;white-space:normal}.oa-jump span{display:none}.oa-jump{width:auto}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-kpis.four{grid-template-columns:repeat(2,1fr)}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-messenger .oa-list.scui-root{position:static;max-height:50vh;border-right:0;border-bottom:1px solid #dcddda}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-list{display:none}}
+@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 10px;border-right:0;border-bottom:1px solid var(--oa-rule)}.oa-proj,.oa-keys,.oa-role{display:none}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:1px}.oa-rail nav a kbd{display:none}.oa-body{padding:0 12px 28px}.oa-top{margin:0 -12px 12px;padding:6px 12px;height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px}.oa-facts{flex-wrap:wrap;white-space:normal}.oa-jump span{display:none}.oa-jump{width:auto}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-split3{grid-template-columns:1fr}.oa-settings{grid-template-columns:1fr}.oa-break+.oa-break{border-left:0;border-top:1px solid #dcddda}.oa-kpis.four{grid-template-columns:repeat(2,1fr)}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-listcol{position:static;max-height:50vh;border-right:0;border-bottom:1px solid #dcddda}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-listcol{display:none}}
 `;

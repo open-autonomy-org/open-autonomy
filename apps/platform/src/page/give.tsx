@@ -12,7 +12,7 @@ export interface GivePageData {
 }
 const BRAND = 'open-autonomy';
 
-export function renderGivePage(data?: GivePageData): string {
+export function renderGivePage(data?: GivePageData, to?: string): string {
   const now = Date.now();
   if (!data) return document('Give grant credits', BRAND, render(
     <>
@@ -22,7 +22,7 @@ export function renderGivePage(data?: GivePageData): string {
           <p class="label" style="margin-bottom:12px">Grant credits</p>
           <h1>Give grant credits</h1>
           <p class="prose" style="margin-bottom:20px">Grant credits are funds you hold on these public books and can pass to a project you believe in. They can only be given, never spent by this page.</p>
-          <a class="btn" href="/give/login">Sign in with GitHub</a>
+          <a class="btn" href={to ? `/give/login?next=${encodeURIComponent(`/give?to=${to}`)}` : '/give/login'}>Sign in with GitHub</a>
           <p class="fine">GitHub is used only to verify your login. The sign-in asks for no repository or organization scope.</p>
         </div>
       </div>
@@ -53,7 +53,7 @@ export function renderGivePage(data?: GivePageData): string {
               <form class="form" method="post" action="/give">
                 <input type="hidden" name="key" value={data.attempt} />
                 <label class="field">Give from<select name="source">{sources.map((x) => <option value={x.account}>{x.label}</option>)}</select></label>
-                <label class="field">Project<select name="to" required>{data.projects.map((p) => <option value={p.account}>{p.account}</option>)}</select></label>
+                <label class="field">Project<select name="to" required>{data.projects.map((p) => <option value={p.account} selected={p.account === to}>{p.account}</option>)}</select></label>
                 <label class="field">Amount in cents<input name="usd_cents" type="number" min={1} step={1} required /></label>
                 <label class="field">Earmark<select name="for"><option value="unrestricted">whatever the project needs</option><option value="model">model calls only</option><option value="any">anything the agent spends on</option></select></label>
                 <label class="field">Why this project (optional)<input name="note" maxlength={280} /></label>

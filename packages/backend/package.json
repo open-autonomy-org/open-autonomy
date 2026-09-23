@@ -18,6 +18,7 @@
     "./page/parts": "./src/page/parts.tsx",
     "./page/theme": "./src/page/theme.ts",
     "./page/art": "./src/page/art.ts",
+    "./page/updates": "./src/page/updates.ts",
     "./testing": "./test/env.ts",
     "./page/document": "./src/page/document.ts",
     "./dash": "./src/dash/index.tsx",

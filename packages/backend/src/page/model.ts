@@ -48,6 +48,8 @@ export interface DirectorySlots {
   front?: unknown;                   // the words above the figures (the platform: "Fund a project that builds itself.")
   stripe?: unknown;                  // more figures after the core's (the platform: patrons, granted by funders)
   card?: Record<string, unknown>;    // a project's facts line, by account (the platform: patrons, per month)
+  after?: unknown;                   // sections below the projects (the platform: how it works, starting a project, questions)
+  description?: string;              // what a shared link to the front says
   styles?: string;
 }
 // A name's page, GitHub's user or org page: what it owns here and what it gave. The core shows projects and the

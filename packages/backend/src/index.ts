@@ -7,7 +7,8 @@ export { worker, route, give, isAdmin, fundingAccount, type App, type RouteTools
 export { LimitLedger, LedgerClient, type LedgerCore, type LedgerOp, type Account, type AccountProfile, type DirectoryEntry, type Envelope, type EnvelopePurpose, type Flow, type FunderView, type FundingSnapshot, type ItemView, type LedgerState, type Moderation, type ProjectView, type RoadmapRevision, type SessionRecord, type SessionSummary, type Sponsor } from './ledger.ts';
 export { configurePage, pageConfig } from './page/brand.ts';
 export { renderMessage } from './page/message.tsx';
-export { document } from './page/document.ts';
+export { document, headMeta, type PageMeta } from './page/document.ts';
+export { updatesOf, atomFeed, type Update } from './page/updates.ts';
 export { TopBar, Foot, at, accountAt, nameOf, ownerOf, Cover, safeUrl, purposeSentence } from './page/parts.tsx';
 export { T, CSS, FONTS } from './page/theme.ts';
 export { PRESETS, sees, visibilityOf, type Role, type Visibility, type DirectorySlots, type AccountSlots } from './page/model.ts';

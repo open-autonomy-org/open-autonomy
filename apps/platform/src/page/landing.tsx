@@ -8,7 +8,9 @@ import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { LandingBase, ProjectView, SessionSummary } from '@open-autonomy/backend';
 import { esc, fmtAgo, fmtDur, mdToSafeHtml, render, usd, usd0 } from '@open-autonomy/backend/ui';
 import { Foot, Pill, TopBar, at, firstLine, leadParagraphs, nameOf, ownerOf, safeUrl, standingOf } from '@open-autonomy/backend/page/parts';
+import { updatesOf } from '@open-autonomy/backend/page/updates';
 import { BASE_CSS, DISPLAY, FONTS, T, TEXT } from '@open-autonomy/backend/page/theme';
+import { headMeta, type PageMeta } from '@open-autonomy/backend/page/document';
 import { art, lattice, rings } from '@open-autonomy/backend/page/art';
 import { raw } from 'hono/html';
 import { sees, type Viewer } from '@open-autonomy/backend/page/model';
@@ -119,12 +121,20 @@ export const LANDING_CSS = `${BASE_CSS}
 .timeline .row.hot:before{background:${T.hot}}
 .timeline .row.ahead:before{background:${T.stone};box-shadow:0 0 0 4px ${T.wash},inset 0 0 0 1px ${T.rule}}
 .timeline .row .t{white-space:normal}
+.ups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.up{display:flex;flex-direction:column;padding:18px 20px;background:${T.panel};border:1px solid ${T.line}}
+.up.shipped{border-top:3px solid #b9dd3a}
+.up .label{margin-bottom:10px}
+.up h3{font-size:16px;font-weight:500;line-height:1.35}
+.up .t{color:${T.body};font-size:13.5px;line-height:1.55;margin-top:8px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.up .more{margin-top:auto;padding-top:12px}
+#updates>.more{margin-top:18px}
 .band-cta{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:80px;padding:34px 36px;background:${T.lilac}}
 .band-cta p{font:300 22px/1.35 ${TEXT};color:${T.ink};max-width:32ch}
 .band-cta a{font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .foot{margin-top:0}
 ${PATRONAGE_STYLES}
-@media(max-width:900px){.ident{grid-template-columns:1fr;gap:28px;padding-top:32px}.ident .pic{max-width:360px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:18px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic,.sec>h2 small{display:none}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
+@media(max-width:900px){.ups{grid-template-columns:1fr}.ident{grid-template-columns:1fr;gap:28px;padding-top:32px}.ident .pic{max-width:360px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:18px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic,.sec>h2 small{display:none}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
 @media(max-width:480px){.ask .money{font-size:38px}}
 `;
 
@@ -210,7 +220,7 @@ function Ask({ d }: { d: LandingData }) {
       <div class="money">{monthly > 0 ? <>{usd0(monthly)}<span> a month</span></> : <>{usd(d.v.balance_usd_cents)}<span> in the bank</span></>}</div>
       <div class="k">{faces.length ? <span class="stack">{faces.map(av)}</span> : null}<span>{n === 0 ? 'no patrons yet; the first name goes on the wall' : `from ${n} ${n === 1 ? 'patron' : 'patrons'}`}</span></div>
       <div class={`days ${tone}`}>{standing === 'exhausted' ? <>0<span> days of runway</span></> : runway === null ? <>—<span> no burn to measure yet</span></> : runway > 365 ? <>1+<span> year of runway</span></> : <>{runway}<span> {runway === 1 ? 'day' : 'days'} of runway</span></>}</div>
-      <div class="line">{standing === 'exhausted' ? 'The balance is spent; the next gift starts the agent again.' : runway === null ? 'No runs yet.' : `at its current burn of ${usd(d.v.burn_per_day_usd_cents)} a day`}</div>
+      <div class="line">{standing === 'exhausted' ? 'The balance is spent; nothing on the platform can be spent until money comes in.' : runway === null ? 'No runs yet.' : `at its current burn of ${usd(d.v.burn_per_day_usd_cents)} a day`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="goal"><span>0</span><span>goal: {goal} days</span></div>
       <div class="stats">
@@ -247,6 +257,26 @@ function Promises({ d }: { d: LandingData }) {
         <div><h3>Recently shipped</h3>{shipped.length ? <ul class="rows timeline">{shipped.map((i) => <li class="row"><span class="t">{i.title}</span><span class="n k">{i.done_at ? fmtAgo(i.done_at, d.now) : 'shipped'}</span></li>)}</ul> : <p class="empty">Nothing shipped yet.</p>}</div>
       </div>
       {d.dashboard ? <a class="more" href={at(a, 'dashboard', 'board')}>The whole board<span>→</span></a> : null}
+    </section>
+  );
+}
+
+// What shipped and what the runs reported, newest first; the same list the project's feed serves.
+function Updates({ d }: { d: LandingData }) {
+  const a = d.v.account;
+  const ups = updatesOf(d.sessions, d.roadmap, 6);
+  return (
+    <section class="sec" id="updates">
+      <h2>Recent updates<small>As the agent published them</small></h2>
+      {ups.length ? <div class="ups">{ups.map((u) => (
+        <article class={`up ${u.kind}`}>
+          <p class="label">{fmtAgo(u.ts, d.now)} · {u.kind === 'shipped' ? 'Shipped' : 'Run report'}</p>
+          <h3>{u.title}</h3>
+          {u.text ? <p class="t">{u.text}</p> : null}
+          {u.kind === 'shipped' && u.item && d.dashboard ? <a class="more" href={at(a, 'dashboard', 'board', u.item)}>On the board<span>→</span></a> : null}
+        </article>
+      ))}</div> : <p class="empty">Nothing published yet. What ships and what each run reports will appear here.</p>}
+      <a class="more" href={at(a, 'updates.xml')}>Follow in a feed reader<span>→</span></a>
     </section>
   );
 }
@@ -302,6 +332,7 @@ export function Landing(d: LandingData) {
           <Tiers tiers={d.patronage.tiers} owner={ownerOf(a)} account={a} sponsor={d.sponsor} polar={d.polar} burn={d.v.burn_per_day_usd_cents * 30} />
         </section>
         <Promises d={d} />
+        <Updates d={d} />
         <section class="sec">
           <h2>Patrons<small>{d.patronage.patron_count ? `${d.patronage.patron_count} so far` : 'Be the first'}</small></h2>
           {d.patronage.patrons.length ? <div class="wall">{d.patronage.patrons.map(chip)}</div> : <p class="empty">No one has backed {nameOf(a)} yet. The first name goes here.</p>}
@@ -333,13 +364,14 @@ export function About(d: LandingData) {
   );
 }
 
-export function landingDocument(title: string, brand: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><title>${esc(title)} · ${esc(brand)}</title><style>${LANDING_CSS}</style></head><body>${body}</body></html>`;
+export function landingDocument(title: string, brand: string, body: string, meta: PageMeta = {}): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet">${headMeta(title, brand, meta)}<style>${LANDING_CSS}</style></head><body>${body}</body></html>`;
 }
 
 // The page as the core's router asks for it: the core's records and who is looking, the platform's patronage.
 // The dashboard is offered to whoever the owner admits to its overview.
 export function landingPage(base: LandingBase, p: { brand: string; patronage: PatronageView; polar: boolean; sponsor: string }): string {
   const d: LandingData = { brand: p.brand, v: base.view, sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
-  return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)));
+  const description = base.view.profile.tagline ?? `${nameOf(base.account)}, building itself in the open. Every session and every cent on public books.`;
+  return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)), { description, feed: at(base.account, 'updates.xml') });
 }
