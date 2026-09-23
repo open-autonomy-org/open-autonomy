@@ -616,6 +616,8 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-kit.scui-root{--scui-width:100%;--scui-height:auto;width:100%;height:auto;display:block;border:0;border-radius:0;overflow:visible;background:transparent}
 .oa-kit .scui-list{width:100%}
 .oa-list.scui-root{border:1px solid #dcddda;overflow:hidden;background:#fbfbf8}
+/* On the overview the panel names the list; the kit's own list header would say it twice. */
+.oa-col>.oa-panel .oa-list.scui-root{--scui-head-display:none}
 .oa-tail.scui-root{border:1px solid #dcddda;overflow:hidden;background:#fbfbf8;margin-bottom:10px;max-height:380px;display:flex;flex-direction:column}
 .oa-tail .scui-conversation-wrap{max-height:380px}
 .oa-messenger{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;align-items:start;min-height:calc(100vh - 80px);border:1px solid #dcddda}
