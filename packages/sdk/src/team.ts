@@ -48,13 +48,15 @@ export function validateTeam(value: unknown): Team {
   return { members };
 }
 
-function section(config: string): { start: number; end: number; value: string } | undefined {
+// A JSON-valued top-level section of config.yaml (`<key>: {...}`, continued on indented lines), with its span, so a
+// writer can replace it and keep every other byte. Shared by the roster and the seams declaration.
+export function configSection(config: string, key: string): { start: number; end: number; value: string } | undefined {
   const lines = config.split(/(?<=\n)/);
-  let offset = 0, found: ReturnType<typeof section>;
+  let offset = 0, found: ReturnType<typeof configSection>;
   for (let i = 0; i < lines.length; i++) {
-    const match = /^team:[ \t]*(.*)/.exec(lines[i]);
+    const match = new RegExp(`^${key}:[ \\t]*(.*)`).exec(lines[i]);
     if (!match) { offset += lines[i].length; continue; }
-    if (found) throw new Error('Duplicate team section in project configuration.');
+    if (found) throw new Error(`Duplicate ${key} section in project configuration.`);
     const start = offset;
     let value = match[1].trim(), end = offset + lines[i].length;
     while (i + 1 < lines.length && /^[ \t]+\S/.test(lines[i + 1])) { value += `\n${lines[++i].trim()}`; end += lines[i].length; }
@@ -65,7 +67,7 @@ function section(config: string): { start: number; end: number; value: string } 
 }
 
 export function parseTeamConfig(config: string): Team {
-  const block = section(config);
+  const block = configSection(config, 'team');
   if (!block) return { members: [] };
   try { return validateTeam(JSON.parse(block.value)); }
   catch (e) { throw new Error(`Invalid team section: ${(e as Error).message} Use the Team editor's JSON-valued team section.`); }
@@ -73,7 +75,7 @@ export function parseTeamConfig(config: string): Team {
 
 export function replaceTeamConfig(config: string, team: Team): string {
   parseTeamConfig(config); // Never overwrite an unreadable or ambiguous authority record.
-  const block = section(config);
+  const block = configSection(config, 'team');
   const replacement = `team: ${JSON.stringify(validateTeam(team), null, 2).replaceAll('\n', '\n  ')}\n`;
   return block ? config.slice(0, block.start) + replacement + config.slice(block.end) : `${config}${config.endsWith('\n') ? '' : '\n'}\n${replacement}`;
 }

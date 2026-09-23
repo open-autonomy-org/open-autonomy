@@ -186,3 +186,15 @@ proposals leave the committed roster unchanged; inspect a partially created bran
 
 Authority changes need owner-authorized provenance even after merging. Native Discord access and GitHub
 release protection are reconciled separately by the setup agent; a roster edit is not release approval.
+
+## Seams
+
+The project's `seams` section in `.open-autonomy/config.yaml` declares where people act
+([ADR 0008](../../docs/decisions/0008-human-seams.md)): each seam's `id`, the roster `scope` that may act there, the `door`
+its acts go through (`commit`, `code-host-gate` or `platform-key`; chat is never a door) and where its acts are
+`record`ed, plus `vendor_accounts` (`id`, `vendor`, `account`) whose administrators are people in scope. It is a JSON
+value like `team`. `parseSeamsConfig(configText)` returns the declaration or `null` when there is none, and refuses
+unknown fields, any scope but `owner`, `direction` and `release-review` (moderation grants no decision authority)
+and any other door. Import it from `@open-autonomy/sdk/seams` or
+the kit's vendored `.open-autonomy/sdk/seams.ts`. `create-open-autonomy check` also reports a seam whose scope no roster
+member holds.
