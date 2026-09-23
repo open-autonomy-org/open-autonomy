@@ -220,7 +220,7 @@ function Ask({ d }: { d: LandingData }) {
       <div class="money">{monthly > 0 ? <>{usd0(monthly)}<span> a month</span></> : <>{usd(d.v.balance_usd_cents)}<span> in the bank</span></>}</div>
       <div class="k">{faces.length ? <span class="stack">{faces.map(av)}</span> : null}<span>{n === 0 ? 'no patrons yet; the first name goes on the wall' : `from ${n} ${n === 1 ? 'patron' : 'patrons'}`}</span></div>
       <div class={`days ${tone}`}>{standing === 'exhausted' ? <>0<span> days of runway</span></> : runway === null ? <>—<span> no burn to measure yet</span></> : runway > 365 ? <>1+<span> year of runway</span></> : <>{runway}<span> {runway === 1 ? 'day' : 'days'} of runway</span></>}</div>
-      <div class="line">{standing === 'exhausted' ? 'The balance is spent; the next gift starts the agent again.' : runway === null ? 'No runs yet.' : `at its current burn of ${usd(d.v.burn_per_day_usd_cents)} a day`}</div>
+      <div class="line">{standing === 'exhausted' ? 'The balance is spent; nothing on the platform can be spent until money comes in.' : runway === null ? 'No runs yet.' : `at its current burn of ${usd(d.v.burn_per_day_usd_cents)} a day`}</div>
       <div class="track"><div class={`fill ${tone}`} style={`width:${Math.round(frac * 100)}%`} /></div>
       <div class="goal"><span>0</span><span>goal: {goal} days</span></div>
       <div class="stats">

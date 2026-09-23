@@ -182,7 +182,7 @@ function attentionOf(d: DashData): Attention[] {
   const standing = standingOf(d.v, d.live);
   const rw = runway(d);
   if (standing === 'requested') out.push({ tone: 'warn', text: `Pause requested ${d.v.control?.desired?.at ? fmtAgo(d.v.control.desired.at, d.now) : ''}; the agent has not reported it paused yet.`, href: href(a, 'agent'), go: 'Agent' });
-  if (standing === 'exhausted') out.push({ tone: 'hot', text: 'Spending stopped: the balance is spent. The next gift starts the agent again.', href: href(a, 'books'), go: 'Books' });
+  if (standing === 'exhausted') out.push({ tone: 'hot', text: 'Spending stopped: the balance is spent. Nothing on the platform can be spent until money comes in.', href: href(a, 'books'), go: 'Books' });
   if (standing === 'unfunded') out.push({ tone: 'note', text: 'Not yet funded: the agent spends nothing on the platform until money comes in.', href: href(a, 'books'), go: 'Books' });
   if (rw !== null && standing !== 'exhausted' && rw < d.v.goal_days / 3) out.push({ tone: 'warn', text: `${rw} ${rw === 1 ? 'day' : 'days'} of runway left, under a third of the ${d.v.goal_days}-day goal.`, href: href(a, 'books'), go: 'Books' });
   for (const l of d.v.bounds.limits) {

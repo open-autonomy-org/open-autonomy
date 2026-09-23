@@ -137,11 +137,15 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
   const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
 
-  // ---- the project's updates as a feed: what shipped and what its runs reported, as this viewer may see them ----
+  // ---- the project's updates as a feed: what shipped and what its runs reported, as everyone may see them ----
+  // A feed reader is anonymous and a shared cache may keep the answer, so the feed is the public's, whoever asks:
+  // run reports only when the owner opens the sessions to everyone, links only into panels open to everyone.
   if (door === 'updates.xml') {
-    const feed = atomFeed({ origin: url.origin, account, title: `${nameOf(account)} · ${brand}`, page: at(account), updates: updatesOf(sessions, roadmap),
-      board: sees(role, visibility.work) ? (item) => at(account, 'dashboard', 'board', item) : undefined,
-      session: sees(role, visibility.transcripts) ? (key) => at(account, 'dashboard', 'sessions', key) : undefined });
+    const open = (panel: keyof Visibility) => sees('public', visibility[panel]);
+    const feed = atomFeed({ origin: url.origin, account, title: `${nameOf(account)} · ${brand}`, page: at(account),
+      updates: updatesOf(open('sessions') ? stream.sessions : [], open('work') ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP),
+      board: open('work') ? (item) => at(account, 'dashboard', 'board', item) : undefined,
+      session: open('transcripts') ? (key) => at(account, 'dashboard', 'sessions', key) : undefined });
     return new Response(req.method === 'HEAD' ? null : feed, { headers: { 'content-type': 'application/atom+xml; charset=utf-8', 'cache-control': 'public, max-age=300' } });
   }
 
