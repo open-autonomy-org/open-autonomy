@@ -40,5 +40,6 @@ got right. Changing this file is the owner's act, never a task's.
 
 ## Out of scope
 
-Open Autonomy is not an agent framework, a workflow compiler or a hosting service. The agent is stock Hermes,
-run by the project owner wherever they like; the platform is a treasury with rails, a page and a widget.
+Open Autonomy is not an agent framework, a workflow compiler or a hosting service. The agent is a stock harness
+(Hermes is the first), run by the project owner wherever they like; the kit renders its brain for the harness the
+owner picks and never implements one; the platform is a treasury with rails, a page and a widget.
