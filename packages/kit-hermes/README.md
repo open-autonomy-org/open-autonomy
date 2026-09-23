@@ -20,6 +20,7 @@ bun create open-autonomy my-project --project my-project --account owner/my-proj
 create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
 create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
 create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
+create-open-autonomy upgrade --fleet <fleet.json>   # every project of a fleet: cloned fresh, upgraded, landed as that repository lands
 create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
 
@@ -127,7 +128,9 @@ merge before completing the task. GitHub requires approval and dismisses stale a
 session shows on the project's page with its cost.
 
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
-worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), and requests a complete stack restart after the upgrade merges. It prepares
+worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
+way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
+landing workflow stands), and requests a complete stack restart after the upgrade lands. It prepares
 human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.

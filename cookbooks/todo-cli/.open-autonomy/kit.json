@@ -1,10 +1,9 @@
 {
   "kit": "hermes",
   "skew": "self-build",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "params": {
     "project": "todo-cli",
     "account": "cookbook/todo-cli"
-  },
-  "divergences": []
+  }
 }

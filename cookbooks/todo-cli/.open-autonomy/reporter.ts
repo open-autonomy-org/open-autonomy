@@ -28,7 +28,8 @@ const log = (message: string) => console.log(`reporter: ${message}`);
 const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONOMY_RUNTIME ?? ''); return r && (r.mode === 'container' || r.mode === 'bare') ? r : undefined; } catch { return undefined; } })();
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, container!, ...cmd];
+// HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
 const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
 const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
