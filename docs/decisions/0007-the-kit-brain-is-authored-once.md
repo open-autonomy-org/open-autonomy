@@ -1,128 +1,201 @@
 # ADR 0007: The kit's brain is authored once, in Supercode's orchestration IR, and rendered per harness
 
-Status: Proposed. Blocked on an owner amendment to the constitution's "Out of scope" (see the
-constitution review below); it cannot be accepted until that amendment lands, and then only upon
-independent constitution review and merge of this record with its first implementation.
+Status: Proposed. Accepted only upon independent constitution review and merge of this record with its
+first implementation; proposed until both occur.
 
-Refines [ADR 0006](0006-the-kit-is-a-lineage.md) (base plus skews, upgrades as merges); supersedes
-nothing. Touches [ADR 0001](0001-runtime-boundary.md), whose container mode runs native Hermes.
+Amends [ADR 0006](0006-the-kit-is-a-lineage.md) (what base holds; what `kit.json` records; fleets) and
+[ADR 0001](0001-runtime-boundary.md) (which harness the runtime runs), each as stated under Consequences.
+Supersedes neither.
 
 ## Context and sources
 
 Source of authorization: the owner's coding conversation of September 23, 2026, in this repository (no
-public permalink; the quotations record scope, not independent approval): "supercode has a 'harness
-agnostic orchestrator' with an IR right? That can compile into either hermes or openclaw or our own. Is that
-right? And if so, can we set the template with that IR and compile INTO the 3 types?" After a source audit
-was presented, the owner directed this record: "yes proceed".
+public permalink; the quotations record scope, not independent approval). The owner asked: "supercode has
+a 'harness agnostic orchestrator' with an IR right? That can compile into either hermes or openclaw or our
+own. Is that right? And if so, can we set the template with that IR and compile INTO the 3 types?" A
+source audit was presented, and the owner directed this record: "yes proceed". Its constitution review
+found the Out of scope sentence "The agent is stock Hermes" in conflict. The owner amended it ("yes
+amend"; [#706](https://github.com/open-autonomy-org/open-autonomy/pull/706)) to: "The agent is a stock
+harness (Hermes is the first), run by the project owner wherever they like; the kit renders its brain for
+the harness the owner picks and never implements one."
 
-What exists (source audit, same day; Supercode `main` at 4f05813f, this repository at 7e2c689f):
+What exists. Source audit, same day, with Supercode `main` at 4f05813f and this repository at 13a18c29.
 
-- **The IR.** Supercode's `docs/architecture/orchestrator.md` defines one typed value,
-  `OrchestratorState`: profiles, each with a worker (any harness), a persona (`AGENTS.md`), channels,
-  routes, access, expiry, cron jobs, webhook subscriptions, delivery obligations and bindings. Secrets
-  are references, never values. Its codecs are Rust (`crates/interchange/src/orchestration/codec/`):
-  Hermes both ways (`SOUL.md` ↔ `AGENTS.md`, `config.yaml`, `cron/jobs.json`), OpenClaw both ways (pinned
-  `v2026.7.1-2`), and Supercode's own folder, which its orchestrator loop (`sdk/orchestrator`) runs with
-  any harness as the worker. Every codec states a fidelity tier (byte or semantic); unmodelled fields
-  ride as residue. The harness serves them as `harness.v1.orchestration.{load,save,compile,import,export}`
+**The IR.**
+- Supercode's `docs/architecture/orchestrator.md` defines one typed value, `OrchestratorState`. It holds
+  profiles, and each profile has:
+  - a worker (any harness) and a persona (`AGENTS.md`)
+  - channels, routes, access and expiry
+  - cron jobs, webhook subscriptions, delivery obligations and bindings.
+- Secrets are references in the model (§1 rule 3).
+- The codecs are Rust (`crates/interchange/src/orchestration/codec/`):
+  - Hermes, both ways (`SOUL.md` ↔ `AGENTS.md`, `config.yaml`, `cron/jobs.json`)
+  - OpenClaw, both ways, pinned to `v2026.7.1-2`
+  - Supercode's own folder, which its orchestrator loop (`sdk/orchestrator`) runs with any harness as the
+    worker.
+- Every codec states a fidelity tier (byte or semantic). Unmodelled fields ride as residue.
+
+**The doors.**
+- The harness serves six doors, `harness.v1.orchestration.{load,save,compile,decompile,import,export}`
   (`crates/harness/src/harness_service.rs:111-116`).
-- **What the IR does not model.** Skill content (a job names skills; the files are the worker's),
-  loop features ("tools, memory provider, skill self-improvement … are the worker's", §10), and the board
-  ("Kanban, peer sync, mobile nodes: not built", §10).
-- **What is published.** `@volter-ai-dev/supercode` 0.4.36, already a dependency of every project's host
-  package (`.open-autonomy/package.json`), carries the `orchestration.load`, `compile` and `import` door
-  names in its binary; `export` and `save` were not found as literal strings, so whether the published
-  build answers them is unverified. The orchestrator package (the loop, the adapters) is a private
-  workspace package with no npm release (its README says so).
-- **What the kit's brain is today.** Per skew: `SOUL.md`, skills under `hermes/skills/open-autonomy/`, a
-  cron seed; in base: `hermes/config.yaml`, the treasurer profile, a Python model-provider plugin that routes
-  the model through the valve (`hermes/plugins/model-providers/open-autonomy`), a Python seed hook
-  (`hermes/hooks/seed`). The skills call Hermes's own CLI 20 times (`hermes kanban` ten, `hermes cron`
-  seven, `hermes plugins` three). The host tools are Hermes-shaped: `start.ts` runs `hermes gateway run`,
-  `maintain.ts` reads `hermes kanban`. The self-build skew runs on Hermes's kanban board and dispatcher;
-  manage-project and manage-organization have no board and no dispatch (ADR 0006).
+- `compile` reads a harness's home into a state (`OrchestrationCompileParams{from, home}`). What the owner
+  called "compile INTO" a harness is `export`/`decompile`.
+- The binary of `@volter-ai-dev/supercode` 0.4.36, already a dependency of every project's host package,
+  contains all six door names. Whether it answers them has not been run.
+
+**What is unreleased.** The orchestrator package (the loop and the adapters) is a private workspace package
+with no npm release.
+
+**What the IR does not model.**
+- Skill content: a job names skills, but the skill files are the worker's.
+- Loop features: "tools, memory provider, skill self-improvement … are the worker's" (§10).
+- The board: "Kanban, peer sync, mobile nodes: not built" (§10).
+
+**Secrets on export.** Supercode's README says a Hermes export inlines secret values ("inline in a Hermes
+export because that is where Hermes reads them") and refuses a reference the vault cannot resolve. The
+kit's `base/hermes/config.yaml` instead carries interpolations (`${OPEN_AUTONOMY_BASE_URL}`,
+`${OPEN_AUTONOMY_KEY}`), which the running stack fills with the valve's address and a dummy key.
+
+**What the kit's brain is today.**
+- Each skew has a `SOUL.md`, skills under `hermes/skills/open-autonomy/` and a cron seed.
+- Base has:
+  - `hermes/config.yaml` and the treasurer profile
+  - a Python model-provider plugin that routes the model through the valve
+    (`hermes/plugins/model-providers/open-autonomy`)
+  - a Python seed hook (`hermes/hooks/seed`).
+- The skills' `SKILL.md` files call Hermes's CLI 15 times: `hermes kanban` 7 and `hermes cron` 8. All seven
+  `kanban` calls and three of the `cron` calls are in self-build. The two board-free skews make five calls,
+  all `hermes cron`: manage-project's pm ×3 and manage-organization's organization ×2.
+- The host tools are Hermes-shaped: `start.ts` spawns `hermes gateway run`, and `maintain.ts` reads
+  `hermes kanban`.
+- The self-build skew runs on Hermes's kanban board and dispatcher. manage-project and
+  manage-organization have no board and no dispatch (ADR 0006).
+
+**Who would feel a change.** Nine repositories run the board-free skews on kit 3.1.0: the organization and
+eight of its projects. The fleet definition in `~/.local/state/open-autonomy/fleets/volter/fleet.json`
+lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself") tracks them.
 
 ## Decision
 
-- **One source, three renders.** The brain of the manage-project and manage-organization skews is
-  authored once as an orchestration folder (the IR's own serialization: `AGENTS.md` persona, `config.yaml`
-  with its worker and channels, `cron/jobs.json`, the treasurer profile) with its skills as files beside
-  it. `create`/`adopt` take `--target hermes|openclaw|orchestrator` (default `hermes`) and `kit.json`
-  records it. The kit renders the target by exporting the source through the harness's
-  `orchestration.export` door and laying the skills where that target reads them. The kit never
-  re-implements a codec.
-- **self-build stays Hermes.** Its board and dispatcher have no IR noun. It is rendered as today and
-  refuses any other target until the orchestrator has a board.
-- **Skills speak verbs every target has.** A skill's `hermes cron …` call becomes the Supercode verb that
-  reads the same record for every harness (`jobs`, `runs`), mounted for the worker. A skill that still
-  needs a harness-only verb names its target and is excluded from the others.
-- **What stays per target is small and named.** Each target has a model-provider stub that sends the
-  model through the valve (so every spend stays on the project's rail), a start adapter, and a maintain
-  adapter. The valve, the reporter, the SDK and the landing workflow stay one copy in base.
-- **Upgrades do not change shape.** The three-way merge (ADR 0006, kit 3.1.0) runs on rendered files. The
-  ancestor is the recorded version rendered for the recorded target. A project on `hermes` sees
-  the same files it has today.
-- **Order of proof, each through the World, by hand.** (1) Fact-finders: the published harness answers
-  `orchestration.export` and `save`; the orchestrator package is released. (2) The `hermes` render of
-  manage-project from the IR source is byte-identical to kit 3.1.0's render, so the nine fleet
-  repositories see a zero-file upgrade. (3) manage-project on the `orchestrator` target, one profile and
-  one cron, runs its daily scrum in a World and publishes through the reporter. (4) `openclaw` last.
-  A step that fails stops the ones after it.
+- **One source, rendered per target.**
+  - The brain of manage-project and manage-organization is authored once in the kit package, as an
+    orchestration folder per skew: the IR's own serialization, holding the `AGENTS.md` persona,
+    `config.yaml` with its worker and channels, `cron/jobs.json` and the treasurer profile. Its skills are
+    files beside it.
+  - `create` and `adopt` take `--target hermes|openclaw|orchestrator` (default `hermes`), and `kit.json`
+    records it.
+  - The kit renders a target by passing the source through the harness's `export` door. It lays the
+    skills where that target reads them: `hermes/` for Hermes as today, the OpenClaw state layout for
+    OpenClaw, and an `orchestrator/` folder in the project for the orchestrator. That last is never the
+    project root, where the seeded repository `AGENTS.md` lives.
+  - The kit never implements a codec. The compiler is Supercode's. Open Autonomy calls it and remains
+    not a workflow compiler.
+- **The rendered files carry interpolations, never values.** The render has no vault: at render time
+  the key belongs to the valve, and nothing else holds one. Every credential in the source is a reference
+  that the `hermes` render must emit as Hermes's own `${NAME}` interpolation, as `config.yaml` does
+  today. If the `export` door can only inline a value or refuse, Supercode needs an export mode that
+  emits interpolations. That mode is a precondition of step (1) below, and the kit never works around it.
+- **self-build stays Hermes.** Its board and dispatcher have no IR noun. It renders as today and refuses
+  any other target until the orchestrator has a board.
+- **Skills speak verbs every target has.** Each of the five `hermes cron` calls in the board-free skews
+  becomes the Supercode verb that reads the same record for any harness (`jobs`, `runs`), mounted for
+  the worker. This applies to the `hermes` render too, so all targets share one skill text.
+- **Metering is per worker harness, not per target.** A target that runs "any harness" as its worker
+  (the orchestrator) needs the valve route for each worker harness it may run.
+  - `create` refuses a worker harness that has no route through the valve.
+  - The Codex-subscription path (ADR 0001: Hermes's native `openai-codex` provider) exists only for Hermes.
+  - Every other target spends on the platform's model rail through the valve until a route for that
+    harness is built.
+- **What stays per target is small and named.** Each target has:
+  - a model stub per worker harness
+  - a start adapter
+  - a maintain adapter.
+  The valve, the reporter, the SDK and the landing workflow stay one copy in base.
+- **Upgrades keep their shape.** The three-way merge (ADR 0006, kit 3.1.0) runs on rendered files, and
+  the ancestor is the recorded version rendered for the recorded target.
+- **Order of proof**, each step a hand-run walk. A step that fails stops the ones after it.
+  1. **Fact-finders.**
+     - The published harness answers `export` for a manage-project source and emits interpolations, not
+       values.
+     - A Hermes worker can run the `jobs`/`runs` verbs that replace its `hermes cron` calls.
+     - The reporter reads the orchestrator's sessions through the same Supercode discovery it uses for
+       Hermes.
+     - The orchestrator package is released.
+  2. **The `hermes` render matches today except for the named lines.** From the IR source, it must differ
+     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. The comparison is
+     a manual diff that is never committed. For each of the nine repositories, the upgrade is an ordinary
+     three-way merge of those lines.
+  3. **manage-project on the `orchestrator` target**, with one profile and one cron, runs its daily scrum
+     in a World. It publishes through the reporter, and a settled spend appears on the project's ledger.
+  4. **`openclaw` last.**
 
 ## What this record extrapolates beyond the owner's words
 
-The owner asked whether the template can be written in the IR and compiled into three targets, and
-directed this record. Everything in the Decision beyond that is this author's design:
+The owner asked whether the template can be written in the IR and compiled into three targets, directed
+this record, and amended the constitution to let the kit render for the harness the owner picks.
+Everything in the Decision beyond that is this author's design:
 - the split of self-build (Hermes-only) from the two board-free skews
-- the `--target` flag and its default
+- the `--target` flag, its default and the output locations
+- interpolation-only renders
 - rewriting skills onto Supercode verbs
-- the per-target stubs
+- per-worker metering stubs
 - the order of proof.
 
-The claim that Supercode's `jobs`/`runs` verbs can replace the skills' `hermes cron` calls for a Hermes
-worker is unverified. Whether the reporter reads OpenClaw's and the orchestrator's sessions through the
-same Supercode discovery it uses for Hermes is also unverified. Both are fact-finders, not findings.
+The step (1) items are unverified. They are fact-finders, not findings.
 
 ## Alternatives and tradeoffs
 
-- **Stay Hermes-only (the status quo).** Nothing to build; the kit stays one harness. Chosen if the
-  constitution amendment is declined.
-- **Three hand-kept templates.** Rejected: three copies of every skill drift, and every upgrade triples.
-- **Compile at run time instead of render time.** Rejected: a generated repository is self-contained
-  today (ADR 0006); a runtime compile would make every project depend on the orchestrator to start.
-- **Extend the IR to model skills and the board first.** Not now: that is Supercode's roadmap. This record
-  takes the IR as it is and leaves self-build out.
+- **Stay Hermes-only.** Nothing to build, and the amended constitution still allows it. It leaves the kit
+  unable to render for the harness the owner picks.
+- **A second kit per harness**, in the sense of the constitution's opening "the Hermes kit is the first".
+  Rejected: every skill and every upgrade would be kept twice. The amended Out of scope has one kit render
+  for the chosen harness.
+- **Keep Hermes's own CLI in the `hermes` render and Supercode verbs elsewhere**, making a byte-identical
+  `hermes` render possible. Rejected: two skill texts per skew is the drift this record removes. Five lines
+  change once instead.
+- **Compile at run time instead of at render time.** Rejected: a generated repository is self-contained
+  (ADR 0006), and every project would depend on the orchestrator to start.
+- **Extend the IR to model skills and the board first.** Not now. That is Supercode's roadmap, so this
+  record takes the IR as it is and leaves self-build out.
 
 ## Consequences
 
-- `kit.json` gains `target`. A record without one is `hermes`.
-- The kit's render depends on the published Supercode harness, a dependency the host package already has,
-  now also at render time.
-- A non-Hermes target needs its own executor image. ADR 0001's container mode ("native Hermes inside the
-  World executor") holds for `hermes`. Another target amends ADR 0001 before it runs in a container.
-- Nothing changes on the platform, the wire or metering: the platform reads no target. The spend invariant
-  holds only if every target's model stub goes through the valve, and step (3) must show a metered spend
-  on the project's ledger.
+- **ADR 0006, amended:**
+  - The model-provider plugin leaves base and becomes a per-target, per-worker stub.
+  - The treasurer profile moves into the IR source.
+  - `kit.json` gains `target`, and a record without one is `hermes`.
+  - The `kit` field keeps its value `hermes` as the lineage's name. This record does not rename it, and
+    renaming it is a separate decision, since every existing record carries it.
+  - A fleet stays one Hermes gateway: a fleet's projects share one target, `hermes`, until a target's own
+    multiplexing is proven.
+- **ADR 0001, amended in both of its modes:**
+  - For `hermes`, bare and container, it stands unchanged.
+  - For any other target, its "Hermes remains the native scheduler and coordinator" and "the reporter
+    reads native Hermes" do not hold.
+  - That target runs, bare or in a container, only after an ADR 0001 amendment names its scheduler, its
+    executor image and its reporter's source.
+- **Render-time dependency.** The kit's render depends on the published Supercode harness, a package the
+  host package already carries.
+- **No change on the platform.** Nothing changes on the platform, the wire or metering, and the platform
+  reads no target.
 
 ## Constitution review (by the author; the independent review follows on the pull request)
 
 - **Every spend is metered on public books; the ledger's settled cents are the only cost.** Compatible
-  only if each target's model stub routes through the valve. Step (3) must show a settled spend on the
-  ledger before a target is offered.
+  only through per-worker valve stubs: `create` refuses a worker harness without one, and step (3) must
+  show a settled spend on the ledger.
 - **Only the SDK is real; the platform shows, does not steer.** Compatible. The reporter publishes
-  through the SDK whatever the harness, and the platform reads no target. The invariant already says
-  "Hermes and its board are one starter the kit makes, not a shape the platform knows."
-- **Authority comes from the repository; nothing in reach is a secret that matters.** Compatible. Bounds
-  stay in `.open-autonomy/config.yaml`, the IR carries secrets only as references, and the valve keeps
-  the key out of the agent's reach.
-- **No automated tests; nothing develops against a real API.** Compatible. Each step of the order of
-  proof is a hand-run walk in a World. Supercode's own codec tests are Supercode's.
-- **Out of scope: CONFLICT.** "Open Autonomy is not an agent framework, a workflow compiler or a hosting
-  service. The agent is stock Hermes, run by the project owner wherever they like." An `openclaw` or
-  `orchestrator` target makes the agent something other than stock Hermes. Rendering through a
-  compiler also brushes against "not … a workflow compiler", though the compiler is Supercode's, not this
-  repository's. An ADR cannot amend the constitution. This record is blocked until the owner decides.
-  The author's proposed wording, for the owner to accept, change or decline: "The agent is a stock
-  harness (Hermes is the first), run by the project owner wherever they like; the kit renders its brain
-  for the harness the owner picks and never implements one." If declined, this record is Rejected and the
-  kit stays Hermes-only.
+  through the SDK whatever the harness, and the platform reads no target. Step (1) checks that the
+  reporter can read the orchestrator's sessions.
+- **Authority comes from the repository.** Compatible. Bounds stay in `.open-autonomy/config.yaml`.
+- **Nothing in an agent's reach is a secret that matters.** Compatible only if renders carry
+  interpolations and never a value, which the Decision requires and step (1) verifies. Nothing new lands
+  in the committed tree beyond the files the kit renders today.
+- **No automated tests; nothing develops against a real API.** Compatible. Each proof step is a hand-run
+  walk in a World, and the step (2) diff is a manual comparison that is never committed.
+- **Out of scope (as amended in #706).** Compatible:
+  - "The agent is a stock harness … the kit renders its brain for the harness the owner picks and never
+    implements one": the kit renders and implements no harness.
+  - "Not … a workflow compiler": the compiler is Supercode's, called as a door.
+  - The opening paragraph's "the Hermes kit is the first" reads as the kit's name and first harness,
+    consistent with keeping `kit: hermes` until a rename decision.
