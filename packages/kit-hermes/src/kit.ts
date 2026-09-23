@@ -14,6 +14,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
+import { parseTeamConfig } from '@open-autonomy/sdk/team';
+import { parseSeamsConfig } from '@open-autonomy/sdk/seams';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
 export const KIT = { name: 'hermes', version: (JSON.parse(readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8')) as { version: string }).version } as const;
@@ -63,14 +65,14 @@ function walk(dir: string, base = dir): string[] {
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
 // 'not_open'. Refuse to vendor below the floor rather than write a client that fails months later on the host.
-const SDK_MIN = '3.1.0';
+const SDK_MIN = '3.2.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
 const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
 if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts'];
 
 // Every base file, then every file of the skew over it, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__`
 // (and `__ACCOUNT_ENC__`, the account as a URL path segment); binary-looking files pass through untouched. A
@@ -124,7 +126,7 @@ export function adopt(dir: string, params: KitParams, skew: Skew = 'self-build')
 // edits, a merge's result, a file it removed); which carry an unresolved merge. A project is a branch of its skew
 // (docs/decisions/0006), so divergence is its right and is reported, never an error. An old version and an
 // unresolved merge are.
-export interface Status { version: string; current: boolean; diverged: string[]; conflicted: string[] }
+export interface Status { version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
 export function check(dir: string): Status {
   const rec = readKit(dir);
   const diverged: string[] = [];
@@ -137,7 +139,23 @@ export function check(dir: string): Status {
     if (hasMarkers(have)) conflicted.push(rel);
     else if (!eq(have, want)) diverged.push(`${rel}: changed here`);
   }
-  return { version: rec.version, current: rec.version === KIT.version, diverged, conflicted };
+  return { version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir) };
+}
+
+// The project's own declarations in config.yaml: the roster must read, and declared seams (ADR 0008) must use the
+// three doors and name a scope some roster member holds. A problem here is the project's to fix, not the kit's.
+function declarations(dir: string): string[] {
+  const at = join(dir, '.open-autonomy', 'config.yaml');
+  if (!existsSync(at)) return [];
+  const text = readFileSync(at, 'utf8');
+  const out: string[] = [];
+  let scopes = new Set<string>();
+  try { scopes = new Set(parseTeamConfig(text).members.flatMap((m) => m.scopes)); } catch (e) { out.push((e as Error).message); }
+  try {
+    const seams = parseSeamsConfig(text);
+    for (const s of seams?.seams ?? []) if (!scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
+  } catch (e) { out.push((e as Error).message); }
+  return out;
 }
 const eq = (a: Buffer, b: Buffer): boolean => Buffer.compare(a, b) === 0;
 const binary = (b: Buffer): boolean => b.includes(0);
