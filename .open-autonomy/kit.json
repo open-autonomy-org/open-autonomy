@@ -5,9 +5,5 @@
   "params": {
     "project": "open-autonomy",
     "account": "open-autonomy-org/open-autonomy"
-  },
-  "divergences": [
-    ".github/workflows/ci.yml",
-    ".github/workflows/land.yml"
-  ]
+  }
 }

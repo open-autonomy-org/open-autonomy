@@ -14,8 +14,8 @@ OA’s World scenario exercises this project’s setup, board, community, team a
 [World operator guide](https://github.com/open-autonomy-org/open-autonomy/blob/main/world/README.md) to run them with synthetic vendors. Fresh-install verification uses
 a disposable project made by the kit; additional generated cookbook copies are unnecessary.
 
-The focused [notes HTTP example](examples/notes-http.ts) retains the service behavior from the retired notes-api
-cookbook without another agent installation. Start it through the World with
+The focused [notes HTTP example](examples/notes-http.ts) is an HTTP service in the same project, without
+another agent installation. Start it through the World with
 `PORT=8080 bun examples/notes-http.ts`, then register that URL with `volter-world app-url`.
 It serves `GET /healthz`, `POST /notes` with a JSON `text`, `GET /notes` (optional case-insensitive `?q=`),
 `GET /notes/:id`, and `DELETE /notes/:id`. Invalid notes return 400; missing notes return 404.
