@@ -101,14 +101,22 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
   any other target until the orchestrator has a board.
 - **Skills speak verbs every target has.** The five `hermes cron` calls in the board-free skews are of two
   kinds (measured in step (1)).
-  - Three read jobs, fires and failures (`hermes cron list`, `runs`, `incidents`). They become
-    Supercode's `jobs list` and `runs list`, which read the same records for every harness, and a failure
-    is a fire whose status failed. This applies to the `hermes` render too, so all targets share one
-    skill text.
-  - Two read the PM's cursor from the job's notepad (`hermes cron notepad <job> get …`): how far it has
-    read since its last run. No Supercode verb and no IR noun holds per-job memory. Until Supercode offers
-    a job-notepad verb over every target's store, those two lines stay Hermes's, and the board-free skews
-    render only for `hermes`. That verb is a precondition of any other target.
+  - Two check the schedule's health, one per skew (`hermes cron list`, `runs` and `incidents`, for missed
+    scrums or cycles and delivery errors). They become Supercode's `jobs list` and `runs list`, which read
+    the same records for every harness:
+    - a failed fire is a fire whose status failed;
+    - a missed run leaves no fire, and shows as a job whose uniform `next_run_at` is past;
+    - a delivery error lives only in the harness's own record (the `source` that `jobs get` returns
+      verbatim). No uniform field carries it, so it is a gap beside the notepad below.
+    This applies to the `hermes` render too, so all targets share one skill text.
+  - Three use the job's notepad (`hermes cron notepad <job> get|set …`). Two read the cursor and one
+    writes coverage. The whole cursor discipline rests on the notepad, not only those three lines: the
+    cursor advances in `pm/SKILL.md` and `organization/SKILL.md`, and both skews' `SOUL.md`/`README.md`
+    name the notepad as runtime state. No Supercode verb and no IR noun holds per-job memory. Until a
+    cross-harness home for the cursor exists (a Supercode job-notepad verb over every target's store, or
+    the PM carrying its cursor in its own landed commits), these lines stay Hermes's, and the board-free
+    skews render only for `hermes`. That home, and a uniform delivery error, are preconditions of any
+    other target.
 - **Metering is per worker harness, not per target.** A target that runs "any harness" as its worker
   (the orchestrator) needs the valve route for each worker harness it may run.
   - `create` refuses a worker harness that has no route through the valve.
@@ -134,8 +142,8 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
        kit's seed, first for a missing `id` and then for the string schedule `"every 24h"` ("expected an
        object"). See the jobs placement in step (2).
      - **Answered, partly:** the published CLI's `jobs list` reads a Hermes home's jobs, and `runs list`
-       reads fires. It has no `incidents` verb and no job notepad. See "Skills speak verbs every target
-       has".
+       reads fires. It has no `incidents` verb and no job notepad. Its uniform job row carries
+       `next_run_at` and `last_status` but no delivery error. See "Skills speak verbs every target has".
      - **Open:** whether the reporter reads the orchestrator's sessions through the same Supercode
        discovery it uses for Hermes. This needs the orchestrator running a worker, so it is measured
        with step (3).
@@ -143,7 +151,7 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
        board-free skews until the job-notepad verb exists, so releasing it now would publish a runtime
        nothing can use.
   2. **The `hermes` render matches today except for the named lines.** From the IR source, it must differ
-     from kit 3.1.0's render only in the three skill lines that move to Supercode verbs. Four things the
+     from kit 3.1.0's render only in the two skill lines that move to Supercode verbs. Four things the
      kit controls keep the rest identical:
      - The source's jobs are in the IR's (Hermes's runtime) shape: an `id` and a parsed schedule. The
        kit's `hermes/cron/jobs.seed.json` is the kit's own format, which the seed hook turns into runtime
@@ -162,8 +170,9 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
      Any other difference fails this step and is fixed at its cause, in the kit's placement or in
      Supercode's codec; the bar is never widened to admit it. The comparison is a manual diff that is never
      committed. For each of the nine repositories, the upgrade is an ordinary three-way merge of those
-     three lines.
-  3. **manage-project on the `orchestrator` target**, with one profile and one cron, runs its daily scrum
+     two lines.
+  3. **manage-project on the `orchestrator` target**, once the cursor's cross-harness home and a uniform
+     delivery error exist (see "Skills speak verbs every target has"), with one profile and one cron, runs its daily scrum
      in a World. It publishes through the reporter, and a settled spend appears on the project's ledger.
   4. **`openclaw` last.**
 
