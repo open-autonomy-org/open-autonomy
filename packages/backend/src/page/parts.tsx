@@ -4,6 +4,7 @@ import { raw } from 'hono/html';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { EnvelopePurpose, ProjectView } from '../ledger.js';
 import { LOGO_SVG } from '../ui.js';
+import { art, groundOf } from './art.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
 export const ownerOf = (account: string): string => account.split('/')[0];
@@ -63,16 +64,21 @@ export const Pill = ({ standing }: { standing: Standing }) => <span class={`pill
 // ---- the hero ---------------------------------------------------------------------------------------------------
 // A URL from a record is untrusted: https, or a path on this deployment; no quote, paren, angle bracket, backslash or space.
 export const safeUrl = (u: string | undefined): string | undefined => (u && /^(?:https:\/\/|\/(?!\/))[^\s'"()<>\\]*$/.test(u) ? u : undefined);
-export function coverStyle(url: string | undefined, seed = ''): string {
+// A project's picture: its own cover when it published one, otherwise the drawing its name seeds, on the ground
+// the seed picks. `children` sit over it (a card's pill).
+export function Cover({ url, seed, children }: { url?: string; seed: string; children?: unknown }) {
   const safe = safeUrl(url);
-  if (safe) return `background-image:url('${safe}')`;
-  let h = 0; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const hue = h % 360;
-  return `background:radial-gradient(ellipse at ${25 + (hue % 50)}% 45%, hsl(${350 + (hue % 20)} 85% 58%), #2a0f14 75%)`;
+  return <div class="pic" data-ground={safe ? 'stone' : groundOf(seed)}>{safe ? <img src={safe} alt="" loading="lazy" /> : raw(art(seed))}{children}</div>;
 }
 export const runwayWords = (days: number | null): string | null => (days === null ? null : days > 365 ? 'over a year of runway' : days === 1 ? '1 day of runway' : `${days} days of runway`);
 // ---- a session's turns as a page holds them ----------------------------------------------------------------------
 export type Turn = { seq?: number; ts?: string; role: string; text?: string; tool?: string; args?: string; result?: string };
 export interface SessionTail { key: string; turns: Turn[] }
 export const firstLine = (s: string | undefined, max = 140): string => { const l = (s ?? '').split('\n').map((x) => x.trim()).find((x) => x && !/^[#\-*\[]/.test(x)) ?? (s ?? '').trim(); return l.length > max ? `${l.slice(0, max - 1)}…` : l; };
-export const Foot = ({ brand }: { brand: string }) => <div class="foot"><span>Every spend on these books is metered as it happens. {brand} shows; it does not steer.</span></div>;
+// The foot of every page: the one sentence the books stand behind, on the lime band, then the brand and its doors.
+export const Foot = ({ brand, nav }: { brand: string; nav?: unknown }) => (
+  <footer class="foot">
+    <div class="band"><span class="say">Every spend on these books is metered as it happens.</span><span class="rule" /><span class="say">{brand} shows; it does not steer.</span>{raw(LOGO_SVG.replace('<svg ', '<svg class="mark" '))}</div>
+    <div class="base"><a href="/" class="brand">{raw(LOGO_SVG)}<span>{brand}</span></a>{nav ? <nav>{nav}</nav> : null}</div>
+  </footer>
+);

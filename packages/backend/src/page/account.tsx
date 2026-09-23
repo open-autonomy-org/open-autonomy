@@ -44,6 +44,7 @@ export function Account(d: AccountPageData) {
         <div class="acct">
           <img class="av" src={`https://github.com/${encodeURIComponent(d.name)}.png?size=160`} alt="" />
           <div class="who">
+            <p class="label">{projects.length ? 'Projects and giving' : 'Giving'}</p>
             <h1>{d.name}</h1>
             <p class="line">{line}</p>
             <div class="meta">
@@ -76,8 +77,8 @@ export function Account(d: AccountPageData) {
             {d.slots?.side}
           </div>
         </div>
-        <Foot brand={d.brand} />
       </div>
+      <Foot brand={d.brand} nav={d.slots?.nav} />
     </>
   );
 }

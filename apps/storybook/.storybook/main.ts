@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 const config: StorybookConfig = {
   framework: '@storybook/html-vite',
   stories: ['../stories/**/*.stories.@(ts|tsx)'],
+  // The deployment's assets the pages name by path: the dashboard's fonts.
+  staticDirs: [{ from: '../../../packages/backend/assets', to: '/assets' }],
   viteFinal: async (cfg) => ({
     ...cfg,
     esbuild: { ...(cfg.esbuild ?? {}), jsx: 'automatic', jsxImportSource: 'hono/jsx' },

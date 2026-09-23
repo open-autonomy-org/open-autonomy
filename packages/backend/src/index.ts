@@ -8,7 +8,7 @@ export { LimitLedger, LedgerClient, type LedgerCore, type LedgerOp, type Account
 export { configurePage, pageConfig } from './page/brand.ts';
 export { renderMessage } from './page/message.tsx';
 export { document } from './page/document.ts';
-export { TopBar, Foot, at, accountAt, nameOf, ownerOf, coverStyle, safeUrl, purposeSentence } from './page/parts.tsx';
+export { TopBar, Foot, at, accountAt, nameOf, ownerOf, Cover, safeUrl, purposeSentence } from './page/parts.tsx';
 export { T, CSS, FONTS } from './page/theme.ts';
 export { PRESETS, sees, visibilityOf, type Role, type Visibility, type DirectorySlots, type AccountSlots } from './page/model.ts';
 export { LOGIN, REPO, RESERVED, type LandingBase, type PageApp, type PageTools } from './page/serve.tsx';

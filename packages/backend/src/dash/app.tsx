@@ -3,16 +3,16 @@
 // sessions (the chat inventory and the conversation), the roadmap (the workflow board), the schedule (jobs and
 // their runs, the owner's pause on them); the shell around them, the money and the roster are this page's. The
 // same tree renders on the worker and hydrates in the browser, where a live session's turns arrive as they land.
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { Conversation, HarnessLogo, SessionList, type MessengerSlots, type SupercodeUiState, type UiAdapter } from '@volter-ai-dev/supercode-ui/preact';
+import { Conversation, HarnessLogo, SessionList, type MessengerLabels, type MessengerSlots, type SupercodeUiState, type UiAdapter } from '@volter-ai-dev/supercode-ui/preact';
 import { JobActions, JobControls, JobDetails, RunList, WorkflowBoard, WorkflowList, type JobModel, type PauseResult, type JobControlResult } from '@volter-ai-dev/supercode-ui/preact/supervision';
 import { tenseOf } from '@open-autonomy/sdk/roadmap';
 import type { Envelope, Flow, SessionSummary } from '../ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd, LOGO_SVG } from '../ui.js';
 import { sees, type Role } from '../page/model.js';
-import { at, nameOf, standingOf, type Standing } from '../page/parts.js';
-import { boardOf, entriesOf, jobsOf, lastSeq, paused, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
+import { at, nameOf, ownerOf, standingOf, type Standing } from '../page/parts.js';
+import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
 
 const href = (a: string, p: DashPage, ...rest: string[]) => (p === 'overview' && !rest.length ? at(a, 'dashboard') : at(a, 'dashboard', p, ...rest));
 const go = (url: string) => { if (typeof location !== 'undefined') location.assign(url); };
@@ -24,6 +24,67 @@ const Pill = ({ standing }: { standing: Standing }) => <span class={`oa-pill ${S
 const watcher = (d: DashData): UiAdapter => ({ onIntent(i) { if (i.action === 'attach') go(href(d.v.account, 'sessions', i.key)); }, now: () => Date.now(), copyText: (t) => { void navigator.clipboard?.writeText(t); } });
 
 // ---- the shell ------------------------------------------------------------------------------------------------------
+// Keys, in a browser: 1–6 open the pages in the rail's order, ⌘K the palette, / the page's search, j and k walk the
+// rows on the page, Esc closes the palette. None fire while a field has the focus.
+const ROWS = '.oa-body button[data-session-key], .oa-body button[data-lane], .oa-body .oa-job, .oa-body button[data-state]';
+const typing = (n: EventTarget | null) => (n as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]');
+interface Jump { id: string; kind: string; hint: string; label: string; href: string }
+function jumpsOf(d: DashData, pages: typeof PAGES): Jump[] {
+  const a = d.v.account;
+  const open = (panel: keyof DashData['visibility']) => sees(d.viewer, d.visibility[panel]);
+  return [
+    ...pages.map((p) => ({ id: `page:${p.id}`, kind: 'Page', hint: '', label: p.label, href: href(a, p.id) })),
+    ...(open('work') ? d.roadmap.items.map((i) => ({ id: `item:${i.id}`, kind: tenseOf(i) === 'past' ? 'Shipped' : i.status === 'active' ? 'In progress' : 'Planned', hint: i.id, label: i.title, href: href(a, 'board', i.id) })) : []),
+    ...(open('sessions') ? d.sessions.slice(0, 60).map((x) => ({ id: `session:${x.key}`, kind: x.kind === 'run' ? 'Run' : 'Session', hint: fmtAgo(x.started_at, d.now), label: rowOf(d, x).title ?? x.key, href: href(a, 'sessions', x.key) })) : []),
+    ...(open('agent') ? jobsOf(d).map((j) => ({ id: `job:${j.key}`, kind: 'Job', hint: '', label: `${j.title} · fires ${j.schedule}`, href: href(a, 'agent') })) : []),
+  ];
+}
+function Palette({ jumps, onClose }: { jumps: Jump[]; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [index, setIndex] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { input.current?.focus(); }, []);
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = jumps.filter((j) => words.every((w) => `${j.kind} ${j.hint} ${j.label}`.toLowerCase().includes(w))).slice(0, 12);
+  const at = Math.min(index, Math.max(0, shown.length - 1));
+  const key = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n')) { e.preventDefault(); setIndex((at + 1) % Math.max(1, shown.length)); }
+    else if (e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) { e.preventDefault(); setIndex((at - 1 + shown.length) % Math.max(1, shown.length)); }
+    else if (e.key === 'Enter' && shown[at]) { e.preventDefault(); go(shown[at].href); }
+    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+  };
+  return (
+    <div class="oa-veil" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="oa-palette" role="dialog" aria-label="Go to">
+        <input ref={input} class="oa-palette-input" placeholder="Go to a page, task, session or job…" aria-label="Go to" value={query} onInput={(e) => { setQuery((e.currentTarget as HTMLInputElement).value); setIndex(0); }} onKeyDown={key} />
+        <ul class="oa-palette-list" role="listbox" aria-label="Results">
+          {shown.map((j, i) => <li role="option" aria-selected={i === at} class="oa-palette-item" onMouseMove={() => setIndex(i)} onClick={() => go(j.href)}><span class="k">{j.kind}</span><span class="l">{j.hint ? <b>{j.hint}</b> : null}{j.label}</span>{i === at ? <kbd>↵</kbd> : null}</li>)}
+          {shown.length ? null : <li class="oa-palette-empty">Nothing matches “{query}”.</li>}
+        </ul>
+      </div>
+    </div>
+  );
+}
+function useKeys(pages: typeof PAGES, a: string, palette: boolean, setPalette: (open: boolean | ((o: boolean) => boolean)) => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((o) => !o); return; }
+      if (palette || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= pages.length) { go(href(a, pages[n - 1].id)); return; }
+      if (e.key === '/') { const f = document.querySelector<HTMLInputElement>('.oa-body input[type="search"]'); if (f) { e.preventDefault(); f.focus(); } return; }
+      if (e.key === 'j' || e.key === 'k') {
+        const rows = [...document.querySelectorAll<HTMLElement>(ROWS)].filter((r) => r.offsetParent && !(r as HTMLButtonElement).disabled);
+        if (!rows.length) return;
+        const here = rows.indexOf(document.activeElement as HTMLElement);
+        const next = rows[here < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, here + (e.key === 'j' ? 1 : -1)))];
+        next.focus(); next.scrollIntoView({ block: 'nearest' });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [palette, a]);
+}
 export function Shell({ d, title, children }: { d: DashData; title: string; children?: ComponentChildren }) {
   const a = d.v.account;
   const standing = standingOf(d.v, d.live);
@@ -31,12 +92,16 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
   const counts: Partial<Record<DashPage, string | number>> = { sessions: d.live.length ? `${d.live.length} live` : undefined, board: open || undefined };
   const rw = runway(d);
   const today = d.daily.length ? d.daily[d.daily.length - 1] : 0;
+  const pages = PAGES.filter((p) => sees(d.viewer, d.visibility[p.panel]));
+  const [palette, setPalette] = useState(false);
+  useKeys(pages, a, palette, setPalette);
   return (
     <div class="oa-dash">
       <aside class="oa-rail">
         <a class="oa-brand" href="/" dangerouslySetInnerHTML={{ __html: `${LOGO_SVG}<span>${d.brand}</span>` }} />
-        <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={30} /><div><div class="n">{nameOf(a)}</div><div class="o">{a}</div></div></div>
-        <nav>{PAGES.filter((p) => sees(d.viewer, d.visibility[p.panel])).map((p) => <a class={p.id === d.page ? 'on' : ''} href={href(a, p.id)}>{p.label}{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}</a>)}</nav>
+        <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
+        <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
+        <p class="oa-keys"><kbd>j</kbd><kbd>k</kbd><span>rows</span><kbd>/</kbd><span>search</span></p>
         <div class="oa-role"><b>{ROLE_WORDS[d.viewer]}</b>{d.viewer === 'public' ? 'What the owner opened to everyone.' : d.viewer === 'owner' ? 'Everything, and the one control.' : 'What the owner opened to the team.'} <a href={at(a)}>Project page →</a></div>
       </aside>
       <div class="oa-body">
@@ -50,9 +115,11 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
             <span><b>{usd(today)}</b> today</span>
             <span><b>{usd(d.v.consumed_usd_cents)}</b> spent</span>
           </div>
+          <button type="button" class="oa-jump" onClick={() => setPalette(true)}><span>Go to…</span><kbd>⌘K</kbd></button>
         </div>
         {children}
       </div>
+      {palette ? <Palette jumps={jumpsOf(d, pages)} onClose={() => setPalette(false)} /> : null}
     </div>
   );
 }
@@ -118,7 +185,7 @@ export function Overview({ d }: { d: DashData }) {
         <div class="oa-col">
           <Panel title={first ? 'Working now' : 'Sessions'} more={sees(d.viewer, d.visibility.sessions) ? ['Every session →', href(a, 'sessions')] : undefined}>
             {first && sees(d.viewer, d.visibility.transcripts) ? <div class="scui-root oa-kit oa-tail"><Transcript d={d} s={first} state={state} adapter={adapter} /></div> : null}
-            {state.sessions.length ? <div class="scui-root oa-kit oa-list"><SessionList state={{ ...state, sessions: state.sessions.slice(0, 8) }} adapter={adapter} onOpen={(r) => { if (sees(d.viewer, d.visibility.sessions)) go(href(a, 'sessions', r.key)); }} labels={LABELS} /></div> : <p class="oa-empty">{sees(d.viewer, d.visibility.sessions) ? 'No sessions yet.' : 'Nothing running this minute. The sessions are not open to this view.'}</p>}
+            {state.sessions.length ? <div class="scui-root oa-kit oa-list"><SessionList state={{ ...state, sessions: latestPerJob(state.sessions).slice(0, 8) }} adapter={adapter} onOpen={(r) => { if (sees(d.viewer, d.visibility.sessions)) go(href(a, 'sessions', r.key)); }} labels={LABELS} /></div> : <p class="oa-empty">{sees(d.viewer, d.visibility.sessions) ? 'No sessions yet.' : 'Nothing running this minute. The sessions are not open to this view.'}</p>}
           </Panel>
         </div>
         <div class="oa-col">
@@ -129,7 +196,7 @@ export function Overview({ d }: { d: DashData }) {
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">promised</div></div>
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'shipped').length}</div><div class="l">shipped</div></div>
             </div>
-            <div class="scui-root oa-kit"><WorkflowList tasks={ahead} onOpen={(k) => go(href(a, 'board', k))} /></div>
+            <div class="scui-root oa-kit oa-rowlist"><WorkflowList tasks={ahead} onOpen={(k) => go(href(a, 'board', k))} /></div>
           </Panel> : null}
           {sees(d.viewer, d.visibility.agent) && jobs.length ? <Panel title="Agent" more={['Details →', href(a, 'agent')]}><div class="scui-root oa-kit"><Jobs d={d} jobs={jobs} compact /></div></Panel> : null}
         </div>
@@ -162,7 +229,9 @@ export function Sessions({ d }: { d: DashData }) {
     </Shell>
   );
 }
-const LABELS = { chats: 'Sessions', newChat: 'New session', searchChats: 'Search sessions', askAgent: '', continueHere: '', joinLive: 'Watch', forkHere: '' } as never;
+const LABELS: Partial<MessengerLabels> = { chats: 'Sessions', recentConversations: '{count} sessions', newChat: 'New session', searchChats: 'Search sessions', askAgent: '', continueHere: '', joinLive: 'Watch', forkHere: '' };
+// The overview names each scheduled job once, by its latest run; every run stays on Sessions and under its job.
+const latestPerJob = (rows: SupercodeUiState['sessions']): SupercodeUiState['sessions'] => { const seen = new Set<string>(); return rows.filter((r) => { const g = r.recurring?.groupKey; if (!g) return true; if (seen.has(g)) return false; seen.add(g); return true; }); };
 
 export function Board({ d }: { d: DashData }) {
   const a = d.v.account;
@@ -310,123 +379,183 @@ export const titleOf = (d: DashData): string => (d.page === 'sessions' && d.sess
 export { taskOf };
 
 // ---- the shell's sheet ----------------------------------------------------------------------------------------------
-// On the kit's tokens: the same palette the kit's components draw with, light and dark, so the page and the
-// components it holds are one surface. The kit's `.scui-root` is a widget frame by default; here it is a region.
+// The kit's tokens in the Plotter Logic look, on :root and on every kit root (a kit root declares its own defaults),
+// so the page and the components it holds are one surface: paper, ink rules, square controls, Michroma headings over
+// Iosevka Slab, lime for what is current. Then the shell: dense rows, hard edges, a pixel's give when pressed.
 export const DASH_CSS = `
-:root{--scui-bg:#fff;--scui-bg-raised:#f6f7f9;--scui-fill:#eef0f3;--scui-fg:#20242a;--scui-muted:#56606c;--scui-border:#d6dce3;--scui-border-strong:#a7b0bd;--scui-accent:#2457c5;--scui-positive:#167335;--scui-warning:#946018;--scui-danger:#b52d34;--scui-radius:10px;--scui-font:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--scui-font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:light dark}
-@media(prefers-color-scheme:dark){:root{--scui-bg:#17191d;--scui-bg-raised:#202329;--scui-fill:#292d34;--scui-fg:#f5f7fa;--scui-muted:#a9b0ba;--scui-border:#30353d;--scui-border-strong:#59616b;--scui-accent:#91b5ff;--scui-positive:#63cf86;--scui-warning:#e5b95f;--scui-danger:#ff8990}}
-*{box-sizing:border-box}
+@font-face{font-family:"Iosevka Slab";src:url(/assets/fonts/iosevka-slab-light.woff) format("woff");font-weight:100 450;font-display:swap}
+@font-face{font-family:"Iosevka Slab";src:url(/assets/fonts/iosevka-slab-regular.woff) format("woff");font-weight:451 900;font-display:swap}
+:root,.scui-root{--oa-lime:#e3f5a3;--oa-lilac:#e8e4f0;--oa-hot:#ff5a1f;--oa-rule:#b4b7ba;--oa-display:Michroma,Eurostile,sans-serif;--oa-label:"DM Sans",ui-sans-serif,system-ui,sans-serif;
+--scui-bg:#f8f9f5;--scui-bg-raised:#fbfbf8;--scui-fill:#1414140d;--scui-fg:#161a24;--scui-muted:#737882;--scui-prose-fg:#3d4150;--scui-border:#dcddda;--scui-border-strong:#161a24;--scui-accent:#161a24;--scui-accent-fg:#f8f9f5;--scui-positive:#58761a;--scui-warning:#a2600a;--scui-danger:#c2410c;
+--scui-font:"Iosevka Slab",ui-monospace,SFMono-Regular,Menlo,monospace;--scui-font-mono:"Iosevka Slab",ui-monospace,SFMono-Regular,Menlo,monospace;--scui-heading-font:var(--oa-display);--scui-heading-weight:400;--scui-line-height:1.45;
+--scui-text-2xs:10.5px;--scui-text-xs:11.5px;--scui-text-sm:12px;--scui-text-md:12.5px;--scui-text-lg:12.5px;--scui-text-base:12.5px;--scui-text-xl:14px;--scui-text-2xl:16px;--scui-text-3xl:17px;--scui-text-4xl:22px;--scui-text-5xl:30px;
+--scui-radius:0;--scui-radius-xs:0;--scui-radius-sm:0;--scui-radius-md:0;--scui-radius-lg:0;--scui-radius-xl:0;--scui-radius-2xl:0;--scui-shadow-sm:none;--scui-shadow-md:0 0 0 1px #161a24;
+--scui-button-bg:transparent;--scui-button-fg:#161a24;--scui-button-border:1px solid #161a24;--scui-button-radius:0;--scui-icon-button-radius:0;--scui-input-bg:#fbfbf8;--scui-input-border:1px solid #b4b7ba;--scui-input-radius:0;--scui-primary-bg:#161a24;--scui-primary-fg:#f8f9f5;--scui-card-radius:0;--scui-popover-radius:0;
+--scui-press-transform:translateY(1px);--scui-focus-target-outline:0;
+--scui-head-bg:transparent;--scui-head-border:1px solid #dcddda;--scui-head-height:44px;--scui-head-padding:4px 14px;--scui-head-title-size:13px;--scui-head-logo-display:none;
+--scui-conversation-width:860px;--scui-conversation-padding:14px 18px 20px;--scui-turn-gap:12px;--scui-prose-font:var(--scui-font-mono);--scui-prose-size:12.5px;--scui-prose-line-height:1.55;
+--scui-message-display:grid;--scui-message-columns:96px minmax(0,1fr);--scui-message-column-gap:14px;--scui-message-actor-display:grid;--scui-message-actor-columns:38px auto;--scui-message-actor-dot:8px;--scui-message-actor-dot-bg:#bea6e7;--scui-message-actor-user-dot-bg:#e3f5a3;--scui-message-actor-tool-dot-bg:#161a24;--scui-entry-inset:0;
+--scui-user-bg:transparent;--scui-user-border:0;--scui-user-padding:0;--scui-user-max-width:100%;--scui-user-align:stretch;--scui-user-font:var(--scui-font-mono);--scui-user-size:12.5px;
+--scui-inline-code-bg:#1414140d;--scui-inline-code-padding:0 3px;--scui-code-size:12px;--scui-code-bg:#f1f1ec;--scui-code-border:0;--scui-code-head-bg:transparent;
+--scui-tool-size:12.5px;--scui-tool-weight:400;--scui-tool-fg:#3d4150;--scui-tool-target-bg:transparent;--scui-tool-target-padding:0;--scui-tool-actor-width:96px;--scui-tool-actor-gap:14px;--scui-tool-detail-inset:110px;--scui-tool-detail-border:0;--scui-tool-output-bg:#f1f1ec;--scui-tool-output-padding:8px 12px;--scui-tool-output-max-height:240px;--scui-terminal-bg:transparent;--scui-terminal-head-bg:#f1f1ec;--scui-terminal-head-border:0;--scui-terminal-lights-display:none;
+--scui-compose-bg:transparent;--scui-compose-border:0;
+--scui-session-radius:0;--scui-session-logo-display:none;--scui-session-bg:transparent;--scui-session-border:0;--scui-session-spacing:0;--scui-session-padding:7px 10px;--scui-session-align:start;--scui-session-title-size:12.5px;--scui-session-title-weight:400;--scui-session-active-bg:#e3f5a3;--scui-session-hover-bg:#1414140a;--scui-session-list-padding:4px 6px;--scui-session-shadow:inset 0 -1px 0 #dcddda;--scui-list-toolbar-padding:4px 6px 6px;--scui-search-height:28px;--scui-search-padding:0 9px;
+--scui-domain-bg:transparent;--scui-domain-border:0;--scui-domain-radius:0;--scui-domain-title-size:16px;--scui-domain-header-padding:12px 14px 10px;--scui-domain-toolbar-padding:7px 14px;--scui-domain-toolbar-border:1px solid #dcddda;--scui-domain-toolbar-align:center;--scui-domain-search-columns:auto minmax(0,1fr);--scui-domain-search-size:11.5px;--scui-domain-control-height:28px;--scui-domain-meta-size:11.5px;--scui-domain-heading-size:15px;--scui-domain-collection-padding:12px 14px;--scui-domain-schedule-padding:0 14px 10px;
+--scui-domain-detail-columns:minmax(0,1fr) minmax(300px,40%);--scui-domain-detail-border:1px solid #161a24;--scui-domain-detail-bg:#fbfbf8;--scui-eyebrow-transform:uppercase;--scui-eyebrow-tracking:.24em;
+--scui-board-gap:6px;--scui-lane-bg:#f1f1ec;--scui-lane-radius:0;--scui-lane-padding:7px 6px 2px;--scui-lane-min-height:0;--scui-lane-title-size:9.5px;--scui-lane-title-weight:500;--scui-lane-title-font:var(--oa-label);--scui-lane-title-transform:uppercase;--scui-lane-title-tracking:.28em;--scui-lane-title-justify:flex-start;--scui-lane-title-gap:10px;--scui-lane-title-padding:1px 4px 7px;
+--scui-task-bg:#fbfbf8;--scui-task-border:1px solid #e3e3e0;--scui-task-radius:0;--scui-task-padding:7px 9px 8px;--scui-task-gap:2px;--scui-task-spacing:4px;--scui-task-title-order:0;--scui-task-title-size:12.5px;--scui-task-title-weight:400;--scui-task-status-display:none;--scui-task-hover-bg:#f8f9f5;
+--scui-badge-bg:#e7e6e5;--scui-badge-radius:0;--scui-badge-padding:1px 6px;--scui-badge-size:10.5px;--scui-badge-dot-display:none;--scui-run-padding:8px 12px;
+color-scheme:light}
+*{box-sizing:border-box;scrollbar-width:none}
+*::-webkit-scrollbar{display:none}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--scui-bg-raised);color:var(--scui-fg);font:13.5px/1.5 var(--scui-font);-webkit-font-smoothing:antialiased}
+body{margin:0;background:#f8f9f5;color:#161a24;font:400 12.5px/1.45 var(--scui-font);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 a{color:inherit;text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:3px}
 h1,h2,h3,p,ul,ol{margin:0}
 ul,ol{padding:0;list-style:none}
-.oa-dash{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}
-.oa-rail{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px;padding:16px 14px;background:var(--scui-bg);border-right:1px solid var(--scui-border)}
-.oa-brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;letter-spacing:-.01em;padding:2px 6px}
-.oa-brand svg{width:20px;height:20px}
-.oa-proj{display:flex;align-items:center;gap:10px;padding:0 6px}
-.oa-proj .n{font-weight:700;font-size:15px;letter-spacing:-.01em}
-.oa-proj .o{color:var(--scui-muted);font-size:11.5px;font-family:var(--scui-font-mono)}
-.oa-rail nav{display:flex;flex-direction:column;gap:2px}
-.oa-rail nav a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-weight:600;color:var(--scui-fg)}
-.oa-rail nav a:hover{background:var(--scui-fill);text-decoration:none}
-.oa-rail nav a.on{background:var(--scui-fill);color:var(--scui-accent)}
-.oa-rail nav .c{margin-left:auto;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--scui-bg-raised);border:1px solid var(--scui-border);color:var(--scui-muted)}
-.oa-role{margin-top:auto;color:var(--scui-muted);font-size:12px;line-height:1.45;padding:0 6px}
-.oa-role b{display:block;color:var(--scui-fg)}
-.oa-role a{color:var(--scui-accent);font-weight:600}
-.oa-body{min-width:0;padding:0 22px 40px}
-.oa-top{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:14px;height:56px;margin:0 -22px 18px;padding:0 22px;background:color-mix(in srgb,var(--scui-bg-raised) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--scui-border)}
-.oa-top h1{font-size:18px;font-weight:700;letter-spacing:-.01em}
+kbd{display:inline-grid;min-width:15px;height:15px;place-items:center;padding:0 3px;border:1px solid #dcddda;border-bottom-width:2px;color:#737882;font:400 9.5px/1 var(--scui-font)}
+button:active:not(:disabled){transform:translateY(1px)}
+button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2px}
+.oa-dash{display:grid;grid-template-columns:188px minmax(0,1fr);min-height:100vh}
+.oa-rail{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:12px;padding:12px 8px;border-right:1px solid var(--oa-rule)}
+.oa-brand{display:flex;align-items:center;gap:9px;padding:4px 6px 6px;font:400 12.5px/1 var(--oa-display);letter-spacing:-.01em;color:#000;white-space:nowrap}
+.oa-brand:hover{text-decoration:none}
+.oa-brand svg{width:16px;height:16px;flex:none}
+.oa-proj{display:flex;align-items:center;gap:9px;padding:8px 6px;border-top:1px solid #dcddda;border-bottom:1px solid #dcddda}
+.oa-proj .n{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
+.oa-proj .o{color:#737882;font-size:11px}
+.oa-rail nav{display:flex;flex-direction:column;gap:1px}
+.oa-rail nav a{display:flex;align-items:center;gap:8px;height:26px;padding:0 6px 0 8px;color:#3d4150}
+.oa-rail nav a:before{content:"";width:6px;height:6px;flex:none;border:1px solid transparent}
+.oa-rail nav a .t{flex:1}
+.oa-rail nav a kbd{visibility:hidden}
+.oa-rail nav a:hover{background:#1414140a;color:#161a24;text-decoration:none}
+.oa-rail nav a:hover kbd{visibility:visible}
+.oa-rail nav a:hover:before{border-color:currentColor}
+.oa-rail nav a.on{background:var(--oa-lime);color:#161a24}
+.oa-rail nav a.on:before{border-color:currentColor;background:currentColor}
+.oa-rail nav a.on kbd{border-color:#0000002e;color:#3d4150}
+.oa-rail nav .c{padding:0 5px;background:var(--oa-lilac);color:#34324a;font-size:10.5px;line-height:15px}
+.oa-keys{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:auto;padding:8px 4px 0;border-top:1px solid #dcddda;color:#737882;font-size:10.5px}
+.oa-keys span{margin-right:6px}
+.oa-role{color:#737882;font-size:11px;line-height:1.45;padding:0 4px}
+.oa-role b{display:block;color:#161a24;font-weight:500}
+.oa-role a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
+.oa-body{min-width:0;padding:0 18px 32px}
+.oa-top{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;height:48px;margin:0 -18px 14px;padding:0 18px;background:#f8f9f5;border-bottom:1px solid var(--oa-rule)}
+.oa-top h1{font:400 16px/1 var(--oa-display);letter-spacing:-.02em;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .oa-top .grow{flex:1}
-.oa-facts{display:flex;gap:18px;color:var(--scui-muted);font-size:12.5px;white-space:nowrap}
-.oa-facts b{color:var(--scui-fg);font-weight:700;font-variant-numeric:tabular-nums}
-.oa-pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 8px;border-radius:999px;font-size:12px;font-weight:600;background:var(--scui-fill);color:var(--scui-fg)}
-.oa-pill i{width:7px;height:7px;border-radius:50%;background:var(--scui-border-strong)}
-.oa-pill.live i,.oa-pill.ok i{background:var(--scui-positive)}
-.oa-pill.live{color:var(--scui-positive)}
-.oa-pill.live i{animation:oa-pulse 1.6s infinite}
-.oa-pill.warn{color:var(--scui-warning)}.oa-pill.warn i{background:var(--scui-warning)}
-.oa-pill.off{color:var(--scui-danger)}.oa-pill.off i{background:var(--scui-danger)}
-@keyframes oa-pulse{0%{box-shadow:0 0 0 0 rgba(22,115,53,.45)}70%{box-shadow:0 0 0 7px rgba(22,115,53,0)}100%{box-shadow:0 0 0 0 rgba(22,115,53,0)}}
-.oa-two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
-.oa-col{display:flex;flex-direction:column;gap:16px;min-width:0}
-.oa-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
+.oa-facts{display:flex;gap:0;color:#737882;font-size:11.5px;white-space:nowrap}
+.oa-facts span{padding:0 10px;border-left:1px solid #dcddda}
+.oa-facts span:first-child{border-left:0}
+.oa-facts b{color:#161a24;font-weight:500}
+.oa-jump{display:inline-flex;align-items:center;justify-content:space-between;gap:18px;width:190px;height:26px;padding:0 5px 0 9px;border:1px solid #dcddda;background:#fbfbf8;color:#737882;font:inherit;cursor:pointer}
+.oa-jump:hover{border-color:#161a24;color:#161a24}
+.oa-pill{display:inline-flex;align-items:center;gap:7px;height:22px;padding:0 8px;font:500 11px/1 var(--oa-label);background:#f1f1ec;color:#3d4150;white-space:nowrap}
+.oa-pill i{width:7px;height:7px;background:#a9adb2}
+.oa-pill.live{background:var(--oa-lime);color:#161a24}.oa-pill.live i{background:#161a24;animation:oa-pulse 1.4s steps(2) infinite}
+.oa-pill.ok i{background:#9fcb2a}
+.oa-pill.warn{background:#fcf0dc;color:#a2600a}.oa-pill.warn i{background:#a2600a}
+.oa-pill.off{background:#ffe7dc;color:#9b3510}.oa-pill.off i{background:var(--oa-hot)}
+@keyframes oa-pulse{0%{opacity:1}100%{opacity:.25}}
+.oa-two{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;align-items:start}
+.oa-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.oa-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
 .oa-grid>.oa-panel{grid-column:span 12}
 .oa-grid>.span4{grid-column:span 4}.oa-grid>.span6{grid-column:span 6}.oa-grid>.span8{grid-column:span 8}.oa-grid>.span12{grid-column:span 12}
-.oa-panel{background:var(--scui-bg);border:1px solid var(--scui-border);border-radius:var(--scui-radius);padding:14px 16px;min-width:0}
-.oa-panel>h2{display:flex;align-items:baseline;gap:10px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--scui-muted);margin-bottom:12px}
-.oa-panel>h2 a{margin-left:auto;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--scui-accent)}
-.oa-kpis{display:grid;gap:8px}.oa-kpis.two{grid-template-columns:1fr 1fr}.oa-kpis.three{grid-template-columns:repeat(3,1fr)}.oa-kpis.four{grid-template-columns:repeat(4,1fr)}
-.oa-kpi{background:var(--scui-bg-raised);border-radius:8px;padding:10px 12px}
-.oa-kpi .v{font-size:19px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-.oa-kpi .v.ok{color:var(--scui-positive)}.oa-kpi .v.warn{color:var(--scui-warning)}
-.oa-kpi .l{color:var(--scui-muted);font-size:11.5px;margin-top:1px}
-.oa-spark{display:flex;align-items:flex-end;gap:3px;height:44px;margin-top:14px}
-.oa-spark i{flex:1;display:block;background:color-mix(in srgb,var(--scui-accent) 35%,transparent);border-radius:2px 2px 0 0;min-height:2px}
-.oa-spark i.hot{background:var(--scui-accent)}.oa-spark i.zero{background:var(--scui-fill)}
-.oa-sparklabel{display:flex;justify-content:space-between;color:var(--scui-muted);font-size:11.5px;margin-top:6px}
-.oa-rows{display:flex;flex-direction:column}
-.oa-rows li{display:flex;align-items:baseline;gap:12px;padding:8px 0;border-top:1px solid var(--scui-border)}
-.oa-rows li:first-child{border-top:0;padding-top:0}
-.oa-rows .t{flex:1;min-width:0;font-weight:500}
-.oa-rows .n{color:var(--scui-muted);font-size:12.5px;white-space:nowrap}
-.oa-rows .n a{color:var(--scui-accent)}
-.oa-table{width:100%;border-collapse:collapse;font-size:13px}
-.oa-table th{text-align:left;color:var(--scui-muted);font-weight:600;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;padding:0 12px 8px 0;border-bottom:1px solid var(--scui-border)}
-.oa-table td{padding:8px 12px 8px 0;border-bottom:1px solid var(--scui-border);vertical-align:top}
-.oa-table th:last-child,.oa-table td:last-child{padding-right:0}
-.oa-table .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.oa-panel{min-width:0}
+.oa-panel>h2{display:flex;align-items:center;gap:10px;height:18px;margin-bottom:6px;font:500 9.5px/1 var(--oa-label);letter-spacing:.28em;text-transform:uppercase;color:#5f656b}
+.oa-panel>h2 a{margin-left:auto;text-transform:none;letter-spacing:0;font:400 11.5px var(--scui-font);color:#3d4150}
+.oa-kpis{display:grid;border:1px solid #dcddda}.oa-kpis.two{grid-template-columns:1fr 1fr}.oa-kpis.three{grid-template-columns:repeat(3,1fr)}.oa-kpis.four{grid-template-columns:repeat(4,1fr)}
+.oa-kpi{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:9px 12px}
+.oa-kpi+.oa-kpi{border-left:1px solid #dcddda}
+.oa-kpi .v{font:400 21px/1.1 var(--oa-label);letter-spacing:-.02em}
+.oa-kpi .v.ok{color:#58761a}.oa-kpi .v.warn{color:#a2600a}
+.oa-kpi .l{color:#737882;font-size:11px}
+.oa-spark{display:flex;align-items:flex-end;gap:2px;height:42px;margin-top:10px;border-bottom:1px solid #161a24}
+.oa-spark i{flex:1;display:block;background:#161a24;opacity:.7;min-height:1px}
+.oa-spark i.hot{background:var(--oa-hot);opacity:1}.oa-spark i.zero{background:#b4b7ba;opacity:.4}
+.oa-sparklabel{display:flex;justify-content:space-between;color:#737882;font-size:10.5px;margin-top:5px}
+.oa-rows{display:flex;flex-direction:column;border:1px solid #dcddda}
+.oa-rows li{display:flex;align-items:baseline;gap:12px;padding:6px 10px;border-top:1px solid #dcddda}
+.oa-rows li:first-child{border-top:0}
+.oa-rows .t{flex:1;min-width:0}
+.oa-rows .n{color:#737882;font-size:11.5px;text-align:right}
+.oa-rows .n a{text-decoration:underline;text-underline-offset:3px}
+.oa-table{width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dcddda}
+.oa-table th{text-align:left;font:500 9.5px/1 var(--oa-label);letter-spacing:.24em;text-transform:uppercase;color:#5f656b;padding:8px 10px;border-bottom:1px solid #b4b7ba;background:#fbfbf8}
+.oa-table td{padding:6px 10px;border-bottom:1px solid #dcddda;vertical-align:top}
+.oa-table tr:last-child td{border-bottom:0}
+.oa-table .n{text-align:right;white-space:nowrap}
 .oa-table .nowrap{white-space:nowrap}
 .oa-table td.clip{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.oa-table a{color:var(--scui-accent)}
+.oa-table a{text-decoration:underline;text-underline-offset:3px}
 .oa-tw{overflow-x:auto}
-.oa-muted{color:var(--scui-muted)}
-.oa-empty{color:var(--scui-muted);font-size:13px;padding:6px 0}
-.oa-fine{color:var(--scui-muted);font-size:12.5px;line-height:1.5}
-.oa-prose{font-size:13.5px;line-height:1.6;color:var(--scui-fg)}
+.oa-muted{color:#737882}
+.oa-empty{color:#737882;font-size:12px;padding:8px 0}
+.oa-fine{color:#737882;font-size:11.5px;line-height:1.5}
+.oa-fine a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
+.oa-prose{font-size:12.5px;line-height:1.6;color:#3d4150;border:1px solid #dcddda;padding:10px 12px;background:#fbfbf8}
 .oa-prose p+p{margin-top:8px}
-.oa-prose h1,.oa-prose h2,.oa-prose h3{font-size:14px;margin:12px 0 4px}
-.oa-prose code{font-family:var(--scui-font-mono);font-size:12px;background:var(--scui-fill);padding:1px 4px;border-radius:4px}
-.oa-prose ul{list-style:disc;padding-left:18px}
-.oa-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px 0 3px;border-radius:999px;border:1px solid var(--scui-border);background:var(--scui-bg);font-size:12.5px;font-weight:600}
-.oa-chip img{width:20px;height:20px;border-radius:50%}
+.oa-prose h1,.oa-prose h2,.oa-prose h3{font:400 13px/1.3 var(--oa-display);color:#000;margin:12px 0 4px}
+.oa-prose code{font-size:11.5px;background:#1414140d;padding:0 3px}
+.oa-prose ul{list-style:square;padding-left:18px}
+.oa-chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px 0 2px;border:1px solid #dcddda;background:#fbfbf8;font-size:11.5px;margin-right:4px}
+.oa-chip img{width:18px;height:18px;border-radius:50%}
 .oa-form{display:flex;flex-direction:column;gap:10px;max-width:560px}
-.oa-field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;border:0;padding:0;margin:0}
-.oa-field input,.oa-field textarea{font:inherit;font-weight:400;width:100%;border:1px solid var(--scui-border);border-radius:8px;padding:7px 10px;background:var(--scui-bg);color:var(--scui-fg)}
-.oa-field textarea{min-height:84px;resize:vertical}
+.oa-field{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:500;border:0;padding:0;margin:0}
+.oa-field input,.oa-field textarea{font:inherit;font-weight:400;width:100%;height:30px;border:1px solid #b4b7ba;padding:0 9px;background:#fbfbf8;color:#161a24}
+.oa-field textarea{min-height:84px;padding:7px 9px;resize:vertical}
 .oa-field legend{padding:0;margin-bottom:4px}
-.oa-check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400}
+.oa-check{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:400}
 .oa-actions{display:flex;gap:8px;flex-wrap:wrap}
-.oa-btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border-radius:8px;border:1px solid var(--scui-accent);background:var(--scui-accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}
-.oa-btn.quiet{background:var(--scui-bg);color:var(--scui-fg);border-color:var(--scui-border-strong)}
-.oa-ident{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.oa-ident b{display:block;font-size:15px}.oa-ident span{color:var(--scui-muted);font-size:12.5px}
+.oa-btn{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 12px;border:1px solid #161a24;background:#161a24;color:#f8f9f5;font:inherit;cursor:pointer}
+.oa-btn.quiet{background:transparent;color:#161a24}
+.oa-ident{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dcddda;border-bottom:0}
+.oa-ident b{display:block;font:400 14px/1.2 var(--oa-display);color:#000}.oa-ident span{color:#737882;font-size:11.5px}
+.oa-ident+.oa-rows{border-top:1px solid #dcddda}
 .oa-kit.scui-root{--scui-width:100%;--scui-height:auto;width:100%;height:auto;display:block;border:0;border-radius:0;overflow:visible;background:transparent}
 .oa-kit .scui-list{width:100%}
-.oa-list.scui-root{border:1px solid var(--scui-border);border-radius:var(--scui-radius);overflow:hidden;background:var(--scui-bg)}
-.oa-tail.scui-root{border:1px solid var(--scui-border);border-radius:var(--scui-radius);overflow:hidden;background:var(--scui-bg);margin-bottom:12px;max-height:380px;display:flex;flex-direction:column}
+.oa-list.scui-root{border:1px solid #dcddda;overflow:hidden;background:#fbfbf8}
+.oa-tail.scui-root{border:1px solid #dcddda;overflow:hidden;background:#fbfbf8;margin-bottom:10px;max-height:380px;display:flex;flex-direction:column}
 .oa-tail .scui-conversation-wrap{max-height:380px}
-.oa-messenger{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start;min-height:calc(100vh - 110px)}
-.oa-chathead{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 14px;border-bottom:1px solid var(--scui-border);background:var(--scui-bg-raised);color:var(--scui-muted);font-size:12.5px}
-.oa-chathead b{color:var(--scui-fg);font-weight:600}
-.oa-chathead a{color:var(--scui-accent);font-weight:600}
-.oa-messenger .oa-list.scui-root{position:sticky;top:74px;max-height:calc(100vh - 92px);display:flex;flex-direction:column}
-.oa-messenger .oa-chat.scui-root{position:sticky;top:74px;height:calc(100vh - 92px);border:1px solid var(--scui-border);border-radius:var(--scui-radius);background:var(--scui-bg);display:flex;flex-direction:column;overflow:hidden}
+.oa-messenger{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;align-items:start;min-height:calc(100vh - 80px);border:1px solid #dcddda}
+.oa-messenger .oa-list.scui-root{border:0;border-right:1px solid #dcddda}
+.oa-chathead{display:flex;flex-wrap:wrap;gap:0;padding:8px 12px;border-bottom:1px solid #dcddda;color:#737882;font-size:11.5px}
+.oa-chathead span{padding:0 10px;border-left:1px solid #dcddda}
+.oa-chathead span:first-child{padding-left:0;border-left:0}
+.oa-chathead b{color:#161a24;font-weight:500}
+.oa-chathead a{color:#161a24;text-decoration:underline;text-underline-offset:3px}
+.oa-messenger .oa-list.scui-root{position:sticky;top:62px;max-height:calc(100vh - 80px);display:flex;flex-direction:column}
+.oa-messenger .oa-chat.scui-root{position:sticky;top:62px;height:calc(100vh - 80px);background:#f8f9f5;display:flex;flex-direction:column;overflow:hidden}
 .oa-chat .scui-conversation-wrap{flex:1;min-height:0;display:flex;flex-direction:column}
 .oa-chat .scui-conversation{flex:1;min-height:0;overflow:auto}
-.oa-messenger .oa-chat .oa-empty{padding:24px}
-.oa-board.scui-root{border:1px solid var(--scui-border);border-radius:var(--scui-radius);background:var(--scui-bg);overflow:hidden;min-height:60vh}
-.oa-jobs{display:flex;flex-direction:column;gap:12px}
-.oa-joblist{display:flex;flex-direction:column;gap:6px}
-.oa-job{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:1px solid var(--scui-border);border-radius:8px;background:var(--scui-bg);color:inherit;font:inherit;text-align:left;cursor:pointer}
-.oa-job:hover{background:var(--scui-fill)}
-.oa-job.on{border-color:var(--scui-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--scui-accent) 20%,transparent)}
-.oa-job b{font-weight:700}.oa-job span{color:var(--scui-muted);font-size:12.5px}
-.oa-job em{margin-left:auto;font-style:normal;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--scui-fill);color:var(--scui-muted)}
-.oa-job em.scheduled{color:var(--scui-positive)}.oa-job em.paused{color:var(--scui-warning)}
-.oa-jobopen{display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid var(--scui-border);border-radius:8px;background:var(--scui-bg-raised)}
-@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:2px}.oa-role{display:none}.oa-body{padding:0 14px 32px}.oa-top{margin:0 -14px 14px;padding:0 14px;height:auto;min-height:52px;flex-wrap:wrap;row-gap:4px;padding-top:8px;padding-bottom:8px}.oa-facts{gap:12px;flex-wrap:wrap;white-space:normal}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-messenger .oa-list.scui-root{position:static;max-height:50vh}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-list{display:none}}
+.oa-messenger .oa-chat .oa-empty{padding:20px}
+/* Mixed lists of tasks as ruled rows: the key, the title, its status. */
+.oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) auto;--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
+.oa-board.scui-root{border:1px solid #dcddda;background:#f8f9f5;overflow:hidden;min-height:60vh}
+.oa-jobs{display:flex;flex-direction:column;gap:10px}
+.oa-joblist{display:flex;flex-direction:column;border:1px solid #dcddda}
+.oa-job{display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border:0;border-top:1px solid #dcddda;background:#fbfbf8;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.oa-job:first-child{border-top:0}
+.oa-job:hover{background:#f1f1ec}
+.oa-job.on{background:var(--oa-lime)}
+.oa-job b{font-weight:500}.oa-job span{color:#737882;font-size:11.5px}
+.oa-job em{margin-left:auto;font-style:normal;font-size:10.5px;padding:1px 6px;background:#e7e6e5;color:#464a59}
+.oa-job em.scheduled{background:#e9fac1;color:#424a33}.oa-job em.paused{background:#fcf0dc;color:#a2600a}
+.oa-jobopen{display:flex;flex-direction:column;gap:10px;padding:10px;border:1px solid #dcddda;border-top:0;background:#fbfbf8}
+.oa-joblist+.oa-jobopen{margin-top:-10px}
+.oa-veil{position:fixed;inset:0;z-index:20;display:grid;justify-items:center;align-items:start;padding-top:14vh;background:#f8f9f5a6}
+.oa-palette{width:min(560px,92vw);border:1px solid #161a24;background:#f8f9f5;box-shadow:4px 4px 0 #161a24}
+.oa-palette-input{width:100%;height:40px;padding:0 12px;border:0;border-bottom:1px solid #dcddda;outline:0;background:transparent;color:#161a24;font:inherit;font-size:13.5px}
+.oa-palette-list{max-height:360px;margin:0;padding:4px;overflow:auto;list-style:none}
+.oa-palette-item{display:grid;grid-template-columns:84px minmax(0,1fr) auto;align-items:center;gap:10px;height:28px;padding:0 8px;cursor:pointer}
+.oa-palette-item[aria-selected=true]{background:var(--oa-lime)}
+.oa-palette-item .k{color:#737882;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oa-palette-item .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oa-palette-item .l b{margin-right:8px;color:#737882;font-weight:400}
+.oa-palette-empty{padding:10px 8px;color:#737882}
+@media(prefers-reduced-motion:reduce){.oa-pill.live i{animation:none}}
+@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 10px;border-right:0;border-bottom:1px solid var(--oa-rule)}.oa-proj,.oa-keys,.oa-role{display:none}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:1px}.oa-rail nav a kbd{display:none}.oa-body{padding:0 12px 28px}.oa-top{margin:0 -12px 12px;padding:6px 12px;height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px}.oa-facts{flex-wrap:wrap;white-space:normal}.oa-jump span{display:none}.oa-jump{width:auto}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-kpis.four{grid-template-columns:repeat(2,1fr)}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-messenger .oa-list.scui-root{position:static;max-height:50vh;border-right:0;border-bottom:1px solid #dcddda}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-list{display:none}}
 `;
