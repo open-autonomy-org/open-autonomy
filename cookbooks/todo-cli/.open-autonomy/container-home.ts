@@ -21,7 +21,7 @@ async function python(container: string, script: string, input: unknown, bound =
 }
 
 /** Always load configuration from fetched main, including after an interrupted task. */
-export async function prepareContainerHome(options: { container: string; home: string; workspace: string }): Promise<{ revision: string; dirty: boolean; config: string; models: Array<{ provider?: string; default?: string }> }> {
+export async function prepareContainerHome(options: { container: string; home: string; workspace: string }): Promise<{ revision: string; dirty: boolean; config: string; agent: string }> {
   const output = await python(options.container, String.raw`
 import io,json,os,pathlib,shutil,subprocess,sys,tarfile,tempfile,yaml
 s=json.load(sys.stdin)
@@ -34,6 +34,9 @@ dirty=bool(git('status','--porcelain').strip())
 git('fetch','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main')
 revision=git('rev-parse','origin/main').decode().strip()
 config=git('show',revision+':.open-autonomy/config.yaml').decode()
+# the agent's setup (docs/decisions/0007): the applier renders it on the host's side after this copy
+try: agent=git('show',revision+':.open-autonomy/agent.json').decode()
+except subprocess.CalledProcessError: agent=''
 # YAML is validated by the host before publishing or starting the gateway.
 archive=git('archive','--format=tar',revision,'hermes')
 with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
@@ -43,7 +46,6 @@ with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
             assert (member.isfile() or member.isdir()) and not pathlib.PurePosixPath(member.name).is_absolute() and '..' not in pathlib.PurePosixPath(member.name).parts
         tar.extractall(temp,filter='data')
     source=pathlib.Path(temp)/'hermes'
-    assert (source/'config.yaml').is_file() and (source/'profiles/treasurer/config.yaml').is_file()
     if not dirty: git('checkout','--detach',revision)
     home.mkdir(parents=True,exist_ok=True)
     for family in ['skills/open-autonomy','hooks','plugins/escalate']:
@@ -52,18 +54,29 @@ with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
         elif target.exists(): shutil.rmtree(target)
     # State databases, cron execution state and native .env files belong to the runtime.
     shutil.copytree(source,home,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.env'))
-# The image's own account of what it lacks (a slim image's plugin denylist, seeded at /opt/hermes/cli-config.yaml.example)
-# joins a committed config that says nothing about plugins, so a removed capability is reported off, never failed at call time.
+print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agent}))
+`, options);
+  return JSON.parse(output);
+}
+
+/**
+ * The image's own account of what it lacks (a slim image's plugin denylist, seeded at
+ * /opt/hermes/cli-config.yaml.example) joins the rendered config when that says nothing about plugins, so a removed
+ * capability is reported off, never failed at call time. Runs after the agent's setup is applied: the runtime's fact
+ * about its image, beside the package's settings.
+ */
+export async function mergeImageDenylist(options: { container: string; home: string }): Promise<void> {
+  await python(options.container, String.raw`
+import json,pathlib,sys,yaml
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home'])
 seed=pathlib.Path('/opt/hermes/cli-config.yaml.example')
-cfg=home/'config.yaml'
-if seed.is_file() and cfg.is_file():
+for cfg in [home/'config.yaml', *sorted((home/'profiles').glob('*/config.yaml'))]:
+    if not (seed.is_file() and cfg.is_file()): continue
     disabled=((yaml.safe_load(seed.read_text()) or {}).get('plugins') or {}).get('disabled')
     text=cfg.read_text()
     if disabled and 'plugins:' not in text: cfg.write_text(text.rstrip('\n')+'\n\n# From the image: the plugins it does not carry.\n'+yaml.safe_dump({'plugins':{'disabled':disabled}},sort_keys=False))
-models=[(yaml.safe_load((home/p).read_text()) or {}).get('model',{}) for p in ['config.yaml','profiles/treasurer/config.yaml']]
-print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'models':models}))
 `, options);
-  return JSON.parse(output);
 }
 
 /** Native cron workers load the home .env as well as gateway process variables. */
@@ -162,28 +175,3 @@ finally:
 `, options);
 }
 
-/** The kit's seed hook fires once, on the default profile, at gateway startup; a served profile's schedule is seeded
- *  by the host running that same hook under the profile's home, in the project's checkout (a job's working directory
- *  is the seeding process's). */
-export async function seedContainerProfile(options: { container: string; home: string; workspace: string }): Promise<string> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container)) throw new Error('A container name or ID is required.');
-  const { spawn } = await import('node:child_process');
-  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', '-w', options.workspace, '-e', `HERMES_HOME=${options.home}`, '-e', `HOME=${options.home}`, options.container, '/opt/hermes/.venv/bin/python', '-c', String.raw`
-import asyncio,importlib.util,logging,os,pathlib,sys
-logging.basicConfig(level=logging.INFO,format='%(message)s',stream=sys.stdout)
-sys.path.insert(0,'/opt/hermes')
-home=pathlib.Path(os.environ['HERMES_HOME'])
-hook=home/'hooks'/'seed'/'handler.py'
-if not hook.is_file(): print('seed: no hook in this home'); sys.exit(0)
-spec=importlib.util.spec_from_file_location('seed_handler',hook);mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
-asyncio.run(mod.handle('gateway:startup',{}))
-`], { stdio: ['ignore', 'pipe', 'pipe'] });
-  const out: Buffer[] = []; let err = '';
-  child.stdout.on('data', (c) => out.push(c)); child.stderr.on('data', (c) => { err = (err + c.toString()).slice(-2000); });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
-  try {
-    const code = await new Promise<number>((resolve) => { child.once('error', () => resolve(1)); child.once('exit', (c) => resolve(c ?? 1)); });
-    if (code !== 0) throw new Error(`seeding the profile's schedule failed: ${err.trim()}`);
-    return Buffer.concat(out).toString().trim();
-  } finally { clearTimeout(timer); }
-}

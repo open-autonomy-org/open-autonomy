@@ -29,6 +29,7 @@
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
+import { agentModels, applyAgent, parseAgent, readAgent, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -202,6 +203,15 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   process.exit(75);
 }
 
+// The agent's setup (docs/decisions/0007): .open-autonomy/agent.json, from the same revision the home comes from.
+// A project still carrying hermes/config.yaml has not taken the upgrade that derives it.
+const agentSetup: Setup | null = (() => {
+  if (!committedFrom) return readAgent(project);
+  const shown = Bun.spawnSync({ cmd: drop(['git', 'show', 'origin/main:.open-autonomy/agent.json']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+  return shown.exitCode === 0 ? parseAgent(shown.stdout.toString(), 'origin/main:.open-autonomy/agent.json') : null;
+})();
+if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
+
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, 'hermes');
 if (existsSync(committed)) {
@@ -220,14 +230,14 @@ const managed = githubApp ? /^(OPEN_AUTONOMY_(BASE_URL|PAY_URL|KEY)|HERMES_CODEX
 const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').filter((l) => l.trim() && !managed.test(l)) : [];
 // Keep the host login environment for the valve; only the agent gets an empty Codex home.
 const hostEnvironment = inherited();
-const onCodex = ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && /^\s+provider:\s*openai-codex\s*$/m.test(readFileSync(resolve(home, f), 'utf8')));
+const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex');
 const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
 if (onCodex && !codexTwin) await codexAccess();
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
-if (!onCodex && !codexTwin && ['config.yaml', 'profiles/treasurer/config.yaml'].some((f) => existsSync(resolve(home, f)) && readFileSync(resolve(home, f), 'utf8').includes('HERMES_CODEX_BASE_URL'))) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; set `model.provider: openai-codex` and drop the custom provider, or every run fails to connect');
+if (!onCodex && !codexTwin && JSON.stringify(agentSetup).includes('HERMES_CODEX_BASE_URL')) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; give the named model provider openai-codex in .open-autonomy/agent.json and drop the custom provider, or every run fails to connect');
 const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubRecords.length ? [`GITHUB_API_URL=http://127.0.0.1:${githubRecords[0].port}`, 'GITHUB_TOKEN=valve'] : [];
@@ -298,6 +308,19 @@ const env = agentEnv();
     writeFileSync(stamp, `${want}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
+}
+// 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
+//    Hermes's own functions (Supercode's applier), owned by their Hermes ids against a base beside the home. A setup
+//    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
+try {
+  const lines = await applyAgent({
+    setup: agentSetup, homeOf: (profile) => (profile === 'default' ? home : resolve(home, 'profiles', profile)),
+    homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [],
+  });
+  for (const line of lines) say(`agent: ${line}`);
+} catch (error) {
+  console.error(`start: the agent's setup could not be applied: ${(error as Error).message}. No gateway was started.`);
+  process.exit(1);
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });

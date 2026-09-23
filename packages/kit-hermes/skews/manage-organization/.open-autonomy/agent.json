@@ -1,0 +1,86 @@
+{
+  "profiles": {
+    "default": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "zai/glm-5.3-flash",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "chat_completions"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "terminal.backend": "local",
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 160,
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true,
+            "agent.disabled_toolsets": [
+              "browser-use"
+            ]
+          }
+        }
+      },
+      "jobs": {
+        "cycle": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 1440
+          },
+          "prompt": "WAKE: ORGANIZATION. Run the organization skill: gather every project since its cursor, record the meeting's outcomes from yesterday's thread and carry them down, then post today's memo with its agenda in the organization's channel.",
+          "skills": [
+            "organization"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
+        }
+      }
+    },
+    "treasurer": {
+      "schema_version": 1,
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "zai/glm-5.3-flash",
+            "endpoint": "OPEN_AUTONOMY_PAY_URL",
+            "placeholder_key": "valve",
+            "api_mode": "chat_completions"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "terminal.backend": "local",
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 80,
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true
+          }
+        }
+      }
+    }
+  }
+}

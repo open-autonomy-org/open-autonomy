@@ -1,0 +1,99 @@
+{
+  "profiles": {
+    "default": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "zai/glm-5.3-flash",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "chat_completions"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "terminal.backend": "local",
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 160,
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true,
+            "agent.disabled_toolsets": [
+              "browser-use"
+            ]
+          }
+        }
+      },
+      "jobs": {
+        "pm": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 60
+          },
+          "prompt": "WAKE: PM. Run the pm skill: reconcile the sourced ROADMAP.md with developments, coordinate people and human release review, and queue ready fleet work.",
+          "skills": [
+            "pm"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
+        },
+        "community": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 5
+          },
+          "prompt": "WAKE: COMMUNITY. Run the community skill: answer people and preserve sourced input for roadmap scrum.",
+          "skills": [
+            "community"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}",
+          "monitor_script": "community-monitor.sh"
+        }
+      }
+    },
+    "treasurer": {
+      "schema_version": 1,
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "zai/glm-5.3-flash",
+            "endpoint": "OPEN_AUTONOMY_PAY_URL",
+            "placeholder_key": "valve",
+            "api_mode": "chat_completions"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "terminal.backend": "local",
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 80,
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true
+          }
+        }
+      }
+    }
+  }
+}

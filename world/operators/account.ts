@@ -12,16 +12,20 @@ if (command === 'rotate-key') {
   console.log('Rotation requested with five-second grace; inspect the valve health and platform key registry.');
 } else if (command === 'model') {
   const gh = api(need('GITHUB_TWIN_URL'), { authorization: 'Bearer octocat' });
-  const path = `/repos/${ACCOUNT}/contents/hermes/config.yaml`;
+  // the brain's model is its agent setup's named model (docs/decisions/0007)
+  const path = `/repos/${ACCOUNT}/contents/.open-autonomy/agent.json`;
   const current = await gh.get(`${path}?ref=main`);
   if (current.status !== 200) throw new Error(current.text);
   const config = Buffer.from(current.body.content, 'base64').toString('utf8');
-  const updated = config.replace(`default: ${PREVIOUS_MODEL}`, `default: ${MODEL}`);
+  const agent = JSON.parse(config);
+  const project = agent.profiles?.default?.inference?.models?.project;
+  if (project?.model === PREVIOUS_MODEL) project.model = MODEL;
+  const updated = `${JSON.stringify(agent, null, 2)}\n`;
   if (updated !== config) {
     const result = await gh.put(path, { message: `owner: select ${MODEL}`, branch: 'main', sha: current.body.sha, content: Buffer.from(updated).toString('base64') });
     if (result.status !== 200) throw new Error(result.text);
   }
-  console.log('Model selected on main. Send /restart through the scenario channel for native Hermes to reload it.');
+  console.log('Model selected on main. Send /restart through the scenario channel: the start applies the agent setup again, and the new model reaches the home and every job.');
 } else if (command === 'live') {
   const commit = value ?? (await git(ctx.stack.project, 'rev-parse', 'origin/main'));
   const response = await api(need('LIVE_SERVICE_URL')).post('/_world/commit', commit === 'unreachable' ? { reachable: false } : { commit, reachable: true });

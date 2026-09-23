@@ -63,7 +63,7 @@ public history access; existing job IDs, schedules and delivery targets are pres
 ## Communication practice
 
 Reach the owner or maintainers in #development for decisions and release review, using native Hermes
-messaging and an existing thread when available. The [PM and community jobs](../../cron/jobs.seed.json)
+messaging and an existing thread when available. The [PM and community jobs](../../../.open-autonomy/agent.json)
 deliver operational reports there. Post only notable changes, decisions and actionable requests;
 execution logs remain in Hermes and the published development stream.
 

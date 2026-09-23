@@ -60,7 +60,7 @@ promote people. Recheck current main before sensitive decisions so revocations t
 changes, reconcile agreed native operator IDs and actual human review gates using the setup process;
 the roster editor does not itself change Discord permissions or GitHub protection.
 
-During setup, use native `discord.channel_skill_bindings` in `hermes/config.yaml` to load this skill in
+During setup, use native `discord.channel_skill_bindings` (under `extensions.hermes.config` in `.open-autonomy/agent.json`) to load this skill in
 the agreed channels (threads inherit their parent's binding). Set `discord.group_allow_admin_from` to
 verified operator user IDs and `group_user_allowed_commands: []`; Hermes still permits `/help` and `/whoami`.
 An empty admin list disables that command gate, so it is not a deny-all setting. These controls restrict

@@ -385,18 +385,17 @@ the same wherever it runs.
 are not already on `openai-codex` to the kit's starter model. It does not select the owner's exact model.
 On upgrade, old protected codex.json copies are unused. Preserve them during migration; any later
 credential cleanup is a separate owner decision, never an incidental kit upgrade.
-Before activation, the setup agent reconciles **both** `hermes/config.yaml` and
-`hermes/profiles/treasurer/config.yaml` with the agreed, locally verified model:
+Before activation, the setup agent reconciles **both** profiles' named model in `.open-autonomy/agent.json`
+(`profiles.default` and `profiles.treasurer`, each `inference.models.project`) with the agreed, locally
+verified model:
 
-```yaml
-model:
-  default: <exact model verified in local Codex>
-  provider: openai-codex
+```json
+"project": { "provider": "openai-codex", "model": "<exact model verified in local Codex>" }
 ```
 
 Reconcile the model with the owner's choice and what `codex` offers; do not change the operator's global
 Codex configuration. A fleet on the older `codex-valve` custom provider keeps working, forwarded the same
-way; switching it to `openai-codex` is one config edit.
+way; switching it to `openai-codex` is one edit of the named model.
 
 Read `GET /v1/catalog` through an authorized standalone platform valve as described below; `GET /v1/models`
 lists only the current key's bounds, not the platform's available choices. If no authorized platform
@@ -414,7 +413,7 @@ require a transferable credential file. Follow [Codex authentication](https://de
 for the installed storage arrangement. Never print credentials or change the operator's global storage
 policy. The subscription step remains incomplete until that host process can use the current login.
 
-After applying the helper, reconcile `hermes/config.yaml` with the agreed provider and exact model;
+After applying the helper, reconcile `.open-autonomy/agent.json` with the agreed provider and exact model;
 the helper's seeded provider defaults are not the owner's model selection. For platform-funded profiles,
 set the project policy and mint credentials with the agreed model bounds before the bounded connection check.
 The key tool reads the project's nonempty `models` list unless `--models` supplies an explicit key bound.
@@ -729,7 +728,7 @@ the exact candidate that can use them.
 Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. Use
 Hermes' bundled skill sync when enabled. A Blank Slate home deliberately skips bundled sync: configure
 native `skills.external_dirs` to the installed Hermes checkout's `skills/devops/sdlc-review` directory
-in `hermes/config.yaml`, and verify `skill_view("sdlc-review")` actually resolves it. Do not vendor a
+under `extensions.hermes.config` in `.open-autonomy/agent.json`, and verify `skill_view("sdlc-review")` actually resolves it. Do not vendor a
 second copy or enable the whole catalog just for review. Keep the project's manual-verification policy
 authoritative over generic skill suggestions about tests.
 

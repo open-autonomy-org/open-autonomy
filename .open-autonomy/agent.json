@@ -1,0 +1,163 @@
+{
+  "profiles": {
+    "default": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "openai-codex",
+            "model": "gpt-5.6-sol"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "terminal.backend": "local",
+            "terminal.shell_init_files": [
+              "/opt/hermes/.venv/bin/activate"
+            ],
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 160,
+            "agent.disabled_toolsets": [
+              "browser-use"
+            ],
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true,
+            "platform_toolsets.discord": [
+              "hermes-discord"
+            ],
+            "discord.server_actions": [
+              "list_guilds",
+              "server_info",
+              "list_channels",
+              "channel_info",
+              "list_roles",
+              "member_info",
+              "search_members",
+              "fetch_messages",
+              "create_thread"
+            ],
+            "discord.group_allow_admin_from": [
+              "605505624226136074"
+            ],
+            "discord.group_user_allowed_commands": [],
+            "discord.channel_skill_bindings": [
+              {
+                "id": "1544906155422257215",
+                "skills": [
+                  "project-communications"
+                ]
+              },
+              {
+                "id": "1546378794057728021",
+                "skills": [
+                  "project-communications"
+                ]
+              },
+              {
+                "id": "1546378402280382565",
+                "skills": [
+                  "project-communications"
+                ]
+              },
+              {
+                "id": "1546379008697172019",
+                "skills": [
+                  "project-communications"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "jobs": {
+        "pm": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 60
+          },
+          "prompt": "Run the pm skill: reconcile the sourced ROADMAP.md with developments, coordinate people and human release review, and queue ready fleet work.",
+          "skills": [
+            "pm"
+          ],
+          "deliver": "discord:1546378402280382565",
+          "toolsets": [
+            "hermes-cron",
+            "discord",
+            "discord_admin"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
+        },
+        "community": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 5
+          },
+          "prompt": "Run the community skill: answer people and preserve sourced input for roadmap scrum.",
+          "skills": [
+            "community"
+          ],
+          "deliver": "discord:1546378402280382565",
+          "monitor_script": "community-monitor.sh",
+          "toolsets": [
+            "hermes-cron",
+            "discord",
+            "discord_admin"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
+        }
+      }
+    },
+    "treasurer": {
+      "schema_version": 1,
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "codex-valve",
+            "model": "gpt-5.6-sol"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "custom_providers": [
+              {
+                "name": "codex-valve",
+                "base_url": "${HERMES_CODEX_BASE_URL}",
+                "api_key": "valve",
+                "api_mode": "codex_responses"
+              }
+            ],
+            "terminal.backend": "local",
+            "terminal.shell_init_files": [
+              "/opt/hermes/.venv/bin/activate"
+            ],
+            "terminal.timeout": 300,
+            "memory.memory_enabled": false,
+            "memory.user_profile_enabled": false,
+            "compression.enabled": true,
+            "compression.threshold": 0.5,
+            "agent.max_turns": 80,
+            "kanban.dispatch_interval_seconds": 15,
+            "kanban.review_dispatch": true
+          }
+        }
+      }
+    }
+  }
+}

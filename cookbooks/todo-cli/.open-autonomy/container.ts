@@ -8,7 +8,8 @@ import { parseEnv } from 'node:util';
 import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
-import { prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
+import { mergeImageDenylist, prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
+import { agentModels, applyAgent, parseAgent } from './agent.ts';
 
 export async function startContainer(options: {
   container: string; project?: string; home?: string; secrets?: string; state?: string; config?: string; port: number;
@@ -70,7 +71,9 @@ export async function startContainer(options: {
     const host = 'http://host.docker.internal';
     const prepared = await prepareContainerHome({ container, home, workspace });
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
-    const onCodex = prepared.models.some(model => model?.provider === 'openai-codex');
+    if (!prepared.agent) throw new Error('No .open-autonomy/agent.json at the committed revision; run `create-open-autonomy upgrade` (docs/decisions/0007)');
+    const agentSetup = parseAgent(prepared.agent, 'origin/main:.open-autonomy/agent.json');
+    const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
     // Let native Codex startup finish before starting the fleet; its database
     // maintenance is not an authentication RPC timeout.
     if (onCodex && !process.env.HERMES_CODEX_BASE_URL?.trim()) await codexAccess();
@@ -90,6 +93,13 @@ export async function startContainer(options: {
       OPEN_AUTONOMY_BASE_URL: `${host}:${port}/v1`, OPEN_AUTONOMY_PAY_URL: `${host}:${port + 1}/v1`, OPEN_AUTONOMY_KEY: 'valve',
       GITHUB_API_URL: `${host}:${port + 3}`, GITHUB_TOKEN: 'valve' };
     await writeContainerEnvironment({ container, home, env });
+    // The agent's setup into the executor's home before the gateway: Hermes's own functions inside the container, the
+    // applier and its base on this host. A setup that cannot be applied stops the start.
+    for (const line of await applyAgent({
+      setup: agentSetup, homeOf: (profile) => (profile === 'default' ? home : `${home}/profiles/${profile}`),
+      homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
+    })) console.log(`host: agent: ${line}`);
+    await mergeImageDenylist({ container, home });
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
     // What runs the agent, for its page: the mode, the kit, the executor's image, this host. Never a credential.
