@@ -8,13 +8,11 @@ const project = resolve(import.meta.dir, '..');
 const home = process.env.HERMES_HOME;
 if (!home) throw new Error('maintenance requires HERMES_HOME from the running stack');
 const command = process.argv[2] ?? 'status';
+// Bun does not use the world's HTTP injector. Point bunx at the same registry
+// npm queried so the rehearsal release, rather than a cached public package, is applied.
+const bunxEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
 const run = (cmd: string[], cwd = project): string => {
-  // Bun does not use the world's HTTP injector. Point bunx at the same registry
-  // npm queried so the rehearsal release, rather than a cached public package, is applied.
-  const env = cmd[0] === 'bunx' && process.env.NPM_REGISTRY_TWIN_URL
-    ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL }
-    : process.env;
-  const result = Bun.spawnSync({ cmd, cwd, env, stdout: 'pipe', stderr: 'pipe' });
+  const result = Bun.spawnSync({ cmd, cwd, env: cmd[0] === 'bunx' ? bunxEnv : process.env, stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed: ${result.stderr.toString().trim()}`);
   return result.stdout.toString().trim();
 };
@@ -47,7 +45,7 @@ function reviewUpgrade(branch: string): void {
   console.log(ask);
 }
 const idle = () => !board().some((t) => ['running', 'review'].includes(t.status));
-const record = (text: string) => JSON.parse(text) as { version: string };
+const record = (text: string) => JSON.parse(text) as { version: string; skew?: string };
 const installed = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8')).version;
 const runningFile = resolve(home, 'running-kit.json');
 const running = existsSync(runningFile) ? record(readFileSync(runningFile, 'utf8')).version : null;
@@ -205,16 +203,46 @@ if (command === 'ship') {
     console.log(`Resuming the preserved upgrade at ${worktree}.`);
   } else git('worktree', 'add', '-b', branch, worktree, 'origin/main');
   const stagedVersion = record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).version;
-  if (stagedVersion !== latest) run(['bunx', `create-open-autonomy@${latest}`, 'upgrade', '.'], worktree);
-  run(['bun', 'install', '--frozen-lockfile'], worktree);
-  run(['bun', 'run', 'check'], worktree);
+  if (stagedVersion !== latest) {
+    // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
+    // session; the next `maintain.ts upgrade` resumes here, and the kit's check below refuses to push a marked file.
+    const up = Bun.spawnSync({ cmd: ['bunx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env: bunxEnv, stdout: 'pipe', stderr: 'pipe' });
+    const said = `${up.stdout.toString()}${up.stderr.toString()}`.trim();
+    if (up.exitCode === 2) { console.log(`${said}\nThe upgrade left conflicts in ${worktree}. Resolve each marked file there, keeping this project's intent and the kit's change, then run \`maintain.ts upgrade\` again.`); process.exit(2); }
+    if (up.exitCode !== 0) throw new Error(`create-open-autonomy@${latest} upgrade failed: ${said}`);
+    console.log(said);
+  }
+  run(['bunx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
+  // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
+  // kit's own package too, and its template ships the typecheck that proves the kit's sources still compile.
+  if (record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).skew === 'self-build') {
+    run(['bun', 'install', '--frozen-lockfile'], worktree);
+    run(['bun', 'run', 'check'], worktree);
+  }
   if (!idle()) throw new Error(`a task started during the upgrade; ${worktree} is preserved and has not been pushed`);
   run(['git', 'add', '-A'], worktree);
-  // Older adopters ignore every hook except seed; the new kit hook is source, not runtime state.
-  run(['git', 'add', '-f', 'hermes/hooks/escalate/HOOK.yaml', 'hermes/hooks/escalate/handler.py'], worktree);
   if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
-  run(['git', 'push', '-u', 'origin', branch], worktree);
-  git('worktree', 'remove', worktree);
-  reviewUpgrade(branch);
-  console.log(`Pushed ${branch}; the landing workflow opens its pull request. Workflow changes need the owner's review.`);
+  // Land it the way this repository lands changes, read from main as it stands, never from the upgrade's result: a
+  // branch its landing workflow takes, or, where main carries no landing workflow, main itself. An upgrade branch
+  // nobody lands is an upgrade that never happens. A rule that refuses the push fails it here, loudly, with the
+  // worktree preserved.
+  git('fetch', '-q', 'origin', 'main');
+  if (Bun.spawnSync({ cmd: ['git', 'cat-file', '-e', 'origin/main:.github/workflows/land.yml'], cwd: project }).exitCode === 0) {
+    run(['git', 'push', '-u', 'origin', branch], worktree);
+    git('worktree', 'remove', worktree);
+    reviewUpgrade(branch);
+    console.log(`Pushed ${branch}; the landing workflow opens its pull request. Workflow changes need the owner's review.`);
+  } else {
+    // Main moves while a conflict waits for its resolution (the PM lands its planning commits there directly), so the
+    // upgrade goes on top of main as it is now. A rebase that cannot apply leaves the worktree for the PM.
+    const rebase = Bun.spawnSync({ cmd: ['git', 'rebase', 'origin/main'], cwd: worktree, stdout: 'pipe', stderr: 'pipe' });
+    if (rebase.exitCode !== 0) {
+      Bun.spawnSync({ cmd: ['git', 'rebase', '--abort'], cwd: worktree });
+      throw new Error(`the upgrade does not apply on main as it now stands; ${worktree} is preserved: bring it onto origin/main, then run \`maintain.ts upgrade\` again`);
+    }
+    run(['git', 'push', 'origin', 'HEAD:main'], worktree);
+    git('worktree', 'remove', worktree);
+    git('branch', '-D', branch);
+    console.log(`Kit ${latest} landed on main; request a restart.`);
+  }
 } else throw new Error('usage: maintain.ts status | upgrade | restart | ship');

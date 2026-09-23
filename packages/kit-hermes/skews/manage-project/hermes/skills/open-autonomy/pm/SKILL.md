@@ -99,8 +99,10 @@ rewrite main. After landing, advance the notepad's `main` cursor to the snapshot
 
 Inspect `hermes cron list`, `runs` and `incidents` for missed scrums and delivery errors; recover coverage
 before advancing a cursor. Run `bun .open-autonomy/maintain.ts upgrade`, then `restart`, for idle kit
-maintenance; the kit rewrites its own files, and a file this project has taken over is named in
-`.open-autonomy/kit.json`'s `divergences` so the upgrade leaves it. Report notable changes, stalled outcomes and the asks sent; this report is operational output,
+maintenance; the upgrade merges the kit's change into this project's files three-way, and a file where
+both moved is left with conflict markers in the upgrade worktree for you to resolve, keeping this
+project's intent and the kit's change, before it lands. It lands as this repository lands changes: a
+`land/kit-<version>` branch where a landing workflow takes it, main itself where none stands. Report notable changes, stalled outcomes and the asks sent; this report is operational output,
 not a journal.
 
 ## Contact people

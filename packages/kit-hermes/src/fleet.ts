@@ -6,8 +6,53 @@
 //   create-open-autonomy fleet <runtime-dir> --name <fleet> --image <image> --project owner/repo=<origin> [--project …]
 //                              [--provider colima:<profile>] [--docker-host <url>] [--memory 3g] [--cpus 2] [--prepare-volumes]
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { KIT, readKit, upgrade } from './kit.ts';
+
+// create-open-autonomy upgrade --fleet <fleet.json>: every project of a fleet onto this kit, from this kit. Each
+// project is cloned fresh from its origin, upgraded (the same three-way merge as `upgrade`), committed and landed the
+// way that repository lands changes: a `land/kit-<version>` branch where a landing workflow takes branches, main
+// itself where none stands. A project whose merge leaves conflicts is not pushed; its clone stays for an agent to
+// resolve. Returns whether every project is now on this kit.
+export async function upgradeFleet(file: string): Promise<boolean> {
+  const say = (m: string) => console.log(m);
+  const def = JSON.parse(readFileSync(resolve(file), 'utf8')) as { projects?: Array<{ account: string; origin: string }> };
+  if (!def.projects?.length) throw new Error(`${file}: no projects`);
+  let all = true;
+  for (const p of def.projects) {
+    const dir = mkdtempSync(join(tmpdir(), `oa-upgrade-${p.account.split('/')[1]}-`));
+    const git = (...args: string[]) => {
+      const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', timeout: 300_000 });
+      if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${(r.stderr || r.stdout).trim()}`);
+      return r.stdout.trim();
+    };
+    try {
+      git('clone', '-q', '--depth', '1', p.origin, '.');
+      const from = readKit(dir).version;
+      if (from === KIT.version) { say(`${p.account}: at ${from}`); rmSync(dir, { recursive: true, force: true }); continue; }
+      // How this repository lands, read from main as cloned, before the upgrade can touch the landing workflow.
+      const branch = existsSync(join(dir, '.github/workflows/land.yml'));
+      const u = await upgrade(dir);
+      if (u.conflicts.length) {
+        all = false;
+        say(`${p.account}: ${from} → ${u.to} left ${u.conflicts.length} conflict(s) in ${dir} (${u.conflicts.join(', ')}); resolve, commit and land there`);
+        continue;
+      }
+      git('add', '-A');
+      git('commit', '-q', '-m', `kit-${u.to}: take the kit upgrade`);
+      git('push', '-q', 'origin', branch ? `HEAD:refs/heads/land/kit-${u.to}` : 'HEAD:main');
+      say(`${p.account}: ${from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept, ${u.retired.length} retired; ${branch ? `pushed land/kit-${u.to} for its landing workflow` : 'landed on main'}`);
+      for (const k of u.kept) say(`  kept: ${k}`);
+      rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+      all = false;
+      say(`${p.account}: ${(e as Error).message} (clone at ${dir})`);
+    }
+  }
+  return all;
+}
 
 export function fleet(dir: string, opts: { name: string; image: string; projects: string[]; provider?: string; dockerHost?: string; memory?: string; cpus?: string; prepareVolumes: boolean }): void {
   const say = (m: string) => console.log(m);

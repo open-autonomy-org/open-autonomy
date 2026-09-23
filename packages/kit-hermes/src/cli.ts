@@ -3,8 +3,9 @@
 //
 //   bun create open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization]
 //   create-open-autonomy adopt <dir> --project <name> --account <owner/repo> [--skew …]  # into an existing one; only what is missing
-//   create-open-autonomy check <dir>      # the kit-owned files against the kit (exit 1 on drift)
-//   create-open-autonomy upgrade <dir>    # check, then rewrite the kit-owned files
+//   create-open-autonomy check <dir>      # where the project stands against the kit (exit 1 behind it or mid-merge)
+//   create-open-autonomy upgrade <dir>    # merge the kit's change into the project's files three-way (exit 2 on conflicts)
+//   create-open-autonomy upgrade --fleet <fleet.json>  # every project of a fleet, cloned fresh, upgraded and landed (fleet.ts)
 //   create-open-autonomy setup <dir> [--plan] [--yes] [--with a,b] [--without a,b] [--secrets <dir>] [--bare] [--account-id <cf>]
 //                                         # the guided walk: the core, then the doors this situation calls for (setup.ts)
 //   create-open-autonomy runtime <dir> [--runtime <dir>] [--secrets <dir>] [--valve <port>] [--provider colima:<p>] [--docker-host <url>]
@@ -14,12 +15,15 @@ import { resolve } from 'node:path';
 import { KIT, adopt, check, create, upgrade, validateParams, validateSkew } from './kit.ts';
 import { setup, type Door } from './setup.ts';
 import { runtime } from './runtime.ts';
-import { fleet } from './fleet.ts';
+import { fleet, upgradeFleet } from './fleet.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const verbs = new Set(['create', 'adopt', 'check', 'upgrade', 'setup', 'runtime', 'fleet']);
 const verb = verbs.has(argv[0]) ? argv[0] : 'create';
+if (verb === 'upgrade' && flag('--fleet')) {
+  try { process.exit((await upgradeFleet(flag('--fleet')!)) ? 0 : 2); } catch (e) { console.error(`create-open-autonomy: ${(e as Error).message}`); process.exit(1); }
+}
 const dir = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1]?.startsWith('--') !== true && a !== verb)[0];
 if (!dir) { console.error('usage: create-open-autonomy [create|adopt] <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization] | check <dir> | upgrade <dir> | setup <dir> [--plan] | runtime <dir>'); process.exit(2); }
 const target = resolve(dir);
@@ -41,12 +45,20 @@ try {
     const projects = argv.flatMap((a, i) => (a === '--project' && argv[i + 1] ? [argv[i + 1]] : []));
     fleet(target, { name: flag('--name') ?? '', image: flag('--image') ?? '', projects, provider: flag('--provider'), dockerHost: flag('--docker-host'), memory: flag('--memory'), cpus: flag('--cpus'), prepareVolumes: argv.includes('--prepare-volumes') });
   } else if (verb === 'check') {
-    const out = check(target);
-    if (out.drift.length) { for (const d of out.drift) console.error(d); console.error(`kit drift: ${out.drift.length} file(s). Run \`create-open-autonomy upgrade ${dir}\`; the kit is the source and its files are never edited in place (name a file in .open-autonomy/kit.json divergences to take it over).`); process.exit(1); }
-    console.log(`kit ${KIT.name} ${KIT.version}: ${target} matches`);
+    const s = check(target);
+    for (const d of s.diverged) console.log(`  ${d}`);
+    if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
+    if (!s.current) { console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
+    console.log(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
   } else {
-    const out = upgrade(target);
-    console.log(`upgrade: ${out.written.length} file(s) rewritten${out.drift.length ? ` (${out.drift.length} had drifted)` : ''} → ${KIT.name} ${KIT.version}`);
+    const u = await upgrade(target);
+    console.log(`upgrade: ${target} ${u.from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept as this project's, ${u.retired.length} retired${u.conflicts.length ? `, ${u.conflicts.length} in conflict` : ''}`);
+    for (const k of u.kept) console.log(`  kept: ${k}`);
+    if (u.conflicts.length) {
+      for (const c of u.conflicts) console.error(`  conflict: ${c}`);
+      console.error(`Resolve the markers in each (this project's lines against kit ${u.from} and kit ${u.to}), keeping the project's intent and the kit's change, then commit; the record already says ${u.to}.`);
+      process.exit(2);
+    }
   }
 } catch (e) {
   console.error(`create-open-autonomy: ${(e as Error).message}`);

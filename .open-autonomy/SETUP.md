@@ -618,7 +618,7 @@ installation, Git operation, policy decision or runtime configuration belongs in
 ### Displayed credentials
 
 When the agreed integration displays its new credential on a page, use the standalone helper's capture
-command to transfer that one field directly into protected storage. The [vendored SDK README](sdk/README.md)
+command to transfer that one field directly into protected storage. The [SDK README](https://github.com/open-autonomy-org/open-autonomy/blob/main/packages/sdk/README.md)
 documents the command and supported browser-controller interface. Reuse the browser skill's existing normal-Chrome connection
 and bound task tab; do not launch a second browser or scrape the token with ordinary eval/snapshot tools.
 Confirm the project app and exact page first, then identify the single field within its credential-labeled

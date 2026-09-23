@@ -18,8 +18,9 @@ only its own skew:
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project [--skew manage-project]
 create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
-create-open-autonomy check .     # the kit-owned files against the kit (exit 1 on drift)
-create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
+create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
+create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
+create-open-autonomy upgrade --fleet <fleet.json>   # every project of a fleet: cloned fresh, upgraded, landed as that repository lands
 create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
 
@@ -106,8 +107,12 @@ Application dependencies run in the local world. Production provisioning is a la
 application connections are established at deployment or customer activation.
 
 **Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
-the key tool, the vendored SDK, `container/`, the landing workflow and setup/production guides. A project that takes one over names it in
-`kit.json`'s `divergences`. **Seeded** files are written once and never touched again: the README, the
+the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
+(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the version it last
+took (fetched once from the registry into the kit cache, `OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory) as the ancestor. A file only the project changed keeps the project's; a file
+only the kit changed takes the kit's whole; a file both changed merges, and where the same lines moved apart the conflict stays in the file, marked,
+for an agent in the project's own session to resolve before landing. `check` reports the version, the files the project changed and any unresolved
+merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 
 ## How the repository runs itself
@@ -123,7 +128,9 @@ merge before completing the task. GitHub requires approval and dismisses stale a
 session shows on the project's page with its cost.
 
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
-worktree only while idle, and requests a complete stack restart after the upgrade merges. It prepares
+worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
+way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
+landing workflow stands), and requests a complete stack restart after the upgrade lands. It prepares
 human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.

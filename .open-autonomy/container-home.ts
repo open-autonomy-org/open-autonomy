@@ -106,6 +106,7 @@ import json,os,pathlib,sys
 s=json.load(sys.stdin);home=pathlib.Path(s['home']);assert home.is_absolute() and home != pathlib.Path('/')
 (home/'codex-home-none').mkdir(exist_ok=True)
 for profile in [home,home/'profiles/treasurer']:
+    if profile != home and not profile.is_dir(): continue  # a composed fleet home carries no treasurer
     path=profile/'auth.json';assert not path.is_symlink()
     store=json.loads(path.read_text()) if path.exists() else {}
     store.setdefault('providers',{}).pop('openai-codex',None)
