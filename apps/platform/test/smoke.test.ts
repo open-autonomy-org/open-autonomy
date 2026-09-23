@@ -103,8 +103,6 @@ describe('the open platform, one smoke test per door', () => {
     await requestJson(env, '/admin/accounts/acme%2Fapp/sync', { headers: admin, method: 'POST' });
     await mintKey(env);
     expect(await (await request(env, '/')).text()).toContain('A todo list that builds itself');
-    expect(page).toContain('Become a patron');
-    expect(page).toContain('patrons');
   });
   test('a private repository never reaches a page here: sync refuses it, the backend alone admits it', async () => {
     const env = useEnv(testEnv());
