@@ -120,8 +120,12 @@ export async function startFleet(options: { definition: string; port: number; se
         if (!PROFILE.test(flat)) throw new Error(`${p.account}: its ${profile} profile would be ${flat}, which is not a Hermes profile id; the fleet refuses rather than drop it`);
         if (composed.has(flat)) throw new Error(`${p.account}: its ${profile} profile would be ${flat}, which another profile already is; the fleet refuses rather than drop it`);
         composed.add(flat);
-        // its content (persona, skills) from the project's own nested profile, copied into the flat home
-        const copy = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'sh', '-c', 'mkdir -p "$2" && cp -a "$1/." "$2/"', 'compose', `${p.home}/profiles/${profile}`, profileHome(p, profile)], stdout: 'pipe', stderr: 'pipe', timeout: 30_000 });
+        // Its content (persona, skills) from the project's own nested profile, moved into the flat home the gateway
+        // serves, and the nested name left as a link to it: the project's reporter, which watches the project's home,
+        // finds this profile's own state.db through the link (Supercode reads every profile's store), and each later
+        // sync of hermes/ writes through it. A link already in place is kept.
+        const script = 'if [ -L "$1" ] && [ -e "$1" ]; then exit 0; fi; mkdir -p "$2" && { [ -L "$1" ] || cp -a "$1/." "$2/"; } && rm -rf "$1" && ln -s "../../$3" "$1"';
+        const copy = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'sh', '-c', script, 'compose', `${p.home}/profiles/${profile}`, profileHome(p, profile), flat], stdout: 'pipe', stderr: 'pipe', timeout: 30_000 });
         if (copy.exitCode !== 0) throw new Error(`${p.account}: composing ${flat} failed: ${copy.stderr.toString().trim()}`);
       }
       configs.set(p.name, prepared.config);
@@ -163,7 +167,8 @@ export async function startFleet(options: { definition: string; port: number; se
     if (onCodex && !twin) keyArgs.push('--codex', String(port + 2));
     own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keyArgs]);
     await ready(async () => (await Promise.all(projects.map((p) => healthy(p.key)))).every(Boolean), 'the credential valves');
-    // 7. One reporter per project, each watching its own profile home, publishing to its own account.
+    // 7. One reporter per project, each watching its own profile home (its composed profiles linked inside it),
+    //    publishing to its own account.
     const inspected = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname(), fleet: container });
     const readiness: Promise<void>[] = [];
