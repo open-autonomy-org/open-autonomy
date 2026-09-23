@@ -52,6 +52,9 @@ with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
         target=home/family
         if target.is_symlink(): target.unlink()
         elif target.exists(): shutil.rmtree(target)
+    # A composed profile's link (fleet.ts) whose flat home is gone would stop the copy below; the fleet relinks it.
+    for link in (home/'profiles').glob('*'):
+        if link.is_symlink() and not link.exists(): link.unlink()
     # State databases, cron execution state and native .env files belong to the runtime.
     shutil.copytree(source,home,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.env'))
 print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agent}))
