@@ -49,11 +49,14 @@ export async function seedOpening(ctx: ScenarioContext): Promise<void> {
     const config = (await onMain(ctx, '.open-autonomy/config.yaml')).trimEnd();
     if (!config.includes(`models: [${MODEL}]`)) throw new Error(`the project's .open-autonomy/config.yaml does not bound its funds to ${MODEL}`);
     await putMain(ctx, '.open-autonomy/config.yaml', `${config.replace(`models: [${MODEL}]`, `models: [${MODEL}, ${PREVIOUS_MODEL}]`)}\n\n# The deployed service whose reported commit the project page compares with main.\nlive: ${ctx.world.LIVE_SERVICE_URL}\n`, `.open-autonomy/config.yaml: the world's previous model and live service`);
-    const hermesConfig = await onMain(ctx, 'hermes/config.yaml');
-    if (!hermesConfig.includes(`default: ${MODEL}`)) throw new Error(`the project's hermes/config.yaml does not name ${MODEL} as its default model`);
-    await putMain(ctx, 'hermes/config.yaml', hermesConfig.replace(`default: ${MODEL}`, `default: ${PREVIOUS_MODEL}`), `hermes/config.yaml: the model before the owner moves it (${PREVIOUS_MODEL})`);
+    // the brain's model is its agent setup's named model (docs/decisions/0007)
+    const agent = JSON.parse(await onMain(ctx, '.open-autonomy/agent.json'));
+    const project = agent.profiles?.default?.inference?.models?.project;
+    if (project?.model !== MODEL) throw new Error(`the project's .open-autonomy/agent.json does not name ${MODEL} as its model`);
+    project.model = PREVIOUS_MODEL;
+    if (process.env.REHEARSAL_RELEASE === '1' && agent.profiles.default.jobs?.pm) agent.profiles.default.jobs.pm.deliver = 'local';
+    await putMain(ctx, '.open-autonomy/agent.json', `${JSON.stringify(agent, null, 2)}\n`, `agent.json: the model before the owner moves it (${PREVIOUS_MODEL})${process.env.REHEARSAL_RELEASE === '1' ? "; the PM's routine report stays local" : ''}`);
     if (process.env.REHEARSAL_IDLE === '1' && process.env.REHEARSAL_SCRUM !== '1') await putMain(ctx, 'hermes/kanban.seed.json', JSON.stringify({ tasks: [] }), 'kanban.seed.json: an empty board');
-    if (process.env.REHEARSAL_RELEASE === '1') { const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json')); for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local'; await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, "jobs.seed.json: the PM's routine report stays local"); }
     const door = process.env.REHEARSAL_OWNER_DOOR ?? 'discord';
     await putMain(ctx, 'hermes/skills/project-communications/SKILL.md', `---\nname: project-communications\ndescription: The owner's agreed contact practices for this rehearsal.\n---\n\n# Project communications\n\n${door === 'github' ? 'Ask octocat for release review in an assigned GitHub issue in this repository.' : `Ask the maintainer for release review in our project channel, discord:${homeChannel()}.`} Keep follow-up in that conversation. Use judgment about when another message is useful; silence is not approval.\n`, 'project-communications: the owner\'s door for release review');
     // The page reads the repository now.
@@ -76,10 +79,11 @@ export async function seedOpening(ctx: ScenarioContext): Promise<void> {
       if (!category?.id) throw new Error(`community: GitHub category lookup failed: ${lookup.text}`);
       const discussion = await human.post('/graphql', { query: 'mutation($input:CreateDiscussionInput!){ createDiscussion(input:$input){ discussion { number } } }', variables: { input: { repositoryId: repository.id, categoryId: category.id, title: 'idea: a usage tip of the week', body: 'Could we share a helpful CLI example each week?' } } });
       if (discussion.body?.data?.createDiscussion?.discussion?.number !== 1) throw new Error(`community requires a fresh World and GitHub createDiscussion support: ${discussion.text}`);
-      const schedule = JSON.parse(await onMain(ctx, 'hermes/cron/jobs.seed.json'));
-      for (const job of schedule.jobs) if (job.name === 'pm') job.deliver = 'local';
-      schedule.jobs.push({ name: 'community', prompt: 'WAKE: COMMUNITY. Run the community skill: read the sources, answer where asked and preserve requests for the PM.', schedule: 'every 15m', skills: ['community'], deliver: 'local' });
-      await putMain(ctx, 'hermes/cron/jobs.seed.json', `${JSON.stringify(schedule, null, 2)}\n`, 'community: enable the community desk for this scenario');
+      const setup = JSON.parse(await onMain(ctx, '.open-autonomy/agent.json'));
+      const jobs = (setup.profiles.default.jobs ??= {});
+      if (jobs.pm) jobs.pm.deliver = 'local';
+      jobs.community = { schedule: { kind: 'interval', minutes: 15 }, prompt: 'WAKE: COMMUNITY. Run the community skill: read the sources, answer where asked and preserve requests for the PM.', skills: ['community'], deliver: 'local', model: 'project', workdir: '{{workspace}}' };
+      await putMain(ctx, '.open-autonomy/agent.json', `${JSON.stringify(setup, null, 2)}\n`, 'community: enable the community desk for this scenario');
       ctx.log('community: question #1, request #2 and discussion #1 seeded through GitHub APIs');
     }
     ctx.log(`the books hold the funder's credits and the Sponsors pool; main bounds ${MODEL} and ${PREVIOUS_MODEL}, names the live service and the owner's door (${door}); the brain thinks on ${PREVIOUS_MODEL} until the owner moves it`);

@@ -20,9 +20,6 @@ hermes/*_cache/
 hermes/memories/
 hermes/pairing/
 hermes/hooks/*
-!hermes/hooks/seed/
-!hermes/hooks/seed/HOOK.yaml
-!hermes/hooks/seed/handler.py
 hermes/escalations.json
 hermes/kit-upgrades/
 hermes/kit-restart.json
