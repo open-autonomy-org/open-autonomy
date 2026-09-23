@@ -122,9 +122,9 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
           ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
         run: printf '%s' "$ADMIN" | bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN
-      # The money paths' secrets, same rule: a maintainer sets them as production environment secrets, this op
-      # installs whichever are set as the worker's. Nothing is typed into a machine by hand.
-      - name: Install the money paths' secrets the environment holds
+      # The money paths' and the sign-in's secrets, same rule: a maintainer sets them as production environment
+      # secrets, this op installs whichever are set as the worker's. Nothing is typed into a machine by hand.
+      - name: Install the money paths' and the sign-in's secrets the environment holds
         if: inputs.op == 'sync-secrets'
         working-directory: apps/platform
         env:
@@ -135,11 +135,15 @@ jobs:
           POLAR_WEBHOOK_SECRET: ${{ secrets.POLAR_WEBHOOK_SECRET }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          GITHUB_SPONSORS_WEBHOOK_SECRET: ${{ secrets.GITHUB_SPONSORS_WEBHOOK_SECRET }}
+          # GitHub refuses secret names that start with GITHUB_: the environment holds these under its own names.
+          GITHUB_SPONSORS_WEBHOOK_SECRET: ${{ secrets.SPONSORS_WEBHOOK_SECRET }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+          GIVE_SESSION_HMAC_SECRET: ${{ secrets.GIVE_SESSION_HMAC_SECRET }}
         run: |
           set -euo pipefail
           n=0
-          for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET; do
+          for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET GITHUB_OAUTH_CLIENT_ID GITHUB_OAUTH_CLIENT_SECRET GIVE_SESSION_HMAC_SECRET; do
             v="${!name:-}"
             if [ -z "$v" ]; then echo "$name: not set in the production environment; skipped"; continue; fi
             printf '%s' "$v" | bunx wrangler secret put "$name"; n=$((n+1))

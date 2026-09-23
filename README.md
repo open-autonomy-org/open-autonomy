@@ -56,6 +56,7 @@ Three ways in:
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
 packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
 packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
+packages/cli         @open-autonomy/cli: `oa`, a project's word, money and sessions; the owner's pause and resume; keys
 cookbooks/todo-cli   the reference project: CLI, community scenarios, and a focused HTTP example
 world/               OA's scenario: opening data, model handlers and ordinary World configuration
 hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)

@@ -40,3 +40,7 @@ new_sqlite_classes = ["RunBudget", "LimitLedger"]
 [[migrations]]
 tag = "v2"
 deleted_classes = ["RunBudget"]
+
+# The dashboard's browser half, built by `bun run build` from the backend's source; never edited, never committed.
+[assets]
+directory = "./public"

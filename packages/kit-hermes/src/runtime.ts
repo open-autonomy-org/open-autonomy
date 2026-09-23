@@ -36,12 +36,13 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const rec = readKit(dir);
   const { project, account } = rec.params;
   if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
-  const drift = check(dir).drift;
-  if (drift.length) throw new Error(`the kit-owned files have drifted (${drift.length}); upgrade and land them first:\n  ${drift.join('\n  ')}`);
-  // The host runs the kit's reviewed code. A file the project took over under .open-autonomy/ or container/ is the
-  // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first.
-  const taken = rec.divergences.filter((d) => d.startsWith('.open-autonomy/') || d.startsWith('container/'));
-  if (taken.length) throw new Error(`the project has taken over host files the runtime would ship (${taken.join(', ')}); reconcile them with the kit before cutting a release`);
+  const status = check(dir);
+  if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
+  // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
+  // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A
+  // document the project changed (its production guide, its setup notes) ships nothing and passes.
+  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d));
+  if (code.length) throw new Error(`the project's host files differ from the kit's (${code.join('; ')}); the runtime ships the kit's reviewed code: reconcile them before cutting a release`);
   const rev = out(run(['git', 'rev-parse', 'HEAD'], dir));
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);
   if (out(run(['git', 'status', '--porcelain', '--', '.open-autonomy', 'container'], dir))) throw new Error('.open-autonomy or container/ has uncommitted changes; the runtime is cut from a landed revision');
@@ -99,7 +100,10 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // ---- the World definition ----
   const executor = join(release, 'container', 'executor.ts');
   const world = { id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
-    stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 16384 },
+    // What the host writes for this World: the reporter's state, World's own bookkeeping and the logs, a few
+    // hundred megabytes at most; the executor's home and checkout are Docker volumes on the engine's disk. The
+    // bound is admission against the state root's free space, so it names the host's need, not the container's.
+    stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 2048 },
     services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
     env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
@@ -129,7 +133,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict></plist>
 `, { mode: 0o644 });
-  const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}`, `launchctl kickstart -k gui/$(id -u)/${label}   (a running service, onto the new release)`];
+  // launchd reads a unit at bootstrap and never again: a rewritten unit is loaded by bootout then bootstrap, never by
+  // kickstart, which restarts the definition it already holds.
+  const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}   (first load, and again after every release: launchd holds the unit it read)`];
   say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
   say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
 }

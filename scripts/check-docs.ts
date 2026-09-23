@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '..');
-const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/backend/README.md', 'apps/self-host/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/template/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
+const DOCS = ['README.md', 'CLAUDE.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'apps/platform/README.md', 'apps/platform/DEPLOY.md', 'packages/backend/README.md', 'apps/self-host/README.md', 'packages/sdk/README.md', 'packages/kit-hermes/README.md', 'packages/kit-hermes/base/.open-autonomy/SETUP.md', 'world/README.md', 'cookbooks/todo-cli/README.md'];
 const router = ['packages/backend/src/routes.ts', 'packages/backend/src/keys.ts', 'packages/backend/src/stream.ts', 'apps/platform/src/app.tsx'].map((f) => readFileSync(resolve(ROOT, f), 'utf8')).join('\n');
 const problems: string[] = [];
 
@@ -37,7 +37,7 @@ for (const doc of DOCS) {
     if ((/\.(md|yml|yaml|json|ts|tsx|toml|sh|pin)$/.test(ref) || ref.endsWith('/') || top.test(ref)) && !/[*<>{}\s]/.test(ref) && !ref.startsWith('@')) {
       // Read from the doc's own directory, the root, and the directories a doc describes by bare name.
       const bare = ref.replace(/\/$/, '');
-      const bases = [dirname(file), ROOT, resolve(ROOT, '.github/workflows'), resolve(ROOT, '.open-autonomy'), resolve(ROOT, 'hermes'), resolve(ROOT, 'container'), resolve(ROOT, 'packages/kit-hermes/template')];
+      const bases = [dirname(file), ROOT, resolve(ROOT, '.github/workflows'), resolve(ROOT, '.open-autonomy'), resolve(ROOT, 'hermes'), resolve(ROOT, 'container'), resolve(ROOT, 'packages/kit-hermes/base')];
       if (!bases.some((b) => existsSync(resolve(b, bare)))) problems.push(`${doc}: path \`${ref}\` does not exist`);
     }
   }

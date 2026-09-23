@@ -1,0 +1,20 @@
+#!/bin/sh
+# This repository is the kit's source, so its own boilerplate is always the kit's current version: a record that
+# drifts makes our project page report a kit nobody is running. Keep it in step and stage the correction rather
+# than refuse the commit. Enable with: git config core.hooksPath .githooks
+set -e
+root=$(git rev-parse --show-toplevel)
+kit="$root/packages/kit-hermes/package.json"
+record="$root/.open-autonomy/kit.json"
+[ -f "$kit" ] && [ -f "$record" ] || exit 0
+want=$(bun -e 'console.log(require(process.argv[1]).version)' "$kit" 2>/dev/null) || exit 0
+have=$(bun -e 'console.log(require(process.argv[1]).version)' "$record" 2>/dev/null) || exit 0
+[ "$want" = "$have" ] && exit 0
+bun -e '
+  const fs = require("fs");
+  const p = process.argv[1], m = JSON.parse(fs.readFileSync(p, "utf8"));
+  m.version = process.argv[2];
+  fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
+' "$record" "$want"
+git add "$record"
+echo "pre-commit: kit record $have -> $want"

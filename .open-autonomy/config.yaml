@@ -50,3 +50,7 @@ team: {
       }
     ]
   }
+
+# This project builds Open Autonomy itself: its sessions and its agent are the demonstration, open to everyone.
+dashboard:
+  visibility: open

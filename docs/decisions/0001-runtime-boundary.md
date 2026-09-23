@@ -2,6 +2,9 @@
 
 Status: Accepted only upon independent constitution approval and merge of this record and implementation; proposed until both occur.
 
+Reference: [ADR 0004](0004-local-world-capacity.md) (proposed) partially supersedes the reading of
+“World owns … resources” here as a capacity scheduler; resources means backend handles and explicit enforced limits.
+
 ## Context and sources
 
 Open Autonomy already has a credential valve, a reporter using the Supercode and Open Autonomy SDKs,

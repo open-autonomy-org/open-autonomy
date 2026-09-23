@@ -140,8 +140,7 @@ On migration, match imported historical seed keys/titles to actual board tasks a
 A template seed is not a user request; establish scope authority before making an imported intention ready. Retain
 owners, holds and acceptance; don't recreate work. Existing project-owned roadmap/changelog are preserved
 by kit upgrades. Correct stale project instructions in a planning PR when warranted, but never rewrite the
-constitution. If it still reserves all task creation to the owner, request a concrete owner amendment and
-hold new dispatch; continue coordinating existing authorized work.
+constitution.
 
 The repo builds itself by default. A human executor requires evidence of an explicit "I'll do it" or other
 accepted commitment. A request or silence is not acceptance. Acknowledge scope in the existing conversation,
@@ -254,12 +253,18 @@ mark a newer poll because an older plan landed. Keep other source checkpoints in
 rule. The native notepad is bounded (16 KiB per value, 64 KiB per job): keep cursors, unresolved pointers and
 current gaps, not full transcripts. Resolve/prune entries when full; never discard unreviewed evidence.
 
-Queue a bounded amount of ready work from the landed roadmap:
-`bun .open-autonomy/scrum.ts queue <outcome-id> <work-key> <title> <body> [parent-task-id]`.
-The helper attaches a pinned roadmap source and native idempotency key, including archived-task lookup.
-Check the board first: new keys cannot justify duplicate work. Reuse keys on retries and parent dependencies
-for work sharing a checkout. Reconcile obsolete queued work through the supported CLI with an explanation;
-workers hand off to native review, which alone completes execution. PM coordinates; it doesn't implement.
+Queue ready work from the landed roadmap, one task per outcome:
+`bun .open-autonomy/scrum.ts queue <outcome-id> <title> <body>`.
+A task is the whole arc of its outcome, however large. One development stream then holds every piece of
+context the outcome needs and hands over a finished outcome, not a step toward one; every split costs the next
+worker a context it has to rebuild, and the pieces never quite meet. This is the common failure of an AI PM,
+and the one to be vigilant against: never cut an outcome into phases, slices, increments, follow-ups or
+"first a CLI, then the rest". Optimize for as few tasks as possible. Only genuinely distinct workstreams are
+distinct tasks, and a distinct workstream is a distinct roadmap outcome; the helper hands back the outcome's
+existing task instead of creating a second. The helper attaches a pinned roadmap source and the native
+idempotency key, including archived-task lookup; a retry finds its task. Reconcile obsolete queued work
+through the supported CLI with an explanation; workers hand off to native review, which alone completes
+execution. PM coordinates; it doesn't implement.
 
 ## Keep the installation moving
 
@@ -276,7 +281,9 @@ workers hand off to native review, which alone completes execution. PM coordinat
   still verifies execution acceptance. Unknown status completes nothing.
 - Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
   link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
-- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. Every upgrade PR,
+- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. The upgrade merges the
+  kit's change into this project's files three-way; a file where both moved is left with conflict markers in
+  the upgrade worktree for you to resolve, keeping this project's intent and the kit's change. Every upgrade PR,
   including workflow changes, goes through independent exact-head agent review and automatic merge.
   The supervisor drains and restarts after landing. Human approval is reserved for release of the exact candidate.
 

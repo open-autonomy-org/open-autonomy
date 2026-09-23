@@ -2,15 +2,44 @@
 
 The default Open Autonomy starter kit: a complete repository that runs its own Hermes agent against the
 platform, with the SDK wired in. One command scaffolds it from two identity parameters, the project's name
-and its platform account; everything else is boilerplate the kit fills in.
+and its platform account, and one choice, the skew; everything else is boilerplate the kit fills in.
+
+The kit is a lineage ([ADR 0006](../../docs/decisions/0006-the-kit-is-a-lineage.md)): `base/` is what
+every subject runs (the reporter, the valve, the container stack, the host tools, the communications
+skill), and one skew is laid over it, whole files. A skew is what its PM does and to whom, and a PM knows
+only its own skew:
+
+| Skew | Its PM |
+|---|---|
+| `self-build` (the default) | executes through the project's own fleet: kanban, seats, develop and review lanes, strategy, the community desk; an hourly scrum |
+| `manage-project` | keeps the plan and the record for a project people build; reconciles what landed against what was asked, names what is stalled, asks people, proposes releases; one scrum a day; no board, no dispatch |
+| `manage-organization` | an organization whose executors are its projects: gathers every project daily, posts the memo with the agenda in the organization's channel, records the meeting's outcomes, files each outcome down as a request in the project's intake; one cycle a day |
 
 ```bash
-bun create open-autonomy my-project --project my-project --account owner/my-project
-create-open-autonomy adopt .   --project my-project --account owner/my-project   # into an existing repository
-create-open-autonomy check .     # the kit-owned files against the kit (exit 1 on drift)
-create-open-autonomy upgrade .   # check, then rewrite the kit-owned files
+bun create open-autonomy my-project --project my-project --account owner/my-project [--skew manage-project]
+create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
+create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
+create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
+create-open-autonomy upgrade --fleet <fleet.json>   # every project of a fleet: cloned fresh, upgraded, landed as that repository lands
 create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
+
+## Several projects together: a fleet
+
+A project runs alone with its own `start.ts`; several run together with one: `start.ts --fleet <fleet.json>` composes
+one executor's home from each project's own `hermes/` (each a Hermes profile, served by one multiplexed gateway), one
+valve on the host holding each project's key on its own port (and each project's GitHub App on its own), one reporter
+per project publishing to its own account, and one Codex login forwarded to every profile. Nothing about a project
+changes; it can run alone tomorrow ([ADR 0006](../../docs/decisions/0006-the-kit-is-a-lineage.md)).
+`create-open-autonomy fleet <runtime-dir> --name <fleet> --image <image> --project owner/repo=<origin> …` writes the
+definition and World's executor definition with one volume per checkout, and prints the two commands, World up and
+the host start; a fleet starts by an explicit command and never at login. Each project's credentials live at
+`~/.config/open-autonomy/<owner>/<repo>/` as when it runs alone. What a fleet bends: its profiles share one
+user, one filesystem and one network, and the valve answers by port, so any profile can reach any sibling's
+key, GitHub door and home. A fleet is for projects of one organization that trust each other; a project that
+must not be readable by its siblings runs alone. A fleet opens no treasurer door, so nothing in it pays.
+`container/Dockerfile.slim` is the image for headless daily PM skews whose channel is GitHub; a chat
+platform needs the full `Dockerfile` image.
 
 ## From npm
 
@@ -32,7 +61,7 @@ AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile: the one that pays), kanban.seed.json (historical migration input),
-                     cron/jobs.seed.json (the PM, hourly; the community desk, every quarter hour; a monitor job wakes only when its script's output changed), cron/webhooks.seed.json (routes that wake the agent on a signed POST, their secrets generated at seed time and kept in the home), config.yaml (the model: the project's own choice), the seed hook
+                     cron/jobs.seed.json, scripts/community-monitor.sh (the PM, hourly; the community desk a monitor job: every five minutes its source reads when the newest issue or discussion last changed, and the agent wakes only when that changed), cron/webhooks.seed.json (routes that wake the agent on a signed POST, their secrets generated at seed time and kept in the home), config.yaml (the model: the project's own choice), the seed hook
 .open-autonomy/      the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
@@ -43,7 +72,7 @@ container/           the World executor definition and pinned native Hermes imag
 
 Understand the project first, then choose the starter. Hermes is currently the only kit; the cookbooks
 are working applications of it. Start a fresh repository with `create`, or preserve an existing one
-with `adopt`. The generated [setup guide](template/.open-autonomy/SETUP.md) is the setup agent's
+with `adopt`. The generated [setup guide](base/.open-autonomy/SETUP.md) is the setup agent's
 procedure and is kept current by kit upgrades, including in this repository and every cookbook.
 
 Setup fills the product constitution from owner direction, keeps sources beside the established decisions,
@@ -77,9 +106,13 @@ Application dependencies run in the local world. Production provisioning is a la
 `--with release` refuses before mutation and points to the reviewed publication procedure. Other live
 application connections are established at deployment or customer activation.
 
-**Kit-owned** files are kept current by `upgrade`: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
-the key tool, the vendored SDK, `container/`, the landing workflow and setup/production guides. A project that takes one over names it in
-`kit.json`'s `divergences`. **Seeded** files are written once and never touched again: the README, the
+**Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
+the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
+(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the version it last
+took (fetched once from the registry into the kit cache, `OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory) as the ancestor. A file only the project changed keeps the project's; a file
+only the kit changed takes the kit's whole; a file both changed merges, and where the same lines moved apart the conflict stays in the file, marked,
+for an agent in the project's own session to resolve before landing. `check` reports the version, the files the project changed and any unresolved
+merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 
 ## How the repository runs itself
@@ -95,7 +128,9 @@ merge before completing the task. GitHub requires approval and dismisses stale a
 session shows on the project's page with its cost.
 
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
-worktree only while idle, and requests a complete stack restart after the upgrade merges. It prepares
+worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
+way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
+landing workflow stands), and requests a complete stack restart after the upgrade lands. It prepares
 human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
 PM contacts the reviewer using the project communication skill and tracks the conversation on the
 native task. Tags and deployment approvals remain human acts.
@@ -168,10 +203,8 @@ Version 2.8 introduces sourced `ROADMAP.md` planning. Upgrade creates a missing 
 historical seed, preserving holds and acceptance as intentions to reconcile, and never overwrites existing
 notes. Startup stops replaying the seed into kanban. Existing tasks and owner schedules stay intact;
 existing PM/community cron jobs load the new skills even if their old prompts describe filing tasks.
-The first scrum matches old tasks before queueing anything. If the adopter's constitution still reserves
-all task creation to the owner, the PM proposes a concrete amendment for human review and pauses new
-dispatch until that authority is granted; upgrades never rewrite an adopter's constitution. Update project-owned AGENTS.md wording that
-still equates the board and roadmap. No production or release permission changes with this upgrade.
+The first scrum matches old tasks before queueing anything; upgrades never rewrite an adopter's
+constitution. Update project-owned AGENTS.md wording that still equates the board and roadmap. No production or release permission changes with this upgrade.
 
 `.open-autonomy/scrum.ts` handles automatic main/session discovery, bounded native cron checkpoints, an isolated planning worktree, and native idempotent
 kanban creation from a sourced, landed roadmap section marked `Dispatch: fleet`. Decisions, priorities,

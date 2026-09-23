@@ -55,8 +55,45 @@ Use unique directories under `/opt/data/artifact-verification` for extracted exe
 release-review artifacts during recovery. Never solve capacity failures by deleting worker files or weakening
 limits.
 
-Upgrade through `create-open-autonomy upgrade`, review the change, land it, then `create-open-autonomy runtime`
+Upgrade through `create-open-autonomy upgrade` (a three-way merge; resolve any marked conflict), review the change, land it, then `create-open-autonomy runtime`
 again: a new release is cut and the unit points at it; the running service keeps the old release until the
 service manager restarts it (the commands are printed, never run). Verify the reported kit version on the page
 and a native operation. Existing project-owned divergence files require explicit reconciliation; do not erase
 them to force a clean kit check.
+
+## The slim executor
+
+[`Dockerfile.slim`](Dockerfile.slim) builds the same executor for the headless daily PM skews
+(`manage-project`, `manage-organization`), which need Hermes, git, bun and the `.open-autonomy` tools and nothing
+else. It takes out browser automation, image/video generation, the media and C/C++ toolchains, the chat-platform
+and cloud-provider Python SDKs, and the dashboard/TUI source trees — each through the tool that installed it
+(`apt-get purge`, `uv pip uninstall`, `uv cache clean`), with the corresponding plugin keys written into Hermes's
+own `plugins.disabled` denylist by `hermes plugins disable` so the agent reports a capability as off rather than
+failing when it is called. The file's header comments name every removal and how to hand one back.
+
+Measured on the `peak-media` colima profile, arm64, 2026-09-17, both images built from the same
+`hermes-agent:v2026.8.31` base (2.66 GB on its own):
+
+| | `oa-kit:current` | `oa-kit:slim` |
+|---|---|---|
+| image size (`docker images`) | 2.84 GB | 0.975 GB |
+| idle gateway, container total (`docker stats` at 60 s) | 209.4 MiB | 131.3 MiB |
+| idle gateway, `hermes` process RSS | 170.9 MiB | 129.5 MiB |
+
+The gateway in both runs is `hermes gateway run --no-supervise -q` against a fresh `HERMES_HOME`, with no model
+configured. `hermes --version`, `git --version`, `bun --version`, `supercode --version` and `hermes plugins list`
+all answer in the slim image.
+
+Where the 1.87 GB went, largest first: the Playwright chromium shell and its system half — xvfb, `libgbm1` and the
+mesa/LLVM software-GL stack behind it, and chromium's CJK/emoji fonts (~450 MB); the dashboard and TUI npm build
+trees, which are only needed to produce the bundles the base image has already built (394 MB); `uv`'s wheel cache
+from the base build (327 MB); the Photon iMessage sidecar's baked `node_modules` (118 MB); ffmpeg and the C/C++
+toolchain (~170 MB); and the optional Python extras, of which `google-api-python-client`'s baked API discovery
+cache alone is 95 MB (167 MB total). What remains is dominated by things the PM skews do use: the `node` and `bun`
+binaries, `uv`, the Hermes venv and the installed `.open-autonomy` tools.
+
+One measured negative: seeding the plugin denylist into `HERMES_HOME` before starting the gateway made no
+difference to idle RSS (133.2 MiB against 131.3 MiB without it, inside run-to-run noise). The bundled platform
+plugins are already registered lazily by the base image, so the memory saving above comes from the packages and
+extras that are gone, not from the denylist. The denylist earns its place by keeping Hermes's own account of
+itself truthful, not by saving memory.

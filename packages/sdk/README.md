@@ -138,7 +138,9 @@ Public reads, no key:
 |---|---|
 | `GET /v1/accounts/:account/sessions?limit=` | the stream, newest first, and `live`: the keys live now |
 | `GET /v1/accounts/:account/sessions/:key` | one session with its transcript tail and `next_seq` |
-| `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes |
+| `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes (`follow()` iterates them) |
+| `GET /v1/accounts/:account` | the books: the balance, what came in and went out, the burn, the runway, the owner's bounds (`funding()`) |
+| `GET /v1/accounts/:account/calls?limit=` | every metered call, newest first (`calls()`) |
 | `GET /v1/accounts/:account/items/:item` | every session, update and settled cent on the item |
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
 | `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md? }` | the project's document, from whatever file the substrate keeps: what it is (the page leads with the first paragraph) |
@@ -147,6 +149,8 @@ Public reads, no key:
 | `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true` |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |
+
+Every read door of a project answers according to the owner's word on visibility (the `dashboard:` block of its `.open-autonomy/config.yaml`, a preset then a role per panel): the roadmap and an item are the `work` panel, the session list and the account's event stream the `sessions` panel, a session and its event stream the `transcripts` panel, the metered calls the `calls` panel, the funding figures and the runway and activity widgets the `books` panel, the now widget and the operating state the `overview` panel. A panel closed to the public answers 404 unless the request carries the project's own key or, on a deployment with a sign-in, a viewer on its roster whom the panel admits. The default preset, `roadmap`, keeps sessions, transcripts and the agent's setup to the team.
 
 Keys, the adopter way: `GET /v1/keys/challenge?account=owner/repo` names a claim to commit to
 `.open-autonomy-claim` on the default branch; `POST /v1/keys/mint {account, models?}` mints once the file
@@ -173,7 +177,7 @@ account and a source for the identity links and authority. A populated roster ne
 verified GitHub account. Empty seeded rosters grant nobody authority.
 
 The platform reads this owner configuration from the repository, just as it reads funding bounds; a
-narration key cannot replace it. `/:owner/:project/team` resolves it through this SDK model. Owners can edit
+narration key cannot replace it. `/:owner/:project/dashboard/team` resolves it through this SDK model. Owners can edit
 one member at a time, sign in with GitHub and create a draft PR. The short-lived OAuth flow uses the
 human's token only during the callback, never stores it, and never merges or writes the default branch.
 GitHub asks for `public_repo` access for this action. The giving page retains its existing sign-in flow.

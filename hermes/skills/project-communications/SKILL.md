@@ -81,7 +81,7 @@ commitment; asking for release review does not assign somebody implementation wo
 The fleet works in public. Confidential human spaces and DMs stay outside its access, including their
 stored session history. Never retrieve private content into a published run; disabling direct chat
 publication does not prevent that exposure. Humans bring an appropriate public statement when private
-matters affect the project. These exclusions are intentional boundaries, not missing sources for PM to
+matters affect the project. Direction given in a coding session on the owner's own machine, under the owner's login, is verified direction from that login: the session is its link, and the record quotes its scope, never its contents. These exclusions are intentional boundaries, not missing sources for PM to
 recover. Maintainer authority does not require private planning or release review.
 
 Setup enforces the boundary with Discord permissions and native Hermes access controls: public server

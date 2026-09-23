@@ -27,30 +27,19 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
 }
 
 // The owner's word on who sees what: the `dashboard:` section of .open-autonomy/config.yaml beside the bounds, read
-// with the rest of the repository's config. Absent, everything is open. Narrowing is composition, never secrecy: on
-// the platform the API stays public reads; a private deployment is private by its own wall.
+// with the rest of the repository's config. Absent, the public sees the roadmap and the books (every spend is metered
+// on public books, by the constitution) and the team sees the rest: the sessions, the transcripts, the agent.
+// The word holds on the pages and on the SDK's read doors alike: a closed panel answers 404 to a request without the
+// project's own key or an admitted signed-in viewer.
 export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role }
-export const PRESETS: Record<'open' | 'status' | 'private', Visibility> = {
+export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibility> = {
+  roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public' },
   open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public' },
   status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public' },
   private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team' },
 };
-export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? 'open'], ...c.panels }; };
-
-// Where an app mounted around the core may add to a page. Every slot is additive and inside the core's layout: an
-// app can put a button in the bar or a card in a column; it cannot remove, reorder or rewrite what the core shows.
-export interface PageSlots {
-  nav?: unknown;      // links in the top bar (the platform: Explore)
-  cta?: unknown;      // one button in the top bar (the platform: Become a patron)
-  meta?: unknown;     // facts in the hero's line (the platform: patrons, per month)
-  side?: unknown;     // cards at the top of Overview's side column (the platform: the ask, the tiers)
-  main?: unknown;     // cards after Overview's main column
-  wall?: unknown;     // more people on the givers wall (the platform: subscribers)
-  wallTitle?: string; // what the wall is called when the app adds to it (the platform: Patrons)
-  moneyIn?: unknown;  // rows in the Books' money in (the platform: subscriptions)
-  give?: unknown;     // doors in the Books (the platform: give credits, a coupon)
-  styles?: string;    // the app's own CSS after the core's: a constant of the app, never computed from input
-}
+export const DEFAULT_PRESET = 'roadmap' as const;
+export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
 
 // The deployment's front: the grid of its projects. The core's words are "Projects" and how many; the platform's
 // are its pitch, its patrons in the figures, and each project's patrons on its card.
