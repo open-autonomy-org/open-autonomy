@@ -23,6 +23,8 @@ export const KIT_FILE = '.open-autonomy/kit.json';
 // another: soc2 is self-build with the SOC 2 layer of docs/decisions/0008 laid over it, so its PM is self-build's.
 export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2'] as const;
 export type Skew = (typeof SKEWS)[number];
+// A child's copy of a parent's or base's file replaces it whole: change the copy whenever the original changes
+// (soc2 carries PRODUCTION.md and project-communications with the seams text added).
 const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
 const lineage = (skew: Skew): Skew[] => [...(PARENT[skew] ? lineage(PARENT[skew]!) : []), skew];
 const BASE = resolve(import.meta.dir, '..', 'base');

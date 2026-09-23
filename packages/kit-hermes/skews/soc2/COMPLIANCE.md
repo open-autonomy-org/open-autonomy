@@ -10,8 +10,8 @@ as user listings and signed attestations is confidential.
 
 From an Evidence Desk checkout (`bun install` once):
 
-1. Create the workspace and read this project into it; the import takes the roster, seams, rails and schedules from
-   `.open-autonomy/` and the acts under `records/`:
+1. Once the owner is on the roster in `.open-autonomy/config.yaml`, create the workspace and read this project into
+   it; the import takes the roster, seams, agents, schedules and production rules from `.open-autonomy/`:
    ```bash
    bun src/cli.ts init ~/__PROJECT__-soc2 --org "<organization>"
    bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 import --repo <this checkout> --by <your roster id>
@@ -19,11 +19,15 @@ From an Evidence Desk checkout (`bun install` once):
 2. Answer the remaining scoping questions and adopt the control set: `bun src/cli.ts serve ~/__PROJECT__-soc2`.
 3. Onboard each roster member (policy acknowledgments and forms) on the People page, and compare each declared vendor
    account's administrators with the roster:
-   `bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 completeness --account github --by <your roster id>`.
+   `bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 completeness --account github --by <your roster id>` (it reads
+   GitHub organization members; for an account owned by a person, pass its exported administrators with `--file` and `--generated-by`).
 4. Enable the GitHub collector for this repository (`bun src/cli.ts collectors ~/__PROJECT__-soc2 github --enable --set
    org=__OWNER__ repos=__ACCOUNT__`) and run it on a schedule from the workspace's own private repository
    (`bun src/cli.ts ci-template ~/__PROJECT__-soc2`).
-5. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
+5. For each observation period, collect the acts recorded under `records/` and the roster's history:
+   `bun src/cli.ts collect ~/__PROJECT__-soc2 seam-records --repo <this checkout> --period <start>..<end> --by <your roster id>`
+   and the same with `roster-history`.
+6. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
    repository can hold.
 
 Keep `.open-autonomy/config.yaml`'s `vendor_accounts` complete: every account whose administrators could act outside
