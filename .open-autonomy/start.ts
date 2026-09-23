@@ -33,7 +33,7 @@ import { agentModels, applyAgent, parseAgent, readAgent, type Setup } from './ag
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
-import { basename, resolve } from 'node:path';
+import { basename, relative, resolve } from 'node:path';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -295,11 +295,14 @@ spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...ke
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
 //    .open-autonomy/package.json) are installed when that file is not the one the last complete install satisfied:
 //    a stamp beside them names it, and a failed install leaves none, so node_modules alone is no evidence. (The
-//    lockfile is not the identity: a clone carries none, the kit ignores it.) An install that is already complete
+//    lockfile is not the identity: a clone may carry none.) An install that is already complete
 //    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
 {
-  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find(existsSync);
+  // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
+  // this host's scratch, and the install brings it up to package.json instead of refusing on it.
+  const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
   const want = String(Bun.hash(readFileSync(resolve(import.meta.dir, 'package.json'))));
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
