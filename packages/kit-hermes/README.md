@@ -14,6 +14,7 @@ only its own skew:
 | `self-build` (the default) | executes through the project's own fleet: kanban, seats, develop and review lanes, strategy, the community desk; an hourly scrum |
 | `manage-project` | keeps the plan and the record for a project people build; reconciles what landed against what was asked, names what is stalled, asks people, proposes releases; one scrum a day; no board, no dispatch |
 | `manage-organization` | an organization whose executors are its projects: gathers every project daily, posts the memo with the agenda in the organization's channel, records the meeting's outcomes, files each outcome down as a request in the project's intake; one cycle a day |
+| `soc2` | self-build's PM, with the SOC 2 layer laid over self-build ([ADR 0008](../../docs/decisions/0008-human-seams.md)): the seams declared in `config.yaml`, release approval by gate rather than reply, a records folder for people's acts ([`skews/soc2/records/`](skews/soc2/records/README.md)) and [`skews/soc2/COMPLIANCE.md`](skews/soc2/COMPLIANCE.md) for the Evidence Desk program |
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project [--skew manage-project]

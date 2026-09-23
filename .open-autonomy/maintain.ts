@@ -214,8 +214,9 @@ if (command === 'ship') {
   }
   run(['bunx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
   // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
-  // kit's own package too, and its template ships the typecheck that proves the kit's sources still compile.
-  if (record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).skew === 'self-build') {
+  // kit's own package too (soc2 is self-build with a layer), and its template ships the typecheck that proves the
+  // kit's sources still compile.
+  if (['self-build', 'soc2'].includes(record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).skew ?? '')) {
     run(['bun', 'install', '--frozen-lockfile'], worktree);
     run(['bun', 'run', 'check'], worktree);
   }

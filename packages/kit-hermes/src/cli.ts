@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // create-open-autonomy: the Hermes kit's door.
 //
-//   bun create open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization]
+//   bun create open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2]
 //   create-open-autonomy adopt <dir> --project <name> --account <owner/repo> [--skew …]  # into an existing one; only what is missing
 //   create-open-autonomy check <dir>      # where the project stands against the kit (exit 1 behind it or mid-merge)
 //   create-open-autonomy upgrade <dir>    # merge the kit's change into the project's files three-way (exit 2 on conflicts)
@@ -25,7 +25,7 @@ if (verb === 'upgrade' && flag('--fleet')) {
   try { process.exit((await upgradeFleet(flag('--fleet')!)) ? 0 : 2); } catch (e) { console.error(`create-open-autonomy: ${(e as Error).message}`); process.exit(1); }
 }
 const dir = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1]?.startsWith('--') !== true && a !== verb)[0];
-if (!dir) { console.error('usage: create-open-autonomy [create|adopt] <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization] | check <dir> | upgrade <dir> | setup <dir> [--plan] | runtime <dir>'); process.exit(2); }
+if (!dir) { console.error('usage: create-open-autonomy [create|adopt] <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2] | check <dir> | upgrade <dir> | setup <dir> [--plan] | runtime <dir>'); process.exit(2); }
 const target = resolve(dir);
 try {
   if (verb === 'create' || verb === 'adopt') {

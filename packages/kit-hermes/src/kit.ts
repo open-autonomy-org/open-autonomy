@@ -19,9 +19,12 @@ import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 export const KIT = { name: 'hermes', version: (JSON.parse(readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8')) as { version: string }).version } as const;
 export const KIT_FILE = '.open-autonomy/kit.json';
 // The kit is a lineage (docs/decisions/0006): an abstract base every subject runs, and one skew laid over it, whole
-// files, a later key winning. A skew is what its PM does and to whom; a PM knows only its own skew.
-export const SKEWS = ['self-build', 'manage-project', 'manage-organization'] as const;
+// files, a later key winning. A skew is what its PM does and to whom; a PM knows only its own skew. A skew may extend
+// another: soc2 is self-build with the SOC 2 layer of docs/decisions/0008 laid over it, so its PM is self-build's.
+export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2'] as const;
 export type Skew = (typeof SKEWS)[number];
+const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
+const lineage = (skew: Skew): Skew[] => [...(PARENT[skew] ? lineage(PARENT[skew]!) : []), skew];
 const BASE = resolve(import.meta.dir, '..', 'base');
 const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
 
@@ -73,18 +76,18 @@ const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
 if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
 const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts'];
 
-// Every base file, then every file of the skew over it, rendered. Placeholders are `__PROJECT__` and `__ACCOUNT__`
-// (and `__ACCOUNT_ENC__`, the account as a URL path segment); binary-looking files pass through untouched. A
+// Every base file, then every file of the skew's lineage over it, rendered. Placeholders are `__PROJECT__`, `__ACCOUNT__`
+// (and `__ACCOUNT_ENC__`, the account as a URL path segment, and `__OWNER__`, the account's owner); binary-looking files pass through untouched. A
 // substitution is identical in every render with the same parameters, so it never conflicts in an upgrade.
 export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
-  for (const dir of [BASE, SKEW_DIR(skew)]) for (const rel of walk(dir)) {
+  for (const dir of [BASE, ...lineage(skew).map(SKEW_DIR)]) for (const rel of walk(dir)) {
     const raw = readFileSync(join(dir, rel));
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
     const out_rel = rel === '_gitignore' ? '.gitignore' : rel;
-    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account));
+    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]));
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
@@ -142,7 +145,8 @@ export function check(dir: string): Status {
 }
 
 // The project's own declarations in config.yaml: the roster must read, and declared seams (ADR 0008) must use the
-// three doors and name a scope some roster member holds. A problem here is the project's to fix, not the kit's.
+// three doors and, once anyone is on the roster, name a scope some member holds (a project just created has no roster
+// yet, and filling it is the owner's first act). A problem here is the project's to fix, not the kit's.
 function declarations(dir: string): string[] {
   const at = join(dir, '.open-autonomy', 'config.yaml');
   if (!existsSync(at)) return [];
@@ -151,11 +155,14 @@ function declarations(dir: string): string[] {
   // Loaded here, after the SDK version gate above, so an SDK too old to have seams.ts fails with that gate's message.
   const { parseTeamConfig } = require(join(SDK_SRC, 'team.ts')) as typeof import('@open-autonomy/sdk/team');
   const { parseSeamsConfig } = require(join(SDK_SRC, 'seams.ts')) as typeof import('@open-autonomy/sdk/seams');
-  let scopes = new Set<string>();
-  try { scopes = new Set(parseTeamConfig(text).members.flatMap((m) => m.scopes)); } catch (e) { out.push((e as Error).message); }
+  let scopes: Set<string> | null = null;
+  try {
+    const members = parseTeamConfig(text).members;
+    if (members.length) scopes = new Set(members.flatMap((m) => m.scopes));
+  } catch (e) { out.push((e as Error).message); }
   try {
     const seams = parseSeamsConfig(text);
-    for (const s of seams?.seams ?? []) if (!scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
+    for (const s of seams?.seams ?? []) if (scopes && !scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
   } catch (e) { out.push((e as Error).message); }
   return out;
 }

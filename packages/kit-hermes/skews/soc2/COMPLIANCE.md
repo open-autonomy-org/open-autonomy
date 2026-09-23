@@ -1,0 +1,32 @@
+# SOC 2 readiness
+
+This project runs on Open Autonomy's `soc2` template: the self-build agent does the work, and people act only at the
+seams declared in `.open-autonomy/config.yaml`, each recorded where the declaration says. That makes most of what an
+auditor asks about readable from the repository instead of asked in surveys.
+
+The compliance program itself lives in an [Evidence Desk](https://github.com/open-autonomy-org/evidence-desk)
+workspace that the owner keeps in a private place of their choosing, never in this public repository: evidence such
+as user listings and signed attestations is confidential.
+
+From an Evidence Desk checkout (`bun install` once):
+
+1. Create the workspace and read this project into it; the import takes the roster, seams, rails and schedules from
+   `.open-autonomy/` and the acts under `records/`:
+   ```bash
+   bun src/cli.ts init ~/__PROJECT__-soc2 --org "<organization>"
+   bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 import --repo <this checkout> --by <your roster id>
+   ```
+2. Answer the remaining scoping questions and adopt the control set: `bun src/cli.ts serve ~/__PROJECT__-soc2`.
+3. Onboard each roster member (policy acknowledgments and forms) on the People page, and compare each declared vendor
+   account's administrators with the roster:
+   `bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 completeness --account github --by <your roster id>`.
+4. Enable the GitHub collector for this repository (`bun src/cli.ts collectors ~/__PROJECT__-soc2 github --enable --set
+   org=__OWNER__ repos=__ACCOUNT__`) and run it on a schedule from the workspace's own private repository
+   (`bun src/cli.ts ci-template ~/__PROJECT__-soc2`).
+5. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
+   repository can hold.
+
+Keep `.open-autonomy/config.yaml`'s `vendor_accounts` complete: every account whose administrators could act outside
+the declared seams is a place an auditor will look. Recurring reviews that are a person's decision (access, risk,
+incidents) are scheduled in the workspace's obligations. The CPA firm, a penetration test, an independent second
+person for the reviews the owner cannot perform on themselves, and the observation period remain outside any template.
