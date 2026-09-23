@@ -27,5 +27,6 @@ and verify ownership before changing one. Describe the project in the blurb; do 
 the project's identity. Record unresolved provider fields in setup notes and return to them before declaring
 setup complete. Later branding refinements update this bundle and the same integrations.
 
-This installation reuses the existing Open Autonomy coral open-loop mark from the platform.
+This installation's icon is the coral open-loop mark the platform used to wear; the platform's pages now use
+the two-square mark of the Plotter Logic direction. The integrations keep this icon until it is changed here.
 The first-pass blurb follows the project constitution.

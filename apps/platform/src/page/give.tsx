@@ -18,14 +18,15 @@ export function renderGivePage(data?: GivePageData): string {
     <>
       <TopBar brand={BRAND} nav={<a href="/">Explore</a>} />
       <div class="page">
-        <div class="card" style="max-width:620px;margin:64px auto 0;padding:36px">
-          <h1 style="font-family:Fraunces,Georgia,serif;font-size:32px;font-weight:600;letter-spacing:-.01em;margin-bottom:10px">Give grant credits</h1>
+        <div class="note-page">
+          <p class="label" style="margin-bottom:12px">Grant credits</p>
+          <h1>Give grant credits</h1>
           <p class="prose" style="margin-bottom:20px">Grant credits are funds you hold on these public books and can pass to a project you believe in. They can only be given, never spent by this page.</p>
           <a class="btn" href="/give/login">Sign in with GitHub</a>
           <p class="fine">GitHub is used only to verify your login. The sign-in asks for no repository or organization scope.</p>
         </div>
-        <Foot brand={BRAND} />
       </div>
+      <Foot brand={BRAND} nav={<a href="/">Explore</a>} />
     </>,
   ));
   const sources = [
@@ -39,8 +40,8 @@ export function renderGivePage(data?: GivePageData): string {
     <>
       <TopBar brand={BRAND} nav={<a href="/">Explore</a>} cta={<a class="btn small quiet" href="/give/logout">Sign out</a>} />
       <div class="page">
-        <div class="acct" style="align-items:flex-start"><div class="who"><h1>Give grant credits</h1><p class="line">Signed in as <a href={at(data.login)}>@{data.login}</a>.</p></div></div>
-        {data.message ? <div class="card" role="status" style={`margin-top:20px;border-color:${data.message.ok ? '#0a8754' : '#ff424d'}`}>{data.message.text}</div> : null}
+        <div class="acct" style="align-items:flex-start"><div class="who"><p class="label">Grant credits</p><h1>Give grant credits</h1><p class="line">Signed in as <a href={at(data.login)}>@{data.login}</a>.</p></div></div>
+        {data.message ? <div class="card" role="status" style={`margin-top:20px;border-color:${data.message.ok ? '#58761a' : '#ff5a1f'};background:${data.message.ok ? '#eef8d2' : '#ffe7dc'}`}>{data.message.text}</div> : null}
         <div class="cols">
           <div class="main">
             <div class="card"><h2>Your gifts</h2><Gifts view={data.funder} empty="You have not given any credits yet." /></div>
@@ -62,8 +63,8 @@ export function renderGivePage(data?: GivePageData): string {
             </div>
           </div>
         </div>
-        <Foot brand={BRAND} />
       </div>
+      <Foot brand={BRAND} nav={<a href="/">Explore</a>} />
     </>,
   ));
 }

@@ -15,8 +15,8 @@ export function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   return <svg class="oi" viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" style="display:inline-block;vertical-align:-2px;fill:currentColor"><path d={PATHS[name]} /></svg>;
 }
 
-// Brand mark: an open loop ending in an arrow. Coral so it reads on light and dark; also the favicon.
-export const LOGO_SVG = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" fill="#ff424d" d="M50 0C22.3858 0 0 22.3858 0 50C0 77.6142 22.3858 100 50 100C77.6142 100 100 77.6142 100 50C100 38.0426 95.539 27.0133 88.0381 18.6863L76.9881 30.056C81.8211 36.192 84.2105 44.0927 84.2105 50C84.2105 68.9431 68.9431 84.2105 50 84.2105C31.0569 84.2105 15.7895 68.9431 15.7895 50C15.7895 31.0569 31.0569 15.7895 50 15.7895C55.9073 15.7895 62.1927 18.1789 67.2243 22.564L78.6923 11.458C70.9867 4.30074 61.0266 0 50 0Z"/></svg>';
+// Brand mark: two squares meeting at a corner, in ink; also the favicon.
+export const LOGO_SVG = '<svg viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="0" width="18" height="18" fill="#161a24"/><rect x="0" y="16" width="16" height="18" fill="#161a24"/></svg>';
 
 export const esc = (s: string): string => String(s).replace(/[<>&'"]/g, (c) => (c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : c === "'" ? '&#39;' : '&quot;'));
 // Money reads at the precision it has: cents under a dollar (a flash-class run costs a fraction of one),

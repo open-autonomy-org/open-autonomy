@@ -2,7 +2,9 @@
 // project is one card; the platform's Explore is this grid with the platform's words and figures in the slots.
 import type { DirectoryEntry } from '../ledger.js';
 import { usd } from '../ui.js';
-import { Foot, Pill, TopBar, at, coverStyle, nameOf, ownerOf, runwayWords, safeUrl, standingOf, type Standing } from './parts.js';
+import { raw } from 'hono/html';
+import { Cover, Foot, Pill, TopBar, at, nameOf, ownerOf, runwayWords, safeUrl, standingOf, type Standing } from './parts.js';
+import { MARK_SVG, vortex } from './art.js';
 import type { DirectorySlots, Role } from './model.js';
 
 export interface DirectoryPageData { brand: string; viewer: Role; entries: DirectoryEntry[]; now: number; slots?: DirectorySlots }
@@ -11,21 +13,23 @@ const ORDER: Record<Standing, number> = { live: 0, running: 1, requested: 2, pau
 export const listed = (entries: DirectoryEntry[]): DirectoryEntry[] => entries.filter((e) => e.is_project && e.listed);
 export const byStanding = (entries: DirectoryEntry[]): DirectoryEntry[] => [...entries].sort((a, b) => ORDER[standingOf(a, a.live_sessions)] - ORDER[standingOf(b, b.live_sessions)] || a.account.localeCompare(b.account));
 
-// One project at a glance: its cover, its name, its one word (green and pulsing when it is working), the money in one line.
+// One project at a glance: its drawing (or its cover) with its one word, its name and line, how long its money
+// lasts against the owner's goal, and the money in one line.
 export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }) {
   const standing = standingOf(e, e.live_sessions);
   const runway = e.runway_days !== null && Number.isFinite(e.runway_days) ? Math.round(e.runway_days) : null;
+  const frac = runway === null ? 0 : Math.max(0, Math.min(1, runway / Math.max(1, e.goal_days)));
+  const tone = standing === 'exhausted' ? 'off' : runway !== null && runway < e.goal_days / 3 ? 'warn' : '';
   return (
-    <a class={`pcard${standing === 'live' ? ' live' : ''}`} href={at(e.account)}>
-      <div class="strip" style={coverStyle(e.profile.cover_url, e.account)} />
+    <a class="pcard" href={at(e.account)}>
+      <Cover url={e.profile.cover_url} seed={e.account}><Pill standing={standing} /></Cover>
       <div class="body">
         <div class="top">
-          {safeUrl(e.profile.avatar_url) ? <img class="av" src={safeUrl(e.profile.avatar_url)} alt="" /> : <div class="av" />}
-          <Pill standing={standing} />
+          {safeUrl(e.profile.avatar_url) ? <img class="av" src={safeUrl(e.profile.avatar_url)} alt="" /> : null}
+          <div><div class="name">{nameOf(e.account)}</div><div class="own">by {ownerOf(e.account)}</div></div>
         </div>
-        <div class="name">{nameOf(e.account)}</div>
-        <div class="own">{ownerOf(e.account)}</div>
         <p class="tag">{e.profile.tagline ?? 'Building itself in the open.'}</p>
+        <div class="meter" title={runway === null ? 'No burn measured yet' : `${runwayWords(runway)} of a ${e.goal_days}-day goal`}><i class={tone} style={`width:${Math.round(frac * 100)}%`} /></div>
         <div class="facts">{facts ?? <span><b>{usd(e.balance_usd_cents)}</b> in the bank</span>}{runway !== null ? <span>{runwayWords(runway)}</span> : null}</div>
       </div>
     </a>
@@ -55,12 +59,16 @@ export function Directory(d: DirectoryPageData) {
       <TopBar brand={d.brand} nav={d.slots?.nav} />
       <div class="page">
         <div class="front">
-          {d.slots?.front ?? <><h1>Projects</h1><p class="lede">{projects.length === 1 ? 'One project builds itself here.' : `${projects.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}
+          <div class="copy">
+            {d.slots?.front ?? <><p class="label">{d.brand}</p><h1>Projects that build themselves.</h1><p class="lede">{projects.length === 1 ? 'One project builds itself here.' : `${projects.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}
+            <Stripe entries={projects} more={d.slots?.stripe} />
+          </div>
+          <div class="pic">{raw(vortex(d.brand))}<span class="cap tr">Simple<br />rules<br />open<br />books</span>{raw(MARK_SVG)}<span class="cap br">Every call<br />metered<br />as it<br />happens</span></div>
         </div>
-        <Stripe entries={projects} more={d.slots?.stripe} />
-        {projects.length ? <div class="grid">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div> : <p class="empty" style="margin-top:24px">No project yet. A repository appears here once it has a key and its repository has synced.</p>}
-        <Foot brand={d.brand} />
+        <div class="shelf" id="projects"><h2 class="sech" style="margin:0">Projects</h2><span class="label">{projects.length} {projects.length === 1 ? 'project' : 'projects'}</span></div>
+        {projects.length ? <div class="grid">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div> : <p class="empty">No project yet. A repository appears here once it has a key and its repository has synced.</p>}
       </div>
+      <Foot brand={d.brand} nav={d.slots?.nav} />
     </>
   );
 }

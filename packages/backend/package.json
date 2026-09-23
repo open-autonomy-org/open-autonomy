@@ -17,6 +17,7 @@
     "./page/model": "./src/page/model.ts",
     "./page/parts": "./src/page/parts.tsx",
     "./page/theme": "./src/page/theme.ts",
+    "./page/art": "./src/page/art.ts",
     "./testing": "./test/env.ts",
     "./page/document": "./src/page/document.ts",
     "./dash": "./src/dash/index.tsx",
@@ -24,6 +25,7 @@
   },
   "files": [
     "src",
+    "assets",
     "scripts",
     "test/env.ts",
     "README.md"
@@ -35,7 +37,7 @@
   },
   "dependencies": {
     "@open-autonomy/sdk": "workspace:*",
-    "@volter-ai-dev/supercode-ui": "0.1.81",
+    "@volter-ai-dev/supercode-ui": "0.1.91",
     "hono": "^4.13.4",
     "preact": "^10",
     "preact-render-to-string": "^6"

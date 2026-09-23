@@ -7,6 +7,7 @@ import type { TeamMember } from '@open-autonomy/sdk/team';
 import type { CallRecord, ProjectView, SessionRecord, SessionSummary } from '../ledger.js';
 import { sees, type Role, type Visibility } from '../page/model.js';
 import { firstLine, type SessionTail, type Turn } from '../page/parts.js';
+import { fmtWhen } from '../ui.js';
 import { normalizeUiState, relativeAge, type SessionRowModel, type SupercodeUiState, type TranscriptEntryModel } from '@volter-ai-dev/supercode-ui/core';
 import type { JobModel, RunModel, TaskAttempt, WorkflowBoardModel, WorkflowTask } from '@volter-ai-dev/supercode-ui/supervision';
 
@@ -40,7 +41,9 @@ export interface Schedule { name?: string; schedule?: string }
 export const scheduleOf = (v: ProjectView): Schedule[] => { try { const j = JSON.parse(v.profile.schedule_json ?? '{}') as { jobs?: Schedule[] }; return Array.isArray(j.jobs) ? j.jobs : []; } catch { return []; } };
 export const harnessOf = (v: ProjectView): string => v.profile.agent_harness ?? 'hermes';
 export const itemTitle = (roadmap: Roadmap, id: string | undefined): string | undefined => (id ? roadmap.items.find((i) => i.id === id)?.title : undefined);
-const said = (report: string | undefined): string | undefined => (report && report !== '[SILENT]' ? firstLine(report, 160) : undefined);
+// A report's first line as plain words: a preview is a line of text, so its markdown marks come off.
+const plain = (s: string): string => s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|\*|`)(?=\S)([^*`]*?\S)\1/g, '$2').replace(/^#+\s*/, '');
+const said = (report: string | undefined): string | undefined => (report && report !== '[SILENT]' ? plain(firstLine(report, 200)).slice(0, 160) : undefined);
 const when = (s: SessionSummary): number => Date.parse(s.ended_at ?? s.started_at);
 
 // ---- sessions as chat rows ------------------------------------------------------------------------------------------
@@ -122,7 +125,7 @@ const ORDER: Record<RoadmapItem['status'], number> = { active: 0, planned: 1, pr
 export function attemptsOf(d: DashData, id: string): TaskAttempt[] {
   return d.sessions.filter((s) => s.item_id === id).map((s) => ({
     key: s.key, status: d.live.includes(s.key) || s.status === 'live' ? 'running' : s.outcome === 'failed' ? 'failed' : s.outcome === 'done' ? 'done' : 'ended',
-    profile: s.source ?? s.kind, startedAt: s.started_at, endedAt: s.ended_at ?? '', error: '', summary: said(s.report) ?? '', evidence: s.commit_sha ? `commit ${s.commit_sha.slice(0, 7)}` : '', sessionKey: s.key,
+    profile: s.source ?? s.kind, startedAt: fmtWhen(s.started_at), endedAt: s.ended_at ? fmtWhen(s.ended_at) : '', error: '', summary: said(s.report) ?? '', evidence: s.commit_sha ? `commit ${s.commit_sha.slice(0, 7)}` : '', sessionKey: s.key,
   }));
 }
 export function taskOf(d: DashData, i: RoadmapItem): WorkflowTask {
@@ -156,7 +159,7 @@ export function runsOf(d: DashData, job: string): RunModel[] {
   return d.sessions.filter((s) => s.kind === 'run' && (s.source ?? s.kind) === job).map((s) => {
     const live = d.live.includes(s.key) || s.status === 'live';
     return {
-      key: s.key, id: s.key, jobKey: job, startedAt: s.started_at, finishedAt: s.ended_at ?? '', execution: live ? 'running' : s.outcome === 'failed' ? 'failed' : 'succeeded', error: '', sessionKey: s.key, delivery: null,
+      key: s.key, id: s.key, jobKey: job, startedAt: fmtWhen(s.started_at), finishedAt: s.ended_at ? fmtWhen(s.ended_at) : '', execution: live ? 'running' : s.outcome === 'failed' ? 'failed' : 'succeeded', error: '', sessionKey: s.key, delivery: null,
       completion: live ? null : { status: s.outcome ?? 'ended', sessionId: s.key },
     };
   });
