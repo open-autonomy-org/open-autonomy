@@ -48,6 +48,9 @@ export async function applyAgent(options: {
   const lines: string[] = [];
   for (const [profile, spec] of Object.entries(options.setup.profiles)) {
     const home = options.homeOf(profile);
+    // a named profile's home is made by its content (hermes/profiles/<name>/, copied in before this); Hermes's cron
+    // never makes one, so a declared profile without it is said here, not as Hermes's missing cron directory
+    if (!options.container && !existsSync(home)) throw new Error(`the ${profile} profile has no home at ${home}: give it content under hermes/profiles/${profile}/ (its SOUL.md)`);
     const door = options.container
       ? doors.hermesDoor({ home, runner: doors.containerRunner({ container: options.container }) })
       : doors.hermesDoor({ home, ...doors.locateHermes(), prefix: options.asAgent ?? [] });
