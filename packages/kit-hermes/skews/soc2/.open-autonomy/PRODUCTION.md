@@ -136,8 +136,8 @@ discussion; it is never the record of an act. So:
 - The release approval is the gate, not the reply. PM still sends the candidate-specific request, but a service is
   approved by a member holding `release-review`, set as the `production` environment's required reviewer, approving
   the run the owner's `deploy-v*` tag at the candidate started, and an artifact by a human creating its release at the
-  candidate SHA. PM cites those records, never a chat message, as the approval. Direction binds the same way: landed
-  in `ROADMAP.md` by a commit or a pull request approval of a member holding `direction`.
+  candidate SHA. PM cites those records, never a chat message, as the approval. Direction binds once recorded as an
+  issue or comment by the verified GitHub account of a member holding `direction`, or as a commit they land.
 - Incidents, a change made to production outside the flow, a credential's issue, rotation or revocation, and the
   response to an escalation are recorded as files under `records/` in a reviewed pull request, as the seams name.
   A project that allows no change outside the flow says so in `records/break-glass/README.md`.
