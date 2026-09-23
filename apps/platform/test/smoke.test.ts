@@ -27,6 +27,7 @@ describe('the open platform, one smoke test per door', () => {
     const opened = await requestJson(env, '/v1/patrons/checkout', { method: 'POST', body: { account: '@pat', tier: 0, interval: 'once' } });
     polar.checkouts[opened.checkout_id].status = 'confirmed';
     polar.orders.push({ id: 'ord_pat', paid: true, total_amount: 1000, checkout_id: opened.checkout_id, customer_id: 'cus_1', billing_reason: 'purchase' });
+    expect((await request(env, `/pat/thanks?checkout_id=${opened.checkout_id}`)).status).toBe(200);
     const pat = await requestJson(env, '/v1/funders/pat');
     expect(pat).toMatchObject({ credits_usd_cents: 200 + 1000 + 100, bonus_usd_cents: 100 });
     github.repos['pat/app'] = { description: 'mine' };
@@ -82,6 +83,7 @@ describe('the open platform, one smoke test per door', () => {
     // The patron pays at Polar.
     polar.checkouts.chk_1.status = 'confirmed';
     polar.orders.push({ id: 'ord_1', paid: true, total_amount: 500, checkout_id: 'chk_1', customer_id: 'cus_1', billing_reason: 'purchase' });
+    for (let i = 0; i < 2; i++) expect((await request(env, '/acme/app/thanks?checkout_id=chk_1')).status).toBe(200);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(600);
     const hook = async (payload: string, secret = env.POLAR_WEBHOOK_SECRET!) => {
       const id = 'msg_1'; const ts = String(Math.floor(Date.now() / 1000));
