@@ -92,8 +92,9 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
     not a workflow compiler.
 - **The rendered files carry interpolations, never values.** The render has no vault: at render time
   the key belongs to the valve, and nothing else holds one. Every credential in the source is a reference
-  that the `hermes` render must emit as Hermes's own `${NAME}` interpolation, as `config.yaml` does
-  today. If the `export` door can only inline a value or refuse, Supercode needs an export mode that
+  that a render must emit as the target's own interpolation. For `hermes` the one file that carries them,
+  `config.yaml`, is laid from base and never exported (see step (2)). For the other targets, if the
+  `export` door can only inline a value or refuse, Supercode needs an export mode that
   emits interpolations. That mode is a precondition of step (1) below, and the kit never works around it.
 - **self-build stays Hermes.** Its board and dispatcher have no IR noun. It renders as today and refuses
   any other target until the orchestrator has a board.
@@ -122,7 +123,7 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
        Hermes.
      - The orchestrator package is released.
   2. **The `hermes` render matches today except for the named lines.** From the IR source, it must differ
-     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. Three things the
+     from kit 3.1.0's render only in the five skill lines that move to Supercode verbs. Four things the
      kit controls keep the rest identical:
      - It lays what the export writes where the kit ships it today: the exported `cron/jobs.json` becomes
        `hermes/cron/jobs.seed.json`, the file base's seed hook reads, just as it lays the skills.
@@ -130,6 +131,10 @@ lists them, and `volter-ai/volter`'s `ROADMAP.md` ("The organization runs itself
        key to `config.yaml`.
      - The persona source is the skew's `SOUL.md` text verbatim, so the `AGENTS.md` → `SOUL.md` rename
        returns the same bytes.
+     - `hermes/config.yaml` is not taken from the export. The codec re-encodes a config it did not read
+       from a Hermes home, dropping comments. For the `hermes` target the kit lays base's
+       `hermes/config.yaml` as it does today: a file seeded once and the project's own (ADR 0006), whose
+       `${…}` interpolations never pass through the export.
      Any other difference fails this step and is fixed at its cause, in the kit's placement or in
      Supercode's codec; the bar is never widened to admit it. The comparison is a manual diff that is never
      committed. For each of the nine repositories, the upgrade is an ordinary three-way merge of those
