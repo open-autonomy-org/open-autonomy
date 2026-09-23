@@ -11,12 +11,13 @@ import type { Env } from '../types.js';
 import { render } from '../ui.js';
 import { ROADMAP_SCHEMA, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { pageConfig } from './brand.js';
-import { Account } from './account.js';
+import { Account, type Impact } from './account.js';
 import { Directory } from './directory.js';
 import { document } from './document.js';
 import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
+import { atomFeed, updatesOf } from './updates.js';
 import { dashDocument, type DashData, type DashPage } from '../dash/index.js';
 
 // What an app puts on the pages, computed per request. Absent, the core's page stands alone.
@@ -28,6 +29,9 @@ export interface PageApp {
   landing?(d: LandingBase, tools: PageTools): Promise<string>;
   directory?(entries: DirectoryEntry[], tools: PageTools): Promise<DirectorySlots>;
   account?(name: string, entries: DirectoryEntry[], funder: FunderView | undefined, tools: PageTools): Promise<AccountSlots>;
+  // Where its identity door signs a viewer in and out, returning to `next`: the dashboard offers them in its rail.
+  signIn?(next: string): string;
+  signOut?(next: string): string;
 }
 export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response>; who?: Viewer }
 // What the core hands an app for the landing page: the project as the books and the stream have it, who is looking
@@ -65,7 +69,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     const { entries } = await ledger.directory();
     for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
     const slots = await app.directory?.(entries, tools);
-    return html(document(brand, brand, render(Directory({ brand, viewer, entries, now, slots })), slots?.styles));
+    return html(document(brand, brand, render(Directory({ brand, viewer, entries, now, slots, q: url.searchParams.get('q')?.slice(0, 120) ?? undefined, sort: url.searchParams.get('sort') ?? undefined })), slots?.styles, { description: slots?.description ?? `Projects that build themselves on ${brand}: every session they work and every cent they spend on public books.` }));
   }
   if (seg.length < 1 || seg.length > 5 || RESERVED.has(seg[0].toLowerCase()) || !LOGIN.test(seg[0])) return undefined;
   const who = await identify();
@@ -78,7 +82,16 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     const owns = entries.some((e) => e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
     if (!owns && !funder.found) return html(renderMessage(name, false, 'Nothing here', `No project of ${name}'s is on these books, and ${name} has not given.`), 404);
     const slots = await app.account?.(name, entries, funder.found ? funder : undefined, tools);
-    return privateHtml(document(name, brand, render(Account({ brand, viewer, name, entries, funder: funder.found ? funder : undefined, now, slots })), slots?.styles));
+    // What each project given to did since: its shipped items and its runs, as the project opens them to everyone.
+    const givenTo = [...new Set((funder.found ? funder.given : []).map((g) => g.to).filter((to): to is string => Boolean(to) && entries.some((e) => e.is_project && e.account === to)))].slice(0, 6);
+    const impact: Record<string, Impact> = Object.fromEntries(await Promise.all(givenTo.map(async (to) => {
+      const v = await ledger.project(to);
+      if (!v.found) return [to, {}];
+      const open = visibilityOf(v.profile.config_yaml);
+      const [st, rd] = await Promise.all([sees('public', open.sessions) ? ledger.sessions(to, 100) : undefined, sees('public', open.work) ? ledger.roadmap(to) : undefined]);
+      return [to, { sessions: st?.sessions, roadmap: rd?.revision?.roadmap }];
+    })));
+    return privateHtml(document(name, brand, render(Account({ brand, viewer, name, entries, funder: funder.found ? funder : undefined, now, slots, impact })), slots?.styles, { description: `${name} on ${brand}: the projects it owns and what it gave.` }));
   }
 
   // ---- a project: its landing page, its dashboard and the dashboard's depths ----
@@ -89,7 +102,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // dashboard: `/owner/project/dashboard[/page[/key]]`.
   const page: DashPage | undefined = door === undefined ? undefined : door === 'dashboard' ? (seg[3] === undefined ? 'overview' : PAGES.has(seg[3] as DashPage) ? (seg[3] as DashPage) : undefined) : undefined;
   const key = door === 'dashboard' ? seg[4] : undefined;
-  if (door !== undefined && door !== 'dashboard' && door !== 'about' && door !== 'state') return undefined;
+  if (door !== undefined && door !== 'dashboard' && door !== 'about' && door !== 'state' && door !== 'updates.xml') return undefined;
+  if (door === 'updates.xml' && seg.length > 3) return undefined;
   if (door === 'about' && (seg.length > 3 || !app.landing)) return undefined;
   if (door === 'state' && seg.length > 3) return undefined;
   if (door === 'dashboard' && (page === undefined || (key !== undefined && page !== 'sessions' && page !== 'board'))) return undefined;
@@ -123,6 +137,14 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
   const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
 
+  // ---- the project's updates as a feed: what shipped and what its runs reported, as this viewer may see them ----
+  if (door === 'updates.xml') {
+    const feed = atomFeed({ origin: url.origin, account, title: `${nameOf(account)} · ${brand}`, page: at(account), updates: updatesOf(sessions, roadmap),
+      board: sees(role, visibility.work) ? (item) => at(account, 'dashboard', 'board', item) : undefined,
+      session: sees(role, visibility.transcripts) ? (key) => at(account, 'dashboard', 'sessions', key) : undefined });
+    return new Response(req.method === 'HEAD' ? null : feed, { headers: { 'content-type': 'application/atom+xml; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+  }
+
   // ---- the landing page: the app's, when it has one; the dashboard otherwise ----
   if (door === undefined || door === 'about') {
     if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about' }, tools));
@@ -137,10 +159,14 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     ...(sees(role, visibility.books) ? {} : { feed: [], envelopes: [], bounds: { models: [], limits: [] } }),
     profile: sees(role, visibility.agent) ? view.profile : { ...view.profile, setup_md: undefined, soul_md: undefined, agent_runtime: undefined, agent_skills: undefined, config_yaml: undefined },
   };
-  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions, live: stream.live, roadmap, tail, daily: funding.daily_spend_usd_cents, now, page: dash };
+  const back = url.pathname + url.search;
+  const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
+  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions, live: stream.live, roadmap, tail, daily: funding.daily_spend_usd_cents, now, page: dash, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {
+    const show = url.searchParams.get('show'), job = url.searchParams.get('job')?.slice(0, 80);
+    if (show === 'live' || show === 'failed' || job) d.filter = { ...(show === 'live' || show === 'failed' ? { show } : {}), ...(job ? { job } : {}) };
     const wanted = key ?? (transcripts ? first : undefined);
     if (wanted) {
       const got = await ledger.session(account, wanted);

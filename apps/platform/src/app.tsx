@@ -29,7 +29,9 @@ export const app: App = {
     if (path === '/give/logout') { if (get()) return get()!; return endGiveLogin(req); }
     if (path === '/give') {
       const session = await giveSession(req, env);
-      if (!session) return req.method === 'GET' ? privateHtml(renderGivePage()) : privateHtml(renderGivePage(), 401);
+      // `?to=` names the project a page sent the giver from: the sign-in returns here, and the form starts on it.
+      const to = new URL(req.url).searchParams.get('to') ?? undefined;
+      if (!session) return req.method === 'GET' ? privateHtml(renderGivePage(undefined, to)) : privateHtml(renderGivePage(undefined, to), 401);
       let message: GivePageData['message'];
       if (req.method === 'POST') {
         const form = await req.formData();
@@ -49,7 +51,7 @@ export const app: App = {
           }
         }
       } else if (req.method !== 'GET') return methodNotAllowed();
-      return privateHtml(renderGivePage(await givePageData(ledger, t, session, message)), message?.ok === false ? 400 : 200);
+      return privateHtml(renderGivePage(await givePageData(ledger, t, session, message), to), message?.ok === false ? 400 : 200);
     }
     // A funder gives from the page: their key, an amount, a word. The key is a bearer sent once, never kept.
     // A project's own doors on the platform: /owner/project/give, /owner/project/redeem; Polar's return at /owner/project/thanks or
@@ -111,6 +113,8 @@ export const app: App = {
   },
   page: {
     // The give page's GitHub sign-in names the viewer on every page.
+    signIn: (next) => `/give/login?next=${encodeURIComponent(next)}`,
+    signOut: (next) => `/give/logout?next=${encodeURIComponent(next)}`,
     async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
     // The project's landing page and its whole story: the campaign around the core's records.
     async landing(base, t) {

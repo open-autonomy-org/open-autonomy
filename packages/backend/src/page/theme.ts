@@ -3,7 +3,7 @@
 // restrained lime, lilac and orange. Generative drawings (./art.ts) are the only pictures. A stranger reads one
 // screen; every detail is a link away.
 export const T = {
-  ink: '#161a24', body: '#3d4150', muted: '#737882', faint: '#a9adb2', line: '#dcddda', rule: '#b4b7ba', wash: '#f8f9f5', panel: '#fbfbf8', stone: '#f1f1ec',
+  ink: '#161a24', body: '#3d4150', muted: '#656a72', faint: '#a9adb2', line: '#dcddda', rule: '#b4b7ba', wash: '#f8f9f5', panel: '#fbfbf8', stone: '#f1f1ec',
   lime: '#e3f5a3', limeInk: '#58761a', lilac: '#e8e4f0', lilacInk: '#5d5387', hot: '#ff5a1f', hotWash: '#ffe7dc',
   // Kept for the few places that name a state by its old word: positive, pending, stopped.
   accent: '#161a24', accentInk: '#161a24', accentWash: '#f1f1ec', green: '#58761a', greenWash: '#eef8d2', amber: '#a2600a', amberWash: '#fcf0dc', gray: '#a9adb2',
@@ -138,6 +138,11 @@ export const CSS = `${BASE_CSS}
 .stripe .n .pulse{width:7px;height:7px;background:#9fcb2a;animation:pulse 1.4s steps(2) infinite}
 .stripe .k{display:block;color:${T.body};font-size:12.5px;margin-top:2px}
 .shelf{display:flex;align-items:baseline;justify-content:space-between;margin:56px 0 22px}
+.finder{display:flex;gap:10px;align-items:center;margin:0 0 26px}
+.finder input{flex:1;max-width:460px;height:40px;border:1px solid ${T.rule};background:${T.panel};padding:0 12px;font:inherit;font-size:14px;color:${T.ink}}
+.finder select{height:40px;border:1px solid ${T.rule};background:${T.panel};padding:0 10px;font:inherit;font-size:13.5px;color:${T.ink}}
+.finder .btn.small{height:40px}
+.finder .clear{font-size:13px;color:${T.body};text-decoration:underline;text-underline-offset:3px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:32px 28px}
 .grid.two{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:24px}
 .pcard{display:flex;flex-direction:column;min-width:0}
@@ -184,6 +189,7 @@ export const CSS = `${BASE_CSS}
 .gifts img,.gifts .ph{width:34px;height:34px;border-radius:50%;background:${T.stone}}
 .gifts .who b{font-weight:500}
 .gifts .who span{display:block;color:${T.muted};font-size:12.5px}
+.gifts .who .since{color:${T.limeInk};font-size:12px}
 .gifts .amt{font-weight:500;color:${T.limeInk};white-space:nowrap}
 .note-page{max-width:560px;margin:80px auto 0;text-align:left}
 .note-page .mark{width:30px;height:30px;margin-bottom:28px}

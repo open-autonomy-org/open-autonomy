@@ -31,6 +31,10 @@ export interface DashData {
   // The address's depth: one session's whole record on the sessions page, one item's id on the board.
   session?: SessionRecord;
   item?: string;
+  // The app's identity door for this page: sign in (returning here), or who is signed in and how to sign out.
+  door?: { in?: string; out?: string; who?: string };
+  // The sessions page's filter, from its address: `?show=live|failed`, `?job=<name>`.
+  filter?: { show?: 'live' | 'failed'; job?: string };
 }
 
 export const PAGES: Array<{ id: DashPage; label: string; panel: keyof Visibility }> = [

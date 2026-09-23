@@ -5,6 +5,7 @@
 import { render } from 'preact-render-to-string';
 import { esc } from '../ui.js';
 import { FONTS } from '../page/theme.js';
+import { headMeta } from '../page/document.js';
 import { DASH_CSS, DashApp, titleOf } from './app.js';
 import type { DashData } from './model.js';
 
@@ -14,5 +15,5 @@ export { Agent, Board, Books, DASH_CSS, DashApp, Overview, Sessions, Team, title
 export function dashDocument(d: DashData): string {
   const body = render(<DashApp d={d} />);
   const data = JSON.stringify(d).replace(/</g, '\\u003c');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>${esc(titleOf(d))} · ${esc(d.v.account.split('/')[1] ?? d.v.account)} · ${esc(d.brand)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><link rel="stylesheet" href="/assets/dashboard.css"><style>${DASH_CSS}</style></head><body><div id="dash">${body}</div><script type="application/json" id="dash-data">${data}</script><script type="module" src="/assets/dashboard.js"></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.svg" type="image/svg+xml">${headMeta(`${titleOf(d)} · ${d.v.account.split('/')[1] ?? d.v.account}`, d.brand, { description: d.v.profile.tagline })}<link rel="preconnect" href="https://fonts.googleapis.com"><link href="${FONTS}" rel="stylesheet"><link rel="stylesheet" href="/assets/dashboard.css"><style>${DASH_CSS}</style></head><body><div id="dash">${body}</div><script type="application/json" id="dash-data">${data}</script><script type="module" src="/assets/dashboard.js"></script></body></html>`;
 }

@@ -1,20 +1,31 @@
 // A name's page: GitHub's user or org page. A name is a GitHub login, an org or a person, one namespace. The page
 // shows what the name owns here (its projects, its grants pool) and what it gave (a giver's books). Money never
 // arrives from nobody, so every gift on a project's wall leads back to one of these pages.
-import type { DirectoryEntry, Flow, FunderView } from '../ledger.js';
+import type { DirectoryEntry, Flow, FunderView, SessionSummary } from '../ledger.js';
+import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { fmtAgo, usd } from '../ui.js';
 import { Foot, TopBar, at, ownerOf, safeUrl } from './parts.js';
 import { ProjectCard, byStanding, listed } from './directory.js';
 import type { AccountSlots, Role } from './model.js';
 
-export interface AccountPageData { brand: string; viewer: Role; name: string; entries: DirectoryEntry[]; funder?: FunderView; now: number; slots?: AccountSlots }
+// What a project given to did after a gift, as that project opens it to everyone: absent when it keeps it closed.
+export interface Impact { sessions?: SessionSummary[]; roadmap?: Roadmap }
+export interface AccountPageData { brand: string; viewer: Role; name: string; entries: DirectoryEntry[]; funder?: FunderView; now: number; slots?: AccountSlots; impact?: Record<string, Impact> }
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export const ownedBy = (name: string, entries: DirectoryEntry[]): DirectoryEntry[] => byStanding(listed(entries).filter((e) => same(ownerOf(e.account), name)));
 export const poolOf = (name: string, entries: DirectoryEntry[]): DirectoryEntry | undefined => entries.find((e) => same(e.account, `${name}/grants`));
 
 // One gift as a row: who or what, a word, when, how much. A project in the row links to its page.
-function Gift({ f, dir, entries, now, brand }: { f: Flow; dir: 'out' | 'in'; entries: DirectoryEntry[]; now: number; brand: string }) {
+function since(f: Flow, impact: Impact | undefined): string | null {
+  if (!impact) return null;
+  const at = Date.parse(f.ts);
+  const shipped = impact.roadmap ? impact.roadmap.items.filter((i) => tenseOf(i) === 'past' && i.done_at && Date.parse(i.done_at) > at).length : null;
+  const runs = impact.sessions ? impact.sessions.filter((s) => Date.parse(s.started_at) > at).length : null;
+  const parts = [shipped !== null ? `${shipped} shipped` : '', runs !== null ? `${runs}${runs === 100 ? '+' : ''} ${runs === 1 ? 'session' : 'sessions'}` : ''].filter(Boolean);
+  return parts.length ? `since then: ${parts.join(' · ')}` : null;
+}
+function Gift({ f, dir, entries, now, brand, impact }: { f: Flow; dir: 'out' | 'in'; entries: DirectoryEntry[]; now: number; brand: string; impact?: Impact }) {
   const other = dir === 'out' ? f.to : f.from;
   const project = other ? entries.find((e) => same(e.account, other)) : undefined;
   const who = other ? (other.startsWith('@') ? other.slice(1) : other.endsWith('/grants') ? `${ownerOf(other)}'s grants pool` : other) : f.sponsor_login ? `@${f.sponsor_login}` : brand;
@@ -22,7 +33,7 @@ function Gift({ f, dir, entries, now, brand }: { f: Flow; dir: 'out' | 'in'; ent
   return (
     <li>
       {project && safeUrl(project.profile.avatar_url) ? <img src={safeUrl(project.profile.avatar_url)} alt="" /> : <span class="ph" />}
-      <span class="who"><b>{href ? <a href={href}>{who}</a> : who}</b><span>{f.note ? `“${f.note}” · ` : ''}{f.kind === 'mint' ? (f.coupon ? 'a coupon' : 'credits') : 'a grant'} · {fmtAgo(f.ts, now)}</span></span>
+      <span class="who"><b>{href ? <a href={href}>{who}</a> : who}</b><span>{f.note ? `“${f.note}” · ` : ''}{f.kind === 'mint' ? (f.coupon ? 'a coupon' : 'credits') : 'a grant'} · {fmtAgo(f.ts, now)}</span>{dir === 'out' && project ? (() => { const line = since(f, impact); return line ? <span class="since">{line}</span> : null; })() : null}</span>
       <span class="amt">{dir === 'out' ? '−' : '+'}{usd(f.amount_usd_cents)}</span>
     </li>
   );
@@ -58,7 +69,7 @@ export function Account(d: AccountPageData) {
         <div class="cols">
           <div class="main">
             {projects.length ? <div class="card"><h2>Projects</h2><div class="grid two">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div></div> : null}
-            {f && f.given.length ? <div class="card"><h2>Given</h2><ul class="gifts">{f.given.map((g) => <Gift f={g} dir="out" entries={d.entries} now={d.now} brand={d.brand} />)}</ul></div> : null}
+            {f && f.given.length ? <div class="card"><h2>Given</h2><ul class="gifts">{f.given.map((g) => <Gift f={g} dir="out" entries={d.entries} now={d.now} brand={d.brand} impact={g.to ? d.impact?.[g.to] : undefined} />)}</ul></div> : null}
             {f && f.received.length ? <div class="card"><h2>Received</h2><ul class="gifts">{f.received.map((g) => <Gift f={g} dir="in" entries={d.entries} now={d.now} brand={d.brand} />)}</ul></div> : null}
             {!projects.length && !gives ? <div class="card"><p class="empty">{d.name} owns no project here and has not given yet.</p></div> : null}
             {d.slots?.main}

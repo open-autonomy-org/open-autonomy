@@ -7,7 +7,19 @@ import { Cover, Foot, Pill, TopBar, at, nameOf, ownerOf, runwayWords, safeUrl, s
 import { MARK_SVG, vortex } from './art.js';
 import type { DirectorySlots, Role } from './model.js';
 
-export interface DirectoryPageData { brand: string; viewer: Role; entries: DirectoryEntry[]; now: number; slots?: DirectorySlots }
+export interface DirectoryPageData { brand: string; viewer: Role; entries: DirectoryEntry[]; now: number; slots?: DirectorySlots; q?: string; sort?: string }
+
+// The front's own ordering, from its address: `?q=` narrows by name, owner and line; `?sort=` picks the order.
+const SORTS: Array<[string, string]> = [['standing', 'Working now first'], ['bank', 'Most in the bank'], ['runway', 'Longest runway'], ['name', 'Name']];
+const runwayOf = (e: DirectoryEntry): number => (e.runway_days !== null && Number.isFinite(e.runway_days) ? e.runway_days : -1);
+export function narrowed(entries: DirectoryEntry[], q = '', sort = 'standing'): DirectoryEntry[] {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = entries.filter((e) => words.every((w) => `${e.account} ${e.profile.tagline ?? ''}`.toLowerCase().includes(w)));
+  if (sort === 'bank') return [...hits].sort((a, b) => b.balance_usd_cents - a.balance_usd_cents);
+  if (sort === 'runway') return [...hits].sort((a, b) => runwayOf(b) - runwayOf(a));
+  if (sort === 'name') return [...hits].sort((a, b) => nameOf(a.account).localeCompare(nameOf(b.account)));
+  return byStanding(hits);
+}
 
 const ORDER: Record<Standing, number> = { live: 0, running: 1, requested: 2, paused: 3, exhausted: 4, unfunded: 5 };
 export const listed = (entries: DirectoryEntry[]): DirectoryEntry[] => entries.filter((e) => e.is_project && e.listed);
@@ -53,20 +65,29 @@ export function Stripe({ entries, more }: { entries: DirectoryEntry[]; more?: un
 }
 
 export function Directory(d: DirectoryPageData) {
-  const projects = byStanding(listed(d.entries));
+  const all = byStanding(listed(d.entries));
+  const sort = SORTS.some(([k]) => k === d.sort) ? d.sort! : 'standing';
+  const projects = narrowed(all, d.q ?? '', sort);
   return (
     <>
       <TopBar brand={d.brand} nav={d.slots?.nav} />
       <div class="page">
         <div class="front">
           <div class="copy">
-            {d.slots?.front ?? <><p class="label">{d.brand}</p><h1>Projects that build themselves.</h1><p class="lede">{projects.length === 1 ? 'One project builds itself here.' : `${projects.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}
-            <Stripe entries={projects} more={d.slots?.stripe} />
+            {d.slots?.front ?? <><p class="label">{d.brand}</p><h1>Projects that build themselves.</h1><p class="lede">{all.length === 1 ? 'One project builds itself here.' : `${all.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}
+            <Stripe entries={all} more={d.slots?.stripe} />
           </div>
           <div class="pic">{raw(vortex(d.brand))}<span class="cap tr">Simple<br />rules<br />open<br />books</span>{raw(MARK_SVG)}<span class="cap br">Every call<br />metered<br />as it<br />happens</span></div>
         </div>
-        <div class="shelf" id="projects"><h2 class="sech" style="margin:0">Projects</h2><span class="label">{projects.length} {projects.length === 1 ? 'project' : 'projects'}</span></div>
-        {projects.length ? <div class="grid">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div> : <p class="empty">No project yet. A repository appears here once it has a key and its repository has synced.</p>}
+        <div class="shelf" id="projects"><h2 class="sech" style="margin:0">Projects</h2><span class="label">{d.q ? `${projects.length} of ${all.length}` : `${all.length} ${all.length === 1 ? 'project' : 'projects'}`}</span></div>
+        {all.length > 1 ? <form class="finder" method="get" action="/#projects" role="search">
+          <input type="search" name="q" value={d.q ?? ''} placeholder="Search projects by name, owner or line…" aria-label="Search projects" />
+          <select name="sort" aria-label="Order">{SORTS.map(([k, label]) => <option value={k} selected={k === sort}>{label}</option>)}</select>
+          <button class="btn quiet small" type="submit">Search</button>
+          {d.q ? <a class="clear" href="/#projects">Clear</a> : null}
+        </form> : null}
+        {projects.length ? <div class="grid">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div> : all.length ? <p class="empty">No project matches “{d.q}”. <a href="/#projects">Show them all</a>.</p> : <p class="empty">No project yet. A repository appears here once it has a key and its repository has synced.</p>}
+        {d.slots?.after}
       </div>
       <Foot brand={d.brand} nav={d.slots?.nav} />
     </>
