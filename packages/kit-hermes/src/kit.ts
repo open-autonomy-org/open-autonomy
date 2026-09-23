@@ -205,6 +205,15 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     put(at, rel, m.text);
     (m.clean ? out.merged : out.conflicts).push(rel);
   }
+  // A project that commits its host package's lockfile: the start installs it frozen, so a package.json the
+  // upgrade changed with the lock left behind would stop every start. The lock is re-resolved here, beside it.
+  const hostPackage = '.open-autonomy/package.json';
+  const lock = join(dir, '.open-autonomy', 'bun.lock');
+  if (existsSync(lock) && [...out.written, ...out.merged].includes(hostPackage)) {
+    const r = spawnSync('bun', ['install', '--lockfile-only'], { cwd: join(dir, '.open-autonomy'), encoding: 'utf8', timeout: 120_000 });
+    if (r.status === 0) out.written.push('.open-autonomy/bun.lock');
+    else out.kept.push(`.open-autonomy/bun.lock: could not be re-resolved for the new package.json (${(r.stderr || r.error?.message || '').trim().slice(-200)}); run \`bun install\` in .open-autonomy, or the start's frozen install refuses`);
+  }
   // Repair the exact empty-list spelling emitted by older kits. Other project
   // policy, including malformed custom values, remains the owner's to resolve.
   const policyFile = join(dir, '.open-autonomy/config.yaml');
