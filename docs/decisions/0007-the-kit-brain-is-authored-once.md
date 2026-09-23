@@ -186,9 +186,16 @@ Everything in the Decision beyond that is this author's design:
 - interpolation-only renders
 - rewriting skills onto Supercode verbs
 - per-worker metering stubs
+- laying both profiles' configs from base for `hermes`
+- writing `jobs.seed.json` from the source's jobs instead of laying the exported file
+- reading a missed run from the uniform `next_run_at`
+- the two candidate homes for the cursor (a Supercode job-notepad verb, or the PM carrying its cursor in
+  its own landed commits)
 - the order of proof.
 
-The step (1) items are unverified. They are fact-finders, not findings.
+Step (1) was measured as recorded there. What remains unverified: its two open items (reporter discovery,
+the package release) and the preconditions it produced (the cursor's cross-harness home, a uniform delivery
+error).
 
 ## Alternatives and tradeoffs
 
