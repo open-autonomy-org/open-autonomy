@@ -49,8 +49,12 @@ until the one after `v0.4.39`: 0.4.39 was cut before the second review's fixes.
 - The board-free skews (manage-project, manage-organization) seed their jobs from `hermes/cron/jobs.seed.json`
   through the Python seed hook (`base/hermes/hooks/seed`). They use only `name`, `prompt`, `schedule` and
   `skills`. The hook also:
-  - pins each job's model and provider to `config.yaml`'s route;
-  - falls back to `local` delivery when a named platform has no credential;
+  - re-pins each job's model and provider to `config.yaml`'s route on every gateway start (how a
+    changed model reaches live jobs);
+  - pins each job's `workdir` to the checkout: a Hermes cron job with no workdir runs without the
+    repository's `AGENTS.md`/`CLAUDE.md` context (`cron/scheduler.py`, `skip_context_files`);
+  - falls back to `local` delivery when a named platform has no credential. It cannot fire for these
+    skews: their seeds declare no delivery;
   - seeds webhook routes, which no skew declares.
 - Self-build's seeds add `monitor_script`, which `jobs apply` does not cover, and self-build runs on Hermes's
   board.
@@ -69,9 +73,16 @@ until the one after `v0.4.39`: 0.4.39 was cut before the second review's fixes.
   - Content: the persona, skills, and harness plugins such as the session-attribution plugin, as files.
   - Spec: its declared jobs and model route.
 - **The board-free skews declare their jobs as a spec.** manage-project and manage-organization ship
-  `.open-autonomy/jobs.json`, a `jobs apply` spec with the same four fields, in place of their
-  `jobs.seed.json`. `start.ts` applies it through `supercode jobs apply` before the gateway serves. Its report
-  goes to the start log. The seed hook no longer creates their jobs.
+  `.open-autonomy/jobs.json`, a `jobs apply` spec, in place of their `jobs.seed.json`.
+  - The committed spec carries `name`, `prompt`, `skills` and the schedule as `{"kind": "interval",
+    "minutes": 1440}`.
+  - At each start, `start.ts` completes it with what the seed hook supplied from the running stack: `model`
+    and `provider` from the home's `config.yaml` route, and `workdir` as the checkout. So a changed model
+    still reaches live jobs, and jobs keep the project's context.
+  - It then applies the spec through `supercode jobs apply` before the gateway serves. Its report goes to the
+    start log.
+  - The seed hook skips job seeding when `.open-autonomy/jobs.json` exists, so a project that keeps its old
+    `jobs.seed.json` (a seeded file an upgrade never removes) is not written twice.
 - **Their skills speak Supercode's verbs.**
   - The two health lines use `supercode jobs list` and `runs list`. A failed fire is a failed status, a
     missed run is a past `next_run_at`, and a failed delivery is `last_delivery_error`.
@@ -79,8 +90,8 @@ until the one after `v0.4.39`: 0.4.39 was cut before the second review's fixes.
   - After this, nothing in these skews calls Hermes's CLI.
 - **The model route stays declared where each harness reads it.** For Hermes that is `config.yaml`, laid from
   base as today (seeded once, the project's own). A target whose harness takes its route through
-  `model-route apply` gets it declared there. Jobs carry no model pin: an unpinned Hermes job follows the
-  configured model.
+  `model-route apply` gets it declared there. Jobs stay pinned to that route's model, as today, by the
+  start-time completion above.
 - **Targets follow Supercode.** `create`/`adopt` take `--target hermes` (the default and, for now, the only
   value), and `kit.json` records it. The kit offers another target only when Supercode's doors that these
   skews use (`jobs apply`, `jobs notepad`, `jobs list`/`runs list`, `model-route apply`) answer for that
@@ -108,16 +119,16 @@ author's design:
 - Using Supercode's doors instead of its orchestration export.
 - The spec file and `start.ts` applying it.
 - Leaving self-build on its seed hook.
-- Dropping the per-job model pin.
+- Completing the spec at start with the route's model and provider and the checkout as `workdir`.
+- The seed hook stepping aside when a spec exists.
 - The target flag's gating on measured doors.
 - The order of proof.
 
 Unverified:
-- That an unpinned Hermes job follows `config.yaml`'s model. Hermes's `cron edit --model` help says an
-  empty pin "follow[s] cron.model / config".
 - That a skill running in the executor reaches Supercode's CLI with the same `HERMES_HOME`.
-- That applying a spec over a job the seed hook made reports it `unchanged`: the seed hook wrote a pinned
-  model and a workdir, which the spec does not declare and `apply` leaves alone.
+- That applying the completed spec over a job the seed hook made reports it `unchanged`. By reading:
+  Hermes parses `"every 24h"` as an interval of 1440 minutes, prompt and skills match the seed, and the hook
+  pinned the same model, provider and workdir that start supplies.
 
 ## Alternatives and tradeoffs
 
