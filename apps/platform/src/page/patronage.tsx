@@ -9,7 +9,7 @@ import type { Patron, PatronageView, Tier } from '../patronage.js';
 
 // The platform's own rules, from the core's tokens: the cover, the tiers, the ladder, and the fold under them.
 export const PATRONAGE_STYLES = `
-.tierset{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr);gap:16px;align-items:stretch}
+.tierset{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr);gap:16px;align-items:start}
 .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
 .tier{display:flex;flex-direction:column;padding:22px 22px 20px;background:${T.panel};border:1px solid ${T.line}}
 .tier.feat{background:${T.lime};border-color:${T.lime}}

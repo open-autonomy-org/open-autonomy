@@ -124,7 +124,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .band-cta a{font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .foot{margin-top:0}
 ${PATRONAGE_STYLES}
-@media(max-width:900px){.ident{grid-template-columns:1fr;gap:28px;padding-top:32px}.ident .pic{max-width:360px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:18px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic{max-width:240px}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
+@media(max-width:900px){.ident{grid-template-columns:1fr;gap:28px;padding-top:32px}.ident .pic{max-width:360px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:18px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic,.sec>h2 small{display:none}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
 @media(max-width:480px){.ask .money{font-size:38px}}
 `;
 

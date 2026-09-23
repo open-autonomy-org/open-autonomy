@@ -34,7 +34,7 @@ function jumpsOf(d: DashData, pages: typeof PAGES): Jump[] {
   const open = (panel: keyof DashData['visibility']) => sees(d.viewer, d.visibility[panel]);
   return [
     ...pages.map((p) => ({ id: `page:${p.id}`, kind: 'Page', hint: '', label: p.label, href: href(a, p.id) })),
-    ...(open('work') ? d.roadmap.items.map((i) => ({ id: `item:${i.id}`, kind: tenseOf(i) === 'past' ? 'Shipped' : i.status === 'active' ? 'In progress' : 'Planned', hint: i.id, label: i.title, href: href(a, 'board', i.id) })) : []),
+    ...(open('work') ? d.roadmap.items.map((i) => ({ id: `item:${i.id}`, kind: taskOf(d, i).lane, hint: i.id, label: i.title, href: href(a, 'board', i.id) })) : []),
     ...(open('sessions') ? d.sessions.slice(0, 60).map((x) => ({ id: `session:${x.key}`, kind: x.kind === 'run' ? 'Run' : 'Session', hint: fmtAgo(x.started_at, d.now), label: rowOf(d, x).title ?? x.key, href: href(a, 'sessions', x.key) })) : []),
     ...(open('agent') ? jobsOf(d).map((j) => ({ id: `job:${j.key}`, kind: 'Job', hint: '', label: `${j.title} · fires ${j.schedule}`, href: href(a, 'agent') })) : []),
   ];
@@ -552,7 +552,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-palette-list{max-height:360px;margin:0;padding:4px;overflow:auto;list-style:none}
 .oa-palette-item{display:grid;grid-template-columns:84px minmax(0,1fr) auto;align-items:center;gap:10px;height:28px;padding:0 8px;cursor:pointer}
 .oa-palette-item[aria-selected=true]{background:var(--oa-lime)}
-.oa-palette-item .k{color:#737882;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oa-palette-item .k{color:#737882;font-size:10.5px;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oa-palette-item .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oa-palette-item .l b{margin-right:8px;color:#737882;font-weight:400}
 .oa-palette-empty{padding:10px 8px;color:#737882}
