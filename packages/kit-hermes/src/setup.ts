@@ -317,13 +317,20 @@ async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promi
   say("\nSubscription: both Hermes profiles use openai-codex through the host valve. The installed Codex owns the current login and refresh. Setup does not copy credentials; run the host service as this user with the same CODEX_HOME.");
   if (opts.plan) return;
   await codexAccess();
-  for (const rel of ['hermes/config.yaml', 'hermes/profiles/treasurer/config.yaml']) {
-    const cfg = join(s.dir, rel);
-    if (!existsSync(cfg)) continue;
-    const text = readFileSync(cfg, 'utf8');
-    if (/^\s+provider:\s*openai-codex\s*$/m.test(text)) continue;
-    writeFileSync(cfg, text.replace(/^model:\n(?:  .*\n)+/m, 'model:\n  default: gpt-5.6-sol\n  provider: openai-codex\n'));
-    say(`  ${rel} now names the subscription; reconcile the model with the owner's choice and commit it with the rest.`);
+  // the agent's setup (docs/decisions/0007): each profile's named model moves to the subscription, nothing else
+  const file = join(s.dir, '.open-autonomy', 'agent.json');
+  if (existsSync(file)) {
+    const agent = JSON.parse(readFileSync(file, 'utf8')) as { profiles: Record<string, { inference?: { models?: Record<string, Record<string, unknown>>; default?: string } }> };
+    let moved = false;
+    for (const [profile, pkg] of Object.entries(agent.profiles ?? {})) {
+      const name = pkg.inference?.default;
+      const model = name ? pkg.inference?.models?.[name] : undefined;
+      if (!model || model.provider === 'openai-codex') continue;
+      pkg.inference!.models![name!] = { provider: 'openai-codex', model: 'gpt-5.6-sol' };
+      say(`  .open-autonomy/agent.json: the ${profile} profile's model now names the subscription; reconcile it with the owner's choice and commit it with the rest.`);
+      moved = true;
+    }
+    if (moved) writeFileSync(file, `${JSON.stringify(agent, null, 2)}\n`);
   }
   mark(s.dir, st, 'subscription', 'openai-codex in both profiles; current host Codex login, no project credential copy');
 }

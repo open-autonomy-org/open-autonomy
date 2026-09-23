@@ -47,7 +47,7 @@ What this record uses from it:
 
 ## Decision
 
-- **The package.** Each project carries `.open-autonomy/setup.json`, the declared records of its agent
+- **The package.** Each project carries `.open-autonomy/agent.json`, the declared records of its agent
   setup, one entry per profile (`default`, and the treasurer):
   - `inference`: the named model `project` (provider `custom`, the model, `endpoint:
     OPEN_AUTONOMY_BASE_URL` and `credential: OPEN_AUTONOMY_KEY` by custody name, `api_mode`), the
@@ -64,29 +64,37 @@ What this record uses from it:
   `start.ts` runs the applier once per profile against that profile's home: provisioning the home on its
   first start, resolving the parameters (the workspace is the checkout's path) and applying. The applier's
   report goes to the start log; its conflicts are the agent's to act on (capture back into
-  `setup.json` by a commit, or restore by leaving the declaration).
+  `agent.json` by a commit, or restore by leaving the declaration).
 - **What the seed hook did, the applier does by the IR's rules.** A changed model reaches every job
   because each job names the model `project` and the pointer moves (`act`); the workspace reaches every job
   as its declared `workdir`; a job whose declaration changed is edited through `update_job`; a job the
   agent or an operator changed is reported, not overwritten. What the hook did that the IR refuses —
   falling back to `local` delivery when a platform has no credential — goes: Hermes's own preflight
   blocks such a run, once alerted.
-- **Upgrade.** The kit's three-way merge carries `setup.json` like any file. The first start on the new
-  layout finds a home with no apply state and live jobs the seed hook made: the runtime adopts each job the
-  package declares by its key, once (an explicit per-home act), and the next apply converges them.
+- **Upgrade.** A project on the old layout gets its `.open-autonomy/agent.json` derived by the upgrade from
+  its own files — `hermes/config.yaml`'s model (a `${NAME}` endpoint or key becomes its custody name; a
+  literal URL or the valve's `valve` key stays literal), every other key as `extensions.hermes.config`,
+  the treasurer's the same, and its job seed with the model `project` and the workspace declared — so its
+  choices (a Codex subscription, Discord bindings, a changed schedule) are kept, and those files and the
+  seed hook are retired. After that the kit's three-way merge carries `agent.json` like any kit-owned file.
+  The first start on the new layout finds a home with no apply state and the jobs the seed hook made: the
+  runtime adopts each job the package declares by its key, once (an explicit per-home act); the next apply
+  converges them, keeping a live model pin the package does not name until the declared model changes.
 - **Targets.** `hermes` is the target the kit renders for today. The same package applies to the
   orchestrator (`--orchestrator <root>`), whose workers are Claude Code or Codex; offering it as a kit
   target waits on an ADR 0001 amendment naming its scheduler, image and reporter.
 - **The fleet.** A fleet gateway's profile names are flat, so the composer namespaces each project's
-  profiles by the repository (`<repo>` and `<repo>-treasurer`) and rewrites the references, never
-  dropping one. A treasurer in a fleet gets its own pay door on the valve, as it has alone.
+  profiles by the repository (`<repo>` and `<repo>-treasurer`), never dropping one: a name that would not
+  be a Hermes profile id, or would collide, refuses the composition. A treasurer in a fleet gets its own pay
+  door on the valve (the project's fourth-port block's second port, its `treasurer.env`), as it has alone.
+  This is a money path: the owner reads it before the kit's release.
 
 ## What this record extrapolates beyond the owner's words
 
 The owner directed that the template be written once and rendered for the harness picked, that a
 project's spec be a file its repository merges, and that the IR be derived from real setups; Supercode's
 IR is accepted. The following are this author's design, marked so:
-- the file name and shape of `setup.json`, and one entry per profile;
+- the file name and shape of `agent.json`, and one entry per profile;
 - applying at every start, before the gateway, per profile;
 - dropping the seed hook's `local` delivery fallback;
 - the runtime adopting the seed hook's jobs once on the first start after the upgrade;
@@ -121,7 +129,7 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 
 ## Consequences
 
-- **ADR 0006, amended:** a project's brain is its content files plus `.open-autonomy/setup.json`;
+- **ADR 0006, amended:** a project's brain is its content files plus `.open-autonomy/agent.json`;
   `hermes/config.yaml`, the treasurer's config, the job seeds and the seed hook are retired by the
   upgrade; `kit.json` records the target (`hermes` when absent).
 - **ADR 0001, amended:** the host runs the applier before the gateway, in bare and container mode alike;
@@ -136,7 +144,7 @@ Each step is a hand-run walk in a World; a step that fails stops the ones after 
 - **Only the SDK is real; the platform shows, does not steer.** Compatible: the reporter is unchanged.
 - **Authority comes from the repository.** Strengthened: the agent setup is one committed file, and a live
   change the repository did not make is reported rather than kept silently.
-- **Nothing in an agent's reach is a secret that matters.** Compatible: `setup.json` carries custody names,
+- **Nothing in an agent's reach is a secret that matters.** Compatible: `agent.json` carries custody names,
   never values; the applier never writes a custody value.
 - **No automated tests; nothing develops against a real API.** Compatible: each proof step is a hand-run
   walk in a World.

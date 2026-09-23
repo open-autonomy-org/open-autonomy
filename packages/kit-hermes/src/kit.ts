@@ -3,8 +3,9 @@
 //   kit-owned   the agent's home, the reporter, the container stack, the landing workflows: what the kit
 //               keeps current. `check` tells how the project stands against it; `upgrade` merges the kit's
 //               change into the project's copy three-way, the recorded version's render as the ancestor.
-//   seeded      README, the board's seed, CONTRIBUTING.md, the constitution, changelog, AGENTS.md, license, the model config, the publish
-//               policy: the project's own files, written once as a courtesy and never touched again.
+//   seeded      README, the board's seed, CONTRIBUTING.md, the constitution, changelog, AGENTS.md, license, the publish
+//               policy: the project's own files, written once as a courtesy and never touched again. The agent's setup
+//               (.open-autonomy/agent.json: its model, settings and jobs) is kit-owned and merged like the rest.
 // `.open-autonomy/kit.json` records which kit, which version and which parameters made the repo: the anchor
 // `check` and `upgrade` read, so neither needs to be told anything twice.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
+import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
 export const KIT = { name: 'hermes', version: (JSON.parse(readFileSync(resolve(import.meta.dir, '..', 'package.json'), 'utf8')) as { version: string }).version } as const;
@@ -33,7 +35,9 @@ export function validateSkew(s: unknown): Skew {
 // What the kit keeps current. Everything else in the template is seeded once.
 // A project's own, seeded once: its config (the treasurer's too: the model is the project's choice for both profiles),
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
-const OWNED = [/^hermes\/(?!config\.yaml$|kanban\.seed\.json$|cron\/jobs\.seed\.json$|cron\/webhooks\.seed\.json$|profiles\/treasurer\/config\.yaml$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+// The agent setup (.open-autonomy/agent.json, docs/decisions/0007) is kit-owned: the kit's changes reach it by the
+// three-way merge, the project's own edits kept.
+const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.ts|reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -154,6 +158,16 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   const base = await ancestor(rec.version, rec.params, rec.skew);
   const theirs = render(rec.params, rec.skew);
   const out: Upgrade = { from: rec.version, to: KIT.version, written: [], merged: [], kept: [], conflicts: [], retired: [] };
+  // The layout change (docs/decisions/0007): a project still carrying its agent setup as Hermes's files gets its
+  // .open-autonomy/agent.json derived from them — its own model, settings and jobs, not the kit's defaults — and
+  // those files and the seed hook retired. The loop below then leaves agent.json alone this once: the project's
+  // own values are its version, and the next upgrade merges against this kit's render.
+  const derived = legacyAgent(dir);
+  if (derived) {
+    put(join(dir, '.open-autonomy/agent.json'), '.open-autonomy/agent.json', Buffer.from(`${JSON.stringify(derived, null, 2)}\n`));
+    out.written.push('.open-autonomy/agent.json (from the project\'s own Hermes config and job seed)');
+    for (const rel of LEGACY_FILES) if (existsSync(join(dir, rel))) { rmSync(join(dir, rel), { force: true }); prune(dir, rel); out.retired.push(rel); }
+  }
   // Migrate only missing planning notes, using this project's seed rather than
   // the template's hello task. The live board is reconciled by PM, never by upgrade.
   if (!existsSync(join(dir, 'ROADMAP.md'))) {
@@ -167,6 +181,8 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   }
   for (const rel of new Set([...base.keys(), ...theirs.keys()])) {
     if (rel === KIT_FILE || !isOwned(rel)) continue;
+    if (derived && rel === '.open-autonomy/agent.json') continue;
+    if (derived && LEGACY_FILES.includes(rel)) continue;
     const at = join(dir, rel);
     const o = existsSync(at) ? readFileSync(at) : undefined;
     const b = base.get(rel);
