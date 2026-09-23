@@ -23,7 +23,7 @@ function fetchKit(version: string): string {
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'open-autonomy-kit-ancestor', private: true, dependencies: { 'create-open-autonomy': version } }, null, 2)}\n`);
   const r = spawnSync('bun', ['install', '--silent'], { cwd: dir, encoding: 'utf8', timeout: 180_000 });
   const got = existsSync(pkg) ? JSON.parse(readFileSync(pkg, 'utf8')) as { name?: string; version?: string } : {};
-  if (r.status !== 0 || got.name !== 'create-open-autonomy' || got.version !== version) throw new Error(`create-open-autonomy@${version}, the kit this project last took, could not be fetched into ${dir}: ${(r.stderr || r.stdout || 'no output').trim().split('\n').pop()}. The merge needs its render as the ancestor.`);
+  if (r.status !== 0 || got.name !== 'create-open-autonomy' || got.version !== version) throw new Error(`create-open-autonomy@${version}, the kit this project last took, could not be fetched into ${dir}: ${(r.stderr || r.stdout || 'no output').trim().split('\n').pop()}. The merge needs its render as the ancestor. A version the registry never held (a kit taken from a source checkout) is supplied from source: its packages/kit-hermes as ${join(dir, 'node_modules', 'create-open-autonomy')} and its packages/sdk as ${join(dir, 'node_modules', '@open-autonomy', 'sdk')}, both at that version's commit.`);
   return dir;
 }
 
