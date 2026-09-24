@@ -6,7 +6,7 @@ import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { fmtAgo, usd } from '../ui.js';
 import { Foot, TopBar, at, ownerOf, safeUrl } from './parts.js';
 import { ProjectCard, byStanding, listed } from './directory.js';
-import type { AccountSlots, Role } from './model.js';
+import { openTo, type AccountSlots, type Role } from './model.js';
 
 // What a project given to did after a gift, as that project opens it to everyone: absent when it keeps it closed.
 export interface Impact { sessions?: SessionSummary[]; roadmap?: Roadmap }
@@ -59,7 +59,7 @@ export function Account(d: AccountPageData) {
             <h1>{d.name}</h1>
             <p class="line">{line}</p>
             <div class="meta">
-              {projects.length ? <span><b>{usd(projects.reduce((s, e) => s + e.balance_usd_cents, 0))}</b> in the bank across projects</span> : null}
+              {projects.length ? <span><b>{usd(projects.filter((e) => openTo(e.profile.config_yaml, 'books')).reduce((s, e) => s + e.balance_usd_cents, 0))}</b> in the bank across projects{projects.some((e) => !openTo(e.profile.config_yaml, 'books')) ? ' with open books' : ''}</span> : null}
               {f ? <span><b>{usd(f.given_usd_cents)}</b> given</span> : null}
               {d.slots?.meta}
               <a href={`https://github.com/${encodeURIComponent(d.name)}`} target="_blank" rel="noopener">github.com/{d.name} ↗</a>

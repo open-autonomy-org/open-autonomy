@@ -5,7 +5,7 @@ import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { servePages, type PageApp } from './page/serve.js';
-import { roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
+import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { syncAllStale, syncProfile } from './sync.js';
 import { grantsAccount, hasScope, type Env } from './types.js';
@@ -144,8 +144,8 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await give(env, claims.account, body.to, body.usd_cents, body.note, typeof body.key === 'string' ? `give:${claims.account}:${body.key}` : `give:${crypto.randomUUID()}`, body.for);
     return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' || r.error === 'no_such_item' ? 404 : 400 });
   }
-  // An org at a glance (ADR 0010): its own word and bounds, and each listed project under it with its effective word,
-  // money and live sessions: what the page `/<org>` already shows everyone.
+  // An org at a glance (ADR 0010): its own word and bounds, and each project listed under it (its overview open to
+  // everyone) with its effective word, and its money and live sessions where those panels are open to everyone too.
   if ((m = path.match(/^\/v1\/orgs\/([^/]+)$/))) {
     if (get()) return get()!;
     const name = dec(m[1]).replace(/^@/, '').toLowerCase();
@@ -155,7 +155,12 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const own = await ledger.state(`@${name}`);
     return json({
       ok: true, org: `@${name}`, ...(own.desired ? { desired: own.desired } : {}), bounds: org.found ? org.bounds.org?.limits ?? [] : [],
-      projects: projects.map((e) => ({ account: e.account, ...(e.control ? { control: e.control } : {}), balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted, live_sessions: e.live_sessions })),
+      // Each figure as the project's own doors would answer everyone: its money with its books, its sessions with them.
+      projects: projects.map((e) => ({
+        account: e.account, ...(e.control ? { control: e.control } : {}),
+        ...(openTo(e.profile.config_yaml, 'books') ? { balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted } : {}),
+        ...(openTo(e.profile.config_yaml, 'sessions') ? { live_sessions: e.live_sessions } : {}),
+      })),
     }, { headers: NO_STORE });
   }
   if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
