@@ -134,7 +134,7 @@ export function renderNowSvg(sessions: SessionSummary[], live: string[], schedul
     ? `${first.source ?? first.kind} · running ${fmtDur(first.started_at, undefined, now)}${first.item_id ? ` · ${first.item_id}` : ''}${liveSessions.length > 1 ? ` · +${liveSessions.length - 1} live` : ''}`
     : sched ? `${sched.name ?? 'agent'} · fires ${sched.schedule ?? '?'}` : 'no schedule committed';
   const sub = first
-    ? `${first.turn_count} turns · ${first.tool_calls} tool calls · ${usd(first.usd_cents)} so far`
+    ? `${first.turn_count} turns · ${first.tool_calls} tool calls${first.usd_cents === undefined ? '' : ` · ${usd(first.usd_cents)} so far`}`
     : last ? `last run ${fmtWhen(last.started_at)} · ${last.outcome ?? 'ended'}${last.item_id ? ` · ${last.item_id}` : ''}${last.commit_sha ? ` · ${shortSha(last.commit_sha)}` : ''}` : 'no runs yet';
   const color = first ? C.blue : last?.outcome === 'failed' ? C.red : C.green;
   return frame(72, '⏱ now', title, `  <text x="16" y="54" font-family="${MONO}" font-size="11" fill="${C.muted}">${esc(clip(sub, 66))}</text>`, color);

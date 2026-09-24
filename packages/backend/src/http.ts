@@ -78,10 +78,12 @@ export async function hmac(secret: string, payload: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))));
 }
 
-// Money on the wire is every field named `*usd_cents`. A viewer the owner keeps from a project's books gets a record
-// with none of them, wherever the record comes from (a session, a call, an item, the pulse of the event stream).
+// Money on the wire is every field named `*usd_cents`, and whose money paid is the envelope a spend drew from (its
+// `envelope`, `envelopes` and `gift_id`). A viewer the owner keeps from a project's books gets a record with none of
+// them, wherever the record comes from (a session, a call, an item, the pulse of the event stream).
+const BOOKS_KEYS = new Set(['envelope', 'envelopes', 'gift_id']);
 export function withoutMoney<T>(value: T): T {
   if (Array.isArray(value)) return value.map(withoutMoney) as T;
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([k]) => !k.endsWith('usd_cents')).map(([k, v]) => [k, withoutMoney(v)])) as T;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([k]) => !k.endsWith('usd_cents') && !BOOKS_KEYS.has(k)).map(([k, v]) => [k, withoutMoney(v)])) as T;
 }

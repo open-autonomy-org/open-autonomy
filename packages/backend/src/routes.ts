@@ -242,7 +242,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (kind === 'activity') return new Response(renderActivitySvg(await ledger.funding(account)), { headers: SVG });
     if (kind === 'roadmap') { const road = await ledger.roadmap(account); return new Response(renderRoadmapSvg(road.revision?.roadmap.items ?? []), { headers: SVG }); }
     const [stream, view] = await Promise.all([ledger.sessions(account, 20), ledger.project(account)]);
-    return new Response(renderNowSvg(stream.sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
+    // A shared cache keeps this answer for everyone, so it is drawn for everyone: a live run's cost only with open books.
+    const sessions = openTo(view.profile.config_yaml, 'books') ? stream.sessions : withoutMoney(stream.sessions);
+    return new Response(renderNowSvg(sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
   };
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(dec(m[1]), m[2] === 'now' ? 'overview' : m[2] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(dec(m[1]), m[2]); }
   if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(fundingAccount(env), m[1] === 'now' ? 'overview' : m[1] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(fundingAccount(env), m[1]); }
