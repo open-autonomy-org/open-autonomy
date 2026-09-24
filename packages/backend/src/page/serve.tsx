@@ -198,7 +198,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
   // The owner's statements, for the rail's rows and their pages, when the owner opened them to this viewer.
   const statements = sees(role, visibility.statements) ? (await ledger.statements(account)).statements : [];
-  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, ...(signDoor ? { door: signDoor } : {}) };
+  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {

@@ -38,6 +38,8 @@ export interface DashData {
   // The owner's statements the viewer may see, for the rail; on a statement's page, the one it shows.
   statements?: Statement[];
   statement?: string;
+  // The address the page was served at, for what a viewer copies out of it (a README's badge row).
+  origin?: string;
   // The sessions page's filter, from its address: `?show=live|failed`, `?job=<name>`.
   filter?: { show?: 'live' | 'failed'; job?: string };
 }

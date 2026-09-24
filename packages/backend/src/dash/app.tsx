@@ -488,7 +488,7 @@ export function StatementPage({ d }: { d: DashData }) {
   const { standing: up, lapsed } = claimsOf(st, dayOf(d.now));
   const a = d.v.account;
   const api = `/v1/accounts/${encodeURIComponent(a)}/statements/${st.id}`;
-  const origin = typeof location !== 'undefined' ? location.origin : '';
+  const origin = d.origin ?? '';
   return (
     <Shell d={d} title={st.title}>
       <div class="oa-grid">
