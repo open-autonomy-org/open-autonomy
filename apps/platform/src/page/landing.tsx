@@ -342,7 +342,7 @@ export function Landing(d: LandingData) {
         </section>
         <section class="sec" id="tiers">
           <h2>Back the project<small>Every cent on public books</small></h2>
-          <Tiers tiers={d.patronage.tiers} owner={ownerOf(a)} account={a} sponsor={d.sponsor} polar={d.polar} burn={d.v.burn_per_day_usd_cents * 30} />
+          <Tiers tiers={d.patronage.tiers} owner={ownerOf(a)} account={a} sponsor={d.sponsor} polar={d.polar} burn={d.v.burn_per_day_usd_cents} signedIn={Boolean(d.who)} />
         </section>
         <Promises d={d} />
         <Updates d={d} />
