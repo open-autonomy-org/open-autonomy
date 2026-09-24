@@ -37,12 +37,12 @@ export const PATRONAGE_STYLES = `
 .steps b{color:${T.ink};font-weight:500;display:block;margin-bottom:4px}
 .start>div{padding:32px 36px;background:${T.lilac}}
 .start .sech,.start .fine{color:#5d6168}
-.lede-sm{color:${T.body};font-size:16px;line-height:1.55;max-width:60ch}
+.lede-sm{color:${T.body};font-size:16px;line-height:1.55;max-width:70ch}
 .cmd{margin:18px 0 0;padding:14px 16px;background:${T.ink};color:${T.wash};font:13px/1.5 ${MONO};overflow-x:auto}
 .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px;margin:0}
 .faq>div{padding:18px 0;border-top:1px solid ${T.line}}
 .faq dt{font-weight:500;color:${T.ink};margin-bottom:6px}
-.faq dd{margin:0;color:${T.body};font-size:14.5px;line-height:1.6}
+.faq dd{margin:0;color:${T.body};font-size:14.5px;line-height:1.6;max-width:70ch}
 @media(max-width:900px){.steps,.faq{grid-template-columns:1fr}.steps li+li{padding-left:0;border-left:0;border-top:1px solid ${T.line}}.start>div{padding:24px 20px}}
 .others>*+*{padding-top:16px;border-top:1px solid ${T.line}}
 .others .row-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:6px}
