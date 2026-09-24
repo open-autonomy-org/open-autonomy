@@ -140,10 +140,13 @@ jobs:
           GITHUB_OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
           GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
           GIVE_SESSION_HMAC_SECRET: ${{ secrets.GIVE_SESSION_HMAC_SECRET }}
+          VOLTER_ISSUER: ${{ secrets.VOLTER_ISSUER }}
+          VOLTER_CLIENT_ID: ${{ secrets.VOLTER_CLIENT_ID }}
+          VOLTER_CLIENT_SECRET: ${{ secrets.VOLTER_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           n=0
-          for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET GITHUB_OAUTH_CLIENT_ID GITHUB_OAUTH_CLIENT_SECRET GIVE_SESSION_HMAC_SECRET; do
+          for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET GITHUB_OAUTH_CLIENT_ID GITHUB_OAUTH_CLIENT_SECRET GIVE_SESSION_HMAC_SECRET VOLTER_ISSUER VOLTER_CLIENT_ID VOLTER_CLIENT_SECRET; do
             v="${!name:-}"
             if [ -z "$v" ]; then echo "$name: not set in the production environment; skipped"; continue; fi
             printf '%s' "$v" | bunx wrangler secret put "$name"; n=$((n+1))
