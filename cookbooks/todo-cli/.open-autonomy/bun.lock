@@ -6,8 +6,8 @@
       "name": "todo-cli-open-autonomy",
       "dependencies": {
         "@volter-ai-dev/supercode": "^0.4.66",
-        "@volter-ai-dev/supercode-harness-sdk": "^0.3.35",
-        "@volter-ai-dev/supercode-orchestrator": "^0.3.3",
+        "@volter-ai-dev/supercode-harness-sdk": "^0.3.36",
+        "@volter-ai-dev/supercode-orchestrator": "^0.3.5",
         "@volter/twin": "0.1.3",
         "@volter/twin-discord": "0.1.2",
         "@volter/twin-github": "0.1.2",
@@ -33,9 +33,9 @@
 
     "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.66", "", { "os": "win32", "cpu": "x64" }, "sha512-1ZpZ42eB+U4sMq0BpElIYY60HxhehyK3RKvJlnp6bWmQOsulFqThwmE9E1/tFOtETRyAn3QI/e9+tGEZRGKZuw=="],
 
-    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.35", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-NbhPGiuz3ww39m0l/Ff58d+K50fBeqNheh/AsSV7oMNo/ddZiywFeLlDL+LISdM1iBc8WMwJpFiVR6r77CVYFw=="],
+    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.36", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-RU7oYjuItdvWgIaxZuig2F9Hgu755gUroIcOB+yUWnEu5Te0b1RCDB7XaS18d2ol6qa5fBlq5dZyiABF576+RQ=="],
 
-    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.3.3", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.35", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-qxO6nXPbEzasuPjCCcYkCHZz355t4QT1mPvPjBUPQWLxy5LXdY96KeCkiCMcKkJ+A9EPfL+LtGDkC3VG6WeUfQ=="],
+    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.3.5", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.36", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-QhZCKOC/H7SIbEwe6AIDxine1Q/bcghCUOl0tbehZHtZMGiWIH7BY/Jtk6atE2Zh/C4D5maoipxSrxHmTgTfVg=="],
 
     "@volter/twin": ["@volter/twin@0.1.3", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-K6cKB2dYxtjC2L/H9quREEV38tlQsrkxZt7kIpDUKJbQ79cL4uz9cP20Bdc1DSpn/vbk3ESNPtWh1/uOdRN8HQ=="],
 
