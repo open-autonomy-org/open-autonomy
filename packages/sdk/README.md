@@ -73,7 +73,7 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | Route | What |
 |---|---|
 | `POST /v1/rails/card` `{ usd_cents, purpose? }` | a single-use virtual card minted against the balance (Stripe Issuing), bounded to the amount and the owner's merchant categories; returns the card's `id`, `last4`, expiry, and `number`/`cvc` where the issuer exposes them. A merchant's authorization is decided in real time, its capture settles as a `card` record (merchant, category, last4), and the card is retired |
-| `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login; the key can only give |
+| `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login (an organization's only in `<org>/.github`, where `scopes: ["steer"]` mints the org's steer key instead, ADR 0010); the key can only give |
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key?, for? }` (a give key) | grant credits from the funder's books to a project's, once per `key`; `for` may be `"any"`, `"model"`, `{models: [...]}`, or `{item: "id"}`, and absent means unrestricted |
 | `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received |
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
@@ -145,8 +145,9 @@ Public reads, no key:
 | `GET /v1/accounts/:account/items/:item/events` | Server-Sent Events: `item` on change, until nothing is live |
 | `POST /v1/agent/events` with type `org.open-autonomy.project.docs` `{ about_md? }` | the project's document, from whatever file the substrate keeps: what it is (the page leads with the first paragraph) |
 | `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision, the operating state as `<desired>/<observed>`); stays open |
-| `GET /v1/accounts/:account/state` | the operating state: `desired` `{ state, at, by, reason? }` as the owner requested it, `observed` `{ state, at, note? }` as the automation last reported it; either absent until made |
-| `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true` |
+| `GET /v1/accounts/:account/state` | the operating state: `desired` `{ state, at, by, reason?, from? }` as the owner requested it, `observed` `{ state, at, note? }` as the automation last reported it; either absent until made. A project inherits its org's pause: while `@<owner>` is paused and the project's own word is not, `desired` is the org's with `from: "@<owner>"`, and the project's own record is beside it as `own` |
+| `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true`. On an org's key (`@<org>`, minted through `<org>/.github`) it is the org's word, which every project of the org inherits |
+| `GET /v1/orgs/:org` | an org at a glance: its own `desired`, its `bounds` (the `spend.limits` of `<org>/.github/.open-autonomy/config.yaml`, used by every project of the org together), and each listed project's effective `control`, balance, burn, runway and live sessions |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |
 

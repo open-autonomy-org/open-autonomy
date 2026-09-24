@@ -91,13 +91,25 @@ export function isStale(syncedAt?: string): boolean {
   return !Number.isFinite(t) || Date.now() - t > STALE_MS;
 }
 
-function ghHeaders(env: Env): Record<string, string> {
+export function ghHeaders(env: Env): Record<string, string> {
   const h: Record<string, string> = { accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy' };
   if (env.GITHUB_TOKEN) h.authorization = `Bearer ${env.GITHUB_TOKEN}`;
   return h;
 }
 
+// An org's word (ADR 0010): `<org>/.github/.open-autonomy/config.yaml`, where GitHub itself keeps an org's defaults,
+// onto `@<org>`. Read for an org already on the books or once the file exists; a name with neither stays off them.
+export async function syncOrg(env: Env, org: string): Promise<boolean> {
+  if (!/^@[a-z0-9-]+$/.test(org)) return false;
+  const ledger = new LedgerClient(env.LIMITS);
+  const [config, known] = await Promise.all([fetchRepoText(env, `${org.slice(1)}/.github`, '.open-autonomy/config.yaml', 8_000), ledger.project(org)]);
+  if (config === undefined && !known.found) return false;
+  await ledger.setProfile(org, { synced_at: new Date().toISOString(), config_yaml: config ?? '' });
+  return true;
+}
+
 export async function syncProfile(env: Env, account: string): Promise<boolean> {
+  if (account.startsWith('@')) return syncOrg(env, account);
   if (!account.includes('/')) return false; // named roots are funding nodes, not repositories
   const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
   try {
@@ -125,6 +137,8 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     const ledger = new LedgerClient(env.LIMITS);
     await ledger.setProfile(account, profile);
     await ledger.setDeployment(account, liveAddress ? await liveDeployment(env, account, repo, liveAddress) : undefined);
+    const org = `@${account.split('/')[0].toLowerCase()}`;
+    if (isStale((await ledger.project(org)).profile?.synced_at)) await syncOrg(env, org);
     // The roadmap arrives through the SDK: a substrate narrates the file it works, an owner-side driver pushes
     // its own revisions. The one platform-pulled driver is GitHub milestones, a public tracker with no credential.
     const roadmapCfg = parseRoadmapConfig(config ?? '');
@@ -152,6 +166,16 @@ export async function fetchMilestones(env: Env, repo: string): Promise<Milestone
 }
 
 // A UTF-8 text file from the repository's default branch, size-capped; undefined when absent.
+// Whether a GitHub login is an organization: true or false as GitHub says, undefined when it did not answer.
+export async function isOrganization(env: Env, login: string): Promise<boolean | undefined> {
+  try {
+    const res = await fetch(`${env.GITHUB_API_BASE ?? 'https://api.github.com'}/users/${encodeURIComponent(login)}`, { headers: ghHeaders(env) });
+    if (!res.ok) return undefined;
+    const type = (await res.json() as { type?: string }).type;
+    return type === 'Organization' ? true : type === 'User' ? false : undefined;
+  } catch { return undefined; }
+}
+
 export async function fetchRepoText(env: Env, account: string, path: string, maxBytes = 24_000): Promise<string | undefined> {
   const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
   // The raw host first, with the token when there is one: a private repository answers 404 to a bare request, which

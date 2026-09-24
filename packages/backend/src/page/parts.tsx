@@ -59,7 +59,9 @@ const STANDING: Record<Standing, { cls: string; word: string }> = {
   live: { cls: 'live', word: 'Working now' }, running: { cls: 'ok', word: 'Running' }, requested: { cls: 'warn', word: 'Pause requested' },
   paused: { cls: 'off', word: 'Paused by the owner' }, exhausted: { cls: 'off', word: 'Spending stopped' }, unfunded: { cls: '', word: 'Not yet funded' },
 };
-export const Pill = ({ standing }: { standing: Standing }) => <span class={`pill ${STANDING[standing].cls}`}><span class="dot" />{STANDING[standing].word}</span>;
+// `from`: the org whose word holds (ADR 0010), named in place of the owner.
+export const standingWord = (standing: Standing, from?: string): string => (from && standing === 'paused' ? `Paused by ${from.replace(/^@/, '')}` : from && standing === 'requested' ? `Pause requested by ${from.replace(/^@/, '')}` : STANDING[standing].word);
+export const Pill = ({ standing, from }: { standing: Standing; from?: string }) => <span class={`pill ${STANDING[standing].cls}`}><span class="dot" />{standingWord(standing, from)}</span>;
 
 // ---- the hero ---------------------------------------------------------------------------------------------------
 // A URL from a record is untrusted: https, or a path on this deployment; no quote, paren, angle bracket, backslash or space.

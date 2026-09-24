@@ -144,6 +144,20 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await give(env, claims.account, body.to, body.usd_cents, body.note, typeof body.key === 'string' ? `give:${claims.account}:${body.key}` : `give:${crypto.randomUUID()}`, body.for);
     return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' || r.error === 'no_such_item' ? 404 : 400 });
   }
+  // An org at a glance (ADR 0010): its own word and bounds, and each listed project under it with its effective word,
+  // money and live sessions: what the page `/<org>` already shows everyone.
+  if ((m = path.match(/^\/v1\/orgs\/([^/]+)$/))) {
+    if (get()) return get()!;
+    const name = dec(m[1]).replace(/^@/, '').toLowerCase();
+    const [{ entries }, org] = await Promise.all([ledger.directory(), ledger.project(`@${name}`)]);
+    const projects = entries.filter((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name}/`));
+    if (!projects.length && !org.found) return error('not_found', 404);
+    const own = await ledger.state(`@${name}`);
+    return json({
+      ok: true, org: `@${name}`, ...(own.desired ? { desired: own.desired } : {}), bounds: org.found ? org.bounds.org?.limits ?? [] : [],
+      projects: projects.map((e) => ({ account: e.account, ...(e.control ? { control: e.control } : {}), balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted, live_sessions: e.live_sessions })),
+    }, { headers: NO_STORE });
+  }
   if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
@@ -167,6 +181,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
     if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    if (!claims.account.includes('/')) return error('not_a_project', 403); // an org's steer key pauses; a roadmap is a project's
     const body = parseJson<{ source?: string; roadmap?: Roadmap; by?: string }>(await req.text());
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);
@@ -174,6 +189,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   }
   // The owner's word on the agent's operating state, on a steer-scoped key: running or paused, with a reason. The
   // platform records it and applies nothing; the automation reads it back and reports what became true of itself.
+  // On an org's key (`@<org>`) it is the org's word, which every project of the org inherits (ADR 0010).
   if (path === '/v1/agent/state') {
     if (req.method !== 'POST') return methodNotAllowed();
     const claims = await authedClaims(req, env);

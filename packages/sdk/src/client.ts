@@ -39,9 +39,22 @@ export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 // automation reads the request, applies it through its own machinery (the platform names no method), and reports the
 // state once it is true of itself. The platform keeps the two apart: unrequested means running, unreported means unknown.
 export type OperatingState = 'running' | 'paused';
+// A project inherits its org's word (`@<owner>`), paused if either is: `desired` is the effective word, carrying `from`
+// when it is the org's, with the project's own record beside it as `own`.
 export interface AgentControl {
-  desired?: { state: OperatingState; at: string; by: string; reason?: string };
+  desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
+  own?: { state: OperatingState; at: string; by: string; reason?: string };
+}
+// One of the owner's spend limits over its window, with what has been used in it.
+export interface SpendBound { window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }
+// An org's limit: its total over the org's projects, withheld when any of them keeps its books closed.
+export type OrgSpendBound = Omit<SpendBound, 'used'> & ({ used: SpendBound['used']; withheld?: never } | { used?: never; withheld: true });
+export interface OrgView {
+  org: string;
+  desired?: AgentControl['desired'];
+  bounds: OrgSpendBound[];
+  projects: Array<{ account: string; control?: AgentControl; balance_usd_cents: number; burn_per_day_usd_cents: number; runway_days: number | null; funded: boolean; exhausted: boolean; live_sessions: string[] }>;
 }
 export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
 // The timeline, published whole by the substrate: its source label and the normalized document (see ./roadmap).
@@ -226,12 +239,17 @@ export class OpenAutonomy {
   }
 
   // The operating state as the platform holds it: the owner's request and the automation's answer, apart.
-  //   GET /v1/accounts/:account/state  → { desired?: { state, at, by, reason? }, observed?: { state, at, note? } }
+  //   GET /v1/accounts/:account/state  → { desired?: { state, at, by, reason?, from? }, observed?: { state, at, note? }, own? }
   async state(account: string): Promise<AgentControl | undefined> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/state`);
     if (!res.ok) return undefined;
-    const { desired, observed } = await res.json() as AgentControl;
-    return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}) };
+    const { desired, observed, own } = await res.json() as AgentControl;
+    return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}), ...(own ? { own } : {}) };
+  }
+  // An org at a glance: its own word and bounds, and each listed project under it with its effective word and money.
+  //   GET /v1/orgs/:org
+  async org(name: string): Promise<OrgView> {
+    return this.read(`/orgs/${encodeURIComponent(name.replace(/^@/, ''))}`);
   }
   // The owner's word: run, or pause. Needs the `steer` scope, which a spending key does not carry. Recorded, not applied:
   // the automation applies it and answers through `reportState`.
@@ -273,7 +291,7 @@ export interface FundingView {
   balance_usd_cents: number; granted_in_usd_cents: number; granted_out_usd_cents: number; consumed_usd_cents: number;
   burn_per_day_usd_cents: number; runway_days: number | null; runway_confident: boolean; days_observed: number;
   calls_total: number; last_call_at: string | null; daily_spend_usd_cents: number[];
-  bounds: { models: string[]; limits: Array<{ window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }> };
+  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: OrgSpendBound[] } };
 }
 export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
 
@@ -327,13 +345,19 @@ export async function keyMint(baseUrl: string, account: string, models?: string[
 }
 // `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).
 // A funder: a person who holds grant credits on their own books (`@login`). Their key proves their GitHub
-// login through the claim file in a repository they own and can only give.
+// login through the claim file in a repository they own (an organization's only in `<org>/.github`) and can only give.
 export async function funderChallenge(baseUrl: string, login: string, fetchImpl: typeof fetch = fetch): Promise<KeyChallenge & { funder?: string }> {
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/challenge?funder=${encodeURIComponent(login)}`);
   return await res.json() as KeyChallenge & { funder?: string };
 }
 export async function funderMint(baseUrl: string, login: string, repo: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ funder: login, repo }) });
+  return await res.json() as MintedKey;
+}
+// An org's steer key (`@org`): its pause, which every project of the org inherits. The funder's claim, landed on the
+// default branch of `<org>/.github`, the repository GitHub reads as the org's own.
+export async function orgMint(baseUrl: string, org: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ funder: org, repo: `${org}/.github`, scopes: ['steer'] }) });
   return await res.json() as MintedKey;
 }
 export async function keyRotate(baseUrl: string, currentKey: string, options: { graceSeconds?: number; fetchImpl?: typeof fetch } = {}): Promise<MintedKey> {

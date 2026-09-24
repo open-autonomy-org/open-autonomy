@@ -1,5 +1,5 @@
 import { base64url, constantTimeEqual, error, fromBase64url, hmac, json, methodNotAllowed, modelKey, parseJson } from './http.js';
-import { fetchRepoText } from './sync.js';
+import { fetchRepoText, isOrganization } from './sync.js';
 import { LedgerClient } from './ledger.js';
 import { DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope } from './types.js';
 
@@ -19,7 +19,8 @@ export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
 const SCOPES: KeyScope[] = ['spend', 'pay', 'narrate', 'steer', 'give'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
-// A funder is a person: `@<github login>` on the books, proven by the claim file in a repository they own.
+// A funder is a person or an org: `@<github login>` on the books, proven by the claim file in a repository they own
+// (an org's in `<org>/.github`, ADR 0010).
 const FUNDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
 const FUNDER_ACCOUNT_RE = /^@[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 export const funderAccount = (login: string): string => `@${login.toLowerCase()}`;
@@ -50,8 +51,9 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   // A project's key names owner/repo; a funder's names @login and carries no models (it can only give).
   if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !(ACCOUNT_RE.test(claims.account) || FUNDER_ACCOUNT_RE.test(claims.account))) return null;
   if (!Array.isArray(claims.models) || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
-  const giveOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give');
-  if (!claims.models.length && !giveOnly) return null;
+  // A name's key (a funder's give, an org's steer: ADR 0010) buys nothing, so it carries no models.
+  const nameOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give' || x === 'steer');
+  if (!claims.models.length && !nameOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
@@ -88,7 +90,7 @@ export async function handleKeyChallenge(req: Request, env: Env): Promise<Respon
   if (funder !== null) {
     if (!FUNDER_RE.test(funder)) return error('invalid_funder', 400);
     const tomorrow = dayKeyUTC(new Date(Date.now() + 86_400_000));
-    return json({ ok: true, funder: funder.toLowerCase(), file: CLAIM_FILE, claim: await claimCode(env, funderAccount(funder), dayKeyUTC()), valid_through: `${tomorrow}T23:59:59Z`, next: `commit ${CLAIM_FILE} containing the claim to the default branch of a repository you own (${funder}/<repo>), then POST /v1/keys/mint {"funder":"${funder}","repo":"${funder}/<repo>"}` });
+    return json({ ok: true, funder: funder.toLowerCase(), file: CLAIM_FILE, claim: await claimCode(env, funderAccount(funder), dayKeyUTC()), valid_through: `${tomorrow}T23:59:59Z`, next: `commit ${CLAIM_FILE} containing the claim to the default branch of a repository you own (${funder}/<repo>; an organization's in ${funder}/.github), then POST /v1/keys/mint {"funder":"${funder}","repo":"${funder}/<repo>"}` });
   }
   const account = url.searchParams.get('account') ?? '';
   if (!ACCOUNT_RE.test(account)) return error('invalid_account', 400);
@@ -117,7 +119,16 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
     const account = funderAccount(body.funder);
     const accepted = [await claimCode(env, account, dayKeyUTC()), await claimCode(env, account, dayKeyUTC(new Date(Date.now() - 86_400_000)))];
     if (!accepted.includes(found)) return error('claim_mismatch', 403);
-    return mintKey(env, account, [], ['give']);
+    // An org's word and an org's credits (ADR 0010) are proven in `<org>/.github`, the repository GitHub reads as
+    // the org's own: a claim in any other of its repositories proves that repository, not the org. A person's
+    // give key takes any repository they own; a login GitHub did not say is a person is held to the org's proof.
+    const scopes = Array.isArray(body.scopes) && body.scopes.includes('steer') ? ['steer'] as KeyScope[] : ['give'] as KeyScope[];
+    if (body.repo.split('/')[1].toLowerCase() !== '.github') {
+      const org = scopes[0] === 'steer' ? true : await isOrganization(env, body.funder);
+      if (org === undefined) return error('login_unverified', 503, { message: `GitHub did not say whether ${body.funder} is a person; try again, or land the claim in ${body.funder}/.github` });
+      if (org) return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
+    }
+    return mintKey(env, account, [], scopes);
   }
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);
   const models = Array.isArray(body.models) && body.models.length ? body.models : DEFAULT_MODELS;

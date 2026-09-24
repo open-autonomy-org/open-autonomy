@@ -1,7 +1,8 @@
 # ADR 0003: The owner's running/paused word travels through the SDK
 
 Status: Proposed. Accepted only upon independent constitution review and merge of this record and
-its implementation.
+its implementation. Amended by [ADR 0010](0010-an-org-word-projects-inherit.md): a project inherits its
+org's pause, and the served `desired` is the effective word.
 
 ## Context and sources
 

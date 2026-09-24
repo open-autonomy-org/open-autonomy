@@ -34,7 +34,7 @@ export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }
   const tone = standing === 'exhausted' ? 'off' : runway !== null && runway < e.goal_days / 3 ? 'warn' : '';
   return (
     <a class="pcard" href={at(e.account)}>
-      <Cover url={e.profile.cover_url} seed={e.account}><Pill standing={standing} /></Cover>
+      <Cover url={e.profile.cover_url} seed={e.account}><Pill standing={standing} from={e.control?.desired?.from} /></Cover>
       <div class="body">
         <div class="top">
           {safeUrl(e.profile.avatar_url) ? <img class="av" src={safeUrl(e.profile.avatar_url)} alt="" /> : null}

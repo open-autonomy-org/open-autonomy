@@ -1,6 +1,6 @@
 {
   "name": "@open-autonomy/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "oa: Open Autonomy on the command line. A project's word, money and sessions; the owner's pause and resume; keys.",
   "license": "Apache-2.0",
   "repository": {

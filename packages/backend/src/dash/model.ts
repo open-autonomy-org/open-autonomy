@@ -153,12 +153,14 @@ export const paused = (v: ProjectView): boolean => (v.control?.desired?.state ??
 export function jobsOf(d: DashData): JobModel[] {
   const owner = sees(d.viewer, 'owner');
   const off = paused(d.v);
+  // Under the org's pause (ADR 0010) the project's own resume runs nothing: the org's word is the one to lift.
+  const org = d.v.control?.desired?.from;
   return scheduleOf(d.v).map((j, n) => {
     const name = j.name ?? `job ${n + 1}`;
     return {
       key: name, id: name, title: name, source: harnessOf(d.v), harness: harnessOf(d.v), profile: d.v.profile.agent_model ?? '', schedule: j.schedule ?? '',
       state: off ? 'paused' : 'scheduled', enabled: !off,
-      canPause: owner && !off, canResume: owner && off, canRun: false, canDelete: false,
+      canPause: owner && !off, canResume: owner && off && !org, canRun: false, canDelete: false,
     };
   });
 }
