@@ -76,7 +76,10 @@
                   "project-communications"
                 ]
               }
-            ]
+            ],
+            "approvals.mode": "off",
+            "approvals.cron_mode": "approve",
+            "approvals.single_query_mode": "approve"
           }
         }
       },

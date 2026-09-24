@@ -35,7 +35,10 @@
               "browser-use"
             ],
             "kanban.dispatch_interval_seconds": 15,
-            "kanban.review_dispatch": true
+            "kanban.review_dispatch": true,
+            "approvals.mode": "off",
+            "approvals.cron_mode": "approve",
+            "approvals.single_query_mode": "approve"
           }
         }
       },
