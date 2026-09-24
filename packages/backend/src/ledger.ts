@@ -116,7 +116,9 @@ export type OperatingState = 'running' | 'paused';
 // As served, `desired` is the effective word (ADR 0010): the org's, with `from`, when the org's pause holds and the
 // project's own does not; the project's own record is then beside it as `own`. Stored records never carry either.
 // One entry of the operating state's history: the owner's request (who, why) or the automation's report (its note).
-export type ControlEntry = { kind: 'request'; state: OperatingState; at: string; by: string; reason?: string } | { kind: 'report'; state: OperatingState; at: string; note?: string };
+// `from` names the org whose word it was; `unchanged` a request for the state that already held; `backfilled` a record
+// from before the history was kept.
+export type ControlEntry = ({ kind: 'request'; state: OperatingState; at: string; by: string; reason?: string; from?: string; unchanged?: true } | { kind: 'report'; state: OperatingState; at: string; note?: string }) & { backfilled?: true };
 export interface AgentControl {
   desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
@@ -1049,31 +1051,51 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
     const a = this.ensureAcct(account);
     const current = a.control?.desired?.state ?? 'running';
-    if (current === state && a.control?.desired) return { ok: true, unchanged: true, ...a.control };
-    a.control = { ...(a.control ?? {}), desired: { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) } };
-    await this.controlKept(account, { kind: 'request', ...a.control.desired! });
+    const asked = { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) };
+    // A request for the state that already holds changes nothing, but it is still the owner's act, and kept.
+    if (current === state && a.control?.desired) { await this.requestKept(account, { kind: 'request', ...asked, unchanged: true }); return { ok: true, unchanged: true, ...a.control }; }
+    await this.historyBegun(account);
+    a.control = { ...(a.control ?? {}), desired: asked };
+    await this.requestKept(account, { kind: 'request', ...asked });
     await this.save();
     return { ok: true, ...a.control };
   }
   private async stateReport(account: string, state: unknown, note: unknown): Promise<{ ok: boolean; error?: string } & AgentControl> {
     if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
     const a = this.ensureAcct(account);
+    await this.historyBegun(account);
     const was = a.control?.observed;
     a.control = { ...(a.control ?? {}), observed: { state: state as OperatingState, at: new Date().toISOString(), ...(typeof note === 'string' && note.trim() ? { note: note.slice(0, 400) } : {}) } };
-    // The automation reports on every pass; the history keeps a report when it says something new.
-    if (was?.state !== a.control.observed!.state || was?.note !== a.control.observed!.note) await this.controlKept(account, { kind: 'report', ...a.control.observed! });
+    // The automation reports on every pass; the history keeps a report when the state it reports changes, so a key the
+    // agent holds adds an entry only by changing what it says it is.
+    if (was?.state !== a.control.observed!.state) await this.controlKept(account, { kind: 'report', ...a.control.observed! });
     await this.save();
     return { ok: true, ...a.control };
   }
 
   // Every request of the owner's and every change the automation reported, in order (ADR 0003, amended): the record an
   // auditor tests oversight against. `control:<account>:<at>:<n>`, newest first on read, a page at a time.
+  // An org's request is kept on the org and on each of its projects, marked `from` the org, so a project's history holds
+  // every word that governed it (ADR 0010: a project inherits its org's pause).
+  private async requestKept(account: string, entry: Extract<ControlEntry, { kind: 'request' }>): Promise<void> {
+    await this.controlKept(account, entry);
+    if (account.startsWith('@')) for (const project of this.membersOf(account)) { await this.historyBegun(project); await this.controlKept(project, { ...entry, from: account }); }
+  }
+  // Records from before the history was kept: the latest request and report the account holds, entered once with their own
+  // times and marked `backfilled`, so the history begins with what was already true.
+  private async historyBegun(account: string): Promise<void> {
+    const c = this.acct(account)?.control;
+    if (!c || (await this.ctx.storage.list({ prefix: `control:${account}:`, limit: 1 })).size) return;
+    const earlier: ControlEntry[] = [...(c.desired ? [{ kind: 'request' as const, ...c.desired, backfilled: true as const }] : []), ...(c.observed ? [{ kind: 'report' as const, ...c.observed, backfilled: true as const }] : [])];
+    for (const e of earlier.sort((x, y) => x.at.localeCompare(y.at))) await this.controlKept(account, e);
+  }
   private async controlKept(account: string, entry: ControlEntry): Promise<void> {
     const at = String(Date.parse(entry.at)).padStart(13, '0');
     const taken = await this.ctx.storage.list({ prefix: `control:${account}:${at}:` });
     await this.ctx.storage.put(`control:${account}:${at}:${String(taken.size).padStart(3, '0')}`, entry);
   }
   private async stateHistory(account: string, limit: number, before?: string): Promise<{ ok: true; account: string; history: ControlEntry[]; next?: string }> {
+    await this.historyBegun(account);
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
     const prefix = `control:${account}:`;
     const page = await this.ctx.storage.list<ControlEntry>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });

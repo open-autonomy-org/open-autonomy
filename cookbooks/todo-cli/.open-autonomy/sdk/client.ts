@@ -41,8 +41,10 @@ export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 export type OperatingState = 'running' | 'paused';
 // A project inherits its org's word (`@<owner>`), paused if either is: `desired` is the effective word, carrying `from`
 // when it is the org's, with the project's own record beside it as `own`.
-// One entry of the operating state's history: the owner's request, or a change the automation reported.
-export type ControlEntry = { kind: 'request'; state: OperatingState; at: string; by: string; reason?: string } | { kind: 'report'; state: OperatingState; at: string; note?: string };
+// One entry of the operating state's history: the owner's request (`from` the org when it was the org's word; `unchanged`
+// when it asked for the state that already held), or a change of state the automation reported. `backfilled` marks a
+// record from before the history was kept.
+export type ControlEntry = ({ kind: 'request'; state: OperatingState; at: string; by: string; reason?: string; from?: string; unchanged?: true } | { kind: 'report'; state: OperatingState; at: string; note?: string }) & { backfilled?: true };
 export interface AgentControl {
   desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
@@ -275,6 +277,10 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap`);
     if (!res.ok) return undefined;
     return ((await res.json()) as { revision?: RoadmapRevision }).revision;
+  }
+  // A page of the history: `next`, when there is more, is the `before` of the page after.
+  async roadmapRevisionPage(account: string, limit = 20, before?: string): Promise<{ revisions: RoadmapRevision[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
   }
   async roadmapRevisions(account: string, limit = 20): Promise<RoadmapRevision[]> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}`);
