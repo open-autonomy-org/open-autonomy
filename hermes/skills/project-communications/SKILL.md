@@ -92,3 +92,11 @@ members may participate, but there are no user-wide DM grants or DM pairing appr
 of confidential channels and do not give it Administrator or permission-management powers. The owner
 and moderators manage membership, permissions and moderation policy; PM proposes structural changes
 when needed. Ordinary project coordination is public.
+
+## Outward communication
+
+The front door and the outward channels go through this project's integrations (the `front-door` and
+`community` skills). Record here who on the team handles what no integration reaches: repository settings
+(description, topics, homepage, social preview, Pages source, Discussions), and any publishing channel that
+needs an account. Name the roster member for each and where to reach them in public; where none is named,
+agents use the team's agreed coordination channel.

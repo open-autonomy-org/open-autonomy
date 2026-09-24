@@ -94,3 +94,6 @@ behaviour they describe.
   fixes what it no longer tells truly.
 - A release candidate is not ready while its front door describes anything else: what ships is what the page
   shows, down to the quick start.
+- Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
+  disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
+  publish is raised with the team member who handles repository settings.
