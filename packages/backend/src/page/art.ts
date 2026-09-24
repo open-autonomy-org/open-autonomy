@@ -9,13 +9,16 @@ function rng(seed: string): () => number {
   return () => { s = (s + 0x6d2b79f5) >>> 0; let m = Math.imul(s ^ (s >>> 15), 1 | s); m ^= m + Math.imul(m ^ (m >>> 7), 61 | m); return ((m ^ (m >>> 14)) >>> 0) / 4294967296; };
 }
 
-// One mark of the pen: a stroked line through points (closed for a loop), a filled outline, or a dot; in ink or the
-// hot accent, at a strength between 0 and 1.
+// One mark of the pen: a stroked line through points (closed for a loop), a filled outline, a dot, or a dashed circle
+// (`on` units drawn every `on + off`), or a fold (a straight run into a quadratic curve); in ink or the hot accent, at a
+// strength between 0 and 1.
 export type Pt = [number, number];
 export type Shape =
   | { k: 'line'; pts: Pt[]; closed?: boolean; w: number; hot?: boolean; a?: number }
   | { k: 'fill'; pts: Pt[]; hot?: boolean; a?: number }
-  | { k: 'dot'; x: number; y: number; r: number; a?: number };
+  | { k: 'dot'; x: number; y: number; r: number; a?: number }
+  | { k: 'ring'; x: number; y: number; r: number; w: number; on: number; off: number }
+  | { k: 'fold'; from: Pt; mid: Pt; ctrl: Pt; to: Pt; w: number };
 export const SIZE = 400;
 const turn = (cx: number, cy: number, a: number) => ([x, y]: Pt): Pt => [cx + (x - cx) * Math.cos(a) - (y - cy) * Math.sin(a), cy + (x - cx) * Math.sin(a) + (y - cy) * Math.cos(a)];
 const box = (x: number, y: number, w: number, h: number): Pt[] => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
@@ -31,7 +34,7 @@ function vortexShapes(seed: string): Shape[] {
   const r = rng(seed), c = SIZE / 2, turns = 56, out: Shape[] = [];
   for (let i = 0; i < turns; i++) {
     const k = i / turns, s = 30 + k * SIZE * 0.44, a = k * 1.9 + r() * 0.006;
-    out.push({ k: 'line', closed: true, w: 0.4, a: 0.3 + k * 0.6, pts: [0, 1, 2, 3].map((q): Pt => { const t = a + (q * Math.PI) / 2; return [c + Math.cos(t) * s, c + Math.sin(t) * s]; }) });
+    out.push({ k: 'line', closed: true, w: 0.4, a: Number((0.3 + k * 0.6).toFixed(1)), pts: [0, 1, 2, 3].map((q): Pt => { const t = a + (q * Math.PI) / 2; return [c + Math.cos(t) * s, c + Math.sin(t) * s]; }) });
   }
   return out;
 }
@@ -53,11 +56,7 @@ function linesShapes(seed: string): Shape[] {
   const r = rng(seed), n = 64, at = 0.3 + r() * 0.4, depth = 30 + r() * 40, out: Shape[] = [];
   for (let i = 0; i < n; i++) {
     const x = (i + 0.5) * (SIZE / n), fold = Math.exp(-(((i / n) - at) ** 2) / 0.012) * depth;
-    // The fold is a quadratic curve from the rule's middle to its foot, sampled into the stroke.
-    const p0: Pt = [x, SIZE * 0.45], p1: Pt = [x + fold, SIZE * 0.62], p2: Pt = [x + fold * 0.3, SIZE];
-    const pts: Pt[] = [[x, 0], p0];
-    for (let t = 1; t <= 12; t++) { const u = t / 12; pts.push([(1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * p1[0] + u * u * p2[0], (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * p1[1] + u * u * p2[1]]); }
-    out.push({ k: 'line', w: 0.7, pts });
+    out.push({ k: 'fold', w: 0.7, from: [x, 0], mid: [x, SIZE * 0.45], ctrl: [x + fold, SIZE * 0.62], to: [x + fold * 0.3, SIZE] });
   }
   return out;
 }
@@ -67,7 +66,9 @@ function squaresShapes(seed: string): Shape[] {
   const r = rng(seed), c = SIZE / 2, n = 6 + Math.floor(r() * 5), out: Shape[] = [];
   for (let i = 0; i < n; i++) {
     const s = SIZE * (0.24 + r() * 0.12), a = (r() - 0.5) * 0.5, dx = (r() - 0.5) * 18, dy = (r() - 0.5) * 18;
-    out.push({ k: 'line', closed: true, w: 0.9, pts: box(c - s + dx, c - s + dy, s * 2, s * 2).map(turn(c, c, a)) });
+    // The box and its turn at the precision the drawing has always had (a tenth of a unit, a tenth of a degree).
+    const at = (n: number) => Number(n.toFixed(1)), deg = at((a * 180) / Math.PI);
+    out.push({ k: 'line', closed: true, w: 0.9, pts: box(at(c - s + dx), at(c - s + dy), at(s * 2), at(s * 2)).map(turn(c, c, (deg * Math.PI) / 180)) });
   }
   out.push({ k: 'fill', pts: box(c - 3, c - 3, 6, 6) });
   return out;
@@ -89,13 +90,8 @@ function latticeShapes(seed: string, fills = true): Shape[] {
 function ringsShapes(seed: string): Shape[] {
   const r = rng(seed), c = SIZE / 2, out: Shape[] = [];
   for (let i = 0; i < 9; i++) {
-    const rad = 40 + i * 16 + r() * 6, ox = (r() - 0.5) * 10, oy = (r() - 0.5) * 10, on = 1 + r() * 3, off = 3 + r() * 5;
-    // Each ring is its dashes: arcs of `on` units every `on + off` around the circumference.
-    const count = Math.floor((2 * Math.PI * rad) / (on + off));
-    for (let d = 0; d < count; d++) {
-      const a0 = (d * (on + off)) / rad, a1 = (d * (on + off) + on) / rad;
-      out.push({ k: 'line', w: 0.9, pts: [[c + ox + Math.cos(a0) * rad, c + oy + Math.sin(a0) * rad], [c + ox + Math.cos(a1) * rad, c + oy + Math.sin(a1) * rad]] });
-    }
+    const rad = 40 + i * 16 + r() * 6, ox = (r() - 0.5) * 10, oy = (r() - 0.5) * 10;
+    out.push({ k: 'ring', x: c + ox, y: c + oy, r: rad, w: 0.9, on: 1 + r() * 3, off: 3 + r() * 5 });
   }
   return out;
 }
@@ -105,9 +101,10 @@ function gridShapes(seed: string): Shape[] {
   const r = rng(seed), n = 10, cell = SIZE / n, out: Shape[] = [];
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const j = () => (r() - 0.5) * 2.4, x0 = x * cell + 4, y0 = y * cell + 4, s = cell - 8;
+    const fill = r() < 0.04; // drawn before the jitter, so every project keeps the picture it had
     const pts: Pt[] = [[x0 + j(), y0 + j()], [x0 + s + j(), y0 + j()], [x0 + s + j(), y0 + s + j()], [x0 + j(), y0 + s + j()]];
     out.push({ k: 'line', closed: true, w: 0.8, pts });
-    if (r() < 0.04) out.push({ k: 'fill', pts });
+    if (fill) out.push({ k: 'fill', pts });
   }
   return out;
 }
@@ -121,7 +118,9 @@ const f = (n: number): string => n.toFixed(1);
 const HOT = 'var(--oa-hot,#ff5a1f)';
 export function svgOf(shapes: Shape[], cls = 'art'): string {
   const body = shapes.map((s) => {
-    const alpha = s.a !== undefined ? ` opacity="${f(s.a)}"` : '';
+    if (s.k === 'fold') return `<path d="M${f(s.from[0])} ${f(s.from[1])} L${f(s.mid[0])} ${f(s.mid[1])} Q${f(s.ctrl[0])} ${f(s.ctrl[1])} ${f(s.to[0])} ${f(s.to[1])}" stroke-width="${s.w}"/>`;
+    if (s.k === 'ring') return `<circle cx="${f(s.x)}" cy="${f(s.y)}" r="${f(s.r)}" stroke-width="${s.w}" stroke-dasharray="${f(s.on)} ${f(s.off)}"/>`;
+    const alpha = s.a !== undefined ? ` opacity="${s.a}"` : '';
     if (s.k === 'dot') return `<circle cx="${f(s.x)}" cy="${f(s.y)}" r="${f(s.r)}" fill="currentColor" stroke="none"${alpha}/>`;
     const pts = s.pts.map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
     if (s.k === 'fill') return `<polygon points="${pts}" fill="${s.hot ? HOT : 'currentColor'}" stroke="none"${alpha}/>`;

@@ -25,7 +25,9 @@ import type { ArtKind } from './art.js';
 // edge cache a day, and answered from there after.
 async function cardResponse(req: Request, seed: string, kind?: ArtKind): Promise<Response> {
   const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
-  const key = new Request(new URL(req.url).toString(), { method: 'GET' });
+  // Keyed by the address without its query: `?anything` never draws the card again.
+  const url = new URL(req.url);
+  const key = new Request(`${url.origin}${url.pathname}`, { method: 'GET' });
   const kept = await cache?.match(key);
   if (kept) return req.method === 'HEAD' ? new Response(null, { headers: kept.headers }) : kept;
   const res = new Response(await cardPng(seed, kind), { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
@@ -148,14 +150,14 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const visibility = visibilityOf(view.profile.config_yaml);
   const gate = door === 'about' ? 'about' : page === undefined ? 'overview' : page === 'sessions' && key !== undefined ? 'transcript' : page;
   if (!sees(role, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' || gate === 'overview' ? 'page' : gate} is not open to ${who ? `@${who.login}` : 'everyone'}.`), 404);
+  // The project's card only when its page is open to everyone, like its feed: a cached picture never says a closed page exists.
+  if (door === 'card.png') return sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
+
   const [stream, road, funding] = await Promise.all([ledger.sessions(account, page === 'sessions' ? 100 : 50), ledger.roadmap(account), ledger.funding(account)]);
   // What a page carries is what its viewer may see, panel by panel, not only what it draws: a viewer kept out of
   // the sessions gets the live ones by identity and standing alone (no report), out of the work no roadmap.
   const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
   const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
-
-  // The project's card only when its page is open to everyone, like its feed: a cached picture never says a closed page exists.
-  if (door === 'card.png') return sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
 
   // ---- the project's updates as a feed: what shipped and what its runs reported, as everyone may see them ----
   // A feed reader is anonymous and a shared cache may keep the answer, so the feed is the public's, whoever asks:

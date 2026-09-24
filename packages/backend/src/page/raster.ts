@@ -60,6 +60,22 @@ class Canvas {
 function draw(canvas: Canvas, shapes: Shape[], s: number, ox: number, oy: number): void {
   const at = ([x, y]: Pt): Pt => [x * s + ox, y * s + oy];
   for (const shape of shapes) {
+    if (shape.k === 'fold') {
+      // The straight run, then the curve sampled finely enough that no step is visible at card scale.
+      canvas.segment(at(shape.from), at(shape.mid), shape.w * s, INK, 1);
+      let prev = shape.mid;
+      for (let t = 1; t <= 32; t++) { const u = t / 32, q: Pt = [(1 - u) ** 2 * shape.mid[0] + 2 * (1 - u) * u * shape.ctrl[0] + u * u * shape.to[0], (1 - u) ** 2 * shape.mid[1] + 2 * (1 - u) * u * shape.ctrl[1] + u * u * shape.to[1]]; canvas.segment(at(prev), at(q), shape.w * s, INK, 1); prev = q; }
+      continue;
+    }
+    if (shape.k === 'ring') {
+      // The dashes, cut here: arcs of `on` units every `on + off` around the circumference.
+      const count = Math.floor((2 * Math.PI * shape.r) / (shape.on + shape.off));
+      for (let d = 0; d < count; d++) {
+        const a0 = (d * (shape.on + shape.off)) / shape.r, a1 = (d * (shape.on + shape.off) + shape.on) / shape.r;
+        canvas.segment(at([shape.x + Math.cos(a0) * shape.r, shape.y + Math.sin(a0) * shape.r]), at([shape.x + Math.cos(a1) * shape.r, shape.y + Math.sin(a1) * shape.r]), shape.w * s, INK, 1);
+      }
+      continue;
+    }
     const alpha = shape.a ?? 1;
     if (shape.k === 'dot') { canvas.dot(shape.x * s + ox, shape.y * s + oy, shape.r * s, INK, alpha); continue; }
     const pts = shape.pts.map(at), color = shape.hot ? HOT : INK;
