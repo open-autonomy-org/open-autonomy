@@ -48,7 +48,12 @@ export async function startContainer(options: {
   const own = (name: string, cmd: string[], extra: { env?: Record<string, string | undefined>; ipc?: (message: any) => void } = {}) => {
     const proc = Bun.spawn({ cmd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', ...extra });
     services.push(proc);
-    void proc.exited.then(code => { if (!ending) { console.error(`host: ${name} ended (${code})`); void stop(1); } });
+    void proc.exited.then(code => {
+      if (ending) return;
+      // The reporter narrates; it never decides whether the brain runs. It comes back in ten seconds.
+      if (name === 'reporter') { console.error(`host: reporter ended (${code}); the brain keeps running, the reporter returns in 10 s`); setTimeout(() => { if (!ending) own(name, cmd, extra); }, 10_000); return; }
+      console.error(`host: ${name} ended (${code})`); void stop(1);
+    });
   };
   const ready = async (check: () => Promise<boolean>, name: string) => {
     const deadline = Date.now() + 30_000;
