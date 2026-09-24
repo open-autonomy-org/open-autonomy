@@ -17,11 +17,12 @@ From an Evidence Desk checkout (`bun install` once):
    bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 import --repo <this checkout> --by <your roster id>
    ```
 2. Answer the remaining scoping questions and adopt the control set: `bun src/cli.ts serve ~/__PROJECT__-soc2`.
-3. Keep the workspace in a private GitHub repository the roster members can open pull requests to. Each member
-   records their own onboarding (policy acknowledgments, the security quiz, the device attestation) in a pull request
-   they open, which is the seam's door for it: `bun src/cli.ts collect ~/__PROJECT__-soc2 onboarding-attribution
-   --repo <owner/workspace-repository> --by <your roster id>` checks every change to each response was merged
-   from a pull request its member opened. Compare each declared vendor account's administrators with the roster:
+3. Keep the workspace in a private GitHub repository the roster members can open pull requests to. Each person records
+   the acts the workspace names them in (their onboarding, an access review's sign-off, a policy approval, an
+   incident's closing) in a pull request they open, which is the seam's door for them: `bun src/cli.ts collect
+   ~/__PROJECT__-soc2 attribution --repo <owner/workspace-repository> --by <your roster id>` checks each act was merged
+   from a pull request its person opened, and `ci-template` runs that check daily with reminders of what each person
+   owes, as issues assigned to them. Compare each declared vendor account's administrators with the roster:
    `bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 completeness --account github --by <your roster id>` (it reads
    GitHub organization members; for an account owned by a person, pass its exported administrators with `--file` and `--generated-by`).
 4. Enable the GitHub collector for this repository (`bun src/cli.ts collectors ~/__PROJECT__-soc2 github --enable --set
