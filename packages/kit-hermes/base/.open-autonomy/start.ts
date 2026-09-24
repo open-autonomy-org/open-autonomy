@@ -229,6 +229,10 @@ const committed = committedFrom ?? resolve(project, 'hermes');
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
 if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Supercode's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+// Claude Code on this user's own Claude login (agent.ts `ownClaudeLogin`) runs through this user's Supercode machine
+// daemon, as this user, whatever user the agent runs as: the --as boundary would not hold, so the two are refused together.
+const onClaudeLogin = harness !== 'hermes' && ownClaudeLogin(agentSetup);
+if (onClaudeLogin && user) { console.error(`start: .open-autonomy/agent.json runs Claude Code on ${userInfo().username}'s own Claude login, whose worker runs as ${userInfo().username}; --as ${user.name} exists to keep the agent from that user. Pick a model on the platform's rail, or start without --as. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -350,23 +354,18 @@ spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', r
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter-ai-dev', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
-// Claude Code on the host user's own Claude login (agent.ts `ownClaudeLogin`) runs through that user's Supercode machine
-// daemon (`supercode teams machine start`, run as the user, under launchd here): the daemon's worker has the user's
-// HOME, where Claude Code finds its login, and carries the rest of the orchestrator's environment. The installed Claude
-// Code owns the login and its refresh; OA keeps no copy. Under that HOME the user's own ssh config and gh login would be
-// git's and gh's defaults, so the agent's are named: ssh reads no config file (the agent's key is in its ssh agent) and
-// gh reads the agent's own config directory.
+// Claude Code on this user's own Claude login: the orchestrator starts its workers through this user's Supercode machine
+// daemon (`supercode teams machine start`, run as the user, under launchd here; the orchestrator refuses to start without
+// it). The daemon's worker has the user's HOME, where Claude Code finds its login, and carries the rest of this
+// environment. Claude Code owns the login and its refresh; OA keeps no copy. Under the user's HOME, git's ssh and gh
+// would default to the user's own identities, so the agent's are named: ssh reads no config and no key file, offers
+// only the kit's ssh agent (the deploy key) or none, and keeps the home's known hosts; gh reads the home's config.
 const machine: string[] = [];
 const machineEnv: Record<string, string> = {};
-if (harness !== 'hermes' && ownClaudeLogin(agentSetup)) {
-  // the daemon's worker is this user, whatever user the agent runs as: the --as boundary would not hold
-  if (user) { console.error(`start: .open-autonomy/agent.json runs Claude Code on ${userInfo().username}'s own Claude login, whose worker runs as ${userInfo().username}; --as ${user.name} exists to keep the agent from that user. Pick a model on the platform's rail, or start without --as. No services were started.`); process.exit(1); }
-  const teams = process.env.SUPERCODE_TEAMS_HOME ?? resolve(userInfo().homedir, '.config', 'supercode', 'teams');
-  if (!existsSync(resolve(teams, 'machine.sock'))) { console.error(`start: .open-autonomy/agent.json runs Claude Code on this user's own Claude login, through this user's Supercode machine daemon, and none serves ${resolve(teams, 'machine.sock')}; run \`supercode teams machine start\` as ${userInfo().username} (under launchd, to outlive a login). No services were started.`); process.exit(1); }
-  const agentHome = env.HOME ?? homedir();
+if (onClaudeLogin) {
   machine.push('--machine', 'local');
-  Object.assign(machineEnv, { SUPERCODE_TEAMS_HOME: teams, GH_CONFIG_DIR: process.env.GH_CONFIG_DIR ?? resolve(agentHome, '.config', 'gh') });
-  if (!process.env.GIT_SSH_COMMAND) machineEnv.GIT_SSH_COMMAND = `ssh -F /dev/null -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${resolve(agentHome, '.ssh', 'known_hosts')}`;
+  machineEnv.GH_CONFIG_DIR = process.env.GH_CONFIG_DIR ?? resolve(home, '.config', 'gh');
+  if (!process.env.GIT_SSH_COMMAND) machineEnv.GIT_SSH_COMMAND = `ssh -F /dev/null -o IdentityFile=none -o IdentityAgent=${existsSync(sock) ? sock : 'none'} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${resolve(home, '.ssh', 'known_hosts')}`;
 }
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })

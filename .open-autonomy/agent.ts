@@ -6,6 +6,7 @@
 //   readAgent(project)          the package, or null for a project still on the committed config
 //   parseAgent(text, where)     the same checks over a setup read anywhere else
 //   agentModels(setup)          every named model, for the start's Codex detection
+//   ownClaudeLogin(setup)       whether Claude Code runs on the host user's own Claude login (`anthropic`, no endpoint)
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
 //   agentHarness(setup)         the harness the owner picks: `hermes` (the default) runs itself; any other runs as
@@ -14,7 +15,8 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 
-type Package = { schema_version: 1; inference?: { models?: Record<string, { provider?: string }> }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
+type Model = { provider?: string; model?: string; endpoint?: string; base_url?: string; credential?: string; placeholder_key?: string };
+type Package = { schema_version: 1; inference?: { models?: Record<string, Model>; default?: string }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
 export type Setup = { harness?: string; profiles: Record<string, Package> };
 
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -35,6 +37,20 @@ export function parseAgent(text: string, where: string): Setup {
 
 export function agentHarness(setup: Setup | null): string {
   return setup?.harness ?? 'hermes';
+}
+
+/**
+ * Claude Code on the host user's own Claude login: the harness is `claude-code` and a profile's default model is
+ * `anthropic` with no endpoint and no key but the harness's own login (the applier then writes a `model:` with no
+ * `base_url` and no `api_key`, which the orchestrator runs without a config home of its own, since Claude Code finds
+ * its login through its config home). Such a worker runs through the user's Supercode machine daemon, as that user.
+ */
+export function ownClaudeLogin(setup: Setup | null): boolean {
+  if (agentHarness(setup) !== 'claude-code') return false;
+  return Object.values(setup?.profiles ?? {}).some((p) => {
+    const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined;
+    return m?.provider === 'anthropic' && !m.endpoint && !m.base_url && !m.placeholder_key && (!m.credential || m.credential === 'harness-login');
+  });
 }
 
 /**
@@ -96,7 +112,7 @@ function skillDirs(tree: string): string[] {
   return found;
 }
 
-export function agentModels(setup: Setup | null): Array<{ provider?: string }> {
+export function agentModels(setup: Setup | null): Model[] {
   return Object.values(setup?.profiles ?? {}).flatMap((p) => Object.values(p.inference?.models ?? {}));
 }
 

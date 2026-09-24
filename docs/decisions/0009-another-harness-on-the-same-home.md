@@ -204,13 +204,15 @@ subscription: "wait why codex I thought we were on claude right now with orchest
 actually already has a way for doing the 'teleport'", "It's the remote execution", "no it's actually already
 done - understand the feature"; on the answer below (the machine daemon), "yes".
 
-**Decision.** A package whose harness is `claude-code` and whose model is `provider: anthropic` with no
-`base_url` and no `api_key` runs its worker on the host user's own Claude login. The kit's start runs the
+**Decision.** A package whose harness is `claude-code` and whose profile's default model is `provider: anthropic`
+with no `endpoint` or `base_url` and no key (no `credential` but `harness-login`, no `placeholder_key`) runs its
+worker on the host user's own Claude login. The kit's start runs the
 orchestrator with `--machine local`: its workers start through that user's Supercode machine daemon
 (`supercode teams machine start`, `harness.v1` over the daemon's owner-only socket), as that user, with that
 user's HOME. The installed Claude Code owns the login and its refresh; Open Autonomy keeps no copy and reads
 none. The start refuses this pick under `--as`, by name, since the daemon's worker is that user whatever user
-the agent runs as; it refuses a start with no daemon serving the socket.
+the agent runs as, before any service starts. The orchestrator (0.3.10) finds `local` in the user's own Teams home
+even when the agent's HOME is its own, and refuses to start when that daemon does not answer.
 
 **Measured** (orchestrator 0.3.8 and 0.3.9, Claude Code 2.1.280, Teams 0.2.10), on scratch homes through a local
 daemon:
@@ -224,14 +226,18 @@ daemon:
   carries the orchestrator's environment into the launch, all but HOME, USER and LOGNAME.
 
 **This author's extrapolation, not the owner's words:** the pick's shape (a model with no endpoint and no key,
-rather than a new key); `--machine local` only; the refusal under `--as`; and, under the owner's HOME, git's
-ssh reading no config file (the owner's names their own key for github.com) with the agent's known hosts, and
-`gh` reading the agent's own config directory, so the agent's pushes and GitHub calls stay the agent's. Not yet
-run: a scheduled fire or a board task of a real project on this pick.
+rather than a new key); `--machine local` only; the refusal under `--as`; and the agent's identities under the
+owner's HOME. There git's ssh would read the owner's config (which names the owner's own key for github.com), the
+owner's default key files and whatever key agent the session holds, and `gh` the owner's login; so the start gives
+ssh no config file, no key file and only the kit's ssh agent (the deploy key, or none), with the Hermes home's known
+hosts, and gives `gh` the Hermes home's config directory. Resolved offline (`ssh -G`): no identity file, the named
+agent, the home's known hosts. The commit author is the checkout's own git config, as before. Not yet run: a push,
+a scheduled fire or a board task of a real project on this pick. What stays within reach is below.
 
 **Constitution.** *Nothing in an agent's reach is a secret that matters*: not met by this pick, and said so.
 The worker runs as the owner, so the owner's Claude login and everything else under that user are in its reach,
 as they already are for a bare agent that runs as the owner (bare mode alone provides no filesystem isolation;
 this repository's own agents take that trade on the owner's Mac). What this pick adds is that `--as` cannot
-remove it, which is why the start refuses the two together. *Every spend is metered on public books*: the
+remove it, which is why the start refuses the two together. Pinning git's and `gh`'s identities keeps the agent's
+ordinary acts its own; it is not a boundary, since the worker can still read anything the owner can. *Every spend is metered on public books*: the
 owner's subscription spends no project funds, as for `openai-codex`; the platform books nothing for these calls.

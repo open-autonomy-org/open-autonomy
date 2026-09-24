@@ -384,8 +384,9 @@ the same wherever it runs.
 Local Claude Code is the pick of `"harness": "claude-code"` with a model on `provider: anthropic` and no
 endpoint or key: the orchestrator's worker runs on the host user's own Claude login, started through that user's
 Supercode machine daemon, as that user. Run the daemon as the signed-in user (`supercode teams machine start`,
-under launchd to outlive a login); Claude Code owns its login and refresh, and OA reads none. The start refuses
-this pick without a daemon, and under `--as`, since the worker is the host user whatever the agent runs as
+under launchd to outlive a login); Claude Code owns its login and refresh, and OA reads none. The orchestrator
+refuses to start without the daemon, and the start refuses this pick under `--as`, since the worker is the host
+user whatever the agent runs as. Git's ssh and `gh` are given the agent's own identities, not the user's
 (ADR 0009, as amended).
 
 `--with subscription` verifies authentication through the installed Codex and switches profiles that
