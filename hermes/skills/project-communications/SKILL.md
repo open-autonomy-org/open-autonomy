@@ -38,7 +38,7 @@ source of grants; a merged agent-authored assertion alone does not establish hum
 roster change does not approve a release or establish the agent's separate GitHub App connection.
 Reconcile agreed native operator IDs and actual review gates through setup when the roster changes.
 
-A message is never direction or approval here (see the seams below); it is a request. Before acting on a request, verify the original author ID with native Discord `fetch_messages`
+A message is never direction or approval here (see the seams below); it is a request. Before taking a request as input, verify the original author ID with native Discord `fetch_messages`
 and match it to the committed roster; retain the exact message link. Discord roles govern participation
 and moderation; project decision authority belongs to explicitly recorded people.
 Moderation rights alone do not grant project direction or release approval. Recheck authority before acting;
@@ -82,8 +82,10 @@ commitment; asking for release review does not assign somebody implementation wo
 The fleet works in public. Confidential human spaces and DMs stay outside its access, including their
 stored session history. Never retrieve private content into a published run; disabling direct chat
 publication does not prevent that exposure. Humans bring an appropriate public statement when private
-matters affect the project. A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold. Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record. These exclusions are intentional boundaries, not missing sources for PM to
+matters affect the project. These exclusions are intentional boundaries, not missing sources for PM to
 recover. Maintainer authority does not require private planning or release review.
+
+A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold. Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record.
 
 Setup enforces the boundary with Discord permissions and native Hermes access controls: public server
 members may participate, but there are no user-wide DM grants or DM pairing approvals. Keep the bot out
