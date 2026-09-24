@@ -142,7 +142,10 @@ export function taskOf(d: DashData, i: RoadmapItem): WorkflowTask {
 }
 export function boardOf(d: DashData): WorkflowBoardModel {
   const items = [...d.roadmap.items].sort((x, y) => ORDER[x.status] - ORDER[y.status] || (tenseOf(x) === 'past' ? Date.parse(y.done_at ?? '') - Date.parse(x.done_at ?? '') || 0 : 0));
-  return { key: 'roadmap', title: 'The roadmap', source: 'roadmap', status: 'ready', stale: false, total: items.length, offset: 0, hasMore: false, tasks: items.map((i) => taskOf(d, i)) };
+  // Who ran a task is shown only where it tells tasks apart: a project with one agent profile names it on every card.
+  const one = new Set(items.map((i) => i.by).filter(Boolean)).size <= 1;
+  const tasks = items.map((i) => taskOf(d, i)).map((t) => (one ? { ...t, assignee: '' } : t));
+  return { key: 'roadmap', title: 'The roadmap', source: 'roadmap', status: 'ready', stale: false, total: items.length, offset: 0, hasMore: false, tasks };
 }
 
 // ---- the schedule as jobs, sessions as their runs ---------------------------------------------------------------------
