@@ -298,8 +298,9 @@ export class OpenAutonomy {
   //   GET /v1/accounts/:account/statements            the live statements
   //   GET /v1/accounts/:account/statements/:id/revisions?limit=   every change, newest first
   //   GET /v1/accounts/:account/statements/:id/badges.svg         the badge row, for a README
-  async statements(account: string): Promise<Statement[]> {
-    return (await this.read<{ statements: Statement[] }>(`/accounts/${encodeURIComponent(account)}/statements`)).statements;
+  // As read: `badges` are the ones standing today, `lapsed` those past their `until`.
+  async statements(account: string): Promise<Array<Statement & { lapsed: Statement['badges'] }>> {
+    return (await this.read<{ statements: Array<Statement & { lapsed: Statement['badges'] }> }>(`/accounts/${encodeURIComponent(account)}/statements`)).statements;
   }
   async statementRevisions(account: string, id: string, limit = 20): Promise<StatementRevision[]> {
     return (await this.read<{ revisions: StatementRevision[] }>(`/accounts/${encodeURIComponent(account)}/statements/${encodeURIComponent(id)}/revisions?limit=${limit}`)).revisions;

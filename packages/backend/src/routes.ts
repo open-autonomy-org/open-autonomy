@@ -12,7 +12,7 @@ import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
 import { redactDeep } from './redact.js';
-import { today } from '@open-autonomy/sdk/statements';
+import { standing, today } from '@open-autonomy/sdk/statements';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
 // them. The app is tried first on every request and may answer; what it does not answer falls through to
@@ -249,7 +249,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statements(dec(m[1])), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; const r = await ledger.statements(dec(m[1]));
+    // Checked at every read, like the page and the widget: `badges` are the ones standing today, `lapsed` the rest.
+    return json({ ...r, statements: r.statements.map((x) => { const d = standing(x, today()); return { ...x, badges: d.standing, lapsed: d.lapsed }; }) }, { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/revisions$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statementRevisions(dec(m[1]), dec(m[2]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
   // A statement's badge row for a README; a shared cache keeps it five minutes, so a lapsed badge leaves within that.
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/badges\.svg$/))) {

@@ -19,7 +19,8 @@ const TAKEN = new Set(['overview', 'sessions', 'board', 'books', 'agent', 'team'
 
 export const today = (now = Date.now()): string => new Date(now).toISOString().slice(0, 10);
 const isDay = (s: unknown): s is string => typeof s === 'string' && DAY.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
-const text = (s: unknown, max: number): s is string => typeof s === 'string' && s.trim().length > 0 && s.length <= max && !/[\u0000-\u001f]/.test(s);
+// Control characters and bidirectional overrides are refused: the words are drawn as the owner's, and must read as sent.
+const text = (s: unknown, max: number): s is string => typeof s === 'string' && s.trim().length > 0 && s.length <= max && !/[\u0000-\u001f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(s);
 
 // A statement as published, checked whole: any field out of shape or over its limit refuses it, never trims it.
 export function checkStatement(raw: unknown, day: string, stored = false): { ok: true; statement: Statement } | { ok: false; error: 'invalid_statement' | 'lapsed_on_arrival'; field?: string } {
