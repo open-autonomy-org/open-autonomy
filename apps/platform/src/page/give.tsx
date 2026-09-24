@@ -22,8 +22,8 @@ export function renderGivePage(data?: GivePageData, to?: string): string {
           <p class="label" style="margin-bottom:12px">Grant credits</p>
           <h1>Give grant credits</h1>
           <p class="prose" style="margin-bottom:20px">Grant credits are funds you hold on these public books and can pass to a project you believe in. They can only be given, never spent by this page.</p>
-          <a class="btn" href={to ? `/give/login?next=${encodeURIComponent(`/give?to=${to}`)}` : '/give/login'}>Sign in with GitHub</a>
-          <p class="fine">GitHub is used only to verify your login. The sign-in asks for no repository or organization scope.</p>
+          <a class="btn" href={to ? `/give/login?next=${encodeURIComponent(`/give?to=${to}`)}` : '/give/login'}>Sign in</a>
+          <p class="fine">Signing in asks for no repository or organization scope. You give as the GitHub account you sign in with or have linked.</p>
         </div>
       </div>
       <Foot brand={BRAND} nav={<a href="/">Explore</a>} />

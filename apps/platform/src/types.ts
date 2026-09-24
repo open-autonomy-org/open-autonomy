@@ -11,6 +11,10 @@ export interface Env extends BackendEnv {
   GITHUB_OAUTH_CLIENT_ID?: string;
   GITHUB_OAUTH_CLIENT_SECRET?: string;
   GIVE_SESSION_HMAC_SECRET?: string;
+  /** The identity service people sign in with (ADR 0011), `https://id.volter.ai`; its registered client and secret. */
+  VOLTER_ISSUER?: string;
+  VOLTER_CLIENT_ID?: string;
+  VOLTER_CLIENT_SECRET?: string;
   // The share of credits a funder buys that the organization matches from its grants account as bonus credits for
   // other people's projects (percent, default 10; 0 turns matching off).
   GRANT_MATCH_PERCENT?: string;

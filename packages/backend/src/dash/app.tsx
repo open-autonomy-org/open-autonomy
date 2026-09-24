@@ -106,7 +106,7 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
         <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
         <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
         <p class="oa-keys"><kbd>j</kbd><kbd>k</kbd><span>rows</span><kbd>/</kbd><span>search</span></p>
-        {d.door?.in ? <a class="oa-signin" href={d.door.in}>Sign in with GitHub</a> : d.door?.who ? <p class="oa-signed">@{d.door.who}{d.door.out ? <> · <a href={d.door.out}>Sign out</a></> : null}</p> : null}
+        {d.door?.in ? <a class="oa-signin" href={d.door.in}>Sign in</a> : d.door?.who ? <p class="oa-signed">@{d.door.who}{d.door.out ? <> · <a href={d.door.out}>Sign out</a></> : null}</p> : null}
         <div class="oa-role"><b>{ROLE_WORDS[d.viewer]}</b>{d.viewer === 'public' ? 'What the owner opened to everyone.' : d.viewer === 'owner' ? 'Everything, and the one control.' : 'What the owner opened to the team.'} <a href={at(a)}>Project page →</a></div>
       </aside>
       <div class="oa-body">

@@ -13,8 +13,9 @@
     "check": "bun test test/*.test.ts && bunx tsc --noEmit"
   },
   "dependencies": {
-    "@open-autonomy/sdk": "workspace:*",
     "@open-autonomy/backend": "workspace:*",
+    "@open-autonomy/sdk": "workspace:*",
+    "@volter/identity": "^0.1.0",
     "hono": "^4.13.4"
   },
   "devDependencies": {

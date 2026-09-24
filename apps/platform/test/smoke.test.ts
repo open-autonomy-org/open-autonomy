@@ -41,7 +41,7 @@ describe('the open platform, one smoke test per door', () => {
     const env = useEnv(testEnv());
     await requestJson(env, '/admin/accounts/acme%2Fapp/profile', { headers: admin, body: { profile: { synced_at: new Date().toISOString() } } });
     await requestJson(env, '/admin/accounts/%40octocat/mint', { headers: admin, body: { amount_usd_cents: 500, key: 'oauth-credits' } });
-    expect(await (await request(env, '/give')).text()).toContain('Sign in with GitHub');
+    expect(await (await request(env, '/give')).text()).toContain('>Sign in<');
     const login = await request(env, '/give/login');
     const stateCookie = login.headers.get('set-cookie')!.split(';')[0];
     const authorize = new URL(login.headers.get('location')!);
@@ -67,7 +67,7 @@ describe('the open platform, one smoke test per door', () => {
     expect((await request(env, '/v1/agent/roadmap', { headers: { cookie: sessionCookie }, body: { source: 'file', roadmap: { schema: 'open-autonomy.timeline.v1', items: [] } } })).status).toBe(401);
     const [cookieName, signed] = sessionCookie.split('=');
     const forged = `${cookieName}=${signed.slice(0, -1)}${signed.endsWith('A') ? 'B' : 'A'}`;
-    expect(await (await request(env, '/give', { headers: { cookie: forged } })).text()).toContain('Sign in with GitHub');
+    expect(await (await request(env, '/give', { headers: { cookie: forged } })).text()).toContain('>Sign in<');
     const expiredBody = base64url(new TextEncoder().encode(JSON.stringify({ login: 'octocat', exp: 1, grants_admin: true })));
     const expired = `oa_give_session=${expiredBody}.${await hmac(env.GIVE_SESSION_HMAC_SECRET!, expiredBody)}`;
     expect((await request(env, '/give', { method: 'POST', headers: { cookie: expired, 'content-type': 'application/x-www-form-urlencoded' }, body: form })).status).toBe(401);
