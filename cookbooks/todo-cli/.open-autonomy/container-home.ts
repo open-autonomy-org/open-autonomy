@@ -63,6 +63,51 @@ print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agen
 }
 
 /**
+ * For another harness than Hermes (ADR 0009), the persona and skills of the committed `hermes/` in the workers' forms,
+ * rendered into the home inside the executor by the kit's own `renderWorkerForms` (agent.ts, in the image beside Bun), as
+ * the bare start renders them on its host: `AGENTS.md` with `SOUL.md` its link, each skill under `.agents/skills/`.
+ */
+export async function renderContainerWorkerForms(options: { container: string; home: string; workspace: string; revision: string }): Promise<string[]> {
+  const output = await python(options.container, String.raw`
+import io,json,os,pathlib,subprocess,sys,tarfile,tempfile
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
+env={**os.environ,'HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
+archive=subprocess.check_output(['git','-C',str(workspace),'archive','--format=tar',s['revision'],'hermes'],env=env,stderr=subprocess.DEVNULL,timeout=30)
+with tempfile.TemporaryDirectory(prefix='oa-forms-') as temp:
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        for member in tar.getmembers():
+            assert (member.isfile() or member.isdir()) and not pathlib.PurePosixPath(member.name).is_absolute() and '..' not in pathlib.PurePosixPath(member.name).parts
+        tar.extractall(temp,filter='data')
+    code="import { renderWorkerForms } from '/opt/agent/.open-autonomy/agent.ts'; console.log(JSON.stringify(renderWorkerForms(process.env.OA_FROM, process.env.OA_TO)))"
+    out=subprocess.check_output(['bun','-e',code],env={**env,'OA_FROM':str(pathlib.Path(temp)/'hermes'),'OA_TO':str(home)},timeout=60)
+print(out.decode().strip().splitlines()[-1])
+`, options);
+  return JSON.parse(output);
+}
+
+/**
+ * Codex's own sandbox off in each profile's Codex home: in the executor it cannot make the namespaces its
+ * bubblewrap needs, and every command a worker runs fails (measured: a PM run in the executor could run
+ * nothing). The executor is the boundary, as it is for Hermes's own terminal. `sandbox_mode` is written at the top
+ * of the home's `config.toml`; the orchestrator's tables there are kept.
+ */
+export async function openContainerCodexSandbox(options: { container: string; home: string }): Promise<void> {
+  await python(options.container, String.raw`
+import json,pathlib,re,sys
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home'])
+for codex in [home/'codex']+[p/'codex' for p in (home/'profiles').glob('*') if p.is_dir()]:
+    codex.mkdir(parents=True,exist_ok=True)
+    f=codex/'config.toml'
+    text=f.read_text() if f.exists() else ''
+    text=re.sub(r'(?m)^sandbox_mode\s*=.*\n?','',text)
+    f.write_text('sandbox_mode = "danger-full-access"\n'+text)
+print('ok')
+`, options);
+}
+
+/**
  * The image's own account of what it lacks (a slim image's plugin denylist, seeded at
  * /opt/hermes/cli-config.yaml.example) joins the rendered config when that says nothing about plugins, so a removed
  * capability is reported off, never failed at call time. Runs after the agent's setup is applied: the runtime's fact
