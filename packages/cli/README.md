@@ -40,7 +40,9 @@ volter-ai` lifts it and leaves a project its owner paused on its own still pause
 paused org changes nothing that runs, and `oa` says so. The org's key is minted through `<org>/.github`, the
 repository GitHub reads as the org's own (`oa key mint volter-ai` from a checkout of it), and is written to
 `~/.config/open-autonomy/volter-ai/steer.env`. The org's spend limits are `spend.limits` in that repository's
-`.open-autonomy/config.yaml`, held against every project of the org together.
+`.open-autonomy/config.yaml`, held against every project of the org together. The org's key also reads every
+project of the org as its own key would, so `oa status volter-ai` with it lists the org's private projects too,
+with their money.
 
 ## What needs a key
 
