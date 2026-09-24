@@ -20,8 +20,8 @@ From an Evidence Desk checkout (`bun install` once):
 3. Keep the workspace in a private GitHub repository the roster members can open pull requests to. Each member
    records their own onboarding (policy acknowledgments, the security quiz, the device attestation) in a pull request
    they open, which is the seam's door for it: `bun src/cli.ts collect ~/__PROJECT__-soc2 onboarding-attribution
-   --repo <owner/workspace-repository> --by <your roster id>` checks each response was merged from its member's own
-   account. Compare each declared vendor account's administrators with the roster:
+   --repo <owner/workspace-repository> --by <your roster id>` checks every change to each response was merged
+   from a pull request its member opened. Compare each declared vendor account's administrators with the roster:
    `bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 completeness --account github --by <your roster id>` (it reads
    GitHub organization members; for an account owned by a person, pass its exported administrators with `--file` and `--generated-by`).
 4. Enable the GitHub collector for this repository (`bun src/cli.ts collectors ~/__PROJECT__-soc2 github --enable --set
