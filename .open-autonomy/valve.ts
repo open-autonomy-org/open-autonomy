@@ -83,9 +83,10 @@ for (const { file, port } of keys) Bun.serve({
     if (!FORWARDED.has(url.pathname) && !isPublicRead(url.pathname, req.method)) return Response.json({ error: { code: 'not_forwarded', message: 'the valve forwards the model routes, the narration route, the rails and public reads of this account only' } }, { status: 403 });
     const bearer = key(file);
     if (!bearer) return Response.json({ error: { code: 'no_key', message: 'the valve has no key yet' } }, { status: 503 });
-    // A clean request: the body buffered (one honest Content-Length), only the headers that carry meaning.
+    // A clean request: the body buffered (one honest Content-Length), only the headers that carry meaning (a stock
+    // worker's own session header among them: the platform books the call to it).
     const headers = new Headers();
-    for (const h of ['content-type', 'accept', 'anthropic-version', 'anthropic-beta', 'last-event-id']) { const v = req.headers.get(h); if (v) headers.set(h, v); }
+    for (const h of ['content-type', 'accept', 'anthropic-version', 'anthropic-beta', 'last-event-id', 'session-id', 'x-claude-code-session-id']) { const v = req.headers.get(h); if (v) headers.set(h, v); }
     headers.set('authorization', `Bearer ${bearer}`);
     headers.set('user-agent', 'open-autonomy-valve');
     const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
