@@ -35,6 +35,11 @@ accepted decision records; conflicting directions require a sourced proposal and
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a
   `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current head is required before automatic merge. Independent means a fresh context, not a different agent or a later hour: the author dispatches its own reviewer the moment it pushes, with the review checklist in the develop skill, and merges on its verdict (owner ruling, 2026-09-12).
+- The owner can keep every autonomous run paused (the launchd agents stopped, not only the platform's `paused` word), and
+  landing still works: the review door is the project's App, and only the valve holds its key. For the review alone, start the
+  App's port by itself, `bun .open-autonomy/valve.ts --github-app <secrets>/github-app.json:<port> --loopback`, submit with
+  `GITHUB_API_URL=http://127.0.0.1:<port> GITHUB_TOKEN=valve bun .open-autonomy/community.ts review …`, and stop it when the
+  verdict is in. No Hermes, schedule or channel starts, and nothing else is reachable through that port but the desk's routes.
 - Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
