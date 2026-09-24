@@ -61,7 +61,7 @@ agent is tracker-blind: whatever the source, it works its own queue and narrates
 | Route | What |
 |---|---|
 | `GET /v1/accounts/:account/roadmap` | the current revision: `revision`, `ts`, `source`, `by`, `roadmap`, `changes`, `conformance` |
-| `GET /v1/accounts/:account/roadmap/revisions?limit=` | the history, newest first |
+| `GET /v1/accounts/:account/roadmap/revisions?limit=&before=` | the history, newest first; `next`, when there is more, is the `before` of the page after |
 | `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push on a `steer` key alone; an unchanged roadmap is not a revision. A substrate's own document goes through `POST /v1/agent/events` as `org.open-autonomy.timeline` |
 
 ## Rails
@@ -136,7 +136,7 @@ Public reads, no key:
 
 | Route | What |
 |---|---|
-| `GET /v1/accounts/:account/sessions?limit=` | the stream, newest first, and `live`: the keys live now |
+| `GET /v1/accounts/:account/sessions?limit=&before=` | the stream, newest first, and `live`: the keys live now; `next`, when there is more, is the `before` of the page after, so a reader can take every session of a period (`sessions`) |
 | `GET /v1/accounts/:account/sessions/:key` | one session with its transcript tail and `next_seq` |
 | `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes (`follow()` iterates them) |
 | `GET /v1/accounts/:account` | the books: the balance, what came in and went out, the burn, the runway, the owner's bounds (`funding()`) |
@@ -147,6 +147,7 @@ Public reads, no key:
 | `GET /v1/accounts/:account/events` | Server-Sent Events: `project` on change (the books, the live set, the roadmap revision, the operating state as `<desired>/<observed>`); stays open |
 | `GET /v1/accounts/:account/state` | the operating state: `desired` `{ state, at, by, reason?, from? }` as the owner requested it, `observed` `{ state, at, note? }` as the automation last reported it; either absent until made. A project inherits its org's pause: while `@<owner>` is paused and the project's own word is not, `desired` is the org's with `from: "@<owner>"`, and the project's own record is beside it as `own` |
 | `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true`. On an org's key (`@<org>`, minted through `<org>/.github`) it is the org's word, which every project of the org inherits |
+| `GET /v1/accounts/:account/state/history?limit=&before=` | every request of the owner's word (who, when, why) and every change the automation reported, newest first, paged like the sessions (`stateHistory`) |
 | `GET /v1/orgs/:org` | an org at a glance: its own `desired`, its `bounds` (the `spend.limits` of `<org>/.github/.open-autonomy/config.yaml`, used by every project of the org together), and each project whose overview is open to everyone, with its effective `control`, its balance, burn, runway and funding only when its books are open to everyone, and its live sessions only when its sessions are. On the org's own steer key: every project of the org, with every figure |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |

@@ -2,7 +2,8 @@
 
 Status: Proposed. Accepted only upon independent constitution review and merge of this record and
 its implementation. Amended by [ADR 0010](0010-an-org-word-projects-inherit.md): a project inherits its
-org's pause, and the served `desired` is the effective word.
+org's pause, and the served `desired` is the effective word. Amended again (below, "History"): every request and
+every change reported is kept.
 
 ## Context and sources
 
@@ -58,6 +59,18 @@ run in flight finish, and reports `paused` once no job is enabled and no run is 
 resumes exactly the jobs it paused, so a job the owner disabled on their own stays disabled.
 Conversations on a channel still answer; a person talking to the project is not the funded work.
 The kit records that scope in its README so an owner knows what their word does.
+
+## History (amendment, September 24, 2026)
+
+The owner's word and the automation's answer were kept as their latest values only, so the platform could show who
+paused the agent now but not who paused it last month. That history is what an auditor tests human oversight of an
+agent against (ISO/IEC 42001, AIUC-1 and NIST AI RMF all ask for it), and Evidence Desk reads it as a population of the
+period. Every request is now also kept as an entry of the account's history, and so is every report that changes the
+reported state or its note (the automation reports on every pass; a repeat says nothing new). `GET
+/v1/accounts/:account/state/history` serves it newest first, a page at a time, behind the `overview` panel like the
+state itself. Nothing about who may request, what the platform applies (nothing) or what the page shows changes.
+Source: the owner's coding conversation of the same day, on which evidence the AI frameworks need; the shape is this
+author's extrapolation.
 
 ## Alternatives and tradeoffs
 
