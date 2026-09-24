@@ -158,7 +158,7 @@ function Chart({ d }: { d: LandingData }) {
   const max = Math.max(1, ...last);
   return (
     <div class="chart">
-      <div class="cap"><span>Metered spend, day by day</span><span><b>{usd(week)}</b> this week · {usd(total)} over {d.daily.length === 1 ? 'the last day' : `the last ${d.daily.length} days`}</span></div>
+      <div class="cap"><span>Metered spend, day by day</span><span><b>{usd(week)}</b> this week{d.daily.length ? ` · ${usd(total)} over ${d.daily.length === 1 ? 'the last day' : `the last ${d.daily.length} days`}` : ''}</span></div>
       {last.length ? <>
         <div class="bars">{last.map((c, i) => { const ago = last.length - 1 - i; return <i class={`${c <= 0 ? 'zero' : ago === 0 ? 'hot' : ''}`} style={`height:${Math.max(3, Math.round((c / max) * 100))}%`} title={`${usd(c)}${ago === 0 ? ' today' : ` ${ago} day${ago === 1 ? '' : 's'} ago`}`} />; })}</div>
         <div class="axis"><span>{last.length === 1 ? 'today' : `${last.length - 1} days ago`}</span><span>today</span></div>

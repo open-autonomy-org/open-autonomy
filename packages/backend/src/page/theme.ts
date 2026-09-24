@@ -135,9 +135,8 @@ export const CSS = `${BASE_CSS}
 .front .pic .cap.tr{top:-6px;right:-4px;text-align:left}
 .front .pic .cap.br{bottom:-6px;right:-4px}
 .front .pic .mark{position:absolute;top:58px;right:0;width:26px;height:26px}
-.stripe{display:flex;flex-wrap:wrap;gap:18px 0;margin-top:36px}
+.stripe{display:flex;flex-wrap:wrap;gap:18px 0;margin:36px 0 0 -29px;clip-path:inset(0 0 0 29px)}
 .stripe>div{padding:0 28px;border-left:1px solid ${T.rule}}
-.stripe>div:first-child{padding-left:0;border-left:0}
 .stripe .n{display:flex;align-items:center;gap:8px;font:500 17px/1.2 ${TEXT};color:${T.ink}}
 .stripe .n .pulse{width:7px;height:7px;background:#9fcb2a;animation:pulse 1.4s steps(2) infinite}
 .stripe .k{display:block;color:${T.body};font-size:12.5px;margin-top:2px}
@@ -207,5 +206,5 @@ export const CSS = `${BASE_CSS}
 .turns .role{color:${T.muted};font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding-top:2px}
 .turns .body{white-space:pre-wrap;word-break:break-word;color:${T.ink}}
 .turns .body.tool{color:${T.muted}}
-@media(max-width:900px){.front{grid-template-columns:1fr;padding:40px 0;gap:32px}.front .pic{max-width:320px;justify-self:start}.stripe>div{padding:0 16px}.grid{gap:28px}.acct{padding:36px 0 28px;gap:16px}.acct .av{width:60px;height:60px}.cols{grid-template-columns:1fr}.side{position:static}.board{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){.front{grid-template-columns:1fr;padding:40px 0;gap:32px}.front .pic{max-width:320px;justify-self:start}.stripe{margin-left:-17px;clip-path:inset(0 0 0 17px)}.stripe>div{padding:0 16px}.grid{gap:28px}.acct{padding:36px 0 28px;gap:16px}.acct .av{width:60px;height:60px}.cols{grid-template-columns:1fr}.side{position:static}.board{grid-template-columns:1fr}.ledger{grid-template-columns:repeat(2,1fr)}}
 `;
