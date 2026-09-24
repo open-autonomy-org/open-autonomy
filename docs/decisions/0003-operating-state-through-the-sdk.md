@@ -111,8 +111,9 @@ below is this author's extrapolation.
 - The history (amendment): one record per request and per change of reported state, per account, and per project of an
   org for the org's requests, repeats included: an owner re-asserting an org's pause every minute over two hundred
   projects writes some two hundred and ninety thousand entries a day. Only owner keys can do that; the agent's key adds
-  history only by changing the state it reports. One read. Account ids holding `:` are refused on every read, since a storage key is
-  `<kind>:<account>:…`.
+  history only by changing the state it reports. It adds one route (`GET /v1/accounts/:account/state/history`) and
+  the SDK's `stateHistory`, `roadmapRevisionPage` and `sessions(account, limit, before)`. Account ids holding `:` are
+  refused on every read, since a storage key is `<kind>:<account>:…`.
 - Nothing here changes metering, credentials, the account tree or the balance hard-stop.
 
 ## Constitution review
