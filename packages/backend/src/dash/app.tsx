@@ -386,17 +386,24 @@ function useCsv(d: DashData) {
 }
 export function Books({ d }: { d: DashData }) {
   const a = d.v.account;
-  const gifts = (d.v.feed ?? []).filter((f: Flow) => f.kind === 'grant' || f.kind === 'mint');
-  // What came in beyond the gifts listed: money from before the books kept each gift, or older than the feed's window.
-  const earlier = d.v.granted_in_usd_cents - gifts.filter((g) => g.to === a).reduce((n, g) => n + g.amount_usd_cents, 0);
+  // The feed holds every flow touching the account, both ways: what came in is what was given TO it; what it gave (a pool's
+  // grants to projects) is money out, never income.
+  const moved = (d.v.feed ?? []).filter((f: Flow) => f.kind === 'grant' || f.kind === 'mint');
+  const gifts = moved.filter((f) => f.to === a);
+  const given = moved.filter((f) => f.kind === 'grant' && f.from === a);
+  // What moved beyond the flows listed: money from before the books kept each gift, or older than the feed's window.
+  const earlier = d.v.granted_in_usd_cents - gifts.reduce((n, g) => n + g.amount_usd_cents, 0);
+  const grantedOut = d.v.granted_out_usd_cents ?? 0;
+  const earlierOut = grantedOut - given.reduce((n, g) => n + g.amount_usd_cents, 0);
   const purpose = (e: Envelope) => (e.purpose.type === 'item' ? `for ${e.purpose.item}` : e.purpose.type === 'models' ? `for ${e.purpose.models.join(', ')}` : e.purpose.type === 'model' ? 'for model calls' : 'for anything');
   const session = (key: string | undefined): SessionSummary | undefined => (key ? d.sessions.find((s) => s.key === key) : undefined);
   useCsv(d);
   return (
     <Shell d={d} title="Books">
       <div class="oa-grid">
-        <Panel title="The ledger" span={12}><div class="oa-kpis four">
+        <Panel title="The ledger" span={12}><div class={`oa-kpis ${grantedOut > 0 ? 'five' : 'four'}`}>
           <div class="oa-kpi"><div class="v">{usd(d.v.granted_in_usd_cents)}</div><div class="l">put in</div></div>
+          {grantedOut > 0 ? <div class="oa-kpi"><div class="v">{usd(grantedOut)}</div><div class="l">given to projects</div></div> : null}
           <div class="oa-kpi"><div class="v">{usd(d.v.consumed_usd_cents)}</div><div class="l">spent, every cent metered</div></div>
           <div class="oa-kpi"><div class="v">{usd(d.v.balance_usd_cents)}</div><div class="l">balance</div></div>
           <div class="oa-kpi"><div class="v">{usd(d.v.burn_per_day_usd_cents)}</div><div class="l">burn a day</div></div>
@@ -407,6 +414,7 @@ export function Books({ d }: { d: DashData }) {
           <Breakdown title={`By model · the last ${d.calls?.length ?? 0} calls`} rows={groupBy(d.calls ?? [], (c) => c.rail === 'model' ? c.model ?? 'model' : c.rail === 'card' ? `card · ${c.merchant ?? 'a merchant'}` : `partner · ${c.partner ?? 'a partner'}`, (c) => c.usd_cents)} />
         </div></Panel> : null}
         <Panel title="Money in" span={6}>{gifts.length || earlier > 0 ? <table class="oa-table"><thead><tr><th>When</th><th>From</th><th>What</th><th class="n">Amount</th></tr></thead><tbody>{gifts.map((g) => <tr><td class="nowrap">{fmtAgo(g.ts, d.now)}</td><td>{g.from ? g.from.replace(/^@/, '') : g.sponsor_login ?? 'the operator'}</td><td>{g.kind === 'mint' ? (g.coupon ? 'a coupon' : g.sponsor_login ? 'sponsorship' : 'credits') : g.note ? `a grant · “${g.note}”` : 'a grant'}</td><td class="n">{usd(g.amount_usd_cents)}</td></tr>)}{earlier > 0 ? <tr><td class="nowrap">earlier</td><td>—</td><td>not itemized on these books</td><td class="n">{usd(earlier)}</td></tr> : null}</tbody></table> : <p class="oa-empty">Nothing has come in yet.</p>}</Panel>
+        {grantedOut > 0 ? <Panel title="Money out · given to projects" span={6}><table class="oa-table"><thead><tr><th>When</th><th>To</th><th>What</th><th class="n">Amount</th></tr></thead><tbody>{given.map((g) => <tr><td class="nowrap">{fmtAgo(g.ts, d.now)}</td><td>{g.to}</td><td>{g.note ? `a grant · “${g.note}”` : 'a grant'}</td><td class="n">{usd(g.amount_usd_cents)}</td></tr>)}{earlierOut > 0 ? <tr><td class="nowrap">earlier</td><td>—</td><td>not itemized on these books</td><td class="n">{usd(earlierOut)}</td></tr> : null}</tbody></table></Panel> : null}
         <Panel title="Earmarked · the owner's bounds" span={6}>
           {d.v.envelopes.length ? <ul class="oa-rows">{d.v.envelopes.map((e: Envelope) => <li><span class="t">{purpose(e)}{e.from ? ` · from ${e.from.replace(/^@/, '')}` : ''}</span><span class="n">{usd(e.balance_usd_cents)}</span></li>)}</ul> : <p class="oa-empty">Nothing earmarked.</p>}
           <ul class="oa-rows" style="margin-top:14px">{d.v.bounds.models.length ? <li><span class="t">models</span><span class="n">{d.v.bounds.models.join(', ')}</span></li> : null}{d.v.bounds.limits.map((l) => <li><span class="t">{l.model ? `${l.model} · ` : ''}{[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per {l.window}</span><span class="n">used {[l.usd_cents !== undefined ? usd(l.used.usd_cents) : '', l.calls !== undefined ? `${l.used.calls} calls` : '', l.tokens !== undefined ? `${l.used.tokens} tokens` : ''].filter(Boolean).join(', ')}</span></li>)}</ul>
@@ -567,7 +575,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-panel{min-width:0}
 .oa-panel>h2{display:flex;align-items:center;gap:10px;height:18px;margin-bottom:6px;font:500 9.5px/1 var(--oa-label);letter-spacing:.28em;text-transform:uppercase;color:#5f656b}
 .oa-panel>h2 a{margin-left:auto;text-transform:none;letter-spacing:0;font:400 11.5px var(--scui-font);color:#3d4150}
-.oa-kpis{display:grid;border:1px solid #dcddda}.oa-kpis.two{grid-template-columns:1fr 1fr}.oa-kpis.three{grid-template-columns:repeat(3,1fr)}.oa-kpis.four{grid-template-columns:repeat(4,1fr)}
+.oa-kpis{display:grid;border:1px solid #dcddda}.oa-kpis.two{grid-template-columns:1fr 1fr}.oa-kpis.three{grid-template-columns:repeat(3,1fr)}.oa-kpis.four{grid-template-columns:repeat(4,1fr)}.oa-kpis.five{grid-template-columns:repeat(5,1fr)}
 .oa-kpi{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:9px 12px}
 .oa-kpi+.oa-kpi{border-left:1px solid #dcddda}
 .oa-kpi .v{font:400 21px/1.1 var(--oa-label);letter-spacing:-.02em}
@@ -689,5 +697,5 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-palette-item .l b{margin-right:8px;color:#656a72;font-weight:400;font-family:var(--scui-font-mono)}
 .oa-palette-empty{padding:10px 8px;color:#656a72}
 @media(prefers-reduced-motion:reduce){.oa-pill.live i{animation:none}}
-@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 10px;border-right:0;border-bottom:1px solid var(--oa-rule)}.oa-proj,.oa-keys,.oa-role{display:none}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:1px}.oa-rail nav a kbd{display:none}.oa-body{padding:0 12px 28px}.oa-top{margin:0 -12px 12px;padding:6px 12px;height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px}.oa-facts{flex-wrap:wrap;white-space:normal}.oa-jump{display:none}.oa-rowlist{--scui-task-flow:row;--scui-task-columns:none;--scui-task-gap:1px}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-split3{grid-template-columns:1fr}.oa-settings{grid-template-columns:1fr}.oa-break+.oa-break{border-left:0;border-top:1px solid #dcddda}.oa-kpis.four{grid-template-columns:repeat(2,1fr)}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-listcol{position:static;max-height:50vh;border-right:0;border-bottom:1px solid #dcddda}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-listcol{display:none}}
+@media(max-width:980px){.oa-dash{grid-template-columns:1fr}.oa-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 10px;border-right:0;border-bottom:1px solid var(--oa-rule)}.oa-proj,.oa-keys,.oa-role{display:none}.oa-rail nav{flex-direction:row;overflow-x:auto;gap:1px}.oa-rail nav a kbd{display:none}.oa-body{padding:0 12px 28px}.oa-top{margin:0 -12px 12px;padding:6px 12px;height:auto;min-height:44px;flex-wrap:wrap;row-gap:4px}.oa-facts{flex-wrap:wrap;white-space:normal}.oa-jump{display:none}.oa-rowlist{--scui-task-flow:row;--scui-task-columns:none;--scui-task-gap:1px}.oa-two{grid-template-columns:1fr}.oa-grid>.span4,.oa-grid>.span6,.oa-grid>.span8{grid-column:span 12}.oa-split3{grid-template-columns:1fr}.oa-settings{grid-template-columns:1fr}.oa-break+.oa-break{border-left:0;border-top:1px solid #dcddda}.oa-kpis.four,.oa-kpis.five{grid-template-columns:repeat(2,1fr)}.oa-messenger{grid-template-columns:1fr;min-height:0}.oa-listcol{position:static;max-height:50vh;border-right:0;border-bottom:1px solid #dcddda}.oa-messenger .oa-chat.scui-root{position:static;height:auto;min-height:60vh}.oa-messenger[data-pane=chat] .oa-listcol{display:none}}
 `;

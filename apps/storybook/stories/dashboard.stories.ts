@@ -28,6 +28,14 @@ export const OneSession: S = { args: { page: 'sessions', session: (oaPm as any).
 export const BoardPage: S = { args: { page: 'board' } };
 export const OneItem: S = { args: { page: 'board', item: openAutonomy.roadmap.items.find((i) => i.status !== 'done')?.id } };
 export const BooksPage: S = { args: { ...hookline, page: 'books', calls: (hlCalls as any).calls ?? [] } };
+// A pool's books: money in (a sponsor's mint) and money out (its grants to projects), which Money in never lists.
+const pool = 'open-autonomy-org/grants';
+const poolFeed = [
+  { kind: 'mint', id: 'mint-1', to: pool, amount_usd_cents: 50000, sponsor_login: 'octocat', ts: new Date(NOW - 5 * 86_400_000).toISOString() },
+  { kind: 'grant', id: 'grant-1', from: pool, to: 'open-autonomy-org/hookline', amount_usd_cents: 2000, note: 'first month', ts: new Date(NOW - 3 * 86_400_000).toISOString() },
+  { kind: 'grant', id: 'grant-2', from: pool, to: 'open-autonomy-org/lexicon', amount_usd_cents: 1000, ts: new Date(NOW - 86_400_000).toISOString() },
+];
+export const BooksOfAGrantsPool: S = { args: { ...hookline, page: 'books', calls: [], v: { ...hookline.v, account: pool, granted_in_usd_cents: 50000, granted_out_usd_cents: 3000, consumed_usd_cents: 0, balance_usd_cents: 47000, feed: poolFeed } } };
 export const AgentPage: S = { args: { page: 'agent' } };
 export const TeamPage: S = { args: { page: 'team' } };
 export const Phone: S = { args: { ...live(openAutonomy), viewer: 'owner' }, globals: { viewport: { value: 'mobile1', isRotated: false } } };
