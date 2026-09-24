@@ -3,7 +3,7 @@
 import type { DirectoryEntry } from '@open-autonomy/backend';
 import type { AccountSlots, DirectorySlots, Viewer } from '@open-autonomy/backend/page/model';
 import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
-import { usd0 } from '@open-autonomy/backend/ui';
+import { usd, usd0 } from '@open-autonomy/backend/ui';
 import { DISPLAY, MONO, T, TEXT } from '@open-autonomy/backend/page/theme';
 import type { Patron, PatronageView, Tier } from '../patronage.js';
 
@@ -59,7 +59,7 @@ export const PATRONAGE_STYLES = `
 export const whoNav = (who: Viewer | undefined, here = '/') => <><a href="/">Explore</a>{who ? <a href={at(who.login)}>@{who.login}</a> : <a href={`/give/login?next=${encodeURIComponent(here)}`}>Sign in</a>}</>;
 
 // The tiers: Polar checkout per tier, or GitHub Sponsors once. Other ways to give fold under the tiers.
-export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: Tier[]; owner: string; account: string; sponsor: string; polar: boolean; burn: number }) {
+export function Tiers({ tiers, owner, account, sponsor, polar, burn, signedIn = false }: { tiers: Tier[]; owner: string; account: string; sponsor: string; polar: boolean; burn: number; signedIn?: boolean }) {
   const days = (t: Tier) => (burn > 0 ? Math.round(t.usd_cents / burn) : null);
   return (
     <div class="tierset">
@@ -87,12 +87,12 @@ export function Tiers({ tiers, owner, account, sponsor, polar, burn }: { tiers: 
         </form> : null}
         <div class="form">
           <h3>Give grant credits</h3>
-          <a class="btn quiet" href={`/give?to=${encodeURIComponent(account)}`}>Sign in to give credits</a>
+          <a class="btn quiet" href={`/give?to=${encodeURIComponent(account)}`}>{signedIn ? 'Give credits' : 'Sign in to give credits'}</a>
           <p class="fine" style="margin-top:0">Credits you hold on your own books, given to a project you believe in.</p>
           <details class="keyed"><summary>With a funder key</summary>
             <form class="form" method="post" action={`${at(account)}/give`}>
               <input name="key" placeholder="your funder key" autocomplete="off" aria-label="Funder key" />
-              <input name="usd_cents" type="number" min={1} placeholder="cents" aria-label="Amount in cents" />
+              <input name="usd" inputmode="decimal" placeholder="dollars, like 5.00" pattern="\$?\d+(\.\d{1,2})?" aria-label="Amount in dollars" required />
               <input name="note" placeholder="a word, optional" maxlength={280} aria-label="A word" />
               <button class="btn quiet" type="submit">Give grant credits</button>
             </form>
@@ -128,7 +128,7 @@ export function directorySlots(entries: DirectoryEntry[], patronage: Record<stri
       <p class="lede">Each project here runs its own agent on a roadmap it keeps in its repository. Back one, and every session it works, every cent it spends and everything it ships is on its page.</p>
       <div class="acts"><a class="btn" href="#projects">Explore projects<span class="arr">→</span></a><a class="btn quiet" href="#start">Start a project</a></div>
     </>,
-    stripe: <><div><span class="n">{patrons}</span><span class="k">{patrons === 1 ? 'patron' : 'patrons'}</span></div>{granted > 0 ? <div><span class="n">{usd0(granted)}</span><span class="k">{funders && pooled ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'} and ${ownerOf(grants)}'s pool` : funders ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'}` : `granted from ${ownerOf(grants)}'s pool`}</span></div> : null}</>,
+    stripe: <><div><span class="n">{patrons}</span><span class="k">{patrons === 1 ? 'patron' : 'patrons'}</span></div>{granted > 0 ? <div><span class="n">{granted % 100 ? usd(granted) : usd0(granted)}</span><span class="k">{funders && pooled ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'} and ${ownerOf(grants)}'s pool` : funders ? `granted by ${funders} ${funders === 1 ? 'funder' : 'funders'}` : `granted from ${ownerOf(grants)}'s pool`}</span></div> : null}</>,
     card: facts(entries, patronage),
     after: FRONT_AFTER,
     description: 'Fund software that builds itself: each project runs its own agent on its roadmap, and every session and every cent is on public books.',

@@ -54,7 +54,7 @@ export function renderGivePage(data?: GivePageData, to?: string): string {
                 <input type="hidden" name="key" value={data.attempt} />
                 <label class="field">Give from<select name="source">{sources.map((x) => <option value={x.account}>{x.label}</option>)}</select></label>
                 <label class="field">Project<select name="to" required>{data.projects.map((p) => <option value={p.account} selected={p.account === to}>{p.account}</option>)}</select></label>
-                <label class="field">Amount in cents<input name="usd_cents" type="number" min={1} step={1} required /></label>
+                <label class="field">Amount in dollars<input name="usd" inputmode="decimal" placeholder="5.00" pattern="\$?\d+(\.\d{1,2})?" required /></label>
                 <label class="field">Earmark<select name="for"><option value="unrestricted">whatever the project needs</option><option value="model">model calls only</option><option value="any">anything the agent spends on</option></select></label>
                 <label class="field">Why this project (optional)<input name="note" maxlength={280} /></label>
                 <button class="btn wide" type="submit" disabled={!data.projects.length}>Give</button>

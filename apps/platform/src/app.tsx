@@ -43,11 +43,14 @@ export const app: App = {
           const attempt = String(form.get('key') ?? '');
           if (!/^[0-9a-f-]{36}$/i.test(attempt)) message = { ok: false, text: 'This giving attempt is invalid. Reload the page and try again.' };
           else {
-            const amount = Number(form.get('usd_cents'));
+            const amount = centsOf(form);
+            if (amount === null) message = { ok: false, text: 'Enter an amount in dollars, like 5 or 1.50.' };
+            else {
             const result = await t.give(source, String(form.get('to') ?? ''), amount, String(form.get('note') ?? '').trim() || undefined, `give-page:${session.login}:${source}:${attempt}`, String(form.get('for') ?? 'unrestricted'), source === pool ? `@${session.login}` : undefined);
             message = result.ok
               ? { ok: true, text: `${source} granted $${(Math.floor(amount) / 100).toFixed(2)} to ${String(form.get('to'))}. It is on the project's books.` }
               : { ok: false, text: result.error === 'insufficient_balance' ? `${source} holds fewer credits than that.` : `The gift was refused: ${result.error}.` };
+            }
           }
         }
       } else if (req.method !== 'GET') return methodNotAllowed();
@@ -66,8 +69,10 @@ export const app: App = {
       const form = await req.formData();
       const claims = await authedClaims(new Request(req.url, { headers: { authorization: `Bearer ${String(form.get('key') ?? '').trim()}` } }), env);
       if (!claims || !hasScope(claims, 'give')) return html(renderMessage(account, false, 'Not given', 'That is not a funder key. Prove your GitHub login with the claim file and mint one: GET /v1/keys/challenge?funder=<login>.'), 401);
-      const r = await t.give(claims.account, account, Number(form.get('usd_cents')), String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`, String(form.get('for') ?? '').trim() || undefined);
-      return html(renderMessage(account, r.ok, r.ok ? 'Given' : 'Not given', r.ok ? `${claims.account} granted $${(Number(form.get('usd_cents')) / 100).toFixed(2)} to ${account}. It is on the books and on the page.` : r.error === 'insufficient_balance' ? `${claims.account} holds fewer credits than that.` : `The gift was refused: ${r.error}.`), r.ok ? 200 : 400);
+      const cents = centsOf(form);
+      if (cents === null) return html(renderMessage(account, false, 'Not given', 'Enter an amount in dollars, like 5 or 1.50.'), 400);
+      const r = await t.give(claims.account, account, cents, String(form.get('note') ?? '').trim() || undefined, `give:${crypto.randomUUID()}`, String(form.get('for') ?? '').trim() || undefined);
+      return html(renderMessage(account, r.ok, r.ok ? 'Given' : 'Not given', r.ok ? `${claims.account} granted $${(cents / 100).toFixed(2)} to ${account}. It is on the books and on the page.` : r.error === 'insufficient_balance' ? `${claims.account} holds fewer credits than that.` : `The gift was refused: ${r.error}.`), r.ok ? 200 : 400);
     }
     if (door && door[3] === 'redeem') {
       if (req.method !== 'POST') return methodNotAllowed();
@@ -158,3 +163,12 @@ function redeemMessage(code?: string): string {
   }
 }
 export { NO_STORE };
+
+/** A form's amount in whole cents: a person types dollars (`usd`: 5, 1.50, $2); a script may send `usd_cents`. Null for
+ *  anything that is not a positive amount of at most two decimals. */
+function centsOf(form: FormData): number | null {
+  const dollars = String(form.get('usd') ?? '').trim().replace(/^\$/, '');
+  if (dollars) return /^\d+(\.\d{1,2})?$/.test(dollars) && Number(dollars) > 0 ? Math.round(Number(dollars) * 100) : null;
+  const cents = Number(form.get('usd_cents'));
+  return Number.isInteger(cents) && cents > 0 ? cents : null;
+}
