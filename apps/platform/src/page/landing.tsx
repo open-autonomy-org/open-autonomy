@@ -1,7 +1,7 @@
 // The landing page: a project as an outsider meets it. Product Hunt's top (the icon, the name, the one line, the
 // tags, two buttons) over Kickstarter's campaign (the media on the left, the money on the right, the story and the
-// promises below, the rewards beside them). No cover band: software has no honest picture for one. The media is
-// the agent at work, the only picture a self-building project can show: what it is doing this minute and its
+// promises below, the rewards beside them). The top is the project's own band: its ground colour edge to edge, its
+// drawing (or the cover it published) bleeding off the right side. The media is the agent at work, the only picture a self-building project can show: what it is doing this minute and its
 // metered days. Everything deeper (transcripts, every call, the agent's setup, the owner's control) is the
 // dashboard's, a link away for whoever the owner admits.
 import { tenseOf, type Roadmap } from '@open-autonomy/sdk/roadmap';
@@ -11,7 +11,7 @@ import { Foot, Pill, TopBar, at, firstLine, leadParagraphs, nameOf, ownerOf, saf
 import { updatesOf } from '@open-autonomy/backend/page/updates';
 import { BASE_CSS, DISPLAY, FONTS, T, TEXT } from '@open-autonomy/backend/page/theme';
 import { headMeta, type PageMeta } from '@open-autonomy/backend/page/document';
-import { art, lattice, rings } from '@open-autonomy/backend/page/art';
+import { art, groundOf, lattice, rings } from '@open-autonomy/backend/page/art';
 import { raw } from 'hono/html';
 import { sees, type Viewer } from '@open-autonomy/backend/page/model';
 import type { Patron, PatronageView } from '../patronage.js';
@@ -37,16 +37,22 @@ export interface LandingData {
 // The landing page's own sheet, on the core's parts: an identity band beside the project's drawing, the facts in
 // one ruled strip, the agent at work beside the money, then the story, the tiers, the roadmap and the patrons.
 export const LANDING_CSS = `${BASE_CSS}
-.ident{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:48px;align-items:center;padding:56px 0 44px}
-.ident .label{margin-bottom:18px}
+/* The project's own band: full bleed in its ground colour, the words in the container, the drawing (or the cover it
+   published) filling the right side out to the viewport's edge. */
+.ident{--ground:${T.panel};display:grid;grid-template-columns:minmax(var(--oa-gutter),1fr) minmax(0,calc(var(--oa-wide) * .56)) minmax(0,calc(var(--oa-wide) * .44)) minmax(var(--oa-gutter),1fr);background:var(--ground);border-bottom:1px solid ${T.line}}
+.ident[data-ground=stone]{--ground:${T.stone}}.ident[data-ground=lime]{--ground:${T.lime}}.ident[data-ground=lilac]{--ground:${T.lilac}}
+.ident .who{grid-column:2;min-width:0;padding:64px 48px 56px 0;align-self:center}
+.ident .label{margin-bottom:18px;color:#5d6168}
 .ident h1{font:400 clamp(40px,5.6vw,68px)/1 ${DISPLAY};letter-spacing:-.04em;color:#000;overflow-wrap:anywhere}
 .ident .tag{font-size:19px;line-height:1.4;color:${T.ink};font-weight:400;margin-top:18px;max-width:34ch}
 .ident .acts{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
 .ident .acts .gh{align-self:center;margin-left:6px;font-size:13.5px;color:${T.body}}
-.ident .pic{position:relative;aspect-ratio:1/0.82;overflow:hidden}
-.ident .pic .cap{position:absolute;right:0;font:500 9px/1.8 ${TEXT};letter-spacing:.3em;text-transform:uppercase;color:${T.body};background:${T.wash};padding:4px 0 4px 10px}
-.ident .pic .cap.t{top:0}.ident .pic .cap.b{bottom:0}
-.facts-strip{display:flex;align-items:center;flex-wrap:wrap;gap:16px 0;padding:18px 0;border-top:1px solid ${T.line};border-bottom:1px solid ${T.line}}
+.ident .pic{grid-column:3 / -1;position:relative;min-height:420px;overflow:hidden;color:${T.ink}}
+.ident .pic .art,.ident .pic img{position:absolute;inset:0;width:100%;height:100%}
+.ident .pic img{object-fit:cover}
+.ident .pic .cap{position:absolute;right:var(--oa-gutter);font:500 9px/1.8 ${TEXT};letter-spacing:.3em;text-transform:uppercase;color:${T.body};background:var(--ground);padding:4px 10px}
+.ident .pic .cap.t{top:24px}.ident .pic .cap.b{bottom:24px}
+.facts-strip{display:flex;align-items:center;flex-wrap:wrap;gap:16px 0;padding:18px 0;border-bottom:1px solid ${T.line}}
 .facts-strip>*{padding:0 26px;border-left:1px solid ${T.line}}
 .facts-strip>*:first-child{padding-left:0;border-left:0}
 .facts-strip .who{display:flex;align-items:center;gap:14px;min-width:0}
@@ -66,8 +72,8 @@ export const LANDING_CSS = `${BASE_CSS}
 .poster .head .p{width:8px;height:8px;background:${T.hot};animation:pulse 1.2s steps(2) infinite}
 .poster .head .p.still{background:${T.faint};animation:none}
 .poster .head .pill{margin-left:auto}
-.poster .line{margin-top:16px;font:400 21px/1.4 ${DISPLAY};letter-spacing:-.02em;color:#000;max-width:34ch}
-.poster .line b{font-weight:400;background:${T.lime};padding:0 3px}
+.poster .line{margin-top:16px;font:400 19px/1.45 ${TEXT};color:${T.ink};max-width:60ch}
+.poster .line b{font-weight:500;background:${T.lime};padding:0 3px}
 .poster .sub{margin-top:12px;color:${T.body};font-size:14px}
 .poster .sub a{color:${T.ink};font-weight:500;text-decoration:underline;text-underline-offset:3px}
 .chart{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding-top:28px}
@@ -134,7 +140,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .band-cta a{font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .foot{margin-top:0}
 ${PATRONAGE_STYLES}
-@media(max-width:900px){.ups{grid-template-columns:1fr}.ident{grid-template-columns:1fr;gap:28px;padding-top:32px}.ident .pic{max-width:360px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:18px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic,.sec>h2 small{display:none}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
+@media(max-width:900px){.ups{grid-template-columns:1fr}.ident{grid-template-columns:var(--oa-gutter) minmax(0,1fr) var(--oa-gutter)}.ident .who{padding:32px 0 28px}.ident .pic{grid-column:1 / -1;min-height:0;height:180px}.ident .pic .cap.t{top:12px}.ident .pic .cap.b{bottom:12px}.facts-strip>*{padding:0 14px}.facts-strip .faces{margin-left:0}.hero{grid-template-columns:1fr}.poster{min-height:0}.poster .line{font-size:17px}.chart .bars{height:72px}.about{grid-template-columns:1fr}.about .pic,.sec>h2 small{display:none}.promises{grid-template-columns:1fr}.band-cta{flex-direction:column;align-items:flex-start;padding:26px 22px}.sec{padding-top:48px}}
 @media(max-width:480px){.ask .money{font-size:38px}}
 `;
 
@@ -281,6 +287,12 @@ function Updates({ d }: { d: LandingData }) {
   );
 }
 
+// The band's picture: the cover the project published, or its own drawing.
+function IdentPic({ d }: { d: LandingData }) {
+  const cover = safeUrl(d.v.profile.cover_url);
+  return cover ? <img src={cover} alt="" /> : raw(art(d.v.account));
+}
+
 export function Landing(d: LandingData) {
   const a = d.v.account;
   const lead = leadParagraphs(d.v.profile.about_md, 3);
@@ -291,20 +303,20 @@ export function Landing(d: LandingData) {
   return (
     <>
       <TopBar brand={d.brand} nav={whoNav(d.who, at(a))} cta={<a class="btn small" href="#tiers">Back this project</a>} />
-      <div class="page">
-        <div class="ident">
-          <div class="who">
-            <p class="label">{[harness, d.v.profile.agent_model, ...jobs].filter(Boolean).join('  /  ')}</p>
-            <h1>{nameOf(a)}</h1>
-            <p class="tag">{d.v.profile.tagline ?? `${nameOf(a)}, building itself in the open.`}</p>
-            <div class="acts">
-              <a class="btn" href="#tiers">Back this project<span class="arr">→</span></a>
-              {d.dashboard ? <a class="btn quiet" href={at(a, 'dashboard')}>Open the dashboard</a> : null}
-              <a class="gh" href={`https://github.com/${a}`} target="_blank" rel="noopener">GitHub ↗</a>
-            </div>
+      <div class="ident" data-ground={groundOf(a)}>
+        <div class="who">
+          <p class="label">{[harness, d.v.profile.agent_model, ...jobs].filter(Boolean).join('  /  ')}</p>
+          <h1>{nameOf(a)}</h1>
+          <p class="tag">{d.v.profile.tagline ?? `${nameOf(a)}, building itself in the open.`}</p>
+          <div class="acts">
+            <a class="btn" href="#tiers">Back this project<span class="arr">→</span></a>
+            {d.dashboard ? <a class="btn quiet" href={at(a, 'dashboard')}>Open the dashboard</a> : null}
+            <a class="gh" href={`https://github.com/${a}`} target="_blank" rel="noopener">GitHub ↗</a>
           </div>
-          <div class="pic">{raw(art(a))}<span class="cap t">Built<br />in the<br />open</span><span class="cap b">Every call<br />metered</span></div>
         </div>
+        <div class="pic"><IdentPic d={d} /><span class="cap t">Built<br />in the<br />open</span><span class="cap b">Every call<br />metered</span></div>
+      </div>
+      <div class="page">
         <div class="facts-strip">
           <div class="who"><img src={`https://github.com/${encodeURIComponent(ownerOf(a))}.png?size=88`} alt="" /><div><small>Maintained by</small><b>{ownerOf(a)}</b></div></div>
           <div class="fig"><b>{d.patronage.patron_count}</b><small>{d.patronage.patron_count === 1 ? 'patron' : 'patrons'}</small></div>
@@ -350,14 +362,12 @@ export function About(d: LandingData) {
   return (
     <>
       <TopBar brand={d.brand} nav={whoNav(d.who, at(a, 'about'))} cta={<a class="btn small" href={at(a)}>{nameOf(a)} →</a>} />
+      <div class="ident" data-ground={groundOf(a)}>
+        <div class="who"><p class="label">The whole story</p><h1>{nameOf(a)}</h1><p class="tag">{d.v.profile.tagline ?? ''}</p></div>
+        <div class="pic"><IdentPic d={d} /></div>
+      </div>
       <div class="page">
-        <div class="ident">
-          <div class="who"><p class="label">The whole story</p><h1>{nameOf(a)}</h1><p class="tag">{d.v.profile.tagline ?? ''}</p></div>
-          <div class="pic">{raw(art(a))}</div>
-        </div>
-        <div style="max-width:72ch;padding-top:12px;border-top:1px solid #dcddda">
-          {d.v.profile.about_md?.trim() ? <div class="prose" style="margin-top:28px" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.about_md) }} /> : <p class="empty">This project has not published what it is yet.</p>}
-        </div>
+        {d.v.profile.about_md?.trim() ? <div class="prose" style="margin-top:40px" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.about_md) }} /> : <p class="empty" style="margin-top:40px">This project has not published what it is yet.</p>}
       </div>
       <Foot brand={d.brand} nav={whoNav(d.who, at(a, 'about'))} />
     </>

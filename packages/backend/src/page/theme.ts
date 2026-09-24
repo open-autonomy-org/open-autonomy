@@ -16,10 +16,12 @@ export const TEXT = '"DM Sans",ui-sans-serif,-apple-system,BlinkMacSystemFont,"S
 export const MONO = '"Iosevka Slab",ui-monospace,SFMono-Regular,Menlo,monospace';
 
 // The parts every page wears: the bar, the buttons, the one word on the agent, cards, rows and the footer band.
+// One container for everything (--oa-wide inside --oa-gutter); the bar's rule and the bands bleed to the viewport,
+// their content aligned to the container. Reading text keeps its own measure (70ch), whatever the container's width.
 export const BASE_CSS = `
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:${T.wash};color:${T.ink};font:400 15px/1.55 ${TEXT};-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;--oa-hot:${T.hot}}
+body{margin:0;background:${T.wash};color:${T.ink};font:400 15px/1.55 ${TEXT};-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;--oa-hot:${T.hot};--oa-wide:1440px;--oa-gutter:clamp(20px,4vw,64px)}
 a{color:inherit;text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
 h1,h2,h3,p,ul,ol{margin:0}
@@ -28,8 +30,8 @@ ul,ol{padding:0;list-style:none}
 .art{display:block;width:100%;height:100%;color:${T.ink}}
 .mark{display:block;width:22px;height:22px;flex:none}
 .label{font:500 10px/1.4 ${TEXT};letter-spacing:.28em;text-transform:uppercase;color:${T.muted}}
-.topbar{background:${T.wash};position:sticky;top:0;z-index:5}
-.topbar .in{max-width:1200px;margin:0 auto;padding:0 32px;height:64px;display:flex;align-items:center;gap:28px;border-bottom:1px solid ${T.rule}}
+.topbar{background:${T.wash};position:sticky;top:0;z-index:5;border-bottom:1px solid ${T.rule}}
+.topbar .in{max-width:calc(var(--oa-wide) + 2 * var(--oa-gutter));margin:0 auto;padding:0 var(--oa-gutter);height:64px;display:flex;align-items:center;gap:28px}
 .brand{display:flex;align-items:center;gap:12px;font:400 17px/1 ${DISPLAY};letter-spacing:-.01em;white-space:nowrap;color:#000}
 .brand:hover{text-decoration:none}
 .brand svg{width:20px;height:20px}
@@ -46,7 +48,7 @@ ul,ol{padding:0;list-style:none}
 .btn.small{height:34px;padding:0 14px;font-size:13px}
 .btn .arr{font-size:15px;line-height:1}
 .btn[disabled]{opacity:.45;cursor:default}
-.page{max-width:1200px;margin:0 auto;padding:0 32px 0}
+.page{max-width:calc(var(--oa-wide) + 2 * var(--oa-gutter));margin:0 auto;padding:0 var(--oa-gutter)}
 .pill{display:inline-flex;align-items:center;gap:8px;height:24px;padding:0 9px;font:500 11.5px/1 ${TEXT};letter-spacing:.02em;background:${T.stone};color:${T.body}}
 .pill .dot{width:7px;height:7px;background:${T.faint}}
 .pill.live{background:${T.lime};color:${T.ink}}
@@ -60,7 +62,7 @@ ul,ol{padding:0;list-style:none}
 .card{background:${T.panel};border:1px solid ${T.line};padding:22px 24px}
 .card h2,.sech{font:500 10px/1.4 ${TEXT};letter-spacing:.28em;text-transform:uppercase;color:${T.muted};margin-bottom:16px}
 .card .more,.more{display:inline-flex;gap:10px;margin-top:14px;color:${T.ink};font-weight:500;font-size:13.5px}
-.prose{color:${T.body};font-size:15.5px;line-height:1.65}
+.prose{color:${T.body};font-size:15.5px;line-height:1.65;max-width:70ch}
 .prose p+p{margin-top:12px}
 .prose b,.prose strong{color:${T.ink};font-weight:600}
 .prose a{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
@@ -108,15 +110,15 @@ ul,ol{padding:0;list-style:none}
 .table td.n{text-align:right;white-space:nowrap}
 .table td.mono{font:12.5px ${MONO};color:${T.body}}
 .foot{margin-top:88px}
-.foot .band{display:flex;align-items:center;gap:28px;padding:26px max(32px,calc((100vw - 1136px) / 2));background:${T.lime}}
+.foot .band{display:flex;align-items:center;gap:28px;padding:26px max(var(--oa-gutter),calc((100% - var(--oa-wide)) / 2));background:${T.lime}}
 .foot .band .say{font:500 10.5px/1.9 ${TEXT};letter-spacing:.3em;text-transform:uppercase;color:${T.ink};max-width:34ch}
 .foot .band .rule{flex:1;height:1px;background:${T.ink};opacity:.35}
 .foot .band .mark{width:26px;height:26px}
-.foot .base{max-width:1200px;margin:0 auto;padding:28px 32px 40px;display:flex;align-items:flex-start;gap:40px;flex-wrap:wrap;color:${T.muted};font-size:13px}
+.foot .base{max-width:calc(var(--oa-wide) + 2 * var(--oa-gutter));margin:0 auto;padding:0 var(--oa-gutter);padding-top:28px;padding-bottom:40px;display:flex;align-items:flex-start;gap:40px;flex-wrap:wrap;color:${T.muted};font-size:13px}
 .foot .base .brand{font-size:15px}
 .foot .base nav{display:flex;gap:28px;margin-left:auto;color:${T.body}}
 .foot .base .note{flex-basis:100%;font-size:12px}
-@media(max-width:900px){.page{padding:0 18px}.topbar .in{padding:0 18px;gap:16px}.foot .band{padding:22px 18px;flex-wrap:wrap}.foot .band .rule{display:none}.foot .base{padding:24px 18px 32px}.foot .base nav{margin-left:0}}
+@media(max-width:900px){.topbar .in{gap:16px}.foot .band{padding-top:22px;padding-bottom:22px;flex-wrap:wrap}.foot .band .rule{display:none}.foot .base{padding-top:24px;padding-bottom:32px}.foot .base nav{margin-left:0}}
 @media(max-width:560px){.topbar nav a{padding:0 10px}.brand{font-size:14px}.topbar .btn.small{display:none}}
 `;
 
@@ -126,7 +128,7 @@ export const CSS = `${BASE_CSS}
 .front .copy{min-width:0}
 .front .label{margin-bottom:22px;line-height:2}
 .front h1{font:400 clamp(38px,5.4vw,62px)/1.02 ${DISPLAY};letter-spacing:-.035em;color:#000;max-width:14ch}
-.front .lede{color:${T.body};font-size:16.5px;line-height:1.6;max-width:52ch;margin-top:24px}
+.front .lede{color:${T.body};font-size:16.5px;line-height:1.6;max-width:70ch;margin-top:24px}
 .front .acts{display:flex;gap:14px;flex-wrap:wrap;margin-top:32px}
 .front .pic{position:relative;aspect-ratio:1;max-width:440px;width:100%;justify-self:end}
 .front .pic .cap{position:absolute;font:500 9px/1.8 ${TEXT};letter-spacing:.3em;text-transform:uppercase;color:${T.body}}
@@ -193,7 +195,7 @@ export const CSS = `${BASE_CSS}
 .gifts .who span{display:block;color:${T.muted};font-size:13px}
 .gifts .who .since{color:${T.limeInk};font-size:12px}
 .gifts .amt{font-weight:500;color:${T.limeInk};white-space:nowrap}
-.note-page{max-width:560px;margin:80px auto 0;text-align:left}
+.note-page{max-width:70ch;margin:80px auto 0;text-align:left}
 .note-page .mark{width:30px;height:30px;margin-bottom:28px}
 .note-page .mark.no{color:${T.hot}}
 .note-page h1{font:400 30px/1.15 ${DISPLAY};letter-spacing:-.03em;color:#000;margin-bottom:14px}
