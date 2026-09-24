@@ -344,7 +344,10 @@ const restartRequest = resolve(home, 'kit-restart.json');
 // upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
 // Moved means origin/main is no longer what this stack started on. HEAD is not the measure: a developer run checks
 // out its own task branch in this checkout, and that is work in progress, not a reason to restart under it.
-const startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+let startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+// What the stack runs on: the home (hermes/) and its setup and host code (.open-autonomy/). The project's own books
+// (a roadmap, a changelog) move main every time the agent records its work; a move that touches only them advances
+// the mark with no restart, since a restart refuses whatever arrives while Hermes drains.
 let mainCheckedAt = 0, mainMoved: string | undefined;
 setInterval(() => {
   if (ending || restarting) return;
@@ -360,6 +363,8 @@ setInterval(() => {
     if (g('status', '--porcelain', '--untracked-files=no').stdout.toString().trim()) return;
     if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
     const main = g('rev-parse', 'origin/main').stdout.toString().trim();
+    const changed = startedMain && main && main !== startedMain ? g('diff', '--name-only', startedMain, main).stdout.toString().split('\n').filter(Boolean) : [];
+    if (changed.length && !changed.some((file) => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) startedMain = main;
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
