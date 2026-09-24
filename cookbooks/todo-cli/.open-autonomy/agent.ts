@@ -63,6 +63,9 @@ export function renderWorkerForms(from: string, to: string): string[] {
     const before: string[] = existsSync(manifest) ? readFileSync(manifest, 'utf8').split('\n').filter(Boolean) : [];
     const skills = existsSync(tree) ? skillDirs(tree) : [];
     const names = skills.map((dir) => basename(dir));
+    // the workers' form is flat: two categories holding one name would be one skill there, so they refuse by name
+    const twice = names.find((name, i) => names.indexOf(name) !== i);
+    if (twice) throw new Error(`${relative(from, tree)} holds two skills named ${twice}; the workers' .agents/skills/ is flat, so rename one`);
     for (const name of before) if (!names.includes(name)) rmSync(resolve(shelf, name), { recursive: true, force: true });
     for (const dir of skills) {
       const rel = relative(tree, dir);

@@ -100,10 +100,12 @@ own platform key on the test platform (`autonomy.voltertest.xyz`).
   - the gateway answers `/v1/responses` in its own stream, not OpenAI's;
   - Codex's MCP tools go as a `namespace` tool, which the model refuses.
 - **Measured, and the owner's to decide.** The platform settles an Anthropic-wire call (Claude Code's) from
-  its reservation table, because the gateway reports no cost on that wire. For `zai/glm-5.3-flash` that is
-  about 33 times the cost the gateway reports for the same tokens on the chat wire, and cached tokens are
-  billed at the full input rate:
-  - 14 tokens on Hookline's key: 0.22¢, against 0.01¢ on chat;
+  its reservation table, because the gateway reports no cost on that wire (Merge documents it: the Anthropic
+  surface's usage "carries no `cost` field"). For `zai/glm-5.3-flash` the table's $0.50 per million input
+  tokens is 33.3 times the gateway's $0.015, and a cached token, which the gateway charges $0.003, is billed
+  at the same $0.50, 166.7 times more:
+  - one call on Hookline's key (11 new, 4,416 cached, 3 output tokens) was booked 0.22135¢; the gateway charged
+    0.0013563¢ for the same tokens on the chat wire (0.0066555¢ uncached);
   - the pilot's two fires: $4.74 of the company's $10 on the test platform, where its daily cap stopped them.
 
   Until the platform settles that wire at a real cost, a Claude Code worker on this rail is booked far above
@@ -148,8 +150,11 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 - **ADR 0001, amended:** for a project that picks another harness, Supercode's orchestrator, not Hermes,
   is the native scheduler and coordinator, bare only; the valve, the reporter and the credential boundary
   are unchanged.
-- **Nothing changes for a project that does not pick.** The kit's start, fleet and container behave as
-  before.
+- **A project that does not pick keeps Hermes**, with two changes that reach it too. Every project moves to
+  the new host pins, including the applier its Hermes start already uses (the orchestrator package, 0.2.2 to
+  0.3.1); no Hermes-mode start on the new pins is recorded yet. And the start now treats a runtime that exits
+  0 after it asked for a restart as a drain (it restarts onto main, exit 75), where a Hermes gateway's exit 0
+  used to end the stack with 1.
 
 ## Constitution review (by the author; the independent review follows on the pull request)
 
@@ -166,7 +171,15 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 - **Nothing in an agent's reach is a secret that matters.** Compatible. The worker's environment carries
   the valve's stand-in, and each profile's Codex home holds no login. Bare mode's credential boundary is ADR
   0001's, unchanged.
-- **No automated tests; nothing develops against a real API.** Compatible: each proof step is a hand-run
-  walk in a World.
+- **The ledger's settled cents are the only cost; nothing is estimated.** Not met on the Anthropic wire at
+  this record's writing: there the ledger settles from the reservation table, an estimate (measured above).
+  The fix is the platform's own (a separate change settling that wire at the gateway's per-token prices),
+  and shipping it is the owner's, as every money change is.
+- **No automated tests; nothing develops against a real API.** In tension, and said so. No automated tests
+  were run or added. But the two pilots ran on real APIs, not in a World: the company repository's on the
+  test platform, Hookline's on production, both on the owner's direction ("first test it with hookline and
+  the company repo"), each bounded (the company's by its daily cap, Hookline's to one board task). They
+  are operations of the owner's own projects, not development against a real API. The World walks this
+  record's proof calls for (steps 2 and 3) have not run.
 - **Out of scope.** Compatible: the kit implements no harness; Supercode's orchestrator runs stock Codex or
   Claude Code, and the kit only picks it.
