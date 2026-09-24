@@ -62,5 +62,10 @@ for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 // One foreground process. World captures failure and owns this entire process group.
 const child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' } });
 child.on('error', (error) => { console.error(error); process.exit(1); });
-child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+// wrangler's end is this process's end: its exit code, or the same signal re-raised (the World records a signal as
+// one, where exiting 1 would pass a crash off as an ordinary failure).
+child.on('exit', (code, signal) => {
+  if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); return; }
+  process.exit(code ?? 0);
+});
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
