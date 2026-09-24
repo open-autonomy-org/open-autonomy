@@ -1,4 +1,4 @@
-import { error, json, methodNotAllowed, parseJson } from './http.js';
+import { error, json, methodNotAllowed, parseJson, withoutMoney } from './http.js';
 import { authedClaims } from './keys.js';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { LedgerClient, type SessionEvent } from './ledger.js';
@@ -86,7 +86,8 @@ const NL = '\n';
 
 // Server-Sent Events over a session: turns as `turn` events with the offset as the event id, `status` on
 // change; Last-Event-ID or ?after= resumes. Closes once the session has ended.
-export async function sessionEvents(env: Env, account: string, key: string, req: Request): Promise<Response> {
+export async function sessionEvents(env: Env, account: string, key: string, req: Request, money = true): Promise<Response> {
+  const shown = <T,>(v: T): T => (money ? v : withoutMoney(v));
   if (req.method !== 'GET') return methodNotAllowed();
   const ledger = new LedgerClient(env.LIMITS);
   const first = await ledger.session(account, key);
@@ -105,11 +106,11 @@ export async function sessionEvents(env: Env, account: string, key: string, req:
         const got = i === 0 ? first : await ledger.session(account, key);
         const session = got.session;
         if (!session) break;
-        for (const t of session.turns.filter((t) => typeof t.seq === 'number' && t.seq > after)) { send(`id: ${t.seq}${NL}event: turn${NL}data: ${JSON.stringify(t)}${NL}${NL}`); after = t.seq as number; }
+        for (const t of session.turns.filter((t) => typeof t.seq === 'number' && t.seq > after)) { send(`id: ${t.seq}${NL}event: turn${NL}data: ${JSON.stringify(shown(t))}${NL}${NL}`); after = t.seq as number; }
         const status = `${session.status}:${session.turn_count}:${session.calls}:${session.ended_at ?? ''}`;
         if (status !== lastStatus) {
           lastStatus = status;
-          send(`event: status${NL}data: ${JSON.stringify({ status: session.status, outcome: session.outcome, turn_count: session.turn_count, usd_cents: session.usd_cents, calls: session.calls, started_at: session.started_at, ended_at: session.ended_at, report: session.report, commit_sha: session.commit_sha, item_id: session.item_id })}${NL}${NL}`);
+          send(`event: status${NL}data: ${JSON.stringify(shown({ status: session.status, outcome: session.outcome, turn_count: session.turn_count, usd_cents: session.usd_cents, calls: session.calls, started_at: session.started_at, ended_at: session.ended_at, report: session.report, commit_sha: session.commit_sha, item_id: session.item_id }))}${NL}${NL}`);
         }
         if (session.status !== 'live') break;
         if (++idle % 8 === 0) send(`: keepalive${NL}${NL}`);
@@ -123,7 +124,8 @@ export async function sessionEvents(env: Env, account: string, key: string, req:
 
 // Server-Sent Events over an item: `item` on any change to what touched it (which sessions, how far each
 // got, what they cost, how many updates). Closes when nothing on it is live.
-export async function itemEvents(env: Env, account: string, itemId: string, req: Request): Promise<Response> {
+export async function itemEvents(env: Env, account: string, itemId: string, req: Request, money = true): Promise<Response> {
+  const shown = <T,>(v: T): T => (money ? v : withoutMoney(v));
   if (req.method !== 'GET') return methodNotAllowed();
   const ledger = new LedgerClient(env.LIMITS);
   const enc = new TextEncoder();
@@ -138,7 +140,7 @@ export async function itemEvents(env: Env, account: string, itemId: string, req:
         const digest = JSON.stringify([item.live, item.sessions.map((s) => [s.key, s.status, s.turn_count, s.calls]), item.updates.length, item.usd_cents]);
         if (digest !== last) {
           last = digest;
-          send(`event: item${NL}data: ${JSON.stringify({ live: item.live, sessions: item.sessions.length, turn_count: item.sessions.reduce((n, s) => n + s.turn_count, 0), updates: item.updates.length, usd_cents: item.usd_cents })}${NL}${NL}`);
+          send(`event: item${NL}data: ${JSON.stringify(shown({ live: item.live, sessions: item.sessions.length, turn_count: item.sessions.reduce((n, s) => n + s.turn_count, 0), updates: item.updates.length, usd_cents: item.usd_cents }))}${NL}${NL}`);
         }
         if (!item.live.length) break;
         if (++idle % 8 === 0) send(`: keepalive${NL}${NL}`);
@@ -152,7 +154,8 @@ export async function itemEvents(env: Env, account: string, itemId: string, req:
 
 // Server-Sent Events over a project: `project` on any change to the books' numbers, the live set or the
 // roadmap's revision. Stays open between sessions — the page between two fires is what it is for.
-export async function accountEvents(env: Env, account: string, req: Request): Promise<Response> {
+export async function accountEvents(env: Env, account: string, req: Request, money = true): Promise<Response> {
+  const shown = <T,>(v: T): T => (money ? v : withoutMoney(v));
   if (req.method !== 'GET') return methodNotAllowed();
   const ledger = new LedgerClient(env.LIMITS);
   const enc = new TextEncoder();
@@ -165,7 +168,7 @@ export async function accountEvents(env: Env, account: string, req: Request): Pr
       for (let i = 0; i < 1800; i += 1) {
         const p = await ledger.pulse(account);
         const digest = JSON.stringify(p);
-        if (digest !== last) { last = digest; send(`event: project${NL}data: ${digest}${NL}${NL}`); }
+        if (digest !== last) { last = digest; send(`event: project${NL}data: ${JSON.stringify(shown(p))}${NL}${NL}`); }
         if (++idle % 8 === 0) send(`: keepalive${NL}${NL}`);
         await new Promise((r) => setTimeout(r, 2000));
       }

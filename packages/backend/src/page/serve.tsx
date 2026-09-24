@@ -4,7 +4,7 @@
 // the core fills the front's and a name's slots and, if it has one, serves the project's landing page; the core
 // alone serves the dashboard at the project's address.
 import type { DirectoryEntry, FunderView, LedgerClient, ProjectView, SessionSummary } from '../ledger.js';
-import { error, html, methodNotAllowed } from '../http.js';
+import { error, html, methodNotAllowed, withoutMoney } from '../http.js';
 import { readTeamEdit, readTeamFile, validTeamAccount } from '../team.js';
 import { isStale, syncProfile } from '../sync.js';
 import type { Env } from '../types.js';
@@ -207,7 +207,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
       const got = await ledger.session(account, wanted);
       if (key !== undefined && (!got.ok || !got.session)) return html(renderMessage(account, false, 'No such session', 'Nothing was narrated under that key.'), 404);
       // The record's joined receipts are the calls panel's; a viewer the owner keeps out of it does not get them here.
-      if (got.session && transcripts) d.session = sees(role, visibility.calls) ? got.session : { ...got.session, receipts: undefined };
+      // Its cost and its receipts' costs are the books': a viewer kept from the books gets the transcript without them.
+      if (got.session && transcripts) d.session = books ? (sees(role, visibility.calls) ? got.session : { ...got.session, receipts: undefined }) : { ...withoutMoney(got.session), receipts: undefined };
     }
     return serve();
   }

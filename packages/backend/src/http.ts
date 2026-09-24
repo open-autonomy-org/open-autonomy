@@ -77,3 +77,11 @@ export async function hmac(secret: string, payload: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))));
 }
+
+// Money on the wire is every field named `*usd_cents`. A viewer the owner keeps from a project's books gets a record
+// with none of them, wherever the record comes from (a session, a call, an item, the pulse of the event stream).
+export function withoutMoney<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutMoney) as T;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([k]) => !k.endsWith('usd_cents')).map(([k, v]) => [k, withoutMoney(v)])) as T;
+}

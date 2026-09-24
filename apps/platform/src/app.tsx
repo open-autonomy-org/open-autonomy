@@ -30,11 +30,13 @@ export const app: App = {
     if (path === '/give') {
       const session = await giveSession(req, env);
       // `?to=` names the project a page sent the giver from: the sign-in returns here, and the form starts on it.
-      const to = new URL(req.url).searchParams.get('to') ?? undefined;
+      let to = new URL(req.url).searchParams.get('to') ?? undefined;
       if (!session) return req.method === 'GET' ? privateHtml(renderGivePage(undefined, to)) : privateHtml(renderGivePage(undefined, to), 401);
       let message: GivePageData['message'];
       if (req.method === 'POST') {
         const form = await req.formData();
+        // A refused gift comes back on the project it was meant for, never on whichever the list starts with.
+        to = String(form.get('to') ?? '') || to;
         const funder = `@${session.login}`;
         const pool = t.grantsAccount;
         const source = String(form.get('source') ?? '');

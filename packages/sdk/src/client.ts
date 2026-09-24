@@ -101,11 +101,11 @@ export interface EventResult { id?: string; ok: boolean; error?: string; idempot
 export interface WriteResult { ok: boolean; status: number; error?: string }
 export interface SessionSummary {
   key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string;
-  model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents: number; calls: number; updated_at: string;
+  model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents?: number; calls: number; updated_at: string;
 }
 export interface SessionRecord extends Omit<SessionSummary, 'tool_calls'> { turns: Array<Turn & { seq?: number }> }
 export interface UpdateRecord { id: string; account: string; item_id: string; ts: string; text: string; session?: string }
-export interface ItemView { ok: true; account: string; item_id: string; live: string[]; sessions: SessionSummary[]; updates: UpdateRecord[]; usd_cents: number }
+export interface ItemView { ok: true; account: string; item_id: string; live: string[]; sessions: SessionSummary[]; updates: UpdateRecord[]; usd_cents?: number }
 
 export class OpenAutonomy {
   private readonly base: string;
@@ -234,7 +234,7 @@ export class OpenAutonomy {
         if (!data) continue;
         let parsed: unknown; try { parsed = JSON.parse(data); } catch { continue; }
         if (event === 'turn') yield { event: 'turn', turn: parsed as Turn & { seq?: number } };
-        else if (event === 'status') { const s = parsed as { status: 'live' | 'ended'; turn_count: number; usd_cents: number }; yield { event: 'status', ...s }; if (s.status !== 'live') return; }
+        else if (event === 'status') { const s = parsed as { status: 'live' | 'ended'; turn_count: number; usd_cents?: number }; yield { event: 'status', ...s }; if (s.status !== 'live') return; }
       }
     }
   }
@@ -286,7 +286,9 @@ export class OpenAutonomy {
 export class ReadError extends Error {
   constructor(readonly status: number, readonly code: string) { super(`${code} (${status})`); this.name = 'ReadError'; }
 }
-export type SessionEvent = { event: 'turn'; turn: Turn & { seq?: number } } | { event: 'status'; status: 'live' | 'ended'; turn_count: number; usd_cents: number };
+// Money travels with the books: a record read through a door the owner opened wider than the books (a session, a call,
+// an item, a stream) carries no `*usd_cents` field for a viewer kept from them.
+export type SessionEvent = { event: 'turn'; turn: Turn & { seq?: number } } | { event: 'status'; status: 'live' | 'ended'; turn_count: number; usd_cents?: number };
 export interface FundingView {
   account: string; funded: boolean; exhausted: boolean;
   balance_usd_cents: number; granted_in_usd_cents: number; granted_out_usd_cents: number; consumed_usd_cents: number;
@@ -294,7 +296,7 @@ export interface FundingView {
   calls_total: number; last_call_at: string | null; daily_spend_usd_cents: number[];
   bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: OrgSpendBound[] } };
 }
-export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
+export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents?: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
 
 export interface RoadmapRevision {
   revision: number;

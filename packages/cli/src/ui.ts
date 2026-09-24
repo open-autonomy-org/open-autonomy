@@ -7,7 +7,8 @@ export const dim = pc.dim;
 export const bold = pc.bold;
 
 // ---- words for numbers ---------------------------------------------------------------------------------------------
-export const usd = (cents: number): string => (cents > 0 && cents < 100 ? `${cents < 1 ? cents.toFixed(2) : cents.toFixed(1)}¢` : `$${(cents / 100).toFixed(2)}`);
+// Undefined is a figure the platform withheld: the owner keeps it with the books.
+export const usd = (cents: number | undefined): string => (cents === undefined ? '—' : cents > 0 && cents < 100 ? `${cents < 1 ? cents.toFixed(2) : cents.toFixed(1)}¢` : `$${(cents / 100).toFixed(2)}`);
 export const ago = (iso: string | undefined | null, now = Date.now()): string => {
   if (!iso) return '';
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
