@@ -22,7 +22,7 @@ export async function books(d: Doors, opts: { calls: boolean; limit: number }): 
     console.log(bold('The owner\'s bounds'));
     if (funding.bounds.models.length) console.log(`  ${dim('models'.padEnd(14))}${funding.bounds.models.join(', ')}`);
     const org = funding.bounds.org;
-    for (const [label, l] of [...funding.bounds.limits.map((l) => ['limit', l] as const), ...(org?.limits ?? []).map((l) => [`${org!.account.slice(1)} limit`, l] as const)]) console.log(`  ${dim(label.padEnd(14))}${[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per ${l.window}${l.model ? ` on ${l.model}` : ''} ${dim(`· used ${usd(l.used.usd_cents)}${label === 'limit' ? '' : ' by every project of the org'}`)}`);
+    for (const [label, l] of [...funding.bounds.limits.map((l) => ['limit', l] as const), ...(org?.limits ?? []).map((l) => [`${org!.account.slice(1)} limit`, l] as const)]) console.log(`  ${dim(label.padEnd(14))}${[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per ${l.window}${l.model ? ` on ${l.model}` : ''} ${dim(l.used ? `· used ${usd(l.used.usd_cents)}${label === 'limit' ? '' : ' by every project of the org'}` : '· the org\'s total is withheld: a project of it keeps its books closed')}`);
   }
   if (calls) {
     console.log();

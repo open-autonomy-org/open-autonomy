@@ -73,7 +73,7 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | Route | What |
 |---|---|
 | `POST /v1/rails/card` `{ usd_cents, purpose? }` | a single-use virtual card minted against the balance (Stripe Issuing), bounded to the amount and the owner's merchant categories; returns the card's `id`, `last4`, expiry, and `number`/`cvc` where the issuer exposes them. A merchant's authorization is decided in real time, its capture settles as a `card` record (merchant, category, last4), and the card is retired |
-| `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login; the key can only give |
+| `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login (an organization's only in `<org>/.github`, where `scopes: ["steer"]` mints the org's steer key instead, ADR 0010); the key can only give |
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key?, for? }` (a give key) | grant credits from the funder's books to a project's, once per `key`; `for` may be `"any"`, `"model"`, `{models: [...]}`, or `{item: "id"}`, and absent means unrestricted |
 | `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received |
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |

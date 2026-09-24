@@ -43,7 +43,10 @@ export async function orgStatus(d: Doors): Promise<void> {
   const lines: string[] = [];
   const word = view.desired?.state === 'paused' ? c.red(`● Paused by ${name}`) : c.green('● Running');
   lines.push(`${bold(name)}   ${word}${view.desired?.state === 'paused' ? dim(`  ${view.desired.reason ? `“${view.desired.reason}” · ` : ''}asked ${ago(view.desired.at)} · every project inherits it`) : ''}`);
-  for (const l of view.bounds) lines.push(`  ${dim('org limit'.padEnd(14))}${[l.usd_cents !== undefined ? `${usd(l.used.usd_cents)} of ${usd(l.usd_cents)}` : '', l.calls !== undefined ? `${l.used.calls} of ${l.calls} calls` : '', l.tokens !== undefined ? `${l.used.tokens} of ${l.tokens} tokens` : ''].filter(Boolean).join(', ')} ${dim(`per ${l.window}${l.model ? ` on ${l.model}` : ''} · all projects together`)}`);
+  for (const l of view.bounds) {
+    const of = (used: number | undefined, bound: number, unit: (n: number) => string) => (used === undefined ? unit(bound) : `${unit(used)} of ${unit(bound)}`);
+    lines.push(`  ${dim('org limit'.padEnd(14))}${[l.usd_cents !== undefined ? of(l.used?.usd_cents, l.usd_cents, usd) : '', l.calls !== undefined ? of(l.used?.calls, l.calls, (n) => `${n} calls`) : '', l.tokens !== undefined ? of(l.used?.tokens, l.tokens, (n) => `${n} tokens`) : ''].filter(Boolean).join(', ')} ${dim(`per ${l.window}${l.model ? ` on ${l.model}` : ''} · all projects together${l.withheld ? ' · the total is withheld: a project of the org keeps its books closed' : ''}`)}`);
+  }
   lines.push('');
   if (!view.projects.length) lines.push(dim('  no listed projects'));
   else lines.push(table([{ head: 'project' }, { head: 'standing' }, { head: 'bank', right: true }, { head: 'burn/day', right: true }, { head: 'runway', right: true }],

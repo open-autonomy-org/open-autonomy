@@ -9,7 +9,7 @@ import * as p from '@clack/prompts';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { funderChallenge, keyChallenge, keyMint, keyRotate, orgMint } from '@open-autonomy/sdk/client';
-import { checkoutProject as checkoutRepo, configDir, type Doors } from '../config.ts';
+import { checkoutProject as checkoutRepo, configDir, keyMatches, type Doors } from '../config.ts';
 import { bold, c, dim, fail } from '../ui.ts';
 
 const SCOPES = ['spend', 'pay', 'narrate', 'steer', 'give'];
@@ -70,6 +70,7 @@ export async function mint(d: Doors, opts: { scopes?: string; models?: string; o
 
 export async function rotate(d: Doors, opts: { out?: string; grace?: string }): Promise<void> {
   if (!d.key) fail(`no key for ${d.acct} to rotate`, 'pass --key <file>, or mint one');
+  keyMatches(d);
   const path = destination(d.acct, opts.out ?? (d.key.from.endsWith('.env') ? d.key.from : undefined), d.key.kind ?? 'agent');
   const rotated = await keyRotate(d.base, d.key.token, opts.grace === undefined ? {} : { graceSeconds: Number(opts.grace) });
   if (!rotated.ok || !rotated.token) fail(`rotation refused: ${JSON.stringify(rotated)}`);

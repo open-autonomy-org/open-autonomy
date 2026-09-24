@@ -1,5 +1,5 @@
 import { base64url, constantTimeEqual, error, fromBase64url, hmac, json, methodNotAllowed, modelKey, parseJson } from './http.js';
-import { fetchRepoText } from './sync.js';
+import { fetchRepoText, isOrganization } from './sync.js';
 import { LedgerClient } from './ledger.js';
 import { DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope } from './types.js';
 
@@ -19,7 +19,8 @@ export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
 const SCOPES: KeyScope[] = ['spend', 'pay', 'narrate', 'steer', 'give'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
-// A funder is a person: `@<github login>` on the books, proven by the claim file in a repository they own.
+// A funder is a person or an org: `@<github login>` on the books, proven by the claim file in a repository they own
+// (an org's in `<org>/.github`, ADR 0010).
 const FUNDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
 const FUNDER_ACCOUNT_RE = /^@[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
 export const funderAccount = (login: string): string => `@${login.toLowerCase()}`;
@@ -118,10 +119,11 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
     const account = funderAccount(body.funder);
     const accepted = [await claimCode(env, account, dayKeyUTC()), await claimCode(env, account, dayKeyUTC(new Date(Date.now() - 86_400_000)))];
     if (!accepted.includes(found)) return error('claim_mismatch', 403);
-    // The org's word (ADR 0010) is proven in `<org>/.github`, the repository GitHub reads as the org's own; a
-    // claim in any other of its repositories proves that repository, and its key only gives.
+    // An org's word and an org's credits (ADR 0010) are proven in `<org>/.github`, the repository GitHub reads as
+    // the org's own: a claim in any other of its repositories proves that repository, not the org. A person's
+    // give key takes any repository they own; a login GitHub did not say is a person is held to the org's proof.
     const scopes = Array.isArray(body.scopes) && body.scopes.includes('steer') ? ['steer'] as KeyScope[] : ['give'] as KeyScope[];
-    if (scopes[0] === 'steer' && body.repo.split('/')[1].toLowerCase() !== '.github') return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
+    if (body.repo.split('/')[1].toLowerCase() !== '.github' && (scopes[0] === 'steer' || (await isOrganization(env, body.funder)) !== false)) return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
     return mintKey(env, account, [], scopes);
   }
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);

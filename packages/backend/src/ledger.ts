@@ -2,6 +2,7 @@ import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { json } from './http.js';
+import { sees, visibilityOf } from './page/model.js';
 import { estimateRunway } from './runway.js';
 import type { KeyClaims, UsageEvent } from './types.js';
 
@@ -700,7 +701,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
       if (limit.model && limit.model !== model) continue;
       const used = over.reduce((sum, id) => { const u = usedOver(this.acct(id), limit); return { u: sum.u + u.u, c: sum.c + u.c, t: sum.t + u.t }; }, { u: 0, c: 0, t: 0 });
       const reserved = over.reduce((sum, id) => sum + this.reservedFor(id), 0);
-      const refusal = (kind: 'usd_cents' | 'calls' | 'tokens', bound: number, current: number) => ({ ok: false, error: kind === 'usd_cents' ? 'spend_limit_reached' : 'rate_limit_reached', account, ...(holder !== account ? { org: holder } : {}), limit: { window: limit.window, [kind]: bound, ...(limit.model ? { model: limit.model } : {}) }, used: { usd_cents: used.u, calls: used.c, tokens: used.t }, needed: kind === 'usd_cents' ? amount : kind === 'calls' ? 1 : estimatedTokens, current, retry_after_seconds: secondsToNextBucket(limit), how });
+      // The caller holds one project's key: the org's total reaches it only as the pages would publish it.
+      const shown = holder === account || this.booksOpen(over);
+      const refusal = (kind: 'usd_cents' | 'calls' | 'tokens', bound: number, current: number) => ({ ok: false, error: kind === 'usd_cents' ? 'spend_limit_reached' : 'rate_limit_reached', account, ...(holder !== account ? { org: holder } : {}), limit: { window: limit.window, [kind]: bound, ...(limit.model ? { model: limit.model } : {}) }, ...(shown ? { used: { usd_cents: used.u, calls: used.c, tokens: used.t }, current } : {}), needed: kind === 'usd_cents' ? amount : kind === 'calls' ? 1 : estimatedTokens, retry_after_seconds: secondsToNextBucket(limit), how });
       if (limit.usd_cents !== undefined && used.u + reserved + amount > limit.usd_cents) return refusal('usd_cents', limit.usd_cents, used.u + reserved);
       if (limit.calls !== undefined && used.c + 1 > limit.calls) return refusal('calls', limit.calls, used.c);
       if (limit.tokens !== undefined && used.t + estimatedTokens > limit.tokens) return refusal('tokens', limit.tokens, used.t);
@@ -1163,11 +1166,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // A holder's spend.limits, each with what the accounts it holds over have used in its window.
-  private limitsView(holder: string, over: string[]): SpendBound[] {
+  // An org's total over its projects is published only when every one of them opens its books to everyone: a project
+  // whose owner closed them would otherwise be read off a sibling's page as the total less the sibling's own.
+  private limitsView(holder: string, over: string[]): OrgSpendBound[] {
+    const open = !holder.startsWith('@') || this.booksOpen(over);
     return parseSpendLimits(this.acct(holder)?.profile?.config_yaml ?? '').map((l) => {
       const used = over.reduce((sum, id) => { const u = usedOver(this.acct(id), l); return { u: sum.u + u.u, c: sum.c + u.c, t: sum.t + u.t }; }, { u: 0, c: 0, t: 0 });
-      return { window: l.window, ...(l.usd_cents !== undefined ? { usd_cents: l.usd_cents } : {}), ...(l.calls !== undefined ? { calls: l.calls } : {}), ...(l.tokens !== undefined ? { tokens: l.tokens } : {}), ...(l.model ? { model: l.model } : {}), used: { usd_cents: used.u, calls: used.c, tokens: used.t } };
+      return { window: l.window, ...(l.usd_cents !== undefined ? { usd_cents: l.usd_cents } : {}), ...(l.calls !== undefined ? { calls: l.calls } : {}), ...(l.tokens !== undefined ? { tokens: l.tokens } : {}), ...(l.model ? { model: l.model } : {}), ...(open ? { used: { usd_cents: used.u, calls: used.c, tokens: used.t } } : { withheld: true as const }) };
     });
+  }
+  private booksOpen(accounts: string[]): boolean {
+    return accounts.every((id) => { const a = this.acct(id); return (a?.moderation ?? 'listed') === 'listed' && sees('public', visibilityOf(a?.profile?.config_yaml).books); });
   }
 
   fundingSnapshot(account: string): FundingSnapshot {
@@ -1180,7 +1189,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const funded = grantedIn > 0;
     const daily = a ? dailySpendSeries(a.usage?.days ?? {}) : [];
     const org = orgOf(account);
-    const orgLimits = org ? this.limitsView(org, this.membersOf(org)) : [];
+    // An org's own account carries its limits as `org`, the same place its projects show them.
+    const holder = org ?? (account.startsWith('@') ? account : undefined);
+    const orgLimits = holder ? this.limitsView(holder, this.membersOf(holder)) : [];
     const next = { rail: 'model' as Rail, model: a?.profile?.agent_model ?? '', item: undefined };
     const usable = (a?.envelopes ?? []).filter((e) => qualifies(e.purpose, next)).reduce((sum, e) => sum + e.balance_usd_cents, 0);
     const est = estimateRunway(Math.max(0, usable), daily.slice(0, -1));
@@ -1196,7 +1207,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       last_call_at: a?.last_call_ms ? new Date(a.last_call_ms).toISOString() : null,
       daily_spend_usd_cents: daily,
       // The owner's bounds on the model rail, from the repository's .open-autonomy/config.yaml: what the funds may buy, and how much a day.
-      bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), limits: this.limitsView(account, account.startsWith('@') ? this.membersOf(account) : [account]), ...(org && orgLimits.length ? { org: { account: org, limits: orgLimits } } : {}) },
+      bounds: { models: parseModelsBound(a?.profile?.config_yaml ?? ''), limits: account.startsWith('@') ? [] : this.limitsView(account, [account]) as SpendBound[], ...(holder && orgLimits.length ? { org: { account: holder, limits: orgLimits } } : {}) },
       ...(a?.deployment ? { live: { ...a.deployment } } : {}),
     };
   }
@@ -1543,6 +1554,8 @@ function normalizeRoadmap(r: unknown): Roadmap | undefined {
 // `state` is `<desired>/<observed>`, the observed half empty until the automation has reported.
 export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; granted_in_usd_cents: number; live: string[]; roadmap_revision: number; state: string }
 export interface SpendBound { window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }
+// An org's limit, its total withheld when a project of the org keeps its books closed.
+export type OrgSpendBound = Omit<SpendBound, 'used'> & ({ used: SpendBound['used']; withheld?: never } | { used?: never; withheld: true });
 export interface FundingSnapshot {
   account: string;
   funded: boolean;
@@ -1566,7 +1579,7 @@ export interface FundingSnapshot {
   last_call_at: string | null;
   daily_spend_usd_cents: number[];
   // `org`: the org's own limits (ADR 0010), each held against every project of the org together.
-  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: SpendBound[] } };
+  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: OrgSpendBound[] } };
   live?: LiveDeployment;
 }
 

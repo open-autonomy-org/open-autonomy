@@ -52,7 +52,7 @@ cross one of these boundaries are especially valuable.
   reservation; a partner the owner did not list cannot settle. proof: smoke "a card minted within the bound,
   approved in real time, settled on capture and retired; a decline releases";.
 - **Grant credits move only from a funder's own books.** A funder's key proves their GitHub login through the
-  claim file in a repository they own and can only give; a grant over the credits they hold is refused, and a
+  claim file in a repository they own (an organization's in its `.github` repository) and can only give; a grant over the credits they hold is refused, and a
   give key can neither spend nor narrate. proof: smoke "over the credits refused; a give key cannot spend";.
 - **The org's matching bonus spreads, never returns.** A funder's bonus credits can be given only to projects
   the funder does not own, and the org matches only from what its grants account holds. proof: smoke "bonus_only_for_others";.
