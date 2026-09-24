@@ -58,5 +58,8 @@ skill), linking the release and the README.
   notable change the PM moved there. Plans stay plans until they ship; never announce a date.
 - Read each channel's recent posts first; post once per shipped thing per channel, in that channel's form
   (a short announcement where people chat, a fuller entry on a blog or dev log).
-- A channel whose publishing needs a human (an account, a CMS login) is a named ask through
-  `project-communications`, with the ready text; record it for the PM rather than dropping it.
+- A channel the project lacks, start when it needs no account: without a dev log, keep one in the repository
+  (`docs/log/`, one dated entry per shipped thing) published with its docs on GitHub Pages and linked from the
+  README, and record it in `project-communications`. A channel that needs an account (a blog platform, a
+  social profile) is a named ask through `project-communications` with the first post ready; record it for
+  the PM rather than dropping it, and so is any channel whose publishing needs a human login.
