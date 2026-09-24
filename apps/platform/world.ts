@@ -5,6 +5,7 @@
 // is in a world. The world gives PORT and --persist-to (the books). world/world.config.json declares this service.
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { constants } from 'node:os';
 
 const TREE = resolve(import.meta.dir, '..', '..');
 const { MODEL_PRICES } = await import(resolve(TREE, 'packages/backend/src/pricing.ts'));
@@ -62,5 +63,17 @@ for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 // One foreground process. World captures failure and owns this entire process group.
 const child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' } });
 child.on('error', (error) => { console.error(error); process.exit(1); });
-child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+// wrangler's end is this process's end: its exit code, or the same signal re-raised (the World records a signal as
+// one, where exiting 1 would pass a crash off as an ordinary failure).
+child.on('exit', (code, signal) => {
+  // A signal the runtime ignores (SIGPIPE) survives the re-raise, and one it cannot name back (Bun reports macOS's 30
+  // as SIGPWR) cannot be re-raised; either way the status a shell gives the signal follows.
+  if (signal) {
+    process.removeAllListeners(signal);
+    try { process.kill(process.pid, signal); } catch { /* not a signal this runtime can send */ }
+    const n = constants.signals[signal];
+    process.exit(n ? 128 + n : 1);
+  }
+  process.exit(code ?? 0);
+});
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
