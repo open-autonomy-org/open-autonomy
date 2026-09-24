@@ -18,6 +18,20 @@ import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
 import { atomFeed, updatesOf } from './updates.js';
+import { cardPng } from './raster.js';
+import type { ArtKind } from './art.js';
+
+// A card is the same bytes for as long as the code that draws it is the same: drawn once per address, kept in the
+// edge cache a day, and answered from there after.
+async function cardResponse(req: Request, seed: string, kind?: ArtKind): Promise<Response> {
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  const key = new Request(new URL(req.url).toString(), { method: 'GET' });
+  const kept = await cache?.match(key);
+  if (kept) return req.method === 'HEAD' ? new Response(null, { headers: kept.headers }) : kept;
+  const res = new Response(await cardPng(seed, kind), { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
+  await cache?.put(key, res.clone());
+  return req.method === 'HEAD' ? new Response(null, { headers: res.headers }) : res;
+}
 import { dashDocument, type DashData, type DashPage } from '../dash/index.js';
 
 // What an app puts on the pages, computed per request. Absent, the core's page stands alone.
@@ -36,7 +50,7 @@ export interface PageApp {
 export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response>; who?: Viewer }
 // What the core hands an app for the landing page: the project as the books and the stream have it, who is looking
 // and what they may open. `about` asks for the whole document rather than the page.
-export interface LandingBase { account: string; view: ProjectView; role: Role; visibility: Visibility; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; daily: number[]; now: number; who?: Viewer; about: boolean }
+export interface LandingBase { account: string; view: ProjectView; role: Role; visibility: Visibility; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; daily: number[]; now: number; who?: Viewer; about: boolean; origin: string }
 
 const NO_STORE = { 'cache-control': 'no-store' };
 const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
@@ -62,6 +76,9 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const identify = async () => { tools.who = await app.viewer?.(req, tools); return tools.who; };
   const viewer = 'public' as const; // the front and a name's page read the same to everyone; a project's role is the project's
 
+  // ---- a link preview's picture: a public page's drawing as a PNG card, drawn once and kept at the edge ----
+  if (url.pathname === '/card.png' && isGet) return cardResponse(req, brand, 'vortex');
+
   // ---- the front ----
   if (url.pathname === '/') {
     if (!isGet) return undefined;
@@ -69,7 +86,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     const { entries } = await ledger.directory();
     for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
     const slots = await app.directory?.(entries, tools);
-    return html(document(brand, brand, render(Directory({ brand, viewer, entries, now, slots, q: url.searchParams.get('q')?.slice(0, 120) ?? undefined, sort: url.searchParams.get('sort') ?? undefined })), slots?.styles, { description: slots?.description ?? `Projects that build themselves on ${brand}: every session they work and every cent they spend on public books.` }));
+    return html(document(brand, brand, render(Directory({ brand, viewer, entries, now, slots, q: url.searchParams.get('q')?.slice(0, 120) ?? undefined, sort: url.searchParams.get('sort') ?? undefined })), slots?.styles, { description: slots?.description ?? `Projects that build themselves on ${brand}: every session they work and every cent they spend on public books.`, image: `${url.origin}/card.png` }));
   }
   if (seg.length < 1 || seg.length > 5 || RESERVED.has(seg[0].toLowerCase()) || !LOGIN.test(seg[0])) return undefined;
   const who = await identify();
@@ -102,8 +119,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // dashboard: `/owner/project/dashboard[/page[/key]]`.
   const page: DashPage | undefined = door === undefined ? undefined : door === 'dashboard' ? (seg[3] === undefined ? 'overview' : PAGES.has(seg[3] as DashPage) ? (seg[3] as DashPage) : undefined) : undefined;
   const key = door === 'dashboard' ? seg[4] : undefined;
-  if (door !== undefined && door !== 'dashboard' && door !== 'about' && door !== 'state' && door !== 'updates.xml') return undefined;
-  if (door === 'updates.xml' && seg.length > 3) return undefined;
+  if (door !== undefined && door !== 'dashboard' && door !== 'about' && door !== 'state' && door !== 'updates.xml' && door !== 'card.png') return undefined;
+  if ((door === 'updates.xml' || door === 'card.png') && seg.length > 3) return undefined;
   if (door === 'about' && (seg.length > 3 || !app.landing)) return undefined;
   if (door === 'state' && seg.length > 3) return undefined;
   if (door === 'dashboard' && (page === undefined || (key !== undefined && page !== 'sessions' && page !== 'board'))) return undefined;
@@ -137,6 +154,9 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
   const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
 
+  // The project's card only when its page is open to everyone, like its feed: a cached picture never says a closed page exists.
+  if (door === 'card.png') return sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
+
   // ---- the project's updates as a feed: what shipped and what its runs reported, as everyone may see them ----
   // A feed reader is anonymous and a shared cache may keep the answer, so the feed is the public's, whoever asks:
   // run reports only when the owner opens the sessions to everyone, links only into panels open to everyone.
@@ -153,7 +173,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
 
   // ---- the landing page: the app's, when it has one; the dashboard otherwise ----
   if (door === undefined || door === 'about') {
-    if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about' }, tools));
+    if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about', origin: url.origin }, tools));
   }
   const dash: DashPage = page ?? 'overview';
   const transcripts = sees(role, visibility.transcripts);

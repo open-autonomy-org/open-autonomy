@@ -373,5 +373,5 @@ export function landingDocument(title: string, brand: string, body: string, meta
 export function landingPage(base: LandingBase, p: { brand: string; patronage: PatronageView; polar: boolean; sponsor: string }): string {
   const d: LandingData = { brand: p.brand, v: base.view, sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
   const description = base.view.profile.tagline ?? `${nameOf(base.account)}, building itself in the open. Every session and every cent on public books.`;
-  return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)), { description, feed: at(base.account, 'updates.xml') });
+  return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)), { description, feed: at(base.account, 'updates.xml'), ...(sees('public', base.visibility.overview) ? { image: `${base.origin}${at(base.account, 'card.png')}` } : {}) });
 }
