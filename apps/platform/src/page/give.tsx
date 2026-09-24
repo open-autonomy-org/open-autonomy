@@ -29,6 +29,10 @@ export function renderGivePage(data?: GivePageData, to?: string): string {
       <Foot brand={BRAND} nav={<a href="/">Explore</a>} />
     </>,
   ));
+  // The project a page sent the giver from stays the one selected, listed publicly or not (a team member gives to a
+  // private project from its own page): a missing option would silently select another project.
+  const listedHere = data.projects.map((p) => p.account);
+  const targets = to && /^[^/\s]+\/[^/\s]+$/.test(to) && !listedHere.includes(to) ? [to, ...listedHere] : listedHere;
   const sources = [
     { account: data.funder.account, label: `${data.funder.account} · ${usd(data.funder.credits_usd_cents)} available` },
     ...(data.grants ? [{ account: data.grants.account, label: `the organization's grants pool · ${usd(data.grants.view.credits_usd_cents)} available` }] : []),
@@ -53,12 +57,12 @@ export function renderGivePage(data?: GivePageData, to?: string): string {
               <form class="form" method="post" action="/give">
                 <input type="hidden" name="key" value={data.attempt} />
                 <label class="field">Give from<select name="source">{sources.map((x) => <option value={x.account}>{x.label}</option>)}</select></label>
-                <label class="field">Project<select name="to" required>{data.projects.map((p) => <option value={p.account} selected={p.account === to}>{p.account}</option>)}</select></label>
+                <label class="field">Project<select name="to" required>{targets.map((account) => <option value={account} selected={account === to}>{account}</option>)}</select></label>
                 <label class="field">Amount in dollars<input name="usd" inputmode="decimal" placeholder="5.00" pattern="\$?\d+(\.\d{1,2})?" required /></label>
                 <label class="field">Earmark<select name="for"><option value="unrestricted">whatever the project needs</option><option value="model">model calls only</option><option value="any">anything the agent spends on</option></select></label>
                 <label class="field">Why this project (optional)<input name="note" maxlength={280} /></label>
-                <button class="btn wide" type="submit" disabled={!data.projects.length}>Give</button>
-                <p class="fine">{data.projects.length ? 'One submission, one public gift. Retrying this form cannot give twice.' : 'There are no listed projects to give to.'}</p>
+                <button class="btn wide" type="submit" disabled={!targets.length}>Give</button>
+                <p class="fine">{targets.length ? 'One submission, one public gift. Retrying this form cannot give twice.' : 'There are no listed projects to give to.'}</p>
               </form>
             </div>
           </div>

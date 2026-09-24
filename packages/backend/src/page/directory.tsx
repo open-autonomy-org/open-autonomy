@@ -11,26 +11,28 @@ export interface DirectoryPageData { brand: string; viewer: Role; entries: Direc
 
 // The front's own ordering, from its address: `?q=` narrows by name, owner and line; `?sort=` picks the order.
 const SORTS: Array<[string, string]> = [['standing', 'Working now first'], ['bank', 'Most in the bank'], ['runway', 'Longest runway'], ['name', 'Name']];
-const runwayOf = (e: DirectoryEntry): number => (e.runway_days !== null && Number.isFinite(e.runway_days) ? e.runway_days : -1);
+const runwayOf = (e: DirectoryEntry): number => (openTo(e.profile.config_yaml, 'books') && e.runway_days !== null && Number.isFinite(e.runway_days) ? e.runway_days : -1);
+// The one word as everyone may read it: a project whose books are closed is never called unfunded or spent out.
+const publicStanding = (e: DirectoryEntry): Standing => standingOf(openTo(e.profile.config_yaml, 'books') ? e : { ...e, funded: true, exhausted: false }, e.live_sessions);
 export function narrowed(entries: DirectoryEntry[], q = '', sort = 'standing'): DirectoryEntry[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const hits = entries.filter((e) => words.every((w) => `${e.account} ${e.profile.tagline ?? ''}`.toLowerCase().includes(w)));
-  // A project whose books are closed sorts by nothing it keeps: last, by name.
+  // A project whose books are closed sorts by nothing they keep: last, by name.
   const bank = (e: DirectoryEntry): number => (openTo(e.profile.config_yaml, 'books') ? e.balance_usd_cents : -1);
   if (sort === 'bank') return [...hits].sort((a, b) => bank(b) - bank(a) || nameOf(a.account).localeCompare(nameOf(b.account)));
-  if (sort === 'runway') return [...hits].sort((a, b) => runwayOf(b) - runwayOf(a));
+  if (sort === 'runway') return [...hits].sort((a, b) => runwayOf(b) - runwayOf(a) || nameOf(a.account).localeCompare(nameOf(b.account)));
   if (sort === 'name') return [...hits].sort((a, b) => nameOf(a.account).localeCompare(nameOf(b.account)));
   return byStanding(hits);
 }
 
 const ORDER: Record<Standing, number> = { live: 0, running: 1, requested: 2, paused: 3, exhausted: 4, unfunded: 5 };
 export const listed = (entries: DirectoryEntry[]): DirectoryEntry[] => entries.filter((e) => e.is_project && e.listed);
-export const byStanding = (entries: DirectoryEntry[]): DirectoryEntry[] => [...entries].sort((a, b) => ORDER[standingOf(a, a.live_sessions)] - ORDER[standingOf(b, b.live_sessions)] || a.account.localeCompare(b.account));
+export const byStanding = (entries: DirectoryEntry[]): DirectoryEntry[] => [...entries].sort((a, b) => ORDER[publicStanding(a)] - ORDER[publicStanding(b)] || a.account.localeCompare(b.account));
 
 // One project at a glance: its drawing (or its cover) with its one word, its name and line, how long its money
 // lasts against the owner's goal, and the money in one line.
 export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }) {
-  const standing = standingOf(e, e.live_sessions);
+  const standing = publicStanding(e);
   const books = openTo(e.profile.config_yaml, 'books');
   const runway = e.runway_days !== null && Number.isFinite(e.runway_days) ? Math.round(e.runway_days) : null;
   const frac = runway === null ? 0 : Math.max(0, Math.min(1, runway / Math.max(1, e.goal_days)));

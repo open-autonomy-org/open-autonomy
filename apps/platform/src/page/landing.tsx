@@ -20,6 +20,8 @@ import { PATRONAGE_STYLES, Tiers, whoNav } from './patronage.js';
 export interface LandingData {
   brand: string;
   v: ProjectView;
+  // Whether this viewer is admitted to the books; without them the page draws no money (the view carries none).
+  books: boolean;
   sessions: SessionSummary[];
   live: string[];
   roadmap: Roadmap;
@@ -185,11 +187,11 @@ function Poster({ d }: { d: LandingData }) {
   } else if (first) {
     head = 'Working now';
     line = <>Running <b>{first.source ?? first.kind}</b>{first.item_id ? <> on <b>{d.roadmap.items.find((i) => i.id === first.item_id)?.title ?? first.item_id}</b></> : null}, <b>{fmtDur(first.started_at, undefined, d.now)}</b> in.</>;
-    sub = <>{first.turn_count} turns · {usd(first.usd_cents)} metered so far{door ? <> · {door}</> : null}</>;
+    sub = <>{first.turn_count} turns{d.books ? ` · ${usd(first.usd_cents)} metered so far` : ''}{door ? <> · {door}</> : null}</>;
   } else if (last) {
     head = 'The last run';
     line = last.report && last.report !== '[SILENT]' ? <>“{firstLine(last.report, 150)}”</> : <>{last.source ?? last.kind} ran {fmtAgo(last.started_at, d.now)}.</>;
-    sub = <>{fmtAgo(last.started_at, d.now)} · {usd(last.usd_cents)} metered{door ? <> · {door}</> : null}</>;
+    sub = <>{fmtAgo(last.started_at, d.now)}{d.books ? ` · ${usd(last.usd_cents)} metered` : ''}{door ? <> · {door}</> : null}</>;
   } else {
     head = 'The workshop';
     line = standing === 'unfunded' ? 'Waiting for its first funds.' : 'Waiting for its first run.';
@@ -202,7 +204,7 @@ function Poster({ d }: { d: LandingData }) {
       <div class="head"><span class={`p${still ? ' still' : ''}`} />{head}{standing === 'exhausted' || standing === 'unfunded' ? <Pill standing={standing} /> : null}</div>
       <div class="line">{line}</div>
       <div class="sub">{sub}</div>
-      <Chart d={d} />
+      {d.books ? <Chart d={d} /> : null}
       <div class="facts">
         {shipped ? <span>Last shipped <b>{shipped.title}</b>{shipped.done_at ? ` · ${fmtAgo(shipped.done_at, d.now)}` : ''}</span> : null}
         <span>{runs ? <><b>{runs}</b> recent runs</> : 'Every call metered'}</span>
@@ -222,6 +224,13 @@ function Ask({ d }: { d: LandingData }) {
   const monthly = d.patronage.monthly_usd_cents;
   const n = d.patronage.patron_count;
   const faces = d.patronage.patrons.slice(0, 5);
+  if (!d.books) return (
+    <div class="ask" id="ask">
+      <p class="label">The books</p>
+      <div class="line">Kept by the owner: this project's balance, runway and spend are not open to this view.</div>
+      <a class="btn wide" href="#tiers">Back this project<span class="arr">→</span></a>
+    </div>
+  );
   return (
     <div class="ask" id="ask">
       <p class="label">{monthly > 0 ? 'Ongoing support' : 'The books'}</p>
@@ -323,8 +332,8 @@ export function Landing(d: LandingData) {
           <div class="who"><img src={`https://github.com/${encodeURIComponent(ownerOf(a))}.png?size=88`} alt="" /><div><small>Maintained by</small><b>{ownerOf(a)}</b></div></div>
           <div class="fig"><b>{d.patronage.patron_count}</b><small>{d.patronage.patron_count === 1 ? 'patron' : 'patrons'}</small></div>
           <div class="fig"><b>{usd0(d.patronage.monthly_usd_cents)}</b><small>per month</small></div>
-          <div class="fig"><b>{runway === null ? '—' : runway > 365 ? '1y+' : `${runway}d`}</b><small>runway</small></div>
-          <div class="fig"><b>{usd(d.v.consumed_usd_cents)}</b><small>spent, all metered</small></div>
+          {d.books ? <><div class="fig"><b>{runway === null ? '—' : runway > 365 ? '1y+' : `${runway}d`}</b><small>runway</small></div>
+          <div class="fig"><b>{usd(d.v.consumed_usd_cents)}</b><small>spent, all metered</small></div></> : null}
           {faces.length ? <div class="faces"><span class="stack">{faces.map(av)}</span><small>{d.patronage.patron_count > faces.length ? `+${d.patronage.patron_count - faces.length} more` : 'on the wall'}</small></div> : null}
         </div>
         <div class="hero">
@@ -383,7 +392,7 @@ export function landingDocument(title: string, brand: string, body: string, meta
 // The page as the core's router asks for it: the core's records and who is looking, the platform's patronage.
 // The dashboard is offered to whoever the owner admits to its overview.
 export function landingPage(base: LandingBase, p: { brand: string; patronage: PatronageView; polar: boolean; sponsor: string }): string {
-  const d: LandingData = { brand: p.brand, v: base.view, sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
+  const d: LandingData = { brand: p.brand, v: base.view, books: sees(base.role, base.visibility.books), sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
   const description = base.view.profile.tagline ?? `${nameOf(base.account)}, building itself in the open. Every session and every cent on public books.`;
   return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)), { description, feed: at(base.account, 'updates.xml'), ...(sees('public', base.visibility.overview) ? { image: `${base.origin}${at(base.account, 'card.png')}` } : {}) });
 }
