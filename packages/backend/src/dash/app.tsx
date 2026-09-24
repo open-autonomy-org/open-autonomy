@@ -663,9 +663,10 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .scui-tool-head{font-family:var(--scui-font-mono)}
 /* Diff line numbers sit on tinted rows; the muted grey alone falls under 4.5:1 there. */
 .scui-code-preview-number{color:#595e66}
-.oa-board.scui-root{border:1px solid #dcddda;background:#f8f9f5;overflow:hidden;min-height:60vh}
-.oa-jobs{display:flex;flex-direction:column;gap:10px}
-.oa-joblist{display:flex;flex-direction:column;border:1px solid #dcddda}
+.oa-board.scui-root{background:#f8f9f5;overflow:hidden;min-height:60vh}
+/* The job list and the open job are one block: one frame, a rule between them. */
+.oa-jobs{display:flex;flex-direction:column;border:1px solid #dcddda}
+.oa-joblist{display:flex;flex-direction:column}
 .oa-job{display:flex;align-items:center;gap:10px;width:100%;padding:6px 10px;border:0;border-top:1px solid #dcddda;background:#fbfbf8;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .oa-job:first-child{border-top:0}
 .oa-job:hover{background:#f1f1ec}
@@ -673,8 +674,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-job b{font-weight:500}.oa-job span{color:#656a72;font-size:11.5px}
 .oa-job em{margin-left:auto;font-style:normal;font-size:10.5px;padding:1px 6px;background:#e7e6e5;color:#464a59}
 .oa-job em.scheduled{background:#e9fac1;color:#424a33}.oa-job em.paused{background:#fcf0dc;color:#a2600a}
-.oa-jobopen{display:flex;flex-direction:column;gap:10px;padding:10px;border:1px solid #dcddda;border-top:0;background:#fbfbf8}
-.oa-joblist+.oa-jobopen{margin-top:-10px}
+.oa-jobopen{display:flex;flex-direction:column;gap:10px;padding:10px;border-top:1px solid #dcddda;background:#fbfbf8}
 .oa-veil{position:fixed;inset:0;z-index:20;display:grid;justify-items:center;align-items:start;padding-top:14vh;background:#f8f9f5a6}
 .oa-palette{width:min(560px,92vw);border:1px solid #161a24;background:#f8f9f5;box-shadow:4px 4px 0 #161a24}
 .oa-palette-input{width:100%;height:40px;padding:0 12px;border:0;border-bottom:1px solid #dcddda;outline:0;background:transparent;color:#161a24;font:inherit;font-size:13.5px}

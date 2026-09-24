@@ -89,6 +89,8 @@ ul,ol{padding:0;list-style:none}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:16px;border:1px solid ${T.line}}
 .stat{padding:10px 12px}
 .stat+.stat{border-left:1px solid ${T.line}}
+.card .stats{border:0;border-top:1px solid ${T.line}}
+.card .stat:first-child{padding-left:0}
 .stat .v{font-size:15px;font-weight:500}
 .stat .l{color:${T.muted};font-size:13px;margin-top:1px}
 .form{display:flex;flex-direction:column;gap:8px}
