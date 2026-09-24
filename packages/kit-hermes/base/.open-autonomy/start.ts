@@ -31,7 +31,7 @@
 //               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
-import { agentHarness, agentModels, applyAgent, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
+import { agentHarness, agentModels, applyAgent, ownClaudeLogin, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -350,9 +350,27 @@ spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', r
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter-ai-dev', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+// Claude Code on the host user's own Claude login (agent.ts `ownClaudeLogin`) runs through that user's Supercode machine
+// daemon (`supercode teams machine start`, run as the user, under launchd here): the daemon's worker has the user's
+// HOME, where Claude Code finds its login, and carries the rest of the orchestrator's environment. The installed Claude
+// Code owns the login and its refresh; OA keeps no copy. Under that HOME the user's own ssh config and gh login would be
+// git's and gh's defaults, so the agent's are named: ssh reads no config file (the agent's key is in its ssh agent) and
+// gh reads the agent's own config directory.
+const machine: string[] = [];
+const machineEnv: Record<string, string> = {};
+if (harness !== 'hermes' && ownClaudeLogin(agentSetup)) {
+  // the daemon's worker is this user, whatever user the agent runs as: the --as boundary would not hold
+  if (user) { console.error(`start: .open-autonomy/agent.json runs Claude Code on ${userInfo().username}'s own Claude login, whose worker runs as ${userInfo().username}; --as ${user.name} exists to keep the agent from that user. Pick a model on the platform's rail, or start without --as. No services were started.`); process.exit(1); }
+  const teams = process.env.SUPERCODE_TEAMS_HOME ?? resolve(userInfo().homedir, '.config', 'supercode', 'teams');
+  if (!existsSync(resolve(teams, 'machine.sock'))) { console.error(`start: .open-autonomy/agent.json runs Claude Code on this user's own Claude login, through this user's Supercode machine daemon, and none serves ${resolve(teams, 'machine.sock')}; run \`supercode teams machine start\` as ${userInfo().username} (under launchd, to outlive a login). No services were started.`); process.exit(1); }
+  const agentHome = env.HOME ?? homedir();
+  machine.push('--machine', 'local');
+  Object.assign(machineEnv, { SUPERCODE_TEAMS_HOME: teams, GH_CONFIG_DIR: process.env.GH_CONFIG_DIR ?? resolve(agentHome, '.config', 'gh') });
+  if (!process.env.GIT_SSH_COMMAND) machineEnv.GIT_SSH_COMMAND = `ssh -F /dev/null -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${resolve(agentHome, '.ssh', 'known_hosts')}`;
+}
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home, ...machine], { asAgent: true, env: { ...env, ...machineEnv, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
@@ -401,6 +419,6 @@ setInterval(() => {
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, harness === 'hermes' ? constants.signals.SIGUSR1 : constants.signals.SIGTERM);
 }, 5000);
-say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
+say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness}${machine.length ? ', on this user\'s Claude login through the machine daemon' : ''})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

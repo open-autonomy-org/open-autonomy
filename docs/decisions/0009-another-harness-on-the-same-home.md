@@ -44,7 +44,8 @@ rows 1–14 done):
 
 - **The pick.** `.open-autonomy/agent.json` names the harness the owner picks at its top level: `"harness":
   "claude-code"` on Open Autonomy's model rail, or `"codex"` on the owner's ChatGPT subscription
-  (`provider: openai-codex`, through the valve's Codex forward: the worker holds no login). Absent, it is `hermes`,
+  (`provider: openai-codex`, through the valve's Codex forward: the worker holds no login), or `"claude-code"` on
+  the owner's own Claude login (`provider: anthropic`, no endpoint, no key; amended below). Absent, it is `hermes`,
   and nothing changes for that project. The package is
   otherwise unchanged: the same `inference`, `jobs` and `extensions.hermes`, applied through Hermes's own
   door into the same home.
@@ -195,3 +196,42 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
   record's proof calls for (steps 2 and 3) have not run.
 - **Out of scope.** Compatible: the kit implements no harness; Supercode's orchestrator runs stock Codex or
   Claude Code, and the kit only picks it.
+
+## Amendment: Claude Code on the owner's own Claude login
+
+**Authorization.** The owner's coding conversation of September 24, 2026, after both pilots moved to the Codex
+subscription: "wait why codex I thought we were on claude right now with orchestrator"; on how, "supercode
+actually already has a way for doing the 'teleport'", "It's the remote execution", "no it's actually already
+done - understand the feature"; on the answer below (the machine daemon), "yes".
+
+**Decision.** A package whose harness is `claude-code` and whose model is `provider: anthropic` with no
+`base_url` and no `api_key` runs its worker on the host user's own Claude login. The kit's start runs the
+orchestrator with `--machine local`: its workers start through that user's Supercode machine daemon
+(`supercode teams machine start`, `harness.v1` over the daemon's owner-only socket), as that user, with that
+user's HOME. The installed Claude Code owns the login and its refresh; Open Autonomy keeps no copy and reads
+none. The start refuses this pick under `--as`, by name, since the daemon's worker is that user whatever user
+the agent runs as; it refuses a start with no daemon serving the socket.
+
+**Measured** (orchestrator 0.3.8 and 0.3.9, Claude Code 2.1.280, Teams 0.2.10), on scratch homes through a local
+daemon:
+- Claude Code finds its login through its config home: under a `CLAUDE_CONFIG_DIR` of the profile's own it
+  answered "Not logged in"; without one, on the daemon's HOME, the turn ran on the subscription.
+- With the profile's Claude home given by `--add-dir` (under `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD`),
+  `--setting-sources project,local` and `--strict-mcp-config`, the persona (through the `@AGENTS.md` bridge), a
+  profile skill and the orchestrator's MCP door reached the worker, and the owner's own global instructions
+  did not; without `--setting-sources`, they did.
+- A daemon's worker inherits the daemon's environment, not the orchestrator's; on `local`, orchestrator 0.3.9
+  carries the orchestrator's environment into the launch, all but HOME, USER and LOGNAME.
+
+**This author's extrapolation, not the owner's words:** the pick's shape (a model with no endpoint and no key,
+rather than a new key); `--machine local` only; the refusal under `--as`; and, under the owner's HOME, git's
+ssh reading no config file (the owner's names their own key for github.com) with the agent's known hosts, and
+`gh` reading the agent's own config directory, so the agent's pushes and GitHub calls stay the agent's. Not yet
+run: a scheduled fire or a board task of a real project on this pick.
+
+**Constitution.** *Nothing in an agent's reach is a secret that matters*: not met by this pick, and said so.
+The worker runs as the owner, so the owner's Claude login and everything else under that user are in its reach,
+as they already are for a bare agent that runs as the owner (bare mode alone provides no filesystem isolation;
+this repository's own agents take that trade on the owner's Mac). What this pick adds is that `--as` cannot
+remove it, which is why the start refuses the two together. *Every spend is metered on public books*: the
+owner's subscription spends no project funds, as for `openai-codex`; the platform books nothing for these calls.

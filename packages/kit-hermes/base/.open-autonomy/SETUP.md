@@ -381,6 +381,13 @@ the same wherever it runs.
 - **In a world:** the rehearsal engine names the model twin in `HERMES_CODEX_BASE_URL`, and the same
   forwarding points the provider at the twin's Responses door without accessing the host login.
 
+Local Claude Code is the pick of `"harness": "claude-code"` with a model on `provider: anthropic` and no
+endpoint or key: the orchestrator's worker runs on the host user's own Claude login, started through that user's
+Supercode machine daemon, as that user. Run the daemon as the signed-in user (`supercode teams machine start`,
+under launchd to outlive a login); Claude Code owns its login and refresh, and OA reads none. The start refuses
+this pick without a daemon, and under `--as`, since the worker is the host user whatever the agent runs as
+(ADR 0009, as amended).
+
 `--with subscription` verifies authentication through the installed Codex and switches profiles that
 are not already on `openai-codex` to the kit's starter model. It does not select the owner's exact model.
 On upgrade, old protected codex.json copies are unused. Preserve them during migration; any later
