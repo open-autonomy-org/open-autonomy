@@ -1,5 +1,5 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
-import { error, html, json, methodNotAllowed, parseJson } from './http.js';
+import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './http.js';
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
@@ -219,19 +219,22 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
   };
   const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? admits(account, panel);
+  // Money travels with the books: a door open wider than them answers without its `*usd_cents` figures.
+  const money = async (account: string): Promise<boolean> => (await admits(account, 'books')) === null;
+  const priced = async <T,>(account: string, value: T): Promise<T> => ((await money(account)) ? value : withoutMoney(value));
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; return sessionEvents(env, dec(m[1]), dec(m[2]), req); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; const r = await ledger.session(dec(m[1]), dec(m[2])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return itemEvents(env, dec(m[1]), dec(m[2]), req); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return accountEvents(env, dec(m[1]), req); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.item(dec(m[1]), dec(m[2])), { headers: NO_STORE }); }
-  if (path === '/v1/funding/sessions') { const c = await closed(fundingAccount(env), 'sessions'); if (c) return c; return json(await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await priced(dec(m[1]), await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30))), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; return sessionEvents(env, dec(m[1]), dec(m[2]), req, await money(dec(m[1]))); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; const r = await priced(dec(m[1]), await ledger.session(dec(m[1]), dec(m[2]))); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return itemEvents(env, dec(m[1]), dec(m[2]), req, await money(dec(m[1]))); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return accountEvents(env, dec(m[1]), req, await money(dec(m[1]))); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await priced(dec(m[1]), await ledger.item(dec(m[1]), dec(m[2]))), { headers: NO_STORE }); }
+  if (path === '/v1/funding/sessions') { const c = await closed(fundingAccount(env), 'sessions'); if (c) return c; return json(await priced(fundingAccount(env), await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30))), { headers: NO_STORE }); }
 
   // ---- the books ----
-  const calls = async (account: string) => json(await ledger.calls(account, Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined), { headers: NO_STORE });
+  const calls = async (account: string) => json(await priced(account, await ledger.calls(account, Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined)), { headers: NO_STORE });
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/calls$/))) { const c = await closed(dec(m[1]), 'calls'); if (c) return c; return calls(dec(m[1])); }
   if (path === '/v1/funding/calls') { const c = await closed(fundingAccount(env), 'calls'); if (c) return c; return calls(fundingAccount(env)); }
   const widget = async (account: string, kind: string): Promise<Response> => {
@@ -239,7 +242,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (kind === 'activity') return new Response(renderActivitySvg(await ledger.funding(account)), { headers: SVG });
     if (kind === 'roadmap') { const road = await ledger.roadmap(account); return new Response(renderRoadmapSvg(road.revision?.roadmap.items ?? []), { headers: SVG }); }
     const [stream, view] = await Promise.all([ledger.sessions(account, 20), ledger.project(account)]);
-    return new Response(renderNowSvg(stream.sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
+    // A shared cache keeps this answer for everyone, so it is drawn for everyone: a live run's cost only with open books.
+    const sessions = openTo(view.profile.config_yaml, 'books') ? stream.sessions : withoutMoney(stream.sessions);
+    return new Response(renderNowSvg(sessions, stream.live, view.profile.schedule_json), { headers: { ...SVG, 'cache-control': 'max-age=60, s-maxage=60' } });
   };
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(dec(m[1]), m[2] === 'now' ? 'overview' : m[2] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(dec(m[1]), m[2]); }
   if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(fundingAccount(env), m[1] === 'now' ? 'overview' : m[1] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(fundingAccount(env), m[1]); }
