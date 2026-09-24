@@ -86,7 +86,8 @@ An org's desired state is the org's alone: an org reports nothing observed, sinc
 - `oa` gains `use`, the optional scope, the org rollup and the org's pause.
 - The page and dashboard name the org when its word holds ("paused by volter-ai"), and offer no project
   resume under it.
-- A funder key for an org minted from any of its repositories, as before, is no longer admitted.
+- A funder key for an org is no longer minted from any other of its repositories. One minted that way before
+  stays valid until it expires (at most 90 days) unless an admin revokes it.
 
 ## Verification
 

@@ -90,7 +90,7 @@ export async function handleKeyChallenge(req: Request, env: Env): Promise<Respon
   if (funder !== null) {
     if (!FUNDER_RE.test(funder)) return error('invalid_funder', 400);
     const tomorrow = dayKeyUTC(new Date(Date.now() + 86_400_000));
-    return json({ ok: true, funder: funder.toLowerCase(), file: CLAIM_FILE, claim: await claimCode(env, funderAccount(funder), dayKeyUTC()), valid_through: `${tomorrow}T23:59:59Z`, next: `commit ${CLAIM_FILE} containing the claim to the default branch of a repository you own (${funder}/<repo>), then POST /v1/keys/mint {"funder":"${funder}","repo":"${funder}/<repo>"}` });
+    return json({ ok: true, funder: funder.toLowerCase(), file: CLAIM_FILE, claim: await claimCode(env, funderAccount(funder), dayKeyUTC()), valid_through: `${tomorrow}T23:59:59Z`, next: `commit ${CLAIM_FILE} containing the claim to the default branch of a repository you own (${funder}/<repo>; an organization's in ${funder}/.github), then POST /v1/keys/mint {"funder":"${funder}","repo":"${funder}/<repo>"}` });
   }
   const account = url.searchParams.get('account') ?? '';
   if (!ACCOUNT_RE.test(account)) return error('invalid_account', 400);
@@ -123,7 +123,11 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
     // the org's own: a claim in any other of its repositories proves that repository, not the org. A person's
     // give key takes any repository they own; a login GitHub did not say is a person is held to the org's proof.
     const scopes = Array.isArray(body.scopes) && body.scopes.includes('steer') ? ['steer'] as KeyScope[] : ['give'] as KeyScope[];
-    if (body.repo.split('/')[1].toLowerCase() !== '.github' && (scopes[0] === 'steer' || (await isOrganization(env, body.funder)) !== false)) return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
+    if (body.repo.split('/')[1].toLowerCase() !== '.github') {
+      const org = scopes[0] === 'steer' ? true : await isOrganization(env, body.funder);
+      if (org === undefined) return error('login_unverified', 503, { message: `GitHub did not say whether ${body.funder} is a person; try again, or land the claim in ${body.funder}/.github` });
+      if (org) return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
+    }
     return mintKey(env, account, [], scopes);
   }
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);
