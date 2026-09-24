@@ -234,7 +234,7 @@ export function Overview({ d }: { d: DashData }) {
           {sees(d.viewer, d.visibility.work) ? <Panel title="Board" more={['Whole board →', href(a, 'board')]}>
             <div class="oa-kpis three">
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'in progress').length}</div><div class="l">in progress</div></div>
-              <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">promised</div></div>
+              <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">ahead</div></div>
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'shipped').length}</div><div class="l">shipped</div></div>
             </div>
             <div class="scui-root oa-kit oa-rowlist"><WorkflowList tasks={ahead} onOpen={(k) => go(href(a, 'board', k))} /></div>
@@ -657,8 +657,9 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-attend i{width:8px;height:8px;background:#a9adb2;align-self:center}
 .oa-attend .hot i{background:var(--oa-hot)}.oa-attend .warn i{background:#f2b04a}.oa-attend .note i{background:#b3a6e0}
 .oa-attend a{color:#3d4150;font-size:11.5px;white-space:nowrap}
-.oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) auto;--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
+.oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) minmax(0,38%);--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
 .oa-rowlist .scui-domain-task-meta{font-family:var(--scui-font-mono)}
+.oa-rowlist .scui-domain-task-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* The transcript's tool rows keep the mono: commands and paths line up. */
 .scui-tool-head{font-family:var(--scui-font-mono)}
 /* Diff line numbers sit on tinted rows; the muted grey alone falls under 4.5:1 there. */
