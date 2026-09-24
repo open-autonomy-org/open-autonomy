@@ -8,7 +8,7 @@ import { servePages, type PageApp } from './page/serve.js';
 import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { syncAllStale, syncProfile } from './sync.js';
-import { grantsAccount, hasScope, type Env } from './types.js';
+import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg } from './widgets.js';
 
@@ -69,6 +69,9 @@ export async function give(env: Env, from: string, to: unknown, usdCents: unknow
   if (!(await ledger.project(to)).found) return { ok: false, error: 'no_such_project' };
   return ledger.grant(from, to, Math.floor(usdCents), key, typeof note === 'string' ? note : undefined, purpose, by);
 }
+// A key that speaks for an org: the steer key of `@<owner>` (ADR 0010), which reads what the org's projects' own keys read.
+const orgKeyOf = (claims: KeyClaims, owner: string): boolean => hasScope(claims, 'steer') && claims.account.toLowerCase() === `@${owner.toLowerCase()}`;
+
 export const isAdmin = (req: Request, env: Env): boolean => { const t = req.headers.get('x-admin-token'); return Boolean(t && env.AGENT_PROXY_ADMIN_TOKEN && t === env.AGENT_PROXY_ADMIN_TOKEN); };
 const dec = decodeURIComponent;
 
@@ -149,8 +152,10 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if ((m = path.match(/^\/v1\/orgs\/([^/]+)$/))) {
     if (get()) return get()!;
     const name = dec(m[1]).replace(/^@/, '').toLowerCase();
-    const [{ entries }, org] = await Promise.all([ledger.directory(), ledger.project(`@${name}`)]);
-    const projects = entries.filter((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name}/`));
+    const [{ entries }, org, claims] = await Promise.all([ledger.directory(), ledger.project(`@${name}`), authedClaims(req, env)]);
+    // The org's own key sees every project of the org and every figure; anyone else, what everyone may see.
+    const owner = Boolean(claims && orgKeyOf(claims, name));
+    const projects = entries.filter((e) => e.is_project && (owner || e.listed) && e.account.toLowerCase().startsWith(`${name}/`));
     if (!projects.length && !org.found) return error('not_found', 404);
     const own = await ledger.state(`@${name}`);
     return json({
@@ -158,8 +163,8 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
       // Each figure as the project's own doors would answer everyone: its money with its books, its sessions with them.
       projects: projects.map((e) => ({
         account: e.account, ...(e.control ? { control: e.control } : {}),
-        ...(openTo(e.profile.config_yaml, 'books') ? { balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted } : {}),
-        ...(openTo(e.profile.config_yaml, 'sessions') ? { live_sessions: e.live_sessions } : {}),
+        ...(owner || openTo(e.profile.config_yaml, 'books') ? { balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted } : {}),
+        ...(owner || openTo(e.profile.config_yaml, 'sessions') ? { live_sessions: e.live_sessions } : {}),
       })),
     }, { headers: NO_STORE });
   }
@@ -215,6 +220,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (sees('public', visibility[panel])) return null;
     const claims = await authedClaims(req, env);
     if (claims && claims.account.toLowerCase() === account.toLowerCase()) return null;
+    // The org's own key reads every project of the org as that project's key does (ADR 0010, owner's ruling
+    // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
+    if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
     const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
     return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
   };

@@ -54,6 +54,9 @@ name on the books; no new kind of account.
   `own`. Both records stay as they were set: resuming the org never resumes a project its owner paused,
   and the project's own resume under a paused org changes nothing that runs. Every automation that
   implements ADR 0003 obeys an org pause with no change to it.
+- **The org's key reads its projects.** Owner's ruling, 2026-09-24: the org's steer key reads every project of
+  the org as that project's own key does, every panel on every door, and the rollup lists every project of the
+  org with every figure to it. Anyone else gets what everyone may see.
 - **The rollup answers as each project's own doors would.** A project appears in it only when its overview is
   open to everyone, with its money only when its books are and its live sessions only when its sessions are.
 - **The CLI scopes like a cloud CLI.** Each `oa` command takes its scope as its argument, `org` or
