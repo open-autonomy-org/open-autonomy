@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 5.0.0
+version: 5.1.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -147,6 +147,16 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
+## The front door
+
+The project's GitHub page is how it is found and first used; load the `front-door` skill for its bar. Each
+scrum, compare it with what landed since the last one: the README, the docs, their media and the repository's
+description, topics and homepage. Wording only the record needs, land with your planning change. A fix that
+needs the product run (a quick start to walk, a capture to retake, a README to bring up to the bar) is fleet
+work: queue it with its acceptance lines, `Dispatch: fleet` under the outcome it belongs to. A repository
+setting the agent cannot change is a named ask to the owner, held on the roadmap until done. A quiet scrum
+leaves it alone.
+
 ## Architecture decisions
 
 Discover ADRs and architecture proposals through the same source coverage as other contributions.
@@ -195,7 +205,7 @@ For service review through `maintain.ts ship`, the landed release section uses t
 specified in [.open-autonomy/PRODUCTION.md](../../../../.open-autonomy/PRODUCTION.md). Start with
 `Release decision: accumulate` or `prepare` and `Readiness: pending`; use `defer` when postponing.
 Only set `Release decision: request-review` and `Readiness: ready-for-review` after verifying scope,
-artifact/version consistency and the review evidence. Select a **full candidate SHA** that has landed,
+artifact/version consistency, the review evidence, and that the front door describes the candidate. Select a **full candidate SHA** that has landed,
 then land that sourced decision. The candidate can precede the planning commit; later main commits can
 accumulate for a subsequent release. Do not silently move a candidate already under review.
 
