@@ -40,42 +40,54 @@ the SDK's wire; the platform reads nothing of it. "Plugin" names no new mechanis
 is the first statement.
 
 - **The owner's side publishes.** `POST /v1/agent/statement { id, title, source, as_of, badges, body_md? }` on a
-  project's `steer` key, beside the roadmap push; an org's key is refused, as on the roadmap route. A `narrate` key is
-  refused. A tool uses the owner's existing driver key, not a key of its own.
+  project's `steer` key, beside the roadmap push. Refusals: `scope_required` for any other key, `not_a_project` for an
+  org's key (as on the roadmap route), `invalid_statement` for a malformed or over-limit body, `statement_limit` for a
+  sixth statement, `lapsed_on_arrival` for a badge whose `until` is already past. A tool uses the owner's existing
+  driver key, not a key of its own; rotating that key must reach every tool that holds it.
 - **The platform knows no framework.** `id` matches `^[a-z][a-z0-9-]{0,31}$` and is the statement's address; `title`
-  is its row's word ("Compliance"); `source` is `{ name, url? }`, the tool the owner names; `as_of` a date; `badges`
-  `[{ label, message, tone, until? }]` with `tone` one of `positive | info | neutral | warning | negative`; `body_md`
-  optional. The platform draws them in its own components; no markup, script or image from the tool reaches a page.
-  The events door's redaction runs on every field.
-- **Limits.** Five statements per account, eight badges per statement, a label of 40 characters and a message of 60,
-  a title of 24, a body of 8 KB. Over a limit is a refusal, never a truncation.
-- **Every revision is kept.** Each publication is a revision with who (the key), when and what changed, served at
-  `GET /v1/accounts/:account/statements/:id/revisions`, exactly as the roadmap's are. A compliance claim is what a
-  public audit trail is for.
-- **A claim lapses on its own date.** A `positive` badge must carry `until`; the others may. `until` is a UTC date and
-  the badge stands through that day. After it, the badge is not drawn in the rail's row or the README widget, and the
-  statement's page lists it as lapsed on that date. The platform checks the date at every read, so a tool that stops
-  running, or an owner whose key expired, cannot leave a claim standing. The body carries no claim the platform can
-  date; the page shows it under "as of <as_of>".
+  is its row's word ("Compliance"), refused if it names one of the dashboard's own pages; `source` is `{ name, url? }`,
+  the tool the owner names, its `url` http(s) only; `as_of` and every `until` are `YYYY-MM-DD` dates; `badges`
+  `[{ label, message, tone, until }]` with `tone` one of `positive | info | neutral | warning | negative`; `body_md`
+  optional. The platform draws them in its own components, and the body through its escaping Markdown renderer
+  (`mdToSafeHtml`); no markup, script or image from the tool reaches a page. The events door's redaction runs on every
+  field.
+- **Limits.** Five live statements per account (a withdrawn one does not count), eight badges per statement, a label of
+  40 characters, a message of 60, a title of 24, a body of 8 KB. Over a limit is a refusal, never a truncation.
+- **Every change is a revision.** A publication that differs from the live statement, and a withdrawal, are each a
+  revision: when, the key's id, and what changed (badges added, removed or altered by label; title, source or body
+  changed). A publication identical to the live statement is not a revision, as with the roadmap. Revisions are served
+  at `GET /v1/accounts/:account/statements/:id/revisions`. A compliance claim is what a public audit trail is for.
+- **Every badge lapses on its own date.** Every badge carries `until`, whatever its tone: the tone is the publisher's
+  choice of colour and must not decide whether a claim can outlive its tool. The badge stands through that UTC day;
+  after it, it is not drawn in the rail's row or the README widget, and the statement's page lists it as lapsed on
+  that date. The platform checks the date at every read, so a tool that stops running, or an owner whose key expired,
+  cannot leave a badge standing. The body is not a dated claim; the page and the widget both show "as of <as_of>".
 - **Withdrawal.** `DELETE /v1/agent/statement/:id` on the same key removes the statement from the rail, the page and
-  the widget; its revisions stay on the read door. Revoking or letting a key expire withdraws nothing: what was
-  published stays the owner's dated word, and its positive claims lapse on their own.
+  the widget, and is itself a revision; the same id may be published again later. Withdrawal is the key's act only:
+  the page's one owner control stays the operating state (ADR 0011). Revoking or letting a key expire withdraws
+  nothing: what was published stays the owner's dated word, and its badges lapse on their own.
 - **The owner's word on who sees it.** Statements are one panel, `statements`, in the `dashboard:` word: public in the
   `roadmap`, `open` and `status` presets, team in `private`. Public by default because a statement exists only to be
   shown and only the owner's key publishes one. A closed panel answers 404 on the page, the widget and the read doors
   alike; a README widget of a private project therefore shows nothing, since GitHub fetches it signed out.
-- **Where it shows, and whose word it is.** Each statement is a row in the rail after the fixed pages, titled by the
-  statement, opening `…/dashboard/statements/:id` (under `statements/`, so no id can shadow a fixed page): the badges,
-  the lapsed ones, the body, and "Stated by the owner of <project> on <as_of>, from <source>". The platform attributes
-  the statement to the owner and endorses nothing. `GET /v1/accounts/:account/statements/:id/badges.svg` is the badge
-  row as a README widget (a new, badge-sized widget form); `GET /v1/accounts/:account/statements` lists them as JSON.
+- **Where it shows, and whose word it is.** The rail lists statements below the dashboard's own pages under the heading
+  "Stated by the owner", one row per statement, each opening `…/dashboard/statements/:id` (under `statements/`, so no
+  id can shadow a fixed page): the badges, the lapsed ones, the body, and "Stated by the owner of <project> on
+  <as_of>, from <source>". The platform attributes the statement to the owner and endorses nothing.
+  `GET /v1/accounts/:account/statements/:id/badges.svg` is the badge row as a README widget (a new, badge-sized widget
+  form); `GET /v1/accounts/:account/statements` lists the live statements as JSON.
 
-What a claim rests on is the tool's rule. Evidence Desk's, in its code: an audit report or certificate is claimed only
-while its document is held with its hash, intact and in date; a self-attestation says self-attested; otherwise the
-badge is readiness and the body lists the steps still open. Extrapolation, this author's: Evidence Desk gains
-`trust publish`, posting its trust center's badges with the readiness steps as the body. Its audit-report badge,
-which has no expiry today, is given `until` one year after the report's period ends, the usual reliance window after
-which customers ask for a bridge letter; a certificate's `until` is its own expiry.
+What a claim rests on is the tool's rule. Evidence Desk's, in its code today: an audit report or certificate is claimed
+only while its document is held with its hash, intact and in date; a self-attestation says self-attested; otherwise
+the badge is readiness, a count of controls with evidence.
+
+Extrapolation, this author's, for Evidence Desk's `trust publish`: it posts its trust center's badges, and only when
+the workspace's `trust.json` publishes that section. Tones: an audit report or certificate is `positive`, a
+self-attestation `info`, readiness `neutral`. `until`: a certificate's own expiry; an audit report's period end plus
+one year (the usual reliance window, after which customers ask for a bridge letter), or its issue date plus one year
+where it records no period; a self-attestation's issue date plus one year; readiness `as_of` plus 30 days, so a
+stopped tool leaves no stale count. The body carries only what `trust.json` publishes; a list of controls not yet
+ready discloses security gaps and is not published by default.
 
 What a `steer` key does and does not protect: it is the owner's side because it is minted only by the claim file at
 HEAD, the same authority as the roadmap and the pause. In a repository where an agent's pull request can land the claim
@@ -106,9 +118,10 @@ project's page, the kind of power the key already has over the roadmap it can re
 - Backend: the statement record with its revisions per account, the write and delete routes on `steer`, three public
   reads; the `statements` panel in `Visibility`, `PRESETS` and the `dashboard:` parser; the page route and its gate in
   `page/serve.tsx`; the rail rows and the page in `dash/`; the badge-row SVG in `widgets.ts`.
-- SDK: `publishStatement()` and `withdrawStatement()` on a `steer` key and the statement type; its README documents
-  the wire.
-- Evidence Desk, in its own repository: `trust publish`, and `until` on its audit-report badges.
+- SDK: `publishStatement()` and `withdrawStatement()` on a `steer` key, `statements()` and `statementRevisions()` to
+  read, and the statement type; its README documents the wire. The steer scope's descriptions (`keys.ts`, the SDK
+  README) name statements beside the roadmap and the operating state.
+- Evidence Desk, in its own repository: `trust publish`, with the tones and dates above.
 - Nothing here changes metering, credentials, key minting, the account tree or the balance hard-stop.
 
 ## Constitution review
@@ -123,8 +136,9 @@ project's page, the kind of power the key already has over the roadmap it can re
   owner's steer key stays on the owner's side, and what it could do there it could already do.
 - *Every spend is metered; the ledger's settled cents are the only cost.* Untouched: a statement spends nothing.
 - *Nothing here develops against a real API; no automated tests.* Verified by hand in the world: a synthetic Evidence
-  Desk workspace publishes on a twin-minted steer key, and the row, the page, the widget, a lapsed badge, a refused
-  narrate key, a withdrawal and a closed panel are read on the running platform.
+  Desk workspace publishes on a twin-minted steer key, and the row, the page, the widget, a lapsed badge, the revisions
+  read, a withdrawal, and the refusals (a narrate key, an org's key, an over-limit body, a past `until`) and a closed
+  panel are read on the running platform.
 - *Out of scope: a treasury with rails, a page and a widget.* Preserved: a statement is a row on the page and a widget;
   the platform hosts no tool's code and knows no tool's domain.
 
