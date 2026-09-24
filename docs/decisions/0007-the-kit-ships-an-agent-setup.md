@@ -86,7 +86,9 @@ What this record uses from it:
   converges them, keeping a live model pin the package does not name until the declared model changes.
 - **Targets.** `hermes` is the target the kit renders for today. The same package applies to the
   orchestrator (`--orchestrator <root>`), whose workers are Claude Code or Codex; offering it as a kit
-  target waits on an ADR 0001 amendment naming its scheduler, image and reporter.
+  target waits on an ADR 0001 amendment naming its scheduler, image and reporter. (Amended by
+  [ADR 0009](0009-another-harness-on-the-same-home.md): a project may pick another harness, which the
+  orchestrator runs on the same home.)
 - **The fleet.** A fleet gateway's profile names are flat, so the composer namespaces each project's
   profiles by the repository (`<repo>` and `<repo>-<profile>`), never dropping one: a name that would not
   be a Hermes profile id, or would collide, refuses the composition. A fleet still opens no pay door: work

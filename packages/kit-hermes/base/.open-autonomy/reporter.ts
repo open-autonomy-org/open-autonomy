@@ -35,6 +35,10 @@ const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolv
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
 const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: { ...process.env, HERMES_HOME: home } as Record<string, string> });
 const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
+// The owner's pause and resume reach the runtime that holds the schedule: Hermes's own file under Hermes; under the
+// orchestrator (another harness picked), its running daemon's door, which a write to the file would be lost under.
+const onOrchestrator = (process.env.OPEN_AUTONOMY_HARNESS ?? 'hermes') !== 'hermes';
+const scheduler = onOrchestrator ? { harness: 'orchestrator' as const, homes: { orchestrator: home } } : { harness: 'hermes' as const, homes };
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
 const saved = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {};
 const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ? saved.published ?? {} : {};
@@ -376,14 +380,14 @@ async function control(): Promise<void> {
   if (!c) { if (!controlUnreadable) { controlUnreadable = true; log(`operating state unreadable through ${baseUrl}; the owner's word waits`); } return; }
   controlUnreadable = false;
   const desired = c.desired?.state ?? 'running';
-  let jobs = await sc.listJobs({ harness: 'hermes', homes });
+  let jobs = await sc.listJobs(scheduler);
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   let changed = false;
   if (desired === 'paused') {
     // Ownership is written before the harness is touched: a crash or a thrown call after Hermes applied the pause
     // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
     // which resume simply forgets.
-    for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ harness: 'hermes', id: j.id, profile: j.profile ?? undefined, homes }); changed = true; }
+    for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ ...scheduler, id: j.id, profile: j.profile ?? undefined }); changed = true; }
     // The board is funded work too: its dispatcher would keep starting queued tasks. Each one waiting to be picked up is
     // deferred (a run in flight still finishes) and remembered, so `running` promotes exactly those.
     for (const t of boardTasks()) if (t.status === 'todo' && !pausedTasks.has(t.id)) { pausedTasks.add(t.id); saveState(); kanban('schedule', t.id, 'paused by the owner'); }
@@ -391,12 +395,12 @@ async function control(): Promise<void> {
     // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
     for (const id of [...pausedJobs]) {
       const j = jobs.jobs.find(x => x.id === id);
-      if (j && !j.enabled) { await sc.resumeJob({ harness: 'hermes', id, profile: j.profile ?? undefined, homes }); changed = true; }
+      if (j && !j.enabled) { await sc.resumeJob({ ...scheduler, id, profile: j.profile ?? undefined }); changed = true; }
       pausedJobs.delete(id); saveState();
     }
     for (const id of [...pausedTasks]) { if (boardTasks().some(t => t.id === id && t.status === 'scheduled')) kanban('promote', id, 'resumed by the owner'); pausedTasks.delete(id); saveState(); }
   }
-  if (changed) jobs = await sc.listJobs({ harness: 'hermes', homes });
+  if (changed) jobs = await sc.listJobs(scheduler);
   const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
   const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
   const running = liveRun();
