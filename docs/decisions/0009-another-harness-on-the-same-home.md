@@ -25,7 +25,7 @@ public permalink; the quotations record scope, not independent approval).
   thing in hermes and vice versa"; "where ever it's an agent idiomatic version of something, use BOTH the
   idiomatic and hermes version (have the hermes version shadow the idiomatic)"; "let's complete everything".
 
-**Supercode today** (v0.4.63, `@volter-ai-dev/supercode-orchestrator` 0.3.0). The orchestrator's home is a
+**Supercode today** (v0.4.66, `@volter-ai-dev/supercode-orchestrator` 0.3.1). The orchestrator's home is a
 complete Hermes home ([Supercode's work order](https://github.com/volter-ai/supercode/blob/main/docs/plans/hermes-compat.md),
 rows 1–14 done):
 - it holds Hermes's gateway lock and each bot token's lock, so Hermes and the orchestrator never serve one
@@ -43,7 +43,8 @@ rows 1–14 done):
 ## Decision
 
 - **The pick.** `.open-autonomy/agent.json` names the harness the owner picks at its top level: `"harness":
-  "codex"` (or `claude-code`). Absent, it is `hermes`, and nothing changes for that project. The package is
+  "claude-code"` (or `codex`, on an endpoint that speaks OpenAI's Responses stream). Absent, it is `hermes`,
+  and nothing changes for that project. The package is
   otherwise unchanged: the same `inference`, `jobs` and `extensions.hermes`, applied through Hermes's own
   door into the same home.
 - **The runtime.** For another harness, the kit's start runs Supercode's orchestrator
@@ -84,17 +85,50 @@ the pinned Hermes's own functions, and not yet in a World:
 - Hermes's own tools on the door;
 - the zone rule.
 
-The kit's start with a picked harness has not run: its first run is proof step 2.
+The pilot of Volter's company repository ran next: bare, from a local mirror of its repository, with its
+own platform key on the test platform (`autonomy.voltertest.xyz`).
+- **Works.** The kit's start rendered the home and applied the setup with `worker.harness`. The orchestrator
+  held the home, its daily job fired through the live operator door, and Claude Code ran it on
+  `zai/glm-5.3-flash` through the valve and the platform. Hermes's approval rule judged each shell command.
+  The reporter published both fires as `cycle` sessions, from the mirrors.
+- **Found and fixed** in Supercode v0.4.66:
+  - a job's second fire failed every save (two routing entries for one session key);
+  - a denial reached the worker as "denied in the channel", and the model retried variants 120 times; it now
+    gets Hermes's own words;
+  - `agent.max_turns` did not cap Claude Code.
+- **Measured.** Codex cannot use Open Autonomy's rail:
+  - the gateway answers `/v1/responses` in its own stream, not OpenAI's;
+  - Codex's MCP tools go as a `namespace` tool, which the model refuses.
+- **Measured, and the owner's to decide.** The platform settles an Anthropic-wire call (Claude Code's) from
+  its reservation table, because the gateway reports no cost on that wire. For `zai/glm-5.3-flash` that is
+  about 33 times the cost the gateway reports for the same tokens on the chat wire, and cached tokens are
+  billed at the full input rate:
+  - 14 tokens on Hookline's key: 0.22¢, against 0.01¢ on chat;
+  - the pilot's two fires: $4.74 of the company's $10 on the test platform, where its daily cap stopped them.
+
+  Until the platform settles that wire at a real cost, a Claude Code worker on this rail is booked far above
+  Hermes on the same model. The books are overstated, not understated: the hard stop holds.
+
+Hookline's pilot then ran the board on production (`open-autonomy.org`), bare, from a local mirror, with its
+platform key only (its two jobs paused through the live door):
+- Hermes's own dispatch tick claimed a board task and spawned the orchestrator's worker command.
+- Claude Code called `kanban_complete` with the summary the task asked for, and the task was done on its
+  first run in 9 seconds.
+- The worker exited, and its run was mirrored into `state.db` tagged `kanban`.
+- The platform booked each of the run's three calls to that same session id, from Claude Code's own session
+  header: 5.4¢ at the table rate.
+
+Not yet run: a scheduled fire that completes successfully (the company's key is at its daily cap).
 
 ## Order of proof
 
 Each step is a hand-run walk; a step that fails stops the ones after it.
-1. The Supercode release (v0.4.63: the binary, `supercode-orchestrator` 0.3.0, the SDK 0.3.35), pinned by the
+1. The Supercode release (v0.4.66: the binary, `supercode-orchestrator` 0.3.1, the SDK 0.3.35), pinned by the
    host package.
-2. Volter's company repository in a World, picking `codex`: the start renders the home, the orchestrator
+2. Volter's company repository in a World, picking `claude-code`: the start renders the home, the orchestrator
    holds its lock, the daily job fires on the worker through the valve, the transcript opens under
    `hermes sessions`, and the reporter publishes it.
-3. Hookline in a World, picking `codex`: a board task is dispatched, run, handed to review and merged.
+3. Hookline in a World, picking `claude-code`: a board task is dispatched, run, handed to review and merged.
 4. The two projects on the orchestrator, bare, when the owner starts them; the rest of the fleet stays on
    Hermes.
 
@@ -119,10 +153,12 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 
 ## Constitution review (by the author; the independent review follows on the pull request)
 
-- **Every spend is metered on public books.** Compatible. The worker's model route is the home's `model:`,
-  through the valve by custody name. Each call carries the worker's own session header, which the platform
-  books from its next deploy (#726). A provider the orchestrator cannot route (`openai-codex`) is refused by
-  name at launch, never run on a default.
+- **Every spend is metered on public books.** Compatible, with a known overstatement. The worker's model
+  route is the home's `model:`, through the valve by custody name. Each call carries the worker's own
+  session header, which the platform books from its next deploy (#726). A provider the orchestrator cannot
+  route (`openai-codex`) is refused by name at launch, never run on a default. Claude Code's Anthropic-wire
+  calls are settled from the reservation table (measured above), so the books overstate their cost; the
+  ledger stays authoritative and the hard stop holds.
 - **Only the SDK is real; the platform shows, does not steer.** Compatible: the reporter still reads through
   Supercode's SDK and publishes through Open Autonomy's; no platform-side runtime controller is added.
 - **Authority comes from the repository.** Compatible: the pick is one committed key, and the content and
