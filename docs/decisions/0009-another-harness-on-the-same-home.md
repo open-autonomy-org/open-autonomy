@@ -43,7 +43,8 @@ rows 1–14 done):
 ## Decision
 
 - **The pick.** `.open-autonomy/agent.json` names the harness the owner picks at its top level: `"harness":
-  "claude-code"` (or `codex`, on an endpoint that speaks OpenAI's Responses stream). Absent, it is `hermes`,
+  "claude-code"` on Open Autonomy's model rail, or `"codex"` on the owner's ChatGPT subscription
+  (`provider: openai-codex`, through the valve's Codex forward: the worker holds no login). Absent, it is `hermes`,
   and nothing changes for that project. The package is
   otherwise unchanged: the same `inference`, `jobs` and `extensions.hermes`, applied through Hermes's own
   door into the same home.
@@ -120,7 +121,15 @@ platform key only (its two jobs paused through the live door):
 - The platform booked each of the run's three calls to that same session id, from Claude Code's own session
   header: 5.4¢ at the table rate.
 
-Not yet run: a scheduled fire that completes successfully (the company's key is at its daily cap).
+Open Autonomy's own agent then ran the same way on its `openai-codex` route (orchestrator 0.3.2): a board
+task was done by a Codex worker on the owner's ChatGPT subscription, through the valve's Codex forward, with
+a Codex home that holds no login. Its first two runs showed one more thing to carry over: Codex's app-server
+rejects an MCP call nobody approves, and Hermes gates no MCP tool, so the orchestrator's door is approved
+in the Codex home, while a shell command still goes to Hermes's rule.
+
+Not yet run: a scheduled fire that completes successfully (the company's key is at its daily cap, and the
+owner's pause holds Hookline's and Open Autonomy's jobs, which the reporter applied through the orchestrator's
+door within seconds: that path is proven).
 
 ## Order of proof
 
@@ -160,10 +169,11 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 
 - **Every spend is metered on public books.** Compatible, with a known overstatement. The worker's model
   route is the home's `model:`, through the valve by custody name. Each call carries the worker's own
-  session header, which the platform books from its next deploy (#726). A provider the orchestrator cannot
-  route (`openai-codex`) is refused by name at launch, never run on a default. Claude Code's Anthropic-wire
-  calls are settled from the reservation table (measured above), so the books overstate their cost; the
-  ledger stays authoritative and the hard stop holds.
+  session header, which the platform books (#726). A provider the orchestrator cannot route is refused by
+  name at launch, never run on a default. `openai-codex` is the owner's own subscription through the valve's
+  Codex forward, which spends no project funds (ADR 0001). Claude Code's Anthropic-wire calls were settled
+  from the reservation table (measured above); #731 settles them at the gateway's own per-token prices from
+  its next deploy. The ledger stays authoritative, and the hard stop holds.
 - **Only the SDK is real; the platform shows, does not steer.** Compatible: the reporter still reads through
   Supercode's SDK and publishes through Open Autonomy's; no platform-side runtime controller is added.
 - **Authority comes from the repository.** Compatible: the pick is one committed key, and the content and
