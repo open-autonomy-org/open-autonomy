@@ -78,7 +78,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .chart .bars i.hot{background:${T.hot};opacity:1}
 .chart .bars i.zero{background:${T.rule};opacity:.5}
 .chart .axis{display:flex;justify-content:space-between;color:${T.muted};font:500 9.5px/1.4 ${TEXT};letter-spacing:.24em;text-transform:uppercase;margin-top:8px}
-.chart .none{height:96px;margin-top:12px;border:1px dashed ${T.rule};display:flex;align-items:center;justify-content:center;color:${T.muted};font-size:13.5px}
+.chart .none{height:96px;margin-top:12px;display:flex;align-items:center;justify-content:center;color:${T.muted};font-size:13.5px}
 .poster .facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:18px;color:${T.body};font-size:13.5px}
 .poster .facts b{color:${T.ink};font-weight:500}
 .ask{border-top:1px solid ${T.ink};padding:18px 0 0;display:flex;flex-direction:column}

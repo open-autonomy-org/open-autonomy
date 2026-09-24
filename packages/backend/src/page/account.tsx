@@ -68,7 +68,7 @@ export function Account(d: AccountPageData) {
         </div>
         <div class="cols">
           <div class="main">
-            {projects.length ? <div class="card"><h2>Projects</h2><div class="grid two">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div></div> : null}
+            {projects.length ? <section><h2 class="sech">Projects</h2><div class="grid two">{projects.map((e) => <ProjectCard e={e} facts={d.slots?.card?.[e.account]} />)}</div></section> : null}
             {f && f.given.length ? <div class="card"><h2>Given</h2><ul class="gifts">{f.given.map((g) => <Gift f={g} dir="out" entries={d.entries} now={d.now} brand={d.brand} impact={g.to ? d.impact?.[g.to] : undefined} />)}</ul></div> : null}
             {f && f.received.length ? <div class="card"><h2>Received</h2><ul class="gifts">{f.received.map((g) => <Gift f={g} dir="in" entries={d.entries} now={d.now} brand={d.brand} />)}</ul></div> : null}
             {!projects.length && !gives ? <div class="card"><p class="empty">{d.name} owns no project here and has not given yet.</p></div> : null}
