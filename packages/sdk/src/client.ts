@@ -48,10 +48,12 @@ export interface AgentControl {
 }
 // One of the owner's spend limits over its window, with what has been used in it.
 export interface SpendBound { window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }
+// An org's limit: its total over the org's projects, withheld when any of them keeps its books closed.
+export type OrgSpendBound = Omit<SpendBound, 'used'> & ({ used: SpendBound['used']; withheld?: never } | { used?: never; withheld: true });
 export interface OrgView {
   org: string;
   desired?: AgentControl['desired'];
-  bounds: SpendBound[];
+  bounds: OrgSpendBound[];
   projects: Array<{ account: string; control?: AgentControl; balance_usd_cents: number; burn_per_day_usd_cents: number; runway_days: number | null; funded: boolean; exhausted: boolean; live_sessions: string[] }>;
 }
 export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
@@ -289,7 +291,7 @@ export interface FundingView {
   balance_usd_cents: number; granted_in_usd_cents: number; granted_out_usd_cents: number; consumed_usd_cents: number;
   burn_per_day_usd_cents: number; runway_days: number | null; runway_confident: boolean; days_observed: number;
   calls_total: number; last_call_at: string | null; daily_spend_usd_cents: number[];
-  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: SpendBound[] } };
+  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: OrgSpendBound[] } };
 }
 export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
 
@@ -343,7 +345,7 @@ export async function keyMint(baseUrl: string, account: string, models?: string[
 }
 // `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).
 // A funder: a person who holds grant credits on their own books (`@login`). Their key proves their GitHub
-// login through the claim file in a repository they own and can only give.
+// login through the claim file in a repository they own (an organization's only in `<org>/.github`) and can only give.
 export async function funderChallenge(baseUrl: string, login: string, fetchImpl: typeof fetch = fetch): Promise<KeyChallenge & { funder?: string }> {
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/challenge?funder=${encodeURIComponent(login)}`);
   return await res.json() as KeyChallenge & { funder?: string };

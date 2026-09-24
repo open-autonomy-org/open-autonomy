@@ -154,7 +154,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!projects.length && !org.found) return error('not_found', 404);
     const own = await ledger.state(`@${name}`);
     return json({
-      ok: true, org: `@${name}`, ...(own.desired ? { desired: own.desired } : {}), bounds: org.found ? org.bounds.limits : [],
+      ok: true, org: `@${name}`, ...(own.desired ? { desired: own.desired } : {}), bounds: org.found ? org.bounds.org?.limits ?? [] : [],
       projects: projects.map((e) => ({ account: e.account, ...(e.control ? { control: e.control } : {}), balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted, live_sessions: e.live_sessions })),
     }, { headers: NO_STORE });
   }

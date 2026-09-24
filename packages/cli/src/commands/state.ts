@@ -2,11 +2,12 @@
 // project's own automation and answered through the SDK. The command waits a little for that answer.
 // oa pause | oa resume <org>: the org's word, which every project of the org inherits (ADR 0010).
 import * as p from '@clack/prompts';
-import type { Doors } from '../config.ts';
+import { keyMatches, type Doors } from '../config.ts';
 import { ago, c, dim, fail } from '../ui.ts';
 
 export async function setState(d: Doors, state: 'running' | 'paused', opts: { reason?: string; wait: number }): Promise<void> {
   const name = d.acct.replace(/^@/, '');
+  keyMatches(d);
   if (!d.key) fail(`${state === 'paused' ? 'pausing' : 'resuming'} ${name} needs a steer key and none was found`, `oa key mint ${name} --scopes steer, or --key <file>`);
   const tty = process.stdout.isTTY && !d.json;
   const spin = tty ? p.spinner() : undefined;

@@ -41,7 +41,12 @@ name on the books; no new kind of account.
   org's repositories proves that repository, not the org.
 - **Its bounds.** `spend.limits` in `<org>/.github/.open-autonomy/config.yaml`, synced like a project's,
   in the same syntax. Each is held in `reserve` against the sum over every `<org>/*` account: its settled
-  spend, its calls and tokens in the window, and everything in flight.
+  spend, its calls and tokens in the window, and everything in flight. The total is enforced over every
+  project but published (on a project's books, the org's, and a refusal) only when every project of the org
+  opens its books to everyone; otherwise a closed project's spend would be read off a sibling as the total
+  less the sibling's own, so the limit shows with its total withheld.
+- **Its credits.** The org's give key, like its steer key, is proven only in `<org>/.github`; a login GitHub
+  does not say is a person is held to that proof.
 - **Inheritance, most restrictive wins.** A project's effective desired state is paused when its own word
   or its org's is paused. The platform serves the effective state wherever it served the project's own:
   `GET /v1/accounts/:account/state`, the page, the dashboard, the pulse. When the org's word is what holds,
@@ -52,7 +57,9 @@ name on the books; no new kind of account.
 - **The CLI scopes like a cloud CLI.** Each `oa` command takes its scope as its argument, `org` or
   `org/project`, or `--project`/`--org`; with none, the checkout's GitHub remote names the project, then `oa use <scope>` the
   saved default. `oa status <org>` rolls up the org's listed projects; `oa pause <org>` and `oa resume
-  <org>` set the org's word; `oa key mint <org> --scopes steer` mints the org's key through `<org>/.github`.
+  <org>` set the org's word; `oa key mint <org>` mints the org's key through `<org>/.github` (a checkout of it
+  names the org). An act refuses a key whose own account is not the scope named, since the platform records
+  the act on the key's account.
 
 Extrapolation, this author's (the owner named the model, not these particulars): `<org>/.github` as the
 proof and the home of the org's bounds; `own` and `from` as the field names; the argument, checkout,
@@ -77,7 +84,9 @@ An org's desired state is the org's alone: an org reports nothing observed, sinc
 - The org's bounds are money-path code: read by a human before it ships, as every change to `reserve` is.
 - The SDK's `AgentControl` gains the optional `own`, and `desired` the optional `from`.
 - `oa` gains `use`, the optional scope, the org rollup and the org's pause.
-- The page and dashboard name the org when its word holds ("paused by volter-ai").
+- The page and dashboard name the org when its word holds ("paused by volter-ai"), and offer no project
+  resume under it.
+- A funder key for an org minted from any of its repositories, as before, is no longer admitted.
 
 ## Verification
 
@@ -90,3 +99,9 @@ and left `beta` paused. The pages read "Pause requested by acme" for `alpha` and
 `beta`. The org's 50¢ daily limit, synced from `acme/.github`, refused the fourth 20¢ call across both
 projects, naming `@acme`. `oa` took its scope from the checkout's remote and from `oa use`, and refused an org
 where only a project is meant.
+
+After review, walked again: with `beta` on the `status` preset (books closed), `alpha`'s books, the org's view
+and `alpha`'s refusal showed the org's limit with its total withheld; an `acme` give key was refused through
+`acme/alpha` and minted through `acme/.github`, a person's (`bob`) through any repository of theirs; `oa pause
+acme` with `alpha`'s key in `OPEN_AUTONOMY_KEY` refused instead of pausing `alpha`; a checkout of `acme/.github`
+named the org; the dashboard offered no project resume under the org's pause and said why.

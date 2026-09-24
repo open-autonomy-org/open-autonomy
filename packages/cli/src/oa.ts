@@ -66,7 +66,10 @@ program.command('session').description('one session\'s transcript; --follow stay
   .option('-f, --follow', 'stay with a live session as its turns land', false)
   .option('--tail <n>', 'only the last n turns (0 for all)', int, 60)
   // One word is the key, in the scope the flags, the checkout or oa use name; two are the project and the key.
-  .action((first: string, second: string | undefined, o: { follow: boolean; tail: number }) => session(doors(account(second === undefined ? undefined : first, g()), g()), second ?? first, o));
+  .action((first: string, second: string | undefined, o: { follow: boolean; tail: number }) => {
+    if (second === undefined && first.includes('/')) throw new Fail(`which session of ${first}?`, `oa session ${first} <key>`);
+    return session(doors(account(second === undefined ? undefined : first, g()), g()), second ?? first, o);
+  });
 program.command('roadmap').description('the board: in progress, planned, proposed, shipped').argument('[owner/project]')
   .option('--shipped <n>', 'how many shipped items (0 for all)', int, 10)
   .action((acct: string | undefined, o: { shipped: number }) => roadmap(doors(account(acct, g()), g()), o));

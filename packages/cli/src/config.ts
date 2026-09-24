@@ -31,7 +31,12 @@ export function saveScope(value: string): void {
   writeFileSync(CONTEXT, `${value}\n`);
 }
 export function scopeOf(arg: string | undefined, flags: ScopeFlags): { scope: string; from: string } {
-  const pick: Array<[string | undefined, string]> = [[arg, 'the argument'], [flags.project, '--project'], [flags.org, '--org'], [checkoutProject(), 'this checkout'], [savedScope(), 'oa use']];
+  if (flags.project && !ACCOUNT.test(flags.project)) fail(`--project takes owner/project, not ${flags.project}`);
+  if (flags.org && !ORG.test(flags.org)) fail(`--org takes an org, not ${flags.org}`);
+  // A checkout of <org>/.github is the org's own repository (ADR 0010): it names the org.
+  const here = checkoutProject();
+  const checkout = here?.toLowerCase().endsWith('/.github') ? here.split('/')[0] : here;
+  const pick: Array<[string | undefined, string]> = [[arg, 'the argument'], [flags.project, '--project'], [flags.org, '--org'], [checkout, 'this checkout'], [savedScope(), 'oa use']];
   const [value, from] = pick.find(([v]) => v) ?? [undefined, ''];
   if (!value) fail('no project or org to act on', 'name one (oa status volter-ai/volter, oa status volter-ai), run inside a checkout, or oa use <org|org/project>');
   if (ACCOUNT.test(value)) return { scope: value, from };
@@ -69,6 +74,17 @@ export function keyFor(acct: string, flag?: string, prefer: KeyKind[] = ['steer'
     if (token) return { token, from: file, kind };
   }
   return undefined;
+}
+
+// The account a key speaks for, read from its own claims: the platform records an act on the key's account, never on
+// the scope a command names, so an act refuses a key for another account instead of landing somewhere else.
+export function keyAccount(token: string): string | undefined {
+  try { return (JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8')) as { account?: string }).account; } catch { return undefined; }
+}
+export function keyMatches(d: Doors): void {
+  if (!d.key) return;
+  const holds = keyAccount(d.key.token);
+  if (holds?.toLowerCase() !== d.acct.toLowerCase()) fail(`the key from ${d.key.from} is ${holds ? `${holds.replace(/^@/, '')}'s` : 'unreadable'}, not ${d.acct.replace(/^@/, '')}'s`, `drop --key or OPEN_AUTONOMY_KEY to use ${d.acct.replace(/^@/, '')}'s own files, or name ${holds?.replace(/^@/, '') ?? 'its account'}`);
 }
 
 export interface Doors { base: string; acct: string; key?: FoundKey; oa: OpenAutonomy; json: boolean }
