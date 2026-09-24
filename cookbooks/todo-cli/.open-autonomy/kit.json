@@ -1,7 +1,7 @@
 {
   "kit": "hermes",
   "skew": "self-build",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "params": {
     "project": "todo-cli",
     "account": "cookbook/todo-cli"

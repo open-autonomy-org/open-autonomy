@@ -26,10 +26,12 @@
 //               treasurer's, the only one that pays); --valve moves both (the second is the next port) for a second
 //               agent on one host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
-//   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>
+//   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
+//               another harness (`"harness": "codex"`), Supercode's orchestrator on the same home, running that
+//               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
-import { agentModels, applyAgent, parseAgent, readAgent, type Setup } from './agent.ts';
+import { agentHarness, agentModels, applyAgent, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -114,6 +116,7 @@ const agentEnv = (): Record<string, string> => ({ ...inherited(), PATH: `${resol
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
+let restartAsked = false;
 process.on('exit', () => {
   for (const child of children) { try { child.proc.kill(); } catch { /* already gone */ } }
 });
@@ -133,7 +136,8 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
     say(`${name} ended (${code}); stopping the rest`);
     for (const c of children) if (c.proc !== proc) c.proc.kill();
     await Promise.all(children.map((c) => c.proc.exited));
-    process.exit(name === 'gateway' && code === 75 ? 75 : 1);
+    // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
+    process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
   return proc;
 }
@@ -221,11 +225,19 @@ if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `crea
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, 'hermes');
+// The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
+// worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
+const harness = agentHarness(agentSetup);
+if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Supercode's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
+  // The workers' forms before anything of Hermes's runs here: the persona as AGENTS.md (SOUL.md its link), each skill
+  // under .agents/skills/; a Hermes call first would write a default SOUL.md beside the rendered persona.
+  if (harness !== 'hermes') for (const line of renderWorkerForms(committed, home)) say(line);
+  const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
-  cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' });
+  cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
@@ -334,8 +346,13 @@ try {
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts } });
-const gateway = spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+// The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
+// (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
+const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter-ai-dev', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+const gateway = harness === 'hermes'
+  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
@@ -376,11 +393,14 @@ setInterval(() => {
   } catch { say('cannot decode the board; kit restart waits'); return; }
   restarting = true;
   rmSync(restartRequest, { force: true });
-  say(request ? `kit ${request.version} landed; asking Hermes to drain before restarting the stack` : `main moved to ${mainMoved}; asking Hermes to drain before restarting the stack onto it`);
+  const runtime = harness === 'hermes' ? 'Hermes' : 'the orchestrator';
+  say(request ? `kit ${request.version} landed; asking ${runtime} to drain before restarting the stack` : `main moved to ${mainMoved}; asking ${runtime} to drain before restarting the stack onto it`);
+  restartAsked = true;
+  // Hermes drains on SIGUSR1; the orchestrator stops on SIGTERM, recording each conversation's session to resume.
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
-  process.kill(gateway.pid, constants.signals.SIGUSR1);
+  process.kill(gateway.pid, harness === 'hermes' ? constants.signals.SIGUSR1 : constants.signals.SIGTERM);
 }, 5000);
-say(`gateway up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
+say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});
