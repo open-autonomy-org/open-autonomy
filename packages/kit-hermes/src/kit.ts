@@ -24,7 +24,8 @@ export const KIT_FILE = '.open-autonomy/kit.json';
 export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2'] as const;
 export type Skew = (typeof SKEWS)[number];
 // A child's copy of a parent's or base's file replaces it whole: change the copy whenever the original changes
-// (soc2 carries PRODUCTION.md and project-communications with the seams text added).
+// (soc2 carries PRODUCTION.md and project-communications with the seams text added, CONTRIBUTING.md with the SOC 2
+// checklist rule added, and .open-autonomy/agent.json with the internal-audit job added).
 const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
 const lineage = (skew: Skew): Skew[] => [...(PARENT[skew] ? lineage(PARENT[skew]!) : []), skew];
 const BASE = resolve(import.meta.dir, '..', 'base');
@@ -130,7 +131,7 @@ export function adopt(dir: string, params: KitParams, skew: Skew = 'self-build')
 // edits, a merge's result, a file it removed); which carry an unresolved merge. A project is a branch of its skew
 // (docs/decisions/0006), so divergence is its right and is reported, never an error. An old version and an
 // unresolved merge are.
-export interface Status { version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
+export interface Status { version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[]; decisions: string[] }
 export function check(dir: string): Status {
   const rec = readKit(dir);
   const diverged: string[] = [];
@@ -143,7 +144,25 @@ export function check(dir: string): Status {
     if (hasMarkers(have)) conflicted.push(rel);
     else if (!eq(have, want)) diverged.push(`${rel}: changed here`);
   }
-  return { version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir) };
+  return { version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir), decisions: rec.skew === 'soc2' ? decisionChecklists(dir) : [] };
+}
+
+// In a soc2 project every architecture decision record answers the SOC 2 checklist (skews/soc2/docs/decisions/
+// SOC2-CHECKLIST.md): a `## SOC 2 checklist` section with a non-empty line for each item C1 to C10. A record that
+// leaves one out is the project's to fix, like a declaration.
+const CHECKLIST_ITEMS = Array.from({ length: 10 }, (_, i) => `C${i + 1}`);
+function decisionChecklists(dir: string): string[] {
+  const at = join(dir, 'docs', 'decisions');
+  if (!existsSync(at)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(at).filter((n) => /^\d{4}-.*\.md$/.test(n)).sort()) {
+    const text = readFileSync(join(at, name), 'utf8');
+    const section = /^## SOC 2 checklist\s*$([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1];
+    if (!section) { out.push(`${name}: no "## SOC 2 checklist" section`); continue; }
+    const missing = CHECKLIST_ITEMS.filter((c) => !new RegExp(`^\\s*[-*]?\\s*${c}\\b[^:\\n]*:\\s*\\S`, 'm').test(section));
+    if (missing.length) out.push(`${name}: the SOC 2 checklist does not answer ${missing.join(', ')}`);
+  }
+  return out;
 }
 
 // The project's own declarations in config.yaml: the roster must read, and declared seams (ADR 0008) must use the
