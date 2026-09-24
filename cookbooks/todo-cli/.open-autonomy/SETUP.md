@@ -493,10 +493,15 @@ host valve through its verified local route; never mount credentials into it or 
 publicly. Its placeholder bearer is not an access boundary.
 
 Use actual repository reads and a bounded model request under the agreed funding arrangement; a health
-response alone is insufficient. Exercise a PR read through the installed Hermes terminal tool with its
-normal unattended approval policy, so a command-scanner rejection is discovered during setup. Resolve
-trust for the configured local connection through native policy before activation; do not disable the
-scanner or grant blanket command approval. Stop the temporary valve before the normal stack takes its
+response alone is insufficient. The default profile runs without command approvals (its `agent.json`
+sets Hermes's `approvals.mode: off`, `cron_mode: approve` and `single_query_mode: approve`). Under them Hermes
+still applies its hardline blocklist, its sudo-stdin guard and any `approvals.deny` rules, and nothing else:
+the dangerous-pattern check and the security scanner (Tirith) do not run for that profile; they guard the
+treasurer, which keeps the defaults. Exercise a PR read through the installed Hermes terminal tool, so a
+terminal or route failure is discovered during setup; a scanner rejection can only show on the treasurer's
+profile. Resolve trust for the configured local connection through native policy before activation.
+Without approvals the agent can change anything its OS user can, so a bare installation runs it as a
+separate user (ADR 0001). Stop the temporary valve before the normal stack takes its
 ports. Verify the effective Git fetch and push routes and selected communication provider through their
 native tools as well. Reporter delivery and the loaded Hermes configuration are checked on final startup;
 those checks do not require PM to finish credentials or policy.
