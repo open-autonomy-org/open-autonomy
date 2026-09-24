@@ -121,11 +121,13 @@ platform key only (its two jobs paused through the live door):
 - The platform booked each of the run's three calls to that same session id, from Claude Code's own session
   header: 5.4¢ at the table rate.
 
-Open Autonomy's own agent then ran the same way on its `openai-codex` route (orchestrator 0.3.2): a board
+Open Autonomy's own agent then ran the same way on its `openai-codex` route (orchestrator 0.3.2, 0.3.3 for MCP trust): a board
 task was done by a Codex worker on the owner's ChatGPT subscription, through the valve's Codex forward, with
 a Codex home that holds no login. Its first two runs showed one more thing to carry over: Codex's app-server
-rejects an MCP call nobody approves, and Hermes gates no MCP tool, so the orchestrator's door is approved
-in the Codex home, while a shell command still goes to Hermes's rule.
+rejects an MCP call nobody approves. Hermes gates an MCP tool only on a server configured `trust:
+untrusted` (unset is full trust), so the Codex home approves the orchestrator's door and the profile's
+full-trust servers, a relayed call to an untrusted server's tool is asked in a conversation and denied with
+nobody present (orchestrator 0.3.3), and a shell command still goes to Hermes's rule.
 
 Not yet run: a scheduled fire that completes successfully (the company's key is at its daily cap, and the
 owner's pause holds Hookline's and Open Autonomy's jobs, which the reporter applied through the orchestrator's
