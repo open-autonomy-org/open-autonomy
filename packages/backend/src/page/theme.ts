@@ -135,9 +135,9 @@ export const CSS = `${BASE_CSS}
 .front .pic .cap.tr{top:-6px;right:-4px;text-align:left}
 .front .pic .cap.br{bottom:-6px;right:-4px}
 .front .pic .mark{position:absolute;top:58px;right:0;width:26px;height:26px}
-.stripe{display:grid;grid-template-columns:repeat(3,minmax(0,max-content));gap:18px 0;margin-top:36px}
+.stripe{display:flex;flex-wrap:wrap;gap:18px 0;margin-top:36px}
 .stripe>div{padding:0 28px;border-left:1px solid ${T.rule}}
-.stripe>div:nth-child(3n+1){padding-left:0;border-left:0}
+.stripe>div:first-child{padding-left:0;border-left:0}
 .stripe .n{display:flex;align-items:center;gap:8px;font:500 17px/1.2 ${TEXT};color:${T.ink}}
 .stripe .n .pulse{width:7px;height:7px;background:#9fcb2a;animation:pulse 1.4s steps(2) infinite}
 .stripe .k{display:block;color:${T.body};font-size:12.5px;margin-top:2px}
