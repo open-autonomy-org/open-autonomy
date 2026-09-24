@@ -1,7 +1,7 @@
 import { parseModelsBound } from './config.js';
 import { error, methodNotAllowed, parseJson, readCappedBody } from './http.js';
 import { LedgerClient } from './ledger.js';
-import { estimateInputTokensFromBody, MAX_OUTPUT_TOKENS, priceTable, reservePrice, settleCents, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
+import { estimateInputTokensFromBody, MAX_OUTPUT_TOKENS, priceTable, reservePrice, settleCents, settleDrift, worstCaseCents, type ModelPrice, type TokenUsage } from './pricing.js';
 import type { Env, KeyClaims, UsageEvent } from './types.js';
 
 // The model rail. A stock provider SDK pointed at this host just works: OpenAI at /v1/chat/completions and
@@ -74,15 +74,22 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   if ((upstream.headers.get('content-type') ?? '').includes('text/event-stream')) {
     const [client, meter] = upstream.body!.tee();
     ctx.waitUntil(usageFromSse(meter, anthropic)
-      .then((usage) => { const actual = settleCents(price, usage, reserved); return ledger.consume(requestId, actual, event(actual, usage, 'ok')); })
+      .then((usage) => { sayDrift(model, price, usage); const actual = settleCents(price, usage, reserved); return ledger.consume(requestId, actual, event(actual, usage, 'ok')); })
       .catch(() => ledger.consume(requestId, reserved, event(reserved, {}, 'metering_error'))));
     return new Response(client, { status: upstream.status, headers: out });
   }
   const text = await upstream.text();
   const usage = usageFromJson(text);
+  sayDrift(model, price, usage);
   const actual = settleCents(price, usage, reserved);
   await ledger.consume(requestId, actual, event(actual, usage, 'ok'));
   return new Response(text, { status: upstream.status, headers: out });
+}
+
+/** A reported cost the model's `settle` rates do not reproduce: the gateway moved a price (pricing.ts). */
+function sayDrift(model: string, price: ModelPrice, usage: TokenUsage): void {
+  const drift = settleDrift(price, usage);
+  if (drift !== null && drift > 0.01) console.warn(`settle rates for ${model} are ${(drift * 100).toFixed(1)}% off the gateway's reported cost; update MODEL_PRICES or MODEL_PRICES_JSON`);
 }
 
 function modelSession(value: unknown): string | undefined {
@@ -131,14 +138,16 @@ function usageFromRecord(raw: unknown): TokenUsage {
     output_tokens: num(r.output_tokens ?? r.completion_tokens),
     cache_creation_input_tokens: num(r.cache_creation_input_tokens),
     cache_read_input_tokens: num(r.cache_read_input_tokens),
-    // The gateway reports the real USD cost here on both wires; authoritative when present.
+    cached_prompt_tokens: num((r.prompt_tokens_details as Record<string, unknown> | null | undefined)?.cached_tokens),
+    // The gateway reports the real USD cost here on its OpenAI surfaces; authoritative when present.
     cost_usd: num(r.cost),
   };
 }
 
 export function usageFromJson(text: string): TokenUsage {
-  const parsed = parseJson<{ usage?: unknown }>(text);
-  return usageFromRecord(parsed?.usage);
+  const parsed = parseJson<{ usage?: unknown; routing?: { merge_fee_usd?: unknown } | null }>(text);
+  const fee = parsed?.routing?.merge_fee_usd;
+  return { ...usageFromRecord(parsed?.usage), ...(typeof fee === 'number' ? { fee_usd: fee } : {}) };
 }
 
 // Streaming: the usage arrives in the stream's own events (OpenAI: the final chunk's `usage`, or
@@ -170,6 +179,8 @@ export async function usageFromSse(stream: ReadableStream<Uint8Array>, anthropic
           const raw = event.usage ?? event.response?.usage;
           if (raw) merge(usageFromRecord(raw));
         }
+        const fee = (event.routing ?? event.response?.routing ?? event.message?.routing)?.merge_fee_usd;
+        if (typeof fee === 'number') merge({ fee_usd: fee });
       }
     }
   }
