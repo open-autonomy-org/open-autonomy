@@ -47,8 +47,9 @@ accepted decision records; conflicting directions require a sourced proposal and
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
 - Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend
   on the real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform
-  key) and Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, on the platform's model
-  rail with its own grant and bounds), each bare on this Mac as a launchd agent (org.open-autonomy.agent and
+  key) and Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, its model on the owner's
+  Codex subscription through a Codex worker on Supercode's orchestrator; its narration and rails on its own key and
+  grant), each bare on this Mac as a launchd agent (org.open-autonomy.agent and
   org.open-autonomy.hookline in the user's LaunchAgents: the kit's start script from the agent's own checkout under the
   open-autonomy state directory in .local/state, its home beside it, its secrets in the open-autonomy and
   open-autonomy-hookline config directories, the valves on 8787 and 8987, the pinned Hermes installed once under that
