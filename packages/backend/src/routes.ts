@@ -235,8 +235,8 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const priced = async <T,>(account: string, value: T): Promise<T> => ((await money(account)) ? value : withoutMoney(value));
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state\/history$/))) {
-    // An org's own history is its steer key's to read: each project already holds the org's requests that governed it,
-    // behind that project's own panel, and an org has no word of its own on who may see it.
+    // An org's own history is its steer key's to read: it is permanent (every past reason and key id), where the org's
+    // state serves only its latest word, and each project already holds the org's words that governed it behind its own panel.
     if (dec(m[1]).startsWith('@')) { const claims = await authedClaims(req, env); if (!claims || !orgKeyOf(claims, dec(m[1]).slice(1))) return error('not_open', 404); }
     const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.stateHistory(dec(m[1]), Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }

@@ -1089,6 +1089,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
   // begins with what was already true: the latest request and report the account holds and, for a project, its org's word
   // as it stands (it governed the project whenever the project joined). Reasons and notes are redacted as a new one is.
   private async historyBegun(account: string): Promise<void> {
+    // Only an account on the books has a history: a read of any other name writes nothing.
+    if (!this.acct(account)) return;
     if ((await this.ctx.storage.list({ prefix: `control:${account}:`, limit: 1 })).size) return;
     const c = this.acct(account)?.control;
     const org = orgOf(account);
