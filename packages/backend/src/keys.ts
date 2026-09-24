@@ -50,8 +50,9 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   // A project's key names owner/repo; a funder's names @login and carries no models (it can only give).
   if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !(ACCOUNT_RE.test(claims.account) || FUNDER_ACCOUNT_RE.test(claims.account))) return null;
   if (!Array.isArray(claims.models) || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
-  const giveOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give');
-  if (!claims.models.length && !giveOnly) return null;
+  // A name's key (a funder's give, an org's steer: ADR 0010) buys nothing, so it carries no models.
+  const nameOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give' || x === 'steer');
+  if (!claims.models.length && !nameOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
@@ -117,7 +118,11 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
     const account = funderAccount(body.funder);
     const accepted = [await claimCode(env, account, dayKeyUTC()), await claimCode(env, account, dayKeyUTC(new Date(Date.now() - 86_400_000)))];
     if (!accepted.includes(found)) return error('claim_mismatch', 403);
-    return mintKey(env, account, [], ['give']);
+    // The org's word (ADR 0010) is proven in `<org>/.github`, the repository GitHub reads as the org's own; a
+    // claim in any other of its repositories proves that repository, and its key only gives.
+    const scopes = Array.isArray(body.scopes) && body.scopes.includes('steer') ? ['steer'] as KeyScope[] : ['give'] as KeyScope[];
+    if (scopes[0] === 'steer' && body.repo.split('/')[1].toLowerCase() !== '.github') return error('org_claim_in_dot_github', 403, { next: `commit ${CLAIM_FILE} to ${body.funder}/.github` });
+    return mintKey(env, account, [], scopes);
   }
   if (!body || typeof body.account !== 'string' || !ACCOUNT_RE.test(body.account)) return error('invalid_account', 400);
   const models = Array.isArray(body.models) && body.models.length ? body.models : DEFAULT_MODELS;

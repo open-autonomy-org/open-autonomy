@@ -44,7 +44,8 @@ const WORD: Record<Standing, [string, (s: string) => string]> = {
   live: ['Working now', pc.green], running: ['Running', pc.green], requested: ['Pause requested', pc.yellow],
   paused: ['Paused by the owner', pc.red], exhausted: ['Spending stopped', pc.red], unfunded: ['Not yet funded', pc.gray],
 };
-export const pill = (s: Standing): string => WORD[s][1](`● ${WORD[s][0]}`);
+// `org`: the org whose word holds (ADR 0010), named in place of the owner.
+export const pill = (s: Standing, org?: string): string => WORD[s][1](`● ${org && s === 'paused' ? `Paused by ${org.replace(/^@/, '')}` : org && s === 'requested' ? `Pause requested by ${org.replace(/^@/, '')}` : WORD[s][0]}`);
 export const outcome = (s: { status: string; outcome?: string }): string => (s.status === 'live' ? pc.green('live') : s.outcome === 'failed' ? pc.red('failed') : s.outcome === 'done' ? pc.green('done') : pc.dim('quiet'));
 
 // ---- columns ------------------------------------------------------------------------------------------------------

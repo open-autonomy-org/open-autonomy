@@ -97,7 +97,19 @@ function ghHeaders(env: Env): Record<string, string> {
   return h;
 }
 
+// An org's word (ADR 0010): `<org>/.github/.open-autonomy/config.yaml`, where GitHub itself keeps an org's defaults,
+// onto `@<org>`. Read for an org already on the books or once the file exists; a name with neither stays off them.
+export async function syncOrg(env: Env, org: string): Promise<boolean> {
+  if (!/^@[a-z0-9-]+$/.test(org)) return false;
+  const ledger = new LedgerClient(env.LIMITS);
+  const [config, known] = await Promise.all([fetchRepoText(env, `${org.slice(1)}/.github`, '.open-autonomy/config.yaml', 8_000), ledger.project(org)]);
+  if (config === undefined && !known.found) return false;
+  await ledger.setProfile(org, { synced_at: new Date().toISOString(), config_yaml: config ?? '' });
+  return true;
+}
+
 export async function syncProfile(env: Env, account: string): Promise<boolean> {
+  if (account.startsWith('@')) return syncOrg(env, account);
   if (!account.includes('/')) return false; // named roots are funding nodes, not repositories
   const base = env.GITHUB_API_BASE ?? 'https://api.github.com';
   try {
@@ -125,6 +137,8 @@ export async function syncProfile(env: Env, account: string): Promise<boolean> {
     const ledger = new LedgerClient(env.LIMITS);
     await ledger.setProfile(account, profile);
     await ledger.setDeployment(account, liveAddress ? await liveDeployment(env, account, repo, liveAddress) : undefined);
+    const org = `@${account.split('/')[0].toLowerCase()}`;
+    if (isStale((await ledger.project(org)).profile?.synced_at)) await syncOrg(env, org);
     // The roadmap arrives through the SDK: a substrate narrates the file it works, an owner-side driver pushes
     // its own revisions. The one platform-pulled driver is GitHub milestones, a public tracker with no credential.
     const roadmapCfg = parseRoadmapConfig(config ?? '');
