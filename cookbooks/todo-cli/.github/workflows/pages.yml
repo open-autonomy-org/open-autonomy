@@ -1,0 +1,47 @@
+name: Publish docs
+# The project's docs (docs/) on GitHub Pages, once its team sets the repository's Pages source to "GitHub Actions"
+# (hermes/skills/open-autonomy/front-door). A publish, never a gate: nothing waits on it. A merge that auto-merge makes
+# with the workflow token starts no workflow, so an hourly run publishes what such merges landed; a person's merge
+# publishes at once. Until Pages is set to Actions, or while there is no docs/, every run does nothing.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Is Pages set to publish from Actions?
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source=$(gh api "repos/${{ github.repository }}/pages" -q .build_type 2>/dev/null || true)
+          echo "publish=$([ "$source" = workflow ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.pages.outputs.publish == 'yes'
+      - name: Anything to publish?
+        id: docs
+        if: steps.pages.outputs.publish == 'yes'
+        run: echo "publish=$([ -f docs/index.md ] || [ -f docs/index.html ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - uses: actions/configure-pages@v5
+        if: steps.docs.outputs.publish == 'yes'
+      - uses: actions/jekyll-build-pages@v1
+        if: steps.docs.outputs.publish == 'yes'
+        with:
+          source: ./docs
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.docs.outputs.publish == 'yes'
+      - uses: actions/deploy-pages@v4
+        if: steps.docs.outputs.publish == 'yes'

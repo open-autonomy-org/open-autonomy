@@ -25,17 +25,23 @@ output, a deployable service its deploy path. Note in the change what they do th
 Best in class: a newcomer can answer, from the top of the page, what it is, whether it is for them, and how to
 get to a first success. In this order:
 
-1. **Name and one line** saying what it is, the same line as the repository description.
+1. **Name and one line** saying what it is, the same line as the repository description. The project's own
+   status badges (version, build, license), if any, sit just under it.
 2. **The product itself, shown**: a screenshot, an animated capture or a terminal recording of the real
    product doing its main job (see Media). A project with nothing visual shows its shortest real use.
 3. **Who it is for and why**, in two to four plain lines. No machinery, no process, no adjectives it has not
    earned.
-4. **Quick start**: the shortest real path from nothing to a first success. Every command works as written,
-   in order, on a fresh setup: follow it literally in the project's verification world before landing it.
+4. **Quick start**: what it needs first (runtime, accounts, versions), then the shortest real path from nothing
+   to a first success. Every command works as written, in order, on a fresh setup: follow it literally in the
+   project's verification world before landing it.
 5. **What it does**: the main capabilities, each in a line or two, shown where showing is clearer.
 6. **More**: the docs (when they exist), configuration, how it works in brief, status and version.
-7. **Contributing and license**, briefly. Last: that it is built in the open with Open Autonomy, linking its
-   page, with the project's widgets. Nothing about the agent or the kit comes before the product.
+7. **Getting help**: where to ask (its discussions, issues or support channel) and where to report a security
+   problem.
+8. **Contributing and license**, briefly, linking `CONTRIBUTING.md` and the license, and `CODE_OF_CONDUCT.md`,
+   `SECURITY.md` or `SUPPORT.md` where the project has them. Last: that it is built in the open with Open
+   Autonomy, linking its page, with the Open Autonomy widgets. Nothing about the agent or the kit comes before
+   the product.
 
 Clear: short sentences, the reader's words, concrete examples over claims. Cut what a newcomer does not need
 at the door; it belongs in the docs.
@@ -46,14 +52,15 @@ Show the real product, never a mockup. Capture it while verifying the feature it
 verification world, and name the feature in the change. Stale media is worse than none: when a feature's
 look or behaviour changes, its captures are retaken in the same change.
 
-- Images: PNG, or an animated GIF or WebP for a short flow, under `docs/media/`, referenced by relative path,
-  with alt text that says what it shows. Keep each small (compressed, sized for the page, a few MB at most):
-  what is committed stays in the history.
-- Terminal: record a real session and render it to an animated SVG or GIF; keep the script that made it, so
-  it can be retaken.
-- Video: do not commit it. Link a hosted clip or a release asset, with a still that opens it.
-- Social preview (1280×640): the product and the project's brand (`branding/`). GitHub takes it only in the
-  repository's settings, outside the agent's integrations (see below).
+- Images: PNG, or an animated GIF for a short flow, under `docs/media/`, referenced by relative path, with alt
+  text that says what it shows. Keep each small (compressed, sized for the page, a few MB at most): what is
+  committed stays in the history. Look at the rendered page before landing.
+- Terminal: record a real session and render it to an animated SVG or GIF. Keep the capture script that
+  drove it, so it can be retaken: it records and asserts nothing, and is never a test.
+- Video: never commit it; GitHub plays a video inline only when it was uploaded through its web interface.
+  Link a hosted clip or a release asset, with a still image that opens it.
+- Social preview: 1280×640, PNG, JPG or GIF under 1 MB, the product and the project's brand (`branding/`).
+  GitHub takes it only in the repository's settings, outside the agent's integrations (see below).
 
 ## The repository's metadata
 
@@ -72,9 +79,12 @@ do not route it to the owner unless the owner is that member.
 ## Docs
 
 The README gets someone started; docs answer everything after. When the README turns into a manual (long
-reference, several guides, configuration tables), move that material to `docs/`, keep the README's bar, and
-publish `docs/` with GitHub Pages, linked as the homepage. Docs follow the same rules as the README: written
-from the real product, updated in the same change as the behaviour they describe.
+reference, several guides, configuration tables), move that material to `docs/`, with `docs/index.md` its
+home, and keep the README's bar. The kit's `.github/workflows/pages.yml` publishes `docs/` once the team sets
+the repository's Pages source to GitHub Actions (a setting, coordinated as above; a private repository needs
+a paid plan for Pages); then link the site as the homepage and check a change actually appears there. Docs
+follow the same rules as the README: written from the real product, updated in the same change as the
+behaviour they describe.
 
 ## Keeping it true
 

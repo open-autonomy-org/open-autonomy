@@ -54,14 +54,15 @@ The project's outward channels are yours: every announcements channel, blog or d
 written for someone outside it: what changed for them, shown with the front door's media (the `front-door`
 skill), linking the release and the README.
 
-- Tell what shipped, never what merged: a version and date `CHANGELOG.md` records with release evidence, or a
-  notable change the PM moved there. Plans stay plans until they ship; never announce a date.
+- Tell what shipped, never what merged: a version and date `CHANGELOG.md` records with release evidence.
+  `Unreleased` lines are not shipped. Plans stay plans until they ship; never announce a date.
 - Read each channel's recent posts first; post once per shipped thing per channel, in that channel's form
   (a short announcement where people chat, a fuller entry on a blog or dev log).
-- A channel the project lacks, start when it needs no account: without a dev log, keep one in the repository
-  (`docs/log/`, one dated entry per shipped thing) published with its docs on GitHub Pages and linked from the
-  README, and record it in `project-communications`. A channel that needs an account (a blog platform, a
-  social profile) has no integration until the team sets one up: coordinate it with the team member
-  `project-communications` names for outward communication, else the team's agreed coordination channel, with
-  the first post ready, never the owner by default; record it for the PM rather than dropping it. The same goes
+- Every project has one outward channel through its own GitHub App: its repository's Discussions, category
+  Announcements (`bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`), one post
+  per release. Where Discussions or that category is off, turning it on is a repository setting, coordinated
+  as below. A channel that needs an account (a blog platform, a
+  social profile) has no integration until the team sets one up: coordinate it, in public, with the team
+  member `project-communications` names for outward communication, else the team's agreed coordination
+  channel, with the first post ready, never the owner by default; record it for the PM rather than dropping it. The same goes
   for posting to any channel whose publishing still needs a person.

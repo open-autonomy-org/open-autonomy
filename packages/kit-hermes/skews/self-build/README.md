@@ -12,7 +12,8 @@ Who it is for and why, in two to four plain lines.
 
 ## Quick start
 
-The shortest real path from nothing to a first success; every command works as written, on a fresh setup.
+What it needs first, then the shortest real path from nothing to a first success; every command works as
+written, on a fresh setup.
 
 ```bash
 # the first command
@@ -21,6 +22,14 @@ The shortest real path from nothing to a first success; every command works as w
 ## What it does
 
 - The main capabilities, a line or two each, shown where showing is clearer.
+
+## Getting help
+
+Where to ask, and where to report a security problem.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md); the license is in [LICENSE](LICENSE).
 
 ## Built in the open
 

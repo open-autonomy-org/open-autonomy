@@ -42,7 +42,7 @@ export function validateSkew(s: unknown): Skew {
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
 // The agent setup (.open-autonomy/agent.json, docs/decisions/0007) is kit-owned: the kit's changes reach it by the
 // three-way merge, the project's own edits kept.
-const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.ts|reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land)\.yml$/];
+const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.ts|reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
