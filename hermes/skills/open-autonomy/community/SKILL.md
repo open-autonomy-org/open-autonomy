@@ -1,7 +1,7 @@
 ---
 name: community
-description: Read and answer the project's community, preserve sourced input for the PM scrum, and acknowledge human commitments without assigning unsolicited work.
-version: 2.4.0
+description: Read and answer the project's community, preserve sourced input for the PM scrum, acknowledge human commitments without assigning unsolicited work, and keep every outward channel telling what shipped.
+version: 2.5.0
 metadata:
   hermes:
     tags: [open-autonomy, community, github, discord]
@@ -46,3 +46,23 @@ and moderators unless explicitly delegated.
 The same rules apply to incoming chat: answer there and retain exact source references in session history.
 PM decides whether it warrants a notable change to the shared plan. Owner redirection or urgent overlap can warrant
 requesting an early PM scrum; use its original source and avoid scheduling duplicate runs.
+
+## Tell what shipped
+
+The project's outward channels are yours: every announcements channel, blog or dev log that
+`project-communications` names (today one of each at most). Keep each telling what the project shipped,
+written for someone outside it: what changed for them, shown with the front door's media (the `front-door`
+skill), linking the release and the README.
+
+- Tell what shipped, never what merged: a version and date `CHANGELOG.md` records with release evidence.
+  `Unreleased` lines are not shipped. Plans stay plans until they ship; never announce a date.
+- Read each channel's recent posts first; post once per shipped thing per channel, in that channel's form
+  (a short announcement where people chat, a fuller entry on a blog or dev log).
+- Every project has one outward channel through its own GitHub App: its repository's Discussions, category
+  Announcements (`bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`), one post
+  per release. Where Discussions or that category is off, turning it on is a repository setting, coordinated
+  as below. A channel that needs an account (a blog platform, a
+  social profile) has no integration until the team sets one up: coordinate it, in public, with the team
+  member `project-communications` names for outward communication, else the team's agreed coordination
+  channel, with the first post ready, never the owner by default; record it for the PM rather than dropping it. The same goes
+  for posting to any channel whose publishing still needs a person.

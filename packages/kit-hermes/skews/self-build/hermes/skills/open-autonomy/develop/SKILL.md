@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. Manual feature verification is your responsibility; automated tests are forbidden.
-version: 4.4.0
+version: 4.5.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -38,6 +38,9 @@ is not done.
    code. Inspect command definitions before invoking them; never run automated tests through a check,
    script or hook. You cannot reach production and must not try. Record what you did, what happened and
    any unverified acceptance in the handoff. Source review alone does not demonstrate feature behavior.
+   When the change alters what a user sees or does (a command, an option, an output, a screen, an install
+   or deploy step, a limit), bring the front door along in the same change, to the `front-door` skill's bar:
+   the README and docs say it truly, and its media are captured from this verification run.
 5. Before landing, review the final diff against the authorized outcome and every constitutional invariant.
    An acceptance checklist or green check cannot waive either. Remove accidental scope expansion or block
    for the needed decision; native reviewers apply the same scope and constitution check to the handoff.

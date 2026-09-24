@@ -127,6 +127,14 @@ An authorized strategy decision must fit both its mandate and the constitution. 
 PM does not assume strategy authority when it runs out of work. Requests needing new strategy activity
 follow the agreed activation policy. A policy change needs owner authority; neither agent may widen it.
 
+## Outward communication
+
+The front door and the outward channels go through this project's integrations (the `front-door` and
+`community` skills). Record here who on the team handles what no integration reaches: repository settings
+(description, topics, homepage, social preview, Pages source, Discussions), and any publishing channel that
+needs an account. Name the roster member for each and where to reach them in public; where none is named,
+agents use the team's agreed coordination channel.
+
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps
 requests requiring human review open.

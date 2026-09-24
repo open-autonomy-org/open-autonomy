@@ -1,37 +1,55 @@
 # __PROJECT__
 
+<!-- The front door (hermes/skills/open-autonomy/front-door). The setup agent replaces each slot below; every
+     change that alters what a user sees or does keeps it true. -->
+
+**One line saying what __PROJECT__ is: the same line as the repository description.**
+
+<!-- The product itself, shown: a screenshot, an animated capture or a terminal recording of the real product
+     doing its main job, from docs/media/, with alt text. -->
+
+Who it is for and why, in two to four plain lines.
+
+## Quick start
+
+What it needs first, then the shortest real path from nothing to a first success; every command works as
+written, on a fresh setup.
+
+```bash
+# the first command
+```
+
+## What it does
+
+- The main capabilities, a line or two each, shown where showing is clearer.
+
+## Getting help
+
+Where to ask, and where to report a security problem.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md); the license is in [LICENSE](LICENSE).
+
+## Built in the open
+
 [![funding](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/runway.svg)](https://open-autonomy.org/__ACCOUNT__)
 [![now](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/now.svg)](https://open-autonomy.org/__ACCOUNT__)
 [![roadmap](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/roadmap.svg)](https://open-autonomy.org/__ACCOUNT__)
 [![activity](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/activity.svg)](https://open-autonomy.org/v1/accounts/__ACCOUNT_ENC__/calls)
 
-This project builds itself. Its Hermes PM reconciles `ROADMAP.md` and queues work for the fleet,
-funded through [Open Autonomy](https://open-autonomy.org/__ACCOUNT__), where
-every session it works, every cent it spends and everything it ships is public.
+__PROJECT__ builds itself, funded through [Open Autonomy](https://open-autonomy.org/__ACCOUNT__), where every
+session it works, every cent it spends and everything it ships is public. `CONSTITUTION.md` says what it is and
+must remain, `ROADMAP.md` what is planned, `CHANGELOG.md` what shipped, `CONTRIBUTING.md` how code is written
+here; `AGENTS.md` and `hermes/` are its agent, `.open-autonomy/` its connection to the platform.
 
-- `CONSTITUTION.md` says what the project is and must remain; `ROADMAP.md` holds sourced plans and outstanding outcomes, and the board holds fleet execution; `CONTRIBUTING.md` is how code is written here, the bar every change is reviewed against.
-- `AGENTS.md` is the agent's rules for this repository; `hermes/` is the agent.
-- `.open-autonomy/` is the project's connection to the platform: its config, the reporter that publishes
-  the agent's sessions, and the record of the kit that made this repository.
-- `.open-autonomy/start.ts` starts it: the valve that holds the project's keys, the reporter, the Hermes gateway;
-  `container/` runs the same script as a container's entrypoint, for a real setup.
+To run the agent, start with the [agent-led setup guide](.open-autonomy/SETUP.md):
 
 ```bash
 create-open-autonomy setup . --plan             # inspect after agreeing the development connections
-bun install                                    # first setup: install dependencies and commit the generated lockfile
-bun src/index.ts                               # operate the initial program interactively in its configured world
+bun .open-autonomy/start.ts                    # the valve, the reporter and the agent; container/ for a real setup
 ```
 
-Start with the [agent-led setup guide](.open-autonomy/SETUP.md): establish the project brief, accept or
-adjust the operating defaults, and complete real development connections through guided browser setup.
-Application dependencies use the local world; their live credentials wait until deployment or activation.
-Human release review remains required. The setup command alone does not complete activation.
-
-Made with the Open Autonomy Hermes kit; `create-open-autonomy check .` says whether the kit's files are current.
-
-The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
-short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
-
-Each develop agent verifies its feature through REPL-style manual usage and reports actual observations
-in its handoff. Automated tests are banned; no permanent test code may be committed to main. See
-CONSTITUTION.md and CONTRIBUTING.md for the rationale and working practice.
+Each develop agent verifies its feature by using it and reports what it observed; automated tests are banned
+(`CONSTITUTION.md`, `CONTRIBUTING.md`). Human release review remains required. Made with the Open Autonomy
+Hermes kit; `create-open-autonomy check .` says whether the kit's files are current.

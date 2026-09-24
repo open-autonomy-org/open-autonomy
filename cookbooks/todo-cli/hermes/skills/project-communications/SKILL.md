@@ -85,6 +85,14 @@ Hermes access settings; do not grant administrative access that bypasses the bou
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
 by a published run. Humans bring an appropriate public statement when private matters affect the project.
 
+## Outward communication
+
+The front door and the outward channels go through this project's integrations (the `front-door` and
+`community` skills). Record here who on the team handles what no integration reaches: repository settings
+(description, topics, homepage, social preview, Pages source, Discussions), and any publishing channel that
+needs an account. Name the roster member for each and where to reach them in public; where none is named,
+agents use the team's agreed coordination channel.
+
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps
 requests requiring human review open.
