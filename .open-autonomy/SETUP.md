@@ -285,6 +285,10 @@ before rerunning setup; do not silently rename its containers, volumes or creden
 Fill the project-owned README, constitution, contributing instructions and verification instructions. The
 README is the project's front door: bring it to the bar of `hermes/skills/open-autonomy/front-door/SKILL.md`,
 with the product shown from a real run, and set the repository's description, topics and homepage to match.
+The front door's standard integrations are the ones selected below: the GitHub App for the README, docs and
+media (enable GitHub Pages once, serving `docs/` from `main`), and the announcements channel of the agreed
+communication space. Record in the project communication skill which team member handles what no integration
+reaches (repository settings, the social preview, a publishing platform), so agents coordinate with them.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.
 Maintain durable documentation in place. The helper's setup record holds connection IDs and progress for

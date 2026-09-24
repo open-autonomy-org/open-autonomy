@@ -53,16 +53,21 @@ look or behaviour changes, its captures are retaken in the same change.
   it can be retaken.
 - Video: do not commit it. Link a hosted clip or a release asset, with a still that opens it.
 - Social preview (1280×640): the product and the project's brand (`branding/`). GitHub takes it only in the
-  repository's settings: ask for it as a named action (see below).
+  repository's settings, outside the agent's integrations (see below).
 
 ## The repository's metadata
 
 The description matches the README's one line; the topics name its category, ecosystem and platform; the
 homepage points at the docs site or the running product, when either exists. Read them with
-`gh repo view --json description,homepageUrl,repositoryTopics`. Where the agent's GitHub identity can
-change them, change them; where it cannot (settings it has no permission for, the social preview), ask the
-owner once through `project-communications` with the exact values or file, and record the ask on the roadmap
-until it is done.
+`gh repo view --json description,homepageUrl,repositoryTopics`.
+
+What the front door touches goes through the project's integrations: the README, docs, media and Pages through
+its GitHub App as ordinary changes; posts through the channels `project-communications` records. A setting or
+a channel no integration reaches (the repository's description, topics, homepage and social preview, which
+the App is not given the administration permission to change; a publishing platform with no integration) is
+coordinated with the team: the member `project-communications` names for it, else the team's agreed
+coordination channel, with the exact values or file ready. Ask once, record it on the roadmap until done, and
+do not route it to the owner unless the owner is that member.
 
 ## Docs
 

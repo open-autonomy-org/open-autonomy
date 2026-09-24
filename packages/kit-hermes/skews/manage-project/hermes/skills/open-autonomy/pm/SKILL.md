@@ -81,7 +81,7 @@ The project's GitHub page is how it is found and first used; load the `front-doo
 scrum, compare it with what landed: the README, the docs, their media and the repository's description,
 topics and homepage. Wording the record alone supports, propose with your planning change. What needs the
 product run or a new capture, name as a stalled item on the roadmap and ask its people, as for any other work.
-A repository setting the agent cannot change is a named ask to the owner.
+What no integration reaches is coordinated with the team member who holds it, as the `front-door` skill says.
 
 ## Plan releases deliberately
 

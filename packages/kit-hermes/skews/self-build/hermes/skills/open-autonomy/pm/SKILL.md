@@ -153,9 +153,9 @@ The project's GitHub page is how it is found and first used; load the `front-doo
 scrum, compare it with what landed since the last one: the README, the docs, their media and the repository's
 description, topics and homepage. Wording only the record needs, land with your planning change. A fix that
 needs the product run (a quick start to walk, a capture to retake, a README to bring up to the bar) is fleet
-work: queue it with its acceptance lines, `Dispatch: fleet` under the outcome it belongs to. A repository
-setting the agent cannot change is a named ask to the owner, held on the roadmap until done. A quiet scrum
-leaves it alone.
+work: queue it with its acceptance lines, `Dispatch: fleet` under the outcome it belongs to. What no integration
+reaches is coordinated with the team member who holds it, as the `front-door` skill says, held on the roadmap
+until done. A quiet scrum leaves it alone.
 
 ## Architecture decisions
 
