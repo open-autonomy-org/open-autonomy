@@ -157,7 +157,7 @@ export function jobsOf(d: DashData): JobModel[] {
     const name = j.name ?? `job ${n + 1}`;
     return {
       key: name, id: name, title: name, source: harnessOf(d.v), harness: harnessOf(d.v), profile: d.v.profile.agent_model ?? '', schedule: j.schedule ?? '',
-      state: off ? 'paused' : 'scheduled', enabled: !off, nextRunAt: null, destination: null, channelConnection: '',
+      state: off ? 'paused' : 'scheduled', enabled: !off,
       canPause: owner && !off, canResume: owner && off, canRun: false, canDelete: false,
     };
   });
