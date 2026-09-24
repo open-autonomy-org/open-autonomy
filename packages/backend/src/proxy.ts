@@ -21,8 +21,11 @@ export async function handleModelCall(req: Request, env: Env, claims: KeyClaims,
   if (bodyText === null) return error('body_too_large', 413);
   const body = parseJson<Record<string, unknown>>(bodyText);
   if (!body) return error('invalid_json', 400);
-  const session = modelSession(body.session_id);
-  if (Object.hasOwn(body, 'session_id') && !session) return error('invalid_session', 400);
+  // The session a call is booked to: the body's `session_id` (Hermes's Open Autonomy provider adds it),
+  // else the one a stock worker names on every call itself: Codex's `session-id` (its root thread, so a
+  // subagent's spend is its conversation's), Claude Code's `x-claude-code-session-id`.
+  if (Object.hasOwn(body, 'session_id') && !modelSession(body.session_id)) return error('invalid_session', 400);
+  const session = modelSession(body.session_id) ?? modelSession(req.headers.get('session-id')) ?? modelSession(req.headers.get('x-claude-code-session-id'));
   // Open Autonomy owns this field: the model gateway should see only its own wire.
   delete body.session_id;
   const model = typeof body.model === 'string' ? body.model : '';
