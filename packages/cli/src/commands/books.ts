@@ -17,11 +17,12 @@ export async function books(d: Doors, opts: { calls: boolean; limit: number }): 
     ['burn', `${usd(funding.burn_per_day_usd_cents)}/day ${dim(`· runway ${days(funding.runway_days)}${funding.runway_confident ? '' : ' (early)'} · ${funding.days_observed} days observed`)}`],
     ['standing', funding.exhausted ? 'spending stopped: the balance is spent' : funding.funded ? 'funded' : 'not yet funded'],
   ]));
-  if (funding.bounds.models.length || funding.bounds.limits.length) {
+  if (funding.bounds.models.length || funding.bounds.limits.length || funding.bounds.org) {
     console.log();
     console.log(bold('The owner\'s bounds'));
     if (funding.bounds.models.length) console.log(`  ${dim('models'.padEnd(14))}${funding.bounds.models.join(', ')}`);
-    for (const l of funding.bounds.limits) console.log(`  ${dim('limit'.padEnd(14))}${[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per ${l.window}${l.model ? ` on ${l.model}` : ''} ${dim(`· used ${usd(l.used.usd_cents)}`)}`);
+    const org = funding.bounds.org;
+    for (const [label, l] of [...funding.bounds.limits.map((l) => ['limit', l] as const), ...(org?.limits ?? []).map((l) => [`${org!.account.slice(1)} limit`, l] as const)]) console.log(`  ${dim(label.padEnd(14))}${[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per ${l.window}${l.model ? ` on ${l.model}` : ''} ${dim(`· used ${usd(l.used.usd_cents)}${label === 'limit' ? '' : ' by every project of the org'}`)}`);
   }
   if (calls) {
     console.log();

@@ -178,7 +178,8 @@ function Poster({ d }: { d: LandingData }) {
   const door = d.dashboard ? <a href={at(a, 'dashboard')}>Open the dashboard →</a> : null;
   let head: string, line: unknown, sub: unknown;
   if (standing === 'paused' || standing === 'requested') {
-    head = standing === 'paused' ? 'Paused by the owner' : 'Pause requested';
+    const org = d.v.control?.desired?.from?.slice(1);
+    head = standing === 'paused' ? `Paused by ${org ?? 'the owner'}` : `Pause requested${org ? ` by ${org}` : ''}`;
     line = d.v.control?.desired?.reason ? <>“{d.v.control.desired.reason}”</> : 'The scheduled work is paused.';
     sub = <>{d.v.control?.desired?.at ? `since ${fmtAgo(d.v.control.desired.at, d.now)}` : ''}{last ? ` · last run ${fmtAgo(last.started_at, d.now)}` : ''}{door ? <> · {door}</> : null}</>;
   } else if (first) {

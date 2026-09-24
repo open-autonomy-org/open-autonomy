@@ -11,15 +11,15 @@ import { tenseOf } from '@open-autonomy/sdk/roadmap';
 import type { Envelope, Flow, SessionSummary } from '../ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd, LOGO_SVG } from '../ui.js';
 import { sees, type Role } from '../page/model.js';
-import { at, nameOf, ownerOf, standingOf, type Standing } from '../page/parts.js';
+import { at, nameOf, ownerOf, standingOf, standingWord, type Standing } from '../page/parts.js';
 import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
 
 const href = (a: string, p: DashPage, ...rest: string[]) => (p === 'overview' && !rest.length ? at(a, 'dashboard') : at(a, 'dashboard', p, ...rest));
 const go = (url: string) => { if (typeof location !== 'undefined') location.assign(url); };
 const runway = (d: DashData) => (d.v.runway_days !== null && Number.isFinite(d.v.runway_days) ? Math.round(d.v.runway_days) : null);
 const ROLE_WORDS: Record<Role, string> = { public: 'Public view', giver: 'Giver view', team: 'Team view', owner: 'Owner view' };
-const STANDING: Record<Standing, [string, string]> = { live: ['live', 'Working now'], running: ['ok', 'Running'], requested: ['warn', 'Pause requested'], paused: ['off', 'Paused by the owner'], exhausted: ['off', 'Spending stopped'], unfunded: ['', 'Not yet funded'] };
-const Pill = ({ standing }: { standing: Standing }) => <span class={`oa-pill ${STANDING[standing][0]}`}><i />{STANDING[standing][1]}</span>;
+const STANDING: Record<Standing, string> = { live: 'live', running: 'ok', requested: 'warn', paused: 'off', exhausted: 'off', unfunded: '' };
+const Pill = ({ standing, from }: { standing: Standing; from?: string }) => <span class={`oa-pill ${STANDING[standing]}`}><i />{standingWord(standing, from)}</span>;
 // The page watches; every intent the kit can raise is answered by navigation or by nothing.
 const watcher = (d: DashData): UiAdapter => ({ onIntent(i) { if (i.action === 'attach') go(href(d.v.account, 'sessions', i.key)); }, now: () => Date.now(), copyText: (t) => { void navigator.clipboard?.writeText(t); } });
 
@@ -108,7 +108,7 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
       <div class="oa-body">
         <div class="oa-top">
           <h1>{title}</h1>
-          <Pill standing={standing} />
+          <Pill standing={standing} from={d.v.control?.desired?.from} />
           <span class="grow" />
           <div class="oa-facts">
             <span><b>{usd(d.v.balance_usd_cents)}</b> in the bank</span>
@@ -181,7 +181,7 @@ function attentionOf(d: DashData): Attention[] {
   const out: Attention[] = [];
   const standing = standingOf(d.v, d.live);
   const rw = runway(d);
-  if (standing === 'requested') out.push({ tone: 'warn', text: `Pause requested ${d.v.control?.desired?.at ? fmtAgo(d.v.control.desired.at, d.now) : ''}; the agent has not reported it paused yet.`, href: href(a, 'agent'), go: 'Agent' });
+  if (standing === 'requested') out.push({ tone: 'warn', text: `Pause requested${d.v.control?.desired?.from ? ` by ${d.v.control.desired.from.slice(1)}` : ''} ${d.v.control?.desired?.at ? fmtAgo(d.v.control.desired.at, d.now) : ''}; the agent has not reported it paused yet.`, href: href(a, 'agent'), go: 'Agent' });
   if (standing === 'exhausted') out.push({ tone: 'hot', text: 'Spending stopped: the balance is spent. Nothing on the platform can be spent until money comes in.', href: href(a, 'books'), go: 'Books' });
   if (standing === 'unfunded') out.push({ tone: 'note', text: 'Not yet funded: the agent spends nothing on the platform until money comes in.', href: href(a, 'books'), go: 'Books' });
   if (rw !== null && standing !== 'exhausted' && rw < d.v.goal_days / 3) out.push({ tone: 'warn', text: `${rw} ${rw === 1 ? 'day' : 'days'} of runway left, under a third of the ${d.v.goal_days}-day goal.`, href: href(a, 'books'), go: 'Books' });
@@ -335,9 +335,10 @@ export function Agent({ d }: { d: DashData }) {
         <Panel title="The agent" span={4}>
           <div class="oa-ident"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} size={44} /><div><b>{d.v.profile.agent_harness ?? 'its agent'}</b><span>{d.v.profile.agent_model ?? 'model unknown'}</span></div></div>
           <ul class="oa-rows">
-            <li><span class="t">standing</span><span class="n">{paused(d.v) ? 'paused by the owner' : 'running'}</span></li>
+            <li><span class="t">standing</span><span class="n">{paused(d.v) ? `paused by ${c?.desired?.from?.slice(1) ?? 'the owner'}` : 'running'}</span></li>
             <li><span class="t">last said</span><span class="n">{c?.observed ? `${c.observed.state} · ${fmtAgo(c.observed.at, d.now)}` : 'nothing yet'}</span></li>
-            {c?.desired ? <li><span class="t">owner asked</span><span class="n">{c.desired.state} · {fmtAgo(c.desired.at, d.now)}{c.desired.reason ? ` · “${c.desired.reason}”` : ''}</span></li> : null}
+            {c?.own ? <li><span class="t">owner asked</span><span class="n">{c.own.state} · {fmtAgo(c.own.at, d.now)}{c.own.reason ? ` · “${c.own.reason}”` : ''}</span></li> : null}
+            {c?.desired ? <li><span class="t">{c.desired.from ? `${c.desired.from.slice(1)} asked` : 'owner asked'}</span><span class="n">{c.desired.state} · {fmtAgo(c.desired.at, d.now)}{c.desired.reason ? ` · “${c.desired.reason}”` : ''}</span></li> : null}
             {rt?.mode ? <li><span class="t">{rt.mode === 'container' ? 'in a container' : 'bare on a host'}</span><span class="n">{[rt.executor, rt.host].filter(Boolean).join(' · ') || '—'}</span></li> : null}
             {rt?.kit ? <li><span class="t">kit</span><span class="n">{rt.kit}</span></li> : null}
             {skills.length ? <li><span class="t">skills</span><span class="n">{skills.join(' · ')}</span></li> : null}

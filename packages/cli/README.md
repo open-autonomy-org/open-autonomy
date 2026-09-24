@@ -9,20 +9,38 @@ bunx @open-autonomy/cli status open-autonomy-org/hookline      # or: bun add -g 
 ```
 
 ```text
-oa status   <owner/project>            the word, the money, what is running, the board
-oa sessions <owner/project> [-n 30]    the stream, newest first
-oa session  <owner/project> <key>      one session's transcript; --follow stays with it while live
-oa roadmap  <owner/project>            the board: in progress, planned, proposed, shipped
-oa books    <owner/project> [--calls]  the ledger and the owner's bounds; every metered call
-oa pause    <owner/project> [-r why]   the owner's word: pause the scheduled work
-oa resume   <owner/project> [-r why]   the owner's word: run
-oa key mint <owner/project> [--scopes steer] [--models a,b] [--repo dir] [--out file]
-oa key rotate <owner/project> [--grace seconds]
+oa status   [org|owner/project]        a project: the word, the money, what is running, the board;
+                                       an org: its word, its limits, each project in one line
+oa sessions [owner/project] [-n 30]    the stream, newest first
+oa session  [owner/project] <key>      one session's transcript; --follow stays with it while live
+oa roadmap  [owner/project]            the board: in progress, planned, proposed, shipped
+oa books    [owner/project] [--calls]  the ledger and the owner's bounds (the org's too); every metered call
+oa pause    [org|owner/project] [-r why]  the owner's word: pause the scheduled work; an org's holds for all its projects
+oa resume   [org|owner/project] [-r why]  the owner's word: run
+oa use      [org|owner/project]        the default scope; with none, the scope in force and where it came from
+oa key mint [org|owner/project] [--scopes steer] [--models a,b] [--repo dir] [--out file]
+oa key rotate [org|owner/project] [--grace seconds]
 
+  --project <owner/project>, --org <org>   the scope, over the checkout and oa use
   --platform <url>   the deployment (or OPEN_AUTONOMY_URL); open-autonomy.org by default
   --key <file|token> a key (or OPEN_AUTONOMY_KEY); found under ~/.config/open-autonomy/<owner>/<project>/ when absent
   --json             the platform's records, unrendered
 ```
+
+## Scope
+
+Each command acts on a project or an org, picked the way `gh` and `gcloud` pick theirs: the argument, then
+`--project` or `--org`, then the GitHub remote of the checkout it runs in, then the default `oa use` saved
+(`~/.config/open-autonomy/context`). The sessions, the board and the books are a project's; `status`, `pause`,
+`resume` and the keys take an org as well.
+
+An org's word is kept on the org, not copied into its projects (ADR 0010). `oa pause volter-ai` pauses every
+project of `volter-ai`, including one added later; each project's page says "Paused by volter-ai"; `oa resume
+volter-ai` lifts it and leaves a project its owner paused on its own still paused. A project's own resume under a
+paused org changes nothing that runs, and `oa` says so. The org's key is minted through `<org>/.github`, the
+repository GitHub reads as the org's own (`oa key mint volter-ai` from a checkout of it), and is written to
+`~/.config/open-autonomy/volter-ai/steer.env`. The org's spend limits are `spend.limits` in that repository's
+`.open-autonomy/config.yaml`, held against every project of the org together.
 
 ## What needs a key
 
