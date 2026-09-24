@@ -1,6 +1,7 @@
 import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
+import { redactDeep } from './redact.js';
 import { json } from './http.js';
 import { sees, visibilityOf } from './page/model.js';
 import { estimateRunway } from './runway.js';
@@ -1052,9 +1053,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const a = this.ensureAcct(account);
     const current = a.control?.desired?.state ?? 'running';
     const asked = { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) };
+    // What was already true enters the history before anything changes it: this account's, and for an org each of its
+    // projects', so a project's backfill reads the org's word as it stood, not the one being asked for now.
+    await this.historyBegun(account);
+    if (account.startsWith('@')) for (const project of this.membersOf(account)) await this.historyBegun(project);
     // A request for the state that already holds changes nothing, but it is still the owner's act, and kept.
     if (current === state && a.control?.desired) { await this.requestKept(account, { kind: 'request', ...asked, unchanged: true }); return { ok: true, unchanged: true, ...a.control }; }
-    await this.historyBegun(account);
     a.control = { ...(a.control ?? {}), desired: asked };
     await this.requestKept(account, { kind: 'request', ...asked });
     await this.save();
@@ -1079,14 +1083,22 @@ export class LimitLedger implements DurableObject, LedgerCore {
   // every word that governed it (ADR 0010: a project inherits its org's pause).
   private async requestKept(account: string, entry: Extract<ControlEntry, { kind: 'request' }>): Promise<void> {
     await this.controlKept(account, entry);
-    if (account.startsWith('@')) for (const project of this.membersOf(account)) { await this.historyBegun(project); await this.controlKept(project, { ...entry, from: account }); }
+    if (account.startsWith('@')) for (const project of this.membersOf(account)) await this.controlKept(project, { ...entry, from: account });
   }
-  // Records from before the history was kept: the latest request and report the account holds, entered once with their own
-  // times and marked `backfilled`, so the history begins with what was already true.
+  // Records from before the history was kept, entered once with their own times and marked `backfilled`, so the history
+  // begins with what was already true: the latest request and report the account holds and, for a project, its org's word
+  // as it stands (it governed the project whenever the project joined). Reasons and notes are redacted as a new one is.
   private async historyBegun(account: string): Promise<void> {
+    if ((await this.ctx.storage.list({ prefix: `control:${account}:`, limit: 1 })).size) return;
     const c = this.acct(account)?.control;
-    if (!c || (await this.ctx.storage.list({ prefix: `control:${account}:`, limit: 1 })).size) return;
-    const earlier: ControlEntry[] = [...(c.desired ? [{ kind: 'request' as const, ...c.desired, backfilled: true as const }] : []), ...(c.observed ? [{ kind: 'report' as const, ...c.observed, backfilled: true as const }] : [])];
+    const org = orgOf(account);
+    const word = org ? this.acct(org)?.control?.desired : undefined;
+    const clean = <T extends { reason?: string; note?: string }>(e: T): T => ({ ...e, ...(e.reason ? { reason: redactDeep(e.reason) as string } : {}), ...(e.note ? { note: redactDeep(e.note) as string } : {}) });
+    const earlier: ControlEntry[] = [
+      ...(word ? [clean({ kind: 'request' as const, ...word, from: org!, backfilled: true as const })] : []),
+      ...(c?.desired ? [clean({ kind: 'request' as const, ...c.desired, backfilled: true as const })] : []),
+      ...(c?.observed ? [clean({ kind: 'report' as const, ...c.observed, backfilled: true as const })] : []),
+    ];
     for (const e of earlier.sort((x, y) => x.at.localeCompare(y.at))) await this.controlKept(account, e);
   }
   private async controlKept(account: string, entry: ControlEntry): Promise<void> {

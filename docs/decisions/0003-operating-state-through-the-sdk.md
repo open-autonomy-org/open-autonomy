@@ -73,11 +73,15 @@ below is this author's extrapolation.
   automation reports on every pass, so a key the agent holds adds an entry only by changing what it says it is.
 - **An org's word.** An org's request is kept on the org and on each of its projects on the books, marked `from` the org,
   so a project's history holds every word that governed it (ADR 0010).
-- **What came before.** The first time an account's history is read or written, the latest request and report it
-  already held are entered with their own times, marked `backfilled`.
+- **What came before.** Before an account's history is first read or written, the latest request and report it already
+  held are entered with their own times, marked `backfilled`; for a project, so is its org's word as it stands, since it
+  governed the project whenever the project joined. An org's request first does this for each of its projects, so they
+  begin from the org's word as it stood, not the one being asked for.
 - **Who reads it.** `GET /v1/accounts/:account/state/history`, newest first, a page at a time, behind the project's
-  `overview` panel like the state itself. An org's own history is its steer key's alone: an org has no committed word on
-  who may see it, and its projects already carry what governed them behind their own panels.
+  `overview` panel like the state itself. An org's own history is its steer key's alone. The org's current word stays
+  as public as the org's config makes it (`/v1/accounts/@org/state`, `/v1/orgs/:org`), but its history is permanent:
+  every past reason and key id, for good. Its projects already carry each org word that governed them, behind their
+  own panels, so nothing an auditor of a project needs is withheld.
 - **What it says.** A reason is kept for good and read by whoever the panel admits, so it passes the same redaction as
   everything the platform publishes; the owner writes it knowing it is published, as the state's reason already was.
 
@@ -105,7 +109,9 @@ below is this author's extrapolation.
   logs once; the owner's request waits, visibly unanswered, until the install is upgraded.
 - The page's header shows the operating state when it is anything other than agreed `running`.
 - The history (amendment): one record per request and per change of reported state, per account, and per project of an
-  org for the org's requests; one read. Account ids holding `:` are refused on every read, since a storage key is
+  org for the org's requests, repeats included: an owner re-asserting an org's pause every minute over two hundred
+  projects writes some two hundred and ninety thousand entries a day. Only owner keys can do that; the agent's key adds
+  history only by changing the state it reports. One read. Account ids holding `:` are refused on every read, since a storage key is
   `<kind>:<account>:…`.
 - Nothing here changes metering, credentials, the account tree or the balance hard-stop.
 
