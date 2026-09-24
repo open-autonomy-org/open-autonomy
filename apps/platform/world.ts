@@ -61,7 +61,10 @@ const inspector = await (async () => { const s = Bun.serve({ port: 0, fetch: () 
 const args = ['wrangler', 'dev', '--port', port, '--inspector-port', String(inspector), '--persist-to', persist, '--show-interactive-dev-session', 'false'];
 for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 // One foreground process. World captures failure and owns this entire process group.
-const child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '' } });
+// wrangler writes its full debug log to a file of its own: in the World's log directory for this service, so the log
+// is kept with the World's (and survives the next boot as logs/previous) instead of in a HOME the next boot wipes.
+const wranglerLog = process.env.VOLTER_WORLD_SERVICE_LOG_DIR ? { WRANGLER_LOG_PATH: process.env.VOLTER_WORLD_SERVICE_LOG_DIR } : {};
+const child = spawn('bunx', args, { cwd: import.meta.dir, stdio: 'inherit', env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true', NODE_OPTIONS: '', ...wranglerLog } });
 child.on('error', (error) => { console.error(error); process.exit(1); });
 // wrangler's end is this process's end: its exit code, or the same signal re-raised (the World records a signal as
 // one, where exiting 1 would pass a crash off as an ordinary failure).
