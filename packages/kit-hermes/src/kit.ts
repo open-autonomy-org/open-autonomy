@@ -76,7 +76,7 @@ const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
 const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
 if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts', 'statements.ts'];
 
 // Every base file, then every file of the skew's lineage over it, rendered. Placeholders are `__PROJECT__`, `__ACCOUNT__`
 // (and `__ACCOUNT_ENC__`, the account as a URL path segment, and `__OWNER__`, the account's owner); binary-looking files pass through untouched. A

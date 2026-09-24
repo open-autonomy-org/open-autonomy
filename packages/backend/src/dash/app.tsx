@@ -11,6 +11,7 @@ import { tenseOf } from '@open-autonomy/sdk/roadmap';
 import type { Envelope, Flow, SessionSummary } from '../ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd, LOGO_SVG } from '../ui.js';
 import { sees, type Role } from '../page/model.js';
+import { standing as claimsOf, today as dayOf, type StatementTone } from '@open-autonomy/sdk/statements';
 import { at, nameOf, ownerOf, standingOf, standingWord, type Standing } from '../page/parts.js';
 import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
 
@@ -105,6 +106,8 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
         <a class="oa-brand" href="/" dangerouslySetInnerHTML={{ __html: `${LOGO_SVG}<span>${d.brand}</span>` }} />
         <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
         <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
+        {d.statements?.length ? <div class="oa-stated"><h3>Stated by the owner</h3><nav>{d.statements.map((st) => { const n = claimsOf(st, dayOf(d.now)).standing.length;
+          return <a class={d.page === 'statements' && d.statement === st.id ? 'on' : ''} aria-current={d.page === 'statements' && d.statement === st.id ? 'page' : undefined} href={at(a, 'dashboard', 'statements', st.id)}><span class="t">{st.title}</span>{n ? <span class="c">{n}</span> : null}</a>; })}</nav></div> : null}
         <p class="oa-keys"><kbd>j</kbd><kbd>k</kbd><span>rows</span><kbd>/</kbd><span>search</span></p>
         {d.door?.in ? <a class="oa-signin" href={d.door.in}>Sign in</a> : d.door?.who ? <p class="oa-signed">@{d.door.who}{d.door.out ? <> · <a href={d.door.out}>Sign out</a></> : null}</p> : null}
         <div class="oa-role"><b>{ROLE_WORDS[d.viewer]}</b>{d.viewer === 'public' ? 'What the owner opened to everyone.' : d.viewer === 'owner' ? 'Everything, and the one control.' : 'What the owner opened to the team.'} <a href={at(a)}>Project page →</a></div>
@@ -328,7 +331,7 @@ function Jobs({ d, jobs, compact }: { d: DashData; jobs: JobModel[]; compact?: b
     </div>
   );
 }
-const PANEL_WORDS = { overview: 'overview and project page', work: 'roadmap and board', sessions: 'session list', transcripts: 'transcripts', books: 'books', calls: 'every metered call', agent: 'agent and its setup', team: 'team' } as const;
+const PANEL_WORDS = { overview: 'overview and project page', work: 'roadmap and board', sessions: 'session list', transcripts: 'transcripts', books: 'books', calls: 'every metered call', agent: 'agent and its setup', team: 'team', statements: 'owner\'s statements' } as const;
 const WHO_WORDS: Record<Role, string> = { public: 'open to everyone', giver: 'givers and the team', team: 'the team', owner: 'the owner only' };
 export function Agent({ d }: { d: DashData }) {
   const c = d.v.control;
@@ -476,6 +479,34 @@ export function Team({ d }: { d: DashData }) {
   );
 }
 
+// A statement the owner published (ADR 0012): the platform draws its badges and body and says whose word it is. It
+// endorses nothing and knows nothing of what the statement is about; a badge past its date is listed as lapsed.
+const TONE_CLASS: Record<StatementTone, string> = { positive: 'ok', info: 'info', neutral: '', warning: 'warn', negative: 'off' };
+export function StatementPage({ d }: { d: DashData }) {
+  const st = d.statements?.find((x) => x.id === d.statement);
+  if (!st) return <Shell d={d} title="Statement"><p class="oa-empty">No such statement.</p></Shell>;
+  const { standing: up, lapsed } = claimsOf(st, dayOf(d.now));
+  const a = d.v.account;
+  const api = `/v1/accounts/${encodeURIComponent(a)}/statements/${st.id}`;
+  const origin = typeof location !== 'undefined' ? location.origin : '';
+  return (
+    <Shell d={d} title={st.title}>
+      <div class="oa-grid">
+        <Panel title="Standing" span={8}>
+          {up.length ? <ul class="oa-rows">{up.map((b) => <li><span class="t"><span class={`oa-pill ${TONE_CLASS[b.tone]}`}><i />{b.label}</span> {b.message}</span><span class="n">until {b.until}</span></li>)}</ul> : <p class="oa-empty">No claim stands today.</p>}
+          {lapsed.length ? <><h3 class="oa-sub">Lapsed</h3><ul class="oa-rows lapsed">{lapsed.map((b) => <li><span class="t">{b.label}: {b.message}</span><span class="n">lapsed after {b.until}</span></li>)}</ul></> : null}
+          <p class="oa-fine" style="margin-top:8px">Stated by the owner of {nameOf(a)} on {st.as_of}, from {st.source.url ? <a href={st.source.url} rel="nofollow noopener">{st.source.name}</a> : st.source.name}. The owner's word, published with the project's own key; {d.brand} shows it and vouches for none of it. <a href={`${api}/revisions`}>Every change ↗</a></p>
+        </Panel>
+        <Panel title="In a README" span={4}>
+          <p><img src={`${api}/badges.svg`} alt={`${st.title} badges`} /></p>
+          <pre class="oa-snippet">{`![${st.title}](${origin}${api}/badges.svg)`}</pre>
+        </Panel>
+        {st.body_md ? <Panel title={`As of ${st.as_of}`} span={12}><div class="oa-prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(st.body_md) }} /></Panel> : null}
+      </div>
+    </Shell>
+  );
+}
+
 export function DashApp({ d }: { d: DashData }) {
   switch (d.page) {
     case 'sessions': return <Sessions d={d} />;
@@ -483,10 +514,11 @@ export function DashApp({ d }: { d: DashData }) {
     case 'books': return <Books d={d} />;
     case 'agent': return <Agent d={d} />;
     case 'team': return <Team d={d} />;
+    case 'statements': return <StatementPage d={d} />;
     default: return <Overview d={d} />;
   }
 }
-export const titleOf = (d: DashData): string => (d.page === 'sessions' && d.session ? `${d.session.source ?? d.session.kind} · ${fmtWhen(d.session.started_at)}` : PAGES.find((p) => p.id === d.page)?.label ?? 'Overview');
+export const titleOf = (d: DashData): string => (d.page === 'statements' ? d.statements?.find((x) => x.id === d.statement)?.title ?? 'Statement' : d.page === 'sessions' && d.session ? `${d.session.source ?? d.session.kind} · ${fmtWhen(d.session.started_at)}` : PAGES.find((p) => p.id === d.page)?.label ?? 'Overview');
 export { taskOf };
 
 // ---- the shell's sheet ----------------------------------------------------------------------------------------------
@@ -548,6 +580,11 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-rail nav a.on:before{border-color:currentColor;background:currentColor}
 .oa-rail nav a.on kbd{border-color:#0000002e;color:#3d4150}
 .oa-rail nav .c{padding:0 5px;background:var(--oa-lilac);color:#34324a;font-size:10.5px;line-height:15px}
+.oa-stated h3{margin:6px 8px 4px;font:500 9.5px/1 var(--oa-label);letter-spacing:.28em;text-transform:uppercase;color:#5f656b}
+.oa-pill.info{background:#e3ecfb;color:#1f4f9a}.oa-pill.info i{background:#1f4f9a}
+.oa-sub{margin:14px 0 6px;font:500 9.5px/1 var(--oa-label);letter-spacing:.28em;text-transform:uppercase;color:#5f656b}
+.oa-rows.lapsed .t{color:#8a8f96;text-decoration:line-through}
+.oa-snippet{white-space:pre-wrap;word-break:break-all;padding:8px;background:#f1f1ec;font:11px/1.4 var(--scui-font-mono)}
 .oa-keys{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:auto;padding:8px 4px 0;border-top:1px solid #dcddda;color:#656a72;font-size:10.5px}
 .oa-keys span{margin-right:6px}
 .oa-signin{display:flex;align-items:center;justify-content:center;height:28px;border:1px solid #161a24;color:#161a24;font-size:12px}

@@ -31,12 +31,13 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
 // on public books, by the constitution) and the team sees the rest: the sessions, the transcripts, the agent.
 // The word holds on the pages and on the SDK's read doors alike: a closed panel answers 404 to a request without the
 // project's own key or an admitted signed-in viewer.
-export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role }
+// `statements` are the owner's published word (ADR 0012): public unless the project is private.
+export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role; statements: Role }
 export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibility> = {
-  roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public' },
-  open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public' },
-  status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public' },
-  private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team' },
+  roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public', statements: 'public' },
+  open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public', statements: 'public' },
+  status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public', statements: 'public' },
+  private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team', statements: 'team' },
 };
 export const DEFAULT_PRESET = 'roadmap' as const;
 export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };

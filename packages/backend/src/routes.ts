@@ -10,7 +10,9 @@ import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.
 import { syncAllStale, syncProfile } from './sync.js';
 import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { LOGO_SVG } from './ui.js';
-import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg } from './widgets.js';
+import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
+import { redactDeep } from './redact.js';
+import { today } from '@open-autonomy/sdk/statements';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
 // them. The app is tried first on every request and may answer; what it does not answer falls through to
@@ -210,6 +212,20 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.stateRequest(claims.account, body.state, claims.kid, body.reason);
     return json(r, { status: r.ok ? 200 : 400 });
   }
+  // The owner's statements (ADR 0012), on a project's steer-scoped key: a tool the owner runs publishes its word about
+  // the project, and withdraws it. The platform checks the shape and keeps every change; it knows nothing of the words.
+  if (path === '/v1/agent/statement' || (m = path.match(/^\/v1\/agent\/statement\/([^/]+)$/))) {
+    const withdraw = path !== '/v1/agent/statement';
+    if (req.method !== (withdraw ? 'DELETE' : 'POST')) return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    if (!claims.account.includes('/')) return error('not_a_project', 403); // an org's word on a project's page is not decided
+    if (withdraw) { const r = await ledger.statementWithdraw(claims.account, dec(m![1]), claims.kid); return json(r, { status: r.ok ? 200 : 404 }); }
+    const body = parseJson<unknown>(await req.text());
+    const r = await ledger.statementSet(claims.account, redactDeep(body), claims.kid);
+    return json(r, { status: r.ok ? 200 : r.error === 'statement_limit' ? 409 : 400 });
+  }
   // The owner's word on visibility holds on these doors as on the pages: a panel the viewer may not see is not
   // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else is
   // the public. Answered 404 like the pages, never 403: the closed panel is not announced.
@@ -233,6 +249,14 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statements(dec(m[1])), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/revisions$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statementRevisions(dec(m[1]), dec(m[2]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
+  // A statement's badge row for a README; a shared cache keeps it five minutes, so a lapsed badge leaves within that.
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/badges\.svg$/))) {
+    const c = await closed(dec(m[1]), 'statements'); if (c) return c;
+    const live = (await ledger.statements(dec(m[1]))).statements.find((x) => x.id === dec(m![2]));
+    return live ? new Response(renderStatementSvg(live, today()), { headers: SVG }) : error('not_found', 404);
+  }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await priced(dec(m[1]), await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30))), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; return sessionEvents(env, dec(m[1]), dec(m[2]), req, await money(dec(m[1]))); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; const r = await priced(dec(m[1]), await ledger.session(dec(m[1]), dec(m[2]))); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }

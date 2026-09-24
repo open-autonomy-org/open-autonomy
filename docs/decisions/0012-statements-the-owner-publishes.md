@@ -42,7 +42,7 @@ is the first statement.
 - **The owner's side publishes.** `POST /v1/agent/statement { id, title, source, as_of, badges, body_md? }` on a
   project's `steer` key, beside the roadmap push. Refusals: `scope_required` for any other key, `not_a_project` for an
   org's key (as on the roadmap route), `invalid_statement` for a malformed or over-limit body, `statement_limit` for a
-  sixth statement, `lapsed_on_arrival` for a badge whose `until` is already past. A tool uses the owner's existing
+  sixth statement, `lapsed_on_arrival` for a badge whose `until` is already past, `invalid_statement` also for an `as_of` after today. A tool uses the owner's existing
   driver key, not a key of its own; rotating that key must reach every tool that holds it.
 - **The platform knows no framework.** `id` matches `^[a-z][a-z0-9-]{0,31}$` and is the statement's address; `title`
   is its row's word ("Compliance"), refused if it names one of the dashboard's own pages; `source` is `{ name, url? }`,
@@ -61,9 +61,10 @@ is the first statement.
   choice of colour and must not decide whether a claim can outlive its tool. The badge stands through that UTC day;
   after it, it is not drawn in the rail's row or the README widget, and the statement's page lists it as lapsed on
   that date. The platform checks the date at every read, so a tool that stops running, or an owner whose key expired,
-  cannot leave a badge standing. The body is not a dated claim; the page and the widget both show "as of <as_of>".
+  cannot leave a badge standing. The README widget is cached as the others are (five minutes, and GitHub's image
+  proxy's own), so a lapsed badge leaves a README within that window rather than at midnight. The body is not a dated claim; the page and the widget both show "as of <as_of>".
 - **Withdrawal.** `DELETE /v1/agent/statement/:id` on the same key removes the statement from the rail, the page and
-  the widget, and is itself a revision; the same id may be published again later. Withdrawal is the key's act only:
+  the widget, and is itself a revision; the same id may be published again later, continuing its revisions. Withdrawal is the key's act only:
   the page's one owner control stays the operating state (ADR 0011). Revoking or letting a key expire withdraws
   nothing: what was published stays the owner's dated word, and its badges lapse on their own.
 - **The owner's word on who sees it.** Statements are one panel, `statements`, in the `dashboard:` word: public in the
