@@ -114,7 +114,7 @@ PM still owns release planning and reviewer outreach through the agreed communic
    checks and remaining risks in the release PR; inspect what the artifact contains before review.
 3. Land the sourced roadmap release decision with scope, version, target window and candidate. PM contacts
    the agreed human reviewer with the exact artifact/candidate, verification, risks and publication steps.
-   Keep the request and reply in that conversation; use native PM notes for pending follow-up. An absent
+   Keep the request and reply in that conversation (the approval itself is the gate's record; see Seams); use native PM notes for pending follow-up. An absent
    service-review task does not remove the human gate or justify a second release ledger.
 4. A human reviews and publishes the approved candidate through the agreed distribution channel, or
    approves its gated publication workflow. Configure any required publishing credential at that later
@@ -125,6 +125,23 @@ PM still owns release planning and reviewer outreach through the agreed communic
 
 The CLI does not scaffold artifact publication workflows yet. Use this procedure with the existing
 provider tools and the project's agreed policy; never substitute live-service status for release evidence.
+
+## Seams
+
+This project declares its seams in `.open-autonomy/config.yaml` ([ADR 0008](https://github.com/open-autonomy-org/open-autonomy/blob/main/docs/decisions/0008-human-seams.md)):
+a person's act takes effect only through a declared seam's door, a commit by a roster member to a declared file, the
+code host's gate with a named reviewer, or a platform door that needs a key no agent holds. Chat carries requests and
+discussion; it is never the record of an act. So:
+
+- The release approval is the gate, not the reply. PM still sends the candidate-specific request, but a service is
+  approved by a member holding `release-review`, set as the `production` environment's required reviewer, approving
+  the run the owner's `deploy-v*` tag at the candidate started, and an artifact by a human creating its release at the
+  candidate SHA. PM cites those records, never a chat message, as the approval. Direction binds once recorded as an
+  issue or comment by the verified GitHub account of a member holding `direction`, or as a commit they land.
+- Incidents, a change made to production outside the flow, a credential's issue, rotation or revocation, and the
+  response to an escalation are recorded as files under `records/` in a reviewed pull request, as the seams name.
+  A project that allows no change outside the flow says so in `records/break-glass/README.md`.
+- `create-open-autonomy check` refuses a seams section outside these rules.
 
 ## Shipping a service
 

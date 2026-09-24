@@ -38,7 +38,7 @@ source of grants; a merged agent-authored assertion alone does not establish hum
 roster change does not approve a release or establish the agent's separate GitHub App connection.
 Reconcile agreed native operator IDs and actual review gates through setup when the roster changes.
 
-Before accepting direction or approval, verify the original author ID with native Discord `fetch_messages`
+A message is never direction or approval here (see the seams below); it is a request. Before acting on a request, verify the original author ID with native Discord `fetch_messages`
 and match it to the committed roster; retain the exact message link. Discord roles govern participation
 and moderation; project decision authority belongs to explicitly recorded people.
 Moderation rights alone do not grant project direction or release approval. Recheck authority before acting;
@@ -73,7 +73,8 @@ about follow-up; there is no fixed reminder interval. A delivery failure remains
 
 Release requests go to the owner or a maintainer with release authority and identify the proposed scope,
 version, exact candidate, target window, verification and required human action. A community reply is not
-maintainer approval. Keep release-dependent work held until the required review and shipping evidence exist.
+maintainer approval, and no reply is: a release is approved by a member holding `release-review` approving the
+`production` environment's run for the candidate's tag. Keep release-dependent work held until the required review and shipping evidence exist.
 
 Answer community questions where they were asked. Human implementation work requires an accepted
 commitment; asking for release review does not assign somebody implementation work.
@@ -81,7 +82,7 @@ commitment; asking for release review does not assign somebody implementation wo
 The fleet works in public. Confidential human spaces and DMs stay outside its access, including their
 stored session history. Never retrieve private content into a published run; disabling direct chat
 publication does not prevent that exposure. Humans bring an appropriate public statement when private
-matters affect the project. Direction given in a coding session on the owner's own machine, under the owner's login, is verified direction from that login: the session is its link, and the record quotes its scope, never its contents. These exclusions are intentional boundaries, not missing sources for PM to
+matters affect the project. A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold. Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record. These exclusions are intentional boundaries, not missing sources for PM to
 recover. Maintainer authority does not require private planning or release review.
 
 Setup enforces the boundary with Discord permissions and native Hermes access controls: public server
