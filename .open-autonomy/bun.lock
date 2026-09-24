@@ -5,9 +5,9 @@
     "": {
       "name": "open-autonomy-open-autonomy",
       "dependencies": {
-        "@volter-ai-dev/supercode": "^0.4.57",
-        "@volter-ai-dev/supercode-harness-sdk": "^0.3.26",
-        "@volter-ai-dev/supercode-orchestrator": "^0.2.2",
+        "@volter-ai-dev/supercode": "^0.4.66",
+        "@volter-ai-dev/supercode-harness-sdk": "^0.3.35",
+        "@volter-ai-dev/supercode-orchestrator": "^0.3.1",
         "@volter/twin": "0.1.3",
         "@volter/twin-discord": "0.1.2",
         "@volter/twin-github": "0.1.2",
@@ -21,21 +21,21 @@
   "packages": {
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
 
-    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.57", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.57", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.57", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.57", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.57", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.57" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-Lh+SNIO9AA/w+Kiiroe5XbxxfTcRU6QCTncj31hL7lG90rbazYYDZWaozSBw7t72kK0EdojaR7MdG0ZFredERA=="],
+    "@volter-ai-dev/supercode": ["@volter-ai-dev/supercode@0.4.66", "", { "optionalDependencies": { "@volter-ai-dev/supercode-cli-darwin-arm64": "0.4.66", "@volter-ai-dev/supercode-cli-darwin-x64": "0.4.66", "@volter-ai-dev/supercode-cli-linux-arm64": "0.4.66", "@volter-ai-dev/supercode-cli-linux-x64": "0.4.66", "@volter-ai-dev/supercode-cli-win32-x64": "0.4.66" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-VznqY5ny3Q+3oWs5oK7zI+MjEgGnm8a83rZ2iJIi1m02kQNkTKlFW47o2zUM1V+E2L4Z/GoN9PF0A2lrPG4rPw=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.57", "", { "os": "darwin", "cpu": "arm64" }, "sha512-bS9Sz7kfg1gtcGY4/NFuFr77/Q3cDv3ugYexQP7UgUsoCkbfp9qc9jH8JfNfylI8Lw3Jb8LNeC9Q2ipKepPh9Q=="],
+    "@volter-ai-dev/supercode-cli-darwin-arm64": ["@volter-ai-dev/supercode-cli-darwin-arm64@0.4.66", "", { "os": "darwin", "cpu": "arm64" }, "sha512-jIlJLYNyYLp223pS6H5pOgw0XZR24gvfkwWduEYE7VSedhsTOmDCBkrPxKiUuzULAOsfWN9UhCduSgEFgxVvCQ=="],
 
-    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.57", "", { "os": "darwin", "cpu": "x64" }, "sha512-jbFWThYFq4WVgCdPUCjh166GXfZftFsa8sdvBT/EnTcTPNqR+lExXntL1q0v4IVaaY2RPUp2opZ64t3jtJaSlg=="],
+    "@volter-ai-dev/supercode-cli-darwin-x64": ["@volter-ai-dev/supercode-cli-darwin-x64@0.4.66", "", { "os": "darwin", "cpu": "x64" }, "sha512-hEqj65S68mXemZRfmzXTR2S9A9W5ij/PYhBe9Jyo09g4TolIDCln2hLsnyBb/B4cygaFrLxYah0bHeAQgYdVFQ=="],
 
-    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.57", "", { "os": "linux", "cpu": "arm64" }, "sha512-6O/W9ORA3LdvIiBbO6aU3hokeygazpZKlgEW15JoulNcO4zFK8U4cDnJfLJXPc38nzBFW2cTXvXPdg5dfAxivA=="],
+    "@volter-ai-dev/supercode-cli-linux-arm64": ["@volter-ai-dev/supercode-cli-linux-arm64@0.4.66", "", { "os": "linux", "cpu": "arm64" }, "sha512-4FxvNqMdhssGUzwyM98jGebqOztYE1ubJiKiX7k9RAjDiprzDw8lQg9nzwwAWvMad+6OKYjn+1Jt1nHnXSPjJA=="],
 
-    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.57", "", { "os": "linux", "cpu": "x64" }, "sha512-s7rsjkLV44NQSliAiVXgszZE/EzXt7BaHz2pVjr+59Sko/vqfdak+KENeyTJTNR/gX8+zyKasQjH5Z27JhgRXA=="],
+    "@volter-ai-dev/supercode-cli-linux-x64": ["@volter-ai-dev/supercode-cli-linux-x64@0.4.66", "", { "os": "linux", "cpu": "x64" }, "sha512-eHdBt0PLcI70JFFRQia0zfokDFKPncTVsFcQWLHsVmDqRccslnj6icLxc8HQXNW9FdJhFb2LdUX0cV97FuTfTg=="],
 
-    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.57", "", { "os": "win32", "cpu": "x64" }, "sha512-du+uL4RpZvwwlQKl6ajPj+OPbnG0ZvmBFlRw9D7LeqBLHtTzcJ131EHU3wxlVRyvuAoFMctwwToaHRlHhOi3UA=="],
+    "@volter-ai-dev/supercode-cli-win32-x64": ["@volter-ai-dev/supercode-cli-win32-x64@0.4.66", "", { "os": "win32", "cpu": "x64" }, "sha512-1ZpZ42eB+U4sMq0BpElIYY60HxhehyK3RKvJlnp6bWmQOsulFqThwmE9E1/tFOtETRyAn3QI/e9+tGEZRGKZuw=="],
 
-    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.27", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-+Rzx+UqQpg+HEBmVfRCd+NLFh7K8p6439Mztk6wmak5hus/2nqqebseoHJmFHSKfAzpMwQSe4z641+jVcFAJMA=="],
+    "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.35", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-NbhPGiuz3ww39m0l/Ff58d+K50fBeqNheh/AsSV7oMNo/ddZiywFeLlDL+LISdM1iBc8WMwJpFiVR6r77CVYFw=="],
 
-    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.2.2", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.21", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-BXuqVwaxUz6ged0iSqQGylfUqyqO6F05t9JmixAlWOrUqlVL5Rj3wlWqq2h7LfcCjkqiakrRLkeut3FOUtpyKQ=="],
+    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.3.1", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.35", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-BWFVfvsgi6ez9fgtDuXQPJz7Ag75BCuh/eS7LZUUC7Gfp6v9F0dE24A9/aZlnKjDBWIw613TH9CtJQQB0e0Sgg=="],
 
     "@volter/twin": ["@volter/twin@0.1.3", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-K6cKB2dYxtjC2L/H9quREEV38tlQsrkxZt7kIpDUKJbQ79cL4uz9cP20Bdc1DSpn/vbk3ESNPtWh1/uOdRN8HQ=="],
 

@@ -8,11 +8,14 @@
 //   agentModels(setup)          every named model, for the start's Codex detection
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+//   agentHarness(setup)         the harness the owner picks: `hermes` (the default) runs itself; any other runs as
+//                               Supercode's orchestrator's worker on the same home (ADR 0007, as amended)
+//   renderWorkerForms(from, to) that target's content: the persona and skills in the workers' forms
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, relative, resolve } from 'node:path';
 
-type Package = { schema_version: 1; inference?: { models?: Record<string, { provider?: string }> }; jobs?: Record<string, unknown> };
-export type Setup = { profiles: Record<string, Package> };
+type Package = { schema_version: 1; inference?: { models?: Record<string, { provider?: string }> }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
+export type Setup = { harness?: string; profiles: Record<string, Package> };
 
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
@@ -26,7 +29,71 @@ export function parseAgent(text: string, where: string): Setup {
   const setup = JSON.parse(text) as Setup;
   if (!setup?.profiles?.default) throw new Error(`${where}: a setup declares at least the default profile`);
   for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${where}: ${name} is not a Hermes profile name`);
+  if (setup.harness !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(String(setup.harness))) throw new Error(`${where}: harness ${JSON.stringify(setup.harness)} is not a harness id`);
   return setup;
+}
+
+export function agentHarness(setup: Setup | null): string {
+  return setup?.harness ?? 'hermes';
+}
+
+/**
+ * The persona and skills of hermes/ (at `from`) in the workers' forms, into the home at `to` and each of its
+ * profiles (docs/plans/hermes-compat.md in Supercode, row 15): `SOUL.md` as `AGENTS.md`, with `SOUL.md` a link to
+ * it; each skill, flat or under a category, as `.agents/skills/<name>/`, its copy under `skills/` removed. The kit's
+ * rendering is mirrored: a skill it rendered last time and the checkout no longer has leaves (`.agents/skills/
+ * .open-autonomy-rendered` names them). What the agent wrote itself stays; the orchestrator adopts it at load.
+ */
+export function renderWorkerForms(from: string, to: string): string[] {
+  const lines: string[] = [];
+  const pairs: Array<[string, string]> = [[from, to]];
+  const profiles = resolve(from, 'profiles');
+  if (existsSync(profiles)) for (const name of readdirSync(profiles)) if (lstatSync(resolve(profiles, name)).isDirectory()) pairs.push([resolve(profiles, name), resolve(to, 'profiles', name)]);
+  for (const [src, home] of pairs) {
+    mkdirSync(home, { recursive: true });
+    const soul = resolve(src, 'SOUL.md');
+    if (existsSync(soul)) {
+      writeFileSync(resolve(home, 'AGENTS.md'), readFileSync(soul));
+      rmSync(resolve(home, 'SOUL.md'), { force: true });
+      symlinkSync('AGENTS.md', resolve(home, 'SOUL.md'));
+    }
+    const tree = resolve(src, 'skills');
+    const shelf = resolve(home, '.agents', 'skills');
+    const manifest = resolve(shelf, '.open-autonomy-rendered');
+    const before: string[] = existsSync(manifest) ? readFileSync(manifest, 'utf8').split('\n').filter(Boolean) : [];
+    const skills = existsSync(tree) ? skillDirs(tree) : [];
+    const names = skills.map((dir) => basename(dir));
+    // the workers' form is flat: two categories holding one name would be one skill there, so they refuse by name
+    const twice = names.find((name, i) => names.indexOf(name) !== i);
+    if (twice) throw new Error(`${relative(from, tree)} holds two skills named ${twice}; the workers' .agents/skills/ is flat, so rename one`);
+    for (const name of before) if (!names.includes(name)) rmSync(resolve(shelf, name), { recursive: true, force: true });
+    for (const dir of skills) {
+      const rel = relative(tree, dir);
+      rmSync(resolve(home, 'skills', rel), { recursive: true, force: true });
+      const category = dirname(rel);
+      if (category !== '.' && existsSync(resolve(home, 'skills', category)) && readdirSync(resolve(home, 'skills', category)).length === 0) rmSync(resolve(home, 'skills', category), { recursive: true, force: true });
+      rmSync(resolve(shelf, basename(dir)), { recursive: true, force: true });
+      cpSync(dir, resolve(shelf, basename(dir)), { recursive: true });
+    }
+    if (skills.length || before.length) {
+      mkdirSync(shelf, { recursive: true });
+      writeFileSync(manifest, names.length ? `${names.join('\n')}\n` : '');
+    }
+    lines.push(`${relative(to, home) || 'home'}: ${existsSync(soul) ? 'AGENTS.md from SOUL.md, ' : ''}${names.length} skill(s) under .agents/skills`);
+  }
+  return lines;
+}
+
+/** Every skill directory of a Hermes skills tree: `<name>/SKILL.md` or `<category>/<name>/SKILL.md`. */
+function skillDirs(tree: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(tree)) {
+    const dir = resolve(tree, entry);
+    if (!lstatSync(dir).isDirectory()) continue;
+    if (existsSync(resolve(dir, 'SKILL.md'))) { found.push(dir); continue; }
+    for (const inner of readdirSync(dir)) if (existsSync(resolve(dir, inner, 'SKILL.md'))) found.push(resolve(dir, inner));
+  }
+  return found;
 }
 
 export function agentModels(setup: Setup | null): Array<{ provider?: string }> {
@@ -46,7 +113,10 @@ export async function applyAgent(options: {
   const applier = await import('@volter-ai-dev/supercode-orchestrator/apply');
   const doors = await import('@volter-ai-dev/supercode-orchestrator/apply/doors');
   const lines: string[] = [];
-  for (const [profile, spec] of Object.entries(options.setup.profiles)) {
+  const harness = agentHarness(options.setup);
+  for (const [profile, declared] of Object.entries(options.setup.profiles)) {
+    // another harness than Hermes is each profile's worker: the orchestrator's `worker:` key, which Hermes keeps
+    const spec: Package = harness === 'hermes' ? declared : { ...declared, extensions: { ...declared.extensions, hermes: { ...declared.extensions?.hermes, config: { ...declared.extensions?.hermes?.config, 'worker.harness': harness } } } };
     const home = options.homeOf(profile);
     // a named profile's home is made by its content (hermes/profiles/<name>/, copied in before this); Hermes's cron
     // never makes one, so a declared profile without it is said here, not as Hermes's missing cron directory

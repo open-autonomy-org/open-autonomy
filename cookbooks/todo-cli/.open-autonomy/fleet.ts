@@ -26,7 +26,7 @@ import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
 import { ensureContainerClone, mergeImageDenylist, prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord, writeContainerText } from './container-home.ts';
-import { agentModels, applyAgent, parseAgent, type Setup } from './agent.ts';
+import { agentHarness, agentModels, applyAgent, parseAgent, type Setup } from './agent.ts';
 
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/; // Hermes's own profile id rule
 type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; github?: number };
@@ -114,6 +114,9 @@ export async function startFleet(options: { definition: string; port: number; se
       if ((Bun.YAML.parse(prepared.config) as any)?.account !== p.account) throw new Error(`${p.workspace} names another account than ${p.account}`);
       if (!prepared.agent) throw new Error(`${p.account}: no .open-autonomy/agent.json at ${prepared.revision.slice(0, 8)}; run \`create-open-autonomy upgrade\` there (docs/decisions/0007)`);
       const setup = parseAgent(prepared.agent, `${p.account}:.open-autonomy/agent.json`);
+      // a fleet is one Hermes gateway in the executor; a project that picks another harness runs on the orchestrator,
+      // bare, on its own (ADR 0007, as amended)
+      if (agentHarness(setup) !== 'hermes') throw new Error(`${p.account} picks ${agentHarness(setup)}, which runs on Supercode's orchestrator; a fleet runs Hermes only, so start it on its own with start.ts`);
       agents.set(p.name, setup);
       for (const profile of Object.keys(setup.profiles).filter((n) => n !== 'default')) {
         const flat = `${p.name}-${profile}`;
