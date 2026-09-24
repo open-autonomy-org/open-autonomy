@@ -25,7 +25,7 @@ export const PATRONAGE_STYLES = `
 .ladder .rung:first-child{border-top:0}
 .ladder .rung .tn{font-weight:500;font-size:15px}
 .ladder .rung .tn span{display:block;font-weight:400;font-size:13px;color:${T.muted}}
-.ladder .rung .tp{font:300 20px/1 ${TEXT};white-space:nowrap}
+.ladder .rung .tp{font:400 20px/1 ${TEXT};white-space:nowrap}
 .ladder .rung .tp span{font-size:12px;color:${T.muted}}
 .others{padding:22px;background:${T.panel};border:1px solid ${T.line};display:flex;flex-direction:column;gap:16px}
 .others h3{font-size:15px;font-weight:500}
@@ -36,6 +36,7 @@ export const PATRONAGE_STYLES = `
 .steps li:before{content:"0" counter(step);display:block;font:400 26px/1 ${DISPLAY};color:#000;margin-bottom:16px}
 .steps b{color:${T.ink};font-weight:500;display:block;margin-bottom:4px}
 .start>div{padding:32px 36px;background:${T.lilac}}
+.start .sech,.start .fine{color:#5d6168}
 .lede-sm{color:${T.body};font-size:16px;line-height:1.55;max-width:60ch}
 .cmd{margin:18px 0 0;padding:14px 16px;background:${T.ink};color:${T.wash};font:13px/1.5 ${MONO};overflow-x:auto}
 .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px;margin:0}

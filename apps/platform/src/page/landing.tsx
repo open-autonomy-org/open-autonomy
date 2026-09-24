@@ -40,7 +40,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .ident{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:48px;align-items:center;padding:56px 0 44px}
 .ident .label{margin-bottom:18px}
 .ident h1{font:400 clamp(40px,5.6vw,68px)/1 ${DISPLAY};letter-spacing:-.04em;color:#000;overflow-wrap:anywhere}
-.ident .tag{font-size:20px;line-height:1.35;color:${T.ink};font-weight:300;margin-top:18px;max-width:34ch}
+.ident .tag{font-size:19px;line-height:1.4;color:${T.ink};font-weight:400;margin-top:18px;max-width:34ch}
 .ident .acts{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
 .ident .acts .gh{align-self:center;margin-left:6px;font-size:13.5px;color:${T.body}}
 .ident .pic{position:relative;aspect-ratio:1/0.82;overflow:hidden}
@@ -71,7 +71,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .poster .sub{margin-top:12px;color:${T.body};font-size:14px}
 .poster .sub a{color:${T.ink};font-weight:500;text-decoration:underline;text-underline-offset:3px}
 .chart{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding-top:28px}
-.chart .cap{display:flex;justify-content:space-between;align-items:baseline;gap:12px;color:${T.body};font-size:12.5px}
+.chart .cap{display:flex;justify-content:space-between;align-items:baseline;gap:12px;color:${T.body};font-size:13px}
 .chart .cap b{color:${T.ink};font-weight:500;font-size:14px}
 .chart .bars{display:flex;align-items:flex-end;gap:4px;height:96px;flex:1;max-height:160px;margin-top:12px;border-bottom:1px solid ${T.ink}}
 .chart .bars i{flex:1;display:block;background:${T.ink};min-height:2px;opacity:.72}
@@ -130,7 +130,7 @@ export const LANDING_CSS = `${BASE_CSS}
 .up .more{margin-top:auto;padding-top:12px}
 #updates>.more{margin-top:18px}
 .band-cta{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:80px;padding:34px 36px;background:${T.lilac}}
-.band-cta p{font:300 22px/1.35 ${TEXT};color:${T.ink};max-width:32ch}
+.band-cta p{font:400 22px/1.35 ${TEXT};color:${T.ink};max-width:32ch}
 .band-cta a{font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .foot{margin-top:0}
 ${PATRONAGE_STYLES}
