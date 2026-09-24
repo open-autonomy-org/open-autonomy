@@ -58,7 +58,7 @@ export function Stripe({ entries, more }: { entries: DirectoryEntry[]; more?: un
       <div><span class="n">{entries.length}</span><span class="k">{entries.length === 1 ? 'project' : 'projects'}</span></div>
       <div><span class="n">{working ? <><i class="pulse" />{working}</> : '0'}</span><span class="k">working now</span></div>
       <div><span class="n">{usd(held)}</span><span class="k">in the bank</span></div>
-      <div><span class="n">{usd(spent)}</span><span class="k">spent by agents, every call metered</span></div>
+      <div><span class="n">{usd(spent)}</span><span class="k">spent by agents</span></div>
       {more}
     </div>
   );

@@ -149,7 +149,8 @@ const chip = (p: Patron) => <a class="chip" href={safeUrl(p.url) ?? `https://git
 const runwayOf = (v: ProjectView): number | null => (v.runway_days !== null && Number.isFinite(v.runway_days) ? Math.round(v.runway_days) : null);
 
 // The metered days: one bar per day of spend. The one honest picture of a
-// project that builds itself.
+// project that builds itself. The ledger hands the last 14 days, so the sum is named by its days; the
+// all-time figure is the project's consumed total above.
 function Chart({ d }: { d: LandingData }) {
   const last = d.daily.slice(-30);
   const total = d.daily.reduce((a, b) => a + b, 0);
@@ -157,7 +158,7 @@ function Chart({ d }: { d: LandingData }) {
   const max = Math.max(1, ...last);
   return (
     <div class="chart">
-      <div class="cap"><span>Metered spend, day by day</span><span><b>{usd(week)}</b> this week · {usd(total)} all time</span></div>
+      <div class="cap"><span>Metered spend, day by day</span><span><b>{usd(week)}</b> this week{d.daily.length ? ` · ${usd(total)} over ${d.daily.length === 1 ? 'the last day' : `the last ${d.daily.length} days`}` : ''}</span></div>
       {last.length ? <>
         <div class="bars">{last.map((c, i) => { const ago = last.length - 1 - i; return <i class={`${c <= 0 ? 'zero' : ago === 0 ? 'hot' : ''}`} style={`height:${Math.max(3, Math.round((c / max) * 100))}%`} title={`${usd(c)}${ago === 0 ? ' today' : ` ${ago} day${ago === 1 ? '' : 's'} ago`}`} />; })}</div>
         <div class="axis"><span>{last.length === 1 ? 'today' : `${last.length - 1} days ago`}</span><span>today</span></div>

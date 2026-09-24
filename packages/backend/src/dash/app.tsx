@@ -234,7 +234,7 @@ export function Overview({ d }: { d: DashData }) {
           {sees(d.viewer, d.visibility.work) ? <Panel title="Board" more={['Whole board →', href(a, 'board')]}>
             <div class="oa-kpis three">
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'in progress').length}</div><div class="l">in progress</div></div>
-              <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">promised</div></div>
+              <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'planned' || t.lane === 'proposed').length}</div><div class="l">ahead</div></div>
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'shipped').length}</div><div class="l">shipped</div></div>
             </div>
             <div class="scui-root oa-kit oa-rowlist"><WorkflowList tasks={ahead} onOpen={(k) => go(href(a, 'board', k))} /></div>
@@ -387,6 +387,8 @@ function useCsv(d: DashData) {
 export function Books({ d }: { d: DashData }) {
   const a = d.v.account;
   const gifts = (d.v.feed ?? []).filter((f: Flow) => f.kind === 'grant' || f.kind === 'mint');
+  // What came in beyond the gifts listed: money from before the books kept each gift, or older than the feed's window.
+  const earlier = d.v.granted_in_usd_cents - gifts.filter((g) => g.to === a).reduce((n, g) => n + g.amount_usd_cents, 0);
   const purpose = (e: Envelope) => (e.purpose.type === 'item' ? `for ${e.purpose.item}` : e.purpose.type === 'models' ? `for ${e.purpose.models.join(', ')}` : e.purpose.type === 'model' ? 'for model calls' : 'for anything');
   const session = (key: string | undefined): SessionSummary | undefined => (key ? d.sessions.find((s) => s.key === key) : undefined);
   useCsv(d);
@@ -404,7 +406,7 @@ export function Books({ d }: { d: DashData }) {
           <Breakdown title="By job" rows={groupBy(d.sessions, (x) => x.source ?? x.kind, (x) => x.usd_cents)} />
           <Breakdown title={`By model · the last ${d.calls?.length ?? 0} calls`} rows={groupBy(d.calls ?? [], (c) => c.rail === 'model' ? c.model ?? 'model' : c.rail === 'card' ? `card · ${c.merchant ?? 'a merchant'}` : `partner · ${c.partner ?? 'a partner'}`, (c) => c.usd_cents)} />
         </div></Panel> : null}
-        <Panel title="Money in" span={6}>{gifts.length ? <table class="oa-table"><thead><tr><th>When</th><th>From</th><th>What</th><th class="n">Amount</th></tr></thead><tbody>{gifts.map((g) => <tr><td class="nowrap">{fmtAgo(g.ts, d.now)}</td><td>{g.from ? g.from.replace(/^@/, '') : g.sponsor_login ?? 'the operator'}</td><td>{g.kind === 'mint' ? (g.coupon ? 'a coupon' : g.sponsor_login ? 'sponsorship' : 'credits') : g.note ? `a grant · “${g.note}”` : 'a grant'}</td><td class="n">{usd(g.amount_usd_cents)}</td></tr>)}</tbody></table> : <p class="oa-empty">Nothing has come in yet.</p>}</Panel>
+        <Panel title="Money in" span={6}>{gifts.length || earlier > 0 ? <table class="oa-table"><thead><tr><th>When</th><th>From</th><th>What</th><th class="n">Amount</th></tr></thead><tbody>{gifts.map((g) => <tr><td class="nowrap">{fmtAgo(g.ts, d.now)}</td><td>{g.from ? g.from.replace(/^@/, '') : g.sponsor_login ?? 'the operator'}</td><td>{g.kind === 'mint' ? (g.coupon ? 'a coupon' : g.sponsor_login ? 'sponsorship' : 'credits') : g.note ? `a grant · “${g.note}”` : 'a grant'}</td><td class="n">{usd(g.amount_usd_cents)}</td></tr>)}{earlier > 0 ? <tr><td class="nowrap">earlier</td><td>—</td><td>not itemized on these books</td><td class="n">{usd(earlier)}</td></tr> : null}</tbody></table> : <p class="oa-empty">Nothing has come in yet.</p>}</Panel>
         <Panel title="Earmarked · the owner's bounds" span={6}>
           {d.v.envelopes.length ? <ul class="oa-rows">{d.v.envelopes.map((e: Envelope) => <li><span class="t">{purpose(e)}{e.from ? ` · from ${e.from.replace(/^@/, '')}` : ''}</span><span class="n">{usd(e.balance_usd_cents)}</span></li>)}</ul> : <p class="oa-empty">Nothing earmarked.</p>}
           <ul class="oa-rows" style="margin-top:14px">{d.v.bounds.models.length ? <li><span class="t">models</span><span class="n">{d.v.bounds.models.join(', ')}</span></li> : null}{d.v.bounds.limits.map((l) => <li><span class="t">{l.model ? `${l.model} · ` : ''}{[l.usd_cents !== undefined ? usd(l.usd_cents) : '', l.calls !== undefined ? `${l.calls} calls` : '', l.tokens !== undefined ? `${l.tokens} tokens` : ''].filter(Boolean).join(', ')} per {l.window}</span><span class="n">used {[l.usd_cents !== undefined ? usd(l.used.usd_cents) : '', l.calls !== undefined ? `${l.used.calls} calls` : '', l.tokens !== undefined ? `${l.used.tokens} tokens` : ''].filter(Boolean).join(', ')}</span></li>)}</ul>
@@ -657,8 +659,9 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-attend i{width:8px;height:8px;background:#a9adb2;align-self:center}
 .oa-attend .hot i{background:var(--oa-hot)}.oa-attend .warn i{background:#f2b04a}.oa-attend .note i{background:#b3a6e0}
 .oa-attend a{color:#3d4150;font-size:11.5px;white-space:nowrap}
-.oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) auto;--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
+.oa-rowlist{border:1px solid #dcddda;margin-top:10px;--scui-task-flow:column;--scui-task-columns:92px minmax(0,1fr) minmax(0,38%);--scui-task-align:center;--scui-task-gap:12px;--scui-task-border:0;--scui-task-spacing:0;--scui-task-shadow:inset 0 -1px 0 #dcddda;--scui-task-bg:transparent;--scui-task-padding:6px 10px;--scui-task-status-display:block}
 .oa-rowlist .scui-domain-task-meta{font-family:var(--scui-font-mono)}
+.oa-rowlist .scui-domain-task-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* The transcript's tool rows keep the mono: commands and paths line up. */
 .scui-tool-head{font-family:var(--scui-font-mono)}
 /* Diff line numbers sit on tinted rows; the muted grey alone falls under 4.5:1 there. */
