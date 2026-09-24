@@ -16,6 +16,10 @@ import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiS
 
 const href = (a: string, p: DashPage, ...rest: string[]) => (p === 'overview' && !rest.length ? at(a, 'dashboard') : at(a, 'dashboard', p, ...rest));
 const go = (url: string) => { if (typeof location !== 'undefined') location.assign(url); };
+// The money shows to whoever the owner admits to the books; to anyone else the project's word is never 'spent out'
+// or 'unfunded', since those are read off the books.
+const booksOpen = (d: DashData): boolean => sees(d.viewer, d.visibility.books);
+const standingFor = (d: DashData): Standing => standingOf(booksOpen(d) ? d.v : { ...d.v, funded: true, exhausted: false }, d.live);
 const runway = (d: DashData) => (d.v.runway_days !== null && Number.isFinite(d.v.runway_days) ? Math.round(d.v.runway_days) : null);
 const ROLE_WORDS: Record<Role, string> = { public: 'Public view', giver: 'Giver view', team: 'Team view', owner: 'Owner view' };
 const STANDING: Record<Standing, string> = { live: 'live', running: 'ok', requested: 'warn', paused: 'off', exhausted: 'off', unfunded: '' };
@@ -87,7 +91,7 @@ function useKeys(pages: typeof PAGES, a: string, palette: boolean, setPalette: (
 }
 export function Shell({ d, title, children }: { d: DashData; title: string; children?: ComponentChildren }) {
   const a = d.v.account;
-  const standing = standingOf(d.v, d.live);
+  const standing = standingFor(d);
   const open = d.roadmap.items.filter((i) => tenseOf(i) !== 'past').length;
   const counts: Partial<Record<DashPage, string | number>> = { sessions: d.live.length ? `${d.live.length} live` : undefined, board: open || undefined };
   const rw = runway(d);
@@ -110,12 +114,12 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
           <h1>{title}</h1>
           <Pill standing={standing} from={d.v.control?.desired?.from} />
           <span class="grow" />
-          <div class="oa-facts">
+          {booksOpen(d) ? <div class="oa-facts">
             <span><b>{usd(d.v.balance_usd_cents)}</b> in the bank</span>
             {rw !== null ? <span><b>{rw > 365 ? '1y+' : `${rw}d`}</b> runway</span> : null}
             <span><b>{usd(today)}</b> today</span>
             <span><b>{usd(d.v.consumed_usd_cents)}</b> spent</span>
-          </div>
+          </div> : null}
           <button type="button" class="oa-jump" onClick={() => setPalette(true)}><span>Go to…</span><kbd>⌘K</kbd></button>
         </div>
         {children}
@@ -179,7 +183,7 @@ interface Attention { tone: 'hot' | 'warn' | 'note'; text: string; href: string;
 function attentionOf(d: DashData): Attention[] {
   const a = d.v.account;
   const out: Attention[] = [];
-  const standing = standingOf(d.v, d.live);
+  const standing = standingFor(d);
   const rw = runway(d);
   if (standing === 'requested') out.push({ tone: 'warn', text: `Pause requested${d.v.control?.desired?.from ? ` by ${d.v.control.desired.from.slice(1)}` : ''} ${d.v.control?.desired?.at ? fmtAgo(d.v.control.desired.at, d.now) : ''}; the agent has not reported it paused yet.`, href: href(a, 'agent'), go: 'Agent' });
   const org = d.v.control?.desired?.from?.slice(1);
@@ -232,7 +236,7 @@ export function Overview({ d }: { d: DashData }) {
           </Panel>
         </div>
         <div class="oa-col">
-          <Spend d={d} />
+          {booksOpen(d) ? <Spend d={d} /> : null}
           {sees(d.viewer, d.visibility.work) ? <Panel title="Board" more={['Whole board →', href(a, 'board')]}>
             <div class="oa-kpis three">
               <div class="oa-kpi"><div class="v">{board.tasks.filter((t) => t.lane === 'in progress').length}</div><div class="l">in progress</div></div>
@@ -271,7 +275,7 @@ export function Sessions({ d }: { d: DashData }) {
         </div>
         <div class="scui-root oa-kit oa-chat">
           {rec ? <div class="oa-chathead">
-            <span><b>{usd(rec.usd_cents)}</b> metered</span><span><b>{rec.calls}</b> model calls</span><span><b>{fmtDur(rec.started_at, rec.ended_at, d.now)}</b> {rec.status === 'live' ? 'so far' : 'run'}</span>
+            {booksOpen(d) ? <span><b>{usd(rec.usd_cents)}</b> metered</span> : null}<span><b>{rec.calls}</b> model calls</span><span><b>{fmtDur(rec.started_at, rec.ended_at, d.now)}</b> {rec.status === 'live' ? 'so far' : 'run'}</span>
             <span><b>{rec.status}</b>{rec.outcome ? ` · ${rec.outcome}` : ''}</span>
             {rec.item_id ? <span>on <a href={href(a, 'board', rec.item_id)}>{rec.item_id}</a></span> : null}
             {rec.commit_sha ? <span>landed as <b>{shortSha(rec.commit_sha)}</b></span> : null}

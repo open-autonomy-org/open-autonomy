@@ -5,30 +5,35 @@ import { usd } from '../ui.js';
 import { raw } from 'hono/html';
 import { Cover, Foot, Pill, TopBar, at, nameOf, ownerOf, runwayWords, safeUrl, standingOf, type Standing } from './parts.js';
 import { MARK_SVG, vortex } from './art.js';
-import type { DirectorySlots, Role } from './model.js';
+import { openTo, type DirectorySlots, type Role } from './model.js';
 
 export interface DirectoryPageData { brand: string; viewer: Role; entries: DirectoryEntry[]; now: number; slots?: DirectorySlots; q?: string; sort?: string }
 
 // The front's own ordering, from its address: `?q=` narrows by name, owner and line; `?sort=` picks the order.
 const SORTS: Array<[string, string]> = [['standing', 'Working now first'], ['bank', 'Most in the bank'], ['runway', 'Longest runway'], ['name', 'Name']];
-const runwayOf = (e: DirectoryEntry): number => (e.runway_days !== null && Number.isFinite(e.runway_days) ? e.runway_days : -1);
+const runwayOf = (e: DirectoryEntry): number => (openTo(e.profile.config_yaml, 'books') && e.runway_days !== null && Number.isFinite(e.runway_days) ? e.runway_days : -1);
+// The one word as everyone may read it: a project whose books are closed is never called unfunded or spent out.
+const publicStanding = (e: DirectoryEntry): Standing => standingOf(openTo(e.profile.config_yaml, 'books') ? e : { ...e, funded: true, exhausted: false }, e.live_sessions);
 export function narrowed(entries: DirectoryEntry[], q = '', sort = 'standing'): DirectoryEntry[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const hits = entries.filter((e) => words.every((w) => `${e.account} ${e.profile.tagline ?? ''}`.toLowerCase().includes(w)));
-  if (sort === 'bank') return [...hits].sort((a, b) => b.balance_usd_cents - a.balance_usd_cents);
-  if (sort === 'runway') return [...hits].sort((a, b) => runwayOf(b) - runwayOf(a));
+  // A project whose books are closed sorts by nothing they keep: last, by name.
+  const bank = (e: DirectoryEntry): number => (openTo(e.profile.config_yaml, 'books') ? e.balance_usd_cents : -1);
+  if (sort === 'bank') return [...hits].sort((a, b) => bank(b) - bank(a) || nameOf(a.account).localeCompare(nameOf(b.account)));
+  if (sort === 'runway') return [...hits].sort((a, b) => runwayOf(b) - runwayOf(a) || nameOf(a.account).localeCompare(nameOf(b.account)));
   if (sort === 'name') return [...hits].sort((a, b) => nameOf(a.account).localeCompare(nameOf(b.account)));
   return byStanding(hits);
 }
 
 const ORDER: Record<Standing, number> = { live: 0, running: 1, requested: 2, paused: 3, exhausted: 4, unfunded: 5 };
 export const listed = (entries: DirectoryEntry[]): DirectoryEntry[] => entries.filter((e) => e.is_project && e.listed);
-export const byStanding = (entries: DirectoryEntry[]): DirectoryEntry[] => [...entries].sort((a, b) => ORDER[standingOf(a, a.live_sessions)] - ORDER[standingOf(b, b.live_sessions)] || a.account.localeCompare(b.account));
+export const byStanding = (entries: DirectoryEntry[]): DirectoryEntry[] => [...entries].sort((a, b) => ORDER[publicStanding(a)] - ORDER[publicStanding(b)] || a.account.localeCompare(b.account));
 
 // One project at a glance: its drawing (or its cover) with its one word, its name and line, how long its money
 // lasts against the owner's goal, and the money in one line.
 export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }) {
-  const standing = standingOf(e, e.live_sessions);
+  const standing = publicStanding(e);
+  const books = openTo(e.profile.config_yaml, 'books');
   const runway = e.runway_days !== null && Number.isFinite(e.runway_days) ? Math.round(e.runway_days) : null;
   const frac = runway === null ? 0 : Math.max(0, Math.min(1, runway / Math.max(1, e.goal_days)));
   const tone = standing === 'exhausted' ? 'off' : runway !== null && runway < e.goal_days / 3 ? 'warn' : '';
@@ -41,8 +46,8 @@ export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }
           <div><div class="name">{nameOf(e.account)}</div><div class="own">by {ownerOf(e.account)}</div></div>
         </div>
         <p class="tag">{e.profile.tagline ?? 'Building itself in the open.'}</p>
-        <div class="meter" title={runway === null ? 'No burn measured yet' : `${runwayWords(runway)} of a ${e.goal_days}-day goal`}><i class={tone} style={`width:${Math.round(frac * 100)}%`} /></div>
-        <div class="facts">{facts ?? <span><b>{usd(e.balance_usd_cents)}</b> in the bank</span>}{runway !== null ? <span>{runwayWords(runway)}</span> : null}</div>
+        {books ? <div class="meter" title={runway === null ? 'No burn measured yet' : `${runwayWords(runway)} of a ${e.goal_days}-day goal`}><i class={tone} style={`width:${Math.round(frac * 100)}%`} /></div> : null}
+        <div class="facts">{facts ?? (books ? <span><b>{usd(e.balance_usd_cents)}</b> in the bank</span> : <span>books kept by the owner</span>)}{books && runway !== null ? <span>{runwayWords(runway)}</span> : null}</div>
       </div>
     </a>
   );
@@ -51,8 +56,10 @@ export function ProjectCard({ e, facts }: { e: DirectoryEntry; facts?: unknown }
 // The figures a deployment stands behind: how many projects, how many at work this minute, what they hold and spent.
 export function Stripe({ entries, more }: { entries: DirectoryEntry[]; more?: unknown }) {
   const working = entries.filter((e) => e.live_sessions.length).length;
-  const held = entries.reduce((s, e) => s + e.balance_usd_cents, 0);
-  const spent = entries.reduce((s, e) => s + e.consumed_usd_cents, 0);
+  // Money only from books open to everyone: a closed project's figure would be read off the total.
+  const open = entries.filter((e) => openTo(e.profile.config_yaml, 'books'));
+  const held = open.reduce((s, e) => s + e.balance_usd_cents, 0);
+  const spent = open.reduce((s, e) => s + e.consumed_usd_cents, 0);
   return (
     <div class="stripe">
       <div><span class="n">{entries.length}</span><span class="k">{entries.length === 1 ? 'project' : 'projects'}</span></div>

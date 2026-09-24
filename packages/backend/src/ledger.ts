@@ -1253,7 +1253,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return {
       account,
       is_project: account.includes('/'),
-      listed: account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at),
+      // Listed where everyone looks (the front page, an owner's page, an org's rollup) only when the owner opened its
+      // overview to everyone: a closed project is not announced there, as its own page is not.
+      listed: account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview),
       moderation: a?.moderation ?? 'listed',
       profile: displayProfile(a),
       goal_days: a?.goal_days ?? DEFAULT_GOAL_DAYS,

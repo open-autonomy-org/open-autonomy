@@ -50,7 +50,7 @@ export async function orgStatus(d: Doors): Promise<void> {
   lines.push('');
   if (!view.projects.length) lines.push(dim('  no listed projects'));
   else lines.push(table([{ head: 'project' }, { head: 'standing' }, { head: 'bank', right: true }, { head: 'burn/day', right: true }, { head: 'runway', right: true }],
-    view.projects.map((p) => [p.account, pill(standingOf(p, p.live_sessions, p.control), p.control?.desired?.from), usd(p.balance_usd_cents), usd(p.burn_per_day_usd_cents), days(p.runway_days)])));
+    view.projects.map((p) => [p.account, pill(standingOf({ funded: p.funded ?? true, exhausted: p.exhausted ?? false }, p.live_sessions ?? [], p.control), p.control?.desired?.from), p.balance_usd_cents === undefined ? dim('closed') : usd(p.balance_usd_cents), p.burn_per_day_usd_cents === undefined ? '' : usd(p.burn_per_day_usd_cents), p.runway_days === undefined ? '' : days(p.runway_days)])));
   lines.push('');
   lines.push(facts([['page', dim(pageOf(d.base.replace(/\/v1$/, ''), name))]]));
   console.log(lines.join('\n'));

@@ -54,7 +54,8 @@ export interface OrgView {
   org: string;
   desired?: AgentControl['desired'];
   bounds: OrgSpendBound[];
-  projects: Array<{ account: string; control?: AgentControl; balance_usd_cents: number; burn_per_day_usd_cents: number; runway_days: number | null; funded: boolean; exhausted: boolean; live_sessions: string[] }>;
+  // A project's money only when its books are open to everyone, its live sessions only when its sessions are.
+  projects: Array<{ account: string; control?: AgentControl; balance_usd_cents?: number; burn_per_day_usd_cents?: number; runway_days?: number | null; funded?: boolean; exhausted?: boolean; live_sessions?: string[] }>;
 }
 export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
 // The timeline, published whole by the substrate: its source label and the normalized document (see ./roadmap).

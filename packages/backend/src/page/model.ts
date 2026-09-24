@@ -40,6 +40,8 @@ export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibili
 };
 export const DEFAULT_PRESET = 'roadmap' as const;
 export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
+// Whether everyone may see a panel of a project, from the config it synced.
+export const openTo = (yaml: string | undefined, panel: keyof Visibility): boolean => sees('public', visibilityOf(yaml)[panel]);
 
 // The deployment's front: the grid of its projects. The core's words are "Projects" and how many; the platform's
 // are its pitch, its patrons in the figures, and each project's patrons on its card.

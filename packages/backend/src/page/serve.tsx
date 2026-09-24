@@ -98,7 +98,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     if (!isGet) return undefined;
     const name = seg[0];
     const [{ entries }, funder] = await Promise.all([ledger.directory(), ledger.funder(`@${name.toLowerCase()}`)]);
-    const owns = entries.some((e) => e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
+    // Only projects listed where everyone looks count: a name whose projects are all closed answers as an unknown one.
+    const owns = entries.some((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
     if (!owns && !funder.found) return html(renderMessage(name, false, 'Nothing here', `No project of ${name}'s is on these books, and ${name} has not given.`), 404);
     const slots = await app.account?.(name, entries, funder.found ? funder : undefined, tools);
     // What each project given to did since: its shipped items and its runs, as the project opens them to everyone.
@@ -154,9 +155,16 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if (door === 'card.png') return sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
 
   const [stream, road, funding] = await Promise.all([ledger.sessions(account, page === 'sessions' ? 100 : 50), ledger.roadmap(account), ledger.funding(account)]);
+  // The money is the books panel's: a viewer the owner keeps from the books gets none of it, not in what a page draws
+  // and not in what it carries for the browser. The figures are emptied and the pages draw no money for this viewer.
+  const books = sees(role, visibility.books);
+  const seen: ProjectView = books ? view : { ...view, funded: true, exhausted: false, status: 'funded', balance_usd_cents: 0, granted_in_usd_cents: 0, granted_out_usd_cents: 0, consumed_usd_cents: 0, burn_per_day_usd_cents: 0, runway_days: null, runway_confident: false, usable_usd_cents: 0, feed: [], envelopes: [], bounds: { models: [], limits: [] } };
+  const daily = books ? funding.daily_spend_usd_cents : [];
   // What a page carries is what its viewer may see, panel by panel, not only what it draws: a viewer kept out of
   // the sessions gets the live ones by identity and standing alone (no report), out of the work no roadmap.
   const sessions = sees(role, visibility.sessions) ? stream.sessions : stream.sessions.filter((s) => stream.live.includes(s.key)).map((s) => ({ ...s, report: undefined, title: undefined }));
+  // A session's cost is spend too: kept with the books.
+  const priced = books ? sessions : sessions.map((s) => ({ ...s, usd_cents: 0 }));
   const roadmap = sees(role, visibility.work) ? road.revision?.roadmap ?? EMPTY_ROADMAP : EMPTY_ROADMAP;
 
   // ---- the project's updates as a feed: what shipped and what its runs reported, as everyone may see them ----
@@ -175,7 +183,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
 
   // ---- the landing page: the app's, when it has one; the dashboard otherwise ----
   if (door === undefined || door === 'about') {
-    if (app.landing) return privateHtml(await app.landing({ account, view, role, visibility, sessions, live: stream.live, roadmap, daily: funding.daily_spend_usd_cents, now, who, about: door === 'about', origin: url.origin }, tools));
+    if (app.landing) return privateHtml(await app.landing({ account, view: seen, role, visibility, sessions: priced, live: stream.live, roadmap, daily, now, who, about: door === 'about', origin: url.origin }, tools));
   }
   const dash: DashPage = page ?? 'overview';
   const transcripts = sees(role, visibility.transcripts);
@@ -183,13 +191,12 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const tail = transcripts && first && dash !== 'sessions' ? await ledger.session(account, first).then((r) => (r.session ? { key: first, turns: r.session.turns.slice(-40) } : undefined)) : undefined;
   // The view itself carries the books' detail and the agent's setup; each stays behind its own panel.
   const shown: ProjectView = {
-    ...view,
-    ...(sees(role, visibility.books) ? {} : { feed: [], envelopes: [], bounds: { models: [], limits: [] } }),
+    ...seen,
     profile: sees(role, visibility.agent) ? view.profile : { ...view.profile, setup_md: undefined, soul_md: undefined, agent_runtime: undefined, agent_skills: undefined, config_yaml: undefined },
   };
   const back = url.pathname + url.search;
   const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
-  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions, live: stream.live, roadmap, tail, daily: funding.daily_spend_usd_cents, now, page: dash, ...(signDoor ? { door: signDoor } : {}) };
+  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {
