@@ -97,12 +97,16 @@ async function finishVolterLogin(req: Request, env: Env, verifier: string): Prom
   // Funders and accounts are GitHub logins on the public books, so a person gives through their linked GitHub account.
   const id = Number(person.githubId);
   if (!person.githubId || !Number.isSafeInteger(id)) return new Response('Link a GitHub account to your Volter account at id.volter.ai to give: the books name funders by their GitHub login.', { status: 403 });
+  // Read as the platform, never anonymously: a Worker shares its egress addresses, and GitHub's anonymous limit is per
+  // address. The platform's token when it has one, else its OAuth app's own credentials, which GitHub rates per app.
+  const asPlatform = env.GITHUB_TOKEN ? `Bearer ${env.GITHUB_TOKEN}`
+    : env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET ? `Basic ${btoa(`${env.GITHUB_OAUTH_CLIENT_ID}:${env.GITHUB_OAUTH_CLIENT_SECRET}`)}` : undefined;
   const userResponse = await fetch(`${env.GITHUB_API_BASE ?? 'https://api.github.com'}/user/${id}`, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy', ...(env.GITHUB_TOKEN ? { authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}) },
+    headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-autonomy', ...(asPlatform ? { authorization: asPlatform } : {}) },
   });
   const user = await userResponse.json().catch(() => ({})) as { login?: string; id?: number };
   const login = user.login?.toLowerCase() ?? '';
-  if (!userResponse.ok || user.id !== id || !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(login)) return new Response('Volter sign-in refused: GitHub did not answer for the linked account.', { status: 502 });
+  if (!userResponse.ok || user.id !== id || !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(login)) return new Response(`Volter sign-in refused: GitHub answered ${userResponse.status} for the linked account.`, { status: 502 });
   return { login, id: String(id) };
 }
 

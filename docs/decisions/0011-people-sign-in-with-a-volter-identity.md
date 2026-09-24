@@ -71,9 +71,10 @@ the public books changes.
 
 The platform needs a registered client at `https://id.volter.ai` (redirect
 `https://open-autonomy.org/give/callback`) and its secret before a release enables it; until then it
-signs in with GitHub. The login lookup uses `GITHUB_TOKEN` (already set for the grants-pool check);
-unauthenticated, GitHub allows sixty lookups an hour per address, which a shared worker egress would
-exhaust. Walking it again needs the twins from volter-ai/twin's main (`TWINS_ROOT`), since the pinned
+signs in with GitHub. The login lookup reads GitHub as the platform: `GITHUB_TOKEN` where it is set,
+otherwise the GitHub OAuth app's own client credentials, never anonymously, since GitHub's anonymous
+limit is per address and a Worker's egress is shared (measured at release: the first production sign-in
+was refused by the anonymous lookup; production sets no `GITHUB_TOKEN`). Walking it again needs the twins from volter-ai/twin's main (`TWINS_ROOT`), since the pinned
 GitHub twin predates its `/user/{id}` answer for octocat. Who a funder is now rests on two parties instead of one: id.volter.ai vouches
 that the person controls the identity and which GitHub account it links (its ADR-0001 §2 links a provider
 only when it vouches for the email or while the person is signed in), and GitHub names that account's
