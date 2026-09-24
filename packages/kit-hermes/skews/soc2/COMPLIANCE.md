@@ -16,7 +16,8 @@ From an Evidence Desk checkout (`bun install` once):
    bun src/cli.ts init ~/__PROJECT__-soc2 --org "<organization>"
    bun src/cli.ts open-autonomy ~/__PROJECT__-soc2 import --repo <this checkout> --by <your roster id>
    ```
-2. Answer the remaining scoping questions and adopt the control set: `bun src/cli.ts serve ~/__PROJECT__-soc2`.
+2. Answer the remaining scoping questions and adopt the control set (`bun src/cli.ts serve ~/__PROJECT__-soc2`), then
+   import the project again: its declarations are recorded as evidence once controls are adopted.
 3. Keep the workspace in a private GitHub repository the roster members can open pull requests to. Each person records
    the acts the workspace names them in (their onboarding, an access review's sign-off, a policy approval, an
    incident's closing) in a pull request they open, which is the seam's door for them: `bun src/cli.ts collect
