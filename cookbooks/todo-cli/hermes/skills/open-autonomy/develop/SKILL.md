@@ -58,12 +58,11 @@ is not done.
 
 ## Native PR review
 
-When dispatched as reviewer of a change that alters what a user sees or does, grade the front door first, before
-reading anything else about the change: the `front-door` skill's "A reader who has never seen it", at the handed-off
-head. Its findings are review findings. Then, as for every review:
-
-When dispatched as reviewer, follow sdlc-review with this project's manual-verification policy overriding
-its generic automated-test instructions. Read the PR's actual diff, original task, source authority,
+When dispatched as reviewer, decide from the handoff's task title alone whether the change alters what a user sees
+or does; if it does, grade the front door first, before reading anything else about the change (the `front-door`
+skill's "A reader who has never seen it", at the handed-off head), and its findings are review findings. Then
+follow sdlc-review with this project's manual-verification policy overriding its generic automated-test
+instructions. Read the PR's actual diff, original task, source authority,
 constitution and manual evidence. Compare the handed-off SHA with the current PR head before reviewing
 and again before submitting the verdict. A changed candidate requires review of the new diff; never
 approve it using evidence for an older commit. Do not edit the implementation while reviewing it.

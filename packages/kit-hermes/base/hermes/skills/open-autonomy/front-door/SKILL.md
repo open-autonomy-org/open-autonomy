@@ -89,9 +89,11 @@ behaviour they describe.
 
 ## A reader who has never seen it
 
-Its author cannot see the page as a newcomer does, so the front door is graded by someone who has not seen it
-(ADR 0013): the native reviewer of a change that alters what a user sees or does, and the reviewer of a release
-candidate. Before reading the task, the diff or anything else, they read only the README at the reviewed head and
+Its author cannot see the page as a newcomer does, so the front door is graded by an agent that has not seen it
+(ADR 0013): the native reviewer of a change that alters what a user sees or does, and, before PM requests review of
+a release candidate, a fleet verification task PM queues for that candidate, run by a worker that did not build it;
+never the human release reviewer. Before reading the task, the diff or anything else, they read only the README at
+the graded head and
 write down, in their own words, what the project is, who it is for and how to reach a first success. Then they
 follow the quick start literally, command by command, in the project's verification world, and capture what it
 shows. Each place where the page and the product disagree, or where the answers are wrong or missing, is a
@@ -104,7 +106,7 @@ finding the change fixes before it lands. The captures that pass are the ones th
 - Every scrum compares the front door with what landed since the last one (`CHANGELOG.md`, merged PRs) and
   fixes what it no longer tells truly.
 - A release candidate is not ready while its front door describes anything else: what ships is what the page
-  shows, down to the quick start, graded at the candidate by a reader who has not seen it.
+  shows, down to the quick start, graded at the candidate by an agent that has not seen it, as above.
 - Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
   disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
   publish is an ask of the role that handles repository settings, as above.
