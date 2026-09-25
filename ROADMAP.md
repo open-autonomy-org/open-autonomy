@@ -5,9 +5,9 @@ Sourced planning memory maintained by the Hermes PM scrum. Completed work belong
 ## release-next: The next Release
 
 Dispatch: hold
-Release decision: accumulate
-Scope: what `main` carries beyond `prod`, which the standing Release pull request (`main` → `prod`) shows; PM names it in a user's words when it requests review.
-Rationale: releases ship through the one Release pull request, the owner's approval and merge ([ADR 0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md)); the last ship was #788, deploy-v2026.09.25.3 and create-open-autonomy 3.18.4, on September 25, 2026; `main` has accumulated since.
+Release decision: defer
+Scope: the standing Release pull request (`main` → `prod`) carries the books-backup removal and create-open-autonomy 3.19.0 beyond #788; the platform deployment version is recorded by the release workflow when the owner merges it.
+Rationale: the last ship was #788, deploy-v2026.09.25.3 and create-open-autonomy 3.18.4, on September 25, 2026. Main now contains persistent automated-test code contrary to the constitution and a 420-commit interval with six direct pushes plus 40 merged PRs lacking exact-head independent App approval. Hold review until `main-review-provenance-2026-09` and `remove-persistent-tests` land; shipping remains the owner's approval and merge of the one Release ([ADR 0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md)).
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
@@ -33,6 +33,31 @@ Completion:
 - If correction is required, prescribe only the bounded revert/re-land needed to obtain fresh-context exact-head App review while preserving later main work and the supported patron-wall behavior.
 - Do not submit a retroactive verdict, edit implementation, run automated tests/checks/hooks, release, tag, publish or deploy.
 
+## main-review-provenance-2026-09: Prospectively repair the unreviewed main interval
+
+Status: planned; 40 pull requests and six direct-main commits landed after the review rule was in force without exact-head independent GitHub App approval. Supported behavior stays supported, but the prospective review and architecture gates cannot be repaired retroactively.
+Dispatch: fleet
+
+Source: full audit of `7ad0cab8..8fb0332e` in `hermes:session/20260925_134916_80b19b`; direct commits `18a3ded6`, `190cbf90`, `8f3b5292`, `d1607d27`, `afff30f0` and `3b9ba0e5`; no-approval PRs #650, #699, #700, #703–#706, #708, #710 and #711; owner-self-reviewed PRs #709, #713, #715, #717, #719, #722, #724, #745, #747, #749, #751–#754, #756–#764, #767–#769 and #771–#774.
+
+Completion:
+- Audit the landed changes as coherent stacks against their original authority, the constitution and current main; preserve authorship and separate supported behavior from defects.
+- Prospectively revert and re-land every supported effect through fresh branches and exact-head GitHub App approval, preserving intervening main work and never describing the new evidence as retroactive approval.
+- For constitution changes, obtain the verified owner's own approving GitHub review and a separate fresh-context App constitutional review. For material ADR stacks, obtain fresh-context constitution review of the record and implementation before calling the decision accepted.
+- Confirm the intended final behavior and every reviewed head in main, with the main ruleset still requiring one approval and allowing no bypass.
+
+## remove-persistent-tests: Remove automated test code from main
+
+Status: planned; current main still carries persistent smoke suites, direct commit `d1607d27` changed one, and PR #798 added test-only Durable Object storage operations. PR #650 deleted a subset after two changes-requested verdicts, then merged from final head `ce053f3a` without approval; archived native task `hermes:task/t_bd642df6` therefore did not complete the correction.
+Dispatch: fleet
+
+Source: [CONSTITUTION.md](CONSTITUTION.md), [CONTRIBUTING.md](CONTRIBUTING.md), direct commit `d1607d27`, merged [PR #798](https://github.com/open-autonomy-org/open-autonomy/pull/798), merged [PR #650](https://github.com/open-autonomy-org/open-autonomy/pull/650), and the interval audit `hermes:session/20260925_134916_80b19b`.
+
+Completion:
+- Remove the persistent automated smoke suites and test-only helpers, scripts and dependencies without replacing them with another test harness; preserve production behavior and the books' durable data path.
+- Manually exercise the affected giving, identity, ledger persistence, restart, pages and books-removal paths in the disposable World product path, recording actual observations in the handoff.
+- Land only after fresh-context exact-head GitHub App approval. Do not run automated tests, test-running checks or hooks.
+
 ## local-codex-plain: The bare and containerized fleets look the same; the container forwards
 
 Status: planned; accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
@@ -55,12 +80,13 @@ Completion:
 
 ## give-auth-production: A funder gives through the signed-in page in production
 
-Status: planned; production is configured: the Volter identity sign-in secrets are installed and synced, and `/give/login` redirects to `id.volter.ai`
+Status: planned; production is configured: the Volter identity sign-in secrets are installed and synced, and `/give/login` redirects to `id.volter.ai`. The live callback, gift and book entry are unverified, and ADR 0011 plus its implementation entered main without independent review.
 Dispatch: hold
 
-Source: [`give-auth.ts`](apps/platform/src/give-auth.ts), which takes the Volter sign-in path when its four secrets are present ([ADR 0011](docs/decisions/0011-people-sign-in-with-a-volter-identity.md)).
+Source: [`give-auth.ts`](apps/platform/src/give-auth.ts), which takes the Volter sign-in path when its four secrets are present; [ADR 0011](docs/decisions/0011-people-sign-in-with-a-volter-identity.md); direct commits `d1607d27`, `afff30f0` and `3b9ba0e5`; owner-signed [PR #806](https://github.com/open-autonomy-org/open-autonomy/pull/806), exact-head App review 5320994313 and live HTTP 302 observation `hermes:task/t_b3c730dd`.
 
 Completion:
+- `main-review-provenance-2026-09` prospectively reviews and repairs the ADR 0011 implementation without calling that review retroactive.
 - On the deployed service, a funder signs in, sees credits, makes one idempotent earmarked gift, and the project's public books show the matching envelope.
 
 ## seven-day-autonomy: Run seven days with no human act but release review and shipping
