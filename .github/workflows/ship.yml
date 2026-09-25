@@ -2,7 +2,12 @@ name: Ship
 # One standing pull request from `main` to `prod`: what the owner ships. It grows as `main` moves, so changes compound
 # until the owner reads the whole diff and merges it; the merge deploys the platform and publishes every new package
 # version (deploy.yml, release.yml). Only an org admin may merge it (the `prod` ruleset); nothing here merges it.
+# Merges to main are made by the landing workflow's token, and GitHub starts no workflow from those pushes, so this runs
+# on a schedule (and by hand): the pull request follows main by itself once open, and is reopened after each ship.
 on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
   push:
     branches: [main]
 permissions:
