@@ -182,7 +182,8 @@ for (const { file, port } of githubApps) {
     } finally { minting = undefined; }
   })());
   const fresh = (): Promise<InstallationToken> => (token && token.expiresAt - Date.now() > 5 * 60_000 ? Promise.resolve(token) : mint());
-  // Repository-scoped review verdicts and community conversations can be written.
+  // Repository-scoped review verdicts, a pull request (the Release, opened by `maintain.ts ship`; a pull request merges
+  // only as the repository's rules allow) and community conversations can be written.
   // Rules, checks and release evidence are read-only; no administration routes are granted.
   const allowed = (app: GitHubApp, method: string, path: string): boolean => {
     const repo = `/repos/${app.repository}`;
@@ -191,7 +192,7 @@ for (const { file, port } of githubApps) {
     if (!path.startsWith(`${repo}/`)) return false;
     const resource = path.slice(repo.length);
     if (method === 'GET' && /^\/(pulls|actions|releases|tags|commits|compare|check-runs|check-suites|statuses|rules|rulesets|branches)(\/|$)/.test(resource)) return true;
-    if (method === 'POST' && /^\/pulls\/[0-9]+\/reviews$/.test(resource)) return true;
+    if (method === 'POST' && (resource === '/pulls' || /^\/pulls\/[0-9]+\/reviews$/.test(resource))) return true;
     if (method === 'PATCH' && path.startsWith(`${repo}/issues/`) && /^[0-9]+$/.test(path.slice(`${repo}/issues/`.length))) return true;
     if (/^\/(issues|discussions)(\/|$)/.test(resource)) return method === 'GET' || method === 'POST';
     return false;

@@ -8,6 +8,19 @@ const project = resolve(import.meta.dir, '..');
 const home = process.env.HERMES_HOME;
 if (!home) throw new Error('maintenance requires HERMES_HOME from the running stack');
 const command = process.argv[2] ?? 'status';
+// Hermes removes credentials from terminal tools, so the PM's `ship` re-enters with only its configured GitHub door (the
+// valve's App port and the word `valve`), as community.ts does; the values stay in the child and are never printed.
+if (command === 'ship' && !process.env.GITHUB_TOKEN && !process.env.OA_COMMUNITY_DOOR_LOADED) {
+  const script = `import os, sys
+from hermes_cli.config import load_env
+saved = load_env()
+for name in ("GITHUB_TOKEN", "GITHUB_API_URL"):
+    if saved.get(name): os.environ.setdefault(name, saved[name])
+os.environ["OA_COMMUNITY_DOOR_LOADED"] = "1"
+os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
+  const child = Bun.spawnSync({ cmd: ['python', '-c', script, process.execPath, ...process.argv.slice(1)], stdio: ['inherit', 'inherit', 'inherit'] });
+  process.exit(child.exitCode);
+}
 // Bun does not use the world's HTTP injector. Point bunx at the same registry
 // npm queried so the rehearsal release, rather than a cached public package, is applied.
 const bunxEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
@@ -41,18 +54,52 @@ function field(text: string, name: string): string {
 
 if (command === 'ship') {
   // One pull request titled Release (main → prod) is what ships: whatever has landed on main compounds onto it, and
-  // the owner's approval covers the diff it shows (a later push to main dismisses it). PM decides when it is ready;
-  // this writes PM's package as its description and mentions the owner there once per release: the only time the
-  // owner is contacted. Their merge deploys and publishes. See PRODUCTION.md.
+  // the owner's approval covers the diff it shows (a later push to main dismisses it). PM runs this every pass: it opens
+  // the Release while main is ahead of prod, and when PM has decided the Release is ready, writes PM's package as its
+  // description and mentions the owner there once per release: the only time the owner is contacted. Their merge
+  // deploys and publishes. See PRODUCTION.md.
   const configText = readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8');
   const config = Bun.YAML.parse(configText) as { account: string };
+  const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("ship needs the project's GitHub door (GITHUB_API_URL and GITHUB_TOKEN)");
+  const request = (method: string, path: string, body?: unknown) => fetch(`${api}/repos/${config.account}${path}`, {
+    method, headers: { authorization: `token ${token}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const gh = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const r = await request(method, path, body);
+    if (!r.ok) throw new Error(`GitHub ${method} ${path} answered ${r.status}`);
+    return r.json() as Promise<T>;
+  };
+  const comments = async (issue: number): Promise<string[]> => {
+    const all: string[] = [];
+    for (let page = 1; ; page++) {
+      const batch = await gh<Array<{ body?: string }>>('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
+      all.push(...batch.map((c) => c.body ?? ''));
+      if (batch.length < 100) return all;
+    }
+  };
+  const org = config.account.split('/')[0];
+  let [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
+  if (!open) {
+    const prod = await request('GET', '/branches/prod');
+    if (prod.status === 404) { console.log("No prod branch; setup's production door makes it. Nothing to ship."); process.exit(0); }
+    if (!prod.ok) throw new Error(`GitHub GET /branches/prod answered ${prod.status}`);
+    // GitHub refuses a pull request with nothing in it (422), which is the answer to whether main has anything new.
+    const made = await request('POST', '/pulls', { title: 'Release', head: 'main', base: 'prod', body: 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it. Read the whole diff first; money and auth changes are the owner\'s to read. Merge with a merge commit.' });
+    if (made.status === 422) { console.log(`prod has everything on main; nothing to ship (${(await made.json() as { message?: string }).message ?? 'GitHub: 422'}).`); process.exit(0); }
+    if (!made.ok) throw new Error(`GitHub POST /pulls answered ${made.status}`);
+    open = await made.json() as { number: number; html_url: string };
+    console.log(`Opened the Release: ${open.html_url}`);
+  }
   git('fetch', '-q', 'origin', 'main');
   const requested = git('show', 'origin/main:ROADMAP.md').split(/^## /m)
     .filter((section) => /^Release decision: request-review$/m.test(section));
   if (requested.length !== 1) {
     console.log(requested.length
       ? 'More than one release section requests review; PM reconciles ROADMAP.md first.'
-      : 'No release requested; changes keep compounding on main.');
+      : `No release requested; changes keep compounding on ${open.html_url}.`);
     process.exit(0);
   }
   const release = requested[0].split(':')[0]!.trim();
@@ -68,36 +115,16 @@ if (command === 'ship') {
     console.log(`The Release is not ready: ${(error as Error).message}. Nothing sent.`);
     process.exit(0);
   }
-  const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("ship needs the project's GitHub door (GITHUB_API_URL and GITHUB_TOKEN)");
-  const gh = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-    const headers = { authorization: `token ${token}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' };
-    const r = await fetch(`${api}/repos/${config.account}${path}`, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}) });
-    if (!r.ok) throw new Error(`GitHub ${method} ${path} answered ${r.status}`);
-    return r.json() as Promise<T>;
-  };
-  const comments = async (issue: number): Promise<string[]> => {
-    const all: string[] = [];
-    for (let page = 1; ; page++) {
-      const batch = await gh<Array<{ body?: string }>>('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
-      all.push(...batch.map((c) => c.body ?? ''));
-      if (batch.length < 100) return all;
-    }
-  };
   // Each Release pull request is one release, told once. A package written before the last Release merged belongs to
   // that one and never announces the next.
   const marker = '<!-- open-autonomy:release-ready -->';
-  const org = config.account.split('/')[0];
   const merged = await gh<Array<{ merged_at: string | null }>>('GET', `/pulls?state=closed&base=prod&head=${org}:main&per_page=20`);
   const lastShip = Math.max(0, ...merged.map((p) => (p.merged_at ? Date.parse(p.merged_at) : 0)));
   if (Bun.file(packagePath).lastModified <= lastShip) {
     console.log(`The package predates the last Release; write it for ${release} before asking again. Nothing sent.`);
     process.exit(0);
   }
-  const [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
-  if (!open) { console.log('No Release pull request is open; ship.yml opens it while main is ahead of prod.'); process.exit(0); }
-  const tail = 'Merging ships `main` to production: the platform deploys and every package version not yet on npm is published.';
+  const tail = 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it.';
   await gh('PATCH', `/issues/${open.number}`, { body: `${marker}\n${review}\n\n${tail}` });
   if ((await comments(open.number)).some((c) => c.startsWith(marker))) {
     console.log(`Release ${release} is on ${open.html_url}; the owner was already told.`);

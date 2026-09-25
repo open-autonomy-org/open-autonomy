@@ -5,18 +5,13 @@ Sourced planning memory maintained by the Hermes PM scrum. Completed work belong
 ## release-next: The next Release
 
 Dispatch: hold
-Release decision: request-review
-Scope: one release act (the Release pull request, the owner told once), and kit 3.18.4: scheduled runs post their
-whole report, an upgrade cannot publish the treasurer's cards, the reporter says why it cannot read `main`, GPT-6 Sol
-on the subscription, outreach posts where `project-communications` says.
-Rationale: the fleet's release process now matches the Release pull request ([ADR
-0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md), #792); the report delivery and the Codex setup
-were read live on Hookline, the guard and the reporter's message by hand; the last ship was deploy-v2026.09.25.2 and
-create-open-autonomy 3.18.0 on September 25, 2026.
+Release decision: defer
+Scope: the standing Release pull request (`main` → `prod`) carries the books-backup removal and create-open-autonomy 3.19.0 beyond #788; the platform deployment version is recorded by the release workflow when the owner merges it.
+Rationale: the last ship was #788, deploy-v2026.09.25.3 and create-open-autonomy 3.18.4, on September 25, 2026. Main now contains persistent automated-test code contrary to the constitution and a 420-commit interval with six direct pushes plus 40 merged PRs lacking exact-head independent App approval. Hold review until `main-review-provenance-2026-09` and `remove-persistent-tests` land; shipping remains the owner's approval and merge of the one Release ([ADR 0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md)).
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
-Status: corrective work is queued, but the first bounded revert is blocked before any edit because protected `CLAUDE.md` requires interactive owner approval. PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
+Status: planned; the revert and re-land are dispatchable (CODEOWNERS gates only `CONSTITUTION.md` and itself). PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
 Dispatch: fleet
 
 Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull/622), owner self-review [5188012108](https://github.com/open-autonomy-org/open-autonomy/pull/622#pullrequestreview-5188012108), and independent post-merge audit `hermes:task/t_ec574a74`.
@@ -24,26 +19,51 @@ Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull
 Completion:
 - Revert only PR #622's two documentation lines on a fresh branch from current main; a fresh-context agent submits/read-backs exact-head GitHub App approval before that revert merges.
 - Only after the reviewed revert lands, reapply the same owner-authorized wording on a second fresh branch; another fresh-context agent submits/read-backs exact-head GitHub App approval before the re-land merges.
-- Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge; release remains held until this correction completes.
+- Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge.
 
-## pr651-review-audit: Reconcile the Polar patron-wall merge with independent review
+## pr651-review-repair: Prospectively repair the Polar patron-wall review
 
-Status: PR #651's owner-authorized patron-wall correction is on main, but its sole exact-head App approval says it was recorded by the author and was not a fresh-context review. The review gate therefore remains unresolved pending an independent audit of the actual landed diff and the smallest supported prospective correction.
+Status: planned; audit `hermes:task/t_753cc7b9` confirmed PR #651's owner-authorized 12-line patron-wall effect fits the constitution on source inspection, but App review 5189264555 explicitly says the author recorded it rather than a fresh-context reviewer. The prospective gate failed and cannot be repaired retroactively.
 Dispatch: fleet
 
-Source: verified owner `yueranyuan` authored and signed [PR #651](https://github.com/open-autonomy-org/open-autonomy/pull/651); the PR merged as `7ad0cab8` from head `e34f5ba7` after App [approval 5189264555](https://github.com/open-autonomy-org/open-autonomy/pull/651#pullrequestreview-5189264555), whose body explicitly records that it was made by the author rather than a fresh-context reviewer.
+Source: [PR #651](https://github.com/open-autonomy-org/open-autonomy/pull/651), [review 5189264555](https://github.com/open-autonomy-org/open-autonomy/pull/651#pullrequestreview-5189264555), and [independent audit](hermes:task/t_753cc7b9).
 
 Completion:
-- Independently inspect PR #651's exact landed diff, authority, constitution fit and the original review body; determine whether the author-recorded App verdict violated the prospective gate.
-- If correction is required, prescribe only the bounded revert/re-land needed to obtain fresh-context exact-head App review while preserving later main work and the supported patron-wall behavior.
-- Do not submit a retroactive verdict, edit implementation, run automated tests/checks/hooks, release, tag, publish or deploy.
+- On a fresh branch from current main, remove only PR #651's 12 additions in `apps/platform/src/patronage.ts` and `apps/platform/src/polar.ts`, preserving every later change; manually verify Polar paid-order, failure and idempotence paths in World and disclose the temporary patron-wall regression.
+- Merge that exact revert only after fresh-context App review, then start a second fresh branch from the new main and reapply the same supported 12-line effect; manually verify the patron wall and no recurring accrual, and merge only after a different fresh-context exact-head App review.
+- Confirm both reviewed heads in main and the final two files match their pre-revert contents. Neither later review retroactively approves PR #651. Do not run automated tests/checks/hooks, release, tag, publish or deploy.
+
+## main-review-provenance-2026-09: Prospectively repair the unreviewed main interval
+
+Status: planned; 40 pull requests and six direct-main commits landed after the review rule was in force without exact-head independent GitHub App approval. Supported behavior stays supported, but the prospective review and architecture gates cannot be repaired retroactively.
+Dispatch: fleet
+
+Source: [full audit of `7ad0cab8..8fb0332e`](hermes:session/20260925_134916_80b19b); direct commits `18a3ded6`, `190cbf90`, `8f3b5292`, `d1607d27`, `afff30f0` and `3b9ba0e5`; no-approval PRs #650, #699, #700, #703–#706, #708, #710 and #711; owner-self-reviewed PRs #709, #713, #715, #717, #719, #722, #724, #745, #747, #749, #751–#754, #756–#764, #767–#769 and #771–#774.
+
+Completion:
+- Audit the landed changes as coherent stacks against their original authority, the constitution and current main; preserve authorship and separate supported behavior from defects.
+- Prospectively revert and re-land every supported effect through fresh branches and exact-head GitHub App approval, preserving intervening main work and never describing the new evidence as retroactive approval.
+- For constitution changes, obtain the verified owner's own approving GitHub review and a separate fresh-context App constitutional review. For material ADR stacks, obtain fresh-context constitution review of the record and implementation before calling the decision accepted.
+- Confirm the intended final behavior and every reviewed head in main, with the main ruleset still requiring one approval and allowing no bypass.
+
+## remove-persistent-tests: Remove automated test code from main
+
+Status: planned; current main still carries persistent smoke suites, direct commit `d1607d27` changed one, and PR #798 added test-only Durable Object storage operations. PR #650 deleted a subset after two changes-requested verdicts, then merged from final head `ce053f3a` without approval; archived native task `hermes:task/t_bd642df6` therefore did not complete the correction.
+Dispatch: fleet
+
+Source: [CONSTITUTION.md](CONSTITUTION.md), [CONTRIBUTING.md](CONTRIBUTING.md), direct commit `d1607d27`, merged [PR #798](https://github.com/open-autonomy-org/open-autonomy/pull/798), merged [PR #650](https://github.com/open-autonomy-org/open-autonomy/pull/650), and the interval audit `hermes:session/20260925_134916_80b19b`.
+
+Completion:
+- Remove the persistent automated smoke suites and test-only helpers, scripts and dependencies without replacing them with another test harness; preserve production behavior and the books' durable data path.
+- Manually exercise the affected giving, identity, ledger persistence, restart, pages and books-removal paths in the disposable World product path, recording actual observations in the handoff.
+- Land only after fresh-context exact-head GitHub App approval. Do not run automated tests, test-running checks or hooks.
 
 ## local-codex-plain: The bare and containerized fleets look the same; the container forwards
 
-Status: accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
+Status: planned; accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
 Dispatch: hold
 
-Source: the verified owner's [PR #593 ruling](https://github.com/open-autonomy-org/open-autonomy/pull/593#issuecomment-5628311527) was the original contrary public evidence. Accepted [ADR 0001](docs/decisions/0001-runtime-boundary.md) explicitly replaces that conflicting instruction and PR #594; verified owner `yueranyuan` then affirmed that replacement in [comment 5648467119](https://github.com/open-autonomy-org/open-autonomy/pull/594#issuecomment-5648467119). [PR #597](https://github.com/open-autonomy-org/open-autonomy/pull/597) is the merged implementation, approved at exact head `b13099c0`; merged [PR #624](https://github.com/open-autonomy-org/open-autonomy/pull/624) relocated the host tools between packages without changing the trust boundary.
+Source: accepted [ADR 0001](docs/decisions/0001-runtime-boundary.md); its implementation is [PR #597](https://github.com/open-autonomy-org/open-autonomy/pull/597), with the host tools relocated by [PR #624](https://github.com/open-autonomy-org/open-autonomy/pull/624).
 
 Completion:
 - Bare: both profiles use native Hermes `openai-codex` through the host valve and transient access from the installed Codex app-server; no login is copied into project or Hermes storage, a missing current computer login fails closed, and autonomous use has the required OS-user credential boundary.
@@ -52,28 +72,26 @@ Completion:
 
 ## operating-state-sdk: The owner's running or paused word travels through the SDK
 
-Status: implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
+Status: planned; the mechanism is implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
 Dispatch: hold
 
 Completion:
 - Exercise the live-run pause window through the disposable World product path: while a run is active, a pause request remains visibly desired-paused/observed-running, the run finishes without interruption, then the reporter disables scheduled work and reports paused.
 
-## give-auth-production: Activate and verify the signed-in giving page in production
+## give-auth-production: A funder gives through the signed-in page in production
 
-Status: implementation reviewed in the twin world; production configuration and verification are not evidenced. Owner-authored PR #652 added the three sign-in secrets to the existing production `sync-secrets` operation after exact-head independent App review. No human development-review gate was required; installing the production secrets is the owner's, gathered into a Release package's `Owner does`.
+Status: planned; production is configured: the Volter identity sign-in secrets are installed and synced, and `/give/login` redirects to `id.volter.ai`. The live callback, gift and book entry are unverified, and ADR 0011 plus its implementation entered main without independent review.
 Dispatch: hold
 
-Source: `hermes:task/t_abe517c5`, approved implementation `389ce3b1`, the candidate's [`give-auth.ts`](https://github.com/open-autonomy-org/open-autonomy/blob/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997/apps/platform/src/give-auth.ts), and App-reviewed [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) at exact head `9b56f9cc` merged as `082869b0`.
+Source: [`give-auth.ts`](apps/platform/src/give-auth.ts), which takes the Volter sign-in path when its four secrets are present; [ADR 0011](docs/decisions/0011-people-sign-in-with-a-volter-identity.md); direct commits `d1607d27`, `afff30f0` and `3b9ba0e5`; owner-signed [PR #806](https://github.com/open-autonomy-org/open-autonomy/pull/806), exact-head App review 5320994313 and live HTTP 302 observation `hermes:task/t_b3c730dd`.
 
 Completion:
-- The owner provisions the GitHub OAuth app and installs `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET` as production secrets, asked once in a Release package's `Owner does`; no agent receives them.
+- `main-review-provenance-2026-09` prospectively reviews and repairs the ADR 0011 implementation without calling that review retroactive.
 - On the deployed service, a funder signs in, sees credits, makes one idempotent earmarked gift, and the project's public books show the matching envelope.
-
-Risk: [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) merged signed owner head `9b56f9cc` as `082869b0` after App approval 5189447455, closing the workflow gap only. The production aliases still need maintainer provisioning, `sync-secrets` must run through an authorized production gate, and the live sign-in/giving check remains missing. The owner-cut `.12.2` deploy run is waiting and is not a PM-approved release candidate.
 
 ## seven-day-autonomy: Run seven days with no human act but release review and shipping
 
-Status: owner-gated observation; its prerequisite implementations are reviewed, but current production and the start of the clock are not evidenced.
+Status: planned; owner-gated observation; its prerequisite implementations are reviewed, but current production and the start of the clock are not evidenced.
 Dispatch: hold
 
 Source: `hermes:task/t_f934d2a1`; prerequisite reviews `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`.
@@ -87,7 +105,7 @@ Dependency: `release-next` must ship and be verified before the owner starts the
 
 ## real-money-live: Real money flows on open-autonomy.org
 
-Status: current owner-gated outcome; code paths are proven against twins, but no real transaction is evidenced.
+Status: planned; current owner-gated outcome; code paths are proven against twins, but no real transaction is evidenced.
 Dispatch: hold
 
 Source: `hermes:task/t_33aac5e5`; the deferral from grant-credit v2 is recorded in commits [`8ad2a7fa`](https://github.com/open-autonomy-org/open-autonomy/commit/8ad2a7fa7c31782f16c57b445e168d29b33d70cd) and [`3075a32b`](https://github.com/open-autonomy-org/open-autonomy/commit/3075a32b952d4da0651dadb04c87089b9ca00c35).

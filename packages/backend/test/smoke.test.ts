@@ -12,6 +12,16 @@ const sign = async (secret: string, payload: string): Promise<string> => {
   const sig = [...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${t}.${payload}`)))].map((b) => b.toString(16).padStart(2, '0')).join('');
   return `t=${t},v1=${sig}`;
 };
+// The stored books, read and written through the core's extension door (the platform exposes neither).
+const ledgerClient = (env: ReturnType<typeof testEnv>) => {
+  const { LedgerClient, LimitLedger } = require('../src/ledger.ts') as typeof import('../src/ledger.ts');
+  LimitLedger.extend({
+    test_state: async (core) => ({ state: await core.storage.get('state') }),
+    test_store: async (core, body) => { await core.storage.put('state', body.state); return { ok: true }; },
+  });
+  return new LedgerClient(env.LIMITS);
+};
+const storedState = async (env: ReturnType<typeof testEnv>): Promise<any> => (await ledgerClient(env).call<{ state: unknown }>('test_state')).state;
 
 describe('the backend, one smoke test per surface', () => {
   test('books and keys: money in, a key by claim file, a metered call on both wires, the audit trail; survives a redeploy; refusals', async () => {
@@ -70,8 +80,7 @@ describe('the backend, one smoke test per surface', () => {
     expect(after.usable_usd_cents).toBeGreaterThan(0);
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp/roadmap')).revision.roadmap.items[0].status).toBe('done');
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).envelopes.some((e: any) => e.purpose.type === 'unrestricted')).toBe(true);
-    const exported = await requestJson(env, '/admin/export', { headers: admin });
-    const state = exported.entries.find(([key]: [string, unknown]) => key === 'state')[1];
+    const state = await storedState(env);
     expect(state.flows.find((f: any) => f.kind === 'release')).toMatchObject({ item: 'add', amount_usd_cents: expect.any(Number) });
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBeCloseTo(after.envelopes.reduce((sum: number, e: any) => sum + e.balance_usd_cents, 0), 6);
   });
@@ -84,7 +93,8 @@ describe('the backend, one smoke test per surface', () => {
       reservations: { old: { amount: 60, expires_at_ms: expires, account: 'acme/app', kid: '' } },
       accounts: { 'acme/app': { granted_in_usd_cents: 100, granted_out_usd_cents: 0, consumed_usd_cents: 0 } },
     };
-    expect((await requestJson(env, '/admin/import', { headers: admin, body: { entries: [['state', state]] } })).ok).toBe(true);
+    await ledgerClient(env).call('test_store', { state });
+    env.ns.restart();
     const ledger = env.LIMITS.get(env.LIMITS.idFromName('global'));
     const rpc = (body: Record<string, unknown>) => ledger.fetch('https://ledger.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     expect(await (await rpc({ op: 'reserve', request_id: 'too-big', account: 'acme/app', kid: '', amount_usd_cents: 50, daily_cap_usd_cents: 5000 })).json()).toMatchObject({ ok: false, error: 'insufficient_funds', available_usd_cents: 40 });
@@ -159,16 +169,6 @@ describe('the backend, one smoke test per surface', () => {
     expect((await request(env, '/v1/agent/roadmap', { method: 'POST', headers: { authorization: `Bearer ${(await requestJson(env, '/v1/keys/mint', { body: { account: 'acme/app', scopes: ['spend'] } })).token}` }, body: { source: 'jira', roadmap } })).status).toBe(403);
   });
 
-  test('the books: exported whole, restored over a wiped worker, the same', async () => {
-    const env = useEnv(testEnv());
-    await fund(env, 'acme/app', 700);
-    const before = await requestJson(env, '/v1/accounts/acme%2Fapp');
-    const books = await requestJson(env, '/admin/export', { headers: admin });
-    expect((await request(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries } })).status).toBe(409);
-    expect((await requestJson(env, '/admin/import', { headers: admin, method: 'POST', body: { entries: books.entries, replace: true } })).entries).toBe(books.entries.length);
-    expect(await requestJson(env, '/v1/accounts/acme%2Fapp')).toEqual(before);
-  });
-
   test('the rails: a card minted within the bound, approved in real time, settled on capture and retired; a decline releases; a partner charge settles', async () => {
     const env = useEnv(testEnv());
     await fund(env, 'acme/app', 1000);
@@ -211,7 +211,7 @@ describe('the backend, one smoke test per surface', () => {
     expect(await (await request(env, '/')).text()).toContain('acme/app');
     for (const w of ['runway', 'roadmap', 'activity', 'now']) expect((await request(env, `/v1/accounts/acme%2Fapp/${w}.svg`)).headers.get('content-type')).toContain('image/svg+xml');
   });
-  test("an app's state on the books survives the core's loader: what the backend does not own it keeps, across a restart and an export", async () => {
+  test("an app's state on the books survives the core's loader: what the backend does not own it keeps, across a restart", async () => {
     const env = useEnv(testEnv());
     const { LimitLedger } = require('../src/ledger.ts') as typeof import('../src/ledger.ts');
     LimitLedger.extend({
@@ -225,8 +225,7 @@ describe('the backend, one smoke test per surface', () => {
     const after = await ledger.call<{ account: unknown; state: unknown }>('test_read', { account: 'acme/app' });
     expect(after.account).toEqual({ pat: { login: 'pat', monthly_usd_cents: 500 } });
     expect(after.state).toEqual({ 'SPON-TEST': { code: 'SPON-TEST', amount_usd_cents: 100 } });
-    const exported = await requestJson(env, '/admin/export', { headers: admin });
-    const state = exported.entries.find(([key]: [string, unknown]) => key === 'state')[1];
+    const state = await storedState(env);
     expect(state.coupons['SPON-TEST'].amount_usd_cents).toBe(100);
     expect(state.accounts['acme/app'].sponsors_active.pat.login).toBe('pat');
     expect((await requestJson(env, '/v1/accounts/acme%2Fapp')).balance_usd_cents).toBe(100);

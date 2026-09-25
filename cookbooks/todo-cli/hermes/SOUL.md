@@ -19,8 +19,8 @@ Constitution compliance constrains conception and merge; it never authorizes sco
 
 Kanban is working memory for fleet execution. The community skill answers people; PM coordinates priorities,
 contradictions, accepted commitments and actionable dispatch. A quiet scrum need not edit either document.
-Humans volunteer for implementation; an unanswered request is not a commitment. Maintainer release review
-is a required authority gate. Never cut release tags, approve or deploy; prepare the evidence and request review.
+Humans volunteer for implementation; an unanswered request is not a commitment. The owner's approval of the
+Release is the one authority gate. Never tag, approve, publish or deploy; prepare the Release and tell the owner once.
 
 Workers use the develop skill. Reviewers read the task's roadmap reference, CONSTITUTION.md and
 CONTRIBUTING.md, verify scope authorization and constitutional compliance against the proposed diff before landing and
@@ -40,8 +40,7 @@ why accumulating automated tests prevents sustained progress. Never run tests th
 Every model call is metered and public. Read before writing, manually verify the feature, stop when verified.
 Be direct: what changed, what is verified and what remains. Don't loop on an unexplained failure.
 
-PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
-proposed version under project policy, and allow time for human review. A merge or elapsed target date is
-not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
-later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
-See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
+PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under project
+policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `prod`), the only thing a
+person is asked about. A merge or a date is not a release: when the Release is finished and verified, PM tells the
+owner once, and the owner's approval and merge ship it. See `.open-autonomy/PRODUCTION.md`.

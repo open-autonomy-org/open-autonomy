@@ -2,7 +2,7 @@
 // mutations use the pinned Hermes CLI. Invoke one beat at a time through world attach.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ACCOUNT, ENC, STACK, api, need } from '../lib.ts';
+import { ACCOUNT, STACK, api, need } from '../lib.ts';
 import { hermesBin } from '../lib.ts';
 const project = resolve(STACK, 'project');
 const home = resolve(STACK, 'home');
@@ -72,12 +72,8 @@ if (command === 'inspect') {
   console.log(run(['bun', '.open-autonomy/community.ts', 'poll', 'pm']).out);
   console.log(scrum('prepare').out);
 } else if (command === 'release') {
-  const sync = await api(need('PLATFORM_URL'), { 'x-admin-token': process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin' }).post(`/admin/accounts/${ENC}/sync`);
-  if (sync.status !== 200) throw new Error(sync.text);
-  const status = (await api(need('PLATFORM_URL')).get(`/v1/accounts/${ENC}`)).body.live;
-  console.log({ live: status, withoutPackage: run(['bun', '.open-autonomy/maintain.ts', 'ship']) });
-  // PM now selects the release and prepares its package in the release-planning beat.
-  console.log('PM contacts the reviewer according to the project communication skill.');
+  // With no section requesting review, `ship` only keeps the Release open (or says there is no prod): nothing is sent.
+  console.log(run(['bun', '.open-autonomy/maintain.ts', 'ship']).out);
 } else if (command === 'archive') {
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--json']).out);
   const task = tasks.find((t: { title: string; status: string }) => t.title.startsWith('todo add') && t.status === 'done');
