@@ -63,6 +63,34 @@ print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agen
 }
 
 /**
+ * Where main is now, for a running stack (start.ts's watch, read in the executor): a clean checkout fetches it and names
+ * the files changed since `since`; where any changed, whether the board has a task running or in review (`busy`, null
+ * when the board cannot be read). A checkout with tracked changes is a killed attempt's: nothing is fetched.
+ */
+export async function containerMainMoved(options: { container: string; home: string; workspace: string; since: string }): Promise<{ main?: string; changed: string[]; busy?: boolean | null }> {
+  if (!/^[0-9a-f]{40}$/.test(options.since)) throw new Error('The started revision must be a commit id');
+  const output = await python(options.container, String.raw`
+import json,os,pathlib,subprocess,sys
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
+env={**os.environ,'HOME':str(home),'HERMES_HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
+def git(*args): return subprocess.check_output(['git','-C',str(workspace),*args],env=env,stderr=subprocess.DEVNULL,timeout=60).decode()
+if git('status','--porcelain','--untracked-files=no').strip(): print(json.dumps({'changed':[]})); sys.exit(0)
+git('fetch','-q','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main')
+main=git('rev-parse','origin/main').strip()
+changed=git('diff','--name-only',s['since'],main).split() if main!=s['since'] else []
+busy=None
+if changed:
+    board=subprocess.run(['hermes','kanban','list','--json'],cwd=str(workspace),env=env,capture_output=True,timeout=60)
+    try: tasks=json.loads(board.stdout) if board.returncode==0 else None
+    except ValueError: tasks=None
+    if isinstance(tasks,list): busy=any(isinstance(t,dict) and t.get('status') in ('running','review') for t in tasks)
+print(json.dumps({'main':main,'changed':changed,'busy':busy}))
+`, options, 150_000);
+  return JSON.parse(output);
+}
+
+/**
  * For another harness than Hermes (ADR 0009), the persona and skills of the committed `hermes/` in the workers' forms,
  * rendered into the home inside the executor by the kit's own `renderWorkerForms` (agent.ts, in the image beside Bun), as
  * the bare start renders them on its host: `AGENTS.md` with `SOUL.md` its link, each skill under `.agents/skills/`.

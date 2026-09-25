@@ -47,6 +47,9 @@ must be in the protected credential directory first.
 Startup fetches main and verifies the project identity before starting Hermes, loads configuration from
 committed main while preserving a dirty worker checkout, and waits for the reporter's SDK readiness. The agent
 then reports what runs it, the mode, the kit version, the executor's image and the host, on its page's Agent tab.
+While it runs, the clean checkout fetches main every ten minutes; when a change to `hermes/` or `.open-autonomy/`
+landed and no board task is running or in review, the runtime drains and the host exits 75, so the service manager
+restarts it onto that main, as a bare start restarts itself.
 
 ## Verification and upgrades
 
