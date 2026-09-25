@@ -19,7 +19,9 @@ Consequences. Supersedes nothing.
 - "members can contribute their time and machine - don't get into the detail about subscription, apps, etc. that
   differs with every app. The idea is that they are providing a substrate to run OA on AND they contribute their
   time. Now these could also vary so don't assume everyone will do everything - members have roles and
-  contributions they do as well as expected availability windows".
+  contributions they do as well as expected availability windows";
+- "study the soc2 template - don't necessarily adopt that but see how the way we work with team members can help
+  them or how we can learn from them".
 
 The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from it for the kit.
 
@@ -42,8 +44,10 @@ The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from i
 - **The front door is graded by its author.** Hookline's README opens on a sentence of 50 words and follows it with
   paragraphs on token semantics; it shows no image. Open Autonomy's leads with "Hermes PM maintains the sourced plan".
   The front-door skill (kit 3.6.0) sets the bar, and the agent that wrote the page judges it.
-- **A project with no release has nothing to announce.** The community skill announces released versions only;
-  Hookline has never released, and nothing asks PM to.
+- **A project with no release has nothing to announce.** The community skill announces released versions only.
+  PM already plans releases (`PRODUCTION.md`: a decision of accumulate, prepare, defer or request-review, and a
+  review package naming the exact human steps); Hookline's `ROADMAP.md` holds `Release decision: accumulate`,
+  `Target window: unset — no cadence agreed`. The machinery is there; no cadence was ever agreed.
 - **Nothing reaches a backer after they give.** A patron sees Polar's thanks page and their name on the wall.
   No report, update or thanks follows.
 - **Work no integration reaches goes to "the team member who handles it"** (`front-door`, `project-communications`).
@@ -82,9 +86,10 @@ and at each release, a fresh-context agent receives only the README and must say
 for, and reach a first success by following the quick start literally in the project's World. Each mismatch is a
 finding the change fixes. The captures in the README come from that run.
 
-**A release follows shipped change.** When a change a user can see has landed and the front door tells it truly,
-PM prepares the release: the version, the notes in a user's words, the tag ready for its reviewer. A release is
-what community announces.
+**A release follows shipped change.** The project's own document carries a release cadence, and PM's existing
+release planning (`PRODUCTION.md`) prepares a release when a change a user can see has landed within it and the front
+door tells it truly: the version, the notes in a user's words, the review package ready for a member holding
+release review. A release is what community announces.
 
 **Community reaches out, not only back.**
 - A weekly dev log from the week's real sessions and books: what shipped, what it cost, what is next. A project
@@ -117,6 +122,42 @@ owner of the plan; the roster as the home of roles, contributions and windows.
 **Open, decided by a later record:** how several members' machines share one project's work. Today one machine runs
 a project. The member contribution in this record does not wait on it: a project's first machine is its owner's.
 
+## What the soc2 template teaches, and what it gains
+
+The `soc2` skew and [Evidence Desk](https://github.com/open-autonomy-org/evidence-desk) already treat people as
+people who act at declared seams (ADR 0008), and several of their mechanisms are what a volunteer team needs.
+
+**Taken from it, for every project:**
+- **What a person owes is derived, never journaled.** `evidence-desk obligations` computes what each person owes from
+  their role and the last record of the act; `remind` keeps one issue per owed act assigned to its owner, closes it
+  when met, and lists the acts no one owns in one shared issue. Asks here work the same way: derived from the roles
+  and windows in the roster, one issue each, and the unowned ones in one help-wanted issue.
+- **A member has a start and an end.** Evidence Desk's people register has `start_date` and `end_date`, and access is
+  owed removed the day after the end. Volunteers join and leave; the roster records both, and a departed member's
+  authority lapses on its own rather than waiting for someone to notice.
+- **A periodic check-in, not a surprise audit.** An access review asks whether each person with access should still
+  have it. For a volunteer team the same review asks each member whether their roles, contributions and windows are
+  still true: it keeps the roster honest and is itself a moment to thank them and ask what would help.
+- **Each person records their own act, and the record is their credit.** In the soc2 skew a person's act is a pull
+  request they opened (`collect attribution`). The record that proves to an auditor who did what is the record that
+  credits a member for it.
+- **Onboarding per role.** Evidence Desk's forms are acknowledged per person at their start. A member taking a role
+  gets that role's short guide: what it does, its doors, what they can expect of the agents. Quizzes, background
+  checks and attestations stay in the soc2 skew; a volunteer project that asked for them would lose its volunteers.
+
+**Given back to it:**
+- The roster's roles, start and end dates feed Evidence Desk's import, so its people register is read from the project
+  rather than typed into it.
+- A member's declared window is the expectation an escalation's response time is judged against
+  (`records/escalations/`: `received_at`, `responded_at`), rather than an unstated one.
+- A member's machine is part of the system the project runs on: in the soc2 skew it is declared beside the
+  `vendor_accounts`, with its member as its operator, so the auditor's question "where does this run and who can
+  reach it" is answered from the repository.
+- "Never let essential work wait on one person" and SOC 2's independent second person for reviews the owner cannot
+  perform on themselves are the same recruit.
+
+Extrapolation, this author's: every item above beyond what the two repositories already do.
+
 ## Alternatives and tradeoffs
 
 - **Buy reach** (ads, paid placement). Rejected: money spent on reach is not spent on the project, and a
@@ -137,9 +178,11 @@ a project. The member contribution in this record does not wait on it: a project
 - `front-door`: the fresh-reader grade replaces self-review; help-wanted replaces routing to a team member.
 - `project-communications`: the channels, targets and allowed asks are recorded here as the owner's word; asks are
   routed by role and window.
-- The roster (`team` in `.open-autonomy/config.yaml`, the SDK's team codec) gains each member's roles, contributions
-  and availability windows, under the same strict validation; the Team page edits them through the member's own
-  authorized change.
+- The roster (`team` in `.open-autonomy/config.yaml`, the SDK's team codec) gains each member's roles, contributions,
+  availability windows, start and end, under the same strict validation; the Team page edits them through the
+  member's own authorized change.
+- The soc2 skew declares members' machines beside `vendor_accounts`; Evidence Desk's import reads the roster's roles
+  and dates.
 - The kit gains `community.ts reach`. Whether a project's GitHub App may read traffic (views, clones, referrers)
   is to be measured before it is built; a count it cannot read is reported as unavailable, never guessed.
 - The page's tiers keep stating the runway the money buys, from the metered burn.
