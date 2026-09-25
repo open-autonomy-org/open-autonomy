@@ -7,8 +7,8 @@
 - Nothing pushes to `main`. Push a `land/<topic>` branch (or `agent/<task id>` for agent work); the landing
   workflow opens its PR and arms auto-merge. Independent agent approval of the current head is required;
   changed diffs invalidate stale approval. Human approval is reserved for release. Never bypass review.
-- Deploys and admin operations go through GitHub workflows gated on the `production` environment's reviewer
-  (`apps/platform/DEPLOY.md`). No machine holds a deploy or admin token.
+- Deploys and releases happen when the owner merges the one Release pull request (`main` → `prod`); admin operations
+  run only on the owner's own dispatch (`apps/platform/DEPLOY.md`). No machine holds a deploy or admin token.
 - `hermes/`, `container/` and `.open-autonomy/` in this repository come from the Hermes kit
   (`create-open-autonomy upgrade .`); a kit change is made in `packages/kit-hermes/base` or a skew under `packages/kit-hermes/skews` and applied.
 
