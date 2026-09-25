@@ -66,9 +66,10 @@ meeting for the roadmap or a public channel is a public statement, as above.
 **A fully open project is the same machinery with every audience `public`.** A skew or template may fix that (every
 agent public, no team space): today's behaviour, now stated as a choice.
 
-**The constitutional invariant.** The owner approved this wording on 2026-09-25 ("approved"), and it replaces the
-invariant in `CONSTITUTION.md` in the change that lands this record: "Nothing in a public agent's reach is a secret
-that matters. Every public agent's session is published live. An agent whose audience is the team or the owner knows
+**The constitutional invariant.** The owner approved this wording in their own review of the pull request that
+landed it ([#774](https://github.com/open-autonomy-org/open-autonomy/pull/774#pullrequestreview-5316717720), at
+4929f5b6), and it replaces the invariant in `CONSTITUTION.md` in the change that lands this record: "Nothing in a
+public agent's reach is a secret that matters. Every public agent's session is published live. An agent whose audience is the team or the owner knows
 only what that audience may, and its sessions are published only to it. Nothing in any agent's reach is a secret
 that matters beyond its audience, and every spend is on the public books; a key spends one project's balance and
 stops at zero; a treasurer's key alone may pay." No agent is given a non-public audience before this record's first
@@ -77,8 +78,7 @@ implementation lands.
 Extrapolation, this author's (the owner named team awareness, need to know, per-agent visibility, internal meetings
 and an open skew; not these particulars): the profile as the unit; the audience ladder reused from the dashboard;
 checking a channel's audience by membership against the roster at setup and on roster changes; an unchecked
-channel counting as public;
-non-public sessions sent nowhere as the first step; the invariant's wording.
+channel counting as public; non-public sessions sent nowhere as the first step; the invariant's wording.
 
 **Open, decided by a later record:** publishing a team agent's sessions to the team on the platform (a session
 visible to `team` viewers), rather than not at all; and how an owner-level agent differs from a team one in practice.
