@@ -464,9 +464,12 @@ sc.on('sessionIndexEvent', ev => {
 });
 sc.on('exit', code => { if (!quitting) { log(`Supercode reader exited (${code})`); process.exit(1); } });
 await sc.start();
-const query = { harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes };
-const index = await sc.subscribeSessionIndex(query);
-for (const d of index.initial) descriptors.set(d.locator.session_id, d);
+// Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
+// named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
+const named = (await sc.listProfiles({ harness: 'hermes', homes })).profiles.filter(p => !p.default && p.home);
+const queries = [{ harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes },
+  ...named.map(p => ({ harnesses: ['hermes'], homes: { hermes: `${p.home}/state.db` } }))];
+for (const query of queries) for (const d of (await sc.subscribeSessionIndex(query)).initial) descriptors.set(d.locator.session_id, d);
 // The host can start Hermes once SDK discovery and native state are readable.
 // Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
 // gateway that just drained (a restart onto a moved main) reads as unreadable for a moment: that is a wait, not a death.
@@ -476,12 +479,14 @@ for (let attempt = 1; ; attempt++) {
 }
 process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
-let cursor: string | undefined;
-do {
-  const page = await sc.discover({ ...query, cursor, limit: 500 });
-  for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
-  cursor = page.next_cursor ?? undefined;
-} while (cursor);
+for (const query of queries) {
+  let cursor: string | undefined;
+  do {
+    const page = await sc.discover({ ...query, cursor, limit: 500 });
+    for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
+    cursor = page.next_cursor ?? undefined;
+  } while (cursor);
+}
 await tick();
 const poll = setInterval(requestTick, 5000); // observation cadence, never completion evidence
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {

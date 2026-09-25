@@ -9,11 +9,12 @@ export function publicationPolicy(value: unknown): PublicationPolicy {
   if (typeof p !== 'object' || Array.isArray(p)) throw new Error('publish must be a YAML mapping');
   const v = p as Record<string, unknown>;
   for (const key of ['runs', 'chats']) if (v[key] !== undefined && typeof v[key] !== 'boolean') throw new Error(`publish.${key} must be boolean`);
-  if (v.private !== undefined && (!Array.isArray(v.private) || v.private.some(x => typeof x !== 'string' || !x))) throw new Error('publish.private must be a list of session/job IDs');
+  if (v.private !== undefined && (!Array.isArray(v.private) || v.private.some(x => typeof x !== 'string' || !x))) throw new Error('publish.private must be a list of session IDs, job IDs or names, or profile names');
   return { runs: v.runs as boolean ?? true, chats: v.chats as boolean ?? false, private: v.private as string[] ?? [] };
 }
+// A profile named in `private` is an agent whose audience is the team or the owner (ADR 0014): none of its sessions is sent.
 export const publishes = (p: PublicationPolicy, d: SessionDescriptor, kind: 'run' | 'chat', jobName?: string): boolean =>
-  p[kind === 'run' ? 'runs' : 'chats'] && !p.private.includes(d.locator.session_id) && !(jobName && p.private.includes(jobName)) && !(d.recurrence && p.private.includes(d.recurrence.job_id));
+  p[kind === 'run' ? 'runs' : 'chats'] && !(d.profile && p.private.includes(d.profile)) && !p.private.includes(d.locator.session_id) && !(jobName && p.private.includes(jobName)) && !(d.recurrence && p.private.includes(d.recurrence.job_id));
 
 const content = (m: NormalizedMessage): string => typeof m.content === 'string' ? m.content : (m.content ?? []).map(p => typeof p === 'string' ? p : (p as { text?: string })?.text ?? '').join('');
 export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {

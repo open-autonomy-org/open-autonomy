@@ -18,7 +18,7 @@ seams: {"seams": [{"id": "roster", "scope": "owner", "door": "commit", "record":
 publish:
   runs: true        # sessions the schedule started (trigger: cron)
   chats: false      # conversations on a channel (Discord, a terminal)
-  private: []       # session IDs, job IDs or job names that never publish
+  private: [treasurer]   # session IDs, job IDs or names, or profiles (the treasurer, a team agent) never sent
 
 # Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).

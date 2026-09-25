@@ -10,7 +10,7 @@ team: {"members": []}
 publish:
   runs: true
   chats: false
-  private: []
+  private: [treasurer]   # session IDs, job IDs or names, or profiles (the treasurer, a team agent) never sent
 
 state_file: reporter-state.json
 
