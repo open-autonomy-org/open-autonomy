@@ -138,8 +138,9 @@ discussion; it is never the record of an act. So:
   the run the owner's `deploy-v*` tag at the candidate started, and an artifact by a human creating its release at the
   candidate SHA. PM cites those records, never a chat message, as the approval. Direction binds once recorded as an
   issue or comment by the verified GitHub account of a member holding `direction`, or as a commit they land.
-- Incidents, a change made to production outside the flow, a credential's issue, rotation or revocation, and the
-  response to an escalation are recorded as files under `records/` in a reviewed pull request, as the seams name.
+- Incidents, a change made to production outside the flow, a credential's issue, rotation or revocation, the
+  response to an escalation and a tested restore of a backup are recorded as files under `records/` in a reviewed
+  pull request, as the seams name.
   A project that allows no change outside the flow says so in `records/break-glass/README.md`.
 - `create-open-autonomy check` refuses a seams section outside these rules.
 

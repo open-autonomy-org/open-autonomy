@@ -35,6 +35,26 @@ From an Evidence Desk checkout (`bun install` once):
 6. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
    repository can hold.
 
+## Keeping the checks true as the system grows
+
+The agents build the system, so SOC 2 readiness is kept by what they must do on every change, not by a one-off
+setup:
+
+- **The checklist.** [`docs/decisions/SOC2-CHECKLIST.md`](docs/decisions/SOC2-CHECKLIST.md) names the ten things an
+  auditor relies on (change path, credentials, vendors, data, availability, backup and restore, logging and
+  alerting, access, incidents and emergency changes, evidence). Each item says which control it keeps and what
+  shows it.
+- **The ADRs.** Every architecture decision record answers the checklist for its change, and
+  `create-open-autonomy check` refuses one that leaves an item out.
+  [ADR 0001](docs/decisions/0001-soc2-baseline.md) is the baseline the system grows into: a required test check,
+  a health endpoint and monitor, and a service-held deploy credential before the first deploy; backups and a
+  recorded restore test before the first customer data.
+- **The internal audit.** The `internal-audit` job walks every item weekly against the system as it stands. It
+  records each run under `records/internal-audits/` and opens an issue for each finding, which the PM queues.
+- **The evidence.** Evidence Desk collects the audits and the restore tests as populations for the observation
+  period: `collect seam-records` reads `records/restore-tests/` with the other seams, and `records/internal-audits/`
+  with them.
+
 Keep `.open-autonomy/config.yaml`'s `vendor_accounts` complete: every account whose administrators could act outside
 the declared seams is a place an auditor will look. Recurring reviews that are a person's decision (access, risk,
 incidents) are scheduled in the workspace's obligations. The CPA firm, a penetration test, an independent second
