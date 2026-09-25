@@ -16,7 +16,7 @@ create-open-autonomy 3.18.0 on September 25, 2026.
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
-Status: corrective work is queued, but the first bounded revert is blocked before any edit because protected `CLAUDE.md` requires interactive owner approval. PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
+Status: planned; corrective work is queued, but the first bounded revert is blocked before any edit because protected `CLAUDE.md` requires interactive owner approval. PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
 Dispatch: fleet
 
 Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull/622), owner self-review [5188012108](https://github.com/open-autonomy-org/open-autonomy/pull/622#pullrequestreview-5188012108), and independent post-merge audit `hermes:task/t_ec574a74`.
@@ -28,7 +28,7 @@ Completion:
 
 ## pr651-review-audit: Reconcile the Polar patron-wall merge with independent review
 
-Status: PR #651's owner-authorized patron-wall correction is on main, but its sole exact-head App approval says it was recorded by the author and was not a fresh-context review. The review gate therefore remains unresolved pending an independent audit of the actual landed diff and the smallest supported prospective correction.
+Status: planned; PR #651's owner-authorized patron-wall correction is on main, but its sole exact-head App approval says it was recorded by the author and was not a fresh-context review. The review gate therefore remains unresolved pending an independent audit of the actual landed diff and the smallest supported prospective correction.
 Dispatch: fleet
 
 Source: verified owner `yueranyuan` authored and signed [PR #651](https://github.com/open-autonomy-org/open-autonomy/pull/651); the PR merged as `7ad0cab8` from head `e34f5ba7` after App [approval 5189264555](https://github.com/open-autonomy-org/open-autonomy/pull/651#pullrequestreview-5189264555), whose body explicitly records that it was made by the author rather than a fresh-context reviewer.
@@ -40,7 +40,7 @@ Completion:
 
 ## local-codex-plain: The bare and containerized fleets look the same; the container forwards
 
-Status: accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
+Status: planned; accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
 Dispatch: hold
 
 Source: the verified owner's [PR #593 ruling](https://github.com/open-autonomy-org/open-autonomy/pull/593#issuecomment-5628311527) was the original contrary public evidence. Accepted [ADR 0001](docs/decisions/0001-runtime-boundary.md) explicitly replaces that conflicting instruction and PR #594; verified owner `yueranyuan` then affirmed that replacement in [comment 5648467119](https://github.com/open-autonomy-org/open-autonomy/pull/594#issuecomment-5648467119). [PR #597](https://github.com/open-autonomy-org/open-autonomy/pull/597) is the merged implementation, approved at exact head `b13099c0`; merged [PR #624](https://github.com/open-autonomy-org/open-autonomy/pull/624) relocated the host tools between packages without changing the trust boundary.
@@ -52,7 +52,7 @@ Completion:
 
 ## operating-state-sdk: The owner's running or paused word travels through the SDK
 
-Status: implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
+Status: planned; implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
 Dispatch: hold
 
 Completion:
@@ -60,7 +60,7 @@ Completion:
 
 ## give-auth-production: Activate and verify the signed-in giving page in production
 
-Status: implementation reviewed in the twin world; production configuration and verification are not evidenced. Owner-authored PR #652 added the three sign-in secrets to the existing production `sync-secrets` operation after exact-head independent App review. No human development-review gate was required; installing the production secrets is the owner's, gathered into a Release package's `Owner does`.
+Status: planned; implementation reviewed in the twin world; production configuration and verification are not evidenced. Owner-authored PR #652 added the three sign-in secrets to the existing production `sync-secrets` operation after exact-head independent App review. No human development-review gate was required; installing the production secrets is the owner's, gathered into a Release package's `Owner does`.
 Dispatch: hold
 
 Source: `hermes:task/t_abe517c5`, approved implementation `389ce3b1`, the candidate's [`give-auth.ts`](https://github.com/open-autonomy-org/open-autonomy/blob/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997/apps/platform/src/give-auth.ts), and App-reviewed [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) at exact head `9b56f9cc` merged as `082869b0`.
@@ -73,7 +73,7 @@ Risk: [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) mer
 
 ## seven-day-autonomy: Run seven days with no human act but release review and shipping
 
-Status: owner-gated observation; its prerequisite implementations are reviewed, but current production and the start of the clock are not evidenced.
+Status: planned; owner-gated observation; its prerequisite implementations are reviewed, but current production and the start of the clock are not evidenced.
 Dispatch: hold
 
 Source: `hermes:task/t_f934d2a1`; prerequisite reviews `hermes:task/t_9427f376`, `hermes:task/t_8d0834f4` and `hermes:task/t_42194efa`.
@@ -87,7 +87,7 @@ Dependency: `release-next` must ship and be verified before the owner starts the
 
 ## real-money-live: Real money flows on open-autonomy.org
 
-Status: current owner-gated outcome; code paths are proven against twins, but no real transaction is evidenced.
+Status: planned; current owner-gated outcome; code paths are proven against twins, but no real transaction is evidenced.
 Dispatch: hold
 
 Source: `hermes:task/t_33aac5e5`; the deferral from grant-credit v2 is recorded in commits [`8ad2a7fa`](https://github.com/open-autonomy-org/open-autonomy/commit/8ad2a7fa7c31782f16c57b445e168d29b33d70cd) and [`3075a32b`](https://github.com/open-autonomy-org/open-autonomy/commit/3075a32b952d4da0651dadb04c87089b9ca00c35).
