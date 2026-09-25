@@ -23,6 +23,23 @@ export const app: App = {
     const env = coreEnv as Env;
     const { path, url, ledger, get, dec, privateHtml } = t;
     const patronage = new Patronage(ledger);
+    // ---- a project's patronage, for the project's own tools (ADR 0013: `community.ts reach`) ----
+    // What the project page's patrons wall shows, to whoever may see that page: the names wherever its overview is
+    // open, the money (the monthly total, each patron's amount) only where its books are. Answered 404 like the page.
+    const pm = path.match(/^\/v1\/accounts\/([^/]+)\/patronage$/);
+    if (pm) {
+      if (get()) return get()!;
+      const account = dec(pm[1]!);
+      if (account.includes(':') || !(await ledger.project(account)).found) return error('not_found', 404);
+      const closed = await t.admits(account, 'overview');
+      if (closed) return closed;
+      const [v, books] = await Promise.all([patronage.view(account), t.admits(account, 'books').then((r) => r === null)]);
+      return json({
+        account, patron_count: v.patron_count,
+        patrons: v.patrons.map((p) => ({ kind: p.kind, login: p.login, name: p.name ?? p.login, url: p.url ?? null, ...(books && p.amount_label ? { amount_label: p.amount_label } : {}) })),
+        ...(books ? { monthly_usd_cents: v.monthly_usd_cents } : {}),
+      }, { headers: NO_STORE });
+    }
     // ---- the human giving page: GitHub proves a login, the same grant moves the money ----
     if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env, undefined, url.searchParams.get('next') ?? undefined); }
     if (path === '/give/callback') { if (get()) return get()!; return finishGiveLogin(req, env); }

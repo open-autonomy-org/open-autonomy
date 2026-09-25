@@ -53,7 +53,8 @@ which this app mounts. Everything below describes the whole as deployed at open-
   product (monthly or once; the platform creates the products on first use), and a paid order mints to the
   account with the patron's name, once, from whichever arrives first of Polar's signed `order.paid` webhook
   at `/webhooks/polar` and the thanks page the patron lands on. Renewals are orders too. Coupons are bearer
-  grants redeemed on the page or at `/v1/coupons/redeem`.
+  grants redeemed on the page or at `/v1/coupons/redeem`. `GET /v1/accounts/:account/patronage` answers the
+  patrons wall to whoever may see the project's page, its money only where the books are open, as the page draws it.
 
 ## Keys
 

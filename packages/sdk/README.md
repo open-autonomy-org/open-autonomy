@@ -77,6 +77,7 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key?, for? }` (a give key) | grant credits from the funder's books to a project's, once per `key`; `for` may be `"any"`, `"model"`, `{models: [...]}`, or `{item: "id"}`, and absent means unrestricted |
 | `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received; a flow with a project not listed where everyone looks carries `private: true` and no name, id, note or purpose, its amount kept |
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
+| `GET /v1/accounts/:account/patronage` | the patrons wall as the project page shows it, on the Open Autonomy platform (not a self-host): `patron_count` and each patron's `kind`, `login`, `name`, `url` wherever the overview is open; `monthly_usd_cents` and each `amount_label` only where the books are. The kit's `community.ts reach` reads it (ADR 0013) |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
 Key scopes: `spend` (the rails), `narrate` (the events door: everything the automation says), `steer` (the owner's word: a roadmap push, the operating state, the owner's statements). A key minted without

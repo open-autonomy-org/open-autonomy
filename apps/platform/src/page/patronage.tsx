@@ -1,7 +1,7 @@
 // The platform's additions to the core's pages: the ask, the tiers, the subscribers, Explore. They enter the core's
 // pages through its slots and nowhere else. A self-host never imports this file.
 import type { DirectoryEntry } from '@open-autonomy/backend';
-import type { AccountSlots, DirectorySlots, Viewer } from '@open-autonomy/backend/page/model';
+import { openTo, type AccountSlots, type DirectorySlots, type Viewer } from '@open-autonomy/backend/page/model';
 import { at, safeUrl, ownerOf } from '@open-autonomy/backend/page/parts';
 import { usd, usd0 } from '@open-autonomy/backend/ui';
 import { DISPLAY, MONO, T, TEXT } from '@open-autonomy/backend/page/theme';
@@ -112,8 +112,10 @@ const chip = (p: Patron) => <a class="chip" href={safeUrl(p.url) ?? `https://git
 // What the platform puts into the core's slots on a project's pages.
 // its card. A grant on the platform came from a funder or an org's pool; the figures say from how many.
 const NONE: PatronageView = { tiers: [], patrons: [], patron_count: 0, monthly_usd_cents: 0, sponsors: [], polar_products: {} };
+// Listed means the overview is open to everyone, not the books: the monthly figure is money, drawn only where the
+// project's books are open to everyone, as the core's own card draws its balance.
 const facts = (entries: DirectoryEntry[], patronage: Record<string, PatronageView>): Record<string, unknown> =>
-  Object.fromEntries(entries.filter((e) => e.is_project && e.listed).map((e) => { const x = patronage[e.account] ?? NONE; return [e.account, <><span><b>{x.patron_count}</b> {x.patron_count === 1 ? 'patron' : 'patrons'}</span><span><b>{usd0(x.monthly_usd_cents)}</b>/mo</span></>]; }));
+  Object.fromEntries(entries.filter((e) => e.is_project && e.listed).map((e) => { const x = patronage[e.account] ?? NONE; return [e.account, <><span><b>{x.patron_count}</b> {x.patron_count === 1 ? 'patron' : 'patrons'}</span>{openTo(e.profile.config_yaml, 'books') ? <span><b>{usd0(x.monthly_usd_cents)}</b>/mo</span> : null}</>]; }));
 export function directorySlots(entries: DirectoryEntry[], patronage: Record<string, PatronageView>, grants: string): DirectorySlots {
   const p = (a: string): PatronageView => patronage[a] ?? NONE;
   const projects = entries.filter((e) => e.is_project && e.listed);

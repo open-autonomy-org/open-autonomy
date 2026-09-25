@@ -276,7 +276,21 @@ if (command === 'poll' && doorless) {
     const b = (await res.json()) as { balance_usd_cents?: number; burn_per_day_usd_cents?: number; runway_days?: number | null; granted_in_usd_cents?: number };
     out.books = { balance_usd_cents: b.balance_usd_cents ?? null, burn_per_day_usd_cents: b.burn_per_day_usd_cents ?? null, runway_days: b.runway_days ?? null, granted_in_usd_cents: b.granted_in_usd_cents ?? null };
   } catch (e) { out.books = unavailable((e as Error).message); }
-  out.backers = unavailable('the platform serves no patronage door yet; the patrons wall on the project page is the record');
+  // The backers: the patrons wall as the page shows it (the platform's patronage door). Its money comes only where the
+  // books are open; the share of the metered burn they cover is computed only from two figures both present.
+  try {
+    if (!platform) throw new Error('config.yaml names no platform');
+    const res = await fetch(`${platform}/v1/accounts/${encodeURIComponent(account)}/patronage`);
+    if (res.status === 404) throw new Error('the platform has no patrons wall open to everyone for this project');
+    if (!res.ok) throw new Error(`the patronage door answered ${res.status}`);
+    const p = (await res.json()) as { patron_count: number; monthly_usd_cents?: number };
+    const burn = (out.books as { burn_per_day_usd_cents?: number | null }).burn_per_day_usd_cents;
+    out.backers = {
+      patrons: p.patron_count,
+      monthly_usd_cents: p.monthly_usd_cents ?? unavailable('the books are not open to everyone'),
+      covers_metered_burn: typeof p.monthly_usd_cents === 'number' && typeof burn === 'number' && burn > 0 ? Math.round((p.monthly_usd_cents / (burn * 30)) * 100) / 100 : null,
+    };
+  } catch (e) { out.backers = unavailable((e as Error).message); }
   // The team: who is on it, what they give, and which roles have someone to ask.
   const roles: Record<string, { holders: number; with_windows: number }> = {};
   for (const m of current) for (const r of m.roles ?? []) { roles[r] ??= { holders: 0, with_windows: 0 }; roles[r].holders++; if (m.availability) roles[r].with_windows++; }

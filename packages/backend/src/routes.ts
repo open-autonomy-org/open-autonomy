@@ -32,6 +32,9 @@ export interface RouteTools {
   give(from: string, to: unknown, usdCents: unknown, note: unknown, key?: string, purpose?: unknown, by?: string): Promise<{ ok: boolean; error?: string; to_balance_usd_cents?: number }>;
   fundingAccount: string;
   grantsAccount: string;
+  // The owner's word on who sees a panel, as every core read door applies it: null when this request may see it, else
+  // the 404 to answer. An app's own door onto a project's records answers through it (ADR 0013's patronage door).
+  admits(account: string, panel: keyof Visibility): Promise<Response | null>;
 }
 export interface App {
   route?(req: Request, env: Env, ctx: ExecutionContext, tools: RouteTools): Promise<Response | undefined>;
@@ -101,7 +104,23 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   }
   if (path === '/favicon.svg') return new Response(LOGO_SVG, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=86400' } });
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
-  const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env) };
+  // The owner's word on visibility holds on these doors as on the pages: a panel the viewer may not see is not
+  // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else is
+  // the public. Answered 404 like the pages, never 403: the closed panel is not announced.
+  const admits = async (account: string, panel: keyof Visibility): Promise<Response | null> => {
+    const view = await ledger.project(account);
+    if (!view.found) return null;
+    const visibility = visibilityOf(view.profile.config_yaml);
+    if (sees('public', visibility[panel])) return null;
+    const claims = await authedClaims(req, env);
+    if (claims && claims.account.toLowerCase() === account.toLowerCase()) return null;
+    // The org's own key reads every project of the org as that project's key does (ADR 0010, owner's ruling
+    // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
+    if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
+    const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
+    return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
+  };
+  const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env), admits };
   const answered = await app.route?.(req, env, ctx, tools);
   if (answered) return answered;
 
@@ -227,22 +246,6 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.statementSet(claims.account, redactDeep(body), claims.kid);
     return json(r, { status: r.ok ? 200 : r.error === 'statement_limit' ? 409 : 400 });
   }
-  // The owner's word on visibility holds on these doors as on the pages: a panel the viewer may not see is not
-  // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else is
-  // the public. Answered 404 like the pages, never 403: the closed panel is not announced.
-  const admits = async (account: string, panel: keyof Visibility): Promise<Response | null> => {
-    const view = await ledger.project(account);
-    if (!view.found) return null;
-    const visibility = visibilityOf(view.profile.config_yaml);
-    if (sees('public', visibility[panel])) return null;
-    const claims = await authedClaims(req, env);
-    if (claims && claims.account.toLowerCase() === account.toLowerCase()) return null;
-    // The org's own key reads every project of the org as that project's key does (ADR 0010, owner's ruling
-    // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
-    if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
-    const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
-    return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
-  };
   // A storage key is `<kind>:<account>:…`, so an account id holding `:` could name another account's records: never an account.
   const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? (account.includes(':') ? error('not_found', 404) : admits(account, panel));
   // Money travels with the books: a door open wider than them answers without its `*usd_cents` figures.
