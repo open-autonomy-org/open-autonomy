@@ -14,10 +14,12 @@ Consequences. Supersedes nothing.
 - "we have a development strategy - but we also need a gtm strategy, the point is to make it self-sustaining
   which means we NEED to gain new backers AND keep existing backers";
 - "this also means the 'team' are volunteers"; "everyone on the team is a volunteer, even the owner";
-- "they're team members, they contribute their time, they run OA on their machines using their computer and
-  subscription";
 - "their resources are essentially credited to us without us having to worry about it - basically they're costs
-  that don't count. Otherwise we would have to pay for them".
+  that don't count. Otherwise we would have to pay for them";
+- "members can contribute their time and machine - don't get into the detail about subscription, apps, etc. that
+  differs with every app. The idea is that they are providing a substrate to run OA on AND they contribute their
+  time. Now these could also vary so don't assume everyone will do everything - members have roles and
+  contributions they do as well as expected availability windows".
 
 The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from it for the kit.
 
@@ -54,18 +56,25 @@ The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from i
 
 **A project is sustained by three contributions, and the agents work for all three.**
 
-- **Members** give time, and run the project's agent on their own machines and subscriptions. Their resources are
-  the project's for free and never count as its costs: every member lowers what the project must pay for. They are
-  the first thing a project grows.
-- **Backers** give money, and the money pays only for what no member donates: the platform's model rail while no
-  member's machine is working, hosting, domains and partners through the rails.
+- **Members** contribute their time, a machine (a substrate the project's Open Autonomy runs on), or both. What a
+  machine brings is the project's for free and never counts as its cost: every machine lowers what the project must
+  pay for. Members differ, and none is assumed to do everything: each has their roles, the contributions they make,
+  and the windows they are expected to be available. Members are the first thing a project grows.
+- **Backers** give money, and the money pays only for what no member donates: the rails' metered spend while no
+  member's machine is running, hosting, domains and partners.
 - **Users** use it. Members and backers come from them.
 
-A project is self-sustaining when its members carry its development and its backers cover the metered spend left.
+A project is self-sustaining when its members' machines and time carry its work and its backers cover the metered
+spend left.
+
+**The roster says what each member gives.** Beside each member's authority, the roster records their roles, the
+contributions they make (their time in those roles, a machine) and their expected availability windows. It is the
+member's own word, changed as they change; the agents read it and never infer it.
 
 **The agents read the numbers that say so.** A door (`community.ts reach`) reports, on the project's own record
 each week: visitors and their referrers, stars, clones and downloads, first-time outside authors; patrons, their
-monthly total and who left; members active and returning; the metered spend and how much of it backers cover. The
+monthly total and who left; members and machines active and returning, and the roles no one available covers; the
+metered spend and how much of it backers cover. The
 scrum reads it beside the board. The targets are in the project's own document, set by the owner.
 
 **The front door is graded by a reader who has never seen it.** Before a change to what a user sees or does lands,
@@ -86,10 +95,11 @@ what community announces.
   (Hacker News, Reddit, lists, other communities), a post drafted in full and labelled as written by the project's
   agent, offered as help-wanted.
 
-**Help-wanted replaces "the team member who handles it".** Work the agents cannot do is posted where members and
-users see it, prepared so it costs its taker one decision: the exact values, the file, the drafted text. It is
-never routed to the owner as a default, and nothing essential waits on one person: every seam that needs a person
-has more than one who may act at it, and recruiting the second is a goal the scrum tracks.
+**Asks go to a role, within its members' windows.** Work the agents cannot do goes to a member whose role covers it
+and who is within their window, prepared so it costs one decision: the exact values, the file, the drafted text.
+With no such member, it is posted as help-wanted where members and users see it. It is never routed to the owner as
+a default, and nothing essential waits on one person: every seam that needs a person has more than one member whose
+role covers it, and recruiting the second is a goal the scrum tracks.
 
 **Asks are counted.** Each ask of a person is recorded with what it asked for and when it was answered. The door
 reports asks per week and how long they waited; the scrum works to reduce both.
@@ -97,16 +107,15 @@ reports asks per week and how long they waited; the scrum works to reduce both.
 **Strategy owns the plan, community carries it out.** No new role: the strategy skill gains a sustain mandate
 (which users, which channels, which asks), and community executes it on the agreed channels. The targets, the
 cadences, the channels and which asks are allowed are in the project's own document, the owner's word; the agents
-never edit them.
+never edit them. The strategy never assumes a member does more than the roster says.
 
 Extrapolation, this author's (the owner named the goal and the three contributions, not these particulars): the
 weekly and monthly cadences; the contents of `community.ts reach`; the fresh-reader grade and where it runs; the
-release trigger; help-wanted as the replacement; counting asks; strategy as the owner of the plan.
+release trigger; routing asks by role and window, with help-wanted as the fallback; counting asks; strategy as the
+owner of the plan; the roster as the home of roles, contributions and windows.
 
-**Open, decided by a later record:** how members' machines share one project. Two shapes: members' machines as
-workers of the project's one runtime (board tasks dispatched to the machine of their assignee), or each member
-running the project's runtime with a board every runtime reads and claims from (the platform, per ADR 0005). The
-member contribution in this record does not wait on it: a project's first member is its owner's machine today.
+**Open, decided by a later record:** how several members' machines share one project's work. Today one machine runs
+a project. The member contribution in this record does not wait on it: a project's first machine is its owner's.
 
 ## Alternatives and tradeoffs
 
@@ -114,9 +123,9 @@ member contribution in this record does not wait on it: a project's first member
   project's books would show its backers paying for its promotion.
 - **Automate posting to every community.** Rejected: most forbid posts by bots, and one caught project costs every
   project on the platform its welcome. The agent drafts; a person posts, under their own name.
-- **Show members' donated compute on the books in dollars.** Rejected by the owner's ruling: donated resources are
-  not costs. The ledger's `consumed_usd_cents` stays the only cost; members are credited by name and by the work
-  their machines delivered.
+- **Show what members' machines bring on the books in dollars.** Rejected by the owner's ruling: donated resources
+  are not costs. The ledger's `consumed_usd_cents` stays the only cost; members are credited by name and by the work
+  their time and machines delivered.
 - **A growth agent beside PM and community.** Rejected: a new role for what strategy and community already own.
 
 ## Consequences
@@ -126,7 +135,11 @@ member contribution in this record does not wait on it: a project's first member
 - `pm`: reads the numbers at scrum; prepares releases after shipped change; counts asks.
 - `strategy`: the sustain mandate and the plan it produces.
 - `front-door`: the fresh-reader grade replaces self-review; help-wanted replaces routing to a team member.
-- `project-communications`: the channels, targets and allowed asks are recorded here as the owner's word.
+- `project-communications`: the channels, targets and allowed asks are recorded here as the owner's word; asks are
+  routed by role and window.
+- The roster (`team` in `.open-autonomy/config.yaml`, the SDK's team codec) gains each member's roles, contributions
+  and availability windows, under the same strict validation; the Team page edits them through the member's own
+  authorized change.
 - The kit gains `community.ts reach`. Whether a project's GitHub App may read traffic (views, clones, referrers)
   is to be measured before it is built; a count it cannot read is reported as unavailable, never guessed.
 - The page's tiers keep stating the runway the money buys, from the metered burn.
