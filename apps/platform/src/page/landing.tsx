@@ -22,6 +22,8 @@ export interface LandingData {
   v: ProjectView;
   // Whether this viewer is admitted to the books; without them the page draws no money (the view carries none).
   books: boolean;
+  // Whether this viewer may see the sessions; without them `sessions` holds only the live ones.
+  runs: boolean;
   sessions: SessionSummary[];
   live: string[];
   roadmap: Roadmap;
@@ -195,7 +197,7 @@ function Poster({ d }: { d: LandingData }) {
     sub = <>{fmtAgo(last.started_at, d.now)}{d.books ? ` · ${usd(last.usd_cents)} metered` : ''}{door ? <> · {door}</> : null}</>;
   } else {
     head = 'The workshop';
-    line = standing === 'unfunded' ? 'Waiting for its first funds.' : 'Waiting for its first run.';
+    line = standing === 'unfunded' ? 'Waiting for its first funds.' : d.runs ? 'Waiting for its first run.' : 'Its runs are not open to everyone.';
     sub = door;
   }
   const still = !(first && standing === 'live');
@@ -393,7 +395,7 @@ export function landingDocument(title: string, brand: string, body: string, meta
 // The page as the core's router asks for it: the core's records and who is looking, the platform's patronage.
 // The dashboard is offered to whoever the owner admits to its overview.
 export function landingPage(base: LandingBase, p: { brand: string; patronage: PatronageView; polar: boolean; sponsor: string }): string {
-  const d: LandingData = { brand: p.brand, v: base.view, books: sees(base.role, base.visibility.books), sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
+  const d: LandingData = { brand: p.brand, v: base.view, books: sees(base.role, base.visibility.books), runs: sees(base.role, base.visibility.sessions), sessions: base.sessions, live: base.live, roadmap: base.roadmap, daily: base.daily, patronage: p.patronage, polar: p.polar, sponsor: p.sponsor, now: base.now, who: base.who, dashboard: sees(base.role, base.visibility.overview) };
   const description = base.view.profile.tagline ?? `${nameOf(base.account)}, building itself in the open. Every session and every cent on public books.`;
   return landingDocument(base.about ? `About · ${nameOf(base.account)}` : nameOf(base.account), p.brand, render(base.about ? About(d) : Landing(d)), { description, feed: at(base.account, 'updates.xml'), ...(sees('public', base.visibility.overview) ? { image: `${base.origin}${at(base.account, 'card.png')}` } : {}) });
 }

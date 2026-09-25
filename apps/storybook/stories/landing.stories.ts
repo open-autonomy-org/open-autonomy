@@ -12,7 +12,7 @@ const three = { ...none, patrons: [
   { kind: 'funder', login: 'alice', amount_label: '$5 grant credits' },
 ], patron_count: 3, monthly_usd_cents: 3500 };
 const live = (fx: typeof openAutonomy) => ({ live: [pmTail.key], sessions: [{ ...fx.sessions.find((s) => s.key === pmTail.key)!, status: 'live', ended_at: undefined, outcome: undefined, started_at: new Date(NOW - 4 * 60_000).toISOString() }, ...fx.sessions.filter((s) => s.key !== pmTail.key)] });
-const page = (d: Partial<LandingData>) => `<style>${LANDING_CSS}</style>${render(Landing({ brand: 'open-autonomy', now: NOW, polar: false, sponsor: "open-autonomy-org/open-autonomy", patronage: none as never, dashboard: true, daily: [], ...d } as LandingData))}`;
+const page = (d: Partial<LandingData>) => `<style>${LANDING_CSS}</style>${render(Landing({ brand: 'open-autonomy', now: NOW, polar: false, sponsor: "open-autonomy-org/open-autonomy", patronage: none as never, dashboard: true, runs: true, daily: [], ...d } as LandingData))}`;
 
 const meta: Meta = { title: 'Platform/Landing', render: (args) => page(args as never), argTypes: { dashboard: { control: 'boolean' } } };
 export default meta;
