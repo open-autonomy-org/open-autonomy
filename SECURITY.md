@@ -67,9 +67,10 @@ cross one of these boundaries are especially valuable.
 - **Admin goes through GitHub.** Every admin route needs the admin token, which lives only in the
   `production` environment (and in the worker); `.github/workflows/admin.yml` is the only caller, and it
   runs only on the owner's own dispatch. proof: smoke "admin without the token".
-- **The books can be restored, only whole and only by admin.** An export is every entry; an import into a
-  non-empty worker is refused unless the reviewed caller says replace. proof: smoke "exported whole, restored
-  over a wiped worker, the same";.
+- **The books are never copied out.** They live in one SQLite-backed Durable Object, whose storage Cloudflare
+  keeps with 30 days of point-in-time history; a restore is a reviewed change calling that storage's own
+  bookmark restore, shipped in a Release. No export exists: a public repository's run artifact would publish
+  every account's books.
 - **What the agent can read.** The agent reads its own account's public routes and nothing privileged; the
   world's egress is sealed, so anything it reached for outside the twins would be refused loudly. proof:
   world "egress sealed".
