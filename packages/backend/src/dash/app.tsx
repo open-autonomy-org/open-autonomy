@@ -439,10 +439,9 @@ export function Books({ d }: { d: DashData }) {
 // The roster from the committed config, and the owner's door to change it: a form that continues with GitHub and
 // opens a pull request; the change takes effect when merged.
 const TEAM_LABELS: Record<string, string> = { owner: 'Owner', direction: 'Project direction', moderation: 'Moderation', 'release-review': 'Release review' };
-const GIVES_LABELS: Record<string, string> = { time: 'Time', machine: 'A machine' };
 // What a member gives and when (ADR 0013), as the form takes it back (team.ts `readAvailability`).
 const availabilityText = (a: TeamMember['availability']): string => a ? [a.tz, ...a.windows.map((w) => `${w.days.join(',')} ${w.from}-${w.to}`)].join('; ') : '';
-const givesOf = (m: TeamMember): string => [...(m.roles ?? []), ...(m.contributes ?? []).map((c) => GIVES_LABELS[c] ?? c)].join(' · ');
+const givesOf = (m: TeamMember): string => [...(m.roles ?? []), ...(m.contributes ?? [])].join(' · ');
 export function Team({ d }: { d: DashData }) {
   const a = d.v.account;
   const r = d.roster;
@@ -472,7 +471,7 @@ export function Team({ d }: { d: DashData }) {
             {field('discord_name', 'Discord name', member?.discord?.name)}
             <fieldset class="oa-field"><legend>Authority</legend>{Object.entries(TEAM_LABELS).map(([scope, label]) => <label class="oa-check"><input type="checkbox" name="scopes" value={scope} checked={member?.scopes.includes(scope as never)} /> {label}</label>)}</fieldset>
             {field('roles', 'Roles (comma separated, the project\'s own names for the work: triage, docs, outreach; authority is below)', member?.roles?.join(', '), false, 400)}
-            <fieldset class="oa-field"><legend>Gives</legend>{Object.entries(GIVES_LABELS).map(([c, label]) => <label class="oa-check"><input type="checkbox" name="contributes" value={c} checked={member?.contributes?.includes(c as never)} /> {label}</label>)}</fieldset>
+            {field('contributes', 'Gives (comma separated: time, and each resource, such as machine, gpu, domain)', member?.contributes?.join(', '), false, 400)}
             {field('availability', 'Expected availability (time zone; then windows: Europe/Berlin; mon-fri 18:00-21:00; sat 10:00-14:00)', availabilityText(member?.availability), false, 600)}
             {field('joined', 'Joined (YYYY-MM-DD)', member?.joined, false, 10)}
             {field('left', 'Left (YYYY-MM-DD; their authority lapses the day after)', member?.left, false, 10)}

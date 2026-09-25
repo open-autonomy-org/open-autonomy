@@ -2,9 +2,6 @@
 // section in config.yaml, preserving every byte outside it. No platform account database is authoritative.
 export const TEAM_SCOPES = ['owner', 'direction', 'moderation', 'release-review'] as const;
 export type TeamScope = typeof TEAM_SCOPES[number];
-// What a member gives the project (ADR 0013): their time, a machine the project's Open Autonomy runs on, or both.
-export const TEAM_CONTRIBUTIONS = ['time', 'machine'] as const;
-export type TeamContribution = typeof TEAM_CONTRIBUTIONS[number];
 export const TEAM_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 export type TeamDay = typeof TEAM_DAYS[number];
 /** A weekly window a member expects to be available, in their own time zone: `from` before `to`, both `HH:MM`. */
@@ -19,7 +16,9 @@ export interface TeamMember {
   source: string;
   /** The project's own names for the work the member takes on (`triage`, `docs`, `outreach`); never authority. */
   roles?: string[];
-  contributes?: TeamContribution[];
+  /** What the member gives, in the project's own words: their `time`, and any resource (a `machine` the project's
+   *  Open Autonomy runs on, a `gpu`, a `domain`, a tool's seat). */
+  contributes?: string[];
   /** When the member expects to be available; absent, nothing is assumed. */
   availability?: { tz: string; windows: TeamWindow[] };
   /** `YYYY-MM-DD`, UTC. A member's authority holds from `joined` through `left`, and lapses the day after. */
@@ -49,8 +48,8 @@ function validateContribution(m: Record<string, unknown>): Pick<TeamMember, 'rol
     if (m.roles.length) out.roles = m.roles as string[];
   }
   if (m.contributes !== undefined) {
-    if (!Array.isArray(m.contributes) || m.contributes.some(c => !TEAM_CONTRIBUTIONS.includes(c)) || new Set(m.contributes).size !== m.contributes.length) throw new Error('A member contributes their time, a machine, or both.');
-    if (m.contributes.length) out.contributes = TEAM_CONTRIBUTIONS.filter(c => (m.contributes as string[]).includes(c));
+    if (!Array.isArray(m.contributes) || m.contributes.length > 10 || m.contributes.some(c => typeof c !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(c)) || new Set(m.contributes).size !== m.contributes.length) throw new Error('Contributions are at most ten distinct lowercase names (letters, digits, hyphens): time, and each resource given.');
+    if (m.contributes.length) out.contributes = m.contributes as string[];
   }
   if (m.availability !== undefined) {
     const a = m.availability;
