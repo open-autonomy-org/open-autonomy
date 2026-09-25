@@ -1,7 +1,7 @@
 ---
 name: front-door
 description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at every scrum and release.
-version: 1.0.0
+version: 1.1.0
 metadata:
   hermes:
     tags: [open-autonomy, docs]
@@ -71,10 +71,11 @@ homepage points at the docs site or the running product, when either exists. Rea
 What the front door touches goes through the project's integrations: the README, docs, media and Pages through
 its GitHub App as ordinary changes; posts through the channels `project-communications` records. A setting or
 a channel no integration reaches (the repository's description, topics, homepage and social preview, which
-the App is not given the administration permission to change; a publishing platform with no integration) is
-coordinated with the team: the member `project-communications` names for it, else the team's agreed
-coordination channel, with the exact values or file ready. Ask once, record it on the roadmap until done, and
-do not route it to the owner unless the owner is that member.
+the App is not given the administration permission to change; a publishing platform with no integration) is an
+ask of the role that covers it (`project-communications` names the project's roles): whoever
+`bun .open-autonomy/community.ts who <role>` returns, the available first, with the exact values or file ready so it
+costs them one decision. With no one, post it with `community.ts help-wanted`. Ask once, record it on the roadmap
+until done, and never route it to the owner by default.
 
 ## Docs
 
@@ -96,4 +97,4 @@ behaviour they describe.
   shows, down to the quick start.
 - Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
   disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
-  publish is raised with the team member who handles repository settings.
+  publish is an ask of the role that handles repository settings, as above.

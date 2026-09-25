@@ -130,10 +130,19 @@ follow the agreed activation policy. A policy change needs owner authority; neit
 ## Outward communication
 
 The front door and the outward channels go through this project's integrations (the `front-door` and
-`community` skills). Record here who on the team handles what no integration reaches: repository settings
-(description, topics, homepage, social preview, Pages source, Discussions), and any publishing channel that
-needs an account. Name the roster member for each and where to reach them in public; where none is named,
-agents use the team's agreed coordination channel.
+`community` skills). What no integration reaches (repository settings: description, topics, homepage, social
+preview, Pages source, Discussions; a publishing channel that needs an account) is a role's work. Every member is
+a volunteer, the owner included, and gives what the roster says: their roles, their time or a machine, their
+availability windows (ADR 0013). Record here the role names this project uses for that work (for example
+`repo-settings`, `outreach`); members take roles on through the roster. An ask goes to whoever
+`bun .open-autonomy/community.ts who <role> [scope]` returns, the available first, in the public place they are
+reached, prepared so it costs one decision; an ask that needs authority names its scope. With no one, it is posted
+with `community.ts help-wanted` where members and users see it. It never goes to the owner by default, and nothing
+essential waits on one person: a role with a single holder is a recruit the scrum tracks.
+
+Record here too the owner's word on sustaining the project: the release cadence, the dev log and backer report
+cadences, the channels that count, the numbers the project aims for (`community.ts reach` reports them), and which
+asks of users and members are allowed. Agents read it and never change it.
 
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps

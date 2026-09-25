@@ -1,7 +1,7 @@
 ---
 name: community
 description: Read and answer the project's community, preserve sourced input for the PM scrum, acknowledge human commitments without assigning unsolicited work, and keep every outward channel telling what shipped.
-version: 2.5.0
+version: 2.6.0
 metadata:
   hermes:
     tags: [open-autonomy, community, github, discord]
@@ -61,8 +61,24 @@ skill), linking the release and the README.
 - Every project has one outward channel through its own GitHub App: its repository's Discussions, category
   Announcements (`bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`), one post
   per release. Where Discussions or that category is off, turning it on is a repository setting, coordinated
-  as below. A channel that needs an account (a blog platform, a
-  social profile) has no integration until the team sets one up: coordinate it, in public, with the team
-  member `project-communications` names for outward communication, else the team's agreed coordination
-  channel, with the first post ready, never the owner by default; record it for the PM rather than dropping it. The same goes
-  for posting to any channel whose publishing still needs a person.
+  as below. A channel that needs an account (a blog platform, a social profile, a community that forbids
+  posts by bots) has no integration: its post is an ask of the role that covers outreach
+  (`bun .open-autonomy/community.ts who <role>`, else `help-wanted`), with the post drafted in full and labelled
+  as written by the project's agent, for a person to post under their own name; never the owner by default.
+  Record it for the PM rather than dropping it.
+
+## Sustain the project
+
+A project lives on its members' time and machines, its backers' money and its users (ADR 0013). The owner's
+word in `project-communications` sets the cadences, channels, targets and allowed asks; do only what it covers.
+
+- **The dev log**, at its agreed cadence: what shipped, what it cost (the books), what is next, written from the
+  period's real sessions and changelog, on the channels recorded for it. The project built in the open is the
+  story; never invent progress, and a quiet period says so in a line.
+- **The backer report**, at its agreed cadence, where backers read it: what their money bought (items shipped,
+  sessions, the spend) and the runway left, thanking backers and members by name where they are public.
+- **The numbers**: `bun .open-autonomy/community.ts reach` reads them; a count it reports unavailable stays
+  unavailable in what you write.
+- **Asks of people** go by role and window through `community.ts who`; an ask is prepared completely, sent once,
+  and followed up only when agreed or when evidence changes. Members differ: never assume anyone gives more than
+  the roster says.

@@ -21,7 +21,7 @@
     "src/**/*.ts",
     "test/**/*.ts",
     "skews/self-build/.open-autonomy/scrum.ts",
-    "base/.open-autonomy/community.ts",
+    "../../.open-autonomy/community.ts",
     "base/.open-autonomy/maintain.ts",
     "../../.open-autonomy/start.ts",
     "../../.open-autonomy/host.ts",
