@@ -63,6 +63,65 @@ print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agen
 }
 
 /**
+ * For another harness than Hermes (ADR 0009), the persona and skills of the committed `hermes/` in the workers' forms,
+ * rendered into the home inside the executor by the kit's own `renderWorkerForms` (agent.ts, in the image beside Bun), as
+ * the bare start renders them on its host: `AGENTS.md` with `SOUL.md` its link, each skill under `.agents/skills/`.
+ */
+export async function renderContainerWorkerForms(options: { container: string; home: string; workspace: string; revision: string }): Promise<string[]> {
+  const output = await python(options.container, String.raw`
+import io,json,os,pathlib,subprocess,sys,tarfile,tempfile
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
+env={**os.environ,'HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
+archive=subprocess.check_output(['git','-C',str(workspace),'archive','--format=tar',s['revision'],'hermes'],env=env,stderr=subprocess.DEVNULL,timeout=30)
+with tempfile.TemporaryDirectory(prefix='oa-forms-') as temp:
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        for member in tar.getmembers():
+            assert (member.isfile() or member.isdir()) and not pathlib.PurePosixPath(member.name).is_absolute() and '..' not in pathlib.PurePosixPath(member.name).parts
+        tar.extractall(temp,filter='data')
+    code="import { renderWorkerForms } from '/opt/agent/.open-autonomy/agent.ts'; console.log(JSON.stringify(renderWorkerForms(process.env.OA_FROM, process.env.OA_TO)))"
+    out=subprocess.check_output(['bun','-e',code],env={**env,'OA_FROM':str(pathlib.Path(temp)/'hermes'),'OA_TO':str(home)},timeout=60)
+print(out.decode().strip().splitlines()[-1])
+`, options);
+  return JSON.parse(output);
+}
+
+/**
+ * Codex's own sandbox in each profile's Codex home, as the profile's approvals allow. In the executor Codex's
+ * bubblewrap cannot make its namespaces and every command fails (measured: a PM run could run nothing); the executor
+ * is the boundary, as for Hermes's own terminal there. But the sandbox was also a gate: Codex asked before escaping
+ * it and the orchestrator answered with Hermes's approval rule, and Codex 0.156.1 offers no policy that asks before
+ * every command instead (its `untrusted` is refused as unsupported: measured). So only a profile whose owner turned
+ * Hermes's approvals off (`approvals.mode: off`) gets `sandbox_mode = "danger-full-access"`; a profile that keeps them
+ * (the treasurer, which pays) keeps the sandbox, and its commands fail closed in the executor rather than run
+ * ungated. The key is written or removed at the top of the home's `config.toml`; the orchestrator's tables are kept.
+ */
+export async function openContainerCodexSandbox(options: { container: string; home: string }): Promise<string[]> {
+  const output = await python(options.container, String.raw`
+import json,pathlib,re,sys,yaml
+s=json.load(sys.stdin)
+home=pathlib.Path(s['home'])
+lines=[]
+for profile in [home]+[p for p in sorted((home/'profiles').glob('*')) if p.is_dir()]:
+    cfg=profile/'config.yaml'
+    doc=(yaml.safe_load(cfg.read_text()) if cfg.exists() else None) or {}
+    mode=str(((doc.get('approvals') or {}).get('mode')) or 'manual').strip().lower()
+    codex=profile/'codex'
+    codex.mkdir(parents=True,exist_ok=True)
+    f=codex/'config.toml'
+    text=f.read_text() if f.exists() else ''
+    first=re.search(r'(?m)^\s*\[',text)
+    head,tail=(text[:first.start()],text[first.start():]) if first else (text,'')
+    head=re.sub(r'(?m)^sandbox_mode\s*=.*\n?','',head)
+    open_=mode=='off'
+    f.write_text(('sandbox_mode = "danger-full-access"\n' if open_ else '')+head+tail)
+    lines.append(f"{profile.name if profile != home else 'home'}: Codex sandbox {'off (approvals off)' if open_ else 'kept (approvals '+mode+'): commands fail closed in the executor'}")
+print(json.dumps(lines))
+`, options);
+  return JSON.parse(output);
+}
+
+/**
  * The image's own account of what it lacks (a slim image's plugin denylist, seeded at
  * /opt/hermes/cli-config.yaml.example) joins the rendered config when that says nothing about plugins, so a removed
  * capability is reported off, never failed at call time. Runs after the agent's setup is applied: the runtime's fact
