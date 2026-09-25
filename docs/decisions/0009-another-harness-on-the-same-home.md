@@ -44,8 +44,7 @@ rows 1–14 done):
 
 - **The pick.** `.open-autonomy/agent.json` names the harness the owner picks at its top level: `"harness":
   "claude-code"` on Open Autonomy's model rail, or `"codex"` on the owner's ChatGPT subscription
-  (`provider: openai-codex`, through the valve's Codex forward: the worker holds no login), or `"claude-code"` on
-  the owner's own Claude login (`provider: anthropic`, no endpoint, no key; amended below). Absent, it is `hermes`,
+  (`provider: openai-codex`, through the valve's Codex forward: the worker holds no login). Absent, it is `hermes`,
   and nothing changes for that project. The package is
   otherwise unchanged: the same `inference`, `jobs` and `extensions.hermes`, applied through Hermes's own
   door into the same home.
@@ -197,51 +196,6 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 - **Out of scope.** Compatible: the kit implements no harness; Supercode's orchestrator runs stock Codex or
   Claude Code, and the kit only picks it.
 
-## Amendment: Claude Code on the owner's own Claude login
-
-**Authorization.** The owner's coding conversation of September 24, 2026, after both pilots moved to the Codex
-subscription: "wait why codex I thought we were on claude right now with orchestrator"; on how, "supercode
-actually already has a way for doing the 'teleport'", "It's the remote execution", "no it's actually already
-done - understand the feature"; on the answer below (the machine daemon), "yes".
-
-**Decision.** A package whose harness is `claude-code` and whose profile's default model is `provider: anthropic`
-with no `endpoint` or `base_url` and no key (no `credential` but `harness-login`, no `placeholder_key`) runs its
-worker on the host user's own Claude login. The kit's start runs the
-orchestrator with `--machine local`: its workers start through that user's Supercode machine daemon
-(`supercode teams machine start`, `harness.v1` over the daemon's owner-only socket), as that user, with that
-user's HOME. The installed Claude Code owns the login and its refresh; Open Autonomy keeps no copy and reads
-none. The start refuses this pick under `--as`, by name, since the daemon's worker is that user whatever user
-the agent runs as, before any service starts. The orchestrator (0.3.10) finds `local` in the user's own Teams home
-even when the agent's HOME is its own, and refuses to start when that daemon does not answer.
-
-**Measured** (orchestrator 0.3.8 and 0.3.9, Claude Code 2.1.280, Teams 0.2.10), on scratch homes through a local
-daemon:
-- Claude Code finds its login through its config home: under a `CLAUDE_CONFIG_DIR` of the profile's own it
-  answered "Not logged in"; without one, on the daemon's HOME, the turn ran on the subscription.
-- With the profile's Claude home given by `--add-dir` (under `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD`),
-  `--setting-sources project,local` and `--strict-mcp-config`, the persona (through the `@AGENTS.md` bridge), a
-  profile skill and the orchestrator's MCP door reached the worker, and the owner's own global instructions
-  did not; without `--setting-sources`, they did.
-- A daemon's worker inherits the daemon's environment, not the orchestrator's; on `local`, orchestrator 0.3.9
-  carries the orchestrator's environment into the launch, all but HOME, USER and LOGNAME.
-
-**This author's extrapolation, not the owner's words:** the pick's shape (a model with no endpoint and no key,
-rather than a new key); `--machine local` only; the refusal under `--as`; and the agent's identities under the
-owner's HOME. There git's ssh would read the owner's config (which names the owner's own key for github.com), the
-owner's default key files and whatever key agent the session holds, and `gh` the owner's login; so the start gives
-ssh no config file, no key file and only the kit's ssh agent (the deploy key, or none), with the Hermes home's known
-hosts, and gives `gh` the Hermes home's config directory. Resolved offline (`ssh -G`): no identity file, the named
-agent, the home's known hosts. The commit author is the checkout's own git config, as before. Not yet run: a push,
-a scheduled fire or a board task of a real project on this pick. What stays within reach is below.
-
-**Constitution.** *Nothing in an agent's reach is a secret that matters*: not met by this pick, and said so.
-The worker runs as the owner, so the owner's Claude login and everything else under that user are in its reach,
-as they already are for a bare agent that runs as the owner (bare mode alone provides no filesystem isolation;
-this repository's own agents take that trade on the owner's Mac). What this pick adds is that `--as` cannot
-remove it, which is why the start refuses the two together. Pinning git's and `gh`'s identities keeps the agent's
-ordinary acts its own; it is not a boundary, since the worker can still read anything the owner can. *Every spend is metered on public books*: the
-owner's subscription spends no project funds, as for `openai-codex`; the platform books nothing for these calls.
-
 ## Amendment: another harness in the container executor
 
 **Authorization.** The owner's coding conversation of September 24, 2026. On where the agents run: "I thought they
@@ -255,7 +209,7 @@ worker, the home on the executor's volume. For Codex the model goes through the 
 (`host.docker.internal`), as for Hermes on `openai-codex`: the executor holds no login. The start renders the
 persona and skills in the workers' forms inside the executor with the kit's own `renderContainerWorkerForms`. The
 image carries Hermes and a pinned Codex CLI, so container mode takes `hermes` or `codex` and refuses any other
-harness by name (Claude Code on its user's own login cannot hold that login in an executor). The fleet is
+harness by name. The fleet is
 unchanged.
 
 Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the

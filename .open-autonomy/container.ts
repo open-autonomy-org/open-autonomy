@@ -85,8 +85,7 @@ export async function startContainer(options: {
     const agentSetup = parseAgent(prepared.agent, 'origin/main:.open-autonomy/agent.json');
     // Hermes runs itself; another harness runs as the orchestrator's worker on the same home, in the executor
     const harness = agentHarness(agentSetup);
-    // the executor's image carries Hermes and Codex; another harness has no runtime there, and one on its user's own
-    // login (Claude Code) cannot hold it in an executor
+    // the executor's image carries Hermes and Codex; another harness has no runtime there
     if (!['hermes', 'codex'].includes(harness)) throw new Error(`.open-autonomy/agent.json picks ${harness}; the executor runs Hermes or Codex, so start ${harness} bare`);
     if (harness !== 'hermes') for (const line of await renderContainerWorkerForms({ container, home, workspace, revision: prepared.revision })) console.log(`host: ${line}`);
     const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
