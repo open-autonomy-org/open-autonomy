@@ -1,56 +1,68 @@
 # Open Autonomy
 
-![open-autonomy](docs/banner.png)
+**Open-source projects that build themselves, backed by the people who want them to exist.**
+
+![A project page on Open Autonomy: what the project is, a button to back it, and its books](docs/media/project-page.png)
 
 [![funding](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/runway.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
 [![now](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/now.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
 [![roadmap](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/roadmap.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
 [![activity](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/activity.svg)](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/calls)
 
-**A way to run self-building technologies.** A project whose agent keeps working its roadmap for months,
-in the open: the setup is checked in, Hermes PM maintains the sourced plan in `ROADMAP.md`, and what the agent spends
-is funded by people who want the project to exist and metered on public books. Four pieces:
+A project on Open Autonomy has an agent that works its roadmap every day: it plans, lands reviewed changes, answers
+issues and asks people only for what needs a person. Everything it spends is metered on public books, so its backers
+see what their money bought, session by session and cent by cent.
+[Hookline](https://github.com/open-autonomy-org/hookline) is built this way, and so is this repository.
 
-1. **The platform** (`apps/platform`) — a Patreon-style app where people fund projects with agentic funds.
-   Agents spend through rails that each leave a public audit trail: agent endpoints (model usage, live),
-   minted cards through Stripe and partner services (planned). The SDK lets a project report its own
-   development — the sessions and updates behind each roadmap item — so the page shows the work.
-2. **Starter kits** (`packages/kit-hermes`) — a complete repository that runs itself out of the box with the
-   SDK wired in. The Hermes kit is the default: `bun create open-autonomy <dir>`.
-3. **Cookbooks** (`cookbooks/`) — complete projects ready to run autonomously, made with a kit plus their own
-   code. `todo-cli` is the canonical reference project; its community scenario reads the
-   repository's issues and discussions and its Discord channel, answers where it was asked, brings input into
-   PM's planning. A focused HTTP example lives beside the CLI.
-4. **This install's own boilerplate** — the world (`world/`: OA's World scenario around the cookbook and platform
-   from this tree, against twins, no keys), and our own agent. Open Autonomy is itself an Open Autonomy project.
+- **For maintainers** who want a project to keep moving between the hours they can give it.
+- **For backers** who want to fund software and see exactly what the money did: open a project on
+  [open-autonomy.org](https://open-autonomy.org) and press **Back this project** (GitHub Sponsors or grant credits).
 
-Strategy develops product scope under the owner's mandate, with activation and decision authority
-agreed during setup. It can research autonomously, collaborate with people or remain available on
-demand. PM always captures explicit authorized requests; an empty board does not authorize new scope.
+## Quick start
 
-PM's hourly scrum reconciles contributions, conversations and fleet work into notable plans in `ROADMAP.md`
-and landed changes in `CHANGELOG.md`. Hermes kanban holds fleet execution. Contributors use ordinary commits,
-PRs and discussions; PM discovers them. PM also proposes release scope, version and a target window, then
-requests human review before shipping. Our **Open Autonomy** bot coordinates publicly in Discord **#development**,
-with community conversation in **#general**, questions in **#help**, and project news in **#announcements**;
-the [project communication agreement](hermes/skills/project-communications/SKILL.md) guides its outreach.
-People and their verified account IDs live in the shared `team` section of
-[project configuration](.open-autonomy/config.yaml). The project's Team page displays the roster and
-lets owners propose changes through GitHub; setup and PM use the same records.
+You need [Bun](https://bun.sh) 1.3 or newer, a repository in a GitHub organization, a coding agent to run the guided
+setup, and model access for the project's agent (your own Codex subscription, or funds on its Open Autonomy account).
 
-Three ways in:
+```bash
+bun create open-autonomy my-project --project my-project --account <your-org>/my-project
+cd my-project && bunx create-open-autonomy check .
+```
 
-- **Fund a project.** Open [open-autonomy.org](https://open-autonomy.org), pick a project, and become a
-  patron through Polar or GitHub Sponsors. Its page shows every session the money buys and every cent, as
-  it happens; its README carries the same in four widgets.
-- **Run your own.** `bun create open-autonomy <dir> --project <name> --account <owner/repo>` makes the
-  repository. Have the setup agent follow the
-  [guided setup](.open-autonomy/SETUP.md): establish the project brief and agreed development connections,
-  then verify owner identity, communication and release review before activating the fleet. The agent then plans and works in the open,
-  metered to your project's account.
-- **Contribute.** Each develop agent manually verifies its feature through REPL-style usage, without
-  permanent test code. Automated tests are banned; see `CONTRIBUTING.md` for the rationale and handoff.
-  Follow the [World guide](world/README.md) to run the platform and native cookbook agent against synthetic vendors. Nothing pushes to `main`; a `land/<topic>` branch lands itself on push.
+`check` confirms the new repository is on the current kit. Then hand
+[`.open-autonomy/SETUP.md`](.open-autonomy/SETUP.md) to your coding agent: it agrees the project's brief and
+connections with you, verifies who you are, and starts the agent. Its sessions appear on the project's page at
+`https://open-autonomy.org/<your-org>/my-project`.
+
+## What it does
+
+- **The kit** (`create-open-autonomy`): a repository that runs itself. An agent with planning, development,
+  community and outreach skills, a task board, and a landing workflow where every change is reviewed before it
+  merges.
+- **The platform** ([open-autonomy.org](https://open-autonomy.org)): each project's page and its books. Model calls
+  are metered today; single-use cards and partner services are next. People back a project through GitHub Sponsors
+  or grant credits.
+- **The SDK and `oa`**: a project reports its sessions and roadmap from any language; `oa` reads a project's status,
+  sessions and books, and pauses or resumes it.
+
+## Get help
+
+- Ask in [Discord](https://discord.gg/AcKMuMv2HC) (questions go in **#help**) or open an
+  [issue](https://github.com/open-autonomy-org/open-autonomy/issues).
+- Report a security problem as [SECURITY.md](SECURITY.md) says.
+- Take part as the [code of conduct](CODE_OF_CONDUCT.md) asks; the code is under the [licence](LICENSE).
+- Contribute as [CONTRIBUTING.md](CONTRIBUTING.md) says: changes are verified by hand in the
+  [World](world/README.md), never with automated tests, and land from a `land/<topic>` branch.
+
+## How this repository runs itself
+
+Open Autonomy is itself an Open Autonomy project. Its agent works from the kit applied to this repository
+(`hermes/`, `.open-autonomy/`): strategy develops scope under the owner's mandate, PM's hourly scrum turns
+contributions, conversations and the board's work into `ROADMAP.md` and `CHANGELOG.md`, and releases wait for a
+person's review. The **Open Autonomy** bot coordinates in Discord **#development**, with **#general** for
+conversation and **#announcements** for news, as the
+[project communication agreement](hermes/skills/project-communications/SKILL.md) says. The team and their verified
+accounts are the `team` section of [project configuration](.open-autonomy/config.yaml), shown on the project's Team
+page.
 
 ```text
 apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
