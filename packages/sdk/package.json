@@ -1,6 +1,6 @@
 {
   "name": "@open-autonomy/sdk",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "The Open Autonomy SDK: the interface an automation implements to be a project, in both directions. The stream client (sessions, the timeline, the agent's setup, the operating state), the timeline codec and drivers, the roster model, the key helpers. Everything it does is a documented HTTP wire any language can speak without it; it depends on nothing.",
   "license": "Apache-2.0",
   "repository": {
