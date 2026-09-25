@@ -1,8 +1,9 @@
 name: Deploy platform
 # Production deploy of the platform worker (apps/platform).
-#  - Fires ONLY on a push to `prod`, which moves only when the owner merges the standing main → prod pull request
-#    (the `prod` ruleset: no update but a merged pull request, which only an org admin may merge). The owner's merge is
-#    the approval; the `production` environment admits `prod` alone. Each deploy is recorded as a `deploy-v*` tag.
+#  - Fires ONLY on a push to `prod`, which moves only when the owner merges the standing main → prod pull request (the
+#    `prod` ruleset: no update but a merged pull request the `owners` team has approved, no bypass). The owner's
+#    approval is the gate; the `production` environment admits `prod` alone. Each deploy is recorded as a `deploy-v*`
+#    tag.
 #  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot leave to any other host. The
 #    token is scoped to Workers-edit on this one worker.
 #  - The books live in the worker's Durable Object and survive the deploy; keys verify by signature and

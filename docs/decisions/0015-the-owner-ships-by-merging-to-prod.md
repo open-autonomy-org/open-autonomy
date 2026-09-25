@@ -20,8 +20,9 @@ The owner reads the change on a compare page no one keeps, and each tag ships on
 **One standing pull request from `main` to `prod` is what ships.** A workflow keeps it open; it grows as `main` moves,
 so changes compound until the owner reads the whole diff there and merges it with a merge commit.
 
-**The owner's merge is the approval.** The `prod` ruleset allows no update to `prod` but a merged pull request, and
-only an org admin may merge one. The `production` environment admits `prod` alone and asks for no second approval.
+**The owner's approval ships it.** The `prod` ruleset allows no update to `prod` but a merged pull request approved by
+the `owners` team, whose only member is the owner, with no bypass; stale approvals are dismissed when `main` moves. The
+`production` environment admits `prod` alone and asks for no second approval.
 
 **A push to `prod` ships.** The platform deploys and the commit is tagged `deploy-v<date>.<n>`; every package version
 not yet on npm is published, and a new kit version is recorded as a `release-v<version>` tag and GitHub release. The
@@ -35,10 +36,10 @@ merge commits only (the repository allows no squash or rebase merge, so `prod`'s
 
 - **Keep tags and the environment's approval.** Rejected by the owner: two acts per ship, and nothing to read but a
   compare page.
-- **Require the owner's review on the pull request (a code owner or a required reviewer) and let anyone merge.**
-  Rejected: CODEOWNERS is read from the base branch and `main`'s would flow into `prod`; a required-reviewer team
-  needs org administration this repository's tooling does not hold. Restricting the merge itself to an org admin is
-  the same act with one rule.
+- **Restrict updates to `prod` to an org admin.** Tried first and replaced: GitHub shows that merge to the owner as
+  "Merge without waiting for requirements to be met (bypass rules)", a ship that reads as breaking a rule (the owner:
+  "why would you send this to me like this"). A required reviewer is the ordinary approve-then-merge.
+- **CODEOWNERS for `prod`.** Rejected: it is read from the base branch, and `main`'s would flow into `prod`.
 
 ## Consequences
 
@@ -46,8 +47,8 @@ merge commits only (the repository allows no squash or rebase merge, so `prod`'s
   are the landing workflow's pushes, which start no workflow); `deploy.yml` and `release.yml` run on a push to
   `prod` and record their tags; `apps/platform/DEPLOY.md`, `CLAUDE.md` and the kit's README say so.
 - Repository settings, applied after this lands: a `prod` branch at the commit last deployed; a `prod-protected`
-  ruleset (deletion, non-fast-forward, update, each bypassed only by an org admin through a pull request, merge
-  commits only); the `production` environment's deployment branches `prod` alone, its required reviewer removed; the
+  ruleset (deletion, non-fast-forward, and a pull request approved by the `owners` team, merge commits only, no
+  bypass); the `production` environment's deployment branches `prod` alone, its required reviewer removed; the
   tag ruleset keeps `update` and `deletion` for org admins and no longer restricts `creation`, so the workflows can
   record their tags (GitHub refuses its Actions app as a bypass actor on an organization's ruleset).
 - Without the environment's approval, nothing but the owner's own dispatch may run `admin.yml`: its job runs only when

@@ -8,11 +8,12 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `packages/backend/` — the core of the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
-  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not. Deploys and admin ops go through GitHub only, from the `prod` branch: one standing pull request from `main` to
-  `prod` gathers what ships, and the owner's merge of it deploys the platform (`deploy.yml`) and publishes every new
-  package version (`release.yml`), each recorded as a `deploy-v*` or `release-v*` tag; `admin.yml` is dispatched `--ref
-  prod`. The `production` environment admits `prod` alone, and `prod` moves only by a merged pull request only an org
-  admin may merge, so the agent's `main` never runs with a secret. No machine holds a deploy or admin token.
+  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
+  Deploys and admin ops go through GitHub only, from the `prod` branch: one standing pull request from `main` to `prod`
+  gathers what ships, and the owner's merge of it deploys the platform (`deploy.yml`) and publishes every new package
+  version (`release.yml`), each recorded as a `deploy-v*` or `release-v*` tag; `admin.yml` is dispatched `--ref prod`.
+  The `production` environment admits `prod` alone, and `prod` moves only by a merged pull request the `owners` team
+  (the owner) has approved, so the agent's `main` never runs with a secret. No machine holds a deploy or admin token.
 - `packages/sdk/` — `@open-autonomy/sdk`: the roadmap codec, the stream client, the key helpers; its README
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
