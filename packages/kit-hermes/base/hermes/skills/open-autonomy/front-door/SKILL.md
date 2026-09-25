@@ -1,7 +1,7 @@
 ---
 name: front-door
 description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at every scrum and release.
-version: 1.2.0
+version: 1.3.0
 metadata:
   hermes:
     tags: [open-autonomy, docs]
@@ -89,15 +89,15 @@ behaviour they describe.
 
 ## A reader who has never seen it
 
-Its author cannot see the page as a newcomer does, so the front door is graded by an agent that has not seen it
-(ADR 0013): the native reviewer of a change that alters what a user sees or does, and, before PM requests review of
-a release candidate, a fleet verification task PM queues for that candidate, run by a worker that did not build it;
-never the human release reviewer. Before reading the task, the diff or anything else, they read only the README at
-the graded head and
-write down, in their own words, what the project is, who it is for and how to reach a first success. Then they
-follow the quick start literally, command by command, in the project's verification world, and capture what it
-shows. Each place where the page and the product disagree, or where the answers are wrong or missing, is a
-finding the change fixes before it lands. The captures that pass are the ones the page uses.
+Its author cannot see the page as a newcomer does, so the front door is graded by someone who has not seen it (ADR
+0013): the native reviewer of a change that alters what a user sees or does, and, before PM requests review of a
+release candidate, a verification PM arranges for that candidate: a fleet task run by a worker that did not build
+it, or, on a project with no fleet, an ask of a role (`community.ts who`) whose member did not build it; never the
+human release reviewer as part of their review. Before reading the task, the diff or anything else, they read only
+the README at the graded head and write down, in their own words, what the project is, who it is for and how to
+reach a first success. Then they follow the quick start literally, command by command, in the project's verification
+world, and capture what it shows. Each place where the page and the product disagree, or where the answers are wrong
+or missing, is a finding the change fixes before it lands. The captures that pass are the ones the page uses.
 
 ## Keeping it true
 

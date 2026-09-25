@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the daily scrum of a project people build — read what landed and what was asked, reconcile the roadmap and changelog, name what is stalled, ask people, and keep the release proposal true.
-version: 1.2.0
+version: 1.3.0
 metadata:
   hermes:
     tags: [open-autonomy, pm]
@@ -89,7 +89,9 @@ What no integration reaches is an ask of the role that covers it (`community.ts 
 Maintain a sourced target release schedule in `ROADMAP.md` (`## release-next: …`): intended scope, proposed
 version under the project's actual policy, target window, readiness criteria, dependencies and risks.
 Every merge is an input, not a reason to ship. Only a landed, ready decision with a fixed candidate SHA
-warrants a review request, and not before the front door describes it; prepare it with `bun .open-autonomy/maintain.ts ship` and the fields in
+warrants a review request, and not before the front door describes it, graded at the candidate by a member who did
+not build it (the `front-door` skill's reader, asked of a role through `community.ts who`, else `help-wanted`);
+prepare it with `bun .open-autonomy/maintain.ts ship` and the fields in
 `.open-autonomy/PRODUCTION.md`, then ask the reviewer as `project-communications` agrees. Never tag,
 approve, publish or deploy. Merged, approved, released and post-release verified are distinct facts;
 confirm the artifact shipped before moving Unreleased lines under a version.
