@@ -147,7 +147,8 @@ ${PATRONAGE_STYLES}
 `;
 
 const av = (p: Patron) => (safeUrl(p.avatar_url) ? <img src={safeUrl(p.avatar_url)} alt="" /> : <span class="ph" />);
-const chip = (p: Patron) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{av(p)}{p.name ?? p.login}{p.amount_label ? <small>{p.amount_label}</small> : null}</a>;
+// A patron's amount is money: drawn only for a viewer the books admit, like every other figure on the page.
+const chip = (p: Patron, books: boolean) => <a class="chip" href={safeUrl(p.url) ?? `https://github.com/${encodeURIComponent(p.login)}`}>{av(p)}{p.name ?? p.login}{books && p.amount_label ? <small>{p.amount_label}</small> : null}</a>;
 const runwayOf = (v: ProjectView): number | null => (v.runway_days !== null && Number.isFinite(v.runway_days) ? Math.round(v.runway_days) : null);
 
 // The metered days: one bar per day of spend. The one honest picture of a
@@ -331,8 +332,8 @@ export function Landing(d: LandingData) {
         <div class="facts-strip">
           <div class="who"><img src={`https://github.com/${encodeURIComponent(ownerOf(a))}.png?size=88`} alt="" /><div><small>Maintained by</small><b>{ownerOf(a)}</b></div></div>
           <div class="fig"><b>{d.patronage.patron_count}</b><small>{d.patronage.patron_count === 1 ? 'patron' : 'patrons'}</small></div>
-          <div class="fig"><b>{usd0(d.patronage.monthly_usd_cents)}</b><small>per month</small></div>
-          {d.books ? <><div class="fig"><b>{runway === null ? '—' : runway > 365 ? '1y+' : `${runway}d`}</b><small>runway</small></div>
+          {d.books ? <><div class="fig"><b>{usd0(d.patronage.monthly_usd_cents)}</b><small>per month</small></div>
+          <div class="fig"><b>{runway === null ? '—' : runway > 365 ? '1y+' : `${runway}d`}</b><small>runway</small></div>
           <div class="fig"><b>{usd(d.v.consumed_usd_cents)}</b><small>spent, all metered</small></div></> : null}
           {faces.length ? <div class="faces"><span class="stack">{faces.map(av)}</span><small>{d.patronage.patron_count > faces.length ? `+${d.patronage.patron_count - faces.length} more` : 'on the wall'}</small></div> : null}
         </div>
@@ -358,7 +359,7 @@ export function Landing(d: LandingData) {
         <Updates d={d} />
         <section class="sec">
           <h2>Patrons<small>{d.patronage.patron_count ? `${d.patronage.patron_count} so far` : 'Be the first'}</small></h2>
-          {d.patronage.patrons.length ? <div class="wall">{d.patronage.patrons.map(chip)}</div> : <p class="empty">No one has backed {nameOf(a)} yet. The first name goes here.</p>}
+          {d.patronage.patrons.length ? <div class="wall">{d.patronage.patrons.map((p) => chip(p, d.books))}</div> : <p class="empty">No one has backed {nameOf(a)} yet. The first name goes here.</p>}
         </section>
         <div class="band-cta"><p>Software that builds itself, funded by the people who want it.</p><a href="/">Discover more projects on {d.brand} →</a></div>
       </div>

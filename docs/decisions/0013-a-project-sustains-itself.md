@@ -191,6 +191,10 @@ Extrapolation, this author's: every item above beyond what the two repositories 
   requests; GitHub's traffic (views, clones, referrers) needs the Administration permission, which the kit withholds
   on purpose and the valve refuses. `reach` reports traffic as unavailable rather than widening the agent's grant.
 - The page's tiers keep stating the runway the money buys, from the metered burn.
+- The platform serves the patrons wall as data (`GET /v1/accounts/:account/patronage`), gated by the core's own
+  `admits`: the names wherever the project's overview is open, the money only where its books are. The project page
+  drew the monthly total and each patron's amount to viewers the books did not admit; it now draws them only where
+  the books are open, as its books panel already did.
 
 ## Verification
 
