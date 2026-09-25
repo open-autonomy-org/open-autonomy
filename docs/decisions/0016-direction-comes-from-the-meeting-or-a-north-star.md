@@ -22,9 +22,11 @@ organization. The results of that meeting are then filtered down to the projects
 redirecting the roadmap as needed."
 
 **What exists** (this repository at `origin/main`, September 25, 2026):
-- `manage-organization` runs the daily memo and meeting for the projects its `organization.projects` names. Only
-  `volter-ai` has one (vgai-engine, twin, game-benchmarks, browser-substrate, supercode); its last completed cycle was
-  September 17. `open-autonomy-org` has none, so this project, Hookline and Evidence Desk hold no meeting.
+- `manage-organization` runs the daily memo and meeting for the projects its `organization.projects` names. The
+  company's (`volter-ai/volter`) names thirteen, this project, Hookline and Evidence Desk among them; two have a running
+  PM (this project and Hookline), the rest receive outcomes in their intake. Its last completed cycle was September
+  17: it was stopped until September 24, and its one run since (September 25) never started its worker on a box
+  starved of memory.
 - `self-build` carries a `strategy` skill whose activation and authority the owner sets in `project-communications`;
   with no agreement it waits to be asked. No project recorded one, so strategy has never run here or on Hookline. On
   September 25 Hookline's PM ran nine times and each time found "no authorized product outcome to queue".
@@ -35,7 +37,7 @@ redirecting the roadmap as needed."
 
 **Direction has two sources, and a project has exactly one of them.**
 
-1. **The owner's meeting** (every project by default). An organization agent covers the project; its daily memo, in
+1. **The owner's meeting** (every project by default). The company's organization agent covers the project; its daily memo, in
    the owner's channel, carries what happened and the agenda; the owner's answers in that thread are the meeting; each
    outcome that touches a project is filed as an authorized request in that project's intake, and its PM lands it on
    the roadmap. Strategy prepares proposals for the agenda and lands nothing on its own.
@@ -47,13 +49,14 @@ redirecting the roadmap as needed."
 
 Either way, bugs and regressions are the PM's, and the owner can always direct.
 
-**open-autonomy-org gets an organization agent** covering this project, Hookline and Evidence Desk, in a space whose
-audience is the owner or the team ([ADR 0014](0014-each-agent-speaks-to-an-audience.md)).
+**One company meeting steers every project together.** Priorities across projects are settled there, in a space whose
+audience is the owner or the team ([ADR 0014](0014-each-agent-speaks-to-an-audience.md)); there is no second
+organization agent.
 
 Extrapolation, this author's (the owner named the meetings, a self-driving strategy under a clear north star, and that
 the latter is a skew): one source of direction per project; the meeting as the default; the north star in the
 constitution; a gap table as strategy's record; the board running dry as the only trigger; strategy landing outcomes
-itself under the north star; an organization agent for open-autonomy-org and its three projects.
+itself under the north star; the company's one meeting as the place priorities across projects are settled.
 
 ## Alternatives and tradeoffs
 
@@ -72,9 +75,8 @@ itself under the north star; an organization agent for open-autonomy-org and its
   The todo-cli cookbook becomes a north-star project.
 - The `strategy` skill loses on-request activation: in a meeting-driven project it prepares agenda proposals; in a
   north-star project it runs on the trigger above. `project-communications` no longer records a strategy agreement.
-- `open-autonomy-org/.github` (or a new organization repository) runs `manage-organization` with this project,
-  Hookline and Evidence Desk; the owner names the channel.
-- The `volter-ai` organization agent's failed cycle is repaired so its meeting runs.
+- The company's organization agent completes its daily cycle again, so its meeting runs; the owner names the
+  channel.
 
 ## Constitution review
 
