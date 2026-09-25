@@ -155,14 +155,15 @@ export async function startContainer(options: {
       try {
         const seen = await containerMainMoved({ container, home, workspace, since: startedMain });
         if (!seen.main || seen.main === startedMain) return;
-        if (!seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
+        // a started revision main no longer reaches names no files, and restarts as bare mode's does
+        if (seen.changed && !seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
         if (seen.busy === null) { console.error('host: cannot read the board; the restart onto main waits'); return; }
         if (seen.busy) return;
         console.log(`host: main moved to ${seen.main.slice(0, 8)}; asking ${runtimeName} to drain before restarting the stack onto it`);
         restartAsked = true;
         restart();
       } catch (error) {
-        console.error(`host: cannot read main in the executor; the watch tries again in ten minutes (${error instanceof Error ? error.message : String(error)})`);
+        console.error(`host: ${error instanceof Error ? error.message : String(error)} The watch tries again in ten minutes.`);
       } finally { watching = false; }
     }, 10 * 60_000);
     return { exited, close: () => stop(0), restart };
