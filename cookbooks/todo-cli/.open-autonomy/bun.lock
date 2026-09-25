@@ -9,7 +9,7 @@
         "@chat-adapter/state-memory": "4.39.0",
         "@volter-ai-dev/supercode": "^0.4.80",
         "@volter-ai-dev/supercode-harness-sdk": "^0.3.41",
-        "@volter-ai-dev/supercode-orchestrator": "^0.4.1",
+        "@volter-ai-dev/supercode-orchestrator": "^0.4.2",
         "@volter/twin": "0.1.3",
         "@volter/twin-discord": "0.1.2",
         "@volter/twin-github": "0.1.2",
@@ -76,7 +76,7 @@
 
     "@volter-ai-dev/supercode-harness-sdk": ["@volter-ai-dev/supercode-harness-sdk@0.3.41", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-BQ113Rf+M7d3iFbAF3IDyS6L6G8SLeH3JSE3a4DtLpqpr/iNfi9EPoa7RO/x+LnkByj/hwsRry2X1MVh5lV5oQ=="],
 
-    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.4.1", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.41", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-d4FVAbd729LxU5Omfv3MAoNJjFCE/1KLnl62idTsG7GxpVft6ihc8ulVO7hQ0eZITSsnch3oaw7zyzBwi9uwTw=="],
+    "@volter-ai-dev/supercode-orchestrator": ["@volter-ai-dev/supercode-orchestrator@0.4.2", "", { "dependencies": { "@volter-ai-dev/supercode-harness-sdk": "^0.3.41", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-kJdzRyDH4bxa/IUGp+VsUNcXgtcVyfgidU7PVEvEr1ohbdKQYC0/7nlr8jOX5stXLn+bKyS5qPz7UYSnYBczPg=="],
 
     "@volter/twin": ["@volter/twin@0.1.3", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-K6cKB2dYxtjC2L/H9quREEV38tlQsrkxZt7kIpDUKJbQ79cL4uz9cP20Bdc1DSpn/vbk3ESNPtWh1/uOdRN8HQ=="],
 
