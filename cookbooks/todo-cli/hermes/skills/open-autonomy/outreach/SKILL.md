@@ -1,6 +1,6 @@
 ---
 name: outreach
-description: The project's periodic outward posts, run only by its own scheduled jobs — the week's post (what shipped, the dev log, the numbers) and the backer report. Not for the community desk or the scrum.
+description: The project's periodic outward posts, run only by its own scheduled jobs — the week's post (what shipped, the dev log) and the backer report. Not for the community desk or the scrum.
 version: 1.1.0
 metadata:
   hermes:

@@ -79,8 +79,8 @@ A project is self-sustaining when its members' machines and time carry its work 
 spend left.
 
 **The roster says what each member gives.** Beside each member's authority, the roster records their roles, the
-contributions they make (their time, and each resource they bring, in the project's words), their expected
-and availability windows. It is the member's own word, recorded by an owner's change on the Team page or by the
+contributions they make (their time, and each resource they bring, in the project's words), and their
+expected availability windows. It is the member's own word, recorded by an owner's change on the Team page or by the
 member's own pull request merged after review; the agents read it and never infer it. A member who leaves is removed;
 git keeps the history.
 
