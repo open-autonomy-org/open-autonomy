@@ -38,7 +38,7 @@ Completion:
 Status: planned; accepted ADR 0001 and its host-service boundary are on main; acceptance is held for one real container turn and the model-twin Responses proof.
 Dispatch: hold
 
-Source: the verified owner's [PR #593 ruling](https://github.com/open-autonomy-org/open-autonomy/pull/593#issuecomment-5628311527) was the original contrary public evidence. Accepted [ADR 0001](docs/decisions/0001-runtime-boundary.md) explicitly replaces that conflicting instruction and PR #594; verified owner `yueranyuan` then affirmed that replacement in [comment 5648467119](https://github.com/open-autonomy-org/open-autonomy/pull/594#issuecomment-5648467119). [PR #597](https://github.com/open-autonomy-org/open-autonomy/pull/597) is the merged implementation, approved at exact head `b13099c0`; merged [PR #624](https://github.com/open-autonomy-org/open-autonomy/pull/624) relocated the host tools between packages without changing the trust boundary.
+Source: accepted [ADR 0001](docs/decisions/0001-runtime-boundary.md); its implementation is [PR #597](https://github.com/open-autonomy-org/open-autonomy/pull/597), with the host tools relocated by [PR #624](https://github.com/open-autonomy-org/open-autonomy/pull/624).
 
 Completion:
 - Bare: both profiles use native Hermes `openai-codex` through the host valve and transient access from the installed Codex app-server; no login is copied into project or Hermes storage, a missing current computer login fails closed, and autonomous use has the required OS-user credential boundary.
@@ -53,18 +53,15 @@ Dispatch: hold
 Completion:
 - Exercise the live-run pause window through the disposable World product path: while a run is active, a pause request remains visibly desired-paused/observed-running, the run finishes without interruption, then the reporter disables scheduled work and reports paused.
 
-## give-auth-production: Activate and verify the signed-in giving page in production
+## give-auth-production: A funder gives through the signed-in page in production
 
-Status: planned; implementation reviewed in the twin world; production configuration and verification are not evidenced. Owner-authored PR #652 added the three sign-in secrets to the existing production `sync-secrets` operation after exact-head independent App review. No human development-review gate was required; installing the production secrets is the owner's, gathered into a Release package's `Owner does`.
+Status: planned; production is configured: the Volter identity sign-in secrets are installed and synced, and `/give/login` redirects to `id.volter.ai`
 Dispatch: hold
 
-Source: `hermes:task/t_abe517c5`, approved implementation `389ce3b1`, the candidate's [`give-auth.ts`](https://github.com/open-autonomy-org/open-autonomy/blob/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997/apps/platform/src/give-auth.ts), and App-reviewed [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) at exact head `9b56f9cc` merged as `082869b0`.
+Source: [`give-auth.ts`](apps/platform/src/give-auth.ts), which takes the Volter sign-in path when its four secrets are present ([ADR 0011](docs/decisions/0011-people-sign-in-with-a-volter-identity.md)).
 
 Completion:
-- The owner installs the sign-in secrets as production secrets — the Volter identity client (`VOLTER_ISSUER`, `VOLTER_CLIENT_ID`, `VOLTER_CLIENT_SECRET`, which `give-auth.ts` prefers; ADR 0011) or GitHub's OAuth app as the fallback, and `GIVE_SESSION_HMAC_SECRET` — asked once in a Release package's `Owner does`; no agent receives them.
 - On the deployed service, a funder signs in, sees credits, makes one idempotent earmarked gift, and the project's public books show the matching envelope.
-
-Risk: [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) merged signed owner head `9b56f9cc` as `082869b0` after App approval 5189447455, closing the workflow gap only. The production aliases still need maintainer provisioning, `sync-secrets` must run through an authorized production gate, and the live sign-in/giving check remains missing.
 
 ## seven-day-autonomy: Run seven days with no human act but release review and shipping
 
