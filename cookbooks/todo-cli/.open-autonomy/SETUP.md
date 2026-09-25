@@ -289,9 +289,9 @@ The front door's standard integrations are the ones selected below: the GitHub A
 media, and for posts in the repository's Discussions (enable Discussions with its Announcements category);
 and the announcements channel of the agreed communication space. Pages waits until the project has docs
 (an index.md under docs/): then its source is set to GitHub Actions and the kit's `pages.yml` publishes them. Record in
-the project communication skill the role names for what no integration reaches (repository settings, the social
-preview, a publishing platform), and ask the owner which members take them on, with their contributions and
-availability, into the roster (ADR 0013); a role no one takes is help-wanted, never the owner's by default.
+the project communication skill the owner's word on sustaining the project: the role names and which need people,
+the channels for the outreach posts, the targets; and ask the owner which members take which roles, with their
+contributions and availability, into the roster (ADR 0013). Set the outreach jobs' schedules to the agreed cadence.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.
 Maintain durable documentation in place. The helper's setup record holds connection IDs and progress for

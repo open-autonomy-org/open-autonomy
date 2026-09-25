@@ -1,7 +1,7 @@
 ---
 name: strategy
 description: Develop product direction and sourced roadmap outcomes under the project's strategy mandate, on request or through an agreed schedule or trigger. PM manages delivery.
-version: 1.2.0
+version: 1.3.0
 metadata:
   hermes:
     tags: [open-autonomy, strategy, roadmap]
@@ -43,8 +43,8 @@ not display names or channel membership, to interpret direction. Confidential so
 
 A self-building project has to be sustained, and strategy owns how (ADR 0013): which users it serves and where
 they are, how it wins and keeps members (time, resources) and backers (money for what no member gives),
-and which asks of people the owner allows. Ground it in `community.ts reach` and the roster; never assume a
-member does more than the roster says. The plan is a proposal within your mandate like any other.
+and which asks of people the owner allows. Ground it in `community.ts reach` and the roster. The plan is a
+proposal within your mandate like any other.
 
 Understand the intended users, problem and useful end-to-end experience before selecting implementation
 milestones. Research the relevant domain, alternatives and user evidence when needed. Source factual
