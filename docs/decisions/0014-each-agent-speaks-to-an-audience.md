@@ -40,11 +40,12 @@ or `owner`: the widest audience that may learn what it knows. It is the owner's 
 agent setup. A profile is the unit, because what an agent reads is in its memory and its sessions; a public agent
 that reads team material has published it, whatever it is asked to omit.
 
-**Every channel has an audience, and it is measured, not named.** A channel's audience is the widest set of people
-who can read it. It is `team` only when every account that can read it is a current roster member (and `owner` only
-when every one holds the `owner` scope); otherwise it is `public`. An agent that posts or reads there checks this
-before it does, from the platform's own membership (a Discord channel's permitted members and roles, a repository's
-collaborators), against the roster. A channel the agent cannot measure is `public`.
+**Every channel has an audience, recorded and checked.** `project-communications` records each agreed space with its
+audience. A channel's audience is the widest set of people who can read it: `team` only when every account that can
+read it is a current roster member (`owner` only when every one holds the `owner` scope), otherwise `public`. Setup
+checks this from the platform's own membership (a Discord channel's permitted members and roles, a repository's
+collaborators) against the roster, and checks again whenever the roster changes; a channel that fails the check, or
+that no one can check, is `public` until it passes. Agents use only recorded channels, at their recorded audience.
 
 **Need to know.** An agent reads only channels, repositories and records whose audience is within its own, and says in
 a channel only what that channel's audience may know. A `team` agent may take part in the team's own meeting space
@@ -73,7 +74,8 @@ current invariant holds and no agent is given a non-public audience.
 
 Extrapolation, this author's (the owner named team awareness, need to know, per-agent visibility, internal meetings
 and an open skew; not these particulars): the profile as the unit; the audience ladder reused from the dashboard;
-measuring a channel's audience by membership against the roster; an unmeasurable channel counting as public;
+checking a channel's audience by membership against the roster at setup and on roster changes; an unchecked
+channel counting as public;
 non-public sessions sent nowhere as the first step; the invariant's wording.
 
 **Open, decided by a later record:** publishing a team agent's sessions to the team on the platform (a session
@@ -85,9 +87,10 @@ visible to `team` viewers), rather than not at all; and how an owner-level agent
   is published, whatever it omits in what it says.
 - **Keep every agent public; people meet without agents.** Rejected by the owner: internal team meetings with agents
   are wanted even on public repositories.
-- **Name a channel's audience in configuration instead of measuring it.** Rejected as the only check: a channel
-  named `team` that someone outside the roster was added to is public in fact. The configuration names which
-  channels are meant for the team; the measurement confirms it before each use.
+- **Name a channel's audience in configuration and never check it.** Rejected: a channel named `team` that someone
+  outside the roster was added to is public in fact.
+- **Check a channel's membership before every post.** Rejected as too costly and brittle for every run: membership
+  changes with the roster and with setup, and that is when it is checked.
 
 ## Consequences
 
@@ -95,7 +98,8 @@ visible to `team` viewers), rather than not at all; and how an owner-level agent
 - The reporter reads each session's profile and sends none from a non-public profile.
 - `project-communications` records each agreed space with its intended audience and the team agent, if any;
   "The fleet works in public" becomes "The fleet's public agents work in public", with the rest of this record.
-- `community` and `pm` check a channel's measured audience before posting and never carry team material out.
+- `community` and `pm` post only in recorded channels at their recorded audience and never carry team material out;
+  setup, and the scrum after a roster change, check each team channel's membership against the roster.
 - The kit's `check` refuses a setup that gives a profile a non-public audience while the project's constitution still
   says every session is published live.
 - An open skew or template fixes every audience at `public`.
