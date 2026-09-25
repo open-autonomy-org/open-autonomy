@@ -11,7 +11,7 @@ Rationale: releases ship through the one Release pull request, the owner's appro
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
-Status: planned; corrective work is queued, but the first bounded revert is blocked before any edit because protected `CLAUDE.md` requires interactive owner approval. PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
+Status: planned; the revert and re-land are dispatchable (CODEOWNERS gates only `CONSTITUTION.md` and itself). PR #622's clarification remains owner-authorized and constitution-compatible; the original development-review gate cannot be repaired retroactively.
 Dispatch: fleet
 
 Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull/622), owner self-review [5188012108](https://github.com/open-autonomy-org/open-autonomy/pull/622#pullrequestreview-5188012108), and independent post-merge audit `hermes:task/t_ec574a74`.
@@ -47,7 +47,7 @@ Completion:
 
 ## operating-state-sdk: The owner's running or paused word travels through the SDK
 
-Status: planned; implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
+Status: planned; the mechanism is implemented (ADR 0003; the pause covers the board since kit 2.11.16, and every request of the word is kept and served since SDK 3.5.0); the live-run pause window is unexercised.
 Dispatch: hold
 
 Completion:
