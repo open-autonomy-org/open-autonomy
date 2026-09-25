@@ -136,7 +136,7 @@ asking people; the other skills point here.
 
 - **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a role:
   whoever `bun .open-autonomy/community.ts who <role>` returns, the available first; with no one, it is posted once
-  with `community.ts help-wanted`.
+  as help-wanted: `community.ts issue open <key> <title> <body>` with no assignee.
 - **Work that needs a permission** goes to whoever holds it: `community.ts holders <scope>`, the available first.
   The repository's settings (description, topics, homepage, social preview, Pages source, Discussions) and the
   roster are `owner`; a release is `release-review`. It is never posted as help-wanted: no one else could do it.
