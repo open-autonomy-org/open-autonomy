@@ -1,7 +1,7 @@
 ---
 name: front-door
 description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at every scrum and release.
-version: 1.1.0
+version: 1.2.0
 metadata:
   hermes:
     tags: [open-autonomy, docs]
@@ -32,8 +32,8 @@ get to a first success. In this order:
 3. **Who it is for and why**, in two to four plain lines. No machinery, no process, no adjectives it has not
    earned.
 4. **Quick start**: what it needs first (runtime, accounts, versions), then the shortest real path from nothing
-   to a first success. Every command works as written, in order, on a fresh setup: follow it literally in the
-   project's verification world before landing it.
+   to a first success. Every command works as written, in order, on a fresh setup: the author follows it in the
+   project's verification world, and a reader who has not seen it follows it again (below) before it lands.
 5. **What it does**: the main capabilities, each in a line or two, shown where showing is clearer.
 6. **More**: the docs (when they exist), configuration, how it works in brief, status and version.
 7. **Getting help**: where to ask (its discussions, issues or support channel) and where to report a security
@@ -87,6 +87,18 @@ a paid plan for Pages); then link the site as the homepage and check a change ac
 follow the same rules as the README: written from the real product, updated in the same change as the
 behaviour they describe.
 
+## A reader who has never seen it
+
+Its author cannot see the page as a newcomer does, so the front door is graded by an agent that has not seen it
+(ADR 0013): the native reviewer of a change that alters what a user sees or does, and, before PM requests review of
+a release candidate, a fleet verification task PM queues for that candidate, run by a worker that did not build it;
+never the human release reviewer. Before reading the task, the diff or anything else, they read only the README at
+the graded head and
+write down, in their own words, what the project is, who it is for and how to reach a first success. Then they
+follow the quick start literally, command by command, in the project's verification world, and capture what it
+shows. Each place where the page and the product disagree, or where the answers are wrong or missing, is a
+finding the change fixes before it lands. The captures that pass are the ones the page uses.
+
 ## Keeping it true
 
 - A change that alters what a user sees or does (a command, an option, an output, a screen, an install or
@@ -94,7 +106,7 @@ behaviour they describe.
 - Every scrum compares the front door with what landed since the last one (`CHANGELOG.md`, merged PRs) and
   fixes what it no longer tells truly.
 - A release candidate is not ready while its front door describes anything else: what ships is what the page
-  shows, down to the quick start.
+  shows, down to the quick start, graded at the candidate by an agent that has not seen it, as above.
 - Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
   disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
   publish is an ask of the role that handles repository settings, as above.

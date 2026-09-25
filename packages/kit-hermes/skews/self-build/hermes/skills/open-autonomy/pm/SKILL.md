@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 5.2.0
+version: 5.3.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -214,7 +214,9 @@ For service review through `maintain.ts ship`, the landed release section uses t
 specified in [.open-autonomy/PRODUCTION.md](../../../../.open-autonomy/PRODUCTION.md). Start with
 `Release decision: accumulate` or `prepare` and `Readiness: pending`; use `defer` when postponing.
 Only set `Release decision: request-review` and `Readiness: ready-for-review` after verifying scope,
-artifact/version consistency, the review evidence, and that the front door describes the candidate. Select a **full candidate SHA** that has landed,
+artifact/version consistency, the review evidence, and that the front door describes the candidate: queue a fleet
+verification task that grades it at the candidate (the `front-door` skill's reader who has not seen it) and cite
+its run and resolved findings. Select a **full candidate SHA** that has landed,
 then land that sourced decision. The candidate can precede the planning commit; later main commits can
 accumulate for a subsequent release. Do not silently move a candidate already under review.
 
