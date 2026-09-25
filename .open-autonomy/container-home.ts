@@ -122,8 +122,9 @@ print(out.decode().strip().splitlines()[-1])
  * Codex's own sandbox in each profile's Codex home, as the profile's approvals allow. In the executor Codex's
  * bubblewrap cannot make its namespaces and every command fails (measured: a PM run could run nothing); the executor
  * is the boundary, as for Hermes's own terminal there. But the sandbox was also a gate: Codex asked before escaping
- * it and the orchestrator answered with Hermes's approval rule, and Codex 0.156.1 offers no policy that asks before
- * every command instead (its `untrusted` is refused as unsupported: measured). So only a profile whose owner turned
+ * it and the orchestrator answered with Hermes's approval rule, and Codex 0.156.1 takes no policy that asks before
+ * every command from its config (`approval_policy = "untrusted"` there stops its app server from starting: measured;
+ * the per-command gate is `thread/start`'s `approvalPolicy`, which the harness does not pass yet, ADR 0009). So only a profile whose owner turned
  * Hermes's approvals off (`approvals.mode: off`) gets `sandbox_mode = "danger-full-access"`; a profile that keeps them
  * (the treasurer, which pays) keeps the sandbox, and its commands fail closed in the executor rather than run
  * ungated. The key is written or removed at the top of the home's `config.toml`; the orchestrator's tables are kept.

@@ -259,11 +259,14 @@ harness by name (Claude Code on its user's own login cannot hold that login in a
 unchanged.
 
 Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the
-orchestrator answered with Hermes's approval rule. Codex 0.156.1 has no policy that asks before every command
-instead (`approval_policy = "untrusted"` is refused as unsupported: measured). So the sandbox is turned off only
-in the Codex home of a profile whose owner turned Hermes's approvals off (`approvals.mode: off`); a profile that
-keeps them, the treasurer that pays among them, keeps the sandbox, and its commands fail closed in the executor
-rather than run ungated. A per-command gate for Codex there is open.
+orchestrator answered with Hermes's approval rule. Codex 0.156.1 takes no policy that asks before every command
+from its config: with `approval_policy = "untrusted"` in `config.toml` its app server refuses to start ("no longer
+supported", measured). So the sandbox is turned off only in the Codex home of a profile whose owner turned Hermes's
+approvals off (`approvals.mode: off`); a profile that keeps them, the treasurer that pays among them, keeps the
+sandbox, and its commands fail closed in the executor rather than run ungated. The per-command gate exists one layer
+up: the app server's `thread/start` accepts `approvalPolicy: "untrusted"` with full access and then asks before each
+command (`item/commandExecution/requestApproval`; answered `decline`, the command ends `declined`, not run), measured; supercode's managed runtime sends
+`thread/start` with `{cwd}` alone, so the gate waits on the harness passing the policy there.
 
 **Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
 the project; the image built from this kit on the pinned Hermes, Colima, orchestrator 0.3.12 then 0.3.13):
