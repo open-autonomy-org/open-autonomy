@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Build one board task — its acceptance lines are the whole definition of done — verify it where the project is verified, land it on an agent branch, hand off. Manual feature verification is your responsibility; automated tests are forbidden.
-version: 4.5.0
+version: 4.6.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, git]
@@ -57,6 +57,10 @@ is not done.
    manually verified and handed back for review. A changed diff requires fresh approval.
 
 ## Native PR review
+
+When dispatched as reviewer of a change that alters what a user sees or does, grade the front door first, before
+reading anything else about the change: the `front-door` skill's "A reader who has never seen it", at the handed-off
+head. Its findings are review findings. Then, as for every review:
 
 When dispatched as reviewer, follow sdlc-review with this project's manual-verification policy overriding
 its generic automated-test instructions. Read the PR's actual diff, original task, source authority,
