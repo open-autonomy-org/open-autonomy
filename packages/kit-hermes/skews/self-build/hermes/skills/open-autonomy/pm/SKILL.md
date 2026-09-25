@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 5.4.0
+version: 5.5.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -147,12 +147,10 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
-## The numbers and the people
+## The people
 
-The week's numbers against the targets are in the `outreach` job's weekly report, where the project schedules it;
-plan with the latest. When the roster or the roles `project-communications` lists as needing people change, reconcile
-one standing recruiting outcome on the roadmap for those roles with fewer than two current holders (`community.ts who
-<role>`); never an item per role, never a role you name yourself. Ask people as `project-communications` says.
+Finding people for the roles `project-communications` lists as needing them is one standing roadmap outcome. Ask
+people as `project-communications` says.
 
 ## The front door
 
@@ -212,9 +210,8 @@ For service review through `maintain.ts ship`, the landed release section uses t
 specified in [.open-autonomy/PRODUCTION.md](../../../../.open-autonomy/PRODUCTION.md). Start with
 `Release decision: accumulate` or `prepare` and `Readiness: pending`; use `defer` when postponing.
 Only set `Release decision: request-review` and `Readiness: ready-for-review` after verifying scope,
-artifact/version consistency, the review evidence, and that the front door describes the candidate: queue a fleet
-verification task that grades it at the candidate (the `front-door` skill's reader who has not seen it) and cite
-its run and resolved findings. Select a **full candidate SHA** that has landed,
+artifact/version consistency, the review evidence, and that the front door describes the candidate, its quick start
+followed by someone who did not build it. Select a **full candidate SHA** that has landed,
 then land that sourced decision. The candidate can precede the planning commit; later main commits can
 accumulate for a subsequent release. Do not silently move a candidate already under review.
 

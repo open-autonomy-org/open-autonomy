@@ -290,7 +290,7 @@ media, and for posts in the repository's Discussions (enable Discussions with it
 and the announcements channel of the agreed communication space. Pages waits until the project has docs
 (an index.md under docs/): then its source is set to GitHub Actions and the kit's `pages.yml` publishes them. Record in
 the project communication skill the owner's word on sustaining the project: the role names and which need people,
-the channels for the outreach posts, the targets; and ask the owner which members take which roles, with their
+the channels for the outreach posts; and ask the owner which members take which roles, with their
 contributions and availability, into the roster (ADR 0013). Set the outreach jobs' schedules to the agreed cadence.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
 project name, blurb and icon on its applications; reuse existing project application IDs on a rerun.

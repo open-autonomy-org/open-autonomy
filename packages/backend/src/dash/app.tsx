@@ -12,7 +12,7 @@ import type { Envelope, Flow, SessionSummary } from '../ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd, LOGO_SVG } from '../ui.js';
 import { sees, type Role } from '../page/model.js';
 import { standing as claimsOf, today as dayOf, type StatementTone } from '@open-autonomy/sdk/statements';
-import { teamCurrent, type TeamMember } from '@open-autonomy/sdk/team';
+import type { TeamMember } from '@open-autonomy/sdk/team';
 import { at, nameOf, ownerOf, standingOf, standingWord, type Standing } from '../page/parts.js';
 import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
 
@@ -457,7 +457,7 @@ export function Team({ d }: { d: DashData }) {
           {r?.failure ? <p class="oa-empty" role="alert">{r.failure}</p> : null}
           {!r || r.members === undefined ? <p class="oa-empty">The committed roster is unavailable. Changes are disabled until it can be read.</p>
             : !members.length ? <p class="oa-empty">No team recorded yet. The setup agent establishes the first owner's verified accounts and authority; then owners manage the team here.</p>
-            : <table class="oa-table"><thead><tr><th>Person</th><th>Accounts</th><th>Authority</th><th>Gives</th><th>Verified by</th>{sees(d.viewer, 'owner') ? <th /> : null}</tr></thead><tbody>{members.map((m) => <tr><td><b>{m.name}</b>{teamCurrent(m, dayOf(d.now)) ? null : <span class="oa-chip">{m.left ? `left ${m.left}` : `joins ${m.joined}`}</span>}</td><td>{m.github ? <a class="oa-chip" href={`https://github.com/${encodeURIComponent(m.github.login)}`}><img src={`https://github.com/${encodeURIComponent(m.github.login)}.png?size=48`} alt="" />@{m.github.login}</a> : null}{m.discord ? <span class="oa-chip">{m.discord.name}</span> : null}</td><td>{m.scopes.length ? m.scopes.map((s) => TEAM_LABELS[s] ?? s).join(' · ') : 'Contributor'}</td><td>{givesOf(m) || <span class="oa-muted">—</span>}{m.availability ? <div class="oa-fine">{availabilityText(m.availability)}</div> : null}</td><td class="oa-muted">{m.source}</td>{sees(d.viewer, 'owner') ? <td class="n"><a href={`${base}?edit=${encodeURIComponent(m.id)}`}>Edit</a></td> : null}</tr>)}</tbody></table>}
+            : <table class="oa-table"><thead><tr><th>Person</th><th>Accounts</th><th>Authority</th><th>Gives</th><th>Verified by</th>{sees(d.viewer, 'owner') ? <th /> : null}</tr></thead><tbody>{members.map((m) => <tr><td><b>{m.name}</b></td><td>{m.github ? <a class="oa-chip" href={`https://github.com/${encodeURIComponent(m.github.login)}`}><img src={`https://github.com/${encodeURIComponent(m.github.login)}.png?size=48`} alt="" />@{m.github.login}</a> : null}{m.discord ? <span class="oa-chip">{m.discord.name}</span> : null}</td><td>{m.scopes.length ? m.scopes.map((s) => TEAM_LABELS[s] ?? s).join(' · ') : 'Contributor'}</td><td>{givesOf(m) || <span class="oa-muted">—</span>}{m.availability ? <div class="oa-fine">{availabilityText(m.availability)}</div> : null}</td><td class="oa-muted">{m.source}</td>{sees(d.viewer, 'owner') ? <td class="n"><a href={`${base}?edit=${encodeURIComponent(m.id)}`}>Edit</a></td> : null}</tr>)}</tbody></table>}
           {sees(d.viewer, 'owner') && members.length && !edit ? <p class="oa-fine" style="margin-top:12px"><a href={`${base}?edit=new`}>Add a teammate →</a></p> : null}
         </Panel>
         <Panel title="Changing it" span={4}><p class="oa-fine">{r?.head ? <>From the <a href={`https://github.com/${a}/blob/${encodeURIComponent(r.head)}/.open-autonomy/config.yaml`}>committed roster</a>. </> : null}The roster lives in the project's committed configuration; an owner changes it here, through GitHub, as a pull request. Release authority still requires a human's review of the specific release.</p></Panel>
@@ -473,8 +473,6 @@ export function Team({ d }: { d: DashData }) {
             {field('roles', 'Roles (comma separated, the project\'s own names for the work: triage, docs, outreach; authority is below)', member?.roles?.join(', '), false, 400)}
             {field('contributes', 'Gives (comma separated: time, and each resource, such as machine, gpu, domain)', member?.contributes?.join(', '), false, 400)}
             {field('availability', 'Expected availability (time zone; then windows: Europe/Berlin; mon-fri 18:00-21:00; sat 10:00-14:00)', availabilityText(member?.availability), false, 600)}
-            {field('joined', 'Joined (YYYY-MM-DD)', member?.joined, false, 10)}
-            {field('left', 'Left (YYYY-MM-DD; their authority lapses the day after)', member?.left, false, 10)}
             <label class="oa-field">Identity and authority source<textarea name="source" required maxlength={500}>{member?.source ?? ''}</textarea></label>
             <p class="oa-fine">A public source link or a specific owner confirmation establishing whose accounts these are and what they may decide.</p>
             <label class="oa-check"><input type="checkbox" name="attest" value="yes" required /> I confirm these account links and permissions, or the removal of this person.</label>

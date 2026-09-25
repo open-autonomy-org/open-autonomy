@@ -77,7 +77,6 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key?, for? }` (a give key) | grant credits from the funder's books to a project's, once per `key`; `for` may be `"any"`, `"model"`, `{models: [...]}`, or `{item: "id"}`, and absent means unrestricted |
 | `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received; a flow with a project not listed where everyone looks carries `private: true` and no name, id, note or purpose, its amount kept |
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
-| `GET /v1/accounts/:account/patronage` | the patrons wall as the project page shows it, on the Open Autonomy platform (not a self-host): `patron_count` and each patron's `kind`, `login`, `name`, `url` wherever the overview is open; `monthly_usd_cents` and each `amount_label` only where the books are. The kit's `community.ts reach` reads it (ADR 0013) |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
 Key scopes: `spend` (the rails), `narrate` (the events door: everything the automation says), `steer` (the owner's word: a roadmap push, the operating state, the owner's statements). A key minted without
@@ -186,14 +185,7 @@ nothing is assumed where it is absent. `roles` are the project's own names for t
 lowercase with hyphens). `contributes` names what they give in the project's own words, the same form as roles:
 `time`, and each resource they bring (a `machine` the project's Open Autonomy runs on, a `gpu`, a `domain`).
 `availability` is `{ tz, windows }`: an IANA time zone and up to fourteen weekly windows `{ days, from, to }`, days
-`mon`…`sun`, `HH:MM` with `from` before `to` (a window past midnight is two). `joined` and `left` are `YYYY-MM-DD`,
-UTC: a member holds their authority from `joined` through `left` and it lapses the day after, so a roster never waits
-on someone to remove a departed member. A populated roster keeps at least one owner with no `left`.
-`currentMembers(team, day?)` and `teamOwner(team, githubId, day?)` read only the members on the team that day;
-`teamAvailable(member, at?)` says whether an instant is in one of their windows; `membersFor(team, role, at?)` returns
-the current holders of a role, `available` now and `later`, for work anyone could take (empty: it is help-wanted);
-`holdersOf(team, scope, at?)` returns the current holders of an authority scope, whatever their roles, for work that
-needs a permission, which is never help-wanted.
+`mon`…`sun`, `HH:MM` with `from` before `to` (a window past midnight is two). A member who leaves is removed.
 
 The platform reads this owner configuration from the repository, just as it reads funding bounds; a
 narration key cannot replace it. `/:owner/:project/dashboard/team` resolves it through this SDK model. Owners can edit

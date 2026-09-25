@@ -12,15 +12,10 @@
 //   bun .open-autonomy/community.ts latest                        # the newest activity on GitHub, as stable bytes: the
 //                                                                 # monitor job's source, so the agent wakes only on change
 //   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
-//   bun .open-autonomy/community.ts who <role>                    # who takes work anyone could take: the role's current
-//                                                                 # holders, the available first; none is help-wanted
-//   bun .open-autonomy/community.ts holders <scope>               # who may do work that needs a permission (ADR 0013)
-//   bun .open-autonomy/community.ts reach [days]                  # the week's numbers, for the outreach job (ADR 0013)
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { TEAM_SCOPES, currentMembers, holdersOf, membersFor, parseTeamConfig, type TeamMember, type TeamScope } from './sdk/team.ts';
 
 // Hermes removes credentials from terminal tools. Re-enter with only its configured
 // GitHub door; values remain inside the child environment and are never printed.
@@ -212,89 +207,12 @@ if (command === 'poll' && doorless) {
   if (!category) throw new Error(`no discussion category ${slug} on ${account} (have: ${r.repository.discussionCategories.nodes.map((c) => c.slug).join(', ')})`);
   const out = await graphql<{ createDiscussion: { discussion: { number: number; url: string } } }>(`mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) { createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) { discussion { number url } } }`, { repositoryId: r.repository.id, categoryId: category.id, title, body: readFileSync(file, 'utf8') });
   console.log(`discussion #${out.createDiscussion.discussion.number}: ${out.createDiscussion.discussion.url}`);
-} else if ((command === 'who' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(rest[0] ?? '')) || (command === 'holders' && (TEAM_SCOPES as readonly string[]).includes(rest[0] ?? ''))) {
-  // Who an ask goes to (ADR 0013), those within one of their windows now first. `who <role>`: work anyone could take,
-  // and no one means it is posted as help-wanted. `holders <scope>`: work that needs a permission, never help-wanted.
-  const team = parseTeamConfig(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'));
-  const found = command === 'who' ? membersFor(team, rest[0]!) : holdersOf(team, rest[0] as TeamScope);
-  const card = (m: TeamMember) => ({ id: m.id, name: m.name, github: m.github?.login ?? null, discord: m.discord?.name ?? null, availability: m.availability ?? null });
-  const none = !found.available.length && !found.later.length;
-  console.log(JSON.stringify({ [command === 'who' ? 'role' : 'scope']: rest[0], available: found.available.map(card), later: found.later.map(card), ...(command === 'who' ? { help_wanted: none } : {}) }));
-} else if (command === 'reach' && (!rest[0] || /^[1-9]\d{0,2}$/.test(rest[0]))) {
-  // The numbers the scrum reads beside the board (ADR 0013), each from where it is kept. A count no door reaches is
-  // reported unavailable with the reason, never estimated.
-  const days = Number(rest[0] ?? 7);
-  const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const config = readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8');
-  const team = parseTeamConfig(config);
-  const current = currentMembers(team);
-  const rosterLogins = new Set(current.flatMap((m) => (m.github ? [m.github.login.toLowerCase()] : [])));
-  const unavailable = (why: string) => ({ unavailable: why });
-  const out: Record<string, unknown> = { account, window_days: days, since, at: new Date().toISOString() };
-  if (doorless) out.github = unavailable('no GitHub door (no GITHUB_TOKEN)');
-  else try {
-    const repo = await github<{ stargazers_count: number; forks_count: number; subscribers_count: number }>('GET', `/repos/${account}`);
-    const releases = await pages<{ tag_name: string; published_at: string | null; draft: boolean }>(`/repos/${account}/releases`);
-    const published = releases.filter((r) => !r.draft);
-    const issues = await pages<{ user?: { login: string; type?: string }; created_at: string; pull_request?: unknown }>(`/repos/${account}/issues?state=all&since=${since}`);
-    const people = new Set<string>();
-    const outside = (login?: string, type?: string) => { if (login && type !== 'Bot' && !login.endsWith('[bot]') && !rosterLogins.has(login.toLowerCase())) people.add(login); };
-    for (const i of issues) if (i.created_at >= since) outside(i.user?.login, i.user?.type);
-    for (const d of await discussions()) {
-      if (after(d.createdAt, since) && d.createdAt) outside(d.author?.login);
-      for (const c of d.comments.nodes) if (c.createdAt && c.createdAt >= since) outside(c.author?.login);
-    }
-    out.github = {
-      stars: repo.stargazers_count, forks: repo.forks_count, watchers: repo.subscribers_count,
-      releases: published.length, latest_release: published[0] ? { tag: published[0].tag_name, published_at: published[0].published_at } : null,
-      // everyone outside the team who opened or replied in the window; whether it was their first time is not read
-      outside_authors_in_window: [...people].sort(),
-      traffic: unavailable('GitHub traffic (views, clones, referrers) needs the Administration permission, which the kit does not grant its App'),
-    };
-  } catch (e) { out.github = unavailable((e as Error).message); }
-  // The books: public wherever the owner's word opens them. Money the project holds, burns and has left.
-  const platform = /^platform:\s*(\S+)/m.exec(config)?.[1]?.replace(/\/$/, '');
-  try {
-    if (!platform) throw new Error('config.yaml names no platform');
-    const res = await fetch(`${platform}/v1/accounts/${encodeURIComponent(account)}`);
-    if (!res.ok) throw new Error(`the books answered ${res.status}`);
-    const b = (await res.json()) as { balance_usd_cents?: number; burn_per_day_usd_cents?: number; runway_days?: number | null; granted_in_usd_cents?: number };
-    out.books = { balance_usd_cents: b.balance_usd_cents ?? null, burn_per_day_usd_cents: b.burn_per_day_usd_cents ?? null, runway_days: b.runway_days ?? null, granted_in_usd_cents: b.granted_in_usd_cents ?? null };
-  } catch (e) { out.books = unavailable((e as Error).message); }
-  // The backers: the patrons wall as the page shows it (the platform's patronage door). Its money comes only where the
-  // books are open; the share of the metered burn they cover is computed only from two figures both present.
-  try {
-    if (!platform) throw new Error('config.yaml names no platform');
-    const res = await fetch(`${platform}/v1/accounts/${encodeURIComponent(account)}/patronage`);
-    if (res.status === 404) throw new Error('the platform has no patrons wall open to everyone for this project');
-    if (!res.ok) throw new Error(`the patronage door answered ${res.status}`);
-    const p = (await res.json()) as { patron_count: number; monthly_usd_cents?: number };
-    const burn = (out.books as { burn_per_day_usd_cents?: number | null }).burn_per_day_usd_cents;
-    out.backers = {
-      patrons: p.patron_count,
-      monthly_usd_cents: p.monthly_usd_cents ?? unavailable('the books are not open to everyone'),
-      covers_metered_burn: typeof p.monthly_usd_cents === 'number' && typeof burn === 'number' && burn > 0 ? Math.round((p.monthly_usd_cents / (burn * 30)) * 100) / 100 : null,
-    };
-  } catch (e) { out.backers = unavailable((e as Error).message); }
-  // The team: who is on it, what they give, and which roles have someone to ask.
-  const roles: Record<string, { holders: number; with_windows: number }> = {};
-  for (const m of current) for (const r of m.roles ?? []) { roles[r] ??= { holders: 0, with_windows: 0 }; roles[r].holders++; if (m.availability) roles[r].with_windows++; }
-  out.team = {
-    members: current.length,
-    // what the team gives, in the roster's own words (time, a machine, any other resource): how many give each
-    gives: current.reduce<Record<string, number>>((n, m) => {
-      for (const c of m.contributes ?? []) n[c] = (n[c] ?? 0) + 1;
-      return n;
-    }, {}),
-    roles,
-  };
-  console.log(JSON.stringify(out, null, 2));
 } else if (command === 'mark') {
   if (!existsSync(pendingFile)) throw new Error('mark requires a successful poll for this desk');
   writeFileSync(cursorFile, readFileSync(pendingFile, 'utf8'));
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> | holders <scope> | reach [days] | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> [assignee] | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> [assignee] | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }

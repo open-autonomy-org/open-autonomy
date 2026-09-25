@@ -1,7 +1,7 @@
 ---
 name: front-door
 description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at release.
-version: 2.0.0
+version: 2.1.0
 metadata:
   hermes:
     tags: [open-autonomy, docs]
@@ -32,8 +32,8 @@ get to a first success. In this order:
 3. **Who it is for and why**, in two to four plain lines. No machinery, no process, no adjectives it has not
    earned.
 4. **Quick start**: what it needs first (runtime, accounts, versions), then the shortest real path from nothing
-   to a first success. Every command works as written, in order, on a fresh setup: the author follows it in the
-   project's verification world, and a reader who has not seen it follows it again (below) before it lands.
+   to a first success. Every command works as written, in order, on a fresh setup: the author follows it literally in
+   the project's verification world before landing it, and before a release someone who did not build it does.
 5. **What it does**: the main capabilities, each in a line or two, shown where showing is clearer.
 6. **More**: the docs (when they exist), configuration, how it works in brief, status and version.
 7. **Getting help**: where to ask (its discussions, issues or support channel) and where to report a security
@@ -83,19 +83,6 @@ a paid plan for Pages); then link the site as the homepage and check a change ac
 follow the same rules as the README: written from the real product, updated in the same change as the
 behaviour they describe.
 
-## A reader who has never seen it
-
-The author cannot see the page as a newcomer does (ADR 0013), so someone who has not seen it reads it:
-
-- **At review** of a change that alters what a user sees or does, the native reviewer reads only the README at the
-  handed-off head, before anything else about the change, and writes down what the project is, who it is for and
-  how to reach a first success. Where that disagrees with the change, it is a review finding.
-- **Before a release**, and at review of a change to the quick start itself, the quick start is also followed
-  literally, command by command, in the project's verification world, and what it shows is captured. For a
-  release PM arranges this at the candidate: a fleet task run by a worker that did not build it, or on a project
-  with no fleet, an ask of a member who did not; never the human release reviewer. The passing captures are the
-  page's media.
-
 ## Keeping it true
 
 - A change that alters what a user sees or does (a command, an option, an output, a screen, an install or
@@ -103,7 +90,7 @@ The author cannot see the page as a newcomer does (ADR 0013), so someone who has
 - When a scrum finds a change that alters what a user sees landed since the last one, it compares the front door
   with it and fixes what it no longer tells truly.
 - A release candidate is not ready while its front door describes anything else: what ships is what the page
-  shows, down to the quick start, followed at the candidate as above.
+  shows, down to the quick start.
 - Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
   disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
-  publish is an ask as above.
+  publish is an ask, as `project-communications` says.
