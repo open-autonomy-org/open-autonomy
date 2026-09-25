@@ -8,10 +8,12 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `packages/backend/` — the core of the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
-  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not. Deploys and admin ops go through GitHub only, from human-cut tags (`deploy-v*` for `deploy.yml`, `release-v*`
-  for `release.yml`, `admin.yml` dispatched `--ref` the latest deploy tag), each gated by the `production`
-  environment's reviewer; the environment admits no branch, so the agent's `main` never runs with a secret. No
-  machine holds a deploy or admin token.
+  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
+  Deploys and admin ops go through GitHub only, from the `prod` branch: one standing pull request from `main` to `prod`
+  gathers what ships, and the owner's merge of it deploys the platform (`deploy.yml`) and publishes every new package
+  version (`release.yml`), each recorded as a `deploy-v*` or `release-v*` tag; `admin.yml` is dispatched `--ref prod`.
+  The `production` environment admits `prod` alone, and `prod` moves only by a merged pull request the `owners` team
+  (the owner) has approved, so the agent's `main` never runs with a secret. No machine holds a deploy or admin token.
 - `packages/sdk/` — `@open-autonomy/sdk`: the roadmap codec, the stream client, the key helpers; its README
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
@@ -70,7 +72,7 @@ accepted decision records; conflicting directions require a sourced proposal and
   the community. The project communication skill records the destinations and public-only access boundary; confidential
   human spaces and DMs are outside this fleet.
   The cookbooks and the world run on `zai/glm-5.3-flash`;
-  our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
+  our own agent runs on `openai/gpt-6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - **Runtime responsibilities are separate.** Follow [ADR 0001](docs/decisions/0001-runtime-boundary.md).
   The existing valve and reporter stay on the host; container mode runs native Hermes inside the World
@@ -90,12 +92,17 @@ accepted decision records; conflicting directions require a sourced proposal and
 
 ## What a human does, and nothing else
 
-The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. A
-human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped), and
-shipping from a tag — `deploy-v<date>` on a commit they read, `release-v<kit version>` for the kit — then approving
-the run on its page. `apps/platform/DEPLOY.md` says how; all development PRs, including `.github/` changes, merge automatically after independent agent
-review. Human approval is reserved for release. Anything else a person finds themselves doing for a project is a task for the kit, not
-a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
+The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. Two
+kinds of pull request, never confused. Pull requests into `main` are the agents' own: written, independently reviewed
+and merged by agents, including `.github/` changes, and never routed to a human. The Release pull request is the one
+standing pull request from `main` to `prod`; whatever has landed on `main` compounds onto it, and it is the owner's.
+A human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped),
+and shipping, by reading the Release and merging it (`apps/platform/DEPLOY.md`). The Release is the last step before
+the owner is contacted (owner ruling, 2026-09-25: "think about each release as the last step before you need to
+contact the owner. The whole idea of autonomy is to minimize the human's work"): everything on it is finished,
+verified and reviewed first, and the owner hears once, that the Release is ready and what it ships. Nothing else is
+routed to them: no approvals, pages to open or waits. Anything else a person finds themselves doing for a project is
+a task for the kit, not a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
 
 ## Live surfaces
 

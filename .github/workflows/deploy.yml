@@ -1,14 +1,16 @@
 name: Deploy platform
 # Production deploy of the platform worker (apps/platform).
-#  - Fires ONLY on a human-cut `deploy-v*` tag (agents cannot push tags) or a manual dispatch; either way the
-#    `production` environment's required reviewer approves each deployment.
+#  - Fires ONLY on a push to `prod`, which moves only when the owner merges the standing main → prod pull request (the
+#    `prod` ruleset: no update but a merged pull request the `owners` team has approved, no bypass). The owner's
+#    approval is the gate; the `production` environment admits `prod` alone. Each deploy is recorded as a `deploy-v*`
+#    tag.
 #  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot leave to any other host. The
 #    token is scoped to Workers-edit on this one worker.
 #  - The books live in the worker's Durable Object and survive the deploy; keys verify by signature and
 #    expiry and survive it too (apps/platform/DEPLOY.md).
 on:
   push:
-    tags: ['deploy-v*']
+    branches: [prod]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,3 +45,27 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
         run: bun run deploy
+  # The record: each deploy is a `deploy-v<date>.<n>` tag on the commit it shipped. Its own job, after the deploy, so the
+  # write permission is this job's alone and the Cloudflare token never enters it.
+  record:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Lock down egress (GitHub's API only)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+      - name: Tag the deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          d=$(date -u +%Y.%m.%d)
+          n=$(gh api "repos/$REPO/git/matching-refs/tags/deploy-v$d." --jq 'length')
+          tag="deploy-v$d.$((n + 1))"
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$SHA" --jq .ref

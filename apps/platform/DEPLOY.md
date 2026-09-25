@@ -1,13 +1,15 @@
 # Deploying the platform
 
-Deploys and admin operations happen through GitHub only, and only from a human-cut tag: the `production`
-environment admits `deploy-v*` and `release-v*` tags and nothing else (never `main`), so the workflow that holds a
-secret is always the one a human tagged, never the one the agent last landed. `deploy.yml` runs on a `deploy-v*`
-tag, `release.yml` on a `release-v*` tag, and `admin.yml` (money and key operations) is dispatched with
-`--ref <the latest deploy-v* tag>`; each waits for the environment's required reviewer, who approves it on the run's page (Actions → the waiting run → Review deployments). Cutting a tag is the
-human's act (`git tag deploy-v<date> <sha> && git push origin deploy-v<date>`; the tag ruleset lets only an org
-admin create one), and the approval is the second. No machine holds a deploy or admin token, and no agent can
-cut a tag.
+Deploys and admin operations happen through GitHub only, and only from the `prod` branch: the `production`
+environment admits `prod` and nothing else (never `main`), so the workflow that holds a secret is always one the
+owner shipped, never the one the agent last landed. `ship.yml` keeps one pull request open from `main` to `prod`; it
+grows as `main` moves, so changes compound until the owner reads the whole diff and merges it (a merge commit, so
+`prod` never drifts from `main`). The `prod` ruleset allows no update but a merged pull request that the `owners`
+team (the owner) has approved, with no bypass: that approval is the owner's act, and the merge follows it. On the
+merge, `deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`, and `release.yml` publishes every
+package version not yet on npm, recording a new kit version as a `release-v<version>` tag and GitHub release.
+`admin.yml` (money and key operations) is dispatched `--ref prod`. No machine holds a deploy or admin token, and no
+agent can move `prod`.
 
 ## What survives a deploy
 
