@@ -79,11 +79,17 @@ maintainer approval, and no reply is: a release is approved by a member holding 
 Answer community questions where they were asked. Human implementation work requires an accepted
 commitment; asking for release review does not assign somebody implementation work.
 
-The fleet works in public. Confidential human spaces and DMs stay outside its access, including their
+The fleet's public agents work in public. Confidential human spaces and DMs stay outside its access, including their
 stored session history. Never retrieve private content into a published run; disabling direct chat
 publication does not prevent that exposure. Humans bring an appropriate public statement when private
 matters affect the project. These exclusions are intentional boundaries, not missing sources for PM to
 recover. Maintainer authority does not require private planning or release review.
+
+In a team space (the team's own meetings) only a team agent takes part: a profile named in `publish.private`,
+whose persona says it speaks for the team and whose bot alone is in that space. Record each team
+space here with who it is for. It is a team space only while everyone who can read it is on the roster: check its
+membership with the platform's own tools at setup and after a roster change, and treat it as public when it fails or
+cannot be checked. What leaves it is a public statement written for the public, never a transcript or a summary.
 
 A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold. Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record.
 

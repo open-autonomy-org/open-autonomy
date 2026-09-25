@@ -101,7 +101,10 @@ visible to `team` viewers), rather than not at all; and how an owner-level agent
 
 ## Consequences
 
-- The reporter's `publish.private` accepts a profile's name: none of that profile's sessions is sent.
+- The reporter's `publish.private` accepts a profile's name: none of that profile's sessions is sent. Measured on
+  this repository's own home (September 25, 2026): the reporter read only the root session store, so the treasurer's
+  sessions were never sent; it now reads every profile's store, and the treasurer, whose session holds the card it
+  mints, is named in `publish.private` by default.
 - `project-communications` records each agreed space, who it is for, and which agent takes part; "The fleet works in
   public" becomes "The fleet's public agents work in public", with the rest of this record.
 - A team agent's persona says it speaks for the team; `community` and `pm` post only in recorded spaces and never

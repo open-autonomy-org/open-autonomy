@@ -95,11 +95,17 @@ create_thread. This native allowlist applies at invocation too; no role assignme
 is needed for PM discovery. Preserve explicit owner tool restrictions. Verify the actual scheduled
 tool catalog and a public history read; a connected gateway or delivered report is insufficient.
 
-The fleet works in public. Any confidential human space stays outside its access, including private
+The fleet's public agents work in public. Any confidential human space stays outside its access, including private
 channels, DMs and stored session history. During setup, enforce this with service permissions and native
 Hermes access settings; do not grant administrative access that bypasses the boundary. Verify the bot's
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
 by a published run. Humans bring an appropriate public statement when private matters affect the project. A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold (a release is approved as the `production` environment's reviewer). Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record.
+
+In a team space (the team's own meetings) only a team agent takes part: a profile named in `publish.private`,
+whose persona says it speaks for the team and whose bot alone is in that space. Record each team
+space here with who it is for. It is a team space only while everyone who can read it is on the roster: check its
+membership with the platform's own tools at setup and after a roster change, and treat it as public when it fails or
+cannot be checked. What leaves it is a public statement written for the public, never a transcript or a summary.
 
 ## Strategy agreement
 
