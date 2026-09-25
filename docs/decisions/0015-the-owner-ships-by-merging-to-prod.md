@@ -29,7 +29,7 @@ tags stay, as the record of what shipped when. `admin.yml` is dispatched from `p
 
 Extrapolation, this author's (the owner named the merge, the compounding pull request and the tags): tags as the record
 rather than a second trigger; the release publishing on the same merge; the admin workflow dispatched from `prod`;
-merge commits only.
+merge commits only (the repository allows no squash or rebase merge, so `prod`'s history stays `main`'s).
 
 ## Alternatives and tradeoffs
 
