@@ -93,7 +93,8 @@ for anything else. Keep one release section in `ROADMAP.md` (`## release-next: â
 review only when the Release is finished, verified on `main`'s head, and the front door describes it, its quick start
 followed by someone who did not build it; write `$HERMES_HOME/release-review.md` with the fields in
 `.open-autonomy/PRODUCTION.md` and run `bun .open-autonomy/maintain.ts ship`, which puts it on the Release and tells
-the owner once. Never tag, approve, publish or deploy. Merged, released and verified are distinct facts; confirm what
+the owner once. Run it every scrum in any case: it opens the Release while `main` is ahead of `prod`. Never tag,
+approve, publish or deploy. Merged, released and verified are distinct facts; confirm what
 shipped before moving Unreleased lines under a version.
 
 ## Land

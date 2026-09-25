@@ -32,7 +32,7 @@ service.
    Enable repository auto-merge and allow the landing workflow to open PRs.
 3. Ruleset `prod-protected` on `refs/heads/prod`: `pull_request` (one approval, required from an `owners` team whose
    only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`, `deletion`; no bypass.
-   `.github/workflows/ship.yml` keeps the `main` → `prod` pull request open.
+   PM's `maintain.ts ship`, run every pass, keeps the `main` → `prod` pull request open.
 4. Environment `production`: deployment branches "selected", `prod` alone; the deploy credential as an environment
    secret (never a repository secret); the account id as a repository variable. A workflow that moves money runs
    only on the owner's own dispatch (`if: github.triggering_actor == '<owner>'`).
