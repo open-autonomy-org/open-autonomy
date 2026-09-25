@@ -18,10 +18,11 @@ it names no channel for is not made, and the run says so in a line.
 Read the channel first. If this period's post is already there, stop.
 
 **The week's post.**
-1. `bun .open-autonomy/community.ts reach` for the numbers. A count it reports unavailable stays unavailable.
-2. What shipped since the last post: releases `CHANGELOG.md` records with a version and date, never `Unreleased`
-   lines. Each release gets its announcement where it is due (Discussions, category Announcements:
-   `bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`), once.
+1. `bun .open-autonomy/community.ts reach` for the numbers, compared with the targets `project-communications`
+   records. A count it reports unavailable stays unavailable.
+2. Each release `CHANGELOG.md` records since the last announcement, with a version and date (never `Unreleased`
+   lines), announced once on the announcements channel (on Discussions, category Announcements:
+   `bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`).
 3. The dev log, on its channel: what shipped, what it cost (the books), what is next on the roadmap, written for
    someone outside the project from the week's real sessions. A quiet week says so in a line. Never invent
    progress or promise a date.
@@ -32,4 +33,4 @@ runway left, thanking backers and members by name where they are public.
 A channel that needs a person to post (a platform without an integration, a community that forbids bots): draft the
 post in full, labelled as written by the project's agent, and ask as `project-communications` says.
 
-Report a short paragraph with links to what you posted.
+Report a short paragraph with links to what you posted and the numbers against the targets: the scrum reads this.

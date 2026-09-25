@@ -93,7 +93,7 @@ reviewer; the passing captures are the page's media.
 **A release follows shipped change.** The project's own document carries a release cadence, and PM's existing
 release planning (`PRODUCTION.md`) prepares a release when a change a user can see has landed within it and the front
 door tells it truly: the version, the notes in a user's words, the review package ready for a member holding
-release review. A release is what community announces.
+release review. A release is what the weekly outreach job announces.
 
 **Periodic posts run as their own jobs.** A weekly job posts what shipped (each release's announcement) and the dev
 log from the week's real sessions and books; a monthly job posts the backer report: what the money bought and the
@@ -107,10 +107,9 @@ roster) goes to whoever holds that permission, the owner included when only they
 help-wanted, since no one else could do it. Every ask is prepared so it costs one decision and is sent once. The
 roles the owner names as needing people, with fewer than two current holders, are one standing recruiting outcome.
 
-**Strategy owns the plan, community carries it out.** No new role: the strategy skill gains a sustain mandate
-(which users, which channels, which asks), and community executes it on the agreed channels. The targets, the
-cadences, the channels and which asks are allowed are in the project's own document, the owner's word; the agents
-never edit them. The strategy never assumes a member does more than the roster says.
+**Strategy owns the plan; the outreach jobs and the community desk carry it out.** The strategy skill gains a
+sustain mandate (which users, which channels, which asks). The targets, the cadences, the channels and which asks
+are allowed are in the project's own document, the owner's word; the agents never edit them.
 
 Extrapolation, this author's (the owner named the goal and the three contributions, not these particulars): the
 weekly and monthly jobs; the contents of `community.ts reach`; the fresh-reader grade and where it runs; the

@@ -68,11 +68,11 @@ function walk(dir: string, base = dir): string[] {
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
 // 'not_open', 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads, and 3.6.0
-// the first with statements.ts (docs/decisions/0012), which the vendored client imports, and 3.8.0 the first whose
-// roster knows what members give, in the project's own words, and when they leave (docs/decisions/0013), which `check`
-// reads.
+// the first with statements.ts (docs/decisions/0012), which the vendored client imports, and 3.9.0 the first whose
+// roster knows what members give and when they leave, and who holds a role or a permission (docs/decisions/0013),
+// which `check` and `community.ts` read.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
-const SDK_MIN = '3.8.0';
+const SDK_MIN = '3.9.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);

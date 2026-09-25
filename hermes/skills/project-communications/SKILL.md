@@ -95,21 +95,21 @@ when needed. Ordinary project coordination is public.
 
 ## Outward communication
 
-The front door and the outward channels go through this project's integrations (the `front-door` skill, and the
-`outreach` jobs for release announcements, the dev log and the backer report). Every member is a volunteer, the
-owner included, and gives only what the roster says (ADR 0013). These are the rules for asking people; the other
-skills point here.
+The front door and the outward channels go through this project's integrations (the `front-door` skill, and, where
+the project schedules them, the `outreach` jobs for release announcements, the dev log and the backer report). Every
+member is a volunteer, the owner included, and gives only what the roster says (ADR 0013). These are the rules for
+asking people; the other skills point here.
 
 - **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a role:
   whoever `bun .open-autonomy/community.ts who <role>` returns, the available first; with no one, it is posted once
   with `community.ts help-wanted`.
-- **Work that needs a permission** (the repository's description, topics, homepage, social preview, Pages source or
-  Discussions; a release; the roster) goes to whoever holds it: `community.ts who <role> <scope>`, and the owner when
-  only the owner holds it. It is never posted as help-wanted: no one else could do it.
+- **Work that needs a permission** goes to whoever holds it: `community.ts holders <scope>`, the available first.
+  The repository's settings (description, topics, homepage, social preview, Pages source, Discussions) and the
+  roster are `owner`; a release is `release-review`. It is never posted as help-wanted: no one else could do it.
 - Every ask is prepared completely, so it costs one decision (the exact values, the file, the drafted text), and
   sent once. Follow up only when agreed or when evidence changes.
 
 Record here the owner's word on sustaining the project: the role names this project uses and which of them need
-people (only these are recruited for, as one standing roadmap outcome), the channels each outreach post goes to,
-the numbers the project aims for, and which asks of users and members are allowed. The outreach jobs' schedules
-are their cadence. Agents read this and never change it.
+people (only these are recruited for, as one standing roadmap outcome), the channel for each outreach post
+(announcements, the dev log, the backer report), the numbers the project aims for, and which asks of users and
+members are allowed. The outreach jobs' schedules are their cadence. Agents read this and never change it.

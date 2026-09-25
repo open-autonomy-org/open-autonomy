@@ -12,15 +12,16 @@
 //   bun .open-autonomy/community.ts latest                        # the newest activity on GitHub, as stable bytes: the
 //                                                                 # monitor job's source, so the agent wakes only on change
 //   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
-//   bun .open-autonomy/community.ts who <role> [scope]            # who an ask goes to: the role's current holders, the
-//                                                                 # available now first; none is help-wanted (ADR 0013)
+//   bun .open-autonomy/community.ts who <role>                    # who takes work anyone could take: the role's current
+//                                                                 # holders, the available first; none is help-wanted
+//   bun .open-autonomy/community.ts holders <scope>               # who may do work that needs a permission (ADR 0013)
 //   bun .open-autonomy/community.ts reach [days]                  # the week's numbers, for the outreach job (ADR 0013)
 //   bun .open-autonomy/community.ts help-wanted <key> <title> <body-file> # an ask no member holds, posted once
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { TEAM_SCOPES, currentMembers, membersFor, parseTeamConfig, type TeamScope } from './sdk/team.ts';
+import { TEAM_SCOPES, currentMembers, holdersOf, membersFor, parseTeamConfig, type TeamMember, type TeamScope } from './sdk/team.ts';
 
 // Hermes removes credentials from terminal tools. Re-enter with only its configured
 // GitHub door; values remain inside the child environment and are never printed.
@@ -211,15 +212,14 @@ if (command === 'poll' && doorless) {
   if (!category) throw new Error(`no discussion category ${slug} on ${account} (have: ${r.repository.discussionCategories.nodes.map((c) => c.slug).join(', ')})`);
   const out = await graphql<{ createDiscussion: { discussion: { number: number; url: string } } }>(`mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) { createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) { discussion { number url } } }`, { repositoryId: r.repository.id, categoryId: category.id, title, body: readFileSync(file, 'utf8') });
   console.log(`discussion #${out.createDiscussion.discussion.number}: ${out.createDiscussion.discussion.url}`);
-} else if (command === 'who' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(rest[0] ?? '') && (!rest[1] || /^[a-z-]+$/.test(rest[1]))) {
-  // Who an ask goes to (ADR 0013): the current holders of a role, those within one of their windows now first; with a
-  // scope, only holders of that authority, since a role is work, not authority. No one: the ask is help-wanted, posted
-  // where members and users see it, and never goes to the owner by default.
-  if (rest[1] && !(TEAM_SCOPES as readonly string[]).includes(rest[1])) throw new Error(`who: scope is one of ${TEAM_SCOPES.join(', ')}`);
+} else if ((command === 'who' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(rest[0] ?? '')) || (command === 'holders' && (TEAM_SCOPES as readonly string[]).includes(rest[0] ?? ''))) {
+  // Who an ask goes to (ADR 0013), those within one of their windows now first. `who <role>`: work anyone could take,
+  // and no one means it is posted as help-wanted. `holders <scope>`: work that needs a permission, never help-wanted.
   const team = parseTeamConfig(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'));
-  const found = membersFor(team, rest[0]!, new Date(), rest[1] as TeamScope | undefined);
-  const card = (m: (typeof found.available)[number]) => ({ id: m.id, name: m.name, github: m.github?.login ?? null, discord: m.discord?.name ?? null, availability: m.availability ?? null });
-  console.log(JSON.stringify({ role: rest[0], scope: rest[1] ?? null, available: found.available.map(card), later: found.later.map(card), help_wanted: !found.available.length && !found.later.length }));
+  const found = command === 'who' ? membersFor(team, rest[0]!) : holdersOf(team, rest[0] as TeamScope);
+  const card = (m: TeamMember) => ({ id: m.id, name: m.name, github: m.github?.login ?? null, discord: m.discord?.name ?? null, availability: m.availability ?? null });
+  const none = !found.available.length && !found.later.length;
+  console.log(JSON.stringify({ [command === 'who' ? 'role' : 'scope']: rest[0], available: found.available.map(card), later: found.later.map(card), ...(command === 'who' ? { help_wanted: none } : {}) }));
 } else if (command === 'help-wanted' && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rest[0] ?? '') && rest[1] && rest[2]) {
   // An ask no current member's role covers (ADR 0013), posted where members and users see it, prepared so it costs its
   // taker one decision. Once per key: a rerun finds the open issue rather than posting a second.
@@ -312,6 +312,6 @@ if (command === 'poll' && doorless) {
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> [scope] | reach [days] | help-wanted <key> <title> <body-file> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> | holders <scope> | reach [days] | help-wanted <key> <title> <body-file> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }

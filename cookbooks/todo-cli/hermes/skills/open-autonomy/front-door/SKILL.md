@@ -12,8 +12,8 @@ metadata:
 
 A project's front door is its GitHub page: `README.md` and the repository's own metadata. It is where a
 person decides in seconds whether this project is for them, and where they succeed or fail at first use.
-The project's Open Autonomy page shows how it is built; the front door shows what it is. Posts, dev logs
-and announcements on the project's channels are the community skill's.
+The project's Open Autonomy page shows how it is built; the front door shows what it is. Announcements, the dev
+log and the backer report are the `outreach` jobs'.
 
 ## The bar
 

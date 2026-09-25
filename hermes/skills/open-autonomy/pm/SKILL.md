@@ -149,11 +149,10 @@ Invitations remain proposals. Queue only fleet support/integration/verification,
 
 ## The numbers and the people
 
-The week's numbers come in the `outreach` job's weekly report (`community.ts reach`: reach, the books, the team).
-When a new one is there, compare it with the targets `project-communications` records; a count reported
-unavailable is not a zero. The roles it lists as needing people, with fewer than two current holders, are one
-standing recruiting outcome on the roadmap, never an item per role and never a role you name yourself. Ask people
-as `project-communications` says.
+The week's numbers against the targets are in the `outreach` job's weekly report, where the project schedules it;
+plan with the latest. When the roster or the roles `project-communications` lists as needing people change, reconcile
+one standing recruiting outcome on the roadmap for those roles with fewer than two current holders (`community.ts who
+<role>`); never an item per role, never a role you name yourself. Ask people as `project-communications` says.
 
 ## The front door
 
