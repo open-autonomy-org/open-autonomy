@@ -37,10 +37,10 @@ redirecting the roadmap as needed."
 
 **Direction has two sources, and a project has exactly one of them.**
 
-1. **The owner's meeting** (every project by default). The company's organization agent covers the project; its
-   daily memo, in the owner's channel, carries what happened and the agenda; the owner's answers in that thread are the
-   meeting; each outcome that touches a project is filed as an authorized request in that project's intake, and its PM lands it on
-   the roadmap. Strategy prepares proposals for the agenda and lands nothing on its own.
+1. **The owner's meeting** (every project by default). The company's organization agent covers the project; its daily
+   memo, in the owner's channel, carries what happened and the agenda; the owner's answers in that thread are the
+   meeting; each outcome that touches a project is filed as an authorized request in that project's intake, and its
+   PM lands it on the roadmap. Strategy prepares proposals for the agenda and lands nothing on its own.
 2. **A north star** (the `north-star` skew). The project's constitution states one north star that can be checked: what
    done means and against which sources (for example, feature parity with the named leading todo apps, the list
    refreshed from primary sources). Strategy keeps a sourced gap table against it, runs whenever the PM's board has
