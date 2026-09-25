@@ -258,12 +258,13 @@ image carries Hermes and a pinned Codex CLI, so container mode takes `hermes` or
 harness by name (Claude Code on its user's own login cannot hold that login in an executor). The fleet is
 unchanged.
 
-Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the
-orchestrator answered with Hermes's approval rule. Codex 0.156.1 has no policy that asks before every command
-instead (`approval_policy = "untrusted"` is refused as unsupported: measured). So the sandbox is turned off only
-in the Codex home of a profile whose owner turned Hermes's approvals off (`approvals.mode: off`); a profile that
-keeps them, the treasurer that pays among them, keeps the sandbox, and its commands fail closed in the executor
-rather than run ungated. A per-command gate for Codex there is open.
+Codex's own sandbox cannot run in the executor, which is the boundary itself, so every profile's Codex home runs
+`sandbox_mode = "danger-full-access"`. The gate is Codex's approval policy: `never` for a profile whose owner turned
+Hermes's approvals off (`approvals.mode: off`), and `untrusted` for one that keeps them, the treasurer that pays
+among them. Measured on codex-cli 0.156.1's app server with full access: `untrusted` asks before a command
+(`item/commandExecution/requestApproval`), and a denial fails the command; the orchestrator answers each request
+with Hermes's approval rule. (An earlier note here recorded `untrusted` as refused: that was `codex exec`, which has
+no one to ask; the orchestrator drives the app server, which does.)
 
 **Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
 the project; the image built from this kit on the pinned Hermes, Colima, orchestrator 0.3.12 then 0.3.13):

@@ -119,16 +119,16 @@ print(out.decode().strip().splitlines()[-1])
 }
 
 /**
- * Codex's own sandbox in each profile's Codex home, as the profile's approvals allow. In the executor Codex's
- * bubblewrap cannot make its namespaces and every command fails (measured: a PM run could run nothing); the executor
- * is the boundary, as for Hermes's own terminal there. But the sandbox was also a gate: Codex asked before escaping
- * it and the orchestrator answered with Hermes's approval rule, and Codex 0.156.1 offers no policy that asks before
- * every command instead (its `untrusted` is refused as unsupported: measured). So only a profile whose owner turned
- * Hermes's approvals off (`approvals.mode: off`) gets `sandbox_mode = "danger-full-access"`; a profile that keeps them
- * (the treasurer, which pays) keeps the sandbox, and its commands fail closed in the executor rather than run
- * ungated. The key is written or removed at the top of the home's `config.toml`; the orchestrator's tables are kept.
+ * Codex's sandbox and gate in each profile's Codex home. In the executor Codex's bubblewrap cannot make its
+ * namespaces and every command fails (measured: a PM run could run nothing); the executor is the boundary, as for
+ * Hermes's own terminal there, so every profile runs `sandbox_mode = "danger-full-access"`. The gate is Codex's
+ * approval policy: `never` where the owner turned Hermes's approvals off (`approvals.mode: off`), and `untrusted`
+ * where they kept them (the treasurer, which pays): Codex's app server then asks before every command
+ * (`item/commandExecution/requestApproval`, measured on codex-cli 0.156.1 with full access; a denial fails the
+ * command) and the orchestrator answers with Hermes's approval rule. The keys are written at the top of the home's
+ * `config.toml`; the orchestrator's tables are kept.
  */
-export async function openContainerCodexSandbox(options: { container: string; home: string }): Promise<string[]> {
+export async function gateContainerCodex(options: { container: string; home: string }): Promise<string[]> {
   const output = await python(options.container, String.raw`
 import json,pathlib,re,sys,yaml
 s=json.load(sys.stdin)
@@ -144,10 +144,10 @@ for profile in [home]+[p for p in sorted((home/'profiles').glob('*')) if p.is_di
     text=f.read_text() if f.exists() else ''
     first=re.search(r'(?m)^\s*\[',text)
     head,tail=(text[:first.start()],text[first.start():]) if first else (text,'')
-    head=re.sub(r'(?m)^sandbox_mode\s*=.*\n?','',head)
-    open_=mode=='off'
-    f.write_text(('sandbox_mode = "danger-full-access"\n' if open_ else '')+head+tail)
-    lines.append(f"{profile.name if profile != home else 'home'}: Codex sandbox {'off (approvals off)' if open_ else 'kept (approvals '+mode+'): commands fail closed in the executor'}")
+    head=re.sub(r'(?m)^(sandbox_mode|approval_policy)\s*=.*\n?','',head)
+    policy='never' if mode=='off' else 'untrusted'
+    f.write_text(f'sandbox_mode = "danger-full-access"\napproval_policy = "{policy}"\n'+head+tail)
+    lines.append(f"{profile.name if profile != home else 'home'}: Codex {'runs commands ungated (approvals off)' if policy=='never' else 'asks before every command (approvals '+mode+'), answered by Hermes\'s approval rule'}")
 print(json.dumps(lines))
 `, options);
   return JSON.parse(output);
