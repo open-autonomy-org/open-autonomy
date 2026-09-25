@@ -17,6 +17,7 @@ import { document } from './document.js';
 import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
+import { redactDeep } from '../redact.js';
 import { atomFeed, updatesOf } from './updates.js';
 import { cardPng } from './raster.js';
 import type { ArtKind } from './art.js';
@@ -143,7 +144,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     const state = String(form.get('state') ?? '');
     if (state !== 'running' && state !== 'paused') return error('invalid_request');
     const reason = String(form.get('reason') ?? '').trim().slice(0, 400) || undefined;
-    const r = await ledger.stateRequest(account, state, `@${who!.login}`, reason);
+    const r = await ledger.stateRequest(account, state, `@${who!.login}`, reason === undefined ? undefined : redactDeep(reason) as string);
     if (!r.ok) return privateHtml(renderMessage(account, false, 'Not recorded', `The request was refused: ${r.error}.`), 400);
     return new Response(null, { status: 303, headers: { location: at(account, 'dashboard', 'agent'), ...NO_STORE } });
   }

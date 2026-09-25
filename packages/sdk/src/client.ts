@@ -41,6 +41,10 @@ export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 export type OperatingState = 'running' | 'paused';
 // A project inherits its org's word (`@<owner>`), paused if either is: `desired` is the effective word, carrying `from`
 // when it is the org's, with the project's own record beside it as `own`.
+// One entry of the operating state's history: the owner's request (`from` the org when it was the org's word; `unchanged`
+// when it asked for the state that already held), or a change of state the automation reported. `backfilled` marks a
+// record from before the history was kept.
+export type ControlEntry = ({ kind: 'request'; state: OperatingState; at: string; by: string; reason?: string; from?: string; unchanged?: true } | { kind: 'report'; state: OperatingState; at: string; note?: string }) & { backfilled?: true };
 export interface AgentControl {
   desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
@@ -198,8 +202,9 @@ export class OpenAutonomy {
     if (!res.ok) { const body = await res.json().catch(() => ({})) as { error?: { code?: string } | string }; const code = typeof body.error === 'string' ? body.error : body.error?.code; throw new ReadError(res.status, code ?? `http_${res.status}`); }
     return await res.json() as T;
   }
-  async sessions(account: string, limit = 30): Promise<{ live: string[]; sessions: SessionSummary[] }> {
-    return this.read(`/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}`);
+  // Newest first; `next`, when there is more, is the `before` of the page after.
+  async sessions(account: string, limit = 30, before?: string): Promise<{ live: string[]; sessions: SessionSummary[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
   }
   async session(account: string, key: string): Promise<SessionRecord | undefined> {
     try { return (await this.read<{ session?: SessionRecord }>(`/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}`)).session; }
@@ -247,6 +252,11 @@ export class OpenAutonomy {
     const { desired, observed, own } = await res.json() as AgentControl;
     return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}), ...(own ? { own } : {}) };
   }
+  // Every request and every change reported, newest first, a page at a time.
+  //   GET /v1/accounts/:account/state/history?limit=&before=
+  async stateHistory(account: string, limit = 50, before?: string): Promise<{ history: ControlEntry[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/state/history?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
+  }
   // An org at a glance: its own word and bounds, and each listed project under it with its effective word and money.
   //   GET /v1/orgs/:org
   async org(name: string): Promise<OrgView> {
@@ -267,6 +277,10 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap`);
     if (!res.ok) return undefined;
     return ((await res.json()) as { revision?: RoadmapRevision }).revision;
+  }
+  // A page of the history: `next`, when there is more, is the `before` of the page after.
+  async roadmapRevisionPage(account: string, limit = 20, before?: string): Promise<{ revisions: RoadmapRevision[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
   }
   async roadmapRevisions(account: string, limit = 20): Promise<RoadmapRevision[]> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}`);

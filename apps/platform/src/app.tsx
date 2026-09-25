@@ -151,7 +151,7 @@ export const app: App = {
 
 async function givePageData(ledger: LedgerClient, t: RouteTools, session: GiveSession, message?: GivePageData['message']): Promise<GivePageData> {
   const pool = t.grantsAccount;
-  const [directory, funder, poolView] = await Promise.all([ledger.directory(), ledger.funder(`@${session.login}`), session.grants_admin ? ledger.funder(pool) : undefined]);
+  const [directory, funder, poolView] = await Promise.all([ledger.directory(), ledger.funder(`@${session.login}`, { own: true }), session.grants_admin ? ledger.funder(pool, { own: true }) : undefined]);
   return { login: session.login, funder, projects: directory.entries.filter((entry) => entry.is_project && entry.listed && entry.account !== pool), ...(poolView ? { grants: { account: pool, view: poolView } } : {}), ...(message ? { message } : {}), attempt: crypto.randomUUID() };
 }
 

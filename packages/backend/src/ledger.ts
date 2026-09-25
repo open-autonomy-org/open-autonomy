@@ -2,6 +2,7 @@ import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { checkStatement, MAX_STATEMENTS, statementChanges, storedStatement, today, type Statement, type StatementRevision } from '@open-autonomy/sdk/statements';
+import { redactDeep } from './redact.js';
 import { json } from './http.js';
 import { sees, visibilityOf } from './page/model.js';
 import { estimateRunway } from './runway.js';
@@ -119,6 +120,10 @@ const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cent
 export type OperatingState = 'running' | 'paused';
 // As served, `desired` is the effective word (ADR 0010): the org's, with `from`, when the org's pause holds and the
 // project's own does not; the project's own record is then beside it as `own`. Stored records never carry either.
+// One entry of the operating state's history: the owner's request (who, why) or the automation's report (its note).
+// `from` names the org whose word it was; `unchanged` a request for the state that already held; `backfilled` a record
+// from before the history was kept.
+export type ControlEntry = ({ kind: 'request'; state: OperatingState; at: string; by: string; reason?: string; from?: string; unchanged?: true } | { kind: 'report'; state: OperatingState; at: string; note?: string }) & { backfilled?: true };
 export interface AgentControl {
   desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
@@ -190,6 +195,8 @@ export interface Flow {
   envelope_id?: string;
   item?: string;
   ts: string;
+  // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
+  private?: true;
 }
 
 export type EnvelopePurpose =
@@ -400,7 +407,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
-      case 'funder': return json(await this.funderView(s('account')));
+      case 'funder': return json(await this.funderView(s('account'), body?.own === true));
       case 'bonus_add': return json(await this.bonusAdd(s('account'), Number(body.amount_usd_cents)));
       case 'key_register': return json(await this.keyRegister(body.claims as KeyClaims));
       case 'key_rotate': return json(await this.keyRotate(body.previous as KeyClaims, body.claims as KeyClaims, s('grace_until')));
@@ -412,7 +419,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'pulse': return json(this.pulse(s('account')));
       case 'calls': return json(await this.listCalls(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'session_event': return json(await this.sessionEvent(s('account'), body.event as SessionEvent));
-      case 'sessions': return json(await this.listSessions(s('account'), Number(body.limit)));
+      case 'sessions': return json(await this.listSessions(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'session': return json(await this.getSession(s('account'), s('key')));
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at, body.id));
@@ -424,7 +431,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'item': return json(await this.itemView(s('account'), s('item_id')));
       case 'roadmap_set': return json(await this.roadmapSet(s('account'), body.roadmap as Roadmap, s('source'), body.by ? s('by') : undefined));
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
-      case 'roadmap_revisions': return json(await this.roadmapRevisions(s('account'), Number(body.limit)));
+      case 'roadmap_revisions': return json(await this.roadmapRevisions(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
+      case 'state_history': return json(await this.stateHistory(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'statement_set': return json(await this.statementSet(s('account'), body.statement, s('by')));
       case 'statement_withdraw': return json(await this.statementWithdraw(s('account'), s('id'), s('by')));
       case 'statements': return json(this.statementsLive(s('account')));
@@ -937,12 +945,15 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return { ok: true, session: sessionSummary(session) };
   }
 
-  private async listSessions(account: string, limit: number): Promise<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }> {
+  // Newest first, a page at a time: `next` is the cursor for the page before, so a reader can take every session.
+  private async listSessions(account: string, limit: number, before?: string): Promise<{ ok: true; account: string; live: string[]; sessions: SessionSummary[]; next?: string }> {
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 30;
-    const page = await this.ctx.storage.list<SessionRecord>({ prefix: `session:${account}:`, reverse: true, limit: n });
+    const prefix = `session:${account}:`;
+    const page = await this.ctx.storage.list<SessionRecord>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });
+    const keys = [...page.keys()];
     const sessions = [...page.values()];
     const calls = await this.callsForSessions(account, sessions.map((session) => session.key));
-    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: sessions.map((session) => sessionSummary(session, calls.get(session.key))) };
+    return { ok: true, account, live: [...(this.acct(account)?.live_sessions ?? [])], sessions: sessions.map((session) => sessionSummary(session, calls.get(session.key))), ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
   }
 
   private async getSession(account: string, key: string): Promise<{ ok: boolean; error?: string; session?: SessionRecord }> {
@@ -1051,17 +1062,69 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
     const a = this.ensureAcct(account);
     const current = a.control?.desired?.state ?? 'running';
-    if (current === state && a.control?.desired) return { ok: true, unchanged: true, ...a.control };
-    a.control = { ...(a.control ?? {}), desired: { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) } };
+    const asked = { state: state as OperatingState, at: new Date().toISOString(), by: clipText(by, 80) ?? '', ...(typeof reason === 'string' && reason.trim() ? { reason: reason.slice(0, 400) } : {}) };
+    // What was already true enters the history before anything changes it: this account's, and for an org each of its
+    // projects', so a project's backfill reads the org's word as it stood, not the one being asked for now.
+    await this.historyBegun(account);
+    if (account.startsWith('@')) for (const project of this.membersOf(account)) await this.historyBegun(project);
+    // A request for the state that already holds changes nothing, but it is still the owner's act, and kept.
+    if (current === state && a.control?.desired) { await this.requestKept(account, { kind: 'request', ...asked, unchanged: true }); return { ok: true, unchanged: true, ...a.control }; }
+    a.control = { ...(a.control ?? {}), desired: asked };
+    await this.requestKept(account, { kind: 'request', ...asked });
     await this.save();
     return { ok: true, ...a.control };
   }
   private async stateReport(account: string, state: unknown, note: unknown): Promise<{ ok: boolean; error?: string } & AgentControl> {
     if (!OPERATING_STATES.includes(state as OperatingState)) return { ok: false, error: 'invalid_state' };
     const a = this.ensureAcct(account);
+    await this.historyBegun(account);
+    const was = a.control?.observed;
     a.control = { ...(a.control ?? {}), observed: { state: state as OperatingState, at: new Date().toISOString(), ...(typeof note === 'string' && note.trim() ? { note: note.slice(0, 400) } : {}) } };
+    // The automation reports on every pass; the history keeps a report when the state it reports changes, so a key the
+    // agent holds adds an entry only by changing what it says it is.
+    if (was?.state !== a.control.observed!.state) await this.controlKept(account, { kind: 'report', ...a.control.observed! });
     await this.save();
     return { ok: true, ...a.control };
+  }
+
+  // Every request of the owner's and every change the automation reported, in order (ADR 0003, amended): the record an
+  // auditor tests oversight against. `control:<account>:<at>:<n>`, newest first on read, a page at a time.
+  // An org's request is kept on the org and on each of its projects, marked `from` the org, so a project's history holds
+  // every word that governed it (ADR 0010: a project inherits its org's pause).
+  private async requestKept(account: string, entry: Extract<ControlEntry, { kind: 'request' }>): Promise<void> {
+    await this.controlKept(account, entry);
+    if (account.startsWith('@')) for (const project of this.membersOf(account)) await this.controlKept(project, { ...entry, from: account });
+  }
+  // Records from before the history was kept, entered once with their own times and marked `backfilled`, so the history
+  // begins with what was already true: the latest request and report the account holds and, for a project, its org's word
+  // as it stands (it governed the project whenever the project joined). Reasons and notes are redacted as a new one is.
+  private async historyBegun(account: string): Promise<void> {
+    // Only an account on the books has a history: a read of any other name writes nothing.
+    if (!this.acct(account)) return;
+    if ((await this.ctx.storage.list({ prefix: `control:${account}:`, limit: 1 })).size) return;
+    const c = this.acct(account)?.control;
+    const org = orgOf(account);
+    const word = org ? this.acct(org)?.control?.desired : undefined;
+    const clean = <T extends { reason?: string; note?: string }>(e: T): T => ({ ...e, ...(e.reason ? { reason: redactDeep(e.reason) as string } : {}), ...(e.note ? { note: redactDeep(e.note) as string } : {}) });
+    const earlier: ControlEntry[] = [
+      ...(word ? [clean({ kind: 'request' as const, ...word, from: org!, backfilled: true as const })] : []),
+      ...(c?.desired ? [clean({ kind: 'request' as const, ...c.desired, backfilled: true as const })] : []),
+      ...(c?.observed ? [clean({ kind: 'report' as const, ...c.observed, backfilled: true as const })] : []),
+    ];
+    for (const e of earlier.sort((x, y) => x.at.localeCompare(y.at))) await this.controlKept(account, e);
+  }
+  private async controlKept(account: string, entry: ControlEntry): Promise<void> {
+    const at = String(Date.parse(entry.at)).padStart(13, '0');
+    const taken = await this.ctx.storage.list({ prefix: `control:${account}:${at}:` });
+    await this.ctx.storage.put(`control:${account}:${at}:${String(taken.size).padStart(3, '0')}`, entry);
+  }
+  private async stateHistory(account: string, limit: number, before?: string): Promise<{ ok: true; account: string; history: ControlEntry[]; next?: string }> {
+    await this.historyBegun(account);
+    const n = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
+    const prefix = `control:${account}:`;
+    const page = await this.ctx.storage.list<ControlEntry>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });
+    const keys = [...page.keys()];
+    return { ok: true, account, history: [...page.values()], ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
   }
 
   // The project's document, as its substrate publishes it: what the project is (the page's lead is its first
@@ -1156,10 +1219,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return revision ? { ok: true, revision } : { ok: false, error: 'no_roadmap' };
   }
 
-  private async roadmapRevisions(account: string, limit: number): Promise<{ ok: true; account: string; revisions: RoadmapRevision[] }> {
+  private async roadmapRevisions(account: string, limit: number, before?: string): Promise<{ ok: true; account: string; revisions: RoadmapRevision[]; next?: string }> {
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
-    const page = await this.ctx.storage.list<RoadmapRevision>({ prefix: `roadmap:${account}:`, reverse: true, limit: n });
-    return { ok: true, account, revisions: [...page.values()] };
+    const prefix = `roadmap:${account}:`;
+    const page = await this.ctx.storage.list<RoadmapRevision>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });
+    const keys = [...page.keys()];
+    return { ok: true, account, revisions: [...page.values()], ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
   }
 
   // ---- statements: the owner's word about the project, revisioned (ADR 0012) --------------------------------
@@ -1300,7 +1365,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       is_project: account.includes('/'),
       // Listed where everyone looks (the front page, an owner's page, an org's rollup) only when the owner opened its
       // overview to everyone: a closed project is not announced there, as its own page is not.
-      listed: account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview),
+      listed: this.listedHere(account),
       moderation: a?.moderation ?? 'listed',
       profile: displayProfile(a),
       goal_days: a?.goal_days ?? DEFAULT_GOAL_DAYS,
@@ -1315,6 +1380,13 @@ export class LimitLedger implements DurableObject, LedgerCore {
     };
   }
 
+  // Listed where everyone looks (the front page, an owner's page, an org's rollup, a funder's books) only when the owner
+  // opened its overview to everyone: a closed project is not announced there, as its own page is not.
+  private listedHere(account: string): boolean {
+    const a = this.acct(account);
+    return account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview);
+  }
+
   private async bonusAdd(account: string, amount: number): Promise<{ ok: boolean; bonus_usd_cents?: number; error?: string }> {
     if (!account.startsWith('@') || !(amount > 0)) return { ok: false, error: 'invalid_bonus' };
     const acct = this.ensureAcct(account);
@@ -1324,7 +1396,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // A funder on the books: the credits they hold, what they were given, what they gave and to whom.
-  private async funderView(account: string): Promise<FunderView> {
+  // `own`: the funder reading their own books (signed in on the give page, or the grants pool's admin), every
+  // project named; everyone else reads them with an unlisted project withheld (openFlow).
+  private async funderView(account: string, own = false): Promise<FunderView> {
     const a = this.acct(account);
     const f = this.fundingSnapshot(account);
     const durable: Flow[] = [];
@@ -1343,9 +1417,18 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
       credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
-      given: flows.filter((x) => x.from === account),
-      received: flows.filter((x) => x.to === account),
+      given: flows.filter((x) => x.from === account).map((x) => own ? x : this.openFlow(x, x.to)),
+      received: flows.filter((x) => x.to === account).map((x) => own ? x : this.openFlow(x, x.from)),
     };
+  }
+
+  // A funder's books are public, amounts and all; a project on the other side is named only where it is listed.
+  private openFlow(flow: Flow, other: string | undefined): Flow {
+    if (!other || other.startsWith('@') || !other.includes('/') || other.endsWith('/grants') || this.listedHere(other)) return flow;
+    // what could name or point at the project goes with its name: the note, its task (item, purpose), its envelope,
+    // and the flow's id (an envelope's id, or a caller's key)
+    const { note: _note, item: _item, envelope_id: _envelope, purpose: _purpose, id: _id, ...rest } = flow;
+    return { ...rest, ...(flow.to === other ? { to: '' } : {}), ...(flow.from === other ? { from: undefined } : {}), private: true };
   }
 
   private projectView(account: string): ProjectView {
@@ -1703,7 +1786,7 @@ export class LedgerClient {
     return this.call<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
   }
   earmark(account: string, purpose?: unknown) { return this.call<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }>('earmark', { account, for: purpose }); }
-  funder(account: string) { return this.call<FunderView>('funder', { account }); }
+  funder(account: string, options: { own?: boolean } = {}) { return this.call<FunderView>('funder', { account, ...(options.own ? { own: true } : {}) }); }
   bonusAdd(account: string, amountUsdCents: number) { return this.call<{ ok: boolean; bonus_usd_cents?: number; error?: string }>('bonus_add', { account, amount_usd_cents: amountUsdCents }); }
   keyRegister(claims: KeyClaims) { return this.call<{ ok: boolean; error?: string }>('key_register', { claims }); }
   keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string) { return this.call<{ ok: boolean; error?: string; exp?: string }>('key_rotate', { previous, claims, grace_until: graceUntil }); }
@@ -1715,7 +1798,7 @@ export class LedgerClient {
   pulse(account: string) { return this.call<Pulse>('pulse', { account }); }
   calls(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; calls_total: number; calls: CallRecord[]; next?: string }>('calls', { account, limit, before }); }
   sessionEvent(account: string, event: SessionEvent) { return this.call<{ ok: boolean; error?: string; session?: SessionSummary; idempotent?: boolean }>('session_event', { account, event }); }
-  sessions(account: string, limit?: number) { return this.call<{ ok: true; account: string; live: string[]; sessions: SessionSummary[] }>('sessions', { account, limit }); }
+  sessions(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; live: string[]; sessions: SessionSummary[]; next?: string }>('sessions', { account, limit, before }); }
   session(account: string, key: string) { return this.call<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.call<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   setupPut(account: string, setup: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
@@ -1727,7 +1810,8 @@ export class LedgerClient {
   item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
   roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
-  roadmapRevisions(account: string, limit?: number) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[] }>('roadmap_revisions', { account, limit }); }
+  roadmapRevisions(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[]; next?: string }>('roadmap_revisions', { account, limit, before }); }
+  stateHistory(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; history: ControlEntry[]; next?: string }>('state_history', { account, limit, before }); }
   statementSet(account: string, statement: unknown, by: string) { return this.call<{ ok: boolean; error?: string; field?: string; unchanged?: boolean; revision?: StatementRevision }>('statement_set', { account, statement, by }); }
   statementWithdraw(account: string, id: string, by: string) { return this.call<{ ok: boolean; error?: string; revision?: StatementRevision }>('statement_withdraw', { account, id, by }); }
   statements(account: string) { return this.call<{ ok: true; account: string; statements: Statement[] }>('statements', { account }); }

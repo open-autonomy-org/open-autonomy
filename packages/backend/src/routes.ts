@@ -8,10 +8,10 @@ import { servePages, type PageApp } from './page/serve.js';
 import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { syncAllStale, syncProfile } from './sync.js';
+import { redactDeep } from './redact.js';
 import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { LOGO_SVG } from './ui.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
-import { redactDeep } from './redact.js';
 import { standing, today } from '@open-autonomy/sdk/statements';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
@@ -209,7 +209,8 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
     const body = parseJson<{ state?: string; reason?: string }>(await req.text());
     if (!body || typeof body.state !== 'string') return error('invalid_request');
-    const r = await ledger.stateRequest(claims.account, body.state, claims.kid, body.reason);
+    // The reason is kept for good in the history and read by whoever the panel admits: redacted like everything published.
+    const r = await ledger.stateRequest(claims.account, body.state, claims.kid, typeof body.reason === 'string' ? redactDeep(body.reason) : body.reason);
     return json(r, { status: r.ok ? 200 : 400 });
   }
   // The owner's statements (ADR 0012), on a project's steer-scoped key: a tool the owner runs publishes its word about
@@ -242,13 +243,19 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
     return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
   };
-  const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? admits(account, panel);
+  // A storage key is `<kind>:<account>:…`, so an account id holding `:` could name another account's records: never an account.
+  const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? (account.includes(':') ? error('not_found', 404) : admits(account, panel));
   // Money travels with the books: a door open wider than them answers without its `*usd_cents` figures.
   const money = async (account: string): Promise<boolean> => (await admits(account, 'books')) === null;
   const priced = async <T,>(account: string, value: T): Promise<T> => ((await money(account)) ? value : withoutMoney(value));
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state$/))) { const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.state(dec(m[1])), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/state\/history$/))) {
+    // An org's own history is its steer key's to read: it is permanent (every past reason and key id), where the org's
+    // state serves only its latest word, and each project already holds the org's words that governed it behind its own panel.
+    if (dec(m[1]).startsWith('@')) { const claims = await authedClaims(req, env); if (!claims || !orgKeyOf(claims, dec(m[1]).slice(1))) return error('not_open', 404); }
+    const c = await closed(dec(m[1]), 'overview'); if (c) return c; return json(await ledger.stateHistory(dec(m[1]), Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; const r = await ledger.roadmap(dec(m[1])); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/roadmap\/revisions$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await ledger.roadmapRevisions(dec(m[1]), Number(url.searchParams.get('limit') ?? 20), url.searchParams.get('before') ?? undefined), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; const r = await ledger.statements(dec(m[1]));
     // Checked at every read, like the page and the widget: `badges` are the ones standing today, `lapsed` the rest.
     return json({ ...r, statements: r.statements.map((x) => { const d = standing(x, today()); return { ...x, badges: d.standing, lapsed: d.lapsed }; }) }, { headers: NO_STORE }); }
@@ -259,13 +266,13 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const live = (await ledger.statements(dec(m[1]))).statements.find((x) => x.id === dec(m![2]));
     return live ? new Response(renderStatementSvg(live, today()), { headers: SVG }) : error('not_found', 404);
   }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await priced(dec(m[1]), await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30))), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return json(await priced(dec(m[1]), await ledger.sessions(dec(m[1]), Number(url.searchParams.get('limit') ?? 30), url.searchParams.get('before') ?? undefined)), { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; return sessionEvents(env, dec(m[1]), dec(m[2]), req, await money(dec(m[1]))); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/sessions\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'transcripts'); if (c) return c; const r = await priced(dec(m[1]), await ledger.session(dec(m[1]), dec(m[2]))); return json(r, { status: r.ok ? 200 : 404, headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return itemEvents(env, dec(m[1]), dec(m[2]), req, await money(dec(m[1]))); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/events$/))) { const c = await closed(dec(m[1]), 'sessions'); if (c) return c; return accountEvents(env, dec(m[1]), req, await money(dec(m[1]))); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/items\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'work'); if (c) return c; return json(await priced(dec(m[1]), await ledger.item(dec(m[1]), dec(m[2]))), { headers: NO_STORE }); }
-  if (path === '/v1/funding/sessions') { const c = await closed(fundingAccount(env), 'sessions'); if (c) return c; return json(await priced(fundingAccount(env), await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30))), { headers: NO_STORE }); }
+  if (path === '/v1/funding/sessions') { const c = await closed(fundingAccount(env), 'sessions'); if (c) return c; return json(await priced(fundingAccount(env), await ledger.sessions(fundingAccount(env), Number(url.searchParams.get('limit') ?? 30), url.searchParams.get('before') ?? undefined)), { headers: NO_STORE }); }
 
   // ---- the books ----
   const calls = async (account: string) => json(await priced(account, await ledger.calls(account, Number(url.searchParams.get('limit') ?? 50), url.searchParams.get('before') ?? undefined)), { headers: NO_STORE });

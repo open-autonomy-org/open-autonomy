@@ -2,7 +2,8 @@
 
 Status: Proposed. Accepted only upon independent constitution review and merge of this record and
 its implementation. Amended by [ADR 0010](0010-an-org-word-projects-inherit.md): a project inherits its
-org's pause, and the served `desired` is the effective word.
+org's pause, and the served `desired` is the effective word. Amended again (below, "History"): every request and
+every change reported is kept.
 
 ## Context and sources
 
@@ -59,6 +60,31 @@ resumes exactly the jobs it paused, so a job the owner disabled on their own sta
 Conversations on a channel still answer; a person talking to the project is not the funded work.
 The kit records that scope in its README so an owner knows what their word does.
 
+## History (amendment, September 24, 2026)
+
+The owner's word and the automation's answer were kept as their latest values only, so the platform could show who
+paused the agent now but not who paused it last month. That history is what an auditor tests human oversight of an
+agent against (ISO/IEC 42001, AIUC-1 and NIST AI RMF all ask for it), and Evidence Desk reads it as a population of a
+period. Source: the owner's coding conversation of the same day, on which evidence the AI frameworks need; the shape
+below is this author's extrapolation.
+
+- **What is kept.** Every request, including one for the state that already holds (marked `unchanged`: it changes
+  nothing, but it is the owner's act, with its own reason). A report only when the state it reports changes: the
+  automation reports on every pass, so a key the agent holds adds an entry only by changing what it says it is.
+- **An org's word.** An org's request is kept on the org and on each of its projects on the books, marked `from` the org,
+  so a project's history holds every word that governed it (ADR 0010).
+- **What came before.** Before an account's history is first read or written, the latest request and report it already
+  held are entered with their own times, marked `backfilled`; for a project, so is its org's word as it stands, since it
+  governed the project whenever the project joined. An org's request first does this for each of its projects, so they
+  begin from the org's word as it stood, not the one being asked for.
+- **Who reads it.** `GET /v1/accounts/:account/state/history`, newest first, a page at a time, behind the project's
+  `overview` panel like the state itself. An org's own history is its steer key's alone. The org's current word stays
+  as public as the org's config makes it (`/v1/accounts/@org/state`, `/v1/orgs/:org`), but its history is permanent:
+  every past reason and key id, for good. Its projects already carry each org word that governed them, behind their
+  own panels, so nothing an auditor of a project needs is withheld.
+- **What it says.** A reason is kept for good and read by whoever the panel admits, so it passes the same redaction as
+  everything the platform publishes; the owner writes it knowing it is published, as the state's reason already was.
+
 ## Alternatives and tradeoffs
 
 - **A committed `paused:` in `.open-autonomy/config.yaml`.** The owner's committed word is the
@@ -82,6 +108,12 @@ The kit records that scope in its README so an owner knows what their word does.
   installed reporter older than this change reads a `not_forwarded` refusal from its valve and
   logs once; the owner's request waits, visibly unanswered, until the install is upgraded.
 - The page's header shows the operating state when it is anything other than agreed `running`.
+- The history (amendment): one record per request and per change of reported state, per account, and per project of an
+  org for the org's requests, repeats included: an owner re-asserting an org's pause every minute over two hundred
+  projects writes some two hundred and ninety thousand entries a day. Only owner keys can do that; the agent's key adds
+  history only by changing the state it reports. It adds one route (`GET /v1/accounts/:account/state/history`) and
+  the SDK's `stateHistory`, `roadmapRevisionPage` and `sessions(account, limit, before)`. Account ids holding `:` are
+  refused on every read, since a storage key is `<kind>:<account>:…`.
 - Nothing here changes metering, credentials, the account tree or the balance hard-stop.
 
 ## Constitution review
@@ -90,6 +122,10 @@ The kit records that scope in its README so an owner knows what their word does.
   originates nothing and applies nothing. It records the owner's word and shows the automation's
   answer, the same relation it already has to the owner's roadmap push. The one who drives is the
   owner; the one who applies is the automation.
+- *The platform shows; it does not steer* (amendment). Preserved: the history records what was requested and reported;
+  the platform still applies nothing.
+- *Nothing in an agent's reach is a secret that matters* (amendment). The agent's key can add history only by changing
+  the state it reports; reasons are redacted before they are kept.
 - *Only the SDK is real.* Preserved and extended: the observed state arrives through the SDK from
   whatever substrate the project runs; the platform reads no harness file to learn it.
 - *Authority comes from the repository, not from a key.* Preserved: a `steer` key is minted by

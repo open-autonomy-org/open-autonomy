@@ -9,7 +9,7 @@ import { parseEnv } from 'node:util';
 import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
-import { mergeImageDenylist, openContainerCodexSandbox, prepareContainerHome, prepareContainerSubscription, renderContainerWorkerForms, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
+import { containerMainMoved, mergeImageDenylist, openContainerCodexSandbox, prepareContainerHome, prepareContainerSubscription, renderContainerWorkerForms, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent } from './agent.ts';
 
 export async function startContainer(options: {
@@ -34,10 +34,12 @@ export async function startContainer(options: {
   let gateway: ReturnType<typeof startContainerProcess> | undefined;
   // the orchestrator stops on SIGTERM rather than draining on SIGUSR1: a stop asked for a restart is the drain
   let restartAsked = false;
+  let mainWatch: ReturnType<typeof setInterval> | undefined;
   let ending: Promise<void> | undefined;
   let finish!: (code: number) => void;
   const exited = new Promise<number>(resolve => { finish = resolve; });
   const stop = (code: number): Promise<void> => ending ??= (async () => {
+    clearInterval(mainWatch);
     await gateway?.close();
     for (const proc of services) if (proc.exitCode === null) proc.kill();
     const force = setTimeout(() => { for (const proc of services) if (proc.exitCode === null) proc.kill('SIGKILL'); }, 5000);
@@ -139,7 +141,31 @@ export async function startContainer(options: {
       : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter-ai-dev/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
         env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode` } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
-    console.log(`host: ${harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);
-    return { exited, close: () => stop(0), restart: () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); } };
+    const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;
+    console.log(`host: ${runtimeName} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);
+    const restart = () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); };
+    // What the agent IS is what main says, and main moves while it runs (start.ts's watch, read in the executor): every
+    // ten minutes the checkout fetches main; a move that touches the stack's own files (hermes/, .open-autonomy/) drains
+    // the runtime once the board is quiet, and this host exits 75, which its service manager restarts onto the new main.
+    // A move that touches only the project's books advances the mark; a checkout with tracked changes is left alone.
+    let startedMain = prepared.revision, watching = false;
+    mainWatch = setInterval(async () => {
+      if (ending || watching || restartAsked) return;
+      watching = true;
+      try {
+        const seen = await containerMainMoved({ container, home, workspace, since: startedMain });
+        if (!seen.main || seen.main === startedMain) return;
+        // a started revision main no longer reaches names no files, and restarts as bare mode's does
+        if (seen.changed && !seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
+        if (seen.busy === null) { console.error('host: cannot read the board; the restart onto main waits'); return; }
+        if (seen.busy) return;
+        console.log(`host: main moved to ${seen.main.slice(0, 8)}; asking ${runtimeName} to drain before restarting the stack onto it`);
+        restartAsked = true;
+        restart();
+      } catch (error) {
+        console.error(`host: ${error instanceof Error ? error.message : String(error)} The watch tries again in ten minutes.`);
+      } finally { watching = false; }
+    }, 10 * 60_000);
+    return { exited, close: () => stop(0), restart };
   } catch (error) { await stop(1); throw error; }
 }

@@ -61,7 +61,7 @@ agent is tracker-blind: whatever the source, it works its own queue and narrates
 | Route | What |
 |---|---|
 | `GET /v1/accounts/:account/roadmap` | the current revision: `revision`, `ts`, `source`, `by`, `roadmap`, `changes`, `conformance` |
-| `GET /v1/accounts/:account/roadmap/revisions?limit=` | the history, newest first |
+| `GET /v1/accounts/:account/roadmap/revisions?limit=&before=` | the history, newest first; `next`, when there is more, is the `before` of the page after (`roadmapRevisionPage`) |
 | `POST /v1/agent/roadmap` `{ source, roadmap, by? }` | an owner-side push on a `steer` key alone; an unchanged roadmap is not a revision. A substrate's own document goes through `POST /v1/agent/events` as `org.open-autonomy.timeline` |
 
 ## Rails
@@ -75,7 +75,7 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | `POST /v1/rails/card` `{ usd_cents, purpose? }` | a single-use virtual card minted against the balance (Stripe Issuing), bounded to the amount and the owner's merchant categories; returns the card's `id`, `last4`, expiry, and `number`/`cvc` where the issuer exposes them. A merchant's authorization is decided in real time, its capture settles as a `card` record (merchant, category, last4), and the card is retired |
 | `GET /v1/keys/challenge?funder=<login>` → `POST /v1/keys/mint {funder, repo}` | a funder's key: the claim file in a repository the login owns proves the login (an organization's only in `<org>/.github`, where `scopes: ["steer"]` mints the org's steer key instead, ADR 0010); the key can only give |
 | `POST /v1/grants/give` `{ to, usd_cents, note?, key?, for? }` (a give key) | grant credits from the funder's books to a project's, once per `key`; `for` may be `"any"`, `"model"`, `{models: [...]}`, or `{item: "id"}`, and absent means unrestricted |
-| `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received |
+| `GET /v1/funders/:login` | a funder's public books: credits to give (and how much of it is the org's bonus, for other people's projects), given, received; a flow with a project not listed where everyone looks carries `private: true` and no name, id, note or purpose, its amount kept |
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
@@ -136,7 +136,7 @@ Public reads, no key:
 
 | Route | What |
 |---|---|
-| `GET /v1/accounts/:account/sessions?limit=` | the stream, newest first, and `live`: the keys live now |
+| `GET /v1/accounts/:account/sessions?limit=&before=` | the stream, newest first, and `live`: the keys live now; `next`, when there is more, is the `before` of the page after, so a reader can take every session of a period (`sessions`) |
 | `GET /v1/accounts/:account/sessions/:key` | one session with its transcript tail and `next_seq` |
 | `GET /v1/accounts/:account/sessions/:key/events` | Server-Sent Events: `turn` (id = offset), `status`; `Last-Event-ID` resumes (`follow()` iterates them) |
 | `GET /v1/accounts/:account` | the books: the balance, what came in and went out, the burn, the runway, the owner's bounds (`funding()`) |
@@ -149,6 +149,7 @@ Public reads, no key:
 | `POST /v1/agent/statement` `{ id, title, source, as_of, badges, body_md? }` | a statement of the owner's (ADR 0012), on a project's `steer` key: a tool the owner runs (Evidence Desk's compliance status is the first) publishes its word about the project, shown in the dashboard's rail under "Stated by the owner", on its page and as a README badge row. The platform knows no framework: `badges` are `{ label, message, tone, until }` with `tone` one of `positive`, `info`, `neutral`, `warning`, `negative`, and every badge lapses after its `until` (a `YYYY-MM-DD`, UTC). At most five statements, eight badges each. Refused: `invalid_statement` (with the `field`), `lapsed_on_arrival`, `statement_limit`, `not_a_project` for an org's key. An identical publication is `unchanged: true`; any other, and `DELETE /v1/agent/statement/:id`, is a revision. `publishStatement`, `withdrawStatement`; `checkStatement` in `@open-autonomy/sdk/statements` checks one before sending |
 | `GET /v1/accounts/:account/statements` · `…/statements/:id/revisions` · `…/statements/:id/badges.svg` | the live statements (each with `badges` standing today and `lapsed` past their `until`), every change of one newest first, and its badge row for a README; behind the owner's `statements` panel (public unless the project is private). `statements`, `statementRevisions` |
 | `POST /v1/agent/state` `{ state, reason? }` | the owner's word, `running` or `paused`, on a `steer` key: recorded, not applied; an unchanged word is `unchanged: true`. On an org's key (`@<org>`, minted through `<org>/.github`) it is the org's word, which every project of the org inherits |
+| `GET /v1/accounts/:account/state/history?limit=&before=` | every request of the owner's word (who, when, why; `unchanged` when it asked for the state that already held; `from` the org when it was the org's word) and every change of state the automation reported, newest first, paged like the sessions (`stateHistory`). A project's history holds its org's requests; an org's own history is its steer key's to read |
 | `GET /v1/orgs/:org` | an org at a glance: its own `desired`, its `bounds` (the `spend.limits` of `<org>/.github/.open-autonomy/config.yaml`, used by every project of the org together), and each project whose overview is open to everyone, with its effective `control`, its balance, burn, runway and funding only when its books are open to everyone, and its live sessions only when its sessions are. On the org's own steer key: every project of the org, with every figure |
 | `GET /v1/accounts/:account` | the books: balance, spend, runway |
 | `GET /v1/accounts/:account/calls?limit=&before=` | the audit trail, every metered spend, newest first |

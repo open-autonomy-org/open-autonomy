@@ -78,11 +78,11 @@ program.command('books').description('the ledger and the owner\'s bounds; --call
   .option('-n, --limit <n>', 'how many calls', int, 50)
   .action((acct: string | undefined, o: { calls: boolean; limit: number }) => books(doors(account(acct, g()), g()), o));
 program.command('pause').description('the owner\'s word: pause the scheduled work (an org\'s holds for all its projects)').argument('[org|owner/project]')
-  .option('-r, --reason <text>', 'why, on the page')
+  .option('-r, --reason <text>', 'why: shown on the page and kept for good in the history')
   .option('--wait <seconds>', 'how long to wait for the automation\'s answer', int, 30)
   .action((arg: string | undefined, o: { reason?: string; wait: number }) => setState(doors(scope(arg), g(), ['steer']), 'paused', o));
 program.command('resume').description('the owner\'s word: run').argument('[org|owner/project]')
-  .option('-r, --reason <text>', 'why, on the page')
+  .option('-r, --reason <text>', 'why: shown on the page and kept for good in the history')
   .option('--wait <seconds>', 'how long to wait for the automation\'s answer', int, 30)
   .action((arg: string | undefined, o: { reason?: string; wait: number }) => setState(doors(scope(arg), g(), ['steer']), 'running', o));
 
