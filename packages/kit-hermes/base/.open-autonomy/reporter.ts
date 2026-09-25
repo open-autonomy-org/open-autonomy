@@ -323,7 +323,10 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
 let mainRevision = '';
 function refreshMain(): void {
   const fetch = run(['git', '-C', projectDir, 'fetch', '-q', 'origin', 'main']);
-  if (fetch.exitCode !== 0) throw new Error('Cannot refresh committed project documents');
+  if (fetch.exitCode !== 0) {
+    const why = fetch.exitedDueToTimeout ? 'git fetch passed its 20 s limit' : fetch.stderr.toString().trim().slice(-300) || `git fetch exited ${fetch.exitCode}`;
+    throw new Error(`Cannot refresh committed project documents: ${why}`);
+  }
   const rev = run(['git', '-C', projectDir, 'rev-parse', 'origin/main']);
   if (rev.exitCode !== 0) throw new Error('Committed main unavailable');
   mainRevision = rev.stdout.toString().trim();
