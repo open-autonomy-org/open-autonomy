@@ -8,8 +8,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `packages/backend/` — the core of the Cloudflare Worker: the account tree, the rails (the model rail live; cards and
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
-  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
-  Deploys and admin ops go through GitHub only, from human-cut tags (`deploy-v*` for `deploy.yml`, `release-v*`
+  coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not. Deploys and admin ops go through GitHub only, from human-cut tags (`deploy-v*` for `deploy.yml`, `release-v*`
   for `release.yml`, `admin.yml` dispatched `--ref` the latest deploy tag), each gated by the `production`
   environment's reviewer; the environment admits no branch, so the agent's `main` never runs with a secret. No
   machine holds a deploy or admin token.
@@ -20,8 +19,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
 - `packages/cli/` — `@open-autonomy/cli`: `oa`, the platform's doors on the command line: a project's status, sessions (a transcript,
   followed while live), roadmap and books; the owner's `pause` and `resume` on a steer key; `key mint` and `key rotate`.
 - `cookbooks/todo-cli/` — the canonical reference project, made with the kit: CLI development plus community,
-  setup, team and release scenarios. Its `cookbooks/todo-cli/examples/notes-http.ts` is a focused HTTP service without
-  another kit copy.
+  setup, team and release scenarios. Its `cookbooks/todo-cli/examples/notes-http.ts` is a focused HTTP service without another kit copy.
   Verify fresh installation in a disposable generated project.
 - `world/` — OA's ordinary World scenario: its opening data, model handlers and manual operators around
   the real platform and unmodified cookbook. World owns every service's lifecycle; follow [the guide](world/README.md).
@@ -37,42 +35,33 @@ accepted decision records; conflicting directions require a sourced proposal and
 ## Working agreement
 
 - Nothing pushes to `main`, including maintainers: the `main-protected` ruleset has no bypass actors. Push a
-  `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current
-  head is required before automatic merge. Independent means a fresh context, not a different agent or a later hour:
-  the author dispatches its own reviewer the moment it pushes, with the review checklist in the develop skill, and
-  merges on its verdict (owner ruling, 2026-09-12).
+  `land/<topic>` branch; `land.yml` opens its pull request and merges it. Independent agent approval of the current head is required before automatic merge. Independent means a fresh context, not a different agent or a later hour: the author dispatches its own reviewer the moment it pushes, with the review checklist in the develop skill, and merges on its verdict (owner ruling, 2026-09-12).
 - The owner can keep every autonomous run paused (the launchd agents stopped, not only the platform's `paused` word), and
-  landing still works: the review door is the project's App, and only the valve holds its key. For the review alone,
-  start the
-  App's port by itself, `bun .open-autonomy/valve.ts --github-app <secrets>/github-app.json:<port> --loopback`, submit
-  with
-  `GITHUB_API_URL=http://127.0.0.1:<port> GITHUB_TOKEN=valve bun .open-autonomy/community.ts review …`, and stop it
-  when the
-  verdict is in. No Hermes, schedule or channel starts, and nothing else is reachable through that port but the desk's
-  routes.
+  landing still works: the review door is the project's App, and only the valve holds its key. For the review alone, start the
+  App's port by itself, `bun .open-autonomy/valve.ts --github-app <secrets>/github-app.json:<port> --loopback`, submit with
+  `GITHUB_API_URL=http://127.0.0.1:<port> GITHUB_TOKEN=valve bun .open-autonomy/community.ts review …`, and stop it when the
+  verdict is in. No Hermes, schedule or channel starts, and nothing else is reachable through that port but the desk's routes.
 - Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
-- Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend
-  on the real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform
-  key) and Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, its model on the owner's
-  Codex subscription through a Codex worker on Supercode's orchestrator; its narration and rails on its own key, grant
-  and bounds), each a launchd agent in the user's LaunchAgents. Ours, org.open-autonomy.agent, runs bare: the kit's
-  start
+- Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend on the
+  real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform key) and
+  Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, its model on the owner's Codex
+  subscription through a Codex worker on Supercode's orchestrator; its narration and rails on its own key, grant and
+  bounds), each a launchd agent in the user's LaunchAgents. Ours, org.open-autonomy.agent, runs bare: the kit's start
   script from the agent's own checkout under the open-autonomy state directory in .local/state, its home beside it, the
   pinned Hermes installed once under that state directory. Hookline's, org.open-autonomy.hookline, runs in container
   mode (ADR 0009, as amended): the orchestrator and Codex in the `oa-hookline` executor (its home and checkout on Docker
   volumes, the `oa-pilot` Colima profile), the valves and reporter on this host from a copy of the kit under
   hookline/container-kit in that state directory, whose run.sh brings the executor up first. Their secrets are in the
-  open-autonomy and open-autonomy-hookline config directories; the valves are on 8787 and 8987. Hookline's agent is
-  its own GitHub App, `hookline-agent`, installed on its repository alone, whose
-  key the valve holds (github-app.json beside its keys; the desk's door on 8990), and its own Discord bot, `Hookline`,
-  in
-  the `#hookline` channel; ours is the `Open Autonomy` bot, coordinating in public `#development`, with `#general`,
-  the `#help` forum and `#announcements` serving the community. The project communication skill records the
-  destinations and public-only access boundary; confidential human spaces and DMs are outside this fleet.
+  open-autonomy and open-autonomy-hookline config directories; the valves are on 8787 and 8987. Hookline's agent is its
+  own GitHub App, `hookline-agent`, installed on its repository alone, whose key the valve holds (github-app.json beside
+  its keys; the desk's door on 8990), and its own Discord bot, `Hookline`, in the `#hookline` channel; ours is the `Open
+  Autonomy` bot, coordinating in public `#development`, with `#general`, the `#help` forum and `#announcements` serving
+  the community. The project communication skill records the destinations and public-only access boundary; confidential
+  human spaces and DMs are outside this fleet.
   The cookbooks and the world run on `zai/glm-5.3-flash`;
   our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
