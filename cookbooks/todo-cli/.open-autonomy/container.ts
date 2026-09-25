@@ -64,7 +64,7 @@ export async function startContainer(options: {
       if (await check()) return;
       await Bun.sleep(100);
     }
-    throw new Error(`Host did not establish ${name}; Hermes was not started`);
+    throw new Error(`Host did not establish ${name}; the agent's runtime was not started`);
   };
   try {
     own('executor', ['docker', 'wait', container]);
@@ -83,6 +83,9 @@ export async function startContainer(options: {
     const agentSetup = parseAgent(prepared.agent, 'origin/main:.open-autonomy/agent.json');
     // Hermes runs itself; another harness runs as the orchestrator's worker on the same home, in the executor
     const harness = agentHarness(agentSetup);
+    // the executor's image carries Hermes and Codex; another harness has no runtime there, and one on its user's own
+    // login (Claude Code) cannot hold it in an executor
+    if (!['hermes', 'codex'].includes(harness)) throw new Error(`.open-autonomy/agent.json picks ${harness}; the executor runs Hermes or Codex, so start ${harness} bare`);
     if (harness !== 'hermes') for (const line of await renderContainerWorkerForms({ container, home, workspace, revision: prepared.revision })) console.log(`host: ${line}`);
     const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
     // Let native Codex startup finish before starting the fleet; its database
@@ -111,8 +114,9 @@ export async function startContainer(options: {
       homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
     })) console.log(`host: agent: ${line}`);
     await mergeImageDenylist({ container, home });
-    // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself
-    if (harness === 'codex') await openContainerCodexSandbox({ container, home });
+    // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself: off where the profile's
+    // approvals are off; a profile that keeps them keeps it, failing closed (container-home.ts)
+    if (harness === 'codex') for (const line of await openContainerCodexSandbox({ container, home })) console.log(`host: ${line}`);
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
     // What runs the agent, for its page: the mode, the kit, the executor's image, this host. Never a credential.

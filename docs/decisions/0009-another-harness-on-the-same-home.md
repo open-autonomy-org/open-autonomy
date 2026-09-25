@@ -253,9 +253,17 @@ and on its bounds, "don't start up the whole fleet though - we don't want to spe
 orchestrator inside the executor, where it ran `hermes gateway run`, with the picked harness as each profile's
 worker, the home on the executor's volume. For Codex the model goes through the host valve's Codex forward
 (`host.docker.internal`), as for Hermes on `openai-codex`: the executor holds no login. The start renders the
-persona and skills in the workers' forms inside the executor with the kit's own `renderContainerWorkerForms`, and
-turns Codex's own sandbox off in each profile's Codex home, the executor being the boundary. The image carries a
-pinned Codex CLI beside the orchestrator it already installed. The fleet is unchanged.
+persona and skills in the workers' forms inside the executor with the kit's own `renderContainerWorkerForms`. The
+image carries Hermes and a pinned Codex CLI, so container mode takes `hermes` or `codex` and refuses any other
+harness by name (Claude Code on its user's own login cannot hold that login in an executor). The fleet is
+unchanged.
+
+Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the
+orchestrator answered with Hermes's approval rule. Codex 0.156.1 has no policy that asks before every command
+instead (`approval_policy = "untrusted"` is refused as unsupported: measured). So the sandbox is turned off only
+in the Codex home of a profile whose owner turned Hermes's approvals off (`approvals.mode: off`); a profile that
+keeps them, the treasurer that pays among them, keeps the sandbox, and its commands fail closed in the executor
+rather than run ungated. A per-command gate for Codex there is open.
 
 **Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
 the project; the image built from this kit on the pinned Hermes, Colima, orchestrator 0.3.12 then 0.3.13):
@@ -269,11 +277,21 @@ the project; the image built from this kit on the pinned Hermes, Colima, orchest
   first and found no Hermes, so the board went undispatched and sessions unmirrored. Orchestrator 0.3.13 walks
   every `hermes` on PATH; with it the board dispatches in the executor.
 
-**Not yet run:** a mirrored session published by the reporter from the executor, and a board task end to end
-there; a run of the new start through `create-open-autonomy runtime` (the proof started the executor and the
-stack by hand, with the bare agent's home state copied onto the volume).
+Where this ran, plainly: on Hookline's production platform key, its Discord and its GitHub, not in a World. That is
+in tension with the constitution's "nothing here develops against a real API" and with verifying in the World; it
+follows the owner's direction to pilot on Hookline ("first test it with hookline and the company repo") and was
+bounded to one project and two PM fires. The start ran as written (`start.ts --container` with this kit's
+`container.ts`); the runtime around it was prepared by hand, not by `create-open-autonomy runtime`: the image
+built with `docker build`, the executor started with the kit's `executor.ts`, the first clone made through the
+GitHub valve as SETUP.md describes, and the bare agent's home state copied onto the home volume.
+
+**Not yet run:** a World run of any of this; a mirrored session published by the reporter from the executor; a
+board task end to end there; a gated profile's run in the executor. Also open: nothing restarts a container
+runtime onto a moved main or a landed kit (the bare start polls main; container mode has no counterpart, for
+Hermes as for the orchestrator).
 
 **This author's extrapolation, not the owner's words:** turning Codex's sandbox off in the executor rather than
-granting the executor the namespaces; a stop asked for a restart counted as the drain (exit 75), as the bare start
-counts it; rendering the workers' forms with the image's copy of the kit.
+granting the executor the namespaces, and keeping it where approvals are on; refusing every harness but Hermes and
+Codex in the executor; a stop asked for a restart counted as the drain (exit 75), as the bare start counts it;
+rendering the workers' forms with the image's copy of the kit.
 

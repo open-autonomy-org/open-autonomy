@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 ARG BUN_VERSION=1.3.10
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
     && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
-# The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 # Codex, for a project whose setup picks it: the orchestrator runs it as each profile's worker, its model through the
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
+# The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
 # Login shells use /usr/local/bin; expose the installed World CLI there too.
