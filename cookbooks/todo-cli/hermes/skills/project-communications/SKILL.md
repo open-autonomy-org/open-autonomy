@@ -90,7 +90,7 @@ by a published run. Humans bring an appropriate public statement when private ma
 The front door and the outward channels go through this project's integrations (the `front-door` and
 `community` skills). What no integration reaches (repository settings: description, topics, homepage, social
 preview, Pages source, Discussions; a publishing channel that needs an account) is a role's work. Every member is
-a volunteer, the owner included, and gives what the roster says: their roles, their time or a machine, their
+a volunteer, the owner included, and gives what the roster says: their roles, their time and resources, their
 availability windows (ADR 0013). Record here the role names this project uses for that work (for example
 `repo-settings`, `outreach`); members take roles on through the roster. An ask goes to whoever
 `bun .open-autonomy/community.ts who <role> [scope]` returns, the available first, in the public place they are

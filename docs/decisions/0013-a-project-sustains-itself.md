@@ -61,10 +61,11 @@ The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from i
 
 **A project is sustained by three contributions, and the agents work for all three.**
 
-- **Members** contribute their time, a machine (a substrate the project's Open Autonomy runs on), or both. What a
-  machine brings is the project's for free and never counts as its cost: every machine lowers what the project must
-  pay for. Members differ, and none is assumed to do everything: each has their roles, the contributions they make,
-  and the windows they are expected to be available. Members are the first thing a project grows.
+- **Members** contribute their time and resources: a machine the project's Open Autonomy runs on is one, and a member
+  may bring others (the owner: "machine is just a 'resource' perhaps they have others"). What a resource brings is the
+  project's for free and never counts as its cost: every one lowers what the project must pay for. Members differ, and
+  none is assumed to do everything: each has their roles, the contributions they make, and the windows they are expected
+  to be available. Members are the first thing a project grows.
 - **Backers** give money, and the money pays only for what no member donates: the rails' metered spend while no
   member's machine is running, hosting, domains and partners.
 - **Users** use it. Members and backers come from them.
@@ -73,10 +74,10 @@ A project is self-sustaining when its members' machines and time carry its work 
 spend left.
 
 **The roster says what each member gives.** Beside each member's authority, the roster records their roles, the
-contributions they make (their time in those roles, a machine), their expected availability windows, and when they
-joined and left. It is the member's own word, recorded by an owner's change on the Team page or by the member's own
-pull request merged after review; the agents read it and never infer it. A member's authority lapses the day after
-they leave.
+contributions they make (their time, and each resource they bring, in the project's words), their expected
+availability windows, and when they joined and left. It is the member's own word, recorded by an owner's change on the
+Team page or by the member's own pull request merged after review; the agents read it and never infer it. A member's
+authority lapses the day after they leave.
 
 **The agents read the numbers that say so.** A door (`community.ts reach`) reports, on the project's own record
 each week: visitors and their referrers, stars, clones and downloads, outside authors in the window; patrons, their

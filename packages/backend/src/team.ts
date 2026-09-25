@@ -64,7 +64,7 @@ export function readTeamEdit(account: string, form: FormData): TeamEdit {
     ...(login ? { github: { id: field('github_id') || '1', login } } : {}),
     ...(discord ? { discord: { id: discord, name: field('discord_name') } } : {}),
     ...(field('roles') ? { roles: field('roles').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean) } : {}),
-    ...(form.getAll('contributes').length ? { contributes: form.getAll('contributes').map(String) as TeamMember['contributes'] } : {}),
+    ...(field('contributes') ? { contributes: field('contributes').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean) } : {}),
     ...(field('availability') ? { availability: readAvailability(field('availability')) } : {}),
     ...(field('joined') ? { joined: field('joined') } : {}),
     ...(field('left') ? { left: field('left') } : {}),

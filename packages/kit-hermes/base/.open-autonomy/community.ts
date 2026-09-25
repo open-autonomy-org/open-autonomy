@@ -295,8 +295,9 @@ if (command === 'poll' && doorless) {
   const roles: Record<string, { holders: number; with_windows: number }> = {};
   for (const m of current) for (const r of m.roles ?? []) { roles[r] ??= { holders: 0, with_windows: 0 }; roles[r].holders++; if (m.availability) roles[r].with_windows++; }
   out.team = {
-    members: current.length, give_time: current.filter((m) => m.contributes?.includes('time')).length,
-    give_machine: current.filter((m) => m.contributes?.includes('machine')).length,
+    members: current.length,
+    // what the team gives, in the roster's own words (time, a machine, any other resource): how many give each
+    gives: current.reduce<Record<string, number>>((n, m) => { for (const c of m.contributes ?? []) n[c] = (n[c] ?? 0) + 1; return n; }, {}),
     joined: current.filter((m) => m.joined && m.joined >= since.slice(0, 10)).map((m) => m.id),
     left: team.members.filter((m) => m.left && m.left >= since.slice(0, 10)).map((m) => m.id),
     roles,

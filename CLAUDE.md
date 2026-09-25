@@ -44,12 +44,13 @@ accepted decision records; conflicting directions require a sourced proposal and
 - Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
-- **Everyone on a project's team is a volunteer, the owner included.** A member may contribute their time, a machine
-  (a substrate the project's Open Autonomy runs on), or both; what a machine brings is free to the project and never
-  counts as its cost. Members differ: each has their roles, the contributions they make, and the windows they are
-  expected to be available, and no one is assumed to do everything. The books count money, and backers' money pays only
-  for what no member donates. Every ask of a person spends donated time: prepare it completely, ask someone whose role
-  covers it within their window, and never let essential work wait on one person (owner ruling, 2026-09-25).
+- **Everyone on a project's team is a volunteer, the owner included.** A member may contribute their time and resources
+  (a machine the project's Open Autonomy runs on is one; they may bring others); what a resource brings is free to the
+  project and never counts as its cost. Members differ: each has their roles, the contributions they make, and the
+  windows they are expected to be available, and no one is assumed to do everything. The books count money, and backers'
+  money pays only for what no member donates. Every ask of a person spends donated time: prepare it completely, ask
+  someone whose role covers it within their window, and never let essential work wait on one person (owner ruling,
+  2026-09-25).
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
 - Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend on the

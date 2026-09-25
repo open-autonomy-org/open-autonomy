@@ -183,7 +183,7 @@ verified GitHub account. Empty seeded rosters grant nobody authority.
 
 What a member gives is the member's own word, recorded beside their authority (ADR 0013); every field is optional
 and nothing is assumed where it is absent. `roles` are the project's own names for the work they take on (up to ten,
-lowercase with hyphens). `contributes` is `time`, `machine` (a machine the project's Open Autonomy runs on) or both.
+lowercase with hyphens). `contributes` names what they give in the project's own words, the same form as roles: `time`, and each resource they bring (a `machine` the project's Open Autonomy runs on, a `gpu`, a `domain`).
 `availability` is `{ tz, windows }`: an IANA time zone and up to fourteen weekly windows `{ days, from, to }`, days
 `mon`…`sun`, `HH:MM` with `from` before `to` (a window past midnight is two). `joined` and `left` are `YYYY-MM-DD`,
 UTC: a member holds their authority from `joined` through `left` and it lapses the day after, so a roster never
