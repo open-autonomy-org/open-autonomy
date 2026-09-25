@@ -16,10 +16,10 @@ without requiring a hosted service.
   the host valve supplies scoped development access. Human approval gates release of the exact candidate,
   when production credentials may be used, rather than each merge to main.
 - **Production runs only from `prod`, which the owner merges.** One standing pull request from `main` to `prod` gathers
-  what ships; only an org admin may merge it, and nothing else moves `prod`. A `production` environment admits `prod`
-  alone, never `main`; its secrets are the deploy credential and nothing more. The deploy workflow fires on a push to
-  `prod` and records each deploy as a `deploy-v<date>.<n>` tag, so the workflow that holds the credential is always
-  one the owner shipped (ADR 0015).
+  what ships; it merges only once the owner approves it, and nothing else moves `prod`. A `production` environment
+  admits `prod` alone, never `main`; its secrets are the deploy credential and nothing more. The deploy workflow fires
+  on a push to `prod` and records each deploy as a `deploy-v<date>.<n>` tag, so the workflow that holds the credential
+  is always one the owner shipped (ADR 0015).
 - **The build says what it is.** The deploy stamps the commit into the artifact (Hookline: `HOOKLINE_VERSION` from
   `git rev-parse --short HEAD`, answered at `/api`), so the live service names its own commit.
 
@@ -29,9 +29,9 @@ without requiring a hosted service.
 2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (1 approving agent review, stale approvals
    dismissed on push, code-owner review disabled), `non_fast_forward`, `deletion`; no bypass actors.
    Enable repository auto-merge and allow the landing workflow to open PRs.
-3. Ruleset `prod-protected` on `refs/heads/prod`: `update`, `non_fast_forward`, `deletion`; bypass:
-   OrganizationAdmin, through a pull request only. `.github/workflows/ship.yml` keeps the `main` → `prod` pull request
-   open.
+3. Ruleset `prod-protected` on `refs/heads/prod`: `pull_request` (one approval, required from an `owners` team whose
+   only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`, `deletion`; no bypass.
+   `.github/workflows/ship.yml` keeps the `main` → `prod` pull request open.
 4. Environment `production`: deployment branches "selected", `prod` alone; the deploy credential as an environment
    secret (never a repository secret); the account id as a repository variable. A workflow that moves money runs
    only on the owner's own dispatch (`if: github.triggering_actor == '<owner>'`).
