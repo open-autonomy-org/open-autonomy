@@ -37,7 +37,9 @@ spend:
 # (whose money is on the books), team and owner (the roster above). Presets: roadmap (the default when this block is
 # absent: the roadmap and the books to everyone, the sessions, transcripts and the agent to the team), open
 # (everything public), status (transcripts and books for givers; calls and the agent for the team), private (team
-# and up). The books stay public under every preset but private: every spend is metered on public books.
+# and up). The books stay public under every preset but private: every spend is metered on public books. The owner's
+# published statements (a tool's compliance badges, ADR 0012) are a panel too, `statements`: public under every preset
+# but private.
 # dashboard:
 #   visibility: open
 #   agent: team
