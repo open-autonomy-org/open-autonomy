@@ -1,4 +1,4 @@
-import { parseTeamConfig } from '@open-autonomy/sdk/team';
+import { currentMembers, parseTeamConfig } from '@open-autonomy/sdk/team';
 import type { ProjectView } from '../ledger.js';
 import { parseDashboardConfig } from '../config.js';
 
@@ -18,7 +18,7 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
   if (!who) return 'public';
   const login = who.login.toLowerCase();
   let members: ReturnType<typeof parseTeamConfig>['members'] = [];
-  try { members = parseTeamConfig(v.profile.config_yaml ?? '').members; } catch { members = []; }
+  try { members = currentMembers(parseTeamConfig(v.profile.config_yaml ?? '')); } catch { members = []; }
   const mine = who.id ? members.filter((m) => m.github?.id === who.id) : [];
   if (mine.some((m) => m.scopes.includes('owner'))) return 'owner';
   if (mine.length) return 'team';

@@ -1,6 +1,6 @@
 // Human roster edits become GitHub pull requests using the human's transient OAuth token.
 // Never use the platform's reader token to write, never merge, and never grant authority from a draft.
-import { parseTeamConfig, replaceTeamConfig, teamOwner, validateTeam, validateTeamMember, type Team, type TeamMember } from '@open-autonomy/sdk/team';
+import { TEAM_DAYS, currentMembers, parseTeamConfig, replaceTeamConfig, teamOwner, validateTeam, validateTeamMember, type Team, type TeamMember, type TeamWindow } from '@open-autonomy/sdk/team';
 import type { Env } from './types.js';
 
 export interface TeamEdit { account: string; sha: string; member: TeamMember; remove: boolean; resolveGithub?: boolean }
@@ -34,6 +34,27 @@ export async function readTeamFile(env: Env, account: string, token = env.GITHUB
   return { team: parseTeamConfig(text), text, sha: file.sha, head, branch };
 }
 
+// What the member gives (ADR 0013), as the Team form writes it: roles as a comma list; availability as the time zone,
+// then windows separated by semicolons, each its days (`mon-fri` or `sat,sun`) and hours (`09:00-17:00`).
+export function readAvailability(text: string): TeamMember['availability'] {
+  const parts = text.split(';').map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  const [tz, ...rest] = parts;
+  const windows = rest.map((w): TeamWindow => {
+    const m = /^([a-z,-]+)\s+(\d{2}:\d{2})-(\d{2}:\d{2})$/i.exec(w);
+    if (!m) throw new Error(`Write each availability window as its days and hours, like "mon-fri 09:00-17:00"; "${w}" is not one.`);
+    const days = m[1].toLowerCase().split(',').flatMap((span) => {
+      const [a, b] = span.split('-');
+      const i = TEAM_DAYS.indexOf(a as never), j = b === undefined ? i : TEAM_DAYS.indexOf(b as never);
+      if (i < 0 || j < 0 || j < i) throw new Error(`"${span}" is not a day or a run of days (mon, tue, … sun).`);
+      return TEAM_DAYS.slice(i, j + 1);
+    });
+    return { days: TEAM_DAYS.filter((d) => days.includes(d)), from: m[2], to: m[3] };
+  });
+  return { tz, windows };
+}
+export const writeAvailability = (a: TeamMember['availability']): string => a ? [a.tz, ...a.windows.map((w) => `${w.days.join(',')} ${w.from}-${w.to}`)].join('; ') : '';
+
 export function readTeamEdit(account: string, form: FormData): TeamEdit {
   const field = (name: string) => String(form.get(name) ?? '').trim();
   if (!validTeamAccount(account) || !/^[0-9a-f]{40}$/i.test(field('sha'))) throw new Error('Reload the Team page before editing.');
@@ -42,6 +63,11 @@ export function readTeamEdit(account: string, form: FormData): TeamEdit {
   const member: TeamMember = { id: field('id') || crypto.randomUUID(), name: field('name'), scopes: form.getAll('scopes').map(String) as TeamMember['scopes'], source: field('source').replace(/\s+/g, ' '),
     ...(login ? { github: { id: field('github_id') || '1', login } } : {}),
     ...(discord ? { discord: { id: discord, name: field('discord_name') } } : {}),
+    ...(field('roles') ? { roles: field('roles').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean) } : {}),
+    ...(form.getAll('contributes').length ? { contributes: form.getAll('contributes').map(String) as TeamMember['contributes'] } : {}),
+    ...(field('availability') ? { availability: readAvailability(field('availability')) } : {}),
+    ...(field('joined') ? { joined: field('joined') } : {}),
+    ...(field('left') ? { left: field('left') } : {}),
   };
   validateTeamMember(member);
   if (field('attest') !== 'yes') throw new Error('Confirm the identity links and authority source before continuing.');
@@ -66,7 +92,8 @@ export async function proposeTeamEdit(env: Env, edit: TeamEdit, token: string, a
   const members = current.team.members.filter(m => m.id !== member.id);
   if (!edit.remove) members.splice(previous ? current.team.members.indexOf(previous) : members.length, 0, member);
   const team = validateTeam({ members });
-  if (!team.members.some(m => m.scopes.includes('owner'))) throw new Error('The last owner cannot be removed.');
+  // A current owner with no leaving date: otherwise owners who leave before another joins lock the roster out of this page.
+  if (!currentMembers(team).some(m => m.scopes.includes('owner') && !m.left)) throw new Error('The roster needs a current owner with no leaving date; the last one cannot be removed or given one.');
   if (JSON.stringify(team) === JSON.stringify(current.team)) throw new Error('There are no changes to propose.');
   const text = replaceTeamConfig(current.text, team);
   const branch = `team/${nonce}`; // Deliberately outside automatic agent/** and land/** landing workflows.
