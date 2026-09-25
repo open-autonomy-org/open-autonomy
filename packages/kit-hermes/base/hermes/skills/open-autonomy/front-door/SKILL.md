@@ -1,7 +1,7 @@
 ---
 name: front-door
-description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at every scrum and release.
-version: 1.3.0
+description: The bar for the project's front door — its GitHub README, the repository's description, topics, homepage and social preview, and its docs once they outgrow the README — and how it stays true to what ships. Consult when a change alters what a user sees or does, and at release.
+version: 2.0.0
 metadata:
   hermes:
     tags: [open-autonomy, docs]
@@ -69,13 +69,9 @@ homepage points at the docs site or the running product, when either exists. Rea
 `gh repo view --json description,homepageUrl,repositoryTopics`.
 
 What the front door touches goes through the project's integrations: the README, docs, media and Pages through
-its GitHub App as ordinary changes; posts through the channels `project-communications` records. A setting or
-a channel no integration reaches (the repository's description, topics, homepage and social preview, which
-the App is not given the administration permission to change; a publishing platform with no integration) is an
-ask of the role that covers it (`project-communications` names the project's roles): whoever
-`bun .open-autonomy/community.ts who <role>` returns, the available first, with the exact values or file ready so it
-costs them one decision. With no one, post it with `community.ts help-wanted`. Ask once, record it on the roadmap
-until done, and never route it to the owner by default.
+its GitHub App as ordinary changes. The repository's description, topics, homepage and social preview need the
+repository's settings, which the App cannot change: ask for them as `project-communications` says, with the exact
+values or file ready, and hold the ask on the roadmap until done.
 
 ## Docs
 
@@ -89,24 +85,25 @@ behaviour they describe.
 
 ## A reader who has never seen it
 
-Its author cannot see the page as a newcomer does, so the front door is graded by someone who has not seen it (ADR
-0013): the native reviewer of a change that alters what a user sees or does, and, before PM requests review of a
-release candidate, a verification PM arranges for that candidate: a fleet task run by a worker that did not build
-it, or, on a project with no fleet, an ask of a role (`community.ts who`) whose member did not build it; never the
-human release reviewer as part of their review. Before reading the task, the diff or anything else, they read only
-the README at the graded head and write down, in their own words, what the project is, who it is for and how to
-reach a first success. Then they follow the quick start literally, command by command, in the project's verification
-world, and capture what it shows. Each place where the page and the product disagree, or where the answers are wrong
-or missing, is a finding the change fixes before it lands. The captures that pass are the ones the page uses.
+The author cannot see the page as a newcomer does (ADR 0013), so someone who has not seen it reads it:
+
+- **At review** of a change that alters what a user sees or does, the native reviewer reads only the README at the
+  handed-off head, before anything else about the change, and writes down what the project is, who it is for and
+  how to reach a first success. Where that disagrees with the change, it is a review finding.
+- **Before a release**, and at review of a change to the quick start itself, the quick start is also followed
+  literally, command by command, in the project's verification world, and what it shows is captured. For a
+  release PM arranges this at the candidate: a fleet task run by a worker that did not build it, or on a project
+  with no fleet, an ask of a member who did not; never the human release reviewer. The passing captures are the
+  page's media.
 
 ## Keeping it true
 
 - A change that alters what a user sees or does (a command, an option, an output, a screen, an install or
   deploy step, a limit) updates the README, the docs and their media in the same change.
-- Every scrum compares the front door with what landed since the last one (`CHANGELOG.md`, merged PRs) and
-  fixes what it no longer tells truly.
+- When a scrum finds a change that alters what a user sees landed since the last one, it compares the front door
+  with it and fixes what it no longer tells truly.
 - A release candidate is not ready while its front door describes anything else: what ships is what the page
-  shows, down to the quick start, graded at the candidate by an agent that has not seen it, as above.
+  shows, down to the quick start, followed at the candidate as above.
 - Where Pages publishes, the site shows `main`'s docs: its latest deployment is of a recent `main` commit. GitHub
   disables a public repository's scheduled workflow after 60 days without activity; a stale site or a disabled
-  publish is an ask of the role that handles repository settings, as above.
+  publish is an ask as above.

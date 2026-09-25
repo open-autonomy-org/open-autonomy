@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the daily scrum of a project people build — read what landed and what was asked, reconcile the roadmap and changelog, name what is stalled, ask people, and keep the release proposal true.
-version: 1.3.0
+version: 1.4.0
 metadata:
   hermes:
     tags: [open-autonomy, pm]
@@ -81,16 +81,15 @@ The project's GitHub page is how it is found and first used; load the `front-doo
 scrum, compare it with what landed: the README, the docs, their media and the repository's description,
 topics and homepage. Wording the record alone supports, propose with your planning change. What needs the
 product run or a new capture, name as a stalled item on the roadmap and ask its people, as for any other work.
-What no integration reaches is an ask of the role that covers it (`community.ts who`, else `help-wanted`), as the
-`front-door` skill says, never the owner by default.
+What no integration reaches is asked as `project-communications` says.
 
 ## Plan releases deliberately
 
 Maintain a sourced target release schedule in `ROADMAP.md` (`## release-next: …`): intended scope, proposed
 version under the project's actual policy, target window, readiness criteria, dependencies and risks.
 Every merge is an input, not a reason to ship. Only a landed, ready decision with a fixed candidate SHA
-warrants a review request, and not before the front door describes it, graded at the candidate by a member who did
-not build it (the `front-door` skill's reader, asked of a role through `community.ts who`, else `help-wanted`);
+warrants a review request, and not before the front door describes it, followed at the candidate by a member who did
+not build it (the `front-door` skill's reader, asked as `project-communications` says);
 prepare it with `bun .open-autonomy/maintain.ts ship` and the fields in
 `.open-autonomy/PRODUCTION.md`, then ask the reviewer as `project-communications` agrees. Never tag,
 approve, publish or deploy. Merged, approved, released and post-release verified are distinct facts;
