@@ -191,6 +191,8 @@ export interface Flow {
   envelope_id?: string;
   item?: string;
   ts: string;
+  // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
+  private?: true;
 }
 
 export type EnvelopePurpose =
@@ -401,7 +403,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
-      case 'funder': return json(await this.funderView(s('account')));
+      case 'funder': return json(await this.funderView(s('account'), body?.own === true));
       case 'bonus_add': return json(await this.bonusAdd(s('account'), Number(body.amount_usd_cents)));
       case 'key_register': return json(await this.keyRegister(body.claims as KeyClaims));
       case 'key_rotate': return json(await this.keyRotate(body.previous as KeyClaims, body.claims as KeyClaims, s('grace_until')));
@@ -1318,7 +1320,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       is_project: account.includes('/'),
       // Listed where everyone looks (the front page, an owner's page, an org's rollup) only when the owner opened its
       // overview to everyone: a closed project is not announced there, as its own page is not.
-      listed: account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview),
+      listed: this.listedHere(account),
       moderation: a?.moderation ?? 'listed',
       profile: displayProfile(a),
       goal_days: a?.goal_days ?? DEFAULT_GOAL_DAYS,
@@ -1333,6 +1335,13 @@ export class LimitLedger implements DurableObject, LedgerCore {
     };
   }
 
+  // Listed where everyone looks (the front page, an owner's page, an org's rollup, a funder's books) only when the owner
+  // opened its overview to everyone: a closed project is not announced there, as its own page is not.
+  private listedHere(account: string): boolean {
+    const a = this.acct(account);
+    return account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview);
+  }
+
   private async bonusAdd(account: string, amount: number): Promise<{ ok: boolean; bonus_usd_cents?: number; error?: string }> {
     if (!account.startsWith('@') || !(amount > 0)) return { ok: false, error: 'invalid_bonus' };
     const acct = this.ensureAcct(account);
@@ -1342,7 +1351,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // A funder on the books: the credits they hold, what they were given, what they gave and to whom.
-  private async funderView(account: string): Promise<FunderView> {
+  // `own`: the funder reading their own books (signed in on the give page, or the grants pool's admin), every
+  // project named; everyone else reads them with an unlisted project withheld (openFlow).
+  private async funderView(account: string, own = false): Promise<FunderView> {
     const a = this.acct(account);
     const f = this.fundingSnapshot(account);
     const durable: Flow[] = [];
@@ -1361,9 +1372,18 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
       credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
-      given: flows.filter((x) => x.from === account),
-      received: flows.filter((x) => x.to === account),
+      given: flows.filter((x) => x.from === account).map((x) => own ? x : this.openFlow(x, x.to)),
+      received: flows.filter((x) => x.to === account).map((x) => own ? x : this.openFlow(x, x.from)),
     };
+  }
+
+  // A funder's books are public, amounts and all; a project on the other side is named only where it is listed.
+  private openFlow(flow: Flow, other: string | undefined): Flow {
+    if (!other || other.startsWith('@') || !other.includes('/') || other.endsWith('/grants') || this.listedHere(other)) return flow;
+    // what could name or point at the project goes with its name: the note, its task (item, purpose), its envelope,
+    // and the flow's id (an envelope's id, or a caller's key)
+    const { note: _note, item: _item, envelope_id: _envelope, purpose: _purpose, id: _id, ...rest } = flow;
+    return { ...rest, ...(flow.to === other ? { to: '' } : {}), ...(flow.from === other ? { from: undefined } : {}), private: true };
   }
 
   private projectView(account: string): ProjectView {
@@ -1712,7 +1732,7 @@ export class LedgerClient {
     return this.call<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
   }
   earmark(account: string, purpose?: unknown) { return this.call<{ ok: boolean; error?: string; purpose?: EnvelopePurpose }>('earmark', { account, for: purpose }); }
-  funder(account: string) { return this.call<FunderView>('funder', { account }); }
+  funder(account: string, options: { own?: boolean } = {}) { return this.call<FunderView>('funder', { account, ...(options.own ? { own: true } : {}) }); }
   bonusAdd(account: string, amountUsdCents: number) { return this.call<{ ok: boolean; bonus_usd_cents?: number; error?: string }>('bonus_add', { account, amount_usd_cents: amountUsdCents }); }
   keyRegister(claims: KeyClaims) { return this.call<{ ok: boolean; error?: string }>('key_register', { claims }); }
   keyRotate(previous: KeyClaims, claims: KeyClaims, graceUntil: string) { return this.call<{ ok: boolean; error?: string; exp?: string }>('key_rotate', { previous, claims, grace_until: graceUntil }); }
