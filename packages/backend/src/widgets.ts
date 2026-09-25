@@ -31,7 +31,7 @@ export function renderRunwaySvg(f: FundingSnapshot): string {
   const remaining = f.balance_usd_cents;
   let color = C.gray, frac = 0, headline: string, sub: string, note: string;
   if (!f.funded || budget <= 0) {
-    headline = 'Not yet funded'; sub = 'Sponsor to start funding the agent'; note = 'runway = balance ÷ a Bayesian estimate of daily spend';
+    headline = 'Not yet funded'; sub = 'Sponsor to start funding the agent'; note = 'runway: what is left, at what it spends a day';
   } else if (f.exhausted || remaining <= 0) {
     color = C.red; headline = 'Funding needed — spending stopped'; sub = `${usd(0)} left of ${usd(budget)} sponsored`; note = 'add funds to resume';
   } else {
@@ -39,10 +39,13 @@ export function renderRunwaySvg(f: FundingSnapshot): string {
     color = frac > 0.25 ? C.green : C.amber;
     headline = `${usd(remaining)} left of ${usd(budget)}`;
     const days = f.runway_days !== null ? fmtDays(f.runway_days) : '?';
-    const lo = f.runway_lo_days !== null ? fmtDays(f.runway_lo_days) : '?';
-    const hi = f.runway_hi_days !== null ? fmtDays(f.runway_hi_days) : '?';
     sub = `~${days} days of runway · ~${usd(f.burn_per_day_usd_cents)}/day`;
-    note = `Bayesian: posterior $/day from ${f.days_observed}d + prior · 80% CI ${lo}–${hi} days`;
+    // the estimate's range stays in the books; the widget says what it rests on. The prior weighs three days
+    // (runway.ts), so it is a guess with none spent, early under a week, and the project's own pace from then on.
+    const n = f.days_observed;
+    note = n === 0 ? 'a starting guess until it has spent for a few days'
+      : n < 7 ? `an early estimate from ${n} day${n === 1 ? '' : 's'} of spending`
+        : `at its pace over ${n} days of spending`;
   }
   const padX = 16, barY = 52, barW = W - padX * 2, fillW = Math.round(barW * frac);
   const body = [
