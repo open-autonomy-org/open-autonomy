@@ -295,7 +295,7 @@ function Updates({ d }: { d: LandingData }) {
           {u.text ? <p class="t">{u.text}</p> : null}
           {u.kind === 'shipped' && u.item && d.dashboard ? <a class="more" href={at(a, 'dashboard', 'board', u.item)}>On the board<span>→</span></a> : null}
         </article>
-      ))}</div> : <p class="empty">Nothing published yet. What ships and what each run reports will appear here.</p>}
+      ))}</div> : <p class="empty">{d.runs ? 'Nothing published yet. What ships and what each run reports will appear here.' : 'Nothing published yet. What ships will appear here; its runs are not open to everyone.'}</p>}
       <a class="more" href={at(a, 'updates.xml')}>Follow in a feed reader<span>→</span></a>
     </section>
   );
