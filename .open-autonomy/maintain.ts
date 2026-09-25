@@ -40,15 +40,19 @@ function field(text: string, name: string): string {
 }
 
 if (command === 'ship') {
-  // One pull request titled Release (main → prod) is what ships: whatever has landed on main compounds onto it, and the
-  // owner's approval covers the diff it shows (a later push to main dismisses it). PM decides when it is ready; this
-  // writes PM's package as its description and, once per release, mentions the owner there. That mention is the only
-  // time the owner is contacted; their merge deploys and publishes. See PRODUCTION.md.
-  const config = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8')) as { account: string };
+  // One pull request titled Release (main → prod) is what ships: whatever has landed on main compounds onto it, and
+  // the owner's approval covers the diff it shows (a later push to main dismisses it). PM decides when it is ready;
+  // this writes PM's package as its description and mentions the owner there once per release: the only time the
+  // owner is contacted. Their merge deploys and publishes. See PRODUCTION.md.
+  const configText = readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8');
+  const config = Bun.YAML.parse(configText) as { account: string };
   git('fetch', '-q', 'origin', 'main');
-  const requested = git('show', 'origin/main:ROADMAP.md').split(/^## /m).filter((section) => /^Release decision: request-review$/m.test(section));
+  const requested = git('show', 'origin/main:ROADMAP.md').split(/^## /m)
+    .filter((section) => /^Release decision: request-review$/m.test(section));
   if (requested.length !== 1) {
-    console.log(requested.length ? 'More than one release section requests review; PM reconciles ROADMAP.md first.' : 'No release requested; changes keep compounding on main.');
+    console.log(requested.length
+      ? 'More than one release section requests review; PM reconciles ROADMAP.md first.'
+      : 'No release requested; changes keep compounding on main.');
     process.exit(0);
   }
   const release = requested[0].split(':')[0]!.trim();
@@ -56,8 +60,9 @@ if (command === 'ship') {
   const review = existsSync(packagePath) ? readFileSync(packagePath, 'utf8').trim() : '';
   let scope: string;
   try {
+    if (field(review, 'Release') !== release) throw new Error(`the package is for another release than ${release}`);
     scope = field(review, 'Scope');
-    for (const name of ['Risks', 'Owner reads']) field(review, name);
+    for (const name of ['Risks', 'Owner reads', 'Owner does']) field(review, name);
     if (!/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(field(review, 'Verification'))) throw new Error('Verification needs source links');
   } catch (error) {
     console.log(`The Release is not ready: ${(error as Error).message}. Nothing sent.`);
@@ -67,29 +72,48 @@ if (command === 'ship') {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("ship needs the project's GitHub door (GITHUB_API_URL and GITHUB_TOKEN)");
   const gh = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
-    const r = await fetch(`${api}/repos/${config.account}${path}`, { method, headers: { authorization: `token ${token}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const headers = { authorization: `token ${token}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' };
+    const r = await fetch(`${api}/repos/${config.account}${path}`, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}) });
     if (!r.ok) throw new Error(`GitHub ${method} ${path} answered ${r.status}`);
     return r.json() as Promise<T>;
   };
-  const org = config.account.split('/')[0];
-  const [pr] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
-  if (!pr) { console.log('No Release pull request is open; ship.yml opens it while main is ahead of prod.'); process.exit(0); }
+  const comments = async (issue: number): Promise<string[]> => {
+    const all: string[] = [];
+    for (let page = 1; ; page++) {
+      const batch = await gh<Array<{ body?: string }>>('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
+      all.push(...batch.map((c) => c.body ?? ''));
+      if (batch.length < 100) return all;
+    }
+  };
   const marker = `<!-- open-autonomy:release:${release} -->`;
-  await gh('PATCH', `/issues/${pr.number}`, { body: `${marker}\n${review}\n\nMerging ships \`main\` to production: the platform deploys and every package version not yet on npm is published.` });
-  const comments = await gh<Array<{ body?: string }>>('GET', `/issues/${pr.number}/comments?per_page=100`);
-  if (!comments.some((c) => c.body?.startsWith(marker))) {
+  const org = config.account.split('/')[0];
+  const merged = await gh<Array<{ number: number; merged_at: string | null }>>('GET', `/pulls?state=closed&base=prod&head=${org}:main&per_page=20`);
+  for (const pr of merged.filter((p) => p.merged_at)) {
+    if ((await comments(pr.number)).some((c) => c.startsWith(marker))) {
+      console.log(`Release ${release} already shipped in #${pr.number}; set its section back to accumulate.`);
+      process.exit(0);
+    }
+  }
+  const [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
+  if (!open) { console.log('No Release pull request is open; ship.yml opens it while main is ahead of prod.'); process.exit(0); }
+  const tail = 'Merging ships `main` to production: the platform deploys and every package version not yet on npm is published.';
+  await gh('PATCH', `/issues/${open.number}`, { body: `${marker}\n${review}\n\n${tail}` });
+  if ((await comments(open.number)).some((c) => c.startsWith(marker))) {
+    console.log(`Release ${release} is on ${open.html_url}; the owner was already told.`);
+  } else {
     const { parseTeamConfig } = await import('./sdk/team.ts');
-    const owners = parseTeamConfig(readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8')).members.filter((m) => m.scopes.includes('owner') && m.github).map((m) => `@${m.github!.login}`);
+    const owners = parseTeamConfig(configText).members
+      .filter((m) => m.scopes.includes('owner') && m.github).map((m) => `@${m.github!.login}`);
     if (!owners.length) throw new Error('the roster names no owner with a GitHub account to tell');
-    await gh('POST', `/issues/${pr.number}/comments`, { body: `${marker}\n${owners.join(' ')} The Release is ready: ${scope}` });
-    console.log(`Release ${release} is on ${pr.html_url}; the owner is told once.`);
-  } else console.log(`Release ${release} is on ${pr.html_url}; the owner was already told.`);
+    await gh('POST', `/issues/${open.number}/comments`, { body: `${marker}\n${owners.join(' ')} The Release is ready: ${scope}` });
+    console.log(`Release ${release} is on ${open.html_url}; the owner is told once.`);
+  }
 } else if (command === 'restart') {
   if (!idle()) { console.log('A task is running or under review; restart waits for an idle hour.'); process.exit(0); }
   git('fetch', '-q', 'origin', 'main');
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   if (running === landed) { console.log(`Gateway already runs kit ${landed}.`); process.exit(0); }
-  if (!running) throw new Error('the running stack predates managed restarts; owner must restart it once with the current start script');
+  if (!running) throw new Error('the running stack predates managed restarts; restart it once with the current start script');
   if (git('status', '--porcelain')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
   writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed }));
   console.log(`Kit ${landed} landed; the supervisor will drain the gateway and restart the complete stack.`);

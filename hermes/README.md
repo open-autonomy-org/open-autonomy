@@ -37,15 +37,14 @@ Scrum preparation reads the latest committed roster. PM consults the communicati
 existing GitHub tools, recording the conversation on the task and using judgment about follow-up.
 There is no routing plugin, required reminder interval or destination selected from credentials.
 Volunteer contributions use their accepted scope and agreed follow-up instead.
-Maintainers alone review releases, cut tags and approve production. The PM prepares the review package and
-keeps release-dependent outcomes open through verification. See `.open-autonomy/PRODUCTION.md`.
+The owner alone approves and merges the Release; the PM prepares it, tells the owner once, and verifies what
+shipped. See `.open-autonomy/PRODUCTION.md`.
 
 The start script runs the stack, drains active work before kit restarts, and keeps calls metered through
 the platform. The reporter publishes real Hermes activity through the SDK; outside contributions are never
 represented as fabricated fleet sessions. Running instructions: `container/README.md`.
 
-PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
-proposed version under project policy, and allow time for human review. A merge or elapsed target date is
-not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
-later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
-See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
+PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under project
+policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `prod`), the only thing a
+person is asked about. A merge or a date is not a release: when the Release is finished and verified, PM tells the
+owner once, and the owner's approval and merge ship it. See `.open-autonomy/PRODUCTION.md`.

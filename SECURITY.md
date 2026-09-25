@@ -65,8 +65,8 @@ cross one of these boundaries are especially valuable.
   session's turns are published, so nothing in the agent's reach is a secret that matters. proof: smoke
   "secrets never reach the books".
 - **Admin goes through GitHub.** Every admin route needs the admin token, which lives only in the
-  `production` environment (and in the worker); `.github/workflows/admin.yml` is the only caller, and its
-  reviewer approves each run. proof: smoke "admin without the token".
+  `production` environment (and in the worker); `.github/workflows/admin.yml` is the only caller, and it
+  runs only on the owner's own dispatch. proof: smoke "admin without the token".
 - **The books can be restored, only whole and only by admin.** An export is every entry; an import into a
   non-empty worker is refused unless the reviewed caller says replace. proof: smoke "exported whole, restored
   over a wiped worker, the same";.

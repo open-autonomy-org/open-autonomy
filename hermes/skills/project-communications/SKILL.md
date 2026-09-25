@@ -112,9 +112,9 @@ they give and when they expect to be available.
 - **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a member
   with the role, one available now first; with no one, it is posted once as help-wanted:
   `community.ts issue open <key> <title> <body>` with no assignee.
-- **Work that needs a permission** goes to a member holding the scope. The repository's settings (description,
-  topics, homepage, social preview, Pages source, Discussions) and the roster are `owner`; a release is
-  `release-review`. It is never posted as help-wanted: no one else could do it.
+- **Work that needs a permission** goes to a member holding the scope. What only the owner may do (the repository's
+  settings: description, topics, homepage, social preview, Pages source, Discussions; the roster) is never asked on
+  its own: it waits in the Release package's `Owner does`, prepared completely. None of it is posted as help-wanted.
 - Every ask is prepared completely, so it costs one decision (the exact values, the file, the drafted text), and
   sent once. Follow up only when agreed or when evidence changes.
 

@@ -55,10 +55,12 @@ merge, a version bump nor a date ships anything.
 When PM requests review, it writes `$HERMES_HOME/release-review.md`, outside the checkout:
 
 ```text
+Release: <the release section's id>
 Scope: <what this Release ships, in a user's words>
 Verification: <results on main's head, with source links>
 Risks: <what remains, and how it is contained>
 Owner reads: <each money or auth diff in the Release, by file, or none>
+Owner does: <what only the owner may do, such as a repository setting, with its exact values, or none>
 ```
 
 and runs `bun .open-autonomy/maintain.ts ship`. It writes that package as the Release's description and, once per
