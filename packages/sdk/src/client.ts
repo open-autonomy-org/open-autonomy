@@ -316,6 +316,10 @@ export class OpenAutonomy {
   async statements(account: string): Promise<Array<Statement & { lapsed: Statement['badges'] }>> {
     return (await this.read<{ statements: Array<Statement & { lapsed: Statement['badges'] }> }>(`/accounts/${encodeURIComponent(account)}/statements`)).statements;
   }
+  // A page of one statement's revisions: `next`, when there is more, is the `before` of the page after.
+  async statementRevisionPage(account: string, id: string, limit = 20, before?: string): Promise<{ revisions: StatementRevision[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/statements/${encodeURIComponent(id)}/revisions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
+  }
   async statementRevisions(account: string, id: string, limit = 20): Promise<StatementRevision[]> {
     return (await this.read<{ revisions: StatementRevision[] }>(`/accounts/${encodeURIComponent(account)}/statements/${encodeURIComponent(id)}/revisions?limit=${limit}`)).revisions;
   }

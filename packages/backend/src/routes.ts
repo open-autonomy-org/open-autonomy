@@ -259,7 +259,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; const r = await ledger.statements(dec(m[1]));
     // Checked at every read, like the page and the widget: `badges` are the ones standing today, `lapsed` the rest.
     return json({ ...r, statements: r.statements.map((x) => { const d = standing(x, today()); return { ...x, badges: d.standing, lapsed: d.lapsed }; }) }, { headers: NO_STORE }); }
-  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/revisions$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statementRevisions(dec(m[1]), dec(m[2]), Number(url.searchParams.get('limit') ?? 20)), { headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/revisions$/))) { const c = await closed(dec(m[1]), 'statements'); if (c) return c; return json(await ledger.statementRevisions(dec(m[1]), dec(m[2]), Number(url.searchParams.get('limit') ?? 20), url.searchParams.get('before') ?? undefined), { headers: NO_STORE }); }
   // A statement's badge row for a README; a shared cache keeps it five minutes, so a lapsed badge leaves within that.
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/statements\/([^/]+)\/badges\.svg$/))) {
     const c = await closed(dec(m[1]), 'statements'); if (c) return c;

@@ -436,7 +436,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'statement_set': return json(await this.statementSet(s('account'), body.statement, s('by')));
       case 'statement_withdraw': return json(await this.statementWithdraw(s('account'), s('id'), s('by')));
       case 'statements': return json(this.statementsLive(s('account')));
-      case 'statement_revisions': return json(await this.statementRevisions(s('account'), s('id'), Number(body.limit)));
+      case 'statement_revisions': return json(await this.statementRevisions(s('account'), s('id'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'card_put': return json(await this.cardPut(body.card as CardRecord));
       case 'card': return json(await this.cardGet(s('id')));
       case 'set_cardholder': return json(await this.setCardholder(s('account'), s('cardholder')));
@@ -1258,10 +1258,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private statementsLive(account: string): { ok: true; account: string; statements: Statement[] } {
     return { ok: true, account, statements: Object.values(this.acct(account)?.statements ?? {}).flatMap((e) => (e.live ? [e.live] : [])) };
   }
-  private async statementRevisions(account: string, id: string, limit: number): Promise<{ ok: true; account: string; id: string; revisions: StatementRevision[] }> {
+  // Paged as the roadmap's revisions are: `next`, on a full page, is the `before` of the page after, so the whole
+  // audit trail can be read back however long it grows.
+  private async statementRevisions(account: string, id: string, limit: number, before?: string): Promise<{ ok: true; account: string; id: string; revisions: StatementRevision[]; next?: string }> {
     const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
-    const page = await this.ctx.storage.list<StatementRevision>({ prefix: `statement:${account}:${id}:`, reverse: true, limit: n });
-    return { ok: true, account, id, revisions: [...page.values()] };
+    const prefix = `statement:${account}:${id}:`;
+    const page = await this.ctx.storage.list<StatementRevision>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });
+    const keys = [...page.keys()];
+    return { ok: true, account, id, revisions: [...page.values()], ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
   }
 
   // ---- read models -----------------------------------------------------------------------------------
@@ -1815,7 +1819,7 @@ export class LedgerClient {
   statementSet(account: string, statement: unknown, by: string) { return this.call<{ ok: boolean; error?: string; field?: string; unchanged?: boolean; revision?: StatementRevision }>('statement_set', { account, statement, by }); }
   statementWithdraw(account: string, id: string, by: string) { return this.call<{ ok: boolean; error?: string; revision?: StatementRevision }>('statement_withdraw', { account, id, by }); }
   statements(account: string) { return this.call<{ ok: true; account: string; statements: Statement[] }>('statements', { account }); }
-  statementRevisions(account: string, id: string, limit?: number) { return this.call<{ ok: true; account: string; id: string; revisions: StatementRevision[] }>('statement_revisions', { account, id, limit }); }
+  statementRevisions(account: string, id: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; id: string; revisions: StatementRevision[]; next?: string }>('statement_revisions', { account, id, limit, before }); }
   cardPut(card: CardRecord) { return this.call<{ ok: boolean; error?: string }>('card_put', { card }); }
   card(id: string) { return this.call<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
   setCardholder(account: string, cardholder: string) { return this.call<{ ok: true }>('set_cardholder', { account, cardholder }); }
