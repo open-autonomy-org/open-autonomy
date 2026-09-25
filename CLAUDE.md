@@ -92,11 +92,17 @@ accepted decision records; conflicting directions require a sourced proposal and
 
 ## What a human does, and nothing else
 
-The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. A
-human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped), and
-shipping — reading the standing `main` → `prod` pull request and merging it. `apps/platform/DEPLOY.md` says how; all development PRs, including `.github/` changes, merge automatically after independent agent
-review. Human approval is reserved for release. Anything else a person finds themselves doing for a project is a task for the kit, not
-a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
+The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. Two
+kinds of pull request, never confused. Pull requests into `main` are the agents' own: written, independently reviewed
+and merged by agents, including `.github/` changes, and never routed to a human. The Release pull request is the one
+standing pull request from `main` to `prod`; whatever has landed on `main` compounds onto it, and it is the owner's.
+A human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped),
+and shipping, by reading the Release and merging it (`apps/platform/DEPLOY.md`). The Release is the last step before
+the owner is contacted (owner ruling, 2026-09-25: "think about each release as the last step before you need to
+contact the owner. The whole idea of autonomy is to minimize the human's work"): everything on it is finished,
+verified and reviewed first, and the owner hears once, that the Release is ready and what it ships. Nothing else is
+routed to them: no approvals, pages to open or waits. Anything else a person finds themselves doing for a project is
+a task for the kit, not a habit to keep. Owner-gated, standing: a Polar organization; the first real patron.
 
 ## Live surfaces
 
