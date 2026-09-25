@@ -54,8 +54,9 @@ merge commits only.
   `github.triggering_actor` is the owner, so the project's App (whose manifest grants `actions: write`) and a
   workflow's token, both able to dispatch it, never load the admin token or choose its inputs. A redeploy dispatched
   from `prod` ships only what the owner already merged. `land.yml` opens and arms pull requests against `main` alone.
-- The record tags are records, not triggers: anyone who may push may create one, so a record can be forged, but only an
-  org admin may move or delete one once made. Nothing runs on a tag; what shipped is `prod`'s history and the deploy runs.
+- The record tags are records, not triggers: anyone who may push may create one, so a record can be forged, but only
+  an org admin may move or delete one once made. Nothing runs on a tag; what shipped is `prod`'s history and the
+  deploy runs.
 - The kit's production door (`setup.ts`, `PRODUCTION.md`) keeps tags until this has shipped here; a later change
   carries it to generated projects.
 
