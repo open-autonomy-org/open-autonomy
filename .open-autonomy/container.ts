@@ -1,5 +1,6 @@
 // Container startup for the existing start.ts entrypoint. The valve and reporter
-// stay here; only native Hermes runs in the prepared World executor. This module
+// stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
+// another harness, Supercode's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -8,7 +9,7 @@ import { parseEnv } from 'node:util';
 import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
 import { startContainerProcess } from './container-process.ts';
-import { mergeImageDenylist, prepareContainerHome, prepareContainerSubscription, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
+import { mergeImageDenylist, openContainerCodexSandbox, prepareContainerHome, prepareContainerSubscription, renderContainerWorkerForms, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent } from './agent.ts';
 
 export async function startContainer(options: {
@@ -31,6 +32,8 @@ export async function startContainer(options: {
 
   const services: ReturnType<typeof Bun.spawn>[] = [];
   let gateway: ReturnType<typeof startContainerProcess> | undefined;
+  // the orchestrator stops on SIGTERM rather than draining on SIGUSR1: a stop asked for a restart is the drain
+  let restartAsked = false;
   let ending: Promise<void> | undefined;
   let finish!: (code: number) => void;
   const exited = new Promise<number>(resolve => { finish = resolve; });
@@ -61,7 +64,7 @@ export async function startContainer(options: {
       if (await check()) return;
       await Bun.sleep(100);
     }
-    throw new Error(`Host did not establish ${name}; Hermes was not started`);
+    throw new Error(`Host did not establish ${name}; the agent's runtime was not started`);
   };
   try {
     own('executor', ['docker', 'wait', container]);
@@ -78,8 +81,12 @@ export async function startContainer(options: {
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
     if (!prepared.agent) throw new Error('No .open-autonomy/agent.json at the committed revision; run `create-open-autonomy upgrade` (docs/decisions/0007)');
     const agentSetup = parseAgent(prepared.agent, 'origin/main:.open-autonomy/agent.json');
-    // the executor runs Hermes; another harness runs on Supercode's orchestrator, bare (ADR 0007, as amended)
-    if (agentHarness(agentSetup) !== 'hermes') throw new Error(`.open-autonomy/agent.json picks ${agentHarness(agentSetup)}, which runs on Supercode's orchestrator; container mode runs Hermes only, so start it bare`);
+    // Hermes runs itself; another harness runs as the orchestrator's worker on the same home, in the executor
+    const harness = agentHarness(agentSetup);
+    // the executor's image carries Hermes and Codex; another harness has no runtime there, and one on its user's own
+    // login (Claude Code) cannot hold it in an executor
+    if (!['hermes', 'codex'].includes(harness)) throw new Error(`.open-autonomy/agent.json picks ${harness}; the executor runs Hermes or Codex, so start ${harness} bare`);
+    if (harness !== 'hermes') for (const line of await renderContainerWorkerForms({ container, home, workspace, revision: prepared.revision })) console.log(`host: ${line}`);
     const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
     // Let native Codex startup finish before starting the fleet; its database
     // maintenance is not an authentication RPC timeout.
@@ -107,6 +114,9 @@ export async function startContainer(options: {
       homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
     })) console.log(`host: agent: ${line}`);
     await mergeImageDenylist({ container, home });
+    // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself: off where the profile's
+    // approvals are off; a profile that keeps them keeps it, failing closed (container-home.ts)
+    if (harness === 'codex') for (const line of await openContainerCodexSandbox({ container, home })) console.log(`host: ${line}`);
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
     // What runs the agent, for its page: the mode, the kit, the executor's image, this host. Never a credential.
@@ -116,15 +126,20 @@ export async function startContainer(options: {
     const reporterReady = new Promise<void>(resolve => { reportReady = resolve; });
     own('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--container', container,
       '--config', reportConfig, '--project', workspace, '--state-file', resolve(state, 'reporter-state.json')], {
-      env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime },
+      env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime, OPEN_AUTONOMY_HARNESS: harness },
       ipc(message) { if (message?.type === 'reporter-ready') reportReady(); },
     });
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    gateway = startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env });
-    void gateway.exited.then(code => { if (!ending) void stop(code === 75 ? 75 : 1); });
-    console.log(`host: native Hermes at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);
-    return { exited, close: () => stop(0), restart: () => gateway?.restart() };
+    // the orchestrator and Supercode are the image's own (its .open-autonomy, installed for Linux)
+    const kitDir = '/opt/agent/.open-autonomy';
+    gateway = harness === 'hermes'
+      ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
+      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter-ai-dev/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+        env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode` } });
+    void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
+    console.log(`host: ${harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);
+    return { exited, close: () => stop(0), restart: () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); } };
   } catch (error) { await stop(1); throw error; }
 }

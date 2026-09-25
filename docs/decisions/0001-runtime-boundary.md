@@ -3,7 +3,7 @@
 Status: Accepted only upon independent constitution approval and merge of this record and implementation; proposed until both occur.
 
 Amended by [ADR 0009](0009-another-harness-on-the-same-home.md): for a project that picks another harness,
-Supercode's orchestrator is the native scheduler and coordinator, bare only.
+Supercode's orchestrator is the native scheduler and coordinator, bare or in the container executor.
 
 Reference: [ADR 0004](0004-local-world-capacity.md) (proposed) partially supersedes the reading of
 “World owns … resources” here as a capacity scheduler; resources means backend handles and explicit enforced limits.

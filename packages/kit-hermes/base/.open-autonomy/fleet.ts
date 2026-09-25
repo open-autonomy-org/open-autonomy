@@ -115,8 +115,8 @@ export async function startFleet(options: { definition: string; port: number; se
       if (!prepared.agent) throw new Error(`${p.account}: no .open-autonomy/agent.json at ${prepared.revision.slice(0, 8)}; run \`create-open-autonomy upgrade\` there (docs/decisions/0007)`);
       const setup = parseAgent(prepared.agent, `${p.account}:.open-autonomy/agent.json`);
       // a fleet is one Hermes gateway in the executor; a project that picks another harness runs on the orchestrator,
-      // bare, on its own (ADR 0007, as amended)
-      if (agentHarness(setup) !== 'hermes') throw new Error(`${p.account} picks ${agentHarness(setup)}, which runs on Supercode's orchestrator; a fleet runs Hermes only, so start it on its own with start.ts`);
+      // on its own, bare or in its own executor (ADR 0009, as amended)
+      if (agentHarness(setup) !== 'hermes') throw new Error(`${p.account} picks ${agentHarness(setup)}, which runs on Supercode's orchestrator; a fleet runs Hermes only, so start it on its own with start.ts, bare or --container`);
       agents.set(p.name, setup);
       for (const profile of Object.keys(setup.profiles).filter((n) => n !== 'default')) {
         const flat = `${p.name}-${profile}`;
