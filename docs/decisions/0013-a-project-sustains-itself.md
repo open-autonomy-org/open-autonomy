@@ -72,8 +72,10 @@ A project is self-sustaining when its members' machines and time carry its work 
 spend left.
 
 **The roster says what each member gives.** Beside each member's authority, the roster records their roles, the
-contributions they make (their time in those roles, a machine) and their expected availability windows. It is the
-member's own word, changed as they change; the agents read it and never infer it.
+contributions they make (their time in those roles, a machine), their expected availability windows, and when they
+joined and left. It is the member's own word, recorded by an owner's change on the Team page or by the member's own
+pull request merged after review; the agents read it and never infer it. A member's authority lapses the day after
+they leave.
 
 **The agents read the numbers that say so.** A door (`community.ts reach`) reports, on the project's own record
 each week: visitors and their referrers, stars, clones and downloads, first-time outside authors; patrons, their
@@ -179,8 +181,8 @@ Extrapolation, this author's: every item above beyond what the two repositories 
 - `project-communications`: the channels, targets and allowed asks are recorded here as the owner's word; asks are
   routed by role and window.
 - The roster (`team` in `.open-autonomy/config.yaml`, the SDK's team codec) gains each member's roles, contributions,
-  availability windows, start and end, under the same strict validation; the Team page edits them through the
-  member's own authorized change.
+  availability windows, joined and left, under the same strict validation (SDK 3.7.0); the Team page shows and edits
+  them. Every authority check reads only current members, and a populated roster keeps an owner with no `left`.
 - The soc2 skew declares members' machines beside `vendor_accounts`; Evidence Desk's import reads the roster's roles
   and dates.
 - The kit gains `community.ts reach`. Whether a project's GitHub App may read traffic (views, clones, referrers)

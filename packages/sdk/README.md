@@ -180,6 +180,18 @@ Each member has `id` (a stable record key), `name`, optional `github: { id, logi
 account and a source for the identity links and authority. A populated roster needs an owner with a
 verified GitHub account. Empty seeded rosters grant nobody authority.
 
+What a member gives is the member's own word, recorded beside their authority (ADR 0013); every field is optional
+and nothing is assumed where it is absent. `roles` are the project's own names for the work they take on (up to ten,
+lowercase with hyphens). `contributes` is `time`, `machine` (a machine the project's Open Autonomy runs on) or both.
+`availability` is `{ tz, windows }`: an IANA time zone and up to fourteen weekly windows `{ days, from, to }`, days
+`mon`…`sun`, `HH:MM` with `from` before `to` (a window past midnight is two). `joined` and `left` are `YYYY-MM-DD`,
+UTC: a member holds their authority from `joined` through `left` and it lapses the day after, so a roster never
+waits on someone to remove a departed member. A populated roster keeps at least one owner with no `left`.
+`currentMembers(team, day?)` and `teamOwner(team, githubId, day?)` read only the members on the team that day;
+`teamAvailable(member, at?)` says whether an instant is in one of their windows; `membersFor(team, role, at?)`
+returns the current holders of a role, `available` now and `later`. An empty result is help-wanted: an ask is never
+routed to the owner by default.
+
 The platform reads this owner configuration from the repository, just as it reads funding bounds; a
 narration key cannot replace it. `/:owner/:project/dashboard/team` resolves it through this SDK model. Owners can edit
 one member at a time, sign in with GitHub and create a draft PR. The short-lived OAuth flow uses the

@@ -68,9 +68,10 @@ function walk(dir: string, base = dir): string[] {
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
 // 'not_open', 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads, and 3.6.0
-// the first with statements.ts (docs/decisions/0012), which the vendored client imports.
+// the first with statements.ts (docs/decisions/0012), which the vendored client imports, and 3.7.0 the first whose
+// roster knows what members give and when they leave (docs/decisions/0013), which `check` reads.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
-const SDK_MIN = '3.6.0';
+const SDK_MIN = '3.7.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
@@ -156,16 +157,17 @@ function declarations(dir: string): string[] {
   const text = readFileSync(at, 'utf8');
   const out: string[] = [];
   // Loaded here, after the SDK version gate above, so an SDK too old to have seams.ts fails with that gate's message.
-  const { parseTeamConfig } = require(join(SDK_SRC, 'team.ts')) as typeof import('@open-autonomy/sdk/team');
+  const { currentMembers, parseTeamConfig } = require(join(SDK_SRC, 'team.ts')) as typeof import('@open-autonomy/sdk/team');
   const { parseSeamsConfig } = require(join(SDK_SRC, 'seams.ts')) as typeof import('@open-autonomy/sdk/seams');
   let scopes: Set<string> | null = null;
   try {
-    const members = parseTeamConfig(text).members;
-    if (members.length) scopes = new Set(members.flatMap((m) => m.scopes));
+    const team = parseTeamConfig(text);
+    // a seam is held by who is on the team today; a departed member's authority lapsed with them
+    if (team.members.length) scopes = new Set(currentMembers(team).flatMap((m) => m.scopes));
   } catch (e) { out.push((e as Error).message); }
   try {
     const seams = parseSeamsConfig(text);
-    for (const s of seams?.seams ?? []) if (scopes && !scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
+    for (const s of seams?.seams ?? []) if (scopes && !scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no current roster member has.`);
   } catch (e) { out.push((e as Error).message); }
   return out;
 }
