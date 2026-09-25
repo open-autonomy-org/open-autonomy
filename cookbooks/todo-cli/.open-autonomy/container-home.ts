@@ -119,16 +119,12 @@ print(out.decode().strip().splitlines()[-1])
 }
 
 /**
- * Codex's own sandbox in each profile's Codex home, as the profile's approvals allow. In the executor Codex's
- * bubblewrap cannot make its namespaces and every command fails (measured: a PM run could run nothing); the executor
- * is the boundary, as for Hermes's own terminal there. But the sandbox was also a gate: Codex asked before escaping
- * it and the orchestrator answered with Hermes's approval rule, and Codex 0.156.1 takes no policy that asks before
- * every command from its config (`approval_policy = "untrusted"` there stops its app server from starting: measured;
- * the per-command gate is `thread/start`'s `approvalPolicy`, which the harness does not pass yet, ADR 0009). So only
- * a profile whose owner turned Hermes's approvals off (`approvals.mode: off`) gets `sandbox_mode =
- * "danger-full-access"`; a profile that keeps them (the treasurer, which pays) keeps the sandbox, and its commands
- * fail closed in the executor rather than run ungated. The key is written or removed at the top of the home's
- * `config.toml`; the orchestrator's tables are kept.
+ * Codex's own sandbox off in each profile's Codex home. In the executor Codex's bubblewrap cannot make its namespaces
+ * and every command fails (measured: a PM run could run nothing); the executor is the boundary, as for Hermes's own
+ * terminal there. The gate is the profile's approvals: where it keeps them (the treasurer, which pays) the
+ * orchestrator starts its Codex worker with `approval_policy: untrusted`, so Codex asks before every command and
+ * Hermes's approval rule answers (ADR 0009). The key is written at the top of the home's `config.toml`; the
+ * orchestrator's tables are kept.
  */
 export async function openContainerCodexSandbox(options: { container: string; home: string }): Promise<string[]> {
   const output = await python(options.container, String.raw`
@@ -147,9 +143,8 @@ for profile in [home]+[p for p in sorted((home/'profiles').glob('*')) if p.is_di
     first=re.search(r'(?m)^\s*\[',text)
     head,tail=(text[:first.start()],text[first.start():]) if first else (text,'')
     head=re.sub(r'(?m)^sandbox_mode\s*=.*\n?','',head)
-    open_=mode=='off'
-    f.write_text(('sandbox_mode = "danger-full-access"\n' if open_ else '')+head+tail)
-    lines.append(f"{profile.name if profile != home else 'home'}: Codex sandbox {'off (approvals off)' if open_ else 'kept (approvals '+mode+'): commands fail closed in the executor'}")
+    f.write_text('sandbox_mode = "danger-full-access"\n'+head+tail)
+    lines.append(f"{profile.name if profile != home else 'home'}: Codex sandbox off; {'approvals off' if mode=='off' else 'approvals '+mode+': Codex asks before every command'}")
 print(json.dumps(lines))
 `, options);
   return JSON.parse(output);

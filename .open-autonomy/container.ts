@@ -115,8 +115,8 @@ export async function startContainer(options: {
       homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
     })) console.log(`host: agent: ${line}`);
     await mergeImageDenylist({ container, home });
-    // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself: off where the profile's
-    // approvals are off; a profile that keeps them keeps it, failing closed (container-home.ts)
+    // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself; a profile that keeps its
+    // approvals is asked before every command instead (container-home.ts)
     if (harness === 'codex') for (const line of await openContainerCodexSandbox({ container, home })) console.log(`host: ${line}`);
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
