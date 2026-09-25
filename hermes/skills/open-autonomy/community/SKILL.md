@@ -38,7 +38,7 @@ and moderators unless explicitly delegated.
    Hermes session/message reference, never an invented URL. This is not a mandatory handoff or journal;
    PM discovers the original conversation even without a note. Don't copy secrets into public summaries.
 4. Someone saying "I'll do it" can be acknowledged with their stated scope and recorded as a commitment.
-   A suggestion or an unanswered invitation cannot. Required maintainer review requests are authority gates,
+   A suggestion or an unanswered invitation cannot. The owner's approval of the Release is an authority gate,
    not volunteered implementation. Keep unresolved questions visible for scrum; don't randomly assign people.
 5. Only after reviewing the inputs and completing needed replies, `bun .open-autonomy/community.ts mark`. Report a short
    paragraph with source links, or `[SILENT]` when nothing changed. Never mark a failed look as read.

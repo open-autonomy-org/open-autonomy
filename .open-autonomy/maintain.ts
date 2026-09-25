@@ -85,14 +85,15 @@ if (command === 'ship') {
       if (batch.length < 100) return all;
     }
   };
-  const marker = `<!-- open-autonomy:release:${release} -->`;
+  // Each Release pull request is one release, told once. A package written before the last Release merged belongs to
+  // that one and never announces the next.
+  const marker = '<!-- open-autonomy:release-ready -->';
   const org = config.account.split('/')[0];
-  const merged = await gh<Array<{ number: number; merged_at: string | null }>>('GET', `/pulls?state=closed&base=prod&head=${org}:main&per_page=20`);
-  for (const pr of merged.filter((p) => p.merged_at)) {
-    if ((await comments(pr.number)).some((c) => c.startsWith(marker))) {
-      console.log(`Release ${release} already shipped in #${pr.number}; set its section back to accumulate.`);
-      process.exit(0);
-    }
+  const merged = await gh<Array<{ merged_at: string | null }>>('GET', `/pulls?state=closed&base=prod&head=${org}:main&per_page=20`);
+  const lastShip = Math.max(0, ...merged.map((p) => (p.merged_at ? Date.parse(p.merged_at) : 0)));
+  if (Bun.file(packagePath).lastModified <= lastShip) {
+    console.log(`The package predates the last Release; write it for ${release} before asking again. Nothing sent.`);
+    process.exit(0);
   }
   const [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
   if (!open) { console.log('No Release pull request is open; ship.yml opens it while main is ahead of prod.'); process.exit(0); }

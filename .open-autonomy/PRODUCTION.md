@@ -63,12 +63,13 @@ Owner reads: <each money or auth diff in the Release, by file, or none>
 Owner does: <what only the owner may do, such as a repository setting, with its exact values, or none>
 ```
 
-and runs `bun .open-autonomy/maintain.ts ship`. It writes that package as the Release's description and, once per
-release, mentions the owner on it: the only time the owner is contacted, so everything on the Release is finished,
-verified and reviewed before it. The owner reads the Release and merges it; the merge deploys the service and
-publishes each package version not yet on npm (`apps/platform/DEPLOY.md`). PM never deploys, tags or publishes. After
-the merge, PM verifies what shipped (the live service reports the shipped commit; the new versions are on npm) and
-only then moves changelog entries out of Unreleased. A project without a live service ships its packages the same way.
+and runs `bun .open-autonomy/maintain.ts ship`. It writes that package as the Release's description and mentions the
+owner on it, once per Release pull request (a package written before the last Release merged is refused as stale):
+the only time the owner is contacted, so everything on the Release is finished, verified and reviewed before it. The
+owner reads the Release and merges it; the merge deploys the service and publishes each package version not yet on
+npm (`apps/platform/DEPLOY.md`). PM never deploys, tags or publishes. After the merge, PM verifies what shipped (the
+live service reports the shipped commit; the new versions are on npm) and only then moves changelog entries out of
+Unreleased. A project without a live service ships its packages the same way.
 
 ## Seams
 
