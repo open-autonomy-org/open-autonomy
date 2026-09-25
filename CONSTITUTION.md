@@ -27,8 +27,10 @@ got right. Changing this file is the owner's act, never a task's.
   owner's bounds. They never drive an agent.
 - **Authority comes from the repository, not from a key.** Bounds, the claim of control and the publish policy
   are the owner's committed word. A key can spend, pay, narrate, steer or give within them, never widen them.
-- **Nothing in an agent's reach is a secret that matters.** Every session is published live; a key spends one
-  project's balance and stops at zero; a treasurer's key alone may pay.
+- **Nothing in a public agent's reach is a secret that matters.** Every public agent's session is published live. An
+  agent whose audience is the team or the owner knows only what that audience may, and its sessions are published
+  only to it. Nothing in any agent's reach is a secret that matters beyond its audience, and every spend is on the
+  public books; a key spends one project's balance and stops at zero; a treasurer's key alone may pay.
 - **No automated tests.** Automated tests accumulate permanent code and maintenance obligations. As agents
   add more, that cruft compounds until maintaining tests can make progress in the repository impossible.
   Do not write or run automated tests. No automated test code or persistent test harness may be committed
