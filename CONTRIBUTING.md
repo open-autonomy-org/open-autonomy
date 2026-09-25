@@ -49,7 +49,10 @@ scope, then checks that the implementation follows it. Record that reasoning in 
 ADR becomes accepted only after that review and merge; an Accepted label in an unmerged file confers
 no authority. Missing records, unresolved contradictions or constitutional violations require changes.
 An ADR cannot amend or waive the constitution; a needed amendment follows the constitution's owner
-authority before the proposal is reviewed again. Human release approval remains separate.
+authority before the proposal is reviewed again. That authority is the owner's own approving review of the
+pull request that changes `CONSTITUTION.md` (`.github/CODEOWNERS`): a quote of the owner in a record is
+evidence, never the approval, and no agent approves on a person's account. Human release approval remains
+separate.
 
 Preserve accepted decisions and their rationale. A change in direction proposes a new ADR, with links
 between it and the superseded record; acceptance of the replacement supersedes the earlier decision.
