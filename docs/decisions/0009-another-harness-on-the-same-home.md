@@ -215,13 +215,14 @@ unchanged.
 Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the
 orchestrator answered with Hermes's approval rule. Codex 0.156.1 takes no policy that asks before every command from
 its config: with `approval_policy = "untrusted"` in `config.toml` its app server refuses to start ("no longer
-supported", measured). So the sandbox is turned off only in the Codex home of a profile whose owner turned Hermes's
-approvals off (`approvals.mode: off`); a profile that keeps them, the treasurer that pays among them, keeps the
-sandbox, and its commands fail closed in the executor rather than run ungated. The per-command gate exists one layer
-up: the app server's `thread/start` accepts `approvalPolicy: "untrusted"` with full access and then asks before each
-command (`item/commandExecution/requestApproval`; answered `decline`, the command ends `declined`, not run),
-measured; supercode's managed runtime sends `thread/start` with `{cwd}` alone, so the gate waits on the harness
-passing the policy there.
+supported", measured). The per-command gate is one layer up: the app server's `thread/start` accepts
+`approvalPolicy: "untrusted"` with full access and then asks before each command
+(`item/commandExecution/requestApproval`). Supercode passes it from harness SDK 0.3.41 and CLI 0.4.80
+(`approval_policy` on a runtime's start and resume), and orchestrator 0.4.1 starts a Codex worker with it wherever the
+profile keeps Hermes's approvals (`approvals.mode` unset or not `off`). So the sandbox is off in every profile's Codex
+home in the executor, and a profile that keeps approvals, the treasurer that pays among them, is asked before every
+command, each answered by Hermes's rule. Measured on CLI 0.4.80 with a Codex home at full access: without the
+policy a command ran unasked; with it, Codex asked, a `decline` ended the command `declined`, and it did not run.
 
 **Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
 the project; the image built from this kit on the pinned Hermes, Colima, orchestrator 0.3.12 then 0.3.13):
