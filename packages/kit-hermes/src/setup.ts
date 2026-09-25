@@ -326,7 +326,7 @@ async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promi
       const name = pkg.inference?.default;
       const model = name ? pkg.inference?.models?.[name] : undefined;
       if (!model || model.provider === 'openai-codex') continue;
-      pkg.inference!.models![name!] = { provider: 'openai-codex', model: 'gpt-5.6-sol' };
+      pkg.inference!.models![name!] = { provider: 'openai-codex', model: 'gpt-6-sol' };
       say(`  .open-autonomy/agent.json: the ${profile} profile's model now names the subscription; reconcile it with the owner's choice and commit it with the rest.`);
       moved = true;
     }
