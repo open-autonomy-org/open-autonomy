@@ -38,7 +38,7 @@ Completion:
 Status: planned; 40 pull requests and six direct-main commits landed after the review rule was in force without exact-head independent GitHub App approval. Supported behavior stays supported, but the prospective review and architecture gates cannot be repaired retroactively.
 Dispatch: fleet
 
-Source: full audit of `7ad0cab8..8fb0332e` in `hermes:session/20260925_134916_80b19b`; direct commits `18a3ded6`, `190cbf90`, `8f3b5292`, `d1607d27`, `afff30f0` and `3b9ba0e5`; no-approval PRs #650, #699, #700, #703–#706, #708, #710 and #711; owner-self-reviewed PRs #709, #713, #715, #717, #719, #722, #724, #745, #747, #749, #751–#754, #756–#764, #767–#769 and #771–#774.
+Source: [full audit of `7ad0cab8..8fb0332e`](hermes:session/20260925_134916_80b19b); direct commits `18a3ded6`, `190cbf90`, `8f3b5292`, `d1607d27`, `afff30f0` and `3b9ba0e5`; no-approval PRs #650, #699, #700, #703–#706, #708, #710 and #711; owner-self-reviewed PRs #709, #713, #715, #717, #719, #722, #724, #745, #747, #749, #751–#754, #756–#764, #767–#769 and #771–#774.
 
 Completion:
 - Audit the landed changes as coherent stacks against their original authority, the constitution and current main; preserve authorship and separate supported behavior from defects.
