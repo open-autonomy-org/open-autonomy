@@ -14,7 +14,7 @@
 //   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
 //   bun .open-autonomy/community.ts who <role> [scope]            # who an ask goes to: the role's current holders, the
 //                                                                 # available now first; none is help-wanted (ADR 0013)
-//   bun .open-autonomy/community.ts reach [days]                  # the week's numbers the scrum reads (ADR 0013)
+//   bun .open-autonomy/community.ts reach [days]                  # the week's numbers, for the outreach job (ADR 0013)
 //   bun .open-autonomy/community.ts help-wanted <key> <title> <body-file> # an ask no member holds, posted once
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
