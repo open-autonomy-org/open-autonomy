@@ -80,7 +80,7 @@ Team page or by the member's own pull request merged after review; the agents re
 authority lapses the day after they leave.
 
 **The agents read the numbers that say so.** A door (`community.ts reach`) reports: stars, forks and watchers,
-releases and their downloads, outside authors in the window; the books; the patrons and their monthly total; the team
+releases, outside authors in the window; the books; the patrons and their monthly total; the team
 and what it gives. A count no door reaches (GitHub's traffic, for one) is reported unavailable. The weekly outreach
 job reads it into its post; the scrum compares it with the targets, which are the owner's word.
 
