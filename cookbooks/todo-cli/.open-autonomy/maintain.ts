@@ -8,6 +8,19 @@ const project = resolve(import.meta.dir, '..');
 const home = process.env.HERMES_HOME;
 if (!home) throw new Error('maintenance requires HERMES_HOME from the running stack');
 const command = process.argv[2] ?? 'status';
+// Hermes removes credentials from terminal tools, so the PM's `ship` re-enters with only its configured GitHub door (the
+// valve's App port and the word `valve`), as community.ts does; the values stay in the child and are never printed.
+if (command === 'ship' && !process.env.GITHUB_TOKEN && !process.env.OA_COMMUNITY_DOOR_LOADED) {
+  const script = `import os, sys
+from hermes_cli.config import load_env
+saved = load_env()
+for name in ("GITHUB_TOKEN", "GITHUB_API_URL"):
+    if saved.get(name): os.environ.setdefault(name, saved[name])
+os.environ["OA_COMMUNITY_DOOR_LOADED"] = "1"
+os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
+  const child = Bun.spawnSync({ cmd: ['python', '-c', script, process.execPath, ...process.argv.slice(1)], stdio: ['inherit', 'inherit', 'inherit'] });
+  process.exit(child.exitCode);
+}
 // Bun does not use the world's HTTP injector. Point bunx at the same registry
 // npm queried so the rehearsal release, rather than a cached public package, is applied.
 const bunxEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
