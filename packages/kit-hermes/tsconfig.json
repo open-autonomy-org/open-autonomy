@@ -7,6 +7,11 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
+    // The orchestrator package is a dependency of .open-autonomy/ only; its root declarations are read from there
+    // (src/supercode-orchestrator.d.ts types the applier's entry points with them).
+    "paths": {
+      "@volter-ai-dev/supercode-orchestrator": ["../../.open-autonomy/node_modules/@volter-ai-dev/supercode-orchestrator"]
+    },
     "types": [
       "bun"
     ]
