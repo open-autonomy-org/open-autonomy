@@ -21,17 +21,17 @@ Completion:
 - Only after the reviewed revert lands, reapply the same owner-authorized wording on a second fresh branch; another fresh-context agent submits/read-backs exact-head GitHub App approval before the re-land merges.
 - Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge.
 
-## pr651-review-audit: Reconcile the Polar patron-wall merge with independent review
+## pr651-review-repair: Prospectively repair the Polar patron-wall review
 
-Status: planned; PR #651's owner-authorized patron-wall correction is on main, but its sole exact-head App approval says it was recorded by the author and was not a fresh-context review. The review gate therefore remains unresolved pending an independent audit of the actual landed diff and the smallest supported prospective correction.
+Status: planned; audit `hermes:task/t_753cc7b9` confirmed PR #651's owner-authorized 12-line patron-wall effect fits the constitution on source inspection, but App review 5189264555 explicitly says the author recorded it rather than a fresh-context reviewer. The prospective gate failed and cannot be repaired retroactively.
 Dispatch: fleet
 
-Source: verified owner `yueranyuan` authored and signed [PR #651](https://github.com/open-autonomy-org/open-autonomy/pull/651); the PR merged as `7ad0cab8` from head `e34f5ba7` after App [approval 5189264555](https://github.com/open-autonomy-org/open-autonomy/pull/651#pullrequestreview-5189264555), whose body explicitly records that it was made by the author rather than a fresh-context reviewer.
+Source: [PR #651](https://github.com/open-autonomy-org/open-autonomy/pull/651), [review 5189264555](https://github.com/open-autonomy-org/open-autonomy/pull/651#pullrequestreview-5189264555), and [independent audit](hermes:task/t_753cc7b9).
 
 Completion:
-- Independently inspect PR #651's exact landed diff, authority, constitution fit and the original review body; determine whether the author-recorded App verdict violated the prospective gate.
-- If correction is required, prescribe only the bounded revert/re-land needed to obtain fresh-context exact-head App review while preserving later main work and the supported patron-wall behavior.
-- Do not submit a retroactive verdict, edit implementation, run automated tests/checks/hooks, release, tag, publish or deploy.
+- On a fresh branch from current main, remove only PR #651's 12 additions in `apps/platform/src/patronage.ts` and `apps/platform/src/polar.ts`, preserving every later change; manually verify Polar paid-order, failure and idempotence paths in World and disclose the temporary patron-wall regression.
+- Merge that exact revert only after fresh-context App review, then start a second fresh branch from the new main and reapply the same supported 12-line effect; manually verify the patron wall and no recurring accrual, and merge only after a different fresh-context exact-head App review.
+- Confirm both reviewed heads in main and the final two files match their pre-revert contents. Neither later review retroactively approves PR #651. Do not run automated tests/checks/hooks, release, tag, publish or deploy.
 
 ## main-review-provenance-2026-09: Prospectively repair the unreviewed main interval
 
