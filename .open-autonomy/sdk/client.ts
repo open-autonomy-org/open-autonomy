@@ -39,9 +39,27 @@ export const DOCS_EVENT_TYPE = 'org.open-autonomy.project.docs';
 // automation reads the request, applies it through its own machinery (the platform names no method), and reports the
 // state once it is true of itself. The platform keeps the two apart: unrequested means running, unreported means unknown.
 export type OperatingState = 'running' | 'paused';
+// A project inherits its org's word (`@<owner>`), paused if either is: `desired` is the effective word, carrying `from`
+// when it is the org's, with the project's own record beside it as `own`.
+// One entry of the operating state's history: the owner's request (`from` the org when it was the org's word; `unchanged`
+// when it asked for the state that already held), or a change of state the automation reported. `backfilled` marks a
+// record from before the history was kept.
+export type ControlEntry = ({ kind: 'request'; state: OperatingState; at: string; by: string; reason?: string; from?: string; unchanged?: true } | { kind: 'report'; state: OperatingState; at: string; note?: string }) & { backfilled?: true };
 export interface AgentControl {
-  desired?: { state: OperatingState; at: string; by: string; reason?: string };
+  desired?: { state: OperatingState; at: string; by: string; reason?: string; from?: string };
   observed?: { state: OperatingState; at: string; note?: string };
+  own?: { state: OperatingState; at: string; by: string; reason?: string };
+}
+// One of the owner's spend limits over its window, with what has been used in it.
+export interface SpendBound { window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }
+// An org's limit: its total over the org's projects, withheld when any of them keeps its books closed.
+export type OrgSpendBound = Omit<SpendBound, 'used'> & ({ used: SpendBound['used']; withheld?: never } | { used?: never; withheld: true });
+export interface OrgView {
+  org: string;
+  desired?: AgentControl['desired'];
+  bounds: OrgSpendBound[];
+  // A project's money only when its books are open to everyone, its live sessions only when its sessions are.
+  projects: Array<{ account: string; control?: AgentControl; balance_usd_cents?: number; burn_per_day_usd_cents?: number; runway_days?: number | null; funded?: boolean; exhausted?: boolean; live_sessions?: string[] }>;
 }
 export const STATE_EVENT_TYPE = 'org.open-autonomy.agent.state';
 // The timeline, published whole by the substrate: its source label and the normalized document (see ./roadmap).
@@ -87,11 +105,11 @@ export interface EventResult { id?: string; ok: boolean; error?: string; idempot
 export interface WriteResult { ok: boolean; status: number; error?: string }
 export interface SessionSummary {
   key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string;
-  model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents: number; calls: number; updated_at: string;
+  model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents?: number; calls: number; updated_at: string;
 }
 export interface SessionRecord extends Omit<SessionSummary, 'tool_calls'> { turns: Array<Turn & { seq?: number }> }
 export interface UpdateRecord { id: string; account: string; item_id: string; ts: string; text: string; session?: string }
-export interface ItemView { ok: true; account: string; item_id: string; live: string[]; sessions: SessionSummary[]; updates: UpdateRecord[]; usd_cents: number }
+export interface ItemView { ok: true; account: string; item_id: string; live: string[]; sessions: SessionSummary[]; updates: UpdateRecord[]; usd_cents?: number }
 
 export class OpenAutonomy {
   private readonly base: string;
@@ -184,8 +202,9 @@ export class OpenAutonomy {
     if (!res.ok) { const body = await res.json().catch(() => ({})) as { error?: { code?: string } | string }; const code = typeof body.error === 'string' ? body.error : body.error?.code; throw new ReadError(res.status, code ?? `http_${res.status}`); }
     return await res.json() as T;
   }
-  async sessions(account: string, limit = 30): Promise<{ live: string[]; sessions: SessionSummary[] }> {
-    return this.read(`/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}`);
+  // Newest first; `next`, when there is more, is the `before` of the page after.
+  async sessions(account: string, limit = 30, before?: string): Promise<{ live: string[]; sessions: SessionSummary[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/sessions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
   }
   async session(account: string, key: string): Promise<SessionRecord | undefined> {
     try { return (await this.read<{ session?: SessionRecord }>(`/accounts/${encodeURIComponent(account)}/sessions/${encodeURIComponent(key)}`)).session; }
@@ -220,18 +239,28 @@ export class OpenAutonomy {
         if (!data) continue;
         let parsed: unknown; try { parsed = JSON.parse(data); } catch { continue; }
         if (event === 'turn') yield { event: 'turn', turn: parsed as Turn & { seq?: number } };
-        else if (event === 'status') { const s = parsed as { status: 'live' | 'ended'; turn_count: number; usd_cents: number }; yield { event: 'status', ...s }; if (s.status !== 'live') return; }
+        else if (event === 'status') { const s = parsed as { status: 'live' | 'ended'; turn_count: number; usd_cents?: number }; yield { event: 'status', ...s }; if (s.status !== 'live') return; }
       }
     }
   }
 
   // The operating state as the platform holds it: the owner's request and the automation's answer, apart.
-  //   GET /v1/accounts/:account/state  → { desired?: { state, at, by, reason? }, observed?: { state, at, note? } }
+  //   GET /v1/accounts/:account/state  → { desired?: { state, at, by, reason?, from? }, observed?: { state, at, note? }, own? }
   async state(account: string): Promise<AgentControl | undefined> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/state`);
     if (!res.ok) return undefined;
-    const { desired, observed } = await res.json() as AgentControl;
-    return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}) };
+    const { desired, observed, own } = await res.json() as AgentControl;
+    return { ...(desired ? { desired } : {}), ...(observed ? { observed } : {}), ...(own ? { own } : {}) };
+  }
+  // Every request and every change reported, newest first, a page at a time.
+  //   GET /v1/accounts/:account/state/history?limit=&before=
+  async stateHistory(account: string, limit = 50, before?: string): Promise<{ history: ControlEntry[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/state/history?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
+  }
+  // An org at a glance: its own word and bounds, and each listed project under it with its effective word and money.
+  //   GET /v1/orgs/:org
+  async org(name: string): Promise<OrgView> {
+    return this.read(`/orgs/${encodeURIComponent(name.replace(/^@/, ''))}`);
   }
   // The owner's word: run, or pause. Needs the `steer` scope, which a spending key does not carry. Recorded, not applied:
   // the automation applies it and answers through `reportState`.
@@ -248,6 +277,10 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap`);
     if (!res.ok) return undefined;
     return ((await res.json()) as { revision?: RoadmapRevision }).revision;
+  }
+  // A page of the history: `next`, when there is more, is the `before` of the page after.
+  async roadmapRevisionPage(account: string, limit = 20, before?: string): Promise<{ revisions: RoadmapRevision[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
   }
   async roadmapRevisions(account: string, limit = 20): Promise<RoadmapRevision[]> {
     const res = await this.fetchImpl(`${this.base}/accounts/${encodeURIComponent(account)}/roadmap/revisions?limit=${limit}`);
@@ -267,15 +300,17 @@ export class OpenAutonomy {
 export class ReadError extends Error {
   constructor(readonly status: number, readonly code: string) { super(`${code} (${status})`); this.name = 'ReadError'; }
 }
-export type SessionEvent = { event: 'turn'; turn: Turn & { seq?: number } } | { event: 'status'; status: 'live' | 'ended'; turn_count: number; usd_cents: number };
+// Money travels with the books: a record read through a door the owner opened wider than the books (a session, a call,
+// an item, a stream) carries no `*usd_cents` field for a viewer kept from them.
+export type SessionEvent = { event: 'turn'; turn: Turn & { seq?: number } } | { event: 'status'; status: 'live' | 'ended'; turn_count: number; usd_cents?: number };
 export interface FundingView {
   account: string; funded: boolean; exhausted: boolean;
   balance_usd_cents: number; granted_in_usd_cents: number; granted_out_usd_cents: number; consumed_usd_cents: number;
   burn_per_day_usd_cents: number; runway_days: number | null; runway_confident: boolean; days_observed: number;
   calls_total: number; last_call_at: string | null; daily_spend_usd_cents: number[];
-  bounds: { models: string[]; limits: Array<{ window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }> };
+  bounds: { models: string[]; limits: SpendBound[]; org?: { account: string; limits: OrgSpendBound[] } };
 }
-export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
+export interface CallRecord { ts: string; request_id: string; rail: string; session?: string; model?: string; route?: string; input_tokens?: number; output_tokens?: number; usd_cents?: number; outcome?: string; merchant?: string; category?: string; partner?: string; unit?: string }
 
 export interface RoadmapRevision {
   revision: number;
@@ -327,13 +362,19 @@ export async function keyMint(baseUrl: string, account: string, models?: string[
 }
 // `graceSeconds` shortens how long the old key keeps working (the platform's default is a day; it never lengthens).
 // A funder: a person who holds grant credits on their own books (`@login`). Their key proves their GitHub
-// login through the claim file in a repository they own and can only give.
+// login through the claim file in a repository they own (an organization's only in `<org>/.github`) and can only give.
 export async function funderChallenge(baseUrl: string, login: string, fetchImpl: typeof fetch = fetch): Promise<KeyChallenge & { funder?: string }> {
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/challenge?funder=${encodeURIComponent(login)}`);
   return await res.json() as KeyChallenge & { funder?: string };
 }
 export async function funderMint(baseUrl: string, login: string, repo: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
   const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ funder: login, repo }) });
+  return await res.json() as MintedKey;
+}
+// An org's steer key (`@org`): its pause, which every project of the org inherits. The funder's claim, landed on the
+// default branch of `<org>/.github`, the repository GitHub reads as the org's own.
+export async function orgMint(baseUrl: string, org: string, fetchImpl: typeof fetch = fetch): Promise<MintedKey> {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/keys/mint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ funder: org, repo: `${org}/.github`, scopes: ['steer'] }) });
   return await res.json() as MintedKey;
 }
 export async function keyRotate(baseUrl: string, currentKey: string, options: { graceSeconds?: number; fetchImpl?: typeof fetch } = {}): Promise<MintedKey> {

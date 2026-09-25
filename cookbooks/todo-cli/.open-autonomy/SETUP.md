@@ -288,7 +288,7 @@ with the product shown from a real run, and set the repository's description, to
 The front door's standard integrations are the ones selected below: the GitHub App for the README, docs and
 media, and for posts in the repository's Discussions (enable Discussions with its Announcements category);
 and the announcements channel of the agreed communication space. Pages waits until the project has docs
-(`docs/index.md`): then its source is set to GitHub Actions and the kit's `pages.yml` publishes them. Record in
+(an index.md under docs/): then its source is set to GitHub Actions and the kit's `pages.yml` publishes them. Record in
 the project communication skill which team member handles what no integration reaches (repository settings,
 the social preview, a publishing platform), so agents coordinate with them.
 Complete the provisional branding pass in `branding/README.md` before creating integrations. Use the
