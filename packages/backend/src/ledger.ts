@@ -186,6 +186,8 @@ export interface Flow {
   envelope_id?: string;
   item?: string;
   ts: string;
+  // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
+  private?: true;
 }
 
 export type EnvelopePurpose =
@@ -1255,7 +1257,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       is_project: account.includes('/'),
       // Listed where everyone looks (the front page, an owner's page, an org's rollup) only when the owner opened its
       // overview to everyone: a closed project is not announced there, as its own page is not.
-      listed: account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview),
+      listed: this.listedHere(account),
       moderation: a?.moderation ?? 'listed',
       profile: displayProfile(a),
       goal_days: a?.goal_days ?? DEFAULT_GOAL_DAYS,
@@ -1268,6 +1270,13 @@ export class LimitLedger implements DurableObject, LedgerCore {
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       status: fundingStatus(f),
     };
+  }
+
+  // Listed where everyone looks (the front page, an owner's page, an org's rollup, a funder's books) only when the owner
+  // opened its overview to everyone: a closed project is not announced there, as its own page is not.
+  private listedHere(account: string): boolean {
+    const a = this.acct(account);
+    return account.includes('/') && (a?.moderation ?? 'listed') === 'listed' && Boolean(a?.profile?.synced_at) && sees('public', visibilityOf(a?.profile?.config_yaml).overview);
   }
 
   private async bonusAdd(account: string, amount: number): Promise<{ ok: boolean; bonus_usd_cents?: number; error?: string }> {
@@ -1298,9 +1307,16 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return {
       ok: true, found: Boolean(a), account, login: account.replace(/^@/, ''),
       credits_usd_cents: f.balance_usd_cents, bonus_usd_cents: a?.bonus_usd_cents ?? 0, received_usd_cents: f.granted_in_usd_cents, given_usd_cents: f.granted_out_usd_cents,
-      given: flows.filter((x) => x.from === account),
-      received: flows.filter((x) => x.to === account),
+      given: flows.filter((x) => x.from === account).map((x) => this.openFlow(x, x.to)),
+      received: flows.filter((x) => x.to === account).map((x) => this.openFlow(x, x.from)),
     };
+  }
+
+  // A funder's books are public, amounts and all; a project on the other side is named only where it is listed.
+  private openFlow(flow: Flow, other: string | undefined): Flow {
+    if (!other || other.startsWith('@') || !other.includes('/') || other.endsWith('/grants') || this.listedHere(other)) return flow;
+    const { note: _note, item: _item, envelope_id: _envelope, ...rest } = flow;
+    return { ...rest, ...(flow.to === other ? { to: '' } : {}), ...(flow.from === other ? { from: undefined } : {}), private: true };
   }
 
   private projectView(account: string): ProjectView {

@@ -26,9 +26,9 @@ function since(f: Flow, impact: Impact | undefined): string | null {
   return parts.length ? `since then: ${parts.join(' · ')}` : null;
 }
 function Gift({ f, dir, entries, now, brand, impact }: { f: Flow; dir: 'out' | 'in'; entries: DirectoryEntry[]; now: number; brand: string; impact?: Impact }) {
-  const other = dir === 'out' ? f.to : f.from;
+  const other = f.private ? undefined : dir === 'out' ? f.to : f.from;
   const project = other ? entries.find((e) => same(e.account, other)) : undefined;
-  const who = other ? (other.startsWith('@') ? other.slice(1) : other.endsWith('/grants') ? `${ownerOf(other)}'s grants pool` : other) : f.sponsor_login ? `@${f.sponsor_login}` : brand;
+  const who = f.private ? 'a private project' : other ? (other.startsWith('@') ? other.slice(1) : other.endsWith('/grants') ? `${ownerOf(other)}'s grants pool` : other) : f.sponsor_login ? `@${f.sponsor_login}` : brand;
   const href = other ? (other.startsWith('@') ? at(other.slice(1)) : at(other)) : undefined;
   return (
     <li>
