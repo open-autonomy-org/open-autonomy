@@ -297,7 +297,10 @@ if (command === 'poll' && doorless) {
   out.team = {
     members: current.length,
     // what the team gives, in the roster's own words (time, a machine, any other resource): how many give each
-    gives: current.reduce<Record<string, number>>((n, m) => { for (const c of m.contributes ?? []) n[c] = (n[c] ?? 0) + 1; return n; }, {}),
+    gives: current.reduce<Record<string, number>>((n, m) => {
+      for (const c of m.contributes ?? []) n[c] = (n[c] ?? 0) + 1;
+      return n;
+    }, {}),
     joined: current.filter((m) => m.joined && m.joined >= since.slice(0, 10)).map((m) => m.id),
     left: team.members.filter((m) => m.left && m.left >= since.slice(0, 10)).map((m) => m.id),
     roles,
