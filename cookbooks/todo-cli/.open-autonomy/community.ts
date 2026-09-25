@@ -246,7 +246,7 @@ if (command === 'poll' && doorless) {
   const unavailable = (why: string) => ({ unavailable: why });
   const out: Record<string, unknown> = { account, window_days: days, since, at: new Date().toISOString() };
   if (doorless) out.github = unavailable('no GitHub door (no GITHUB_TOKEN)');
-  else {
+  else try {
     const repo = await github<{ stargazers_count: number; forks_count: number; subscribers_count: number }>('GET', `/repos/${account}`);
     const releases = await pages<{ tag_name: string; published_at: string | null; draft: boolean; assets: Array<{ download_count: number }> }>(`/repos/${account}/releases`);
     const published = releases.filter((r) => !r.draft);
@@ -262,10 +262,11 @@ if (command === 'poll' && doorless) {
       stars: repo.stargazers_count, forks: repo.forks_count, watchers: repo.subscribers_count,
       releases: published.length, latest_release: published[0] ? { tag: published[0].tag_name, published_at: published[0].published_at } : null,
       release_downloads: published.reduce((n, r) => n + r.assets.reduce((m, a) => m + a.download_count, 0), 0),
-      outside_authors: [...people].sort(),
+      // everyone outside the team who opened or replied in the window; whether it was their first time is not read
+      outside_authors_in_window: [...people].sort(),
       traffic: unavailable('GitHub traffic (views, clones, referrers) needs the Administration permission, which the kit does not grant its App'),
     };
-  }
+  } catch (e) { out.github = unavailable((e as Error).message); }
   // The books: public wherever the owner's word opens them. Money the project holds, burns and has left.
   const platform = /^platform:\s*(\S+)/m.exec(config)?.[1]?.replace(/\/$/, '');
   try {

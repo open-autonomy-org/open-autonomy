@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the daily scrum of a project people build — read what landed and what was asked, reconcile the roadmap and changelog, name what is stalled, ask people, and keep the release proposal true.
-version: 1.1.0
+version: 1.2.0
 metadata:
   hermes:
     tags: [open-autonomy, pm]
@@ -81,7 +81,8 @@ The project's GitHub page is how it is found and first used; load the `front-doo
 scrum, compare it with what landed: the README, the docs, their media and the repository's description,
 topics and homepage. Wording the record alone supports, propose with your planning change. What needs the
 product run or a new capture, name as a stalled item on the roadmap and ask its people, as for any other work.
-What no integration reaches is coordinated with the team member who holds it, as the `front-door` skill says.
+What no integration reaches is an ask of the role that covers it (`community.ts who`, else `help-wanted`), as the
+`front-door` skill says, never the owner by default.
 
 ## Plan releases deliberately
 

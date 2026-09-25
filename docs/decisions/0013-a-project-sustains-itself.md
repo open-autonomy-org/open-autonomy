@@ -79,7 +79,7 @@ pull request merged after review; the agents read it and never infer it. A membe
 they leave.
 
 **The agents read the numbers that say so.** A door (`community.ts reach`) reports, on the project's own record
-each week: visitors and their referrers, stars, clones and downloads, first-time outside authors; patrons, their
+each week: visitors and their referrers, stars, clones and downloads, outside authors in the window; patrons, their
 monthly total and who left; members and machines active and returning, and the roles no one available covers; the
 metered spend and how much of it backers cover. The
 scrum reads it beside the board. The targets are in the project's own document, set by the owner.
