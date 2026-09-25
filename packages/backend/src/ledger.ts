@@ -1,6 +1,7 @@
 import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
+import { checkStatement, MAX_STATEMENTS, statementChanges, storedStatement, today, type Statement, type StatementRevision } from '@open-autonomy/sdk/statements';
 import { redactDeep } from './redact.js';
 import { json } from './http.js';
 import { sees, visibilityOf } from './page/model.js';
@@ -108,10 +109,13 @@ export interface Account {
   // The agent's operating state: the owner's word (a steer key's request) and the automation's answer (what it
   // reported true of itself), kept apart. The platform records both and applies neither.
   control?: AgentControl;
+  // The owner's statements (ADR 0012), by id: the latest revision's number and, unless withdrawn, the live statement.
+  // Every revision lives in storage, `statement:<account>:<id>:<revision, zero-padded>`.
+  statements?: Record<string, { revision: number; live?: Statement }>;
   // Keys an app's extension owns on the account (Open Autonomy's sponsors and tiers, for two): kept verbatim, opaque here.
   [extension: string]: unknown;
 }
-const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cents', 'consumed_usd_cents', 'envelopes', 'calls_total', 'last_call_ms', 'live_sessions', 'roadmap_revision', 'stripe_cardholder', 'bonus_usd_cents', 'usage', 'profile', 'goal_days', 'moderation', 'moderation_reason', 'deployment', 'daily_spend', 'control']);
+const CORE_ACCOUNT_KEYS = new Set(['granted_in_usd_cents', 'granted_out_usd_cents', 'consumed_usd_cents', 'envelopes', 'calls_total', 'last_call_ms', 'live_sessions', 'roadmap_revision', 'stripe_cardholder', 'bonus_usd_cents', 'usage', 'profile', 'goal_days', 'moderation', 'moderation_reason', 'deployment', 'daily_spend', 'control', 'statements']);
 
 export type OperatingState = 'running' | 'paused';
 // As served, `desired` is the effective word (ADR 0010): the org's, with `from`, when the org's pause holds and the
@@ -429,6 +433,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'roadmap': return json(await this.roadmapCurrent(s('account')));
       case 'roadmap_revisions': return json(await this.roadmapRevisions(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'state_history': return json(await this.stateHistory(s('account'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
+      case 'statement_set': return json(await this.statementSet(s('account'), body.statement, s('by')));
+      case 'statement_withdraw': return json(await this.statementWithdraw(s('account'), s('id'), s('by')));
+      case 'statements': return json(this.statementsLive(s('account')));
+      case 'statement_revisions': return json(await this.statementRevisions(s('account'), s('id'), Number(body.limit), typeof body.before === 'string' ? body.before : undefined));
       case 'card_put': return json(await this.cardPut(body.card as CardRecord));
       case 'card': return json(await this.cardGet(s('id')));
       case 'set_cardholder': return json(await this.setCardholder(s('account'), s('cardholder')));
@@ -1219,6 +1227,47 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return { ok: true, account, revisions: [...page.values()], ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
   }
 
+  // ---- statements: the owner's word about the project, revisioned (ADR 0012) --------------------------------
+  // A publication that differs from the live statement, and a withdrawal, are each a revision; an identical one is not.
+  private statementKey(account: string, id: string, revision: number): string { return `statement:${account}:${id}:${String(revision).padStart(9, '0')}`; }
+  private async statementSet(account: string, raw: unknown, by: string): Promise<{ ok: boolean; error?: string; field?: string; unchanged?: boolean; revision?: StatementRevision }> {
+    const checked = checkStatement(raw, today());
+    if (!checked.ok) return checked;
+    const st = checked.statement;
+    const a = this.ensureAcct(account);
+    const all = a.statements ?? {};
+    const entry = all[st.id];
+    if (!entry?.live && Object.values(all).filter((e) => e.live).length >= MAX_STATEMENTS) return { ok: false, error: 'statement_limit' };
+    if (entry?.live && JSON.stringify(entry.live) === JSON.stringify(st)) return { ok: true, unchanged: true };
+    const revision: StatementRevision = { id: st.id, revision: (entry?.revision ?? 0) + 1, ts: new Date().toISOString(), by: clipText(by, 80) ?? '', statement: st, changes: statementChanges(entry?.live, st) };
+    await this.ctx.storage.put(this.statementKey(account, st.id, revision.revision), revision);
+    a.statements = { ...all, [st.id]: { revision: revision.revision, live: st } };
+    await this.save();
+    return { ok: true, revision };
+  }
+  private async statementWithdraw(account: string, id: string, by: string): Promise<{ ok: boolean; error?: string; revision?: StatementRevision }> {
+    const a = this.acct(account);
+    const entry = a?.statements?.[id];
+    if (!a || !entry?.live) return { ok: false, error: 'not_found' };
+    const revision: StatementRevision = { id, revision: entry.revision + 1, ts: new Date().toISOString(), by: clipText(by, 80) ?? '', withdrawn: true, changes: statementChanges(entry.live, undefined) };
+    await this.ctx.storage.put(this.statementKey(account, id, revision.revision), revision);
+    a.statements = { ...a.statements, [id]: { revision: revision.revision } };
+    await this.save();
+    return { ok: true, revision };
+  }
+  private statementsLive(account: string): { ok: true; account: string; statements: Statement[] } {
+    return { ok: true, account, statements: Object.values(this.acct(account)?.statements ?? {}).flatMap((e) => (e.live ? [e.live] : [])) };
+  }
+  // Paged as the roadmap's revisions are: `next`, on a full page, is the `before` of the page after, so the whole
+  // audit trail can be read back however long it grows.
+  private async statementRevisions(account: string, id: string, limit: number, before?: string): Promise<{ ok: true; account: string; id: string; revisions: StatementRevision[]; next?: string }> {
+    const n = Number.isFinite(limit) && limit > 0 ? Math.min(100, Math.floor(limit)) : 20;
+    const prefix = `statement:${account}:${id}:`;
+    const page = await this.ctx.storage.list<StatementRevision>({ prefix, reverse: true, limit: n, ...(before && before.startsWith(prefix) ? { end: before } : {}) });
+    const keys = [...page.keys()];
+    return { ok: true, account, id, revisions: [...page.values()], ...(keys.length === n ? { next: keys[keys.length - 1] } : {}) };
+  }
+
   // ---- read models -----------------------------------------------------------------------------------
 
   // What a project page watches between reloads: the books' three numbers, what is live, the roadmap's revision.
@@ -1470,6 +1519,15 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (deployment) acct.deployment = deployment;
     const control = normalizeControl(a.control);
     if (control) acct.control = control;
+    const statements = (a as { statements?: unknown }).statements;
+    if (statements && typeof statements === 'object') {
+      acct.statements = {};
+      for (const [sid, e] of Object.entries(statements as Record<string, { revision?: unknown; live?: unknown }>)) {
+        if (!e || typeof e.revision !== 'number') continue;
+        const live = e.live === undefined ? undefined : storedStatement(e.live);
+        acct.statements[sid] = live ? { revision: e.revision, live } : { revision: e.revision };
+      }
+    }
     if (!acct.envelopes.length) {
       const legacy = acct.granted_in_usd_cents - acct.granted_out_usd_cents - acct.consumed_usd_cents;
       if (legacy > 0) acct.envelopes.push({ id: `legacy:${id}`, purpose: { type: 'unrestricted' }, balance_usd_cents: legacy, created_at: new Date(0).toISOString() });
@@ -1758,6 +1816,10 @@ export class LedgerClient {
   roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
   roadmapRevisions(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[]; next?: string }>('roadmap_revisions', { account, limit, before }); }
   stateHistory(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; history: ControlEntry[]; next?: string }>('state_history', { account, limit, before }); }
+  statementSet(account: string, statement: unknown, by: string) { return this.call<{ ok: boolean; error?: string; field?: string; unchanged?: boolean; revision?: StatementRevision }>('statement_set', { account, statement, by }); }
+  statementWithdraw(account: string, id: string, by: string) { return this.call<{ ok: boolean; error?: string; revision?: StatementRevision }>('statement_withdraw', { account, id, by }); }
+  statements(account: string) { return this.call<{ ok: true; account: string; statements: Statement[] }>('statements', { account }); }
+  statementRevisions(account: string, id: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; id: string; revisions: StatementRevision[]; next?: string }>('statement_revisions', { account, id, limit, before }); }
   cardPut(card: CardRecord) { return this.call<{ ok: boolean; error?: string }>('card_put', { card }); }
   card(id: string) { return this.call<{ ok: boolean; error?: string; card?: CardRecord }>('card', { id }); }
   setCardholder(account: string, cardholder: string) { return this.call<{ ok: true }>('set_cardholder', { account, cardholder }); }

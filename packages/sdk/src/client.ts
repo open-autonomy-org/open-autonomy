@@ -6,8 +6,8 @@
 // anything else) and, when known, the roadmap item they serve; turns append with an offset so a retry or
 // a reconnect is idempotent; a session ends with an optional outcome. Updates are short progress notes on
 // an item. All of it goes to POST /v1/agent/events as CloudEvents 1.0, one or a batch.
-
 import type { Roadmap } from './roadmap.ts';
+import type { Statement, StatementRevision } from './statements.ts';
 
 export interface ClientOptions {
   baseUrl: string; // e.g. https://open-autonomy.org/v1 (the key valve's forwarded address inside a stack)
@@ -293,6 +293,35 @@ export class OpenAutonomy {
     const res = await this.fetchImpl(`${this.base}/agent/roadmap`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ source, roadmap, by }) });
     const body = await res.json().catch(() => ({})) as { ok?: boolean; revision?: RoadmapRevision; unchanged?: boolean; error?: { code?: string } };
     return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, unchanged: body.unchanged, error: body.error?.code };
+  }
+
+  // The owner's statements (ADR 0012): a tool the owner runs publishes its word about the project, shown in the
+  // dashboard's rail under "Stated by the owner" and as a README badge row. Needs the `steer` scope of a project's key.
+  //   POST /v1/agent/statement  (Authorization: Bearer <steer key>)  { id, title, source, as_of, badges, body_md? }
+  //   DELETE /v1/agent/statement/:id
+  async publishStatement(statement: Statement): Promise<WriteResult & { revision?: StatementRevision; unchanged?: boolean; field?: string }> {
+    const res = await this.fetchImpl(`${this.base}/agent/statement`, { method: 'POST', headers: { authorization: `Bearer ${this.opts.key}`, 'content-type': 'application/json' }, body: JSON.stringify(statement) });
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; revision?: StatementRevision; unchanged?: boolean; field?: string; error?: { code?: string } | string };
+    return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, unchanged: body.unchanged, ...(body.field ? { field: body.field } : {}), error: typeof body.error === 'string' ? body.error : body.error?.code };
+  }
+  async withdrawStatement(id: string): Promise<WriteResult & { revision?: StatementRevision }> {
+    const res = await this.fetchImpl(`${this.base}/agent/statement/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { authorization: `Bearer ${this.opts.key}` } });
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; revision?: StatementRevision; error?: { code?: string } | string };
+    return { ok: res.ok && body.ok === true, status: res.status, revision: body.revision, error: typeof body.error === 'string' ? body.error : body.error?.code };
+  }
+  //   GET /v1/accounts/:account/statements            the live statements
+  //   GET /v1/accounts/:account/statements/:id/revisions?limit=   every change, newest first
+  //   GET /v1/accounts/:account/statements/:id/badges.svg         the badge row, for a README
+  // As read: `badges` are the ones standing today, `lapsed` those past their `until`.
+  async statements(account: string): Promise<Array<Statement & { lapsed: Statement['badges'] }>> {
+    return (await this.read<{ statements: Array<Statement & { lapsed: Statement['badges'] }> }>(`/accounts/${encodeURIComponent(account)}/statements`)).statements;
+  }
+  // A page of one statement's revisions: `next`, when there is more, is the `before` of the page after.
+  async statementRevisionPage(account: string, id: string, limit = 20, before?: string): Promise<{ revisions: StatementRevision[]; next?: string }> {
+    return this.read(`/accounts/${encodeURIComponent(account)}/statements/${encodeURIComponent(id)}/revisions?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`);
+  }
+  async statementRevisions(account: string, id: string, limit = 20): Promise<StatementRevision[]> {
+    return (await this.read<{ revisions: StatementRevision[] }>(`/accounts/${encodeURIComponent(account)}/statements/${encodeURIComponent(id)}/revisions?limit=${limit}`)).revisions;
   }
 }
 

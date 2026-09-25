@@ -5,13 +5,15 @@
 import { tenseOf, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import type { TeamMember } from '@open-autonomy/sdk/team';
 import type { CallRecord, ProjectView, SessionRecord, SessionSummary } from '../ledger.js';
+import type { Statement } from '@open-autonomy/sdk/statements';
 import { sees, type Role, type Visibility } from '../page/model.js';
 import { firstLine, type SessionTail, type Turn } from '../page/parts.js';
 import { fmtWhen } from '../ui.js';
 import { normalizeUiState, relativeAge, type SessionRowModel, type SupercodeUiState, type TranscriptEntryModel } from '@volter-ai-dev/supercode-ui/core';
 import type { JobModel, RunModel, TaskAttempt, WorkflowBoardModel, WorkflowTask } from '@volter-ai-dev/supercode-ui/supervision';
 
-export type DashPage = 'overview' | 'sessions' | 'board' | 'books' | 'agent' | 'team';
+// `statements` is a page only under an id, reached from the rail's rows below the fixed pages (ADR 0012).
+export type DashPage = 'overview' | 'sessions' | 'board' | 'books' | 'agent' | 'team' | 'statements';
 export interface DashData {
   brand: string;
   viewer: Role;
@@ -33,6 +35,11 @@ export interface DashData {
   item?: string;
   // The app's identity door for this page: sign in (returning here), or who is signed in and how to sign out.
   door?: { in?: string; out?: string; who?: string };
+  // The owner's statements the viewer may see, for the rail; on a statement's page, the one it shows.
+  statements?: Statement[];
+  statement?: string;
+  // The address the page was served at, for what a viewer copies out of it (a README's badge row).
+  origin?: string;
   // The sessions page's filter, from its address: `?show=live|failed`, `?job=<name>`.
   filter?: { show?: 'live' | 'failed'; job?: string };
 }

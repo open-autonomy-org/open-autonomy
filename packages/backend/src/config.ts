@@ -176,7 +176,7 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
 //
 // The word holds on the pages and on the SDK's read doors alike; the books stay public under every preset but private.
 export const DASHBOARD_ROLES = ['public', 'giver', 'team', 'owner'] as const;
-export const DASHBOARD_PANELS = ['overview', 'work', 'sessions', 'transcripts', 'books', 'calls', 'agent', 'team'] as const;
+export const DASHBOARD_PANELS = ['overview', 'work', 'sessions', 'transcripts', 'books', 'calls', 'agent', 'team', 'statements'] as const;
 export type DashboardRole = typeof DASHBOARD_ROLES[number];
 export type DashboardPanel = typeof DASHBOARD_PANELS[number];
 export interface DashboardConfig { visibility?: 'roadmap' | 'open' | 'status' | 'private'; panels: Partial<Record<DashboardPanel, DashboardRole>> }

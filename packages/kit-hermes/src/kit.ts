@@ -67,16 +67,17 @@ function walk(dir: string, base = dir): string[] {
 // A generated project reads the platform through the SDK this kit vendors into it. The published kit pins that
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
-// 'not_open', and 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads.
+// 'not_open', 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads, and 3.6.0
+// the first with statements.ts (docs/decisions/0012), which the vendored client imports.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
-const SDK_MIN = '3.2.0';
+const SDK_MIN = '3.6.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
 const sdkVersion = JSON.parse(readFileSync(SDK_PKG, 'utf8')).version as string;
 if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy/sdk ${sdkVersion}; it needs ${SDK_MIN} or newer. The kit's published dependency is stale: reinstall the current create-open-autonomy, or publish the kit against the current SDK.`);
-const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts'];
+const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts', 'statements.ts'];
 
 // Every base file, then every file of the skew's lineage over it, rendered. Placeholders are `__PROJECT__`, `__ACCOUNT__`
 // (and `__ACCOUNT_ENC__`, the account as a URL path segment, and `__OWNER__`, the account's owner); binary-looking files pass through untouched. A

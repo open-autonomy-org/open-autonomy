@@ -1,6 +1,7 @@
 import { itemState, itemTime, phaseNumber, tenseOf, type RoadmapItem, type RoadmapState } from '@open-autonomy/sdk/roadmap';
 import type { FundingSnapshot, SessionSummary } from './ledger.js';
 import { fmtDur, fmtWhen, shortSha } from './ui.js';
+import { standing, type Statement, type StatementTone } from '@open-autonomy/sdk/statements';
 
 // The README widgets: self-contained, Camo-safe SVGs (no scripts, no animation, no external references)
 // rendered from the same data as the site. GitHub's Camo proxy caches them for minutes.
@@ -138,4 +139,33 @@ export function renderNowSvg(sessions: SessionSummary[], live: string[], schedul
     : last ? `last run ${fmtWhen(last.started_at)} · ${last.outcome ?? 'ended'}${last.item_id ? ` · ${last.item_id}` : ''}${last.commit_sha ? ` · ${shortSha(last.commit_sha)}` : ''}` : 'no runs yet';
   const color = first ? C.blue : last?.outcome === 'failed' ? C.red : C.green;
   return frame(72, '⏱ now', title, `  <text x="16" y="54" font-family="${MONO}" font-size="11" fill="${C.muted}">${esc(clip(sub, 66))}</text>`, color);
+}
+
+// A statement's badges for a README (ADR 0012): the badges standing today, side by side in the platform's tones and
+// wrapping to a README's width, then whose word it is and as of when. A badge past its `until` is not drawn; with none
+// standing, the row says so.
+const TONE: Record<StatementTone, string> = { positive: '#2da44e', info: '#0969da', neutral: '#6e7681', warning: '#9a6700', negative: '#cf222e' };
+const BADGE_ROW_MAX = 720;
+export function renderStatementSvg(s: Statement, day: string): string {
+  const width = (t: string) => Math.round(t.length * 6.6 + 14);
+  const shown = standing(s, day).standing;
+  const badges = shown.length ? shown : [{ label: s.title, message: 'no current claims', tone: 'neutral' as const, until: day }];
+  const note = `stated by the owner · as of ${s.as_of}`;
+  let x = 0, y = 0, widest = 0;
+  const place = (w: number): [number, number] => { if (x > 0 && x + w > BADGE_ROW_MAX) { x = 0; y += 26; } const at: [number, number] = [x, y]; x += w + 6; widest = Math.max(widest, x - 6); return at; };
+  const parts = badges.map((b) => {
+    const lw = width(b.label), mw = width(b.message);
+    const [bx, by] = place(lw + mw);
+    return `<g transform="translate(${bx},${by})"><rect width="${lw + mw}" height="20" rx="3" fill="#30363d"/><path d="M${lw} 0h${mw - 3}a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-${mw - 3}z" fill="${TONE[b.tone]}"/>`
+      + `<text x="${lw / 2}" y="14" text-anchor="middle" fill="#fff">${esc(b.label)}</text><text x="${lw + mw / 2}" y="14" text-anchor="middle" fill="#fff">${esc(b.message)}</text></g>`;
+  });
+  const [nx, ny] = place(width(note));
+  const w = Math.max(widest, 1), h = ny + 20;
+  const label = badges.map((b) => `${b.label}: ${b.message}`).join('; ');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(`${s.title}: ${label}`)}">
+  <title>${esc(`${s.title}: ${label}. ${note}.`)}</title>
+  <g font-family="${FONT}" font-size="11" font-weight="600">${parts.join('')}</g>
+  <text x="${nx + 2}" y="${ny + 14}" font-family="${FONT}" font-size="11" fill="${C.gray}">${esc(note)}</text>
+</svg>`;
 }

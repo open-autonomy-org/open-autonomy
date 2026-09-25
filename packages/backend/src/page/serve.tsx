@@ -61,9 +61,9 @@ const EMPTY_ROADMAP: Roadmap = { schema: ROADMAP_SCHEMA, items: [] };
 // (the platform's give, redeem, thanks) hold to the same shapes so they can never shadow a fixed door either.
 export const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 export const REPO = /^[A-Za-z0-9._-]{1,100}$/;
-const PAGES = new Set<DashPage>(['sessions', 'board', 'books', 'agent', 'team']);
+const PAGES = new Set<DashPage>(['sessions', 'board', 'books', 'agent', 'team', 'statements']);
 // Which panel of the owner's word each address answers to; a transcript is the sessions page's deeper panel.
-const GATE: Record<DashPage | 'transcript' | 'about', keyof Visibility> = { overview: 'overview', about: 'overview', sessions: 'sessions', transcript: 'transcripts', board: 'work', books: 'books', agent: 'agent', team: 'team' };
+const GATE: Record<DashPage | 'transcript' | 'about', keyof Visibility> = { overview: 'overview', about: 'overview', sessions: 'sessions', transcript: 'transcripts', board: 'work', books: 'books', agent: 'agent', team: 'team', statements: 'statements' };
 // Names no page may take: every fixed door of this worker, and what an app may add in front of it.
 export const RESERVED = new Set(['v1', 'admin', 'webhooks', 'give', 'explore', 'settings', 'healthz', 'favicon.svg', 'favicon.ico', 'assets', 'static']);
 const dec = (s: string): string => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -127,7 +127,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if ((door === 'updates.xml' || door === 'card.png') && seg.length > 3) return undefined;
   if (door === 'about' && (seg.length > 3 || !app.landing)) return undefined;
   if (door === 'state' && seg.length > 3) return undefined;
-  if (door === 'dashboard' && (page === undefined || (key !== undefined && page !== 'sessions' && page !== 'board'))) return undefined;
+  if (door === 'dashboard' && (page === undefined || (key !== undefined && page !== 'sessions' && page !== 'board' && page !== 'statements') || (page === 'statements' && key === undefined))) return undefined;
   if (door === 'state' ? req.method !== 'POST' : !isGet && !(page === 'team' && key === undefined)) return methodNotAllowed();
   const view = await ledger.project(account);
   if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
@@ -197,7 +197,9 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   };
   const back = url.pathname + url.search;
   const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
-  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, ...(signDoor ? { door: signDoor } : {}) };
+  // The owner's statements, for the rail's rows and their pages, when the owner opened them to this viewer.
+  const statements = sees(role, visibility.statements) ? (await ledger.statements(account)).statements : [];
+  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {
@@ -216,6 +218,11 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if (dash === 'board') {
     if (key !== undefined && !roadmap.items.some((i) => i.id === key)) return html(renderMessage(account, false, 'No such item', `Nothing on the roadmap is called ${key}.`), 404);
     d.item = key;
+    return serve();
+  }
+  if (dash === 'statements') {
+    if (!statements.some((x) => x.id === key)) return html(renderMessage(account, false, 'No such statement', `The owner has published no statement called ${key}.`), 404);
+    d.statement = key;
     return serve();
   }
   if (dash === 'books') {
