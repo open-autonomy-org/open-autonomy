@@ -48,8 +48,12 @@ merge commits only.
   ruleset (deletion, non-fast-forward, update, each bypassed only by an org admin through a pull request, merge
   commits only); the `production` environment's deployment branches `prod` alone, its required reviewer removed; the
   tag ruleset lets GitHub Actions create the record tags.
-- Without the environment's approval, `admin.yml` runs when dispatched. Dispatching a workflow needs the owner's
-  GitHub account (the project's App holds no Actions permission), which could already approve the environment.
+- Without the environment's approval, nothing but the owner's own dispatch may run `admin.yml`: its job runs only when
+  `github.triggering_actor` is the owner, so the project's App (whose manifest grants `actions: write`) and a
+  workflow's token, both able to dispatch it, never load the admin token or choose its inputs. A redeploy dispatched
+  from `prod` ships only what the owner already merged. `land.yml` opens and arms pull requests against `main` alone.
+- The record tags are records, not triggers: GitHub Actions may create them, so a workflow on an agent's branch could
+  forge one. Nothing runs on a tag; what shipped is `prod`'s history and the deploy runs.
 - The kit's production door (`setup.ts`, `PRODUCTION.md`) keeps tags until this has shipped here; a later change
   carries it to generated projects.
 

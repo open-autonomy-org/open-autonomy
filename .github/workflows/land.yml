@@ -20,11 +20,11 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
+          existing=$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$BRANCH" \
               --body "Opened by the landing workflow for \`$BRANCH\`. It merges automatically after independent agent approval and required static checks."
-            existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
+            existing=$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number -q '.[0].number')
           fi
           gh pr merge -R "$REPO" "$existing" --merge --auto
           echo "pull request #$existing: auto-merge armed; required approval gates landing"

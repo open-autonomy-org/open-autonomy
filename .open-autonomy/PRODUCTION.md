@@ -15,28 +15,29 @@ without requiring a hosted service.
 - **Credentials stay outside development.** Agents and development code do not receive production keys;
   the host valve supplies scoped development access. Human approval gates release of the exact candidate,
   when production credentials may be used, rather than each merge to main.
-- **Production runs only from a human-cut tag.** A `production` environment with the owner as required reviewer,
-  whose deployment branches are the tag pattern `deploy-v*` and nothing else, never `main`. Its secrets are the
-  deploy credential and nothing more. A `deploy-tags-admin-only` tag ruleset lets only an org admin create such a
-  tag. The deploy workflow fires on the tag (or a dispatch from it), so the workflow that holds the credential is
-  always the one a human tagged.
+- **Production runs only from `prod`, which the owner merges.** One standing pull request from `main` to `prod` gathers
+  what ships; only an org admin may merge it, and nothing else moves `prod`. A `production` environment admits `prod`
+  alone, never `main`; its secrets are the deploy credential and nothing more. The deploy workflow fires on a push to
+  `prod` and records each deploy as a `deploy-v<date>.<n>` tag, so the workflow that holds the credential is always
+  one the owner shipped (ADR 0015).
 - **The build says what it is.** The deploy stamps the commit into the artifact (Hookline: `HOOKLINE_VERSION` from
   `git rev-parse --short HEAD`, answered at `/api`), so the live service names its own commit.
 
 ## Setting it up, once per project
 
-1. No CODEOWNERS files (including root, `.github/` and `docs/` locations).
+1. CODEOWNERS names the owner for `CONSTITUTION.md` and for itself, and nothing else.
 2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (1 approving agent review, stale approvals
    dismissed on push, code-owner review disabled), `non_fast_forward`, `deletion`; no bypass actors.
    Enable repository auto-merge and allow the landing workflow to open PRs.
-3. Ruleset `deploy-tags-admin-only` on `refs/tags/deploy-v*`: `creation`, `update`, `deletion`; bypass:
-   OrganizationAdmin, always.
-4. Environment `production`: required reviewer the owner; deployment branches "selected", one tag pattern
-   `deploy-v*`; the deploy credential as an environment secret (never a repository secret); the account id as a
-   repository variable.
-5. `.github/workflows/deploy.yml`: `on: push: tags: ['deploy-v*']` and `workflow_dispatch`; `permissions:
+3. Ruleset `prod-protected` on `refs/heads/prod`: `update`, `non_fast_forward`, `deletion`; bypass:
+   OrganizationAdmin, through a pull request only. `.github/workflows/ship.yml` keeps the `main` → `prod` pull request
+   open.
+4. Environment `production`: deployment branches "selected", `prod` alone; the deploy credential as an environment
+   secret (never a repository secret); the account id as a repository variable. A workflow that moves money runs
+   only on the owner's own dispatch (`if: github.triggering_actor == '<owner>'`).
+5. `.github/workflows/deploy.yml`: `on: push: branches: [prod]` and `workflow_dispatch`; `permissions:
    contents: read`; `environment: production`; egress allow-listed to GitHub, npm and the deploy target; actions
-   pinned by SHA; no restored caches.
+   pinned by SHA; no restored caches; a separate job with `contents: write` records the `deploy-v*` tag.
 
 ## PM release planning and human review
 
@@ -145,10 +146,7 @@ discussion; it is never the record of an act. So:
 
 ## Shipping a service
 
-```bash
-git tag -a deploy-v<date> <sha> -m "<what ships>" && git push origin deploy-v<date>   # the owner, on a commit they read
-```
-
-The run waits for the reviewer; approving it is the second human act. Rolling back is tagging an earlier commit.
+The owner reads the standing `main` → `prod` pull request and merges it with a merge commit; that is the one human
+act, and the deploy follows. Rolling back is a reviewed revert on `main`, shipped the same way.
 Secrets the service itself needs (webhook secrets, keys) are environment secrets the deploy workflow installs, so
 they too are set by a human through the gate and never by the agent.
