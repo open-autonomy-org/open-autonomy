@@ -5,14 +5,9 @@ Sourced planning memory maintained by the Hermes PM scrum. Completed work belong
 ## release-next: The next Release
 
 Dispatch: hold
-Release decision: request-review
-Scope: one release act (the Release pull request, the owner told once), and kit 3.18.4: scheduled runs post their
-whole report, an upgrade cannot publish the treasurer's cards, the reporter says why it cannot read `main`, GPT-6 Sol
-on the subscription, outreach posts where `project-communications` says.
-Rationale: the fleet's release process now matches the Release pull request ([ADR
-0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md), #792); the report delivery and the Codex setup
-were read live on Hookline, the guard and the reporter's message by hand; the last ship was deploy-v2026.09.25.2 and
-create-open-autonomy 3.18.0 on September 25, 2026.
+Release decision: accumulate
+Scope: what `main` carries beyond `prod`, which the standing Release pull request (`main` → `prod`) shows; PM names it in a user's words when it requests review.
+Rationale: releases ship through the one Release pull request, the owner's approval and merge ([ADR 0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md)); the last ship was #788, deploy-v2026.09.25.3 and create-open-autonomy 3.18.4, on September 25, 2026; `main` has accumulated since.
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
@@ -24,7 +19,7 @@ Source: merged [PR #622](https://github.com/open-autonomy-org/open-autonomy/pull
 Completion:
 - Revert only PR #622's two documentation lines on a fresh branch from current main; a fresh-context agent submits/read-backs exact-head GitHub App approval before that revert merges.
 - Only after the reviewed revert lands, reapply the same owner-authorized wording on a second fresh branch; another fresh-context agent submits/read-backs exact-head GitHub App approval before the re-land merges.
-- Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge; release remains held until this correction completes.
+- Confirm both reviewed heads in main and the final CLAUDE.md/CONTRIBUTING.md wording matches PR #622. Do not claim either later review retroactively approved the original merge.
 
 ## pr651-review-audit: Reconcile the Polar patron-wall merge with independent review
 
@@ -66,10 +61,10 @@ Dispatch: hold
 Source: `hermes:task/t_abe517c5`, approved implementation `389ce3b1`, the candidate's [`give-auth.ts`](https://github.com/open-autonomy-org/open-autonomy/blob/6e4a12ba6a0422066ef4e5ea8fb0f51763d64997/apps/platform/src/give-auth.ts), and App-reviewed [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) at exact head `9b56f9cc` merged as `082869b0`.
 
 Completion:
-- The owner provisions the GitHub OAuth app and installs `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and `GIVE_SESSION_HMAC_SECRET` as production secrets, asked once in a Release package's `Owner does`; no agent receives them.
+- The owner installs the sign-in secrets as production secrets — the Volter identity client (`VOLTER_ISSUER`, `VOLTER_CLIENT_ID`, `VOLTER_CLIENT_SECRET`, which `give-auth.ts` prefers; ADR 0011) or GitHub's OAuth app as the fallback, and `GIVE_SESSION_HMAC_SECRET` — asked once in a Release package's `Owner does`; no agent receives them.
 - On the deployed service, a funder signs in, sees credits, makes one idempotent earmarked gift, and the project's public books show the matching envelope.
 
-Risk: [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) merged signed owner head `9b56f9cc` as `082869b0` after App approval 5189447455, closing the workflow gap only. The production aliases still need maintainer provisioning, `sync-secrets` must run through an authorized production gate, and the live sign-in/giving check remains missing. The owner-cut `.12.2` deploy run is waiting and is not a PM-approved release candidate.
+Risk: [PR #652](https://github.com/open-autonomy-org/open-autonomy/pull/652) merged signed owner head `9b56f9cc` as `082869b0` after App approval 5189447455, closing the workflow gap only. The production aliases still need maintainer provisioning, `sync-secrets` must run through an authorized production gate, and the live sign-in/giving check remains missing.
 
 ## seven-day-autonomy: Run seven days with no human act but release review and shipping
 
