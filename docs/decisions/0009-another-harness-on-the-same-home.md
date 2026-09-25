@@ -59,8 +59,8 @@ rows 1–14 done):
 - **The scheduler (ADR 0001).** For such a project, the orchestrator is the scheduler and coordinator. It
   runs the home's jobs from Hermes's `cron/jobs.json` and its conversations from Hermes's
   `platforms`/`.env`. The board stays Hermes's, dispatched by Hermes's own tick inside the orchestrator.
-- **The image.** Bare mode only. The container executor and the fleet run Hermes, and they refuse a project
-  that picks another harness, by name; that project starts on its own with `start.ts`.
+- **The image.** The container executor runs the picked harness too (amended below). The fleet runs one Hermes
+  gateway for every project and refuses a project that picks another harness, by name.
 - **The reporter.** Unchanged in what it reads: native Hermes through Supercode's SDK. The workers'
   sessions are mirrored into `state.db`, a mirrored fire keeps its job, and the board is Hermes's. The
   owner's pause and resume reach the running orchestrator's operator door, where a write to `jobs.json`
@@ -160,8 +160,8 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 - **ADR 0007, amended:** `hermes` is the default target, and a project may pick another harness (`harness`
   in `agent.json`), which the orchestrator runs on the same home. The applier and the package are unchanged.
 - **ADR 0001, amended:** for a project that picks another harness, Supercode's orchestrator, not Hermes,
-  is the native scheduler and coordinator, bare only; the valve, the reporter and the credential boundary
-  are unchanged.
+  is the native scheduler and coordinator, bare or in the container executor (amended below); the valve, the
+  reporter and the credential boundary are unchanged.
 - **A project that does not pick keeps Hermes**, with two changes that reach it too. Every project moves to
   the new host pins, including the applier its Hermes start already uses (the orchestrator package, 0.2.2 to
   0.3.1); no Hermes-mode start on the new pins is recorded yet. And the start now treats a runtime that exits
@@ -241,3 +241,57 @@ this repository's own agents take that trade on the owner's Mac). What this pick
 remove it, which is why the start refuses the two together. Pinning git's and `gh`'s identities keeps the agent's
 ordinary acts its own; it is not a boundary, since the worker can still read anything the owner can. *Every spend is metered on public books*: the
 owner's subscription spends no project funds, as for `openai-codex`; the platform books nothing for these calls.
+
+## Amendment: another harness in the container executor
+
+**Authorization.** The owner's coding conversation of September 24, 2026. On where the agents run: "I thought they
+were all supposed to run in the same container as a fleet - that was a part of the design right"; on the order of
+work, "we can just focus on getting things working with codex first"; on the recommendation that follows, "do it";
+and on its bounds, "don't start up the whole fleet though - we don't want to spend all those tokens right now".
+
+**Decision.** Container mode runs a project that picks another harness: the kit's start runs Supercode's
+orchestrator inside the executor, where it ran `hermes gateway run`, with the picked harness as each profile's
+worker, the home on the executor's volume. For Codex the model goes through the host valve's Codex forward
+(`host.docker.internal`), as for Hermes on `openai-codex`: the executor holds no login. The start renders the
+persona and skills in the workers' forms inside the executor with the kit's own `renderContainerWorkerForms`. The
+image carries Hermes and a pinned Codex CLI, so container mode takes `hermes` or `codex` and refuses any other
+harness by name (Claude Code on its user's own login cannot hold that login in an executor). The fleet is
+unchanged.
+
+Codex's own sandbox cannot run in the executor, and it was also a gate: Codex asked before escaping it and the
+orchestrator answered with Hermes's approval rule. Codex 0.156.1 has no policy that asks before every command
+instead (`approval_policy = "untrusted"` is refused as unsupported: measured). So the sandbox is turned off only
+in the Codex home of a profile whose owner turned Hermes's approvals off (`approvals.mode: off`); a profile that
+keeps them, the treasurer that pays among them, keeps the sandbox, and its commands fail closed in the executor
+rather than run ungated. A per-command gate for Codex there is open.
+
+**Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
+the project; the image built from this kit on the pinned Hermes, Colima, orchestrator 0.3.12 then 0.3.13):
+- The orchestrator ran in the executor as `hermes`, Discord connected, both jobs loaded, the workers' forms
+  rendered; a PM fire started `codex app-server` in the executor on `gpt-5.6-sol` through the valve's forward.
+- With Codex's sandbox on, every command failed ("sandbox namespaces are unavailable") and the run still ended
+  `succeeded` having done nothing. With `sandbox_mode = "danger-full-access"` in the profile's Codex home the
+  same fire made 18 tool calls: it read the board, main and GitHub through the App valve, and advanced its
+  checkpoints.
+- Hermes's image puts a privilege-dropping shim ahead of its Python launcher; the orchestrator read only the
+  first and found no Hermes, so the board went undispatched and sessions unmirrored. Orchestrator 0.3.13 walks
+  every `hermes` on PATH; with it the board dispatches in the executor.
+
+Where this ran, plainly: on Hookline's production platform key, its Discord and its GitHub, not in a World. That is
+in tension with the constitution's "nothing here develops against a real API" and with verifying in the World; it
+follows the owner's direction to pilot on Hookline ("first test it with hookline and the company repo") and was
+bounded to one project and two PM fires. The start ran as written (`start.ts --container` with this kit's
+`container.ts`); the runtime around it was prepared by hand, not by `create-open-autonomy runtime`: the image
+built with `docker build`, the executor started with the kit's `executor.ts`, the first clone made through the
+GitHub valve as SETUP.md describes, and the bare agent's home state copied onto the home volume.
+
+**Not yet run:** a World run of any of this; a mirrored session published by the reporter from the executor; a
+board task end to end there; a gated profile's run in the executor. Also open: nothing restarts a container
+runtime onto a moved main or a landed kit (the bare start polls main; container mode has no counterpart, for
+Hermes as for the orchestrator).
+
+**This author's extrapolation, not the owner's words:** turning Codex's sandbox off in the executor rather than
+granting the executor the namespaces, and keeping it where approvals are on; refusing every harness but Hermes and
+Codex in the executor; a stop asked for a restart counted as the drain (exit 75), as the bare start counts it;
+rendering the workers' forms with the image's copy of the kit.
+

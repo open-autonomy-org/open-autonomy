@@ -50,7 +50,8 @@ try {
     must(docker(['image', 'inspect', '--format', '{{.Id}}', image]), `image ${image} is missing; build it with the runtime's build definition`);
     if (exists()) throw new Error(`${container} already exists (a run World lost track of); stop it yourself with docker stop ${container}, then start again`);
     must(docker(['run', '--init', '--detach', '--rm', '--name', container,
-      '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(256 * Math.max(1, mounts.length - 1)), // per checkout; the project shape keeps 256 '--memory', memory, '--cpus', cpus,
+      // the pid limit is per checkout; the project shape keeps 256
+      '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(256 * Math.max(1, mounts.length - 1)), '--memory', memory, '--cpus', cpus,
       '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456',
       ...mounts.flatMap((m) => ['--mount', `type=volume,source=${m.volume},target=${m.target}`]),
       image], 60_000), 'executor start');

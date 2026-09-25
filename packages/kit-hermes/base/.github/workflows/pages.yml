@@ -1,0 +1,59 @@
+name: Publish docs
+# The project's docs (docs/) on GitHub Pages, once its team sets the repository's Pages source to "GitHub Actions"
+# (hermes/skills/open-autonomy/front-door). A publish, never a gate: nothing waits on it. A merge that auto-merge makes
+# with the workflow token starts no workflow, so an hourly run publishes what such merges landed; a person's merge
+# publishes at once. Until Pages is set to Actions, or while there is no docs/index, a run stops at the check: no
+# build, and no deployment recorded. In a private repository each hourly check bills Actions minutes; its team may
+# thin the schedule.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source=$(gh api "repos/${{ github.repository }}/pages" -q .build_type 2>/dev/null || true)
+          if [ "$source" = workflow ] && { [ -f docs/index.md ] || [ -f docs/index.html ]; }; then
+            echo "publish=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=no" >> "$GITHUB_OUTPUT"
+          fi
+  build:
+    needs: check
+    if: needs.check.outputs.publish == 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v5
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
