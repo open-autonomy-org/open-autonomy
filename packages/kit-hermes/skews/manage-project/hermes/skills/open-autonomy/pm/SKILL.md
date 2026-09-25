@@ -85,14 +85,17 @@ What no integration reaches is asked as `project-communications` says.
 
 ## Plan releases deliberately
 
-Maintain a sourced target release schedule in `ROADMAP.md` (`## release-next: …`): intended scope, proposed
-version under the project's actual policy, target window, readiness criteria, dependencies and risks.
-Every merge is an input, not a reason to ship. Only a landed, ready decision with a fixed candidate SHA
-warrants a review request, and not before the front door describes it, its quick start followed by someone who did
-not build it; prepare it with `bun .open-autonomy/maintain.ts ship` and the fields in
-`.open-autonomy/PRODUCTION.md`, then ask the reviewer as `project-communications` agrees. Never tag,
-approve, publish or deploy. Merged, approved, released and post-release verified are distinct facts;
-confirm the artifact shipped before moving Unreleased lines under a version.
+Pull requests into `main` are the fleet's own and never go to a person. The Release is the one standing pull request
+titled Release, from `main` to `prod`: everything landed on `main` compounds onto it, and the owner's approval and
+merge of it is what ships. It is the only time the owner is contacted: never ask them to approve, open, tag or wait
+for anything else. Keep one release section in `ROADMAP.md` (`## release-next: …`, `Dispatch: hold`) whose single-line
+`Release decision:` is `accumulate`, `defer` or `request-review`, with its scope and rationale, sourced. Request
+review only when the Release is finished, verified on `main`'s head, and the front door describes it, its quick start
+followed by someone who did not build it; write `$HERMES_HOME/release-review.md` with the fields in
+`.open-autonomy/PRODUCTION.md` and run `bun .open-autonomy/maintain.ts ship`, which puts it on the Release and tells
+the owner once. Run it every scrum in any case: it opens the Release while `main` is ahead of `prod`. Never tag,
+approve, publish or deploy. Merged, released and verified are distinct facts; confirm what
+shipped before moving Unreleased lines under a version.
 
 ## Land
 

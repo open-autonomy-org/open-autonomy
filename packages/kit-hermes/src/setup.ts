@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, realpathSync, lstatSync } from 'node:fs';
 import { homedir, platform as osPlatform } from 'node:os';
 import { parseEnv } from 'node:util';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { checkCredentialDirectory } from '../base/.open-autonomy/credentials.ts';
 import { codexAccess } from '../base/.open-autonomy/codex-auth.ts';
 import { readBranding } from './branding.ts';
@@ -232,15 +232,44 @@ function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
 }
 
 function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
-  if (done(st, 'production')) return;
-  say(`\nProduction door: a \`production\` environment with you as reviewer that admits only deploy-v* tags, a tag ruleset only an admin may use, and the Cloudflare token as the environment's one secret.`);
+  if (done(st, 'prod')) return;
+  say(`\nProduction door: a \`prod\` branch that moves only when you approve and merge the standing Release pull request from main, an \`owners\` team (you) as its required reviewer, a \`production\` environment that admits \`prod\` alone, and the Cloudflare token as that environment's one secret.`);
   if (opts.plan) return;
-  const uid = Number(run(['gh', 'api', 'user', '--jq', '.id']).out);
-  const env = gh(['api', '-X', 'PUT', `repos/${s.account}/environments/production`], { reviewers: [{ type: 'User', id: uid }], deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
+  const login = run(['gh', 'api', 'user', '--jq', '.login']).out.trim();
+  // The Release's reviewer: a team of the owner alone, so the project's App (which reviews pull requests into main)
+  // can never approve it. A personal repository has no teams; setup already requires an organization.
+  let team = gh(['api', `orgs/${s.owner}/teams/owners`]).json as { id?: number } | undefined;
+  if (!team?.id) team = gh(['api', '-X', 'POST', `orgs/${s.owner}/teams`], { name: 'owners', privacy: 'closed', description: 'Approves the Release: main to prod' }).json as { id?: number } | undefined;
+  if (!team?.id) throw new Error(`Cannot create the owners team in ${s.owner}; an organization owner must run setup.`);
+  gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/memberships/${login}`], { role: 'maintainer' });
+  gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/repos/${s.account}`], { permission: 'push' });
+  // prod starts where production last shipped: the latest deploy tag of a project that deployed from tags, or main's
+  // first commit, so the first Release shows the whole project.
+  if (!gh(['api', `repos/${s.account}/branches/prod`]).ok) {
+    const tags = (gh(['api', `repos/${s.account}/git/matching-refs/tags/deploy-v`]).json ?? []) as Array<{ ref: string; object: { sha: string; type: string } }>;
+    // deploy-v<yyyy>.<mm>.<dd>.<n>, compared number by number (as text, .10 would sort before .9)
+    const key = (ref: string) => (ref.match(/\d+/g) ?? []).map(Number);
+    const newer = (a: number[], b: number[]) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? -1) !== (b[i] ?? -1)) return (a[i] ?? -1) > (b[i] ?? -1); return false; };
+    const last = tags.reduce<(typeof tags)[number] | undefined>((best, t) => (!best || newer(key(t.ref), key(best.ref)) ? t : best), undefined);
+    const sha = last
+      ? (last.object.type === 'tag' ? String(gh(['api', `repos/${s.account}/git/tags/${last.object.sha}`]).json?.object?.sha) : last.object.sha)
+      : run(['git', 'rev-list', '--max-parents=0', 'origin/main'], { cwd: s.dir }).out.trim().split('\n').at(-1)!;
+    const made = gh(['api', '-X', 'POST', `repos/${s.account}/git/refs`], { ref: 'refs/heads/prod', sha });
+    if (!made.ok) throw new Error(`prod branch: ${made.err}`);
+  }
+  ensureRuleset(s, { name: 'prod-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/prod'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: ['merge'], required_reviewers: [{ minimum_approvals: 1, file_patterns: ['*'], reviewer: { id: team.id, type: 'Team' } }] } }] });
+  // The owner's approval of the Release is the gate, so the environment asks for no second one; it admits prod alone.
+  const env = gh(['api', '-X', 'PUT', `repos/${s.account}/environments/production`], { reviewers: [], can_admins_bypass: false, deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
   if (!env.ok) throw new Error(`environment: ${env.err}`);
-  const pols = gh(['api', `repos/${s.account}/environments/production/deployment-branch-policies`]).json?.branch_policies as Array<{ name: string; type: string }> | undefined;
-  if (!pols?.some((p) => p.name === 'deploy-v*')) gh(['api', '-X', 'POST', `repos/${s.account}/environments/production/deployment-branch-policies`], { name: 'deploy-v*', type: 'tag' });
-  ensureRuleset(s, { name: 'deploy-tags-admin-only', target: 'tag', enforcement: 'active', bypass_actors: bypassAdmin(s), conditions: { ref_name: { include: ['refs/tags/deploy-v*'], exclude: [] } }, rules: [{ type: 'creation' }, { type: 'update' }, { type: 'deletion' }] });
+  const pols = (gh(['api', `repos/${s.account}/environments/production/deployment-branch-policies`]).json?.branch_policies ?? []) as Array<{ id: number; name: string; type: string }>;
+  for (const p of pols.filter((p) => !(p.name === 'prod' && p.type === 'branch'))) gh(['api', '-X', 'DELETE', `repos/${s.account}/environments/production/deployment-branch-policies/${p.id}`]);
+  if (!pols.some((p) => p.name === 'prod' && p.type === 'branch')) gh(['api', '-X', 'POST', `repos/${s.account}/environments/production/deployment-branch-policies`], { name: 'prod', type: 'branch' });
+  // Deploy tags are the record of what shipped: the deploy workflow creates them, and only an admin may move or delete one.
+  const listed = (gh(['api', `repos/${s.account}/rulesets`]).json ?? []) as Array<{ id: number; name: string }>;
+  const tagRules = listed.find((r) => r.name === 'deploy-tags-admin-only');
+  const tagBody = { name: 'deploy-tags-admin-only', target: 'tag', enforcement: 'active', bypass_actors: bypassAdmin(s), conditions: { ref_name: { include: ['refs/tags/deploy-v*'], exclude: [] } }, rules: [{ type: 'update' }, { type: 'deletion' }] };
+  if (tagRules) gh(['api', '-X', 'PUT', `repos/${s.account}/rulesets/${tagRules.id}`], tagBody);
+  else ensureRuleset(s, tagBody);
   if (s.deploy === 'cloudflare-worker') {
     const accountId = opts.accountId ?? prompt('Cloudflare account id (dash.cloudflare.com → the account → Workers & Pages → Account ID):')?.trim();
     if (accountId) run(['gh', 'variable', 'set', 'CLOUDFLARE_ACCOUNT_ID', '--repo', s.account, '--body', accountId]);
@@ -255,15 +284,20 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
       if (!r.ok) throw new Error(`secret: ${r.err}`);
     }
     const wf = join(s.dir, '.github', 'workflows', 'deploy.yml');
+    // A project's own deploy workflow is its own: one still fired by a tag is moved by the setup agent, keeping its steps.
+    if (existsSync(wf) && /tags:\s*\[['"]?deploy-v/.test(readFileSync(wf, 'utf8'))) {
+      say("  setup agent: .github/workflows/deploy.yml still runs on a deploy-v* tag, which nothing cuts now. Land a change that keeps its steps, triggers it with `on: push: branches: [prod]` (and workflow_dispatch), says so in its header, and adds the kit's `record` job (the template in setup.ts, DEPLOY_YML) so each deploy is tagged; until it lands, the Release merges without deploying.");
+    }
     if (!existsSync(wf)) {
+      mkdirSync(dirname(wf), { recursive: true });
       writeFileSync(wf, DEPLOY_YML.replaceAll('__PROJECT__', s.project));
       run(['git', 'checkout', '-q', '-B', 'land/deploy-door'], { cwd: s.dir }); run(['git', 'add', wf], { cwd: s.dir });
-      run(['git', 'commit', '-q', '-m', 'The production door: deploy.yml runs from a human-cut deploy-v* tag through the production environment'], { cwd: s.dir });
+      run(['git', 'commit', '-q', '-m', 'The production door: deploy.yml runs on a push to prod, which moves only when the owner merges the Release'], { cwd: s.dir });
       run(['git', 'push', '-q', '-u', 'origin', 'land/deploy-door'], { cwd: s.dir }); run(['git', 'checkout', '-q', 'main'], { cwd: s.dir });
-      say('  the deploy workflow is on branch land/deploy-door: hand its PR and exact head to an independent agent reviewer; it merges automatically after approval. Running a release or deployment still requires human approval of the exact candidate.');
+      say('  the deploy workflow is on branch land/deploy-door: hand its PR and exact head to an independent agent reviewer; it merges automatically after approval, and ships with the next Release.');
     }
   }
-  mark(s.dir, st, 'production', 'environment, tag ruleset' + (s.deploy === 'cloudflare-worker' ? ', Cloudflare token, deploy.yml' : ''));
+  mark(s.dir, st, 'prod', 'owners team, prod branch and ruleset, environment admitting prod, deploy tag ruleset' + (s.deploy === 'cloudflare-worker' ? ', Cloudflare token, deploy.yml' : ''));
 }
 
 function stepGitHubApp(opts: Opts): void {
@@ -350,12 +384,13 @@ function printStart(s: Situation, opts: Opts): void {
 }
 
 const DEPLOY_YML = `name: Deploy __PROJECT__
-# Production, from GitHub only: this runs on a human-cut \`deploy-v*\` tag (or a dispatch from one). The \`production\`
-# environment admits only those tags and its required reviewer approves each run, so the workflow that holds the
-# token is always the one a human tagged, never the one on main. Egress is locked to GitHub, npm and Cloudflare.
+# Production, from GitHub only: this runs on a push to \`prod\` (or a dispatch from it), and \`prod\` moves only when the
+# owner approves and merges the standing Release pull request from main (the \`prod-protected\` ruleset). The
+# \`production\` environment admits \`prod\` alone, so the workflow that holds the token is always one the owner shipped,
+# never the one on main. Egress is locked to GitHub, npm and Cloudflare. Each deploy is recorded as a \`deploy-v*\` tag.
 on:
   push:
-    tags: ['deploy-v*']
+    branches: [prod]
   workflow_dispatch:
 permissions:
   contents: read
@@ -387,6 +422,28 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: \${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
         run: bunx wrangler deploy
+  # The record: each deploy is a \`deploy-v<date>.<n>\` tag on the commit it shipped, in its own job so the write
+  # permission never meets the Cloudflare token.
+  record:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+      - name: Tag the deploy
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+          SHA: \${{ github.sha }}
+        run: |
+          d=$(date -u +%Y.%m.%d)
+          n=$(gh api "repos/$REPO/git/matching-refs/tags/deploy-v$d." --jq 'length')
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/deploy-v$d.$((n + 1))" -f sha="$SHA" --jq .ref
 `;
 
 // ── The walk ─────────────────────────────────────────────────────────────────────────────────────────────────────

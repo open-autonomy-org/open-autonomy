@@ -63,7 +63,7 @@ LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent's content: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile's persona: the one that pays), kanban.seed.json (historical migration input),
                      scripts/community-monitor.sh (the community desk's monitor source: every five minutes it reads when the newest issue or discussion last changed, and the agent wakes only when that changed)
-.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Supercode's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
+.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Supercode's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — the one Release pull request the owner approves and merges into prod): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
 .github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
@@ -102,10 +102,12 @@ Discord is optional regardless of token availability. GitHub can carry human que
 review, but the agent must actually post requests and inspect replies there. The communication skill
 owns that policy; the shared team roster owns identities and authority.
 
-Application dependencies run in the local world. Production provisioning is a later explicit
-`--with production` step for a Cloudflare Worker. Package release automation is not yet implemented;
-`--with release` refuses before mutation and points to the reviewed publication procedure. Other live
-application connections are established at deployment or customer activation.
+Application dependencies run in the local world. Production provisioning is a later explicit `--with
+production` step: the `owners` team, the `prod` branch the standing Release pull request merges into, the
+`production` environment that admits it, and for a Cloudflare Worker the token and `deploy.yml`. Package
+release automation is not yet implemented; `--with release` refuses before mutation and points to the reviewed
+publication procedure. Other live application connections are established at deployment or customer
+activation.
 
 **Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
@@ -131,10 +133,9 @@ session shows on the project's page with its cost.
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
 worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
 way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
-landing workflow stands), and requests a complete stack restart after the upgrade lands. It prepares
-human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
-PM contacts the reviewer using the project communication skill and tracks the conversation on the
-native task. Tags and deployment approvals remain human acts.
+landing workflow stands), and requests a complete stack restart after the upgrade lands. When PM decides the
+Release is ready, `maintain.ts ship` writes its package on the standing Release pull request (`main` → `prod`) and
+mentions the owner there once. The owner's approval and merge of the Release is the one human act that ships.
 
 ## Host tools
 
@@ -228,11 +229,9 @@ bounded cursors, coverage gaps and pending pointers; no permanent scrum journal 
 is preserved until acknowledged, then pruned. An unavailable source retains its checkpoint. Release review
 and outstanding operational acceptance remain on roadmap even after implementation enters changelog.
 
-PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
-proposed version under project policy, and allow time for human review. A merge or elapsed target date is
-not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
-later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
-See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
+PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under
+project policy. Everything landed on `main` compounds onto the one Release pull request, the only thing a person is
+asked about; a merge or a date is not a release. See `.open-autonomy/PRODUCTION.md`.
 
 The local Codex setup choice uses the operator's ChatGPT allowance on this computer. Both launch modes use
 the host valve, which asks the installed Codex for the current login through its app-server protocol.
