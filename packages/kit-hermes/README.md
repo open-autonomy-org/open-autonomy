@@ -45,8 +45,8 @@ platform needs the full `Dockerfile` image.
 ## From npm
 
 Three packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend` and `create-open-autonomy`, each at its own version.
-`.github/workflows/release.yml` publishes them on a human-cut `release-v<kit version>` tag (or a manual dispatch)
-after the `production` environment's reviewer approves, with egress locked to npm and the token it needs
+`.github/workflows/release.yml` publishes each new version when the owner merges the standing `main` → `prod` pull
+request (`apps/platform/DEPLOY.md`), with egress locked to npm and the token it needs
 (`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
 open-autonomy` from it against the npm registry twin (the [World operator guide](../../world/README.md)) before any release is cut.
 

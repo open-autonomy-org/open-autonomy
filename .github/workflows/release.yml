@@ -1,12 +1,13 @@
 name: Release the SDK and the kit
-# Publishes @open-autonomy/sdk, @open-autonomy/backend and create-open-autonomy to npm, gated like the deploy: a human-cut
-# `release-v<kit version>` tag (only an org admin can cut one), and the `production` environment's required
-# reviewer approves each run. The tag names the version both packages carry; a mismatch stops before publishing.
+# Publishes @open-autonomy/sdk, @open-autonomy/backend, create-open-autonomy and @open-autonomy/cli to npm on a push to
+# `prod`, which moves only when the owner merges the standing main → prod pull request: each package whose version is
+# not on the registry yet is published, the rest are left alone, so releases compound on `main` until the owner ships
+# them. A new kit version is recorded as a `release-v<kit version>` tag and GitHub release.
 # Egress is locked to npm, so the publish token cannot leave to any other host. The world proves the same
-# publish against the npm registry twin (bun world/run.ts kit) before any release is cut.
+# publish against the npm registry twin (bun world/run.ts kit) before it ships.
 on:
   push:
-    tags: ['release-v*']
+    branches: [prod]
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,12 +34,6 @@ jobs:
           no-cache: true # no restored cache can poison a privileged publish
       - name: Install (frozen)
         run: bun install --frozen-lockfile
-      - name: The tag names the kit's version (the SDK publishes whenever its own version is new)
-        if: startsWith(github.ref, 'refs/tags/release-v')
-        run: |
-          tag="${GITHUB_REF#refs/tags/release-v}"
-          v=$(bun -e "console.log(require('./packages/kit-hermes/package.json').version)")
-          [ "$v" = "$tag" ] || { echo "the kit is $v, the tag says $tag"; exit 1; }
       - name: Publish (the SDK first; the kit and the CLI depend on it)
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -78,7 +73,6 @@ jobs:
   # never enters it.
   github-release:
     needs: publish
-    if: startsWith(github.ref, 'refs/tags/release-v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,16 +83,17 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
-      - name: Release the tag on GitHub
+      - name: Release the kit's version on GitHub, once
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
-          v="${TAG#release-v}"
+          v=$(gh api "repos/$REPO/contents/packages/kit-hermes/package.json?ref=$SHA" --jq .content | base64 -d | jq -r .version)
+          TAG="release-v$v"
           notes=$(printf 'Published to npm: [create-open-autonomy@%s](https://www.npmjs.com/package/create-open-autonomy/v/%s).\n\nStart a project: `bun create open-autonomy <dir>`. What changed: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md).' "$v" "$v" "$REPO" "$TAG")
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "$TAG already has a GitHub release"
           else
-            gh release create "$TAG" --repo "$REPO" --verify-tag --latest --title "Open Autonomy kit $v" --notes "$notes"
+            gh release create "$TAG" --repo "$REPO" --target "$SHA" --latest --title "Open Autonomy kit $v" --notes "$notes"
           fi
