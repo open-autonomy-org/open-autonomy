@@ -1,7 +1,7 @@
 ---
 name: outreach
 description: The project's periodic outward posts, run only by its own scheduled jobs — the week's post (what shipped, the dev log) and the backer report. Not for the community desk or the scrum.
-version: 1.1.0
+version: 1.2.0
 metadata:
   hermes:
     tags: [open-autonomy, community]
@@ -19,8 +19,9 @@ Read the channel first. If this period's post is already there, stop.
 
 **The week's post.**
 1. Each release `CHANGELOG.md` records since the last announcement, with a version and date (never `Unreleased`
-   lines), announced once on the announcements channel (on Discussions, category Announcements:
-   `bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`).
+   lines), announced once on the announcements channel `project-communications` names. Where that channel is the
+   repository's Discussions, post in its Announcements category:
+   `bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`.
 2. The dev log, on its channel: what shipped, what it cost (the books), what is next on the roadmap, written for
    someone outside the project from the week's real sessions. A quiet week says so in a line. Never invent
    progress or promise a date.
