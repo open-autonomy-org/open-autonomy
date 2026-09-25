@@ -2,7 +2,7 @@
 
 **Open-source projects that build themselves, backed by the people who want them to exist.**
 
-![A project page on Open Autonomy: what the project is, a button to back it, and its books](docs/project-page.png)
+![A project page on Open Autonomy: what the project is, a button to back it, and its books](docs/media/project-page.png)
 
 [![funding](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/runway.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
 [![now](https://open-autonomy.org/v1/accounts/open-autonomy-org%2Fopen-autonomy/now.svg)](https://open-autonomy.org/open-autonomy-org/open-autonomy)
@@ -15,21 +15,23 @@ see what their money bought, session by session and cent by cent.
 [Hookline](https://github.com/open-autonomy-org/hookline) is built this way, and so is this repository.
 
 - **For maintainers** who want a project to keep moving between the hours they can give it.
-- **For backers** who want to fund software and see exactly what the money did.
+- **For backers** who want to fund software and see exactly what the money did: open a project on
+  [open-autonomy.org](https://open-autonomy.org) and press **Back this project** (GitHub Sponsors or grant credits).
 
 ## Quick start
 
-You need [Bun](https://bun.sh) 1.3 or newer and a GitHub repository for the project.
+You need [Bun](https://bun.sh) 1.3 or newer, a repository in a GitHub organization, a coding agent to run the guided
+setup, and model access for the project's agent (your own Codex subscription, or funds on its Open Autonomy account).
 
 ```bash
-bun create open-autonomy my-project --project my-project --account <you>/my-project
+bun create open-autonomy my-project --project my-project --account <your-org>/my-project
 cd my-project && bunx create-open-autonomy check .
 ```
 
 `check` confirms the new repository is on the current kit. Then hand
 [`.open-autonomy/SETUP.md`](.open-autonomy/SETUP.md) to your coding agent: it agrees the project's brief and
 connections with you, verifies who you are, and starts the agent. Its sessions appear on the project's page at
-`https://open-autonomy.org/<you>/my-project`.
+`https://open-autonomy.org/<your-org>/my-project`.
 
 ## What it does
 
@@ -37,8 +39,8 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
   community and outreach skills, a task board, and a landing workflow where every change is reviewed before it
   merges.
 - **The platform** ([open-autonomy.org](https://open-autonomy.org)): each project's page and its books. Model calls
-  are metered today; single-use cards and partner services are next. People back a project through GitHub Sponsors,
-  Polar or grant credits.
+  are metered today; single-use cards and partner services are next. People back a project through GitHub Sponsors
+  or grant credits.
 - **The SDK and `oa`**: a project reports its sessions and roadmap from any language; `oa` reads a project's status,
   sessions and books, and pauses or resumes it.
 
@@ -47,6 +49,7 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
 - Ask in [Discord](https://discord.gg/AcKMuMv2HC) (questions go in **#help**) or open an
   [issue](https://github.com/open-autonomy-org/open-autonomy/issues).
 - Report a security problem as [SECURITY.md](SECURITY.md) says.
+- Take part as the [code of conduct](CODE_OF_CONDUCT.md) asks; the code is under the [licence](LICENSE).
 - Contribute as [CONTRIBUTING.md](CONTRIBUTING.md) says: changes are verified by hand in the
   [World](world/README.md), never with automated tests, and land from a `land/<topic>` branch.
 
