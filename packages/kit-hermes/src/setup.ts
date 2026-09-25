@@ -242,11 +242,15 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   if (!team?.id) team = gh(['api', '-X', 'POST', `orgs/${s.owner}/teams`], { name: 'owners', privacy: 'closed', description: 'Approves the Release: main to prod' }).json as { id?: number } | undefined;
   if (!team?.id) throw new Error(`Cannot create the owners team in ${s.owner}; an organization owner must run setup.`);
   gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/memberships/${login}`], { role: 'maintainer' });
+  gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/repos/${s.account}`], { permission: 'push' });
   // prod starts where production last shipped: the latest deploy tag of a project that deployed from tags, or main's
   // first commit, so the first Release shows the whole project.
   if (!gh(['api', `repos/${s.account}/branches/prod`]).ok) {
     const tags = (gh(['api', `repos/${s.account}/git/matching-refs/tags/deploy-v`]).json ?? []) as Array<{ ref: string; object: { sha: string; type: string } }>;
-    const last = tags.at(-1);
+    // deploy-v<yyyy>.<mm>.<dd>.<n>, compared number by number (as text, .10 would sort before .9)
+    const key = (ref: string) => (ref.match(/\d+/g) ?? []).map(Number);
+    const newer = (a: number[], b: number[]) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? -1) !== (b[i] ?? -1)) return (a[i] ?? -1) > (b[i] ?? -1); return false; };
+    const last = tags.reduce<(typeof tags)[number] | undefined>((best, t) => (!best || newer(key(t.ref), key(best.ref)) ? t : best), undefined);
     const sha = last
       ? (last.object.type === 'tag' ? String(gh(['api', `repos/${s.account}/git/tags/${last.object.sha}`]).json?.object?.sha) : last.object.sha)
       : run(['git', 'rev-list', '--max-parents=0', 'origin/main'], { cwd: s.dir }).out.trim().split('\n').at(-1)!;
@@ -255,7 +259,7 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   }
   ensureRuleset(s, { name: 'prod-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/prod'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: ['merge'], required_reviewers: [{ minimum_approvals: 1, file_patterns: ['*'], reviewer: { id: team.id, type: 'Team' } }] } }] });
   // The owner's approval of the Release is the gate, so the environment asks for no second one; it admits prod alone.
-  const env = gh(['api', '-X', 'PUT', `repos/${s.account}/environments/production`], { reviewers: [], deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
+  const env = gh(['api', '-X', 'PUT', `repos/${s.account}/environments/production`], { reviewers: [], can_admins_bypass: false, deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
   if (!env.ok) throw new Error(`environment: ${env.err}`);
   const pols = (gh(['api', `repos/${s.account}/environments/production/deployment-branch-policies`]).json?.branch_policies ?? []) as Array<{ id: number; name: string; type: string }>;
   for (const p of pols.filter((p) => !(p.name === 'prod' && p.type === 'branch'))) gh(['api', '-X', 'DELETE', `repos/${s.account}/environments/production/deployment-branch-policies/${p.id}`]);
@@ -279,9 +283,12 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
       const r = run(['gh', 'secret', 'set', 'CLOUDFLARE_API_TOKEN', '--repo', s.account, '--env', 'production'], { input: token });
       if (!r.ok) throw new Error(`secret: ${r.err}`);
     }
-    // A deploy workflow still fired by a tag is replaced: prod is what ships now.
     const wf = join(s.dir, '.github', 'workflows', 'deploy.yml');
-    if (!existsSync(wf) || readFileSync(wf, 'utf8').includes("tags: ['deploy-v*']")) {
+    // A project's own deploy workflow is its own: one still fired by a tag is moved by the setup agent, keeping its steps.
+    if (existsSync(wf) && /tags:\s*\[['"]?deploy-v/.test(readFileSync(wf, 'utf8'))) {
+      say("  setup agent: .github/workflows/deploy.yml still runs on a deploy-v* tag, which nothing cuts now. Land a change that keeps its steps, triggers it with `on: push: branches: [prod]` (and workflow_dispatch), says so in its header, and adds the kit's `record` job (the template in setup.ts, DEPLOY_YML) so each deploy is tagged; until it lands, the Release merges without deploying.");
+    }
+    if (!existsSync(wf)) {
       mkdirSync(dirname(wf), { recursive: true });
       writeFileSync(wf, DEPLOY_YML.replaceAll('__PROJECT__', s.project));
       run(['git', 'checkout', '-q', '-B', 'land/deploy-door'], { cwd: s.dir }); run(['git', 'add', wf], { cwd: s.dir });
