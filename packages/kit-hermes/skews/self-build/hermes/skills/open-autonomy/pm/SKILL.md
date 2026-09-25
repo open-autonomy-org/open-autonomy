@@ -1,7 +1,7 @@
 ---
 name: pm
 description: Run the project scrum — discover developments, distill notable plans and landed changes, coordinate people and fleet work, and prepare human release review.
-version: 5.1.0
+version: 5.2.0
 metadata:
   hermes:
     tags: [open-autonomy, kanban, pm]
@@ -147,6 +147,15 @@ accepted commitment. A request or silence is not acceptance. Acknowledge scope i
 agree follow-up rather than inventing deadlines, and ask before duplicating stalled volunteer work.
 Invitations remain proposals. Queue only fleet support/integration/verification, never a human profile.
 
+## The numbers and the people
+
+Once a week (or at the cadence `project-communications` records), read `bun .open-autonomy/community.ts reach`
+and put the numbers in the scrum report beside the board: reach, the books, the team. Compare them with the
+targets the owner recorded there; a count reported unavailable is not a zero. A role that needs a person and has
+one current holder, or none, is a recruit to track on the roadmap: nothing essential waits on one person. Asks of
+people go by role and window (`community.ts who <role> [scope]`), never to the owner by default; with no holder,
+`help-wanted`. Every member is a volunteer: the roster says what each gives, and nothing more is assumed.
+
 ## The front door
 
 The project's GitHub page is how it is found and first used; load the `front-door` skill for its bar. Each
@@ -154,8 +163,8 @@ scrum, compare it with what landed since the last one: the README, the docs, the
 description, topics and homepage. Wording only the record needs, land with your planning change. A fix that
 needs the product run (a quick start to walk, a capture to retake, a README to bring up to the bar) is fleet
 work: queue it with its acceptance lines, `Dispatch: fleet` under the outcome it belongs to. What no integration
-reaches is coordinated with the team member who holds it, as the `front-door` skill says, held on the roadmap
-until done. A quiet scrum leaves it alone.
+reaches is an ask of the role that covers it (`community.ts who`, else `help-wanted`), as the `front-door` skill
+says, held on the roadmap until done. A quiet scrum leaves it alone.
 
 ## Architecture decisions
 

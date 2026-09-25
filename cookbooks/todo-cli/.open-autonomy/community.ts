@@ -12,10 +12,15 @@
 //   bun .open-autonomy/community.ts latest                        # the newest activity on GitHub, as stable bytes: the
 //                                                                 # monitor job's source, so the agent wakes only on change
 //   bun .open-autonomy/community.ts read 'pulls/12/reviews?per_page=100' # repository evidence through the agent's door
+//   bun .open-autonomy/community.ts who <role> [scope]            # who an ask goes to: the role's current holders, the
+//                                                                 # available now first; none is help-wanted (ADR 0013)
+//   bun .open-autonomy/community.ts reach [days]                  # the week's numbers the scrum reads (ADR 0013)
+//   bun .open-autonomy/community.ts help-wanted <key> <title> <body-file> # an ask no member holds, posted once
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { TEAM_SCOPES, currentMembers, membersFor, parseTeamConfig, type TeamScope } from './sdk/team.ts';
 
 // Hermes removes credentials from terminal tools. Re-enter with only its configured
 // GitHub door; values remain inside the child environment and are never printed.
@@ -108,7 +113,7 @@ async function pages<T>(path: string): Promise<T[]> {
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if (['comment', 'discuss', 'issue', 'pull-request', 'read'].includes(command) && doorless) {
+} else if (['comment', 'discuss', 'issue', 'pull-request', 'read', 'help-wanted'].includes(command) && doorless) {
   console.error('community: no GitHub door (no GITHUB_TOKEN) — this GitHub operation is unavailable');
   process.exit(3);
 } else if (command === 'read') {
@@ -206,12 +211,88 @@ if (command === 'poll' && doorless) {
   if (!category) throw new Error(`no discussion category ${slug} on ${account} (have: ${r.repository.discussionCategories.nodes.map((c) => c.slug).join(', ')})`);
   const out = await graphql<{ createDiscussion: { discussion: { number: number; url: string } } }>(`mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) { createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) { discussion { number url } } }`, { repositoryId: r.repository.id, categoryId: category.id, title, body: readFileSync(file, 'utf8') });
   console.log(`discussion #${out.createDiscussion.discussion.number}: ${out.createDiscussion.discussion.url}`);
+} else if (command === 'who' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(rest[0] ?? '') && (!rest[1] || /^[a-z-]+$/.test(rest[1]))) {
+  // Who an ask goes to (ADR 0013): the current holders of a role, those within one of their windows now first; with a
+  // scope, only holders of that authority, since a role is work, not authority. No one: the ask is help-wanted, posted
+  // where members and users see it, and never goes to the owner by default.
+  if (rest[1] && !(TEAM_SCOPES as readonly string[]).includes(rest[1])) throw new Error(`who: scope is one of ${TEAM_SCOPES.join(', ')}`);
+  const team = parseTeamConfig(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8'));
+  const found = membersFor(team, rest[0]!, new Date(), rest[1] as TeamScope | undefined);
+  const card = (m: (typeof found.available)[number]) => ({ id: m.id, name: m.name, github: m.github?.login ?? null, discord: m.discord?.name ?? null, availability: m.availability ?? null });
+  console.log(JSON.stringify({ role: rest[0], scope: rest[1] ?? null, available: found.available.map(card), later: found.later.map(card), help_wanted: !found.available.length && !found.later.length }));
+} else if (command === 'help-wanted' && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rest[0] ?? '') && rest[1] && rest[2]) {
+  // An ask no current member's role covers (ADR 0013), posted where members and users see it, prepared so it costs its
+  // taker one decision. Once per key: a rerun finds the open issue rather than posting a second.
+  const [key, title, file] = rest;
+  if (!existsSync(file!)) throw new Error('help-wanted <key> <title> <body-file>: the body comes from a file');
+  const marker = `<!-- open-autonomy:help-wanted:${key} -->`;
+  let existing: { number: number; html_url: string } | undefined;
+  for (let page = 1; ; page++) {
+    const issues = await github<Array<{ number: number; html_url: string; body?: string; pull_request?: unknown }>>('GET', `/repos/${account}/issues?state=open&per_page=100&page=${page}`);
+    existing = issues.find((i) => !i.pull_request && i.body?.includes(marker));
+    if (existing || issues.length < 100) break;
+  }
+  const issue = existing ?? await github<{ number: number; html_url: string }>('POST', `/repos/${account}/issues`, { title, body: `${marker}\n${readFileSync(file!, 'utf8')}`, labels: ['help wanted'] });
+  console.log(`${existing ? 'already posted' : 'posted'}: #${issue.number} ${issue.html_url}`);
+} else if (command === 'reach' && (!rest[0] || /^[1-9]\d{0,2}$/.test(rest[0]))) {
+  // The numbers the scrum reads beside the board (ADR 0013), each from where it is kept. A count no door reaches is
+  // reported unavailable with the reason, never estimated.
+  const days = Number(rest[0] ?? 7);
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const config = readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8');
+  const team = parseTeamConfig(config);
+  const current = currentMembers(team);
+  const rosterLogins = new Set(current.flatMap((m) => (m.github ? [m.github.login.toLowerCase()] : [])));
+  const unavailable = (why: string) => ({ unavailable: why });
+  const out: Record<string, unknown> = { account, window_days: days, since, at: new Date().toISOString() };
+  if (doorless) out.github = unavailable('no GitHub door (no GITHUB_TOKEN)');
+  else {
+    const repo = await github<{ stargazers_count: number; forks_count: number; subscribers_count: number }>('GET', `/repos/${account}`);
+    const releases = await pages<{ tag_name: string; published_at: string | null; draft: boolean; assets: Array<{ download_count: number }> }>(`/repos/${account}/releases`);
+    const published = releases.filter((r) => !r.draft);
+    const issues = await pages<{ user?: { login: string; type?: string }; created_at: string; pull_request?: unknown }>(`/repos/${account}/issues?state=all&since=${since}`);
+    const people = new Set<string>();
+    const outside = (login?: string, type?: string) => { if (login && type !== 'Bot' && !login.endsWith('[bot]') && !rosterLogins.has(login.toLowerCase())) people.add(login); };
+    for (const i of issues) if (i.created_at >= since) outside(i.user?.login, i.user?.type);
+    for (const d of await discussions()) {
+      if (after(d.createdAt, since) && d.createdAt) outside(d.author?.login);
+      for (const c of d.comments.nodes) if (c.createdAt && c.createdAt >= since) outside(c.author?.login);
+    }
+    out.github = {
+      stars: repo.stargazers_count, forks: repo.forks_count, watchers: repo.subscribers_count,
+      releases: published.length, latest_release: published[0] ? { tag: published[0].tag_name, published_at: published[0].published_at } : null,
+      release_downloads: published.reduce((n, r) => n + r.assets.reduce((m, a) => m + a.download_count, 0), 0),
+      outside_authors: [...people].sort(),
+      traffic: unavailable('GitHub traffic (views, clones, referrers) needs the Administration permission, which the kit does not grant its App'),
+    };
+  }
+  // The books: public wherever the owner's word opens them. Money the project holds, burns and has left.
+  const platform = /^platform:\s*(\S+)/m.exec(config)?.[1]?.replace(/\/$/, '');
+  try {
+    if (!platform) throw new Error('config.yaml names no platform');
+    const res = await fetch(`${platform}/v1/accounts/${encodeURIComponent(account)}`);
+    if (!res.ok) throw new Error(`the books answered ${res.status}`);
+    const b = (await res.json()) as { balance_usd_cents?: number; burn_per_day_usd_cents?: number; runway_days?: number | null; granted_in_usd_cents?: number };
+    out.books = { balance_usd_cents: b.balance_usd_cents ?? null, burn_per_day_usd_cents: b.burn_per_day_usd_cents ?? null, runway_days: b.runway_days ?? null, granted_in_usd_cents: b.granted_in_usd_cents ?? null };
+  } catch (e) { out.books = unavailable((e as Error).message); }
+  out.backers = unavailable('the platform serves no patronage door yet; the patrons wall on the project page is the record');
+  // The team: who is on it, what they give, and which roles have someone to ask.
+  const roles: Record<string, { holders: number; with_windows: number }> = {};
+  for (const m of current) for (const r of m.roles ?? []) { roles[r] ??= { holders: 0, with_windows: 0 }; roles[r].holders++; if (m.availability) roles[r].with_windows++; }
+  out.team = {
+    members: current.length, give_time: current.filter((m) => m.contributes?.includes('time')).length,
+    give_machine: current.filter((m) => m.contributes?.includes('machine')).length,
+    joined: current.filter((m) => m.joined && m.joined >= since.slice(0, 10)).map((m) => m.id),
+    left: team.members.filter((m) => m.left && m.left >= since.slice(0, 10)).map((m) => m.id),
+    roles,
+  };
+  console.log(JSON.stringify(out, null, 2));
 } else if (command === 'mark') {
   if (!existsSync(pendingFile)) throw new Error('mark requires a successful poll for this desk');
   writeFileSync(cursorFile, readFileSync(pendingFile, 'utf8'));
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> [scope] | reach [days] | help-wanted <key> <title> <body-file> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }
