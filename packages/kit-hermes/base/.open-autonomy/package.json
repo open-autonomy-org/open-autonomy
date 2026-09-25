@@ -6,7 +6,7 @@
   "dependencies": {
     "@volter-ai-dev/supercode": "^0.4.66",
     "@volter-ai-dev/supercode-harness-sdk": "^0.3.36",
-    "@volter-ai-dev/supercode-orchestrator": "^0.3.13",
+    "@volter-ai-dev/supercode-orchestrator": "^0.3.16",
     "@volter-ai-dev/supercode-teams": "^0.2.10",
     "chat": "4.39.0",
     "@chat-adapter/discord": "4.39.0",

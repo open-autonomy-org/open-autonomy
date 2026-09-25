@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The kit takes orchestrator 0.3.16** (kit 3.15.1). The applier's entry points now declare their own types, so the kit's local declaration and its path mapping are gone; a turn stopped by `agent.max_turns` fails rather than passing, board tasks hold that cap too, and each named profile holds its own gateway lock.
 - **What a member gives is the project's own words** (SDK 3.8.0, kit 3.15.0). `contributes` was a fixed pair, time and a machine; a machine is one resource among any a member brings, so it now takes up to ten lowercase names like roles (`time`, `machine`, `gpu`, `domain`), the Team page takes them as a list and `reach` counts each.
 - **Releases on GitHub** (this repository's release workflow). A kit release now also creates the repository's GitHub release for the tag, in its own job after the npm publish: the Releases page and "Latest" say the version people install, where they had shown v0.4.4 since July.
 - **The patrons wall as data, and money follows the books** (ADR 0013, kit 3.14.0). `GET /v1/accounts/:account/patronage` answers the patrons wall through the core's own visibility gate, now handed to apps as `RouteTools.admits`: the names where the project's overview is open, the monthly total and each patron's amount only where its books are. The project page, the front page's cards and a name's cards had drawn those amounts to viewers the books did not admit; they no longer do. `community.ts reach` reads the door.
