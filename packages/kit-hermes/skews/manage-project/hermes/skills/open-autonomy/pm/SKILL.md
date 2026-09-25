@@ -71,6 +71,8 @@ Record explicit authorized requests from every agreed avenue at their stated sco
 constitutional conflicts or unclear acceptance stay visible and held. Do not discard, expand or decompose a
 request into work for a fleet that does not exist here. Constitution compliance is a constraint, never
 authorization to invent successors.
+Bugs and regressions are on the roadmap: a defect, a failing check or a promise the product does not keep is
+yours to record, sourced to the evidence, without asking.
 
 Distill notable landed changes into `CHANGELOG.md`, one line each, grouped by effect, sourced. Do not
 write a line for a commit whose effect you cannot state.
