@@ -193,8 +193,9 @@ Extrapolation, this author's: every item above beyond what the two repositories 
 - The page's tiers keep stating the runway the money buys, from the metered burn.
 - The platform serves the patrons wall as data (`GET /v1/accounts/:account/patronage`), gated by the core's own
   `admits`: the names wherever the project's overview is open, the money only where its books are. The project page
-  drew the monthly total and each patron's amount to viewers the books did not admit; it now draws them only where
-  the books are open, as its books panel already did.
+  drew the monthly total and each patron's amount to viewers the books did not admit, and the front page's and a
+  name's project cards drew each listed project's monthly figure to everyone; all of them now draw money only where
+  the books are open, as the books panel and the core's own card already did.
 
 ## Verification
 

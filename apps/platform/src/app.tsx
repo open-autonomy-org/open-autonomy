@@ -30,7 +30,7 @@ export const app: App = {
     if (pm) {
       if (get()) return get()!;
       const account = dec(pm[1]!);
-      if (account.includes(':')) return error('not_found', 404);
+      if (account.includes(':') || !(await ledger.project(account)).found) return error('not_found', 404);
       const closed = await t.admits(account, 'overview');
       if (closed) return closed;
       const [v, books] = await Promise.all([patronage.view(account), t.admits(account, 'books').then((r) => r === null)]);
