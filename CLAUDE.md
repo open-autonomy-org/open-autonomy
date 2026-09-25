@@ -70,7 +70,7 @@ accepted decision records; conflicting directions require a sourced proposal and
   the community. The project communication skill records the destinations and public-only access boundary; confidential
   human spaces and DMs are outside this fleet.
   The cookbooks and the world run on `zai/glm-5.3-flash`;
-  our own agent runs on `openai/gpt-5.6-sol` (its keys allow both), because the product's own development has to
+  our own agent runs on `openai/gpt-6-sol` (its keys allow both), because the product's own development has to
   work well. `GET /v1/catalog` with any key lists what the gateway offers.
 - **Runtime responsibilities are separate.** Follow [ADR 0001](docs/decisions/0001-runtime-boundary.md).
   The existing valve and reporter stay on the host; container mode runs native Hermes inside the World
