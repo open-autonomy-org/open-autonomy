@@ -5,13 +5,14 @@ Sourced planning memory maintained by the Hermes PM scrum. Completed work belong
 ## release-next: The next Release
 
 Dispatch: hold
-Release decision: accumulate
-Scope: what `main` carries beyond `prod`, which the open Release pull request (`main` → `prod`) shows; PM names it
-in a user's words when it requests review.
-Rationale: releases ship through the one Release pull request, the owner's approval and merge
-([ADR 0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md)). The last ship was the platform's
-deploy-v2026.09.25.2 and create-open-autonomy 3.18.0 with SDK 4.0.0, on September 25, 2026; `main` has accumulated
-since.
+Release decision: request-review
+Scope: one release act (the Release pull request, the owner told once), and kit 3.18.4: scheduled runs post their
+whole report, an upgrade cannot publish the treasurer's cards, the reporter says why it cannot read `main`, GPT-6 Sol
+on the subscription, outreach posts where `project-communications` says.
+Rationale: the fleet's release process now matches the Release pull request ([ADR
+0015](docs/decisions/0015-the-owner-ships-by-merging-to-prod.md), #792); the report delivery and the Codex setup
+were read live on Hookline, the guard and the reporter's message by hand; the last ship was deploy-v2026.09.25.2 and
+create-open-autonomy 3.18.0 on September 25, 2026.
 
 ## review-provenance-repair: Restore independent pre-merge evidence for the PR622 policy
 
