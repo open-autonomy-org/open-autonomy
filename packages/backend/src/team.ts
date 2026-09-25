@@ -1,6 +1,6 @@
 // Human roster edits become GitHub pull requests using the human's transient OAuth token.
 // Never use the platform's reader token to write, never merge, and never grant authority from a draft.
-import { TEAM_DAYS, currentMembers, parseTeamConfig, replaceTeamConfig, teamOwner, validateTeam, validateTeamMember, type Team, type TeamMember, type TeamWindow } from '@open-autonomy/sdk/team';
+import { TEAM_DAYS, parseTeamConfig, replaceTeamConfig, teamOwner, validateTeam, validateTeamMember, type Team, type TeamMember, type TeamWindow } from '@open-autonomy/sdk/team';
 import type { Env } from './types.js';
 
 export interface TeamEdit { account: string; sha: string; member: TeamMember; remove: boolean; resolveGithub?: boolean }
@@ -53,7 +53,6 @@ export function readAvailability(text: string): TeamMember['availability'] {
   });
   return { tz, windows };
 }
-export const writeAvailability = (a: TeamMember['availability']): string => a ? [a.tz, ...a.windows.map((w) => `${w.days.join(',')} ${w.from}-${w.to}`)].join('; ') : '';
 
 export function readTeamEdit(account: string, form: FormData): TeamEdit {
   const field = (name: string) => String(form.get(name) ?? '').trim();
@@ -66,8 +65,6 @@ export function readTeamEdit(account: string, form: FormData): TeamEdit {
     ...(field('roles') ? { roles: field('roles').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean) } : {}),
     ...(field('contributes') ? { contributes: field('contributes').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean) } : {}),
     ...(field('availability') ? { availability: readAvailability(field('availability')) } : {}),
-    ...(field('joined') ? { joined: field('joined') } : {}),
-    ...(field('left') ? { left: field('left') } : {}),
   };
   validateTeamMember(member);
   if (field('attest') !== 'yes') throw new Error('Confirm the identity links and authority source before continuing.');
@@ -92,8 +89,7 @@ export async function proposeTeamEdit(env: Env, edit: TeamEdit, token: string, a
   const members = current.team.members.filter(m => m.id !== member.id);
   if (!edit.remove) members.splice(previous ? current.team.members.indexOf(previous) : members.length, 0, member);
   const team = validateTeam({ members });
-  // A current owner with no leaving date: otherwise owners who leave before another joins lock the roster out of this page.
-  if (!currentMembers(team).some(m => m.scopes.includes('owner') && !m.left)) throw new Error('The roster needs a current owner with no leaving date; the last one cannot be removed or given one.');
+  if (!team.members.some(m => m.scopes.includes('owner'))) throw new Error('The last owner cannot be removed.');
   if (JSON.stringify(team) === JSON.stringify(current.team)) throw new Error('There are no changes to propose.');
   const text = replaceTeamConfig(current.text, team);
   const branch = `team/${nonce}`; // Deliberately outside automatic agent/** and land/** landing workflows.

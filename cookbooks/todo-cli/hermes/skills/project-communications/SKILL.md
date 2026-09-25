@@ -92,19 +92,20 @@ the project schedules them, the `outreach` jobs for release announcements, the d
 member is a volunteer, the owner included, and gives only what the roster says (ADR 0013). These are the rules for
 asking people; the other skills point here.
 
-- **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a role:
-  whoever `bun .open-autonomy/community.ts who <role>` returns, the available first; with no one, it is posted once
-  as help-wanted: `community.ts issue open <key> <title> <body>` with no assignee.
-- **Work that needs a permission** goes to whoever holds it: `community.ts holders <scope>`, the available first.
-  The repository's settings (description, topics, homepage, social preview, Pages source, Discussions) and the
+The roster is the `team:` section of `.open-autonomy/config.yaml`: each member's roles, authority (`scopes`), what
+they give and when they expect to be available.
+
+- **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a member
+  with the role, one available now first; with no one, it is posted once as help-wanted:
+  `community.ts issue open <key> <title> <body>` with no assignee.
+- **Work that needs a permission** goes to a member holding the scope. The repository's settings (description, topics, homepage, social preview, Pages source, Discussions) and the
   roster are `owner`; a release is `release-review`. It is never posted as help-wanted: no one else could do it.
 - Every ask is prepared completely, so it costs one decision (the exact values, the file, the drafted text), and
   sent once. Follow up only when agreed or when evidence changes.
 
 Record here the owner's word on sustaining the project: the role names this project uses and which of them need
 people (only these are recruited for, as one standing roadmap outcome), the channel for each outreach post
-(announcements, the dev log, the backer report), the numbers the project aims for, and which asks of users and
-members are allowed. The outreach jobs' schedules are their cadence. Agents read this and never change it.
+(announcements, the dev log, the backer report), and which asks of users and members are allowed. The outreach jobs' schedules are their cadence. Agents read this and never change it.
 
 No contact agreement has been recorded yet. Ask the owner during setup or an active conversation;
 do not infer a destination from available credentials. Until clarified, PM reports the gap and keeps
