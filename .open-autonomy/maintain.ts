@@ -83,11 +83,14 @@ if (command === 'ship') {
   const org = config.account.split('/')[0];
   let [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
   if (!open) {
-    const compare = await request('GET', '/compare/prod...main');
-    if (compare.status === 404) { console.log("No prod branch; setup's production door makes it. Nothing to ship."); process.exit(0); }
-    if (!compare.ok) throw new Error(`GitHub GET /compare/prod...main answered ${compare.status}`);
-    if ((await compare.json() as { ahead_by: number }).ahead_by === 0) { console.log('prod has everything on main; nothing to ship.'); process.exit(0); }
-    open = await gh<{ number: number; html_url: string }>('POST', '/pulls', { title: 'Release', head: 'main', base: 'prod', body: 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it. Read the whole diff first; money and auth changes are the owner\'s to read. Merge with a merge commit.' });
+    const prod = await request('GET', '/branches/prod');
+    if (prod.status === 404) { console.log("No prod branch; setup's production door makes it. Nothing to ship."); process.exit(0); }
+    if (!prod.ok) throw new Error(`GitHub GET /branches/prod answered ${prod.status}`);
+    // GitHub refuses a pull request with nothing in it (422), which is the answer to whether main has anything new.
+    const made = await request('POST', '/pulls', { title: 'Release', head: 'main', base: 'prod', body: 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it. Read the whole diff first; money and auth changes are the owner\'s to read. Merge with a merge commit.' });
+    if (made.status === 422) { console.log(`prod has everything on main; nothing to ship (${(await made.json() as { message?: string }).message ?? 'GitHub: 422'}).`); process.exit(0); }
+    if (!made.ok) throw new Error(`GitHub POST /pulls answered ${made.status}`);
+    open = await made.json() as { number: number; html_url: string };
     console.log(`Opened the Release: ${open.html_url}`);
   }
   git('fetch', '-q', 'origin', 'main');
