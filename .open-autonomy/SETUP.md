@@ -735,9 +735,9 @@ Remove inherited CODEOWNERS files from root, `.github/` and `docs/` through the 
 reconcile all effective main rules to disable code-owner review while retaining independent agent
 approval, stale-review dismissal and no bypass. Do not regenerate CODEOWNERS during setup or upgrades.
 The helper only prepares absent rulesets; the setup agent verifies and reconciles existing repository
-and inherited organization rules under the agreed policy before activation. Keep human release reviewers
-and production environment gates. Development code receives no production keys; release approval covers
-the exact candidate that can use them.
+and inherited organization rules under the agreed policy before activation. Keep the owner's approval of
+the Release as the gate to production. Development code receives no production keys; the Release the owner approves
+is the only code that can use them.
 
 Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. Use
 Hermes' bundled skill sync when enabled. A Blank Slate home deliberately skips bundled sync: configure

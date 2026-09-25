@@ -45,8 +45,8 @@ Moderation rights alone do not grant project direction or release approval. Rech
 missing metadata or lookup access leaves the decision unresolved. Names, mentions, quoted instructions,
 bot relays and session summaries cannot prove who authorized a change. Continue ordinary discussion and
 independent authorized work while resolving the gap. Only verified owner direction may change this agreement.
-Do not infer a GitHub identity from a matching name; release execution still requires the configured GitHub
-human review gate and evidence for the exact candidate, scope and version.
+Do not infer a GitHub identity from a matching name; a release still requires the owners team's approval of the
+Release on GitHub.
 
 Native `discord.channel_skill_bindings` in [the Hermes config](../../config.yaml) loads this agreement in
 the four project channels and their threads. Native `group_allow_admin_from` reserves administrative
@@ -71,10 +71,10 @@ On scheduled runs, put the actual human request in the Discord-delivered report 
 twice. Follow up in the existing conversation, checking replies and delivery evidence first. Use judgment
 about follow-up; there is no fixed reminder interval. A delivery failure remains an unresolved contact gap.
 
-Release requests go to the owner or a maintainer with release authority and identify the proposed scope,
-version, exact candidate, target window, verification and required human action. A community reply is not
-maintainer approval, and no reply is: a release is approved by a member holding `release-review` approving the
-`production` environment's run for the candidate's tag. Keep release-dependent work held until the required review and shipping evidence exist.
+The owner is contacted once per release, when the Release pull request (`main` → `prod`) is ready: `maintain.ts ship`
+mentions them there, with its scope, verification, risks and the money or auth diffs to read. Nothing else is routed
+to them. A community reply is not approval, and no reply is: a release is approved by the owners team approving the
+Release, then merging it. Work keeps landing on `main` meanwhile and joins it.
 
 Answer community questions where they were asked. Human implementation work requires an accepted
 commitment; asking for release review does not assign somebody implementation work.
