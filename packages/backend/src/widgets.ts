@@ -40,8 +40,12 @@ export function renderRunwaySvg(f: FundingSnapshot): string {
     headline = `${usd(remaining)} left of ${usd(budget)}`;
     const days = f.runway_days !== null ? fmtDays(f.runway_days) : '?';
     sub = `~${days} days of runway · ~${usd(f.burn_per_day_usd_cents)}/day`;
-    // the estimate's range stays in the books; the widget says only how much spending it rests on
-    note = `at its pace over ${f.days_observed} day${f.days_observed === 1 ? '' : 's'} of spending`;
+    // the estimate's range stays in the books; the widget says what it rests on. The prior weighs three days
+    // (runway.ts), so it is a guess with none spent, early under a week, and the project's own pace from then on.
+    const n = f.days_observed;
+    note = n === 0 ? 'a starting guess until it has spent for a few days'
+      : n < 7 ? `an early estimate from ${n} day${n === 1 ? '' : 's'} of spending`
+        : `at its pace over ${n} days of spending`;
   }
   const padX = 16, barY = 52, barW = W - padX * 2, fillW = Math.round(barW * frac);
   const body = [
