@@ -265,7 +265,7 @@ supported", measured). So the sandbox is turned off only in the Codex home of a 
 approvals off (`approvals.mode: off`); a profile that keeps them, the treasurer that pays among them, keeps the
 sandbox, and its commands fail closed in the executor rather than run ungated. The per-command gate exists one layer
 up: the app server's `thread/start` accepts `approvalPolicy: "untrusted"` with full access and then asks before each
-command (`item/commandExecution/requestApproval`; `decline` fails it), measured; supercode's managed runtime sends
+command (`item/commandExecution/requestApproval`; answered `decline`, the command ends `declined`, not run), measured; supercode's managed runtime sends
 `thread/start` with `{cwd}` alone, so the gate waits on the harness passing the policy there.
 
 **Measured** (Hookline, on its production platform key, its bare agent stopped for the run so one agent served
