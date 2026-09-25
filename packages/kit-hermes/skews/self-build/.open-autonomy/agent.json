@@ -64,6 +64,30 @@
           "model": "project",
           "workdir": "{{workspace}}",
           "monitor_script": "community-monitor.sh"
+        },
+        "outreach-week": {
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 16 * * 1"
+          },
+          "prompt": "WAKE: OUTREACH, the week's post. Run the outreach skill for the week's post.",
+          "skills": [
+            "outreach"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
+        },
+        "outreach-backers": {
+          "schedule": {
+            "kind": "cron",
+            "expr": "0 16 1 * *"
+          },
+          "prompt": "WAKE: OUTREACH, the backer report. Run the outreach skill for the backer report.",
+          "skills": [
+            "outreach"
+          ],
+          "model": "project",
+          "workdir": "{{workspace}}"
         }
       }
     },

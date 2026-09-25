@@ -79,52 +79,46 @@ availability windows, and when they joined and left. It is the member's own word
 Team page or by the member's own pull request merged after review; the agents read it and never infer it. A member's
 authority lapses the day after they leave.
 
-**The agents read the numbers that say so.** A door (`community.ts reach`) reports, on the project's own record
-each week: visitors and their referrers, stars, clones and downloads, outside authors in the window; patrons, their
-monthly total and who left; members and machines active and returning, and the roles no one available covers; the
-metered spend and how much of it backers cover. The
-scrum reads it beside the board. The targets are in the project's own document, set by the owner.
+**The agents read the numbers that say so.** A door (`community.ts reach`) reports: stars, forks and watchers,
+releases and their downloads, outside authors in the window; the books; the patrons and their monthly total; the team
+and what it gives. A count no door reaches (GitHub's traffic, for one) is reported unavailable. The weekly outreach
+job reads it into its post; the scrum compares it with the targets, which are the owner's word.
 
-**The front door is graded by a reader who has never seen it.** Before a change to what a user sees or does lands,
-and at each release, a fresh-context agent receives only the README and must say what the project is, who it is
-for, and reach a first success by following the quick start literally in the project's World. Each mismatch is a
-finding the change fixes. The captures in the README come from that run.
+**The front door is read by someone who has not seen it**, in proportion to what changed. At review of a change a
+user can see, the reviewer reads only the README first and says what the project is, who it is for and how to reach
+a first success; a mismatch is a finding. Before a release, and when the quick start itself changes, the quick start
+is also followed literally in the project's World, by someone who did not build it, never the human release
+reviewer; the passing captures are the page's media.
 
 **A release follows shipped change.** The project's own document carries a release cadence, and PM's existing
 release planning (`PRODUCTION.md`) prepares a release when a change a user can see has landed within it and the front
 door tells it truly: the version, the notes in a user's words, the review package ready for a member holding
-release review. A release is what community announces.
+release review. A release is what the weekly outreach job announces.
 
-**Community reaches out, not only back.**
-- A weekly dev log from the week's real sessions and books: what shipped, what it cost, what is next. A project
-  built by its agent on public books is the story, and it serves all three groups.
-- The monthly backer report: what the money bought, the items shipped, the sessions, the spend, the runway; the
-  backers named.
-- Posts on the channels the agent reaches (Discussions, its chat channel, Pages). For channels it cannot reach
-  (Hacker News, Reddit, lists, other communities), a post drafted in full and labelled as written by the project's
-  agent, offered as help-wanted.
+**Periodic posts run as their own jobs.** A weekly job posts what shipped (each release's announcement) and the dev
+log from the week's real sessions and books; a monthly job posts the backer report: what the money bought and the
+runway, the backers named. Each is its own scheduled job with its own short skill (`outreach`), at the cadence the
+owner agrees; the inbox desk and the scrum never decide whether one is due. A channel an agent cannot post to gets a
+post drafted in full, labelled as written by the project's agent, for a person to post.
 
-**Asks go to a role, within its members' windows.** Work the agents cannot do goes to a member whose role covers it
-and who is within their window, prepared so it costs one decision: the exact values, the file, the drafted text.
-With no such member, it is posted as help-wanted where members and users see it. It is never routed to the owner as
-a default, and nothing essential waits on one person: every seam that needs a person has more than one member whose
-role covers it, and recruiting the second is a goal the scrum tracks.
+**Asks go to whoever can act.** Work anyone could take goes to a role's current holders, the available first, and is
+posted as help-wanted when no one holds it. Work that needs a permission (a repository setting, a release, the
+roster) goes to whoever holds that permission, the owner included when only they do; it is never posted as
+help-wanted, since no one else could do it. Every ask is prepared so it costs one decision and is sent once. The
+roles the owner names as needing people, with fewer than two current holders, are one standing recruiting outcome.
 
-**Asks are counted.** Each ask of a person is recorded with what it asked for and when it was answered. The door
-reports asks per week and how long they waited; the scrum works to reduce both.
-
-**Strategy owns the plan, community carries it out.** No new role: the strategy skill gains a sustain mandate
-(which users, which channels, which asks), and community executes it on the agreed channels. The targets, the
-cadences, the channels and which asks are allowed are in the project's own document, the owner's word; the agents
-never edit them. The strategy never assumes a member does more than the roster says.
+**Strategy owns the plan; the outreach jobs and the community desk carry it out.** The strategy skill gains a
+sustain mandate (which users, which channels, which asks). The targets, the cadences, the channels and which asks
+are allowed are in the project's own document, the owner's word; the agents never edit them.
 
 Extrapolation, this author's (the owner named the goal and the three contributions, not these particulars): the
-weekly and monthly cadences; the contents of `community.ts reach`; the fresh-reader grade and where it runs; the
-release trigger; routing asks by role and window, with help-wanted as the fallback; counting asks; strategy as the
-owner of the plan; the roster as the home of roles, contributions and windows.
+weekly and monthly jobs; the contents of `community.ts reach`; the fresh-reader grade and where it runs; the
+release trigger; routing asks by role, window and permission; strategy as the owner of the plan; the roster as the
+home of roles, contributions and windows.
 
-**Open, decided by a later record:** how several members' machines share one project's work. Today one machine runs
-a project. The member contribution in this record does not wait on it: a project's first machine is its owner's.
+**Open, decided by a later record:** how several members' machines share one project's work (today one machine runs
+a project, and its first machine is its owner's); and how the soc2 skew declares the resources members bring beside
+its `vendor_accounts`.
 
 ## What the soc2 template teaches, and what it gains
 
@@ -154,9 +148,9 @@ people who act at declared seams (ADR 0008), and several of their mechanisms are
   rather than typed into it.
 - A member's declared window is the expectation an escalation's response time is judged against
   (`records/escalations/`: `received_at`, `responded_at`), rather than an unstated one.
-- A member's machine is part of the system the project runs on: in the soc2 skew it is declared beside the
-  `vendor_accounts`, with its member as its operator, so the auditor's question "where does this run and who can
-  reach it" is answered from the repository.
+- A resource a member brings (a machine the project runs on, first) is part of the system: declared in the soc2
+  skew beside the `vendor_accounts`, with its member as its operator (open, above), the auditor's question "where
+  does this run and who can reach it" is answered from the repository.
 - "Never let essential work wait on one person" and SOC 2's independent second person for reviews the owner cannot
   perform on themselves are the same recruit.
 
@@ -175,18 +169,17 @@ Extrapolation, this author's: every item above beyond what the two repositories 
 
 ## Consequences
 
-- `community`: the weekly look at the numbers; the dev log; the backer report; outreach and help-wanted posts;
-  `poll` at a cadence the project's traffic warrants rather than every 5 minutes.
-- `pm`: reads the numbers at scrum; prepares releases after shipped change; counts asks.
+- `outreach` (new) and its two jobs in the self-build skew: the week's post and the backer report. `community`
+  answers people and points its outward posts there.
+- `pm`: compares the week's numbers with the targets; prepares releases after shipped change; one standing
+  recruiting outcome.
 - `strategy`: the sustain mandate and the plan it produces.
-- `front-door`: the fresh-reader grade replaces self-review; help-wanted replaces routing to a team member.
-- `project-communications`: the channels, targets and allowed asks are recorded here as the owner's word; asks are
-  routed by role and window.
+- `front-door`: the fresh reader, in proportion to what changed.
+- `project-communications`: the one statement of how to ask people, and the owner's word on sustaining the project
+  (roles and which need people, channels, targets, allowed asks).
 - The roster (`team` in `.open-autonomy/config.yaml`, the SDK's team codec) gains each member's roles, contributions,
   availability windows, joined and left, under the same strict validation (SDK 3.7.0); the Team page shows and edits
   them. Every authority check reads only current members, and a populated roster keeps an owner with no `left`.
-- The soc2 skew declares members' machines beside `vendor_accounts`; Evidence Desk's import reads the roster's roles
-  and dates.
 - The kit gains `community.ts reach`. Measured on Hookline: the App's grant (SETUP.md's `default_permissions`) and
   the valve's routes reach the repository's counts (stars, forks, watchers), issues, discussions, releases and pull
   requests; GitHub's traffic (views, clones, referrers) needs the Administration permission, which the kit withholds

@@ -150,11 +150,19 @@ export function teamAvailable(m: TeamMember, at: Date = new Date()): boolean {
 }
 
 /**
- * Who an ask goes to (ADR 0013): the current members holding the role, those within a window first. A role is work, not
- * authority: an ask that needs authority names its `scope`, and only holders of that scope qualify. Empty when no one
- * qualifies: the ask is posted as help-wanted, never routed to the owner by default.
+ * Who takes work anyone could take (ADR 0013): the current members holding the role, those within a window first.
+ * Empty: no one has taken the role, and the work is posted as help-wanted.
  */
-export function membersFor(team: Team, role: string, at: Date = new Date(), scope?: TeamScope): { available: TeamMember[]; later: TeamMember[] } {
-  const holders = currentMembers(team, at.toISOString().slice(0, 10)).filter(m => m.roles?.includes(role) && (!scope || m.scopes.includes(scope)));
+export function membersFor(team: Team, role: string, at: Date = new Date()): { available: TeamMember[]; later: TeamMember[] } {
+  const holders = currentMembers(team, at.toISOString().slice(0, 10)).filter(m => m.roles?.includes(role));
+  return { available: holders.filter(m => teamAvailable(m, at)), later: holders.filter(m => !teamAvailable(m, at)) };
+}
+
+/**
+ * Who may do work that needs a permission (ADR 0013): the current members holding the scope, whatever their roles,
+ * those within a window first. Such work is never help-wanted: no one else could do it.
+ */
+export function holdersOf(team: Team, scope: TeamScope, at: Date = new Date()): { available: TeamMember[]; later: TeamMember[] } {
+  const holders = currentMembers(team, at.toISOString().slice(0, 10)).filter(m => m.scopes.includes(scope));
   return { available: holders.filter(m => teamAvailable(m, at)), later: holders.filter(m => !teamAvailable(m, at)) };
 }
