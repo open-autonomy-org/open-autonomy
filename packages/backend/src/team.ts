@@ -92,7 +92,8 @@ export async function proposeTeamEdit(env: Env, edit: TeamEdit, token: string, a
   const members = current.team.members.filter(m => m.id !== member.id);
   if (!edit.remove) members.splice(previous ? current.team.members.indexOf(previous) : members.length, 0, member);
   const team = validateTeam({ members });
-  if (!currentMembers(team).some(m => m.scopes.includes('owner'))) throw new Error('The last current owner cannot be removed.');
+  // A current owner with no leaving date: otherwise owners who leave before another joins lock the roster out of this page.
+  if (!currentMembers(team).some(m => m.scopes.includes('owner') && !m.left)) throw new Error('The roster needs a current owner with no leaving date; the last one cannot be removed or given one.');
   if (JSON.stringify(team) === JSON.stringify(current.team)) throw new Error('There are no changes to propose.');
   const text = replaceTeamConfig(current.text, team);
   const branch = `team/${nonce}`; // Deliberately outside automatic agent/** and land/** landing workflows.

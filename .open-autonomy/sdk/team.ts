@@ -17,7 +17,7 @@ export interface TeamMember {
   /** Authority: what the member may decide. */
   scopes: TeamScope[];
   source: string;
-  /** The project's own names for the work the member takes on (`triage`, `docs`, `release-review`). */
+  /** The project's own names for the work the member takes on (`triage`, `docs`, `outreach`); never authority. */
   roles?: string[];
   contributes?: TeamContribution[];
   /** When the member expects to be available; absent, nothing is assumed. */
@@ -30,7 +30,11 @@ export interface Team { members: TeamMember[] }
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const label = (v: unknown, max: number): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= max && !/[\x00-\x1f]/.test(v);
 const id = (v: unknown): v is string => typeof v === 'string' && /^[1-9][0-9]{0,19}$/.test(v);
-const day = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+const day = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const at = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === v; // 2026-02-30 and 2026-13-01 are not days
+};
 const clock = (v: unknown): v is string => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 const zone = (v: unknown): v is string => {
   if (typeof v !== 'string' || !/^[A-Za-z0-9_+\-/]{1,64}$/.test(v)) return false;
@@ -147,10 +151,11 @@ export function teamAvailable(m: TeamMember, at: Date = new Date()): boolean {
 }
 
 /**
- * Who an ask goes to (ADR 0013): the current members holding the role, those within a window first. Empty when no one
- * holds it: the ask is posted as help-wanted, never routed to the owner by default.
+ * Who an ask goes to (ADR 0013): the current members holding the role, those within a window first. A role is work, not
+ * authority: an ask that needs authority names its `scope`, and only holders of that scope qualify. Empty when no one
+ * qualifies: the ask is posted as help-wanted, never routed to the owner by default.
  */
-export function membersFor(team: Team, role: string, at: Date = new Date()): { available: TeamMember[]; later: TeamMember[] } {
-  const holders = currentMembers(team, at.toISOString().slice(0, 10)).filter(m => m.roles?.includes(role));
+export function membersFor(team: Team, role: string, at: Date = new Date(), scope?: TeamScope): { available: TeamMember[]; later: TeamMember[] } {
+  const holders = currentMembers(team, at.toISOString().slice(0, 10)).filter(m => m.roles?.includes(role) && (!scope || m.scopes.includes(scope)));
   return { available: holders.filter(m => teamAvailable(m, at)), later: holders.filter(m => !teamAvailable(m, at)) };
 }

@@ -53,7 +53,8 @@ The ruling is recorded in `CLAUDE.md` (#756). This record is what follows from i
 - **Work no integration reaches goes to "the team member who handles it"** (`front-door`, `project-communications`).
   Every member is a volunteer: that person may not exist, or may be away.
 - **One project runs on one machine.** The board is Hermes's local store in the one home the one runtime serves,
-  behind one dispatcher lock (`hermes-locks.mjs`). No record designs a second member's machine working the same
+  behind one dispatcher lock (Hermes's `_acquire_singleton_lock`, which Supercode's orchestrator holds the same
+  way). No record designs a second member's machine working the same
   project; ADR 0008's seams (roster, reviews, release, deploy) name no member running the agent.
 
 ## Decision
@@ -185,8 +186,10 @@ Extrapolation, this author's: every item above beyond what the two repositories 
   them. Every authority check reads only current members, and a populated roster keeps an owner with no `left`.
 - The soc2 skew declares members' machines beside `vendor_accounts`; Evidence Desk's import reads the roster's roles
   and dates.
-- The kit gains `community.ts reach`. Whether a project's GitHub App may read traffic (views, clones, referrers)
-  is to be measured before it is built; a count it cannot read is reported as unavailable, never guessed.
+- The kit gains `community.ts reach`. Measured on Hookline: the App's grant (SETUP.md's `default_permissions`) and
+  the valve's routes reach the repository's counts (stars, forks, watchers), issues, discussions, releases and pull
+  requests; GitHub's traffic (views, clones, referrers) needs the Administration permission, which the kit withholds
+  on purpose and the valve refuses. `reach` reports traffic as unavailable rather than widening the agent's grant.
 - The page's tiers keep stating the runway the money buys, from the metered burn.
 
 ## Verification

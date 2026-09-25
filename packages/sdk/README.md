@@ -189,7 +189,8 @@ UTC: a member holds their authority from `joined` through `left` and it lapses t
 waits on someone to remove a departed member. A populated roster keeps at least one owner with no `left`.
 `currentMembers(team, day?)` and `teamOwner(team, githubId, day?)` read only the members on the team that day;
 `teamAvailable(member, at?)` says whether an instant is in one of their windows; `membersFor(team, role, at?)`
-returns the current holders of a role, `available` now and `later`. An empty result is help-wanted: an ask is never
+returns the current holders of a role, `available` now and `later`; a role is work, not authority, so an ask that
+needs authority passes its `scope` and only holders of it qualify. An empty result is help-wanted: an ask is never
 routed to the owner by default.
 
 The platform reads this owner configuration from the repository, just as it reads funding bounds; a

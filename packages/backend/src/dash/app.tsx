@@ -471,7 +471,7 @@ export function Team({ d }: { d: DashData }) {
             {field('discord_id', 'Discord user ID or profile link', member?.discord?.id)}
             {field('discord_name', 'Discord name', member?.discord?.name)}
             <fieldset class="oa-field"><legend>Authority</legend>{Object.entries(TEAM_LABELS).map(([scope, label]) => <label class="oa-check"><input type="checkbox" name="scopes" value={scope} checked={member?.scopes.includes(scope as never)} /> {label}</label>)}</fieldset>
-            {field('roles', 'Roles (comma separated, the project\'s own names: triage, docs, release-review)', member?.roles?.join(', '), false, 400)}
+            {field('roles', 'Roles (comma separated, the project\'s own names for the work: triage, docs, outreach; authority is below)', member?.roles?.join(', '), false, 400)}
             <fieldset class="oa-field"><legend>Gives</legend>{Object.entries(GIVES_LABELS).map(([c, label]) => <label class="oa-check"><input type="checkbox" name="contributes" value={c} checked={member?.contributes?.includes(c as never)} /> {label}</label>)}</fieldset>
             {field('availability', 'Expected availability (time zone; then windows: Europe/Berlin; mon-fri 18:00-21:00; sat 10:00-14:00)', availabilityText(member?.availability), false, 600)}
             {field('joined', 'Joined (YYYY-MM-DD)', member?.joined, false, 10)}
