@@ -2,8 +2,8 @@
 
 The agent lands code. PM proposes releases; a human reviews and authorizes publication. The platform never
 holds a deploy credential, and neither does any machine an agent runs on. The service flow below uses
-GitHub's own gates. Packages and local applications use the [artifact procedure](#packages-and-local-applications)
-without requiring a hosted service.
+GitHub's own gates. Packages and local applications ship through the same Release without requiring a hosted
+service.
 
 ## The shape
 

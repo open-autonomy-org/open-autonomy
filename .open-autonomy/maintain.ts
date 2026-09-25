@@ -97,7 +97,7 @@ if (command === 'ship') {
   }
   const [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
   if (!open) { console.log('No Release pull request is open; ship.yml opens it while main is ahead of prod.'); process.exit(0); }
-  const tail = 'Merging ships `main` to production: the platform deploys and every package version not yet on npm is published.';
+  const tail = 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it.';
   await gh('PATCH', `/issues/${open.number}`, { body: `${marker}\n${review}\n\n${tail}` });
   if ((await comments(open.number)).some((c) => c.startsWith(marker))) {
     console.log(`Release ${release} is on ${open.html_url}; the owner was already told.`);

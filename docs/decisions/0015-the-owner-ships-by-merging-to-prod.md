@@ -58,8 +58,8 @@ merge commits only (the repository allows no squash or rebase merge, so `prod`'s
 - The record tags are records, not triggers: anyone who may push may create one, so a record can be forged, but only
   an org admin may move or delete one once made. Nothing runs on a tag; what shipped is `prod`'s history and the
   deploy runs.
-- The kit's production door (`setup.ts`, `PRODUCTION.md`) keeps tags until this has shipped here; a later change
-  carries it to generated projects.
+- The kit's production door (`setup.ts`, `PRODUCTION.md`, `maintain.ts ship`, `ship.yml`) kept tags until this had
+  shipped here; kit 3.19.0 carries it to generated projects.
 
 ## Constitution review
 

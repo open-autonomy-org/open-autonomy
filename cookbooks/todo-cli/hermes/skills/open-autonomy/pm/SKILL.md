@@ -53,7 +53,7 @@ decisions unresolved. Resolve original author IDs against these records and pres
 Only owner-authorized roster changes may add or widen authority. Moderation, direction and release review
 are separate scopes; human implementation still needs a volunteer's commitment. After a roster change,
 reconcile agreed native operator IDs and actual review gates through the existing setup process; do not
-claim a data edit changed Discord permissions or GitHub protection. Release approval stays candidate-specific.
+claim a data edit changed Discord permissions or GitHub protection. Release approval is the owner's, on the Release.
 
 1. Run `bun .open-autonomy/scrum.ts prepare`. It fetches main, creates/resumes an isolated planning
    worktree, pins an input snapshot and lists the board, changed main history, native Hermes session
@@ -121,7 +121,7 @@ When the board empties, dispatch remaining authorized roadmap work if ready. If 
 report completion or the specific decision needed. Invoke strategy only under its agreed activation policy;
 on-demand strategy remains available without a recurring job. Do not generate successor features from
 the constitution, a generic "continue", historical starter seeds or a mandate granted only to strategy.
-A release-review hold blocks publication of that candidate; it does not block other authorized work.
+A Release awaiting the owner blocks nothing: other authorized work keeps landing on `main` and joins it.
 On migration, review unlanded PM-inferred scope against this boundary; retain it as a proposal pending
 proper authority rather than automatically dispatching or deleting it. Past merges are historical facts,
 not precedent granting future scope authority.
@@ -188,58 +188,30 @@ or approve the PR from the authoring session. Preserve the worktree until review
 
 ## Plan releases deliberately
 
-Choose release scope from authorized roadmap outcomes; release planning does not authorize new features.
-Every merge is an input to scrum, not a reason to ship. PM decides whether to keep accumulating changes,
-prepare a coherent release, defer it, or expedite an urgent fix, within owner priorities and release policy.
-Consider delivered value, completed outcomes, compatibility, verification, operational risk and review lead
-time. Being ahead of production or reaching a calendar date grants no release authority.
+Pull requests into `main` are the fleet's own and never go to a person. The Release is the one standing pull request
+titled Release, from `main` to `prod`: everything landed on `main` compounds onto it, and the owner's approval and
+merge of it is what ships (`.open-autonomy/PRODUCTION.md`). It is the last step before the owner is contacted, and
+the only one: never ask the owner to approve, open, tag or wait for anything else.
 
-Maintain a sourced **target release schedule in ROADMAP.md**: intended scope/outcomes, proposed version,
-target date/window, a review-by target allowing human review time, readiness criteria, dependencies and risks.
-Use stable release outcome IDs (`## release-next: ...`, `Dispatch: hold`). At scrum reassess the target;
-material scope/date/version changes need evidence and reasoning. Targets are forecasts, not commitments from
-humans who have not accepted them. If the owner has no cadence, propose one with rationale; don't invent a
-binding deadline or release every commit. Quiet scrums leave the schedule unchanged.
+Keep one release section in `ROADMAP.md` (`## release-next: ...`, `Dispatch: hold`) with its single-line
+`Release decision:` (`accumulate` while changes compound, `defer` when you hold them back, `request-review` when
+the Release is ready), its scope and rationale, sourced. Choose versions under the project's policy and explain the
+choice; a contributor's bump is a proposal. Quiet scrums leave the section unchanged; never release every commit or
+invent a deadline.
 
-PM chooses versions under the project's actual policy (including separate artifacts in a monorepo). Check
-published versions/tags, compatibility and included changes; explain the version choice. Contributor bumps
-are proposals to reconcile, not release decisions. Queue needed version/changelog/artifact preparation through
-native fleet work. Do not publish or mark an Unreleased entry released merely because a version was bumped.
+Request review only when the Release is finished: its scope done and verified on `main`'s head, the front door
+describing it (its quick start followed by someone who did not build it), and every money or auth diff in it named
+for the owner to read. Then write `$HERMES_HOME/release-review.md` (Release, Scope, Verification with source links,
+Risks, Owner reads, Owner does: anything only the owner may do, gathered here rather than asked on its own), land
+`Release decision: request-review`, and run `bun .open-autonomy/maintain.ts ship`: it writes the package as the
+Release's description and mentions the owner there, once per Release pull request (a package written before the last
+Release merged is refused). Work that lands afterwards joins the Release and dismisses any approval already given;
+refresh the package if its scope changed.
 
-For service review through `maintain.ts ship`, the landed release section uses the single-line fields
-specified in [.open-autonomy/PRODUCTION.md](../../../../.open-autonomy/PRODUCTION.md). Start with
-`Release decision: accumulate` or `prepare` and `Readiness: pending`; use `defer` when postponing.
-Only set `Release decision: request-review` and `Readiness: ready-for-review` after verifying scope,
-artifact/version consistency, the review evidence, and that the front door describes the candidate, its quick start
-followed by someone who did not build it. Select a **full candidate SHA** that has landed,
-then land that sourced decision. The candidate can precede the planning commit; later main commits can
-accumulate for a subsequent release. Do not silently move a candidate already under review.
-
-Prepare `$HERMES_HOME/release-review.md` using the documented fields, including release ID, selected version,
-candidate SHA and the commit containing the landed plan. Keep it outside the checkout. Run `maintain.ts ship`
-to prepare the native human-review request, then contact the reviewer as agreed in the
-`project-communications` skill. The request must explain why this release now, its scope/version/window, verification, risks and exact
-human actions. Package/artifact releases without a live service use their documented procedure and this
-outreach policy with the same PM decision and human approval requirements; don't pretend live-service status
-proves publication. Record the request source in roadmap without changing the selected release merely to
-record that receipt.
-
-Humans may approve, reject or redirect the proposal. Approval applies only to the stated version, scope and
-candidate. If those change, or PM defers the release, explicitly supersede the previous ask in that conversation
-and reconcile its native task; old approval cannot carry over. The helper parks obsolete unleased review
-requests as native scheduled holds; you also reconcile the original conversation and any native reminders. A renewed PM decision starts a new
-review cycle, preserving the withdrawn card and its dependencies; never reset native retry counters to
-revive it. Local package errors do not revoke a pending review still authorized by the landed plan. PM
-resolves active handoffs and withdrawn dependencies explicitly without stealing a lease. Run it after a deferral as well as after preparing a request.
-
-Never tag, approve, publish or deploy. Merged, approved, released and post-release verified are distinct facts.
-Confirm the selected candidate/artifact actually shipped, update changelog with the real version/date and
-sources, and retire fulfilled roadmap outcomes while retaining unresolved verification/adoption work. A later
-main commit does not reopen that completed release. Missing live access leaves verification pending.
-
-Use the existing conversation (`community.ts comment` / `discuss`, or Hermes's configured messaging tools).
-Read before posting; follow up when agreed or when evidence changes. Don't repeat unchanged asks every scrum
-or assign people unsolicited work. Pending replies do not stop independent progress.
+Never tag, approve, publish or deploy. Merged, released and verified are distinct facts: after the owner's merge,
+confirm what shipped (the live service reports the shipped commit, the new versions are published), then update the
+changelog with the real version and date and set the section back to `accumulate`. Missing live access leaves
+verification pending.
 
 ## Land, acknowledge, dispatch
 
@@ -291,17 +263,15 @@ execution. PM coordinates; it doesn't implement.
   merely to clear a warning. Preserve unresolved failures and contact the owner through the agreed path.
 - Retry explained transient blocks once per scrum. Preserve human, capability and scheduled holds until
   their evidence arrives. Inspect stale running/review tasks; don't blindly release live work.
-- Reassess the target release schedule and run `bun .open-autonomy/maintain.ts ship` to reconcile the current
-  PM decision. No eligible decision means no new review request. Confirmed deployment of the selected
-  candidate can release its shipping hold even when newer main commits remain unreleased; native review
-  still verifies execution acceptance. Unknown status completes nothing.
+- Reassess the release section. When the Release is ready, run `bun .open-autonomy/maintain.ts ship`; after the
+  owner's merge, verify what shipped.
 - Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
   link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
 - Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. The upgrade merges the
   kit's change into this project's files three-way; a file where both moved is left with conflict markers in
   the upgrade worktree for you to resolve, keeping this project's intent and the kit's change. Every upgrade PR,
   including workflow changes, goes through independent exact-head agent review and automatic merge.
-  The supervisor drains and restarts after landing. Human approval is reserved for release of the exact candidate.
+  The supervisor drains and restarts after landing. Human approval is reserved for the Release.
 
 Report notable changes, queue decisions, pending commitments/release gates, source gaps and installed/running
 kit versions. This report is operational output, not another permanent project journal.

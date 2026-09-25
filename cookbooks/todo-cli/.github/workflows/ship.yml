@@ -1,7 +1,7 @@
 name: Ship
 # One standing pull request from `main` to `prod`: what the owner ships. It grows as `main` moves, so changes compound
-# until the owner reads the whole diff and merges it; the merge deploys the platform and publishes every new package
-# version (deploy.yml, release.yml). It merges only once the `owners` team (the owner) approves it (the `prod` ruleset);
+# until the owner reads the whole diff and merges it; the merge runs the workflows that deploy and publish on a push to
+# `prod` (.open-autonomy/PRODUCTION.md). It merges only once the `owners` team (the owner) approves it (the `prod` ruleset);
 # nothing here merges it. Until a `prod` branch exists (setup's production door makes it), there is nothing to ship.
 # Merges to main are made by the landing workflow's token, and GitHub starts no workflow from those pushes, so this runs
 # on a schedule (and by hand): the pull request follows main by itself once open, and is reopened after each ship.
@@ -30,4 +30,4 @@ jobs:
           ahead=$(gh api "repos/$REPO/compare/prod...main" --jq .ahead_by)
           if [ "$ahead" = 0 ]; then echo "prod has everything on main; nothing to ship"; exit 0; fi
           gh pr create -R "$REPO" --base prod --head main --title "Release" \
-            --body "Merging ships \`main\` to production: the platform deploys and every package version not yet on npm is published. Read the whole diff first; money and auth changes are the owner's to read. Merge with a merge commit."
+            --body "Merging ships \`main\` to production: the workflows that run on a push to \`prod\` deploy and publish it. Read the whole diff first; money and auth changes are the owner's to read. Merge with a merge commit."
