@@ -201,8 +201,8 @@ invent a deadline.
 
 Request review only when the Release is finished: its scope done and verified on `main`'s head, the front door
 describing it (its quick start followed by someone who did not build it), and every money or auth diff in it named for
-the owner to read. Then write `$HERMES_HOME/release-review.md` (Scope, Verification with source links, Risks, Owner
-reads), land `Release decision: request-review`, and run `bun .open-autonomy/maintain.ts ship`: it writes the package
+the owner to read. Then write `$HERMES_HOME/release-review.md` (Release, Scope, Verification with source links, Risks,
+Owner reads, Owner does: anything only the owner may do, gathered here rather than asked on its own), land `Release decision: request-review`, and run `bun .open-autonomy/maintain.ts ship`: it writes the package
 as the Release's description and mentions the owner there once. Work that lands afterwards joins the Release and
 dismisses any approval already given; refresh the package if its scope changed.
 
