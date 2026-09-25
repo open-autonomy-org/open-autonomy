@@ -242,7 +242,8 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   if (!team?.id) team = gh(['api', '-X', 'POST', `orgs/${s.owner}/teams`], { name: 'owners', privacy: 'closed', description: 'Approves the Release: main to prod' }).json as { id?: number } | undefined;
   if (!team?.id) throw new Error(`Cannot create the owners team in ${s.owner}; an organization owner must run setup.`);
   gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/memberships/${login}`], { role: 'maintainer' });
-  gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/repos/${s.account}`], { permission: 'push' });
+  const access = gh(['api', '-X', 'PUT', `orgs/${s.owner}/teams/owners/repos/${s.account}`], { permission: 'push' });
+  if (!access.ok) throw new Error(`owners team access to ${s.account}: ${access.err}`);
   // prod starts where production last shipped: the latest deploy tag of a project that deployed from tags, or main's
   // first commit, so the first Release shows the whole project.
   if (!gh(['api', `repos/${s.account}/branches/prod`]).ok) {
