@@ -16,7 +16,6 @@
 //                                                                 # holders, the available first; none is help-wanted
 //   bun .open-autonomy/community.ts holders <scope>               # who may do work that needs a permission (ADR 0013)
 //   bun .open-autonomy/community.ts reach [days]                  # the week's numbers, for the outreach job (ADR 0013)
-//   bun .open-autonomy/community.ts help-wanted <key> <title> <body-file> # an ask no member holds, posted once
 //
 // The cursor lives in the agent's home ($HERMES_HOME/community-cursor.json), else beside the project.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -114,7 +113,7 @@ async function pages<T>(path: string): Promise<T[]> {
 if (command === 'poll' && doorless) {
   console.log(`NOTE no GitHub door (no GITHUB_TOKEN): issues and discussions are not read; the channel alone is the desk's`);
   console.log(`COMMUNITY_POLL_DONE since ${cursor()}`);
-} else if (['comment', 'discuss', 'issue', 'pull-request', 'read', 'help-wanted'].includes(command) && doorless) {
+} else if (['comment', 'discuss', 'issue', 'pull-request', 'read'].includes(command) && doorless) {
   console.error('community: no GitHub door (no GITHUB_TOKEN) — this GitHub operation is unavailable');
   process.exit(3);
 } else if (command === 'read') {
@@ -137,7 +136,8 @@ if (command === 'poll' && doorless) {
 } else if (command === 'issue' && rest[0] === 'update' && /^\d+$/.test(rest[1] ?? '') && rest[2] && rest[3]) {
   if (!/^[a-z0-9_-]+$/i.test(rest[2])) throw new Error('issue update: invalid task id');
   console.log(JSON.stringify(await github('PATCH', `/repos/${account}/issues/${rest[1]}`, { body: `<!-- open-autonomy:blocked:${rest[2]} -->\n${rest[3]}` })));
-} else if (command === 'issue' && rest[0] === 'open' && rest.length === 5) {
+} else if (command === 'issue' && rest[0] === 'open' && (rest.length === 4 || rest.length === 5)) {
+  // An ask as an issue, once per task: to its assignee, or with none, posted as help-wanted (ADR 0013).
   const [, task, title, body, assignee] = rest;
   if (!/^[a-z0-9_-]+$/i.test(task!)) throw new Error('issue open: invalid task id');
   const marker = `<!-- open-autonomy:blocked:${task} -->`;
@@ -148,7 +148,7 @@ if (command === 'poll' && doorless) {
     existing = issues.find((i) => !i.pull_request && i.body?.includes(marker));
     if (existing || issues.length < 100) break;
   }
-  const issue = existing ?? await github('POST', `/repos/${account}/issues`, { title, body: `${marker}\n${body}`, assignees: [assignee] });
+  const issue = existing ?? await github('POST', `/repos/${account}/issues`, { title, body: `${marker}\n${body}`, ...(assignee ? { assignees: [assignee] } : { labels: ['help wanted'] }) });
   console.log(JSON.stringify(issue));
 } else if (command === 'issue' && rest[0] === 'close' && /^\d+$/.test(rest[1] ?? '')) {
   console.log(JSON.stringify(await github('PATCH', `/repos/${account}/issues/${rest[1]}`, { state: 'closed' })));
@@ -220,20 +220,6 @@ if (command === 'poll' && doorless) {
   const card = (m: TeamMember) => ({ id: m.id, name: m.name, github: m.github?.login ?? null, discord: m.discord?.name ?? null, availability: m.availability ?? null });
   const none = !found.available.length && !found.later.length;
   console.log(JSON.stringify({ [command === 'who' ? 'role' : 'scope']: rest[0], available: found.available.map(card), later: found.later.map(card), ...(command === 'who' ? { help_wanted: none } : {}) }));
-} else if (command === 'help-wanted' && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rest[0] ?? '') && rest[1] && rest[2]) {
-  // An ask no current member's role covers (ADR 0013), posted where members and users see it, prepared so it costs its
-  // taker one decision. Once per key: a rerun finds the open issue rather than posting a second.
-  const [key, title, file] = rest;
-  if (!existsSync(file!)) throw new Error('help-wanted <key> <title> <body-file>: the body comes from a file');
-  const marker = `<!-- open-autonomy:help-wanted:${key} -->`;
-  let existing: { number: number; html_url: string } | undefined;
-  for (let page = 1; ; page++) {
-    const issues = await github<Array<{ number: number; html_url: string; body?: string; pull_request?: unknown }>>('GET', `/repos/${account}/issues?state=open&per_page=100&page=${page}`);
-    existing = issues.find((i) => !i.pull_request && i.body?.includes(marker));
-    if (existing || issues.length < 100) break;
-  }
-  const issue = existing ?? await github<{ number: number; html_url: string }>('POST', `/repos/${account}/issues`, { title, body: `${marker}\n${readFileSync(file!, 'utf8')}`, labels: ['help wanted'] });
-  console.log(`${existing ? 'already posted' : 'posted'}: #${issue.number} ${issue.html_url}`);
 } else if (command === 'reach' && (!rest[0] || /^[1-9]\d{0,2}$/.test(rest[0]))) {
   // The numbers the scrum reads beside the board (ADR 0013), each from where it is kept. A count no door reaches is
   // reported unavailable with the reason, never estimated.
@@ -248,7 +234,7 @@ if (command === 'poll' && doorless) {
   if (doorless) out.github = unavailable('no GitHub door (no GITHUB_TOKEN)');
   else try {
     const repo = await github<{ stargazers_count: number; forks_count: number; subscribers_count: number }>('GET', `/repos/${account}`);
-    const releases = await pages<{ tag_name: string; published_at: string | null; draft: boolean; assets: Array<{ download_count: number }> }>(`/repos/${account}/releases`);
+    const releases = await pages<{ tag_name: string; published_at: string | null; draft: boolean }>(`/repos/${account}/releases`);
     const published = releases.filter((r) => !r.draft);
     const issues = await pages<{ user?: { login: string; type?: string }; created_at: string; pull_request?: unknown }>(`/repos/${account}/issues?state=all&since=${since}`);
     const people = new Set<string>();
@@ -261,7 +247,6 @@ if (command === 'poll' && doorless) {
     out.github = {
       stars: repo.stargazers_count, forks: repo.forks_count, watchers: repo.subscribers_count,
       releases: published.length, latest_release: published[0] ? { tag: published[0].tag_name, published_at: published[0].published_at } : null,
-      release_downloads: published.reduce((n, r) => n + r.assets.reduce((m, a) => m + a.download_count, 0), 0),
       // everyone outside the team who opened or replied in the window; whether it was their first time is not read
       outside_authors_in_window: [...people].sort(),
       traffic: unavailable('GitHub traffic (views, clones, referrers) needs the Administration permission, which the kit does not grant its App'),
@@ -301,8 +286,6 @@ if (command === 'poll' && doorless) {
       for (const c of m.contributes ?? []) n[c] = (n[c] ?? 0) + 1;
       return n;
     }, {}),
-    joined: current.filter((m) => m.joined && m.joined >= since.slice(0, 10)).map((m) => m.id),
-    left: team.members.filter((m) => m.left && m.left >= since.slice(0, 10)).map((m) => m.id),
     roles,
   };
   console.log(JSON.stringify(out, null, 2));
@@ -312,6 +295,6 @@ if (command === 'poll' && doorless) {
   rmSync(pendingFile);
   console.log(`marked: the last look is now (${cursorFile})`);
 } else {
-  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> | holders <scope> | reach [days] | help-wanted <key> <title> <body-file> | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> <owner> | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
+  console.error('usage: community poll [pm] | read <repository-relative-api-path> | who <role> | holders <scope> | reach [days] | comment <issue> <text…> | review <pr> approve|request-changes <full-sha> <text…> | discuss <discussion> <text…> | discussion-new <category-slug> <title> <body-file> | mark [pm] | pull-request <kit-branch> | issue open <task> <title> <body> [assignee] | issue close <number> | issue remind <number> <body> | issue update <number> <task> <body>');
   process.exit(2);
 }
