@@ -7,6 +7,8 @@
 
 ## Released through deploy-v2026.09.25.3 and create-open-autonomy 3.18.4 — 2026-09-25
 
+Release evidence: [`deploy-v2026.09.25.3`](https://github.com/open-autonomy-org/open-autonomy/tree/deploy-v2026.09.25.3) and [`release-v3.18.4`](https://github.com/open-autonomy-org/open-autonomy/tree/release-v3.18.4), both at the merge of [the Release](https://github.com/open-autonomy-org/open-autonomy/pull/788).
+
 - **A scheduled run posts its report, whole** (kit 3.18.4, orchestrator 0.4.2). Each of Hookline's PM runs posted its whole turn to Discord, every narration paragraph and then the report, and Discord's 2000-character limit cut the report off mid-word. A run now delivers its final message, as Hermes does, and a long message goes out in parts.
 - **One release act, and the owner hears once** (this repository). Pull requests into `main` are the agents' own; the one standing Release pull request (`main` → `prod`) is the owner's, and everything landed compounds onto it. PM keeps a single release section; when it is ready, `maintain.ts ship` writes PM's package (scope, verification, risks, the money or auth diffs to read) as the Release's description and mentions the owner there once. The candidate pinning, the human tag-and-approve ask and the owner review of kit upgrades that touch `.github/` are gone; `PRODUCTION.md`, the PM and communication skills, `CONTRIBUTING.md`, the seams and the admin notes say the same.
 - **The reporter says why it cannot read `main`** (kit 3.18.3). A failed fetch of the project's committed documents reported only "Cannot refresh committed project documents"; it now carries git's own error, or that the fetch passed its 20 s limit, as the company agent's reporter needed on a starved box.

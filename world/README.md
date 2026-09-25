@@ -123,56 +123,54 @@ volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/ope
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/scrum.ts intake   # duplicate chat capture and a late GitHub reply, independent desk cursors
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts say /restart                             # preserve native notepad and unfinished planning worktree
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm                         # reconcile the late reply and preserved intake
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/scrum.ts release  # reconcile an existing PM release proposal; no proposal means no request
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/scrum.ts release  # ship keeps the Release open; with no section requesting review it sends nothing
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/scrum.ts archive  # after native review: archived work is not recreated
 ```
 
-Read the resulting records between beats; a cron exit alone is no proof. `release` leaves human approval
-pending and sends only to the twin. No production approval, release or deployment is performed. A needed
+Read the resulting records between beats; a cron exit alone is no proof. `release` sends nothing to the owner and
+nothing to production. A needed
 model beat outside this script remains an unauthored scenario, not evidence of reasoning quality.
 
 The distillation follow-up uses the same world. After the initial planning PR lands, run another scrum to
 retire that batch. `attach -- bun world/operators/scrum.ts outside` merges the ordinary outside PR and adds a
 routine comment, without a Hermes handoff or shared-document edit. Subsequent PM scrums must discover the
-landed commit, source one Unreleased changelog entry, and retain human release review in roadmap. Repeat
+landed commit, source one Unreleased changelog entry, and keep the release section in roadmap. Repeat
 scrums should add no journal entries or duplicate changes. `inspect` prints both documents and native PM
 notepad state. `checkpoint` shows a stable interrupted batch and refusal of a wrong snapshot ID; `gap`
 retires a batch without acknowledging incomplete sources so the next one repeats their history. `notepad`
 exercises deduplication and the native size limit; acknowledged routine pointers should be pruned without
 entering shared documents. These are manual operator beats, not assertions of unscripted model judgment.
 
-## Target release schedule rehearsal
+## Release rehearsal
 
-Export `REHEARSAL_RELEASE=1 REHEARSAL_IDLE=1` (without REHEARSAL_SCRUM) before bringing todo-cli up. This selects
-`world/model/release-beat.ts` as the scripted PM judgment; all planning PRs, notepad checkpoints, board transitions and
-owner requests still use the running kit and native Hermes. Drive the accumulate → request-review → defer sequence manually:
+The Release as [ADR 0015](../docs/decisions/0015-the-owner-ships-by-merging-to-prod.md) has it: one standing pull
+request from `main` to `prod`, opened and kept by the PM's `maintain.ts ship`, which tells the owner once when PM decides
+it is ready; the owner's approval of it (an `owners` team's), then their merge, is what ships. Export
+`REHEARSAL_RELEASE=1 REHEARSAL_IDLE=1` (without REHEARSAL_SCRUM) before bringing todo-cli up. This selects
+`world/model/release-beat.ts` as the scripted PM judgment; planning PRs, the notepad and `ship` are the running kit's.
+The owner's side goes through the GitHub twin as the world's human.
 
 ```bash
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts ship           # before prod exists: nothing to ship
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts prod           # what setup --with production makes
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts accumulate
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm  # land a sourced target schedule, without asking for release
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm  # after landing: reconcile; main can be ahead with no shipping request
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts prepare
-# Repeat the two PM beats: preparation still requires no human release request.
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm      # push the decision
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm      # after landing: ship opens the Release, tells no one
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts request-review
-# Repeat the PM beats after landing: a ready PM decision produces the version/candidate-specific request.
+# The two PM beats again: the package goes on the Release and the owner is mentioned there, once.
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm      # an unchanged pass: no second mention
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts inspect
 volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts later
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts finish-later # after landing; request/candidate stay fixed
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts invalid-package # mismatched version cannot create/change a request
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts reconcile # restored package keeps the authorized request unchanged
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts defer
-# Repeat PM beats: the changed plan parks the previous request; PM withdraws it in the original conversation.
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts finish-later   # after landing: it joins the same Release
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts app-approve    # the App's approval ships nothing
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts approve
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operators/release.ts merge
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm      # the package predates the merge: refused, nothing sent
 ```
 
-Inspect state between beats; a successful cron return alone is not proof of landing. The `landed` operator command waits up to 30 seconds for the current planning branch to reach main before the next PM beat. `unknown` simulates an
-unreachable live service. `deployed`, after a valid ready plan, changes only the world's live-observation fixture
-to the selected candidate: its shipping hold can release while later main commits remain unreleased. This is
-not a deploy, tag or human approval. `reconcile` updates the native hold; the next PM scrum follows up in
-the human conversation. Repeated PM beats check the task's conversation reference rather than sending a
-fresh request. The target
-window is intentionally separate from these decisions; there is no clock-triggered release mechanism.
-
-A renewed ready decision after deferral starts a new native review card; the withdrawn card stays held, preserving its history and dependencies.
+Inspect between beats: the Release's description and comments, its reviews, and how far `main` is ahead of `prod`; a
+cron exit alone is no proof. `defer` holds the Release back (the section stops requesting review, and `ship` sends
+nothing). The twin's merge stands in for the deploy: nothing deploys, tags or publishes here.
 
 ## Shared team roster rehearsal
 
