@@ -44,6 +44,10 @@ accepted decision records; conflicting directions require a sourced proposal and
 - Verify the feature manually through the World; deployment remains a separate human-reviewed release.
 - Everything the agent can see may be published live. Nothing in its reach may be a secret that matters.
 - **The ledger's `consumed_usd_cents` is the authoritative cost.** Never a client-side estimate.
+- **Everyone on a project's team is a volunteer, the owner included.** Members give their time and run the project's
+  agent on their own machines and subscriptions; those resources are free to the project and never count as its costs.
+  The books count money, and backers' money pays only for what no member donates. Every ask of a person spends donated
+  time: prepare it completely, and never let essential work wait on one person (owner ruling, 2026-09-25).
 - Security-critical paths (admin token, HMAC, the balance hard-stop, the account tree) get the higher bar:
   fail a review you cannot confidently verify. Never rotate `AGENT_PROXY_HMAC_SECRET`: it invalidates every key.
 - Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend on the
