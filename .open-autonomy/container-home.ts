@@ -135,7 +135,9 @@ lines=[]
 for profile in [home]+[p for p in sorted((home/'profiles').glob('*')) if p.is_dir()]:
     cfg=profile/'config.yaml'
     doc=(yaml.safe_load(cfg.read_text()) if cfg.exists() else None) or {}
-    mode=str(((doc.get('approvals') or {}).get('mode')) or 'manual').strip().lower()
+    raw=(doc.get('approvals') or {}).get('mode')
+    # YAML reads a bare off as false, which Hermes takes as off (tools/approval.py _normalize_approval_mode)
+    mode='off' if raw is False else str(raw or 'manual').strip().lower()
     codex=profile/'codex'
     codex.mkdir(parents=True,exist_ok=True)
     f=codex/'config.toml'
