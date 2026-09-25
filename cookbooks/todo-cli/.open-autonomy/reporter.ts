@@ -467,6 +467,9 @@ await sc.start();
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
 const named = (await sc.listProfiles({ harness: 'hermes', homes })).profiles.filter(p => !p.default && p.home);
+// The treasurer's sessions hold the cards it mints, so a home with a treasurer that `publish.private` does not name is
+// refused rather than published: a project's config is its own, and an upgrade does not rewrite it.
+if (named.some(p => p.name === 'treasurer') && !policy.private.includes('treasurer')) throw new Error('publish.private in .open-autonomy/config.yaml must name treasurer: its sessions hold the cards it mints, and they would be published');
 const queries = [{ harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes },
   ...named.map(p => ({ harnesses: ['hermes'], homes: { hermes: `${p.home}/state.db` } }))];
 for (const query of queries) for (const d of (await sc.subscribeSessionIndex(query)).initial) descriptors.set(d.locator.session_id, d);
