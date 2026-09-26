@@ -14,7 +14,7 @@ src/proxy.ts        the model rail: OpenAI and Anthropic wires → the model gat
 src/pricing.ts      reservation prices; settle uses the gateway's reported cost
 src/rails.ts        the card rail (Stripe Issuing) and the partner rail
 src/stream.ts       the development stream's intake (CloudEvents) and its live channels (SSE)
-src/site.tsx        the project page; `configurePage` takes an app's brand, navigation and styles, `ProjectSlots` its panels
+src/site.tsx        the project page; `configurePage` takes an app's brand, its mark (a logo URL), navigation and styles, `ProjectSlots` its panels
 src/stream-view.tsx the timeline's views (board, list, timeline, releases), the session and item pages, the Setup pane
 src/widgets.ts      runway, now, timeline and activity SVGs for a README
 src/sync.ts         the docs sync: a project's page is its repository's mirror

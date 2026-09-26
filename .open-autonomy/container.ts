@@ -1,6 +1,6 @@
 // Container startup for the existing start.ts entrypoint. The valve and reporter
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
-// another harness, Supercode's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
+// another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -133,7 +133,7 @@ export async function startContainer(options: {
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    // the orchestrator and Supercode are the image's own (its .open-autonomy, installed for Linux)
+    // the orchestrator and Volter Harness are the image's own (its .open-autonomy, installed for Linux)
     const kitDir = '/opt/agent/.open-autonomy';
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })

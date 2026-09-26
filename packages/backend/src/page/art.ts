@@ -136,4 +136,3 @@ export const lattice = (seed: string, _w = SIZE, _h = SIZE, fills = true): strin
 export const rings = (seed: string): string => svgOf(shapesOf(seed, 'rings'));
 
 /** The mark: two squares meeting at a corner. */
-export const MARK_SVG = '<svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="16" y="0" width="18" height="18" fill="currentColor"/><rect x="0" y="16" width="16" height="18" fill="currentColor"/></svg>';
