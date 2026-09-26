@@ -10,7 +10,7 @@ import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.
 import { syncAllStale, syncProfile } from './sync.js';
 import { redactDeep } from './redact.js';
 import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
-import { LOGO_SVG } from './ui.js';
+import { pageConfig } from './page/brand.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
 import { standing, today } from '@open-autonomy/sdk/statements';
 
@@ -99,7 +99,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const ok = store === 'ok';
     return json({ ok, store, ms: Date.now() - at, commit: env.DEPLOY_COMMIT ? env.DEPLOY_COMMIT.slice(0, 7) : null }, { status: ok ? 200 : 503 });
   }
-  if (path === '/favicon.svg') return new Response(LOGO_SVG, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=86400' } });
+  if (path === '/favicon.svg') return new Response(null, { status: 302, headers: { location: pageConfig().logo, 'cache-control': 'max-age=86400' } });
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
   const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env) };
   const answered = await app.route?.(req, env, ctx, tools);

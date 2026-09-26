@@ -1,4 +1,4 @@
-// Publication policy and delivery only. Supercode owns native reconstruction and lifecycle.
+// Publication policy and delivery only. Volter Harness owns native reconstruction and lifecycle.
 import { createHash } from 'node:crypto';
 import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter-ai-dev/supercode-harness-sdk';
 import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
@@ -18,7 +18,7 @@ export const publishes = (p: PublicationPolicy, d: SessionDescriptor, kind: 'run
 
 const content = (m: NormalizedMessage): string => typeof m.content === 'string' ? m.content : (m.content ?? []).map(p => typeof p === 'string' ? p : (p as { text?: string })?.text ?? '').join('');
 export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {
-  // Supercode stamps stored Hermes rows with their native ID. Its reconstructed
+  // Volter Harness stamps stored Hermes rows with their native ID. Its reconstructed
   // missing-tool placeholders have no native row: never publish them as evidence.
   if (harness === 'hermes' && !m.metadata.hermes_message_id) return [];
   const text = content(m), ts = m.metadata.timestamp ?? m.metadata.ts;

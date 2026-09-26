@@ -1,4 +1,4 @@
-// The dashboard's data, and the SDK's records projected into Supercode's UI models: a session is a chat row and
+// The dashboard's data, and the SDK's records projected into Volter Harness's UI models: a session is a chat row and
 // a run, its turns a transcript, the roadmap a workflow board, the schedule a job list, the owner's control a
 // job's pause. Nothing is invented: a field the records do not carry stays empty, and a control the viewer may
 // not use is absent.
@@ -16,6 +16,7 @@ import type { JobModel, RunModel, TaskAttempt, WorkflowBoardModel, WorkflowTask 
 export type DashPage = 'overview' | 'sessions' | 'board' | 'books' | 'agent' | 'team' | 'statements';
 export interface DashData {
   brand: string;
+  logo: string;
   viewer: Role;
   visibility: Visibility;
   v: ProjectView;
