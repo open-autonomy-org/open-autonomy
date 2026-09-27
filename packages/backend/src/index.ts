@@ -5,7 +5,7 @@
 // and a private deployment mount the same backend.
 export { worker, route, give, isAdmin, fundingAccount, type App, type RouteTools } from './routes.ts';
 export { LimitLedger, LedgerClient, type LedgerCore, type LedgerOp, type Account, type AccountProfile, type DirectoryEntry, type Envelope, type EnvelopePurpose, type Flow, type FunderView, type FundingSnapshot, type ItemView, type LedgerState, type Moderation, type ProjectView, type RoadmapRevision, type SessionRecord, type SessionSummary, type Sponsor } from './ledger.ts';
-export { configurePage, pageConfig } from './page/brand.ts';
+export { OPEN_AUTONOMY_LOGO, configurePage, pageConfig } from './page/brand.ts';
 export { renderMessage } from './page/message.tsx';
 export { document, headMeta, type PageMeta } from './page/document.ts';
 export { updatesOf, atomFeed, type Update } from './page/updates.ts';
@@ -13,7 +13,7 @@ export { TopBar, Foot, at, accountAt, nameOf, ownerOf, Cover, safeUrl, purposeSe
 export { T, CSS, FONTS } from './page/theme.ts';
 export { PRESETS, sees, visibilityOf, type Role, type Visibility, type DirectorySlots, type AccountSlots } from './page/model.ts';
 export { LOGIN, REPO, RESERVED, type LandingBase, type PageApp, type PageTools } from './page/serve.tsx';
-export { Icon, LOGO_SVG, fmtAgo, mdToSafeHtml, mdInlineToSafeHtml, render, usd, usd0 } from './ui.tsx';
+export { Icon, fmtAgo, mdToSafeHtml, mdInlineToSafeHtml, render, usd, usd0 } from './ui.tsx';
 export { error, html, json, methodNotAllowed, parseJson, base64url, fromBase64url, hmac, constantTimeEqual } from './http.ts';
 export { authedClaims, signKey } from './keys.ts';
 export { readTeamFile, readTeamEdit, proposeTeamEdit, validTeamAccount, type TeamFile, type TeamEdit } from './team.ts';

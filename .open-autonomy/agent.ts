@@ -1,5 +1,5 @@
 // The project's agent setup (docs/decisions/0007): `.open-autonomy/agent.json` declares each profile's
-// Inference, jobs and Hermes-only settings; Supercode's applier renders them into the Hermes home before
+// Inference, jobs and Hermes-only settings; Volter Harness's applier renders them into the Hermes home before
 // the gateway starts, through Hermes's own functions, owning each record by its Hermes id against a base
 // kept beside the home. Content (the persona, skills, plugins, scripts) is copied from hermes/ as before.
 //
@@ -9,7 +9,7 @@
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
 //   agentHarness(setup)         the harness the owner picks: `hermes` (the default) runs itself; any other runs as
-//                               Supercode's orchestrator's worker on the same home (ADR 0007, as amended)
+//                               Volter Harness's orchestrator's worker on the same home (ADR 0007, as amended)
 //   renderWorkerForms(from, to) that target's content: the persona and skills in the workers' forms
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
@@ -40,7 +40,7 @@ export function agentHarness(setup: Setup | null): string {
 
 /**
  * The persona and skills of hermes/ (at `from`) in the workers' forms, into the home at `to` and each of its
- * profiles (docs/plans/hermes-compat.md in Supercode, row 15): `SOUL.md` as `AGENTS.md`, with `SOUL.md` a link to
+ * profiles (docs/plans/hermes-compat.md in Volter Harness, row 15): `SOUL.md` as `AGENTS.md`, with `SOUL.md` a link to
  * it; each skill, flat or under a category, as `.agents/skills/<name>/`, its copy under `skills/` removed. The kit's
  * rendering is mirrored: a skill it rendered last time and the checkout no longer has leaves (`.agents/skills/
  * .open-autonomy-rendered` names them). What the agent wrote itself stays; the orchestrator adopts it at load.

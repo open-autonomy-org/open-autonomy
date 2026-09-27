@@ -1,3 +1,5 @@
+<p align="center"><img src="https://brand.volter.ai/logo/open-autonomy/svg?size=96" alt="Open Autonomy"></p>
+
 # Open Autonomy
 
 **Open-source projects that build themselves, backed by the people who want them to exist.**

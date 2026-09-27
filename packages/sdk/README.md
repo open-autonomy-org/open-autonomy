@@ -7,7 +7,7 @@ agent comes through this wire and nothing through the platform reading a harness
 can be a project: the Hermes kit and the file roadmap are starters, not the shape. Everything
 here is one documented HTTP wire, shown raw below, so any language can do the same without this package.
 The Hermes kit vendors it into a generated repository under `.open-autonomy/sdk/`; the kit's own host tools (the
-valve that holds the key, the credential handoff, the Codex connection, the Supercode adapter) live beside it and are
+valve that holds the key, the credential handoff, the Codex connection, the Volter Harness adapter) live beside it and are
 documented in the kit's README.
 
 ```ts
@@ -130,7 +130,7 @@ the same way: `{ ok, status, error? }`, the platform's error code when refused, 
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
-The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Supercode's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
+The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Volter Harness's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
 
 Public reads, no key:
 

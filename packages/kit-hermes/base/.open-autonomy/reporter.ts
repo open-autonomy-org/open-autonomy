@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Supercode SDK in, Open Autonomy SDK out. Native state belongs to Supercode;
+// Volter Harness SDK in, Open Autonomy SDK out. Native state belongs to Volter Harness;
 // publication policy, repository documents and acknowledged delivery belong here.
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -129,7 +129,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
   finally { watching.delete(key); }
 }
 // A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
-// from Supercode, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
+// from Volter Harness, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
 // until it ends, so trying every tick would reload it every ten seconds for as long as it runs.
 const retryAt = new Map<string, number>();
 async function sessions(): Promise<void> {
@@ -157,7 +157,7 @@ async function sessions(): Promise<void> {
 }
 
 // The timeline, published through the SDK as one document in one language: the past from CHANGELOG.md, the
-// present from the board (through supercode's workflow layer) with the sessions serving it, the future from
+// present from the board (through Volter Harness's workflow layer) with the sessions serving it, the future from
 // ROADMAP.md. Unifying the three is this reporter's job; the platform reads no file and knows no board.
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
@@ -465,7 +465,7 @@ sc.on('sessionIndexEvent', ev => {
   }
   requestTick();
 });
-sc.on('exit', code => { if (!quitting) { log(`Supercode reader exited (${code})`); process.exit(1); } });
+sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); process.exit(1); } });
 await sc.start();
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.

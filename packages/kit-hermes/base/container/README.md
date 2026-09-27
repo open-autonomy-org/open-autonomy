@@ -4,7 +4,7 @@ A real installation runs in the kit's container mode: World owns one executor, a
 and its tools on two volumes that outlive it, the agent's home and its checkout. The host runs
 `.open-autonomy/start.ts --container` beside it: the credential valves, the SDK reporter and the gateway
 supervision, as World's foreground command. No host credential directory or Docker socket is mounted into the
-executor; Supercode reads native state inside it over its SDK transport, and the reporter publishes through the
+executor; Volter Harness reads native state inside it over its SDK transport, and the reporter publishes through the
 Open Autonomy SDK. Bare `start.ts` is for development and twin rehearsals; it is not isolation.
 
 `create-open-autonomy runtime` writes this shape from a landed checkout, so no installation hand-builds it:

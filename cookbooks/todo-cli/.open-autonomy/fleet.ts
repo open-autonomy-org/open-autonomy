@@ -116,7 +116,7 @@ export async function startFleet(options: { definition: string; port: number; se
       const setup = parseAgent(prepared.agent, `${p.account}:.open-autonomy/agent.json`);
       // a fleet is one Hermes gateway in the executor; a project that picks another harness runs on the orchestrator,
       // on its own, bare or in its own executor (ADR 0009, as amended)
-      if (agentHarness(setup) !== 'hermes') throw new Error(`${p.account} picks ${agentHarness(setup)}, which runs on Supercode's orchestrator; a fleet runs Hermes only, so start it on its own with start.ts, bare or --container`);
+      if (agentHarness(setup) !== 'hermes') throw new Error(`${p.account} picks ${agentHarness(setup)}, which runs on Volter Harness's orchestrator; a fleet runs Hermes only, so start it on its own with start.ts, bare or --container`);
       agents.set(p.name, setup);
       for (const profile of Object.keys(setup.profiles).filter((n) => n !== 'default')) {
         const flat = `${p.name}-${profile}`;
@@ -125,7 +125,7 @@ export async function startFleet(options: { definition: string; port: number; se
         composed.add(flat);
         // Its content (persona, skills) from the project's own nested profile, moved into the flat home the gateway
         // serves, and the nested name left as a link to it: the project's reporter, which watches the project's home,
-        // finds this profile's own state.db through the link (Supercode reads every profile's store), and each later
+        // finds this profile's own state.db through the link (Volter Harness reads every profile's store), and each later
         // sync of hermes/ writes through it. A link already in place is kept.
         const script = 'if [ -L "$1" ] && [ -e "$1" ]; then exit 0; fi; mkdir -p "$2" && { [ -L "$1" ] || cp -a "$1/." "$2/"; } && rm -rf "$1" && ln -s "../../$3" "$1"';
         const copy = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'sh', '-c', script, 'compose', `${p.home}/profiles/${profile}`, profileHome(p, profile), flat], stdout: 'pipe', stderr: 'pipe', timeout: 30_000 });

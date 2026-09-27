@@ -18,7 +18,7 @@ the dashboard, shown only to a viewer the owner admits there. It is the platform
 landing page.
 
 **The dashboard** (`Core/Dashboard`, `packages/backend/src/dash/`) is the work as the team reads it, built from
-Supercode's UI kit (`@volter-ai-dev/supercode-ui`): the kit's session inventory and conversation carry the sessions
+Volter Harness's UI kit (`@volter-ai-dev/supercode-ui`): the kit's session inventory and conversation carry the sessions
 and a transcript, its workflow board carries the roadmap, its job details, runs and pause carry the schedule and
 the owner's one control; `model.ts` projects the SDK's records into the kit's models, `app.tsx` is the Preact app
 around them (the rail, the facts strip, the money, the roster) in the kit's own tokens, light and dark. The worker

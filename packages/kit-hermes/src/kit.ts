@@ -63,7 +63,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK (the interface: the client, the timeline codec, the drivers, the roster model) is vendored
 // into the generated repository under .open-autonomy/sdk, kit-owned, so the reporter and the key tool run from a
 // bare clone with no package to publish or install. The host tools beside it (the valve, the credential handoff,
-// the Codex connection, the Supercode adapter) are the kit's own files.
+// the Codex connection, the Volter Harness adapter) are the kit's own files.
 // A generated project reads the platform through the SDK this kit vendors into it. The published kit pins that
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as

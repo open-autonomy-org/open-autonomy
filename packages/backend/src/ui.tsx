@@ -15,8 +15,6 @@ export function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   return <svg class="oi" viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" style="display:inline-block;vertical-align:-2px;fill:currentColor"><path d={PATHS[name]} /></svg>;
 }
 
-// Brand mark: two squares meeting at a corner, in ink; also the favicon.
-export const LOGO_SVG = '<svg viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="0" width="18" height="18" fill="#161a24"/><rect x="0" y="16" width="16" height="18" fill="#161a24"/></svg>';
 
 export const esc = (s: string): string => String(s).replace(/[<>&'"]/g, (c) => (c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : c === "'" ? '&#39;' : '&quot;'));
 // Money reads at the precision it has: cents under a dollar (a flash-class run costs a fraction of one),

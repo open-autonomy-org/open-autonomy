@@ -63,7 +63,7 @@ LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent's content: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile's persona: the one that pays), kanban.seed.json (historical migration input),
                      scripts/community-monitor.sh (the community desk's monitor source: every five minutes it reads when the newest issue or discussion last changed, and the agent wakes only when that changed)
-.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Supercode's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — the one Release pull request the owner approves and merges into prod): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
+.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Volter Harness's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — the one Release pull request the owner approves and merges into prod): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
                      sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
 .github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
@@ -154,17 +154,17 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
   receives a GitHub App manifest callback instead; `capture` transfers one field from a page in the existing
   normal browser straight to the receiver. The command prints an address or a receipt, never the secret. Destinations
   are outside every Git checkout; `checkCredentialDirectory` is shared with `mint-key.ts` and the kit's setup.
-- **The Supercode adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
-  reporter uses to read native Hermes through Supercode's harness SDK and publish through the Open Autonomy SDK.
+- **The Volter Harness adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
+  reporter uses to read native Hermes through Volter Harness's harness SDK and publish through the Open Autonomy SDK.
 
-The reporter is an SDK-to-SDK publisher. Supercode supplies session discovery and paginated transcripts,
+The reporter is an SDK-to-SDK publisher. Volter Harness supplies session discovery and paginated transcripts,
 native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's
 SDK batches and acknowledges delivery. Silence never ends a session, and a task's lane never invents
 a review verdict. The reporter reads repository-owned documents from committed main and applies the
 YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files.
 
 Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
-history-change events reconcile against Supercode and the destination's receipt. An upload failure stays
+history-change events reconcile against Volter Harness and the destination's receipt. An upload failure stays
 retryable. If already-published history changes, the append-only destination cannot replace it: reporting
 stops for that session with an explicit reconciliation error rather than skipping or duplicating it.
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
@@ -241,7 +241,7 @@ hosting. The setup agent installs the local image and trusted host service, then
 project connections and development loop. Follow the
 generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks. The reporter
 can run on the host with `--container <id> --project <container checkout> --state-file <host cursor file>`
-and `HERMES_HOME=<container home>`. It reads through the container's native Supercode process; the host
+and `HERMES_HOME=<container home>`. It reads through the container's native Volter Harness process; the host
 filters and publishes the stream, without copying SQLite files or mounting host credentials into the agent.
 
 Automated tests are banned: their accumulated code and maintenance become cruft that can prevent

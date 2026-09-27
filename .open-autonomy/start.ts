@@ -27,7 +27,7 @@
 //               agent on one host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
-//               another harness (`"harness": "codex"`), Supercode's orchestrator on the same home, running that
+//               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
@@ -230,7 +230,7 @@ const committed = committedFrom ?? resolve(project, 'hermes');
 const harness = agentHarness(agentSetup);
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
 if (harness === 'claude-code' && Object.values(agentSetup?.profiles ?? {}).some((p) => { const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json picks Claude Code; each profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
-if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Supercode's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -313,7 +313,7 @@ if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
 spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: hostEnvironment });
 
-// 5. The reporter and the gateway, as the agent. The reporter's own dependencies (supercode, beside it in
+// 5. The reporter and the gateway, as the agent. The reporter's own dependencies (Volter Harness, beside it in
 //    .open-autonomy/package.json) are installed when that file is not the one the last complete install satisfied:
 //    a stamp beside them names it, and a failed install leaves none, so node_modules alone is no evidence. (The
 //    lockfile is not the identity: a clone may carry none.) An install that is already complete
@@ -334,7 +334,7 @@ const env = agentEnv();
   }
 }
 // 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
-//    Hermes's own functions (Supercode's applier), owned by their Hermes ids against a base beside the home. A setup
+//    Hermes's own functions (Volter Harness's applier), owned by their Hermes ids against a base beside the home. A setup
 //    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
 try {
   const lines = await applyAgent({

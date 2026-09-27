@@ -58,7 +58,7 @@ accepted decision records; conflicting directions require a sourced proposal and
 - Nothing here develops against a real API: the cookbook and the platform run only in the world. Two agents spend on the
   real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform key) and
   Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, its model on the owner's Codex
-  subscription through a Codex worker on Supercode's orchestrator; its narration and rails on its own key, grant and
+  subscription through a Codex worker on Volter Harness's orchestrator; its narration and rails on its own key, grant and
   bounds), each a launchd agent in the user's LaunchAgents. Ours, org.open-autonomy.agent, runs bare: the kit's start
   script from the agent's own checkout under the open-autonomy state directory in .local/state, its home beside it, the
   pinned Hermes installed once under that state directory. Hookline's, org.open-autonomy.hookline, runs in container

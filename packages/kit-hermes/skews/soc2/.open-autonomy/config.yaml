@@ -20,7 +20,7 @@ publish:
   chats: false      # conversations on a channel (Discord, a terminal)
   private: [treasurer]   # session IDs, job IDs or names, or profiles (the treasurer, a team agent) never sent
 
-# Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
+# Where sessions come from: the Hermes home the reporter reads through Volter Harness (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
 state_file: reporter-state.json
 

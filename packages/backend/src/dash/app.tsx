@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-// The dashboard: the work as the team reads it, built from Supercode's UI kit. The kit's own components carry the
+// The dashboard: the work as the team reads it, built from Volter Harness's UI kit. The kit's own components carry the
 // sessions (the chat inventory and the conversation), the roadmap (the workflow board), the schedule (jobs and
 // their runs, the owner's pause on them); the shell around them, the money and the roster are this page's. The
 // same tree renders on the worker and hydrates in the browser, where a live session's turns arrive as they land.
@@ -9,7 +9,7 @@ import { Conversation, HarnessLogo, SessionList, type MessengerLabels, type Mess
 import { JobActions, JobControls, JobDetails, RunList, WorkflowBoard, WorkflowList, type JobModel, type PauseResult, type JobControlResult } from '@volter-ai-dev/supercode-ui/preact/supervision';
 import { tenseOf } from '@open-autonomy/sdk/roadmap';
 import type { Envelope, Flow, SessionSummary } from '../ledger.js';
-import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd, LOGO_SVG } from '../ui.js';
+import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from '../ui.js';
 import { sees, type Role } from '../page/model.js';
 import { standing as claimsOf, today as dayOf, type StatementTone } from '@open-autonomy/sdk/statements';
 import type { TeamMember } from '@open-autonomy/sdk/team';
@@ -104,7 +104,7 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
   return (
     <div class="oa-dash">
       <aside class="oa-rail">
-        <a class="oa-brand" href="/" dangerouslySetInnerHTML={{ __html: `${LOGO_SVG}<span>${d.brand}</span>` }} />
+        <a class="oa-brand" href="/" dangerouslySetInnerHTML={{ __html: `<img src="${d.logo.replace(/"/g, '&quot;')}" alt=""><span>${d.brand}</span>` }} />
         <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
         <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
         {d.statements?.length ? <div class="oa-stated"><h3>Stated by the owner</h3><nav>{d.statements.map((st) => { const n = claimsOf(st, dayOf(d.now)).standing.length;
@@ -571,7 +571,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #161a24;outline-offset:-2
 .oa-rail{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:12px;padding:12px 8px;border-right:1px solid var(--oa-rule)}
 .oa-brand{display:flex;align-items:center;gap:9px;padding:4px 6px 6px;font:400 12.5px/1 var(--oa-display);letter-spacing:-.01em;color:#000;white-space:nowrap}
 .oa-brand:hover{text-decoration:none}
-.oa-brand svg{width:16px;height:16px;flex:none}
+.oa-brand svg,.oa-brand img{width:16px;height:16px;flex:none}
 .oa-proj{display:flex;align-items:center;gap:9px;padding:8px 6px;border-top:1px solid #dcddda;border-bottom:1px solid #dcddda}
 .oa-proj .n{font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
 .oa-proj .o{color:#656a72;font-size:11px}

@@ -34,7 +34,7 @@ ul,ol{padding:0;list-style:none}
 .topbar .in{max-width:calc(var(--oa-wide) + 2 * var(--oa-gutter));margin:0 auto;padding:0 var(--oa-gutter);height:64px;display:flex;align-items:center;gap:28px}
 .brand{display:flex;align-items:center;gap:12px;font:400 17px/1 ${DISPLAY};letter-spacing:-.01em;white-space:nowrap;color:#000}
 .brand:hover{text-decoration:none}
-.brand svg{width:20px;height:20px}
+.brand svg,.brand img{width:20px;height:20px}
 .topbar nav{display:flex;align-items:center;gap:0;color:${T.body};font-size:13.5px;white-space:nowrap}
 .topbar nav a{padding:0 16px;border-left:1px solid ${T.line}}
 .topbar nav a:first-child{border-left:0;padding-left:0}
