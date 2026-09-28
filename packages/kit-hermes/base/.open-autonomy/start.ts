@@ -351,7 +351,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
-const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter-ai-dev', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
