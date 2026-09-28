@@ -111,8 +111,8 @@ export async function applyAgent(options: {
   /** Bare mode's privilege drop (setpriv): what Hermes writes into the home stays the agent's. */
   asAgent?: string[];
 }): Promise<string[]> {
-  const applier = await import('@volter-ai-dev/supercode-orchestrator/apply');
-  const doors = await import('@volter-ai-dev/supercode-orchestrator/apply/doors');
+  const applier = await import('@volter/supercode-orchestrator/apply');
+  const doors = await import('@volter/supercode-orchestrator/apply/doors');
   const lines: string[] = [];
   const harness = agentHarness(options.setup);
   for (const [profile, declared] of Object.entries(options.setup.profiles)) {
