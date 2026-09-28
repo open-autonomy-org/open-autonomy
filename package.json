@@ -32,6 +32,6 @@
     "@volter/twin-polar": "0.1.2",
     "@volter/twin-stripe": "0.1.2",
     "@volter/twin-world": "0.1.7",
-    "@volter-ai-dev/supercode-harness-sdk": "^0.3.26"
+    "@volter/supercode-harness-sdk": "^0.3.45"
   }
 }

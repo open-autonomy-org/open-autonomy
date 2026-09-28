@@ -137,7 +137,7 @@ export async function startContainer(options: {
     const kitDir = '/opt/agent/.open-autonomy';
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
-      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter-ai-dev/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
         env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode` } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
     const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;

@@ -1,6 +1,6 @@
 // Publication policy and delivery only. Volter Harness owns native reconstruction and lifecycle.
 import { createHash } from 'node:crypto';
-import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter-ai-dev/supercode-harness-sdk';
+import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
 
 export interface PublicationPolicy { runs: boolean; chats: boolean; private: string[] }
