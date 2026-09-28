@@ -34,7 +34,9 @@ const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd)
 const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
 const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: { ...process.env, HERMES_HOME: home } as Record<string, string> });
-const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
+// Supercode's Claude Code home is the projects directory (its registry is the sibling `sessions/`); naming the whole
+// config directory has its session index watch every file Claude writes there and re-walk the home on each.
+const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.CLAUDE_CONFIG_DIR ?? resolve(process.env.HOME ?? '', '.claude'), 'projects') } : {}) };
 // The owner's pause and resume reach the runtime that holds the schedule: Hermes's own file under Hermes; under the
 // orchestrator (another harness picked), its running daemon's door, which a write to the file would be lost under.
 const onOrchestrator = (process.env.OPEN_AUTONOMY_HARNESS ?? 'hermes') !== 'hermes';
