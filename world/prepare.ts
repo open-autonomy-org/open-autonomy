@@ -15,7 +15,7 @@ const cli = (vendor: string): string => {
   const checkout = process.env.TWINS_ROOT;
   const path = process.env[`WORLD_${vendor.toUpperCase().replaceAll('-', '_')}_CLI`] ?? (checkout
     ? resolve(checkout, vendor === 'world' ? 'packages/world-runtime/src/cli.ts' : `packages/twin/${vendor}/src/cli.ts`)
-    : Bun.resolveSync(`@volter/${vendor === 'world' ? 'twin-world' : `twin-${vendor}`}/src/cli.ts`, TREE));
+    : Bun.resolveSync(`@volter/${vendor === 'world' ? 'world-runtime' : `twin-${vendor}`}/src/cli.ts`, TREE));
   if (!existsSync(path)) throw new Error(`Missing ${vendor} CLI: ${path}`);
   return resolve(path);
 };
@@ -37,15 +37,15 @@ writeFileSync(handlers, generated.stdout);
 const config = JSON.parse(readFileSync(resolve(SCENARIO, 'world.config.json'), 'utf8')
   .replace(/\$\{TWIN:([a-z-]+)\}/g, (_, name: string) => cli(name))
   .replaceAll('${SCENARIO_DIR}', SCENARIO).replaceAll('${TREE}', TREE).replaceAll('${HANDLERS}', handlers));
-config.id = NAME;
-Object.assign(config.env, { OA_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, WORLD_HERMES_BIN: resolve(hermes),
+config.metadata.id = NAME;
+Object.assign(config.runtime.environment.values, { OA_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, WORLD_HERMES_BIN: resolve(hermes),
   OA_SCENARIO_DIR: SCENARIO, OA_PROJECT: ROOT, OA_AGENT_PROJECT: resolve(STACK, 'project'),
   OA_AGENT_HOME: home, OA_SECRETS: resolve(DATA, 'secrets'), OA_ACCOUNT: 'cookbook/todo-cli',
   HOME: home, HERMES_HOME: home, PATH: `${resolve(hermes)}:${process.env.PATH}`, OPEN_AUTONOMY_MODEL: MODEL,
   // Freeze scenario choices into the config so attach/ready see the same opening situation.
   ...Object.fromEntries(['REHEARSAL_IDLE', 'REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE', 'REHEARSAL_OWNER_DOOR'].map(key => [key, process.env[key] ?? (key === 'REHEARSAL_OWNER_DOOR' ? 'discord' : '')])) });
-config.services.find((service: { id: string }) => service.id === 'agent').port = valve;
-for (const service of config.services) service.cwd = TREE;
+config.services.find((service: { id: string }) => service.id === 'agent').endpoint.port = valve;
+for (const service of config.services) service.execution.cwd = TREE;
 const path = resolve(dir, 'world.config.json');
 writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
