@@ -31,6 +31,8 @@ export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {
   return m.role === 'user' ? [{ ...stamp, role: 'user', ...(text ? { text: text.slice(0, 2000) } : {}) }] : [];
 }
 // Match the published wire fields, independent of object-key order or server seq metadata.
+/** A live source rewrote its history: the reporter continues it under a new key. */
+export class SourceRewritten extends Error { constructor(readonly key: string) { super(`${key}: source history rewritten; continuing under a new key`); } }
 const canonical = (t: Turn): string => JSON.stringify([t.role, t.ts, t.text, t.tool, t.args, t.result]);
 // The loader answers a tool call that has no result yet with a stand-in, so a replayed transcript stays valid. In a
 // live session that is a call still running: its real result comes later, in the same place.
@@ -57,7 +59,8 @@ export class TranscriptPublisher {
     return work;
   }
   private async reconcile(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
-    const key = this.descriptor.locator.session_id;
+    // The platform's key: the session's own id, or a continuation of it (`<id>~<n>`) once its source was rewritten.
+    const key = this.start.key;
     const turns: Turn[] = [];
     let offset = 0, report: string | undefined, nativeCompletion: RecordedCompletion | undefined;
     for (;;) {
@@ -90,11 +93,18 @@ export class TranscriptPublisher {
       // rewritten (Hermes compresses a long run) and nothing may be rewritten here. What the platform holds is the
       // record. Settle it at the checkpoint instead of reloading the whole session from the source every minute for
       // the rest of the install's life, which is what retrying a permanent divergence amounts to.
-      if (remote && remote.status !== 'live') {
+      if (remote && remote.status !== 'live' && ended) {
         const settled: PublicationCheckpoint = { seq, digest: digest(turns.slice(0, Math.min(seq, turns.length))), endedAt: ended?.endedAt ?? remote.ended_at ?? new Date().toISOString() };
         this.checkpoint = settled;
         this.save?.(settled);
         return settled;
+      }
+      // A live source whose history was rewritten (a harness compacting a long session keeps only what follows the
+      // boundary) goes on as a continuation: its published record ends at its last turn, and the source is published
+      // again from its first turn under the next key.
+      if (!ended && remote) {
+        if (remote.status === 'live') await new Session(this.oa, key, seq).end({ endedAt: remote.turns.at(-1)?.ts ?? new Date().toISOString(), item: this.start.item });
+        throw new SourceRewritten(key);
       }
       if (!ended || !remote) throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
       await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });
