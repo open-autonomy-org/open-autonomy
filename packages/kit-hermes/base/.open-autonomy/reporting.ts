@@ -32,6 +32,11 @@ export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {
 }
 // Match the published wire fields, independent of object-key order or server seq metadata.
 const canonical = (t: Turn): string => JSON.stringify([t.role, t.ts, t.text, t.tool, t.args, t.result]);
+// The loader answers a tool call that has no result yet with a stand-in, so a replayed transcript stays valid. In a
+// live session that is a call still running: its real result comes later, in the same place.
+const standIn = (t: Turn | undefined): boolean => t?.role === 'tool' && typeof t.result === 'string' && t.result.startsWith('[no tool result recorded');
+// A published stand-in and the result that replaced it are the same turn.
+const same = (published: Turn, source: Turn | undefined): boolean => !!source && (canonical(published) === canonical(source) || (standIn(published) && source.role === 'tool'));
 const digest = (turns: Turn[]): string => createHash('sha256').update(turns.map(canonical).join('\n')).digest('hex');
 export interface PublicationCheckpoint { seq: number; digest: string; endedAt?: string }
 export type RecordedCompletion = Pick<SessionEnd, 'endedAt' | 'outcome'> & { endedAt: string };
@@ -72,12 +77,14 @@ export class TranscriptPublisher {
     const remote = await this.oa.session(this.account, key);
     const seq = remote?.next_seq ?? 0;
     const ended = completion ?? nativeCompletion;
+    // A live session's calls still running are published once they have their results, never as stand-ins.
+    if (!ended) while (standIn(turns[turns.length - 1])) turns.pop();
     // The destination is append-only. When what it holds no longer matches what the source says (an older reporter,
     // a lost acknowledgement), no turn is rewritten. But a session that has ended is ended: its end is published
     // over the transcript as it stands, so the books never call a finished session live.
     const diverged = (!this.checkpoint && seq > (remote?.turns.length ?? 0))
       || seq > turns.length || (this.checkpoint && this.checkpoint.seq <= seq && digest(turns.slice(0, this.checkpoint.seq)) !== this.checkpoint.digest)
-      || (remote?.turns ?? []).some((t) => t.seq === undefined || !turns[t.seq] || canonical(t) !== canonical(turns[t.seq]));
+      || (remote?.turns ?? []).some((t) => t.seq === undefined || !same(t, turns[t.seq]));
     if (diverged) {
       // A destination that is no longer live cannot be reconciled and never will be: the source's earlier turns were
       // rewritten (Hermes compresses a long run) and nothing may be rewritten here. What the platform holds is the
