@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy, Session } from './sdk/client.ts';
-import { publicationPolicy, publishes, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
+import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -42,6 +42,10 @@ const scheduler = onOrchestrator ? { harness: 'orchestrator' as const, homes: { 
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
 const saved = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : {};
 const checkpoints: Record<string, PublicationCheckpoint> = saved.version === 2 ? saved.published ?? {} : {};
+// A session whose source was rewritten continues on the platform as `<id>~<n>`: n per native session id.
+const continuations: Record<string, number> = saved.version === 2 ? saved.continuations ?? {} : {};
+const platformKey = (id: string): string => (continuations[id] ? `${id}~${continuations[id]}` : id);
+const nativeId = (key: string): string => key.replace(/~\d+$/, '');
 // The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
 const pausedJobs = new Set<string>(saved.version === 2 && Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
 // The board's review verdicts and handoffs already published as notes on their items: an update is append-only, so a restart must not repeat one.
@@ -50,7 +54,7 @@ const pausedTasks = new Set<string>(saved.version === 2 && Array.isArray(saved.p
 const noted = new Set<string>(saved.version === 2 && Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
 function saveState(): void {
   const temp = `${stateFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, paused_jobs: [...pausedJobs], paused_tasks: [...pausedTasks], noted: [...noted] }) + '\n', { mode: 0o600 });
+  writeFileSync(temp, JSON.stringify({ version: 2, published: checkpoints, continuations, paused_jobs: [...pausedJobs], paused_tasks: [...pausedTasks], noted: [...noted] }) + '\n', { mode: 0o600 });
   renameSync(temp, stateFile);
 }
 
@@ -136,7 +140,8 @@ async function sessions(): Promise<void> {
   for (const [key, d] of descriptors) {
     if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
-    if (checkpoints[key]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
+    const pkey = platformKey(key);
+    if (checkpoints[pkey]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
     try {
@@ -144,15 +149,18 @@ async function sessions(): Promise<void> {
       if (!publisher) {
         const candidates = nativeTasks.filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
         const item = (d.trigger === 'task' || isSeat(d)) && candidates.length === 1 ? candidates[0].id : undefined;
-        publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
-          modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[key], checkpoint => { checkpoints[key] = checkpoint; saveState(); });
+        publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
+          modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
         publishers.set(key, publisher);
       }
       const receipt = await publisher.publish(completion);
       retryAt.delete(key);
       if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
       else void watch(d);
-    } catch (e) { retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`); }
+    } catch (e) {
+      if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); dirty = true; continue; }
+      retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`);
+    }
   }
 }
 
@@ -418,13 +426,35 @@ let busy = false, dirty = false, quitting = false, documentsAt = 0, orphansAt = 
 // would stay live forever: nothing narrates its end. Absent from discovery for five minutes, it ended: the reporter
 // says so at the platform's last turn of it, with no outcome, since none was recorded.
 const missingSince = new Map<string, number>();
+async function nativelyPresent(key: string): Promise<boolean | null> {
+  try {
+    for (const query of queries) {
+      let cursor: string | undefined;
+      do {
+        const page = await sc.discover({ ...query, cursor, limit: 500 });
+        const d = page.sessions.find((x) => x.locator.session_id === key);
+        if (d) { descriptors.set(key, d); return true; }
+        cursor = page.next_cursor ?? undefined;
+      } while (cursor);
+    }
+    return false;
+  } catch { return null; }
+}
 async function orphans(): Promise<void> {
   const { live } = await oa.sessions(cfg.account, 200);
   for (const key of live) {
-    if (descriptors.has(key) || stopped.has(key)) { missingSince.delete(key); continue; }
+    if (platformKey(nativeId(key)) !== key && descriptors.has(nativeId(key))) { // a continued session's earlier record
+      try { const remote = await oa.session(cfg.account, key); if (remote?.status === 'live') await new Session(oa, key, remote.next_seq).end({ endedAt: remote.turns.at(-1)?.ts ?? remote.started_at }); } catch {}
+      continue;
+    }
+    if (descriptors.has(nativeId(key)) || stopped.has(nativeId(key))) { missingSince.delete(key); continue; }
     const since = missingSince.get(key) ?? Date.now();
     missingSince.set(key, since);
     if (Date.now() - since < 5 * 60_000) continue;
+    // The index is a cache, and a native store that fails to load (a config key this reader does not know) empties
+    // it: only a discovery that succeeds and lacks the session says it is gone.
+    const found = await nativelyPresent(nativeId(key));
+    if (found !== false) { if (found) missingSince.delete(key); continue; }
     try {
       const remote = await oa.session(cfg.account, key);
       if (!remote || remote.status !== 'live') { stopped.add(key); continue; }
