@@ -10,13 +10,13 @@
         "@volter/supercode": "^0.5.25",
         "@volter/supercode-harness-sdk": "^0.3.45",
         "@volter/supercode-orchestrator": "^0.4.5",
-        "@volter/twin": "0.1.3",
-        "@volter/twin-discord": "0.1.2",
-        "@volter/twin-github": "0.1.2",
-        "@volter/twin-jira": "0.1.0",
-        "@volter/twin-openai": "0.1.2",
-        "@volter/twin-slack": "0.1.0",
-        "@volter/twin-world": "0.1.7",
+        "@volter/twin-discord": "^2.0.5",
+        "@volter/twin-github": "^2.0.6",
+        "@volter/twin-jira": "^2.0.5",
+        "@volter/twin-openai": "^2.0.5",
+        "@volter/twin-slack": "^2.0.5",
+        "@volter/world-core": "^2.0.6",
+        "@volter/world-runtime": "^2.0.8",
         "chat": "4.39.0",
       },
     },
@@ -41,6 +41,8 @@
     "@discordjs/ws": ["@discordjs/ws@1.2.3", "", { "dependencies": { "@discordjs/collection": "^2.1.0", "@discordjs/rest": "^2.5.1", "@discordjs/util": "^1.1.0", "@sapphire/async-queue": "^1.5.2", "@types/ws": "^8.5.10", "@vladfrangu/async_event_emitter": "^2.2.4", "discord-api-types": "^0.38.1", "tslib": "^2.6.2", "ws": "^8.17.0" } }, "sha512-wPlQDxEmlDg5IxhJPuxXr3Vy9AjYq5xCvFWGJyD7w7Np8ZGu+Mc+97LCoEc/+AYCo2IDpKioiH0/c/mj5ZR9Uw=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.8", "", {}, "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="],
+
+    "@electric-sql/pglite-pgvector": ["@electric-sql/pglite-pgvector@0.0.9", "", { "peerDependencies": { "@electric-sql/pglite": "0.5.8" } }, "sha512-ue4iBW651gDQwBwn97Ekv1lYGPvXa1ymHbRbTCSL0Ib286PRDD1VDOwzwEoekZuO/wctMbTzKzlwdgDwYrqZ8A=="],
 
     "@sapphire/async-queue": ["@sapphire/async-queue@1.5.5", "", {}, "sha512-cvGzxbba6sav2zZkH8GPf2oGk9yYoD5qrNWdu9fRehifgnFZJMV+nuy2nON2roRO4yQQ+v7MK/Pktl/HgfsUXg=="],
 
@@ -78,23 +80,31 @@
 
     "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.4.5", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.41", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-ZpyvKAySxh0kNJfb+oV5KN2wvDHz4ZIQvg261M81hYx5xHPufs+ORyQlWOKBz5lYB9SUFxZc7SKUykQXorAFJw=="],
 
-    "@volter/twin": ["@volter/twin@0.1.3", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-K6cKB2dYxtjC2L/H9quREEV38tlQsrkxZt7kIpDUKJbQ79cL4uz9cP20Bdc1DSpn/vbk3ESNPtWh1/uOdRN8HQ=="],
+    "@volter/twin-discord": ["@volter/twin-discord@2.0.6", "", { "dependencies": { "@volter/world-ui": "0.1.6", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-discord": "dist/src/cli.js" } }, "sha512-8/6Ne2O/7FTNMS4h4tRxqPPWl/ERhOkPim2ZsFNIQTR73fMg8VW4Kwnpdo55OtuBPuMJVVz0i5bQ9lzNFM+HyQ=="],
 
-    "@volter/twin-discord": ["@volter/twin-discord@0.1.2", "", { "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "world-discord": "src/cli.ts" } }, "sha512-1SaaWHcNEUeYCwJ89SedQrpQ7xN7AolztqdsduxqE7yqZ5ukBQG11ZI49qRgol1riLUGy2M3PWmMQ9cItyOdlA=="],
+    "@volter/twin-github": ["@volter/twin-github@2.0.6", "", { "dependencies": { "@volter/world-ui": "0.1.6", "graphql": "16.14.2", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-github": "dist/src/cli.js" } }, "sha512-Q3qYWrOE5Fhrs2JgTUreFp1ybvV8SzfxsUYbYx3W7UIWIIouP88/ICBk8E/TU+pD16QyIPu7hRXHXiZ/HmxGCg=="],
 
-    "@volter/twin-github": ["@volter/twin-github@0.1.2", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "world-github": "src/cli.ts" } }, "sha512-kPIGRI32v6KJMymgmBQwQb/aMbvuT9OTWWCx70twxcTf4Y6QUd+N1GP2q0Lr1QICOTPk4yGwEW86vLFATl553w=="],
+    "@volter/twin-jira": ["@volter/twin-jira@2.0.6", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-jira": "dist/src/cli.js" } }, "sha512-SOQP880J0WClphwZdo6Q9PL+pALEHspwxKfIbs+1LE6Cyf7mOLa4oqP8dxCI6ZwagWXPS2Az7+a+drEpulmZtg=="],
 
-    "@volter/twin-jira": ["@volter/twin-jira@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/twin": "0.1.0" }, "bin": { "world-jira": "src/cli.ts" } }, "sha512-RX8l6dHUk5T7C0p25I5RckWmjxFuJ6CXIDFTpUA2diTxs/A/6Ddrk6bnZD6kfWZ3Oi+fWDICftumcIG1f1xSbw=="],
+    "@volter/twin-mongodb": ["@volter/twin-mongodb@0.1.5", "", { "dependencies": { "bson": "^6.10.4" }, "peerDependencies": { "@volter/world-core": "2.0.5" }, "bin": { "world-mongodb": "dist/src/cli.js" } }, "sha512-+N3GoKX0SdCwqCAiRXkKhg1WKTbvZYcKIbwWD6tTN2OG1YsWWFwBHSAJsaPQY27iGgG+JFn7bQ3oXejVde/dAw=="],
 
-    "@volter/twin-openai": ["@volter/twin-openai@0.1.2", "", { "peerDependencies": { "@volter/twin": "^0.1.2" }, "bin": { "world-openai": "src/cli.ts" } }, "sha512-gmpmQy2/9Iwaziu/ortblmf0xpuS0si+ED27NASEtk8dUKIaNZDXz0p5Q2BmVtvnNg1zMTGH4MT7v7UlQsWkWQ=="],
+    "@volter/twin-openai": ["@volter/twin-openai@2.0.6", "", { "dependencies": { "@volter/world-ui": "0.1.6" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-openai": "dist/src/cli.js" } }, "sha512-TCXKOJwatgyBq6rDDBJtdAfvF9B866vF48v6a9mR+cxljG5k+ONx5UJjqR6wAwsroaCqMqZEQ4Dg6go1kqoiLw=="],
 
-    "@volter/twin-slack": ["@volter/twin-slack@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/twin": "0.1.0" }, "bin": { "world-slack": "src/cli.ts", "world-slack-seed": "src/seed-cli.ts" } }, "sha512-O5YNXQ336jgZkpwQU8b5IWv1csSHj7rOK0md3MMep4HYOxBHB75MkcykvTUlq4B7IYe7b32c12Zc1t7/iNGCkQ=="],
+    "@volter/twin-slack": ["@volter/twin-slack@2.0.6", "", { "dependencies": { "@volter/world-ui": "0.1.6", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-slack": "dist/src/cli.js", "world-slack-seed": "dist/src/seed-cli.js" } }, "sha512-48tiHZDcrKbJPNactTCjeE+eoxu4kZr309s05Bfe2OWXcG+q2kSKEFEQPX75TdEthdGNclgMdEc9sm9O75q1Gw=="],
 
-    "@volter/twin-world": ["@volter/twin-world@0.1.7", "", { "dependencies": { "@electric-sql/pglite": "0.5.8", "pg-gateway": "0.3.0-beta.4" }, "peerDependencies": { "@volter/twin": "^0.1.3" }, "bin": { "volter-world": "src/cli.ts", "volter-world-browser-proxy": "src/browser-proxy-cli.ts", "volter-world-host": "src/host-cli.ts", "volter-world-managed-infra": "src/managed-infra-cli.ts" } }, "sha512-w5AlCQGMX1KevGe8DTNSjH7ApdMbvSPdUjY6S1nUn/1ktuMF+JL9dmVhogw6S69Nh49vAVYWIkJsg1Vp1fX5jw=="],
+    "@volter/world-access": ["@volter/world-access@2.0.1", "", {}, "sha512-epArHjrumxZ4AB0qdBKCjubp/OigWjjRgMUGs97bPNuLgTSgBaMQhC3Aq8z6sqrn6MUc2i39dwPam24mOjn2aw=="],
+
+    "@volter/world-core": ["@volter/world-core@2.0.6", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-TdfC5JZzwMiHxtjPK8eFXeXqa4GxOilqZri++qlQnw76nPmjqLBCJvm8KnlmjOMr2oa3SC6/8Vc3h2EhI7ULuQ=="],
+
+    "@volter/world-runtime": ["@volter/world-runtime@2.0.8", "", { "dependencies": { "@electric-sql/pglite": "0.5.8", "@electric-sql/pglite-pgvector": "0.0.9", "@volter/world-access": "2.0.1", "@volter/world-core": "2.0.5", "pg-gateway": "0.3.0-beta.4", "smol-toml": "^1.8.0" }, "optionalDependencies": { "@volter/twin-mongodb": "0.1.5" }, "peerDependencies": { "@volter/world-console": "2.0.6" }, "optionalPeers": ["@volter/world-console"], "bin": { "volter-world": "dist/src/cli.js", "volter-world-host": "dist/src/host-cli.js", "volter-world-infra": "dist/src/infra-cli.js", "volter-world-browser-proxy": "dist/src/browser-proxy-cli.js" } }, "sha512-UIT3GwPH6jTaIBI7p6Ns757TUzxWmImOibNGIwE8kcZj0uROtH3uwZgbDiIJrlFItTA8m060nA8POhQn6uZ7+g=="],
+
+    "@volter/world-ui": ["@volter/world-ui@0.1.6", "", { "peerDependencies": { "@volter/world-core": "2.0.6", "react": "^19.2.7", "react-dom": "^19.2.7" } }, "sha512-qgFrZ9EUXZRnXHq0cxuRUz23IABau8apIcUkjKNdmMxyG22IJlSHyUBlnUmvyNQHLZDpTCtLY3YI5FH9bgQAdw=="],
 
     "@workflow/serde": ["@workflow/serde@4.1.0-beta.2", "", {}, "sha512-8kkeoQKLDaKXefjV5dbhBj2aErfKp1Mc4pb6tj8144cF+Em5SPbyMbyLCHp+BVrFfFVCBluCtMx+jjvaFVZGww=="],
 
     "bail": ["bail@2.0.2", "", {}, "sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw=="],
+
+    "bson": ["bson@6.10.4", "", {}, "sha512-WIsKqkSC0ABoBJuT1LEX+2HEvNmNKKgnTAyd0fL8qzK4SH2i9NXg+t08YtdZp/V9IZ33cxe3iV4yM0qg8lMQng=="],
 
     "ccount": ["ccount@2.0.1", "", {}, "sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg=="],
 
@@ -121,6 +131,8 @@
     "extend": ["extend@3.0.2", "", {}, "sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g=="],
 
     "fast-deep-equal": ["fast-deep-equal@3.1.3", "", {}, "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="],
+
+    "graphql": ["graphql@16.14.2", "", {}, "sha512-Chq1s4CY7jmh8gO2qvLIJyfCDIN+EHLFW/9iShnp1z8FjBQMoodWP1kDC36VAMXXIvAjj4ARa7ntfAV2BrjsbA=="],
 
     "is-plain-obj": ["is-plain-obj@4.1.0", "", {}, "sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg=="],
 
@@ -230,6 +242,8 @@
 
     "scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
 
+    "smol-toml": ["smol-toml@1.9.0", "", {}, "sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ=="],
+
     "trough": ["trough@2.2.0", "", {}, "sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw=="],
 
     "ts-mixer": ["ts-mixer@6.0.4", "", {}, "sha512-ufKpbmrugz5Aou4wcr5Wc1UUFWOLhq+Fm6qa6P0w0K5Qw2yhaUoiWszhCVuNQyNwrlGiscHOmqYoAox1PtvgjA=="],
@@ -275,6 +289,8 @@
     "@discordjs/ws/@discordjs/collection": ["@discordjs/collection@2.1.1", "", {}, "sha512-LiSusze9Tc7qF03sLCujF5iZp7K+vRNEDBZ86FT9aQAv3vxMLihUvKvpsCWiQ2DJq1tVckopKm1rxomgNUc9hg=="],
 
     "@discordjs/ws/discord-api-types": ["discord-api-types@0.38.55", "", {}, "sha512-ytuaRTzdnHUCXJ6KjL9MrItQX0xKncBKEeYI1Bst4+ud47eejH3cG6gaesYakjpPcUhh68XYS2YwGq3mmujFsA=="],
+
+    "@volter/world-runtime/@volter/world-core": ["@volter/world-core@2.0.5", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-HGuEyw5wdaqb2Q/2JvoAARftwzQmjMyy4i0UXe6sqYWjkYSiPAjGcKFTTaf2daDZaPZPXxbHBIOhvDw096TVig=="],
 
     "discord.js/discord-api-types": ["discord-api-types@0.38.55", "", {}, "sha512-ytuaRTzdnHUCXJ6KjL9MrItQX0xKncBKEeYI1Bst4+ud47eejH3cG6gaesYakjpPcUhh68XYS2YwGq3mmujFsA=="],
   }

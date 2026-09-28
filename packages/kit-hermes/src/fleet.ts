@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { KIT, readKit, upgrade } from './kit.ts';
+import { worldConfig } from './world-config.ts';
 
 // create-open-autonomy upgrade --fleet <fleet.json>: every project of a fleet onto this kit, from this kit. Each
 // project is cloned fresh from its origin, upgraded (the same three-way merge as `upgrade`), committed and landed the
@@ -92,20 +93,18 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   }
   writeFileSync(join(runtimeDir, 'fleet.json'), `${JSON.stringify({ container, projects: projects.map(({ account, origin }) => ({ account, origin })) }, null, 2)}\n`);
   const executor = resolve(import.meta.dir, '..', 'base', 'container', 'executor.ts');
-  // What the host writes for this World is the reporters' state and World's bookkeeping; the home and checkouts are
-  // Docker volumes on the engine's disk. The bound names the host's need, as the project runtime's does.
   const memory = opts.memory ?? '3g';
-  const memoryMiB = (() => { const m = /^(\d+)([kmg]?)$/.exec(memory); if (!m) throw new Error('--memory takes Docker\'s own value, e.g. 3g'); const n = Number(m[1]); return m[2] === 'g' ? n * 1024 : m[2] === 'k' ? Math.ceil(n / 1024) : m[2] === 'm' ? n : Math.ceil(n / 1048576); })();
-  const world = { id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB, writableStorageMiB: 512 * (projects.length + 1) },
-    services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
+  if (!/^\d+[kmg]?$/.test(memory)) throw new Error('--memory takes Docker\'s own value, e.g. 3g');
+  const world = worldConfig({ id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, strip: ['HERMES_*', 'OPENAI_*'],
     env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: memory, OA_EXECUTOR_CPUS: opts.cpus ?? '2',
-      ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
+      ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
+    service: { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } });
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
   if (!existsSync(join(runtimeDir, 'world.env'))) writeFileSync(join(runtimeDir, 'world.env'), '');
   // The start runs from a rendered kit (a project's .open-autonomy/ carries kit.json and the installed host tools),
   // never from the kit's template: the organization's own checkout is the natural one.
   const start = '<a rendered project>/.open-autonomy/start.ts';
   say(`fleet ${opts.name}: ${runtimeDir}\n  definition: ${join(runtimeDir, 'fleet.json')} (${projects.map((p) => p.account).join(', ')})\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${opts.image}; ${mounts.length} volumes)\n` +
-    `  up:    bun <twin-world cli> up ${join(runtimeDir, 'world.json')} --env-file ${join(runtimeDir, 'world.env')} --root <world root>\n` +
+    `  up:    bun <world-runtime cli> up ${join(runtimeDir, 'world.json')} --env-file ${join(runtimeDir, 'world.env')} --root <world root>\n` +
     `  start: bun ${start} --fleet ${join(runtimeDir, 'fleet.json')} --valve 8787\n  down:  the World's down; nothing starts this fleet but these two commands`);
 }

@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { KIT, check, readKit } from './kit.ts';
+import { worldConfig } from './world-config.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
@@ -75,8 +76,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: KIT.version }, null, 2)}\n`);
     say(`release: ${release}`);
   } else say(`release: ${release} (already cut)`);
-  const worldCli = join(dirname(Bun.resolveSync('@volter/twin-world/package.json', kitDir)), 'src', 'cli.ts');
-  if (!existsSync(worldCli)) throw new Error('the release has no World CLI; its package.json must depend on @volter/twin-world');
+  const worldCli = join(dirname(Bun.resolveSync('@volter/world-runtime/package.json', kitDir)), 'src', 'cli.ts');
+  if (!existsSync(worldCli)) throw new Error('the release has no World CLI; its package.json must depend on @volter/world-runtime');
   for (const d of [root, join(runtimeDir, 'state')]) mkdirSync(d, { recursive: true, mode: 0o700 });
 
   // ---- the executor's image and volumes ----
@@ -90,22 +91,19 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     }
   }
   {
-    const build = { id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down releases the build reservation and keeps the image.', resources: { memoryMiB: 4096, writableStorageMiB: 16384 },
-      services: [{ id: 'build', type: 'external', cwd: resolve(dir), external: { up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } }],
-      ...(opts.dockerHost ? { env: { DOCKER_HOST: opts.dockerHost } } : {}) };
+    const build = worldConfig({ id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down keeps the image.',
+      env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
+      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
     say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-file ${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }
 
   // ---- the World definition ----
   const executor = join(release, 'container', 'executor.ts');
-  const world = { id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
-    // What the host writes for this World: the reporter's state, World's own bookkeeping and the logs, a few
-    // hundred megabytes at most; the executor's home and checkout are Docker volumes on the engine's disk. The
-    // bound is admission against the state root's free space, so it names the host's need, not the container's.
-    stripEnv: ['HERMES_*', 'OPENAI_*'], resources: { memoryMiB: 3072, writableStorageMiB: 2048 },
-    services: [{ id: 'executor', type: 'external', external: { up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } }],
-    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) } };
+  const world = worldConfig({ id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
+    strip: ['HERMES_*', 'OPENAI_*'],
+    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
+    service: { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } });
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
 
   // ---- the service unit: World `run`, the host command in the foreground ----

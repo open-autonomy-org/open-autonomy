@@ -10,12 +10,12 @@
     "chat": "4.39.0",
     "@chat-adapter/discord": "4.39.0",
     "@chat-adapter/state-memory": "4.39.0",
-    "@volter/twin": "0.1.3",
-    "@volter/twin-world": "0.1.7",
-    "@volter/twin-github": "0.1.2",
-    "@volter/twin-openai": "0.1.2",
-    "@volter/twin-discord": "0.1.2",
-    "@volter/twin-jira": "0.1.0",
-    "@volter/twin-slack": "0.1.0"
+    "@volter/world-core": "^2.0.6",
+    "@volter/world-runtime": "^2.0.8",
+    "@volter/twin-github": "^2.0.6",
+    "@volter/twin-openai": "^2.0.5",
+    "@volter/twin-discord": "^2.0.5",
+    "@volter/twin-jira": "^2.0.5",
+    "@volter/twin-slack": "^2.0.5"
   }
 }
