@@ -25,7 +25,7 @@ public permalink; the quotations record scope, not independent approval).
   thing in hermes and vice versa"; "where ever it's an agent idiomatic version of something, use BOTH the
   idiomatic and hermes version (have the hermes version shadow the idiomatic)"; "let's complete everything".
 
-**Supercode today** (v0.4.66, `@volter-ai-dev/supercode-orchestrator` 0.3.1). The orchestrator's home is a
+**Supercode today** (v0.4.66, `@volter/supercode-orchestrator` 0.3.1). The orchestrator's home is a
 complete Hermes home ([Supercode's work order](https://github.com/volter-ai/supercode/blob/main/docs/plans/hermes-compat.md),
 rows 1–14 done):
 - it holds Hermes's gateway lock and each bot token's lock, so Hermes and the orchestrator never serve one

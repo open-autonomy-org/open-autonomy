@@ -60,7 +60,7 @@
       },
       "dependencies": {
         "@open-autonomy/sdk": "workspace:*",
-        "@volter-ai-dev/supercode-ui": "0.1.93",
+        "@volter/supercode-ui": "^0.1.105",
         "hono": "^4.13.4",
         "preact": "^10",
         "preact-render-to-string": "^6",
@@ -460,11 +460,11 @@
 
     "@vitest/utils": ["@vitest/utils@3.2.4", "", { "dependencies": { "@vitest/pretty-format": "3.2.4", "loupe": "^3.1.4", "tinyrainbow": "^2.0.0" } }, "sha512-fB2V0JFrQSMsCo9HiSq3Ezpdv4iYaXRG1Sx8edX3MwxfyNn83mKiGzOcH+Fkxt4MHxr3y42fQi1oeAInqgX2QA=="],
 
-    "@volter-ai-dev/supercode-ui": ["@volter-ai-dev/supercode-ui@0.1.93", "", { "dependencies": { "markdown-it": "^14.1.0" }, "peerDependencies": { "@volter-ai-dev/supercode-client": ">=0.3.10 <0.4.0", "preact": ">=10.19.0 <11", "react": ">=18 <20" }, "optionalPeers": ["@volter-ai-dev/supercode-client", "preact", "react"] }, "sha512-NupRqQU+LCNNuMklN5zEB2FRDkZ3hOVihRXVHFStA/eBUE/FNJR4ScRFEwzM9EzrpNNoZO0cQyYmnwm6Eq3sKQ=="],
-
     "@volter/identity": ["@volter/identity@0.1.0", "", { "dependencies": { "jose": "^6.2.12" } }, "sha512-zvM263tTIrpKnTbFa9eMLZx+sI5uyt1mBGLWTsqTtU97J/VoYCJM2sh7zwSbZEgD63hIMRlUTCFi4vZWbXFd5Q=="],
 
     "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.45", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-KWhY7ytjI/gXT7HhgJuATqESHNDswYFbUAniO/Xf0X8RISlNcz7JaAtk8Dx6YRtLvKESEVpsafVHK+7yhHIqgA=="],
+
+    "@volter/supercode-ui": ["@volter/supercode-ui@0.1.106", "", { "dependencies": { "markdown-it": "^14.1.0" }, "peerDependencies": { "@volter/supercode-client": ">=0.3.10 <0.4.0", "preact": ">=10.19.0 <11", "react": ">=18 <20" }, "optionalPeers": ["@volter/supercode-client", "preact", "react"] }, "sha512-khriW/8mM9RtuURN1a95j0bWdnSJzHCdASjmtKU5W7SHVF3HuXuH8bwbRK0BZ+4MJRuBxupmckDYZTxX1qlGLA=="],
 
     "@volter/twin-discord": ["@volter/twin-discord@2.0.5", "", { "dependencies": { "@volter/world-ui": "0.1.5", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.5" }, "bin": { "world-discord": "dist/src/cli.js" } }, "sha512-PFd5np7nL341o937MFW2Tc/hoa8PMdClZ0isV+fyoRXc27BPhL0jgPlzMJrtcYG9X+R216FK2mBFjMi84VfTPA=="],
 

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
 import { h, render } from 'preact';
-import '@volter-ai-dev/supercode-ui/styles.css';
+import '@volter/supercode-ui/styles.css';
 import { DASH_CSS, DashApp, type DashData, type DashPage } from '../../../packages/backend/src/dash/index';
 import { PRESETS } from '../../../packages/backend/src/page/model';
 import { OPEN_AUTONOMY_LOGO } from '../../../packages/backend/src/page/brand';
