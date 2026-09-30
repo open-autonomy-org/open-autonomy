@@ -8,6 +8,7 @@ import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from 
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
+import { fileURLToPath } from 'node:url';
 import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -446,7 +447,9 @@ sc.on('sessionIndexEvent', ev => {
   }
   nativeOk=false;documentsDirty=true;requestTick();
 });
-const eventCommand=[supercode,'workflow','events','--root',home,'--json'];
+const eventCommand=container
+  ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
+  : ['node',fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
 const source=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:{...process.env,HERMES_HOME:home} as Record<string,string>,
   changed:async()=>{boardReady=true;nativeOk=false;await tick();},log});
