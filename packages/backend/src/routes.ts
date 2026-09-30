@@ -3,6 +3,7 @@ import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
+import { partnerReservation } from './partner.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { servePages, type PageApp } from './page/serve.js';
 import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
@@ -162,6 +163,12 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   }
   if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
+  if (path === '/v1/rails/partner/reservations' || (m = path.match(/^\/v1\/rails\/partner\/reservations\/([^/]+)\/([^/]+)(?:\/(capture|release))?$/))) {
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'pay')) return error('scope_required', 403, { scope: 'pay' });
+    return partnerReservation(req, env, claims, m ? dec(m[1]) : undefined, m ? dec(m[2]) : undefined, m?.[3]);
+  }
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
