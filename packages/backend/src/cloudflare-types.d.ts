@@ -9,6 +9,7 @@ interface DurableObject {
 }
 
 interface DurableObjectState {
+  blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
   storage: {
     get<T = unknown>(key: string): Promise<T | undefined>;
     put<T>(key: string, value: T): Promise<void>;
