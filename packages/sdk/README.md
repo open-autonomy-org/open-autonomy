@@ -252,5 +252,5 @@ RH2 owns enrollment, buyer close/cancel authority, and deciding whether funding 
 prepaid or directly treasury-funded. Grants-only work never calls these doors; prepaid funding
 must never be billed a second time. A capture meters the named service's charge; it does not
 transfer funds to a seller or assert a seller payout. The older `POST /v1/rails/partner` remains
-immediate and unkeyed; `/v1/supplier/consume` is not an OA route. See
+immediate and unkeyed; RH2’s legacy supplier consume door is not an OA route. See
 [the lifecycle decision](../../docs/decisions/0016-partner-reservations.md).
