@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 type Options = {
@@ -60,7 +60,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       for (const [name, artifact] of artifacts) {
-        const tarPath = `/${name}/-/candidate.tgz`;
+        const tarPath = `/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
         if (pathname === tarPath) return new Response(request.method === 'HEAD' ? null : artifact.bytes,
           { headers: { 'content-type': 'application/octet-stream' } });
         if (pathname === `/${name}` || pathname === `/${name}/${artifact.manifest.version}`) {
@@ -86,15 +86,30 @@ export async function installHostRuntime(options: Options): Promise<void> {
       return new Response(response.body, { status: response.status, headers });
     }
   }) : undefined;
+  const lockPath = join(options.directory, 'bun.lock');
+  const previousLock = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : undefined;
   try {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
-    const args = ['bun', 'install', '--registry', endpoint, ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     });
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);
+    // Commit registry-neutral resolution with the candidate integrity, never an ephemeral review listener.
+    if (server && existsSync(lockPath)) {
+      const original = readFileSync(lockPath, 'utf8');
+      let normalized = original;
+      for (const [name, artifact] of artifacts) {
+        const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
+        normalized = normalized.replaceAll(JSON.stringify(url), '""');
+      }
+      if (normalized !== original) writeFileSync(lockPath, normalized);
+    }
+  } catch (error) {
+    if (previousLock !== undefined) writeFileSync(lockPath, previousLock);
+    throw error;
   } finally { server?.stop(true); }
 }
 
