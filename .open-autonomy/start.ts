@@ -348,7 +348,7 @@ try {
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');

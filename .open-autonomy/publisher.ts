@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 // Volter Harness SDK in, Open Autonomy SDK out. Native state belongs to Volter Harness;
 // publication policy, repository documents and acknowledged delivery belong here.
-import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, watch as watchFiles } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
-import { OpenAutonomy, Session } from './sdk/client.ts';
+import { OpenAutonomy } from './sdk/client.ts';
+import { BoardEventSource } from './source-events.ts';
 import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -23,7 +24,7 @@ const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(di
 const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
-const log = (message: string) => console.log(`reporter: ${message}`);
+const log = (message: string) => console.log(`publisher: ${message}`);
 // What runs the agent, as the start script says (mode, kit, executor, host): published with the setup, never a credential.
 const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONOMY_RUNTIME ?? ''); return r && (r.mode === 'container' || r.mode === 'bare') ? r : undefined; } catch { return undefined; } })();
 // File/Git reads below are only for the project's documents; no native Hermes
@@ -84,20 +85,12 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   // the bounded native run ledger. An absent outcome stays absent.
   const binding = bindings.get(d.locator.session_id);
   if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
-  // A session Hermes never closed (its process killed under it) has no native end and never will. When the host
-  // proves it (the fire's pid is gone while its ledger still says running), it ended when it last spoke; failing
-  // that proof, six silent hours say the same. An absent outcome stays absent.
-  const abandoned = d.activity?.evidence?.native_state === 'abandoned';
-  if (!d.live_status && d.updated_at_ms && (abandoned || Date.now() - d.updated_at_ms > 6 * 3600_000)) return { endedAt: new Date(d.updated_at_ms).toISOString() };
   return undefined;
 }
-// Native state is a second or two of the host's disk per read, and a tick comes every five seconds and on every
-// session event: read it at most every thirty seconds, or right after a failed read, and a session's end is
-// still noticed within that. A read is given a minute, and one retry when Hermes's own atomic rewrite of a file
-// leaves a name missing for an instant.
-let nativeAt = 0, nativeOk = false;
+// Read native declarations on startup and source changes; never on an observation timer.
+let nativeOk = false;
 async function nativeState(): Promise<void> {
-  if (nativeOk && Date.now() - nativeAt < 30_000) return;
+  if (nativeOk) return;
   nativeOk = false;
   const read = () => Promise.all([
     sc.orchestrationLoad({ root: home, flavor: 'hermes' }, { timeoutMs: 60_000 }),
@@ -115,7 +108,7 @@ async function nativeState(): Promise<void> {
   runs = new Map(history.runs.filter(r => r.session_id).map(r => [r.session_id!, r]));
   jobNames.clear();
   for (const profile of Object.values(profiles)) for (const [id, job] of Object.entries(profile.jobs)) jobNames.set(id, job.residue?.name ?? id);
-  nativeAt = Date.now(); nativeOk = true;
+  nativeOk = true;
 }
 async function watch(d: SessionDescriptor): Promise<void> {
   const key = d.locator.session_id;
@@ -127,17 +120,18 @@ async function watch(d: SessionDescriptor): Promise<void> {
       if (ev.type === 'watch_error') log(`${key}: ${ev.message}`);
       // Snapshots (including history_rewritten/sequence_gap_recovered) and appends
       // both reconcile against the complete SDK window sequence and server receipt.
-      requestTick();
+      nativeOk=false;requestTick();
     }
-  } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); polling still reconciles`); }
-  finally { watching.delete(key); }
+  } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
+  finally { watching.delete(key);if(!quitting&&!stopped.has(key))setTimeout(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
 // A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
 // from Volter Harness, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
 // until it ends, so trying every tick would reload it every ten seconds for as long as it runs.
 const retryAt = new Map<string, number>();
-async function sessions(): Promise<void> {
+async function sessions(only?: string): Promise<void> {
   for (const [key, d] of descriptors) {
+    if(only && key!==only)continue;
     if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
     const pkey = platformKey(key);
@@ -159,6 +153,7 @@ async function sessions(): Promise<void> {
       else void watch(d);
     } catch (e) {
       if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); dirty = true; continue; }
+      setTimeout(()=>{retryAt.delete(key);void sessions(key);},60_000);
       retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`);
     }
   }
@@ -184,13 +179,10 @@ function commitOf(t: BoardTask): string | undefined {
 let nativeTasks: BoardTask[] = [];
 let timelineDigest = '';
 async function board(): Promise<RoadmapItem[] | undefined> {
-  nativeTasks = [];
-  let read: { workflow?: { boards?: Record<string, { tasks?: Record<string, BoardTask> }> } };
-  try { read = await sc.workflowLoad({ from: 'hermes', home: home }) as typeof read; } catch (e) { log(`board unreadable: ${(e as Error).message}`); return undefined; }
-  if (!read.workflow?.boards) throw new Error('Native workflow state unavailable');
-  // The developer's tasks are the present. Tasks assigned to another profile (a purchase request for the treasurer)
-  // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
-  const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  // This app's cache is rebuilt only from the retained source stream.
+  const tasks = [...source.cards.values()].map(t=>({...t,lane:t.archived?'archived':t.status}))
+    .filter(t=>t.lane!=='archived'&&(t.assignee??'default')==='default')
+    .sort((a,b)=>(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id)) as BoardTask[];
   nativeTasks = tasks;
   const items: RoadmapItem[] = tasks.map((t) => {
     const attempts = t.attempts ?? [];
@@ -215,7 +207,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
     for (const n of notes) {
       if (noted.has(n.key)) continue;
       try { const u = await oa.update({ item: t.id, text: n.text.slice(0, 2000), at: n.at, id: n.key }); if (u) { noted.add(n.key); saveState(); log(`board: ${t.id} · ${n.text.slice(0, 60)}${u.idempotent ? ' (already there)' : ''}`); } }
-      catch (e) { log(`board note failed for ${t.id}: ${(e as Error).message}`); }
+      catch (e) { throw new Error(`board note pending for ${t.id}: ${(e as Error).message}`); }
     }
   }
   return items;
@@ -365,7 +357,7 @@ let docsDigest = '', setupDigest = '';
 async function docs(): Promise<void> {
   const d = { about_md: mainFile('CONSTITUTION.md') };
   const digest = JSON.stringify(d);
-  if (digest !== docsDigest && (await oa.docs(d)).ok) docsDigest = digest;
+  if(digest!==docsDigest){const result=await oa.docs(d);if(!result.ok)throw new Error(`Document publication refused: ${result.status}`);docsDigest=digest;}
 }
 async function setup(): Promise<void> {
   const [jobs, skills, inventory] = await Promise.all([
@@ -376,15 +368,15 @@ async function setup(): Promise<void> {
     provider: providerOf(), schedule: jobs.jobs.map(j => ({ name: jobNames.get(j.id) ?? j.id, schedule: j.enabled ? j.schedule.display : `${j.schedule.display} (${j.state})`, description: j.payload.text ?? undefined })),
     skills: skills.filter(s => s.enabled !== false).map(s => s.name).sort(), setup_md: mainFile('hermes/README.md'), ...(runtimeFacts ? { runtime: runtimeFacts } : {}) };
   const digest = JSON.stringify(s);
-  if (digest !== setupDigest && (await oa.setup(s)).ok) setupDigest = digest;
+  if(digest!==setupDigest){const result=await oa.setup(s);if(!result.ok)throw new Error(`Setup publication refused: ${result.status}`);setupDigest=digest;}
 }
 // The owner's word on the operating state, read from the platform and applied through the harness's own schedule.
 // `paused` here means the scheduled runs (the funded work) stop: every enabled job is paused and remembered; a run in
 // flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
 // reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
-let reportedState = '', controlAt = 0, controlUnreadable = false;
+let reportedState = '', controlUnreadable = false;
 const kanban = (...args: string[]): string => { const r = Bun.spawnSync({ cmd: ['hermes', 'kanban', ...args], stdout: 'pipe', stderr: 'pipe' }); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
-const boardTasks = (): Array<{ id: string; status: string }> => { try { const t = JSON.parse(kanban('list', '--json')); return Array.isArray(t) ? t : []; } catch { return []; } };
+const boardTasks = (): Array<{id:string;status:string}> => [...source.cards.values()].filter(card=>card.board==='default').map(card=>({id:card.id,status:card.status}));
 const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
 async function control(): Promise<void> {
   const c = await oa.state(cfg.account);
@@ -421,80 +413,43 @@ async function control(): Promise<void> {
   const digest = `${state}|${note ?? ''}`;
   if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
 }
-let busy = false, dirty = false, quitting = false, documentsAt = 0, orphansAt = 0;
-// A session the platform holds as live whose native record is gone (a run killed with its host, a store pruned)
-// would stay live forever: nothing narrates its end. Absent from discovery for five minutes, it ended: the reporter
-// says so at the platform's last turn of it, with no outcome, since none was recorded.
-const missingSince = new Map<string, number>();
-async function nativelyPresent(key: string): Promise<boolean | null> {
-  try {
-    for (const query of queries) {
-      let cursor: string | undefined;
-      do {
-        const page = await sc.discover({ ...query, cursor, limit: 500 });
-        const d = page.sessions.find((x) => x.locator.session_id === key);
-        if (d) { descriptors.set(key, d); return true; }
-        cursor = page.next_cursor ?? undefined;
-      } while (cursor);
-    }
-    return false;
-  } catch { return null; }
-}
-async function orphans(): Promise<void> {
-  const { live } = await oa.sessions(cfg.account, 200);
-  for (const key of live) {
-    if (platformKey(nativeId(key)) !== key && descriptors.has(nativeId(key))) { // a continued session's earlier record
-      try { const remote = await oa.session(cfg.account, key); if (remote?.status === 'live') await new Session(oa, key, remote.next_seq).end({ endedAt: remote.turns.at(-1)?.ts ?? remote.started_at }); } catch {}
-      continue;
-    }
-    if (descriptors.has(nativeId(key)) || stopped.has(nativeId(key))) { missingSince.delete(key); continue; }
-    const since = missingSince.get(key) ?? Date.now();
-    missingSince.set(key, since);
-    if (Date.now() - since < 5 * 60_000) continue;
-    // The index is a cache, and a native store that fails to load (a config key this reader does not know) empties
-    // it: only a discovery that succeeds and lacks the session says it is gone.
-    const found = await nativelyPresent(nativeId(key));
-    if (found !== false) { if (found) missingSince.delete(key); continue; }
-    try {
-      const remote = await oa.session(cfg.account, key);
-      if (!remote || remote.status !== 'live') { stopped.add(key); continue; }
-      const endedAt = remote.turns.at(-1)?.ts ?? remote.started_at;
-      await new Session(oa, key, remote.next_seq).end({ endedAt });
-      if (checkpoints[key]) { checkpoints[key].endedAt = endedAt; saveState(); }
-      stopped.add(key); missingSince.delete(key);
-      log(`${key}: native record gone; ended at its last turn`);
-    } catch (e) { log(`${key}: orphan not ended (${(e as Error).message})`); }
-  }
-}
-async function tick(): Promise<void> {
-  if (busy || quitting) { dirty = true; return; }
-  busy = true;
-  try {
-    do {
-      dirty = false;
+let work: Promise<void>|null=null, dirty=false, quitting=false, documentsDirty=true, boardReady=false;
+function tick(): Promise<void> {
+  dirty=true;
+  if(!boardReady)return Promise.resolve();
+  if(work)return work;
+  if(quitting)return Promise.resolve();
+  work=(async()=>{
+    while(dirty&&!quitting){
+      dirty=false;
       await nativeState();
-      const present = await board();
+      const present=await board();
       await sessions();
-      if (Date.now() - orphansAt > 60_000) { await orphans(); orphansAt = Date.now(); }
-      if (Date.now() - controlAt > 10_000) { await control(); controlAt = Date.now(); }
-      if (Date.now() - documentsAt > 60_000) {
-        refreshMain();
-        await docs(); await timeline(present); await setup();
-        documentsAt = Date.now();
-      }
-    } while (dirty && !quitting);
-  } catch (e) { log(`observation incomplete (${(e as Error).message}); retrying without declaring completion`); }
-  finally { busy = false; }
+      if(documentsDirty){refreshMain();await docs();await setup();documentsDirty=false;}
+      await timeline(present);
+    }
+  })().finally(()=>{work=null;});
+  return work;
 }
-function requestTick(): void { void tick(); }
+let retry: ReturnType<typeof setTimeout>|undefined;
+function requestTick(): void {
+  void tick().catch(error=>{
+    log(`publication pending (${error.message}); retaining acknowledgement`);
+    clearTimeout(retry);retry=setTimeout(requestTick,5000);
+  });
+}
 sc.on('sessionIndexEvent', ev => {
   if ('error' in ev) { log(`index unavailable: ${ev.error.message}`); return; }
   for (const c of ev.changes) if (c.kind === 'removed') descriptors.delete(c.key.session_id); else {
     descriptors.set(c.descriptor.locator.session_id, c.descriptor);
     stopped.delete(c.descriptor.locator.session_id);
   }
-  requestTick();
+  nativeOk=false;documentsDirty=true;requestTick();
 });
+const eventCommand=[supercode,'workflow','events','--root',home,'--json'];
+const source=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
+  stateFile:`${stateFile}.board.json`,env:{...process.env,HERMES_HOME:home} as Record<string,string>,
+  changed:async()=>{boardReady=true;nativeOk=false;await tick();},log});
 sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); process.exit(1); } });
 await sc.start();
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
@@ -523,9 +478,24 @@ for (const query of queries) {
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
 }
-await tick();
-const poll = setInterval(requestTick, 5000); // observation cadence, never completion evidence
+let controlTimer: ReturnType<typeof setInterval>|undefined;
+const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {
-  quitting = true; clearInterval(poll); void sc.close().then(() => process.exit(0));
+  quitting = true; source.close();clearInterval(controlTimer);clearTimeout(retry);for(const watcher of documentWatchers)watcher.close(); void sc.close().then(() => process.exit(0));
 });
+await source.start();
+// The platform's separate owner-control door currently has no subscription.
+// Its timer reads only that command and native schedule authority, never the board.
+controlTimer=setInterval(()=>{void control().catch(error=>log(`owner control pending: ${error.message}`));},10_000);
+for(const path of [resolve(projectDir,'.git'),resolve(projectDir,'.open-autonomy','config.yaml')]){
+  if(!existsSync(path))continue;
+  try{const watcher=watchFiles(path,{recursive:true},(_event,name)=>{
+      if(path.endsWith('config.yaml')){log('publication configuration changed; restart required');source.close();void sc.close().then(()=>process.exit(1));return;}
+      const file=String(name??'').replaceAll('\\','/');
+      if(name!=null&&!['HEAD','packed-refs','refs/remotes/origin/main'].includes(file))return;
+      documentsDirty=true;requestTick();
+    });watcher.on('error',error=>log(`document watch unavailable: ${error.message}`));documentWatchers.push(watcher);}
+  catch(error){log(`document watch unavailable: ${(error as Error).message}`);}
+}
+
 log(`watching ${home} for ${cfg.account}`);
