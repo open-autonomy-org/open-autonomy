@@ -43,7 +43,7 @@ Object.assign(config.runtime.environment.values, { OA_WORLD_NAME: NAME, WORLD_ST
   OA_AGENT_HOME: home, OA_SECRETS: resolve(DATA, 'secrets'), OA_ACCOUNT: 'cookbook/todo-cli',
   HOME: home, HERMES_HOME: home, PATH: `${resolve(hermes)}:${process.env.PATH}`, OPEN_AUTONOMY_MODEL: MODEL,
   // Freeze scenario choices into the config so attach/ready see the same opening situation.
-  ...Object.fromEntries(['REHEARSAL_IDLE', 'REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE', 'REHEARSAL_OWNER_DOOR'].map(key => [key, process.env[key] ?? (key === 'REHEARSAL_OWNER_DOOR' ? 'discord' : '')])) });
+  ...Object.fromEntries(['REHEARSAL_IDLE', 'REHEARSAL_TREASURY', 'REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE', 'REHEARSAL_OWNER_DOOR'].map(key => [key, process.env[key] ?? (key === 'REHEARSAL_OWNER_DOOR' ? 'discord' : '')])) });
 config.services.find((service: { id: string }) => service.id === 'agent').endpoint.port = valve;
 for (const service of config.services) service.execution.cwd = TREE;
 const path = resolve(dir, 'world.config.json');

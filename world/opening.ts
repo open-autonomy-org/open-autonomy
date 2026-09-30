@@ -24,6 +24,19 @@ const onMain = async (ctx: ScenarioContext, path: string): Promise<string> => { 
 export async function seedOpening(ctx: ScenarioContext): Promise<void> {
     if (process.env.REHEARSAL_COMMUNITY === '1' && (process.env.REHEARSAL_IDLE !== '1' || process.env.REHEARSAL_SCRUM === '1' || process.env.REHEARSAL_RELEASE === '1')) throw new Error('community requires REHEARSAL_IDLE=1 without REHEARSAL_SCRUM or REHEARSAL_RELEASE');
     const gh = github(ctx); const adm = admin(ctx);
+    // The treasury opening uses only repository config and the books; it exercises no OAuth or community flow.
+    if (process.env.REHEARSAL_TREASURY === '1') {
+      if (process.env.REHEARSAL_IDLE !== '1' || ['REHEARSAL_COMMUNITY', 'REHEARSAL_SCRUM', 'REHEARSAL_RELEASE'].some(k => process.env[k] === '1')) throw new Error('treasury requires REHEARSAL_IDLE=1 without community, scrum or release');
+      const config = await onMain(ctx, '.open-autonomy/config.yaml');
+      const bounds = 'rails:\n  partner:\n    max_usd_cents: 500\n    partners: [rh2]\n';
+      const updated = /^rails:/m.test(config) ? config.replace(/^rails:\n(?:[ \t].*\n|\n)*/m, bounds + '\n') : `${config.trimEnd()}\n\n${bounds}`;
+      await putMain(ctx, '.open-autonomy/config.yaml', updated, 'owner: authorize the synthetic RH2 partner for treasury verification');
+      await putMain(ctx, 'hermes/kanban.seed.json', JSON.stringify({ tasks: [] }), 'kanban.seed.json: an empty treasury verification board');
+      const synced = await adm.post(`/admin/accounts/${ENC}/sync`);
+      if (synced.status !== 200) throw new Error(`treasury: config sync failed (${synced.status})`);
+      ctx.log('treasury opening: funded cookbook, owner-authorized rh2 partner (500 cents), empty native board');
+      return;
+    }
     // The deterministic OAuth user is an admin of the organization whose Sponsors money enters the grants pool: the
     // same membership lookup the page performs after login, through the twin's GitHub API. The scope-free OAuth token
     // cannot read organization roles; the page must use the platform's separate members-reader credential for that.

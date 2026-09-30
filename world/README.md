@@ -75,6 +75,17 @@ platform and SDK reporter are real. Synthetic OAuth does not prove live consent 
 Local World interception is not OS isolation; use synthetic credentials and the World’s declared
 network policy. This scenario does not enable real model calls or production deployment.
 
+## Treasury lifecycle
+
+Choose `REHEARSAL_TREASURY=1 REHEARSAL_IDLE=1` before preparation, without community, scrum or
+release flags. This opening keeps the funded cookbook and native agent and commits the owner's
+synthetic `rh2` partner allowlist with a 500-cent bound. It uses repository and money APIs;
+it makes no OAuth or community-flow claim. Drive the public reservation doors manually through
+World attachment, minting a pay key through the cookbook's existing claim, and inspect the
+account and public calls between actions. The [wire](../packages/sdk/README.md#partner-reservations)
+defines hold, capture, release and reconciliation. Stop attached consumers before teardown;
+`up --keep-state` after ordinary `down` retains this operator World's data for a worker reload.
+
 ## Community and development
 
 Before preparation, choose `REHEARSAL_COMMUNITY=1 REHEARSAL_IDLE=1`, without

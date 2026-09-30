@@ -1,9 +1,10 @@
-import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js';
+import { parseModelsBound, parseRailsConfig, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { checkStatement, MAX_STATEMENTS, statementChanges, storedStatement, today, type Statement, type StatementRevision } from '@open-autonomy/sdk/statements';
 import { redactDeep } from './redact.js';
 import { json } from './http.js';
+import { partnerId, partnerKey, partnerQuote, partnerStorageKey, sameQuote, type PartnerReceipt, type PartnerResult } from './partner.js';
 import { sees, visibilityOf } from './page/model.js';
 import { estimateRunway } from './runway.js';
 import type { KeyClaims, UsageEvent } from './types.js';
@@ -219,6 +220,7 @@ interface ReservationAllocation { envelope_id: string; amount: number }
 interface Reservation {
   amount: number;
   expires_at_ms: number;
+  persistent?: 'partner';
   account: string;
   kid: string;
   allocations: ReservationAllocation[];
@@ -288,6 +290,8 @@ export interface CallRecord {
   partner?: string;
   unit?: string;
   quantity?: number;
+  usd_cents_per_credit?: number;
+  reservation_key?: string;
   reference?: string;
   item?: string;
   usd_cents: number;
@@ -401,6 +405,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const extension = extensions.get(op);
     if (extension) return json(await extension(this, body));
     switch (body.op) {
+      case 'partner_reservation': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.partnerReservation(body); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
@@ -531,7 +539,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     const marked = await this.earmark(to, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
-    if (key && this.applyKey(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
+    if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
     // A funder's bonus credits go only to other people's projects: giving to their own draws on what they hold
     // beyond the bonus; giving to another's draws on the bonus first.
     if (from.startsWith('@')) {
@@ -539,11 +547,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
       const own = to.split('/')[0].toLowerCase() === from.slice(1).toLowerCase();
       if (own && this.balanceOf(from) - bonus < amount) return { ok: false, error: 'bonus_only_for_others', bonus_usd_cents: bonus };
     }
-    if (this.balanceOf(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    if (this.balanceOf(from) - this.reservedFor(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from) };
     const source = this.ensureAcct(from).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
-    if (source.reduce((sum, e) => sum + e.balance_usd_cents, 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    if (source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(from, e.id)), 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    this.applyKey(key);
     let debit = Math.floor(amount);
-    for (const envelope of source) { const take = Math.min(debit, envelope.balance_usd_cents); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
+    for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(from, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
     this.ensureAcct(from).granted_out_usd_cents += Math.floor(amount);
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(to, Math.floor(amount), marked.purpose, from, key);
@@ -640,9 +649,54 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return { ok: true, account, keys: Object.values(this.state.keys).filter((k) => k.account === account).sort((a, b) => b.created_at.localeCompare(a.created_at)) };
   }
 
+  // Partner lifetime operations run under the Durable Object concurrency gate. Each mutation writes the
+  // immutable receipt together with the reservation/balance and (on capture) public spend in one atomic put.
+  private async partnerReservation(body: Record<string, unknown>): Promise<PartnerResult> {
+    const account = typeof body.account === 'string' ? body.account : '';
+    const kid = typeof body.kid === 'string' ? body.kid : '';
+    const entry = this.state.keys[kid];
+    if (!this.keyCheck(kid).ok || !entry || entry.account !== account) return { ok: false, error: 'auth_failed' };
+    if (!Array.isArray(body.scopes) || !body.scopes.includes('pay')) return { ok: false, error: 'scope_required', scope: 'pay' };
+    const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload as Record<string, unknown> : {};
+    const create = body.action === 'create';
+    const quote = create ? partnerQuote(payload) : undefined;
+    if (create && !quote) return { ok: false, error: 'invalid_quote', message: 'Supply a partner, key, work reference, positive whole credits, cents per credit and their exact USD-cent product.' };
+    const partner = create ? quote!.partner : body.partner;
+    const key = create ? quote!.key : body.key;
+    if (!partnerId(partner) || !partnerKey(key)) return { ok: false, error: 'invalid_identity' };
+    const storageKey = partnerStorageKey(account, partner, key);
+    const prior = await this.ctx.storage.get<PartnerReceipt>(storageKey);
+    if (create) {
+      if (prior) return sameQuote(prior, quote!) ? { ok: true, reservation: prior } : { ok: false, error: 'key_conflict' };
+      const rails = parseRailsConfig(this.acct(account)?.profile?.config_yaml ?? '');
+      if (rails.partner.max_usd_cents <= 0) return { ok: false, error: 'rail_off' };
+      if (!rails.partner.partners.includes(partner)) return { ok: false, error: 'partner_not_allowed' };
+      if (quote!.usd_cents > rails.partner.max_usd_cents) return { ok: false, error: 'amount_over_bound', max_usd_cents: rails.partner.max_usd_cents };
+      const receipt: PartnerReceipt = { ...quote!, account, recipient: partner, request_id: crypto.randomUUID(), status: 'held', created_at: new Date().toISOString() };
+      const reserved = await this.reserve(receipt.request_id, account, kid, receipt.usd_cents, Number(body.daily_cap_usd_cents), '', 0, 'partner', receipt.item, undefined, { [storageKey]: receipt });
+      return reserved.ok ? { ok: true, reservation: receipt } : reserved as PartnerResult;
+    }
+    if (!prior) return { ok: false, error: 'not_found' };
+    if (body.action === 'get') return { ok: true, reservation: prior };
+    if (body.action !== 'capture' && body.action !== 'release') return { ok: false, error: 'invalid_action' };
+    const capture = body.action === 'capture';
+    if (capture && (!Number.isSafeInteger(payload.credits) || Number(payload.credits) <= 0 || Number(payload.credits) > prior.credits || !Number.isSafeInteger(payload.usd_cents) || payload.usd_cents !== Number(payload.credits) * prior.usd_cents_per_credit)) return { ok: false, error: 'invalid_capture', message: 'Capture positive whole credits within the hold at its frozen cents-per-credit rate.' };
+    if (prior.status !== 'held') {
+      if ((!capture && prior.status === 'released') || (capture && prior.status === 'captured' && prior.captured_credits === payload.credits && prior.captured_usd_cents === payload.usd_cents)) return { ok: true, reservation: prior };
+      return { ok: false, error: prior.status === 'captured' && capture ? 'key_conflict' : 'reservation_closed' };
+    }
+    const held = this.state.reservations[prior.request_id];
+    if (!held || held.account !== account || held.persistent !== 'partner' || held.amount !== prior.usd_cents) return { ok: false, error: 'reservation_missing' };
+    this.rolloverIfNeeded();
+    const receipt: PartnerReceipt = { ...prior, status: capture ? 'captured' : 'released', closed_at: new Date().toISOString(), ...(capture ? { captured_usd_cents: payload.usd_cents as number, captured_credits: payload.credits as number } : {}) };
+    if (capture) await this.consume(prior.request_id, payload.usd_cents as number, { request_id: prior.request_id, rail: 'partner', partner, unit: 'credit', quantity: payload.credits as number, usd_cents_per_credit: prior.usd_cents_per_credit, reservation_key: key, reference: prior.reference, item: prior.item, reserved_usd_cents: prior.usd_cents, actual_usd_cents: payload.usd_cents as number, outcome: 'ok' }, { [storageKey]: receipt });
+    else await this.release(prior.request_id, { [storageKey]: receipt });
+    return { ok: true, reservation: receipt };
+  }
+
   // ---- the model rail: reserve, settle, release ------------------------------------------------------
 
-  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string): Promise<Record<string, unknown>> {
+  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string, durable?: Record<string, unknown>): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
     if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid_amount' };
@@ -704,13 +758,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
     }
     recordUsage(this.ensureAcct(account), { calls: 1, model: model || undefined });
     this.state.reserved_usd_cents += amount;
-    this.state.reservations[requestId] = { amount, expires_at_ms: Date.now() + 10 * 60_000, account, kid, allocations };
+    this.state.reservations[requestId] = { amount, expires_at_ms: durable ? 0 : Date.now() + 10 * 60_000, ...(durable ? { persistent: 'partner' as const } : {}), account, kid, allocations };
     this.ensureAcct(account);
-    await this.save();
+    if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
+    else await this.save();
     return { ok: true, balance_usd_cents: this.balanceOf(account) - this.reservedFor(account) };
   }
 
-  private async consume(requestId: string, actual: number, event?: UsageEvent): Promise<void> {
+  private async consume(requestId: string, actual: number, event?: UsageEvent, durable?: Record<string, unknown>): Promise<void> {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
     const spent = Number.isFinite(actual) ? Math.max(0, actual) : 0;
@@ -759,21 +814,22 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (drawn.length) Object.assign(record, { envelope: drawn[0].purpose, envelopes: drawn });
     if (rail === 'model') Object.assign(record, { model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens });
     if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
-    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
+    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, usd_cents_per_credit: event?.usd_cents_per_credit, reservation_key: event?.reservation_key, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
     const callKey = `call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`;
     const writes: Record<string, CallRecord | string> = { [callKey]: record };
     if (session) writes[this.sessionCallKey(reservation.account, session, callKey)] = callKey;
     if (record.item) writes[this.itemCallKey(reservation.account, record.item, callKey)] = callKey;
-    await this.ctx.storage.put(writes);
-    await this.save();
+    if (durable) await this.ctx.storage.put({ ...writes, ...durable, state: this.state });
+    else { await this.ctx.storage.put(writes); await this.save(); }
   }
 
-  private async release(requestId: string): Promise<void> {
+  private async release(requestId: string, durable?: Record<string, unknown>): Promise<void> {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
     this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
     delete this.state.reservations[requestId];
-    await this.save();
+    if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
+    else await this.save();
   }
 
   // Storage key: `call:<account>:<ms, zero-padded>:<request id>`; lexicographic order is time order, so a
@@ -1452,14 +1508,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (this.state.day_key === today) return;
     this.state.day_key = today;
     this.state.consumed_usd_cents = 0;
-    this.state.reserved_usd_cents = 0;
-    this.state.reservations = {};
+    this.state.reservations = Object.fromEntries(Object.entries(this.state.reservations).filter(([, r]) => r.persistent === 'partner'));
+    this.state.reserved_usd_cents = Object.values(this.state.reservations).reduce((sum, r) => sum + r.amount, 0);
   }
 
   private gcReservations(): void {
     const now = Date.now();
     for (const [id, r] of Object.entries(this.state.reservations)) {
-      if (r.expires_at_ms < now) { this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - r.amount); delete this.state.reservations[id]; }
+      if (r.persistent !== 'partner' && r.expires_at_ms < now) { this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - r.amount); delete this.state.reservations[id]; }
     }
   }
 }
@@ -1470,7 +1526,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
   if (typeof stored.day_key === 'string') state.day_key = stored.day_key;
   if (typeof stored.consumed_usd_cents === 'number') state.consumed_usd_cents = stored.consumed_usd_cents;
   if (typeof stored.reserved_usd_cents === 'number') state.reserved_usd_cents = stored.reserved_usd_cents;
-  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
+  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', ...(r.persistent === 'partner' ? { persistent: 'partner' as const } : {}), allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
   for (const [id, a] of Object.entries(stored.accounts ?? {})) {
     if (!a || typeof a !== 'object') continue;
     const acct = emptyAccount();
