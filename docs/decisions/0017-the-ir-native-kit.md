@@ -55,10 +55,19 @@ for?".
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
   services, stopped and restarted with the rest. *(Running the dispatcher from the start is this record's reading of
   RFC 0021's "started only through its own start".)*
+- **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
+  `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and
+  the done ones the changelog, and no `ROADMAP.md` or `CHANGELOG.md` is read. A card publishes under its primary project
+  (its tenant), and a session under the card it serves. A project this install publishes for has its key in the
+  install's own custody, `<secrets>/projects/<owner>/<repo>/agent.env`, served on its own valve port to its own reporter;
+  a project without one, and a session serving no card, stay on the organization's page. *(The key's place is this
+  record's choice: a project's own install keeps its key where the fleet reads it, and RFC 0021 decision 2 has the new
+  install publish for a project only once that install is retired, so placing the key here is the takeover.)*
 
 ## Consequences
 
 - A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
 - The Hermes skews, their renders and their upgrades are byte for byte what they were.
-- Not in this record, each its own later step of RFC 0021's Order: the reporter publishing per project account
-  (step 3), and Hermes's and OpenClaw's export of the IR kit with its loss report (Supercode's codecs).
+- Not in this record: Hermes's and OpenClaw's export of an IR home with its loss report, which is Supercode's
+  (`supercode orchestration export`); and cost attributed to a card's primary project, which RFC 0021 places in a
+  statement published from the owner's side, not in the reporter.

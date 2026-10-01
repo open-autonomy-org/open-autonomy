@@ -14,6 +14,15 @@ const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.y
 const cfg = Bun.YAML.parse(readFileSync(configPath, 'utf8')) as any;
 if (!cfg || typeof cfg.account !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(cfg.account)) throw new Error('Reporter configuration must name the project account');
 const policy = publicationPolicy(cfg.publish);
+// An organization's install (docs/decisions/0017): one board for every project, each card tagged with its primary project
+// (its tenant). A project's reporter (`tenant:` in the config the start writes for it) publishes that project's cards and
+// their sessions under the project's account; the organization's reporter publishes the rest. Its timeline is the board:
+// the future is the cards ahead, the past the done ones; no ROADMAP.md or CHANGELOG.md is read.
+const organization = Array.isArray(cfg.organization?.projects);
+const tenant: string | undefined = typeof cfg.tenant === 'string' ? cfg.tenant : undefined;
+const elsewhere = (process.env.OPEN_AUTONOMY_PROJECT_REPORTERS ?? '').split(',').filter(Boolean);
+const tagIs = (tag: string | undefined, account: string): boolean => !!tag && (tag === account || tag === account.split('/')[1]);
+const ours = (tag: string | undefined): boolean => (tenant ? tagIs(tag, tenant) : !elsewhere.some((a) => tagIs(tag, a)));
 const home = cfg.hermes_home ?? process.env.HERMES_HOME;
 if (typeof home !== 'string' || !home.startsWith('/')) throw new Error('Reporter requires the absolute Hermes home');
 const container = arg('--container');
@@ -147,7 +156,11 @@ async function sessions(): Promise<void> {
     try {
       let publisher = publishers.get(key);
       if (!publisher) {
-        const candidates = nativeTasks.filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
+        const candidates = (organization ? boardTasksAll : nativeTasks).filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
+        // In an organization, a card's session publishes with its card's project; a session serving no card is the
+        // organization's.
+        // (Checked again each tick: a session can meet its card's workspace after it starts.)
+        if (organization && (candidates.length === 1 ? !ours(candidates[0].tenant) : Boolean(tenant))) continue;
         const item = (d.trigger === 'task' || isSeat(d)) && candidates.length === 1 ? candidates[0].id : undefined;
         publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
           modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
@@ -170,7 +183,7 @@ async function sessions(): Promise<void> {
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
 // progress note on it, published once.
-type BoardTask = { id: string; title?: string; body?: string; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+type BoardTask = { id: string; title?: string; body?: string; tenant?: string; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
@@ -182,6 +195,8 @@ function commitOf(t: BoardTask): string | undefined {
   return value && /^[0-9a-f]{7,40}$/.test(value) ? value : undefined;
 }
 let nativeTasks: BoardTask[] = [];
+// Every task on the board, whoever publishes it: a session is routed by the card it serves.
+let boardTasksAll: BoardTask[] = [];
 let timelineDigest = '';
 async function board(): Promise<RoadmapItem[] | undefined> {
   nativeTasks = [];
@@ -190,7 +205,9 @@ async function board(): Promise<RoadmapItem[] | undefined> {
   if (!read.workflow?.boards) throw new Error('Native workflow state unavailable');
   // The developer's tasks are the present. Tasks assigned to another profile (a purchase request for the treasurer)
   // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
-  const tasks = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (t.assignee ?? 'default') === 'default').sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  // An organization's board has no root profile's tasks: every card is a profile's (docs/decisions/0017).
+  boardTasksAll = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (organization || (t.assignee ?? 'default') === 'default')).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  const tasks = organization ? boardTasksAll.filter((t) => ours(t.tenant)) : boardTasksAll;
   nativeTasks = tasks;
   const items: RoadmapItem[] = tasks.map((t) => {
     const attempts = t.attempts ?? [];
@@ -354,7 +371,7 @@ function mainFile(name: string): string | undefined {
 async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   if (cfg.timeline === 'none') return;
   if (!present) return;
-  const items = fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
+  const items = organization ? present : fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest) return;
   const r = await oa.timeline({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter');
@@ -363,11 +380,14 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
 }
 let docsDigest = '', setupDigest = '';
 async function docs(): Promise<void> {
+  // A project's reporter publishes its cards and sessions; its page's documents are its own repository's.
+  if (tenant) return;
   const d = { about_md: mainFile('CONSTITUTION.md') };
   const digest = JSON.stringify(d);
   if (digest !== docsDigest && (await oa.docs(d)).ok) docsDigest = digest;
 }
 async function setup(): Promise<void> {
+  if (tenant) return;
   const [jobs, skills, inventory] = await Promise.all([
     sc.listJobs({ harness: 'hermes', homes }), sc.listSkills({ harness: 'hermes', homes: { hermes: home } }), sc.listProfiles({ harness: 'hermes', homes }),
   ]);
@@ -387,6 +407,8 @@ const kanban = (...args: string[]): string => { const r = Bun.spawnSync({ cmd: [
 const boardTasks = (): Array<{ id: string; status: string }> => { try { const t = JSON.parse(kanban('list', '--json')); return Array.isArray(t) ? t : []; } catch { return []; } };
 const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
 async function control(): Promise<void> {
+  // The owner's word on the organization's operating state is the organization reporter's to apply.
+  if (tenant) return;
   const c = await oa.state(cfg.account);
   if (!c) { if (!controlUnreadable) { controlUnreadable = true; log(`operating state unreadable through ${baseUrl}; the owner's word waits`); } return; }
   controlUnreadable = false;

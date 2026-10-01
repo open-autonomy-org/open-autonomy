@@ -313,6 +313,21 @@ if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve
 if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
+// An organization's projects (docs/decisions/0017): a project this install publishes for has its key in this install's
+// own custody, <secrets>/projects/<owner>/<repo>/agent.env, placed there once the project's own install has retired
+// (it never publishes beside one). Each such project gets its key on its own port and its own reporter; a project
+// without one stays on the organization's page.
+const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown }> } } & Record<string, unknown>;
+const projectReporters: Array<{ account: string; port: number }> = [];
+if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
+  const projectAccount = typeof entry?.account === 'string' && /^[\w.-]+\/[\w.-]+$/.test(entry.account) ? entry.account : undefined;
+  if (!projectAccount) return;
+  const keyFile = resolve(secrets, 'projects', ...projectAccount.split('/'), 'agent.env');
+  if (!existsSync(keyFile)) { say(`${projectAccount}: no key in this install's custody (${keyFile}); its cards publish on the organization's page`); return; }
+  const port = valvePort + 4 * (i + 1);
+  keys.push('--key', `${keyFile}:${port}`);
+  projectReporters.push({ account: projectAccount, port });
+});
 spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: hostEnvironment });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (Volter Harness, beside it in
@@ -350,7 +365,17 @@ try {
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.account).join(',') } });
+// Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
+// and their sessions only, through the project's own key.
+for (const p of projectReporters) {
+  const dir = resolve(home, '..', 'reporters', ...p.account.split('/'));
+  mkdirSync(dir, { recursive: true }); own(dir);
+  const config = resolve(dir, 'config.yaml');
+  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.account, state_file: 'reporter-state.json' }, null, 2)}\n`);
+  own(config);
+  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+}
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
