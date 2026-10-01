@@ -394,6 +394,12 @@ const gateway = harness === 'hermes'
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin } });
+// The install's own checkout in this machine's workspace map, so its board's cards on its own repository
+// (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
+if (harness !== 'hermes') {
+  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
+}
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
 // start. RH2 is reached with <secrets>/rh2.env (RH2_API_URL, RH2_ORGANIZATION, RH2_SESSION_TOKEN, RH2_PRINCIPAL_ID).
