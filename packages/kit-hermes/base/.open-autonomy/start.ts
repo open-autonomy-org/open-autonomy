@@ -404,9 +404,8 @@ if (harness !== 'hermes') {
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
-// start. RH2 is reached with <secrets>/rh2.env (RH2_API_URL, RH2_ORGANIZATION, RH2_SESSION_TOKEN, RH2_PRINCIPAL_ID).
-const rh2File = resolve(secrets, 'rh2.env');
-const rh2Env = existsSync(rh2File) ? Object.fromEntries(readFileSync(rh2File, 'utf8').split('\n').map((line) => /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())).filter((m): m is RegExpExecArray => !!m).map((m) => [m[1], m[2]])) : {};
+// start. RH2 is reached through the agent's Room-chat installation in this home (supercode ADR 0017:
+// `supercode orchestrator apps install room-chat … --profile <agent>`), which its channel reads.
 for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const folder = resolve(home, 'profiles', mailAgent.profile);
   const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
@@ -434,11 +433,10 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   }
   const rh2 = mailAgent.channel?.rh2;
   if (!rh2) continue;
-  if (!rh2Env.RH2_SESSION_TOKEN) { say(`agent ${name}: its account Room needs ${rh2File}; no channel`); continue; }
-  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name,
+  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
     ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
     ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
-    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, ...rh2Env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
