@@ -42,7 +42,7 @@ statuses:
   done: { description: Accepted., stored_as: done }
   cancelled: { description: Permanently stopped., stored_as: archived }
 derived:
-  ready: "card.status == 'todo' && card.blocked_by.size() == 0 && card.paused == null && !card.archived"
+  ready: "card.status == 'todo' && !card.dispatch_hold && card.blocked_by.size() == 0 && card.paused == null && !card.archived"
 relations:
   blocked_by: { guard: "card.status in ['todo', 'running', 'review'] && !card.archived", completed: dependency_resolved, answered: dependency_resolved, cancelled: dependency_cancelled, aged: block_aged, age_seconds: params.block_age_seconds }
 flags:
@@ -71,6 +71,16 @@ verbs:
         - wait_run: true
         - count: block_recurrences
         - record: { kind: "{{card.counters.block_recurrences >= params.block_recurrence_limit ? 'recurring_block' : 'blocked'}}" }
+    # A draft (RFC 0020 decision 14): its creator files it blocked by its own message to the manager, before it has
+    # ever run; the manager's reply to that message ends the block (blocked_by: answered).
+    - from: [todo]
+      by: [creator]
+      guard: "event.waiting_on != null && event.on == null && card.current_run_id == null && card.dispatch_hold"
+      description: 'A draft: block your own held card (created with --no-start) on your message to the manager: --waiting-on <message> --reason "<why>".'
+      validate: [{ expr: "event.reason != null && event.reason != ''", message: A block must name what is missing. }]
+      actions:
+        - relation: { add: "{{event.waiting_on}}", reason: "{{event.reason}}" }
+        - record: blocked
   unblock:
     - from: [todo, running, review]
       by: [implementer, reviewer, arc, manager, platform, hermes]
