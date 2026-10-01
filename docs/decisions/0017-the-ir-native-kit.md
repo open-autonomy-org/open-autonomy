@@ -64,6 +64,16 @@ for?".
   record's choice: a project's own install keeps its key where the fleet reads it, and RFC 0021 decision 2 has the new
   install publish for a project only once that install is retired, so placing the key here is the takeover.)*
 
+- **The start declares the install's mail agents** (Supercode ADR 0008; RFC 0020 decisions 3, 17, 24 and 25).
+  `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
+  or `codex`), its idle time and whether it is the owner's account manager. On every start, the start runs `supercode
+  agent declare <name> --open <program>`, which opens the main session once in a pane on this machine (headful) and
+  keeps it across starts. An agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
+  agent-channel`, a service of the start that restarts like the reporter, reaching RH2 with `<secrets>/rh2.env`. The
+  Room is found by its key; where the organization declares its Rooms (its org document), the account Room is declared
+  there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
+  the place agents are named, and the org document as the account Room's home where one exists.)*
+
 ## Consequences
 
 - A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
