@@ -14,6 +14,7 @@ import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { pageConfig } from './page/brand.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
 import { standing, today } from '@open-autonomy/sdk/statements';
+import { syncAllWorkplaceAlerts, WORKPLACE_CRON, workplaceRoute, type WorkplaceEnv } from './workplace.js';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
 // them. The app is tried first on every request and may answer; what it does not answer falls through to
@@ -53,8 +54,12 @@ export function worker(app: App = {}): ExportedHandler<Env> {
         return error('internal_error', 500);
       }
     },
-    // The app's own clock first (Open Autonomy accrues its sponsors monthly), then every public project's docs refreshed.
+    // The app's own clock (Open Autonomy accrues its sponsors monthly), then every public project's docs refreshed.
     async scheduled(event: ScheduledController, env: Env): Promise<void> {
+      // Every tick brings each linked workspace's alerts in step with the books (workplace.ts); the quarter-hour clock
+      // is for that alone.
+      console.log('[platform] workplace alerts', JSON.stringify(await syncAllWorkplaceAlerts(env as WorkplaceEnv)));
+      if (event.cron === WORKPLACE_CRON) return;
       await app.scheduled?.(event, env);
       console.log('[platform] docs sync', await syncAllStale(env));
     },
@@ -105,6 +110,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env) };
   const answered = await app.route?.(req, env, ctx, tools);
   if (answered) return answered;
+  // The Workplace integration's doors (workplace.ts): a project's link to its organization's workspace, and its alerts there.
+  const workplace = await workplaceRoute(req, env as WorkplaceEnv, url, () => authedClaims(req, env));
+  if (workplace) return workplace;
 
   let m: RegExpMatchArray | null;
   // ---- admin: through the reviewed workflow only ----

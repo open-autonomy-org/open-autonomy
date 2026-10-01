@@ -1,0 +1,7 @@
+{
+  "name": "Open Autonomy",
+  "description": "A project's books in its organization's workspace: its money conditions raised and cleared as alerts for the role its owner names",
+  "actions": ["alert.raise", "organization.read"],
+  "eventKinds": [],
+  "redirectUrls": ["https://open-autonomy.org/workplace/callback"]
+}
