@@ -70,7 +70,12 @@ for?".
   `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
   or `codex`), its idle time and whether it is the owner's account manager. On every start, the start runs `supercode
   agent declare <name> --open <program>`, which opens the main session once in a pane on this machine (headful) and
-  keeps it across starts. An agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
+  keeps it across starts. An agent with `every_machine` (the box maintainer, RFC 0022 decision 7) also has one instance on
+  each other machine enrolled in the install's Teams context: the start opens it there once by its launch key
+  (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares itself the machine's agent of
+  that name, so the machine's own mail (its probe's alarms) reaches only it. *(The launch key as the "exactly one" and
+  the session's self-declaration are this record's choices; the profile folder must exist at the same path there.)* An
+  agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
   agent-channel`, a service of the start that restarts like the reporter, reaching RH2 with `<secrets>/rh2.env`. The
   Room is found by its key; where the organization declares its Rooms (its org document), the account Room is declared
   there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
