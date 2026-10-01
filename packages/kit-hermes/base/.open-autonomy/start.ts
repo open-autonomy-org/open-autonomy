@@ -421,7 +421,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
     // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
     const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
-    const machines = listed.exitCode === 0 ? ((({ data }) => (Array.isArray(data) ? data : data?.machines ?? []))(JSON.parse(listed.stdout.toString() || '{}')) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
+    const machines = listed.exitCode === 0 ? ((JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
     if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
     for (const machine of machines) {
       const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
