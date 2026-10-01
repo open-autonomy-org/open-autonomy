@@ -8,8 +8,8 @@ service.
 ## The shape
 
 - **Landing follows independent agent review.** The developer pushes `agent/<task>`; the landing workflow
-  opens a PR and arms auto-merge. A separate reviewer approves the current PR head after constitution,
-  scope and manual feature verification review. Changed diffs invalidate stale approvals. All code,
+  opens a PR. A separate reviewer judges the current PR head after constitution, scope and manual feature
+  verification review, and the developer merges it once that review passes; a changed head needs a new review. All code,
   including workflows, follows this process; there is no CODEOWNERS or human development-review gate.
   Nothing pushes `main` directly, maintainers included (`main-protected`: PR required, no bypass).
 - **Credentials stay outside development.** Agents and development code do not receive production keys;
@@ -26,9 +26,9 @@ service.
 ## Setting it up, once per project
 
 1. CODEOWNERS names the owner for `CONSTITUTION.md` and for itself, and nothing else.
-2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (1 approving agent review, stale approvals
-   dismissed on push, code-owner review disabled), `non_fast_forward`, `deletion`; no bypass actors.
-   Enable repository auto-merge and allow the landing workflow to open PRs.
+2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (no required approvals: the review precedes the
+   author's merge, and no rule waits on it; code-owner review disabled), `non_fast_forward`, `deletion`; no bypass
+   actors. Allow the landing workflow to open PRs.
 3. Ruleset `prod-protected` on `refs/heads/prod`: `pull_request` (one approval, required from an `owners` team whose
    only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`, `deletion`; no bypass.
    PM's `maintain.ts ship`, run every pass, keeps the `main` → `prod` pull request open.
