@@ -74,6 +74,13 @@ for?".
   there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
   the place agents are named, and the org document as the account Room's home where one exists.)*
 
+- **The owner's usage statement** (RFC 0021 decision 10). `.open-autonomy/usage.ts`, a tool the owner runs, reads each
+  account's sessions through its own key and publishes the organization's "Usage" statement (ADR 0012) with the owner's
+  steer key (`<secrets>/steer.env`): a line per project this install publishes for, and the organization's overhead
+  (its sessions serving no card: the manager's tick, the account manager's digest, the auditor's round, the mail
+  agents' own sessions) as its own line. *(The statement as the overhead line's surface is this record's choice, where
+  the record places cost attribution on the owner's side.)*
+
 ## Consequences
 
 - A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
