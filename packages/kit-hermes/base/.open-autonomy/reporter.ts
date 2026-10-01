@@ -23,6 +23,12 @@ const tenant: string | undefined = typeof cfg.tenant === 'string' ? cfg.tenant :
 const elsewhere = (process.env.OPEN_AUTONOMY_PROJECT_REPORTERS ?? '').split(',').filter(Boolean);
 const tagIs = (tag: string | undefined, account: string): boolean => !!tag && (tag === account || tag === account.split('/')[1]);
 const ours = (tag: string | undefined): boolean => (tenant ? tagIs(tag, tenant) : !elsewhere.some((a) => tagIs(tag, a)));
+// A card's tags are ordered (its tenant is the first): it shows in every project it is tagged with, and in the
+// organization's view when it is tagged with none. Its sessions, and their usage, are its first tag's (`ours` on the tenant).
+const shown = (t: { tenant?: string; tags?: string[] }): boolean => {
+  const tags = t.tags?.length ? t.tags : [t.tenant];
+  return tenant ? tags.some((tag) => tagIs(tag, tenant)) : !tags.some((tag) => elsewhere.some((a) => tagIs(tag, a)));
+};
 const home = cfg.hermes_home ?? process.env.HERMES_HOME;
 if (typeof home !== 'string' || !home.startsWith('/')) throw new Error('Reporter requires the absolute Hermes home');
 const container = arg('--container');
@@ -197,7 +203,7 @@ async function sessions(): Promise<void> {
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
 // progress note on it, published once.
-type BoardTask = { id: string; title?: string; body?: string; tenant?: string; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+type BoardTask = { id: string; title?: string; body?: string; tenant?: string; tags?: string[]; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
@@ -221,7 +227,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
   // are the board's own bookkeeping: their spend shows on the trail under the developer's task, not as items.
   // An organization's board has no root profile's tasks: every card is a profile's (docs/decisions/0017).
   boardTasksAll = Object.values(read.workflow?.boards ?? {}).flatMap((b) => Object.values(b.tasks ?? {})).filter((t) => t.lane !== 'archived' && (organization || (t.assignee ?? 'default') === 'default')).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
-  const tasks = organization ? boardTasksAll.filter((t) => ours(t.tenant)) : boardTasksAll;
+  const tasks = organization ? boardTasksAll.filter(shown) : boardTasksAll;
   nativeTasks = tasks;
   const items: RoadmapItem[] = tasks.map((t) => {
     const attempts = t.attempts ?? [];
