@@ -12,7 +12,7 @@
     ]
   },
   "include": [
-    "../../.open-autonomy/reporter.ts",
+    "../../.open-autonomy/publisher.ts",
     "src/**/*.ts",
     "test/**/*.ts",
     "skews/self-build/.open-autonomy/scrum.ts",
@@ -20,6 +20,6 @@
     "../../.open-autonomy/maintain.ts",
     "../../.open-autonomy/start.ts",
     "../../.open-autonomy/host.ts",
-    "../../.open-autonomy/reporter.ts"
+    "../../.open-autonomy/publisher.ts"
   ]
 }
