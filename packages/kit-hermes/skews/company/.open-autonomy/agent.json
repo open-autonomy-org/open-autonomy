@@ -1,0 +1,299 @@
+{
+  "harness": "claude-code",
+  "profiles": {
+    "default": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off"
+          }
+        }
+      }
+    },
+    "manager": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off"
+          }
+        }
+      },
+      "jobs": {
+        "tick": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 30
+          },
+          "prompt": "MANAGER TICK. Run the manager skill's tick exactly.",
+          "model": "project",
+          "workdir": "{{workspace}}",
+          "skills": [
+            "manager"
+          ]
+        }
+      }
+    },
+    "account-manager": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off"
+          }
+        }
+      },
+      "jobs": {
+        "digest": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 1440
+          },
+          "prompt": "DIGEST. Write the principal's digest: what reached done, what is blocked and why, what needs their word; every claim with its source.",
+          "model": "project",
+          "workdir": "{{workspace}}"
+        }
+      }
+    },
+    "coder": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off"
+          }
+        }
+      }
+    },
+    "coder-codex": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "openai-codex",
+            "model": "gpt-6-sol"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off",
+            "worker.harness": "codex"
+          }
+        }
+      }
+    },
+    "coder-claude": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off",
+            "worker.harness": "claude-code"
+          }
+        }
+      }
+    },
+    "reviewer": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off"
+          }
+        }
+      }
+    },
+    "auditor": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "openai-codex",
+            "model": "gpt-6-sol"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off",
+            "worker.harness": "codex"
+          }
+        }
+      },
+      "jobs": {
+        "round": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 60
+          },
+          "prompt": "AUDIT ROUND. Audit the last hour's acts in full against the written rules; send the findings, each with act, rule and source, to the account manager.",
+          "model": "project",
+          "workdir": "{{workspace}}"
+        }
+      }
+    },
+    "box-maintainer": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "openai-codex",
+            "model": "gpt-6-sol"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "hermes": {
+          "config": {
+            "agent.max_turns": 400,
+            "memory.memory_enabled": false,
+            "approvals.mode": "off",
+            "worker.harness": "codex"
+          }
+        }
+      },
+      "jobs": {
+        "pass": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 60
+          },
+          "prompt": "HOURLY PASS. Read this machine's disk, what runs and the ledger against its machine file; act only as your profile says.",
+          "model": "project",
+          "workdir": "{{workspace}}"
+        }
+      }
+    }
+  }
+}

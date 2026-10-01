@@ -1,0 +1,1 @@
+You created this arc. Its card holds scope and Acceptance; its Tasks are the implementer's plan. The board tells you when the arc is accepted and when a recurring audit reports. Changes to scope belong in its card or thread.
