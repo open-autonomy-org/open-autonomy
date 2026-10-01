@@ -280,7 +280,10 @@ writeFileSync(envFile, `${lines.join('\n')}\n`);
 if (onCodex) {
   type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
   const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
-  for (const profile of [home, resolve(home, 'profiles/treasurer')]) {
+  // The home and each profile the setup declares (a kit's profiles differ: the Hermes kit's treasurer, the company
+  // skew's manager, coders and the rest), wherever the start rendered one.
+  const profileHomes = Object.keys(agentSetup.profiles).map((name) => (name === 'default' ? home : resolve(home, 'profiles', name))).filter((dir) => existsSync(dir));
+  for (const profile of [...new Set([home, ...profileHomes])]) {
     const authFile = resolve(profile, 'auth.json');
     const store = readStore(authFile);
     // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
