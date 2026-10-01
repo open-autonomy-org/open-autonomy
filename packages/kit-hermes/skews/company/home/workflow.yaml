@@ -334,8 +334,9 @@ run:
     completed:
       - guard: card.every != null
         actions: [{ card_event: { name: complete, as: [platform] } }]
+      # an arc whose session finished waits for the dispatcher, which starts its one review once its PR is open
       - guard: "card.status == 'running' && card.subtask_of == null"
-        actions: [{ card_event: { name: request_review, as: [platform] } }]
+        actions: []
       # a reviewer that recorded its verdict in this run has already mailed it to the manager
       - guard: "card.last_events.review_pass != null && card.last_run.started_at != null && card.last_events.review_pass.created_at >= card.last_run.started_at"
         actions: []
