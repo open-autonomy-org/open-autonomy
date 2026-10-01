@@ -383,21 +383,21 @@ for (const p of projectReporters) {
   const config = resolve(dir, 'config.yaml');
   writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.account, state_file: 'reporter-state.json' }, null, 2)}\n`);
   own(config);
-  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin } });
+  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
-if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin } });
+if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // The install's own checkout in this machine's workspace map, so its board's cards on its own repository
 // (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
 if (harness !== 'hermes') {
-  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
@@ -412,7 +412,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
     ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
     ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
-  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
   say(declared.stdout.toString().trim());
   const rh2 = mailAgent.channel?.rh2;
@@ -421,7 +421,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name,
     ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
     ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
-    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, ...rh2Env, SUPERCODE_BIN: supercodeBin } });
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, ...rh2Env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
