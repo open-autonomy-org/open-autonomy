@@ -376,7 +376,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
-spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
 for (const p of projectReporters) {

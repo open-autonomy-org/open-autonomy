@@ -491,7 +491,8 @@ sc.on('sessionIndexEvent', ev => {
 });
 const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
-  : ['node',fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
+  // The orchestrator the start runs (a review World's branch build), else the installed one.
+  : ['node',process.env.SUPERCODE_ORCHESTRATOR_ENTRY||fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
 const source=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:{...process.env,HERMES_HOME:home} as Record<string,string>,
   changed:async()=>{boardReady=true;nativeOk=false;await tick();},log});
