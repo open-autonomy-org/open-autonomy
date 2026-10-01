@@ -24,7 +24,7 @@ const elsewhere = (process.env.OPEN_AUTONOMY_PROJECT_REPORTERS ?? '').split(',')
 const tagIs = (tag: string | undefined, account: string): boolean => !!tag && (tag === account || tag === account.split('/')[1]);
 const ours = (tag: string | undefined): boolean => (tenant ? tagIs(tag, tenant) : !elsewhere.some((a) => tagIs(tag, a)));
 // A card's tags are ordered (its tenant is the first): it shows in every project it is tagged with, and in the
-// organization's view when it is tagged with none. Its sessions, and their usage, are its first tag's (`ours` on the tenant).
+// organization's view when it is tagged with none. Its sessions, and their usage, are its first tag's (its primary).
 const shown = (t: { tenant?: string; tags?: string[] }): boolean => {
   const tags = t.tags?.length ? t.tags : [t.tenant];
   return tenant ? tags.some((tag) => tagIs(tag, tenant)) : !tags.some((tag) => elsewhere.some((a) => tagIs(tag, a)));
@@ -180,7 +180,7 @@ async function sessions(): Promise<void> {
         // In an organization, a card's session publishes with its card's project; a session serving no card is the
         // organization's.
         // (Checked again each tick: a session can meet its card's workspace after it starts.)
-        if (organization && (candidates.length === 1 ? !ours(candidates[0].tenant) : Boolean(tenant))) continue;
+        if (organization && (candidates.length === 1 ? !ours(candidates[0].tags?.[0] ?? candidates[0].tenant) : Boolean(tenant))) continue;
         const item = (d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0].id : undefined;
         publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
           modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
