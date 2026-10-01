@@ -28,6 +28,8 @@ export type MailAgent = {
   program?: string;
   idle_minutes?: number;
   owners_account_manager?: boolean;
+  /** One instance on every machine enrolled in this machine's Teams context, pinned there (RFC 0022: the box maintainer). */
+  every_machine?: boolean;
   channel?: { rh2?: { principal?: string; room?: string; room_key?: string; room_name?: string } };
 };
 export type Setup = { harness?: string; profiles: Record<string, Package>; agents?: Record<string, MailAgent> };

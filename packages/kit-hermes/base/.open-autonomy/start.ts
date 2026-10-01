@@ -415,6 +415,21 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
   say(declared.stdout.toString().trim());
+  // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
+  // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
+  if (mailAgent.every_machine) {
+    const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
+    const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
+    const machines = listed.exitCode === 0 ? ((({ data }) => (Array.isArray(data) ? data : data?.machines ?? []))(JSON.parse(listed.stdout.toString() || '{}')) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
+    if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
+    for (const machine of machines) {
+      const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
+        '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`]),
+        cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+      say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
+    }
+  }
   const rh2 = mailAgent.channel?.rh2;
   if (!rh2) continue;
   if (!rh2Env.RH2_SESSION_TOKEN) { say(`agent ${name}: its account Room needs ${rh2File}; no channel`); continue; }
