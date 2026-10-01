@@ -58,7 +58,9 @@ for?".
 - **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
   `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and
   the done ones the changelog, and no `ROADMAP.md` or `CHANGELOG.md` is read. A card publishes under its primary project
-  (its tenant), and a session under the card it serves. A project this install publishes for has its key in the
+  (its tenant), and a session under the card it serves; under the orchestrator a session is a worker's, found in its
+  profile's own config home (`<profile>/claude-code`, `<profile>/codex`), and serves the card whose workspace it runs in.
+  A project this install publishes for has its key in the
   install's own custody, `<secrets>/projects/<owner>/<repo>/agent.env`, served on its own valve port to its own reporter;
   a project without one, and a session serving no card, stay on the organization's page. *(The key's place is this
   record's choice: a project's own install keeps its key where the fleet reads it, and RFC 0021 decision 2 has the new
@@ -74,11 +76,13 @@ for?".
   there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
   the place agents are named, and the org document as the account Room's home where one exists.)*
 
-- **The owner's usage statement** (RFC 0021 decision 10). `.open-autonomy/usage.ts`, a tool the owner runs, reads each
-  account's sessions through its own key and publishes the organization's "Usage" statement (ADR 0012) with the owner's
-  steer key (`<secrets>/steer.env`): a line per project this install publishes for, and the organization's overhead
-  (its sessions serving no card: the manager's tick, the account manager's digest, the auditor's round, the mail
-  agents' own sessions) as its own line. *(The statement as the overhead line's surface is this record's choice, where
+- **The owner's usage statement** (RFC 0021 decisions 7 and 10). Every model call goes through the organization's key,
+  so the spend is the organization's calls, each booked to the session that made it. `.open-autonomy/usage.ts`, a tool
+  the owner runs, codes a call to a project when that project's reporter published its session (read through the
+  project's key) and publishes the organization's "Usage" statement (ADR 0012) with the owner's steer key
+  (`<secrets>/steer.env`): a line per project this install publishes for, and the organization's overhead (every call
+  serving no card: the manager's tick, the account manager's digest, the auditor's round, the mail agents' own
+  sessions) as its own line. *(The statement as the overhead line's surface is this record's choice, where
   the record places cost attribution on the owner's side.)*
 
 ## Consequences

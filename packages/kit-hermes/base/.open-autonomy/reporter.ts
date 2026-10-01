@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Volter Harness SDK in, Open Autonomy SDK out. Native state belongs to Volter Harness;
 // publication policy, repository documents and acknowledged delivery belong here.
-import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
@@ -78,8 +78,13 @@ const publishers = new Map<string, TranscriptPublisher>();
 const watching = new Set<string>();
 const stopped = new Set<string>();
 const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-code' && !!cfg.seats && !!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(cfg.seats)}/`);
-const kindOf = (d: SessionDescriptor): 'run' | 'chat' => isSeat(d) || ['cron', 'heartbeat', 'task'].includes(d.trigger ?? '') ? 'run' : 'chat';
-const sourceOf = (d: SessionDescriptor): string => isSeat(d) ? 'seat' : d.recurrence ? jobNames.get(d.recurrence.job_id) ?? d.recurrence.job_id : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d);
+// Under the orchestrator a worker is a Claude Code or Codex session the orchestrator opened: a card's, in the card's
+// workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
+const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
+const isWorker = (d: SessionDescriptor): boolean => onOrchestrator && (d.locator.harness === 'claude-code' || d.locator.harness === 'codex') && !isSeat(d)
+  && (cardAt(d.cwd ?? d.workspace?.value) || (!!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(home)}/`)));
+const kindOf = (d: SessionDescriptor): 'run' | 'chat' => isSeat(d) || isWorker(d) || ['cron', 'heartbeat', 'task'].includes(d.trigger ?? '') ? 'run' : 'chat';
+const sourceOf = (d: SessionDescriptor): string => isSeat(d) ? 'seat' : isWorker(d) ? (cardAt(d.cwd ?? d.workspace?.value) ? 'board' : 'worker') : d.recurrence ? jobNames.get(d.recurrence.job_id) ?? d.recurrence.job_id : d.trigger === 'task' ? 'board' : d.surface?.platform ?? kindOf(d);
 function providerOf(name = 'default'): string | undefined {
   const model = profiles[name]?.residue?.config?.model;
   if (model?.base_url === '${OPEN_AUTONOMY_BASE_URL}' || model?.base_url?.replace(/\/$/, '') === baseUrl.replace(/\/$/, '')) return 'open-autonomy';
@@ -147,7 +152,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
 const retryAt = new Map<string, number>();
 async function sessions(): Promise<void> {
   for (const [key, d] of descriptors) {
-    if (!(d.locator.harness === 'hermes' || isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
+    if (!(d.locator.harness === 'hermes' || isSeat(d) || isWorker(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const completion = completionOf(d);
     const pkey = platformKey(key);
     if (checkpoints[pkey]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
@@ -161,7 +166,7 @@ async function sessions(): Promise<void> {
         // organization's.
         // (Checked again each tick: a session can meet its card's workspace after it starts.)
         if (organization && (candidates.length === 1 ? !ours(candidates[0].tenant) : Boolean(tenant))) continue;
-        const item = (d.trigger === 'task' || isSeat(d)) && candidates.length === 1 ? candidates[0].id : undefined;
+        const item = (d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0].id : undefined;
         publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
           modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
         publishers.set(key, publisher);
@@ -525,8 +530,12 @@ const named = (await sc.listProfiles({ harness: 'hermes', homes })).profiles.fil
 // The treasurer's sessions hold the cards it mints, so a home with a treasurer that `publish.private` does not name is
 // refused rather than published: a project's config is its own, and an upgrade does not rewrite it.
 if (named.some(p => p.name === 'treasurer') && !policy.private.includes('treasurer')) throw new Error('publish.private in .open-autonomy/config.yaml must name treasurer: its sessions hold the cards it mints, and they would be published');
+// Under the orchestrator each profile's worker keeps its sessions in the profile's own config home, one folder per
+// harness (`<profile>/claude-code`, `<profile>/codex`; the root profile's in the home itself), made at its first launch.
+const workerDirs = onOrchestrator ? [home, ...(existsSync(resolve(home, 'profiles')) ? readdirSync(resolve(home, 'profiles')).map((n) => resolve(home, 'profiles', n)) : [])] : [];
 const queries = [{ harnesses: cfg.seats ? ['hermes', 'claude-code'] : ['hermes'], homes },
-  ...named.map(p => ({ harnesses: ['hermes'], homes: { hermes: `${p.home}/state.db` } }))];
+  ...named.map(p => ({ harnesses: ['hermes'], homes: { hermes: `${p.home}/state.db` } })),
+  ...workerDirs.map((dir) => ({ harnesses: ['claude-code', 'codex'], homes: { claude_code: resolve(dir, 'claude-code'), codex: resolve(dir, 'codex') } }))];
 for (const query of queries) for (const d of (await sc.subscribeSessionIndex(query)).initial) descriptors.set(d.locator.session_id, d);
 // The host can start Hermes once SDK discovery and native state are readable.
 // Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
