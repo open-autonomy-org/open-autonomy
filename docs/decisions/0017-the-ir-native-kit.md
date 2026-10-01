@@ -57,8 +57,9 @@ for?".
   RFC 0021's "started only through its own start".)*
 - **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
   `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and
-  the done ones the changelog, and no `ROADMAP.md` or `CHANGELOG.md` is read. A card publishes under its primary project
-  (its tenant), and a session under the card it serves; under the orchestrator a session is a worker's, found in its
+  the done ones the changelog, and no `ROADMAP.md` or `CHANGELOG.md` is read. A card's tags are its projects (a project's
+  tag is its `tag`, e.g. `rh2`, else its account or repository name): it shows in every project it is tagged with, and a
+  session publishes under the card it serves, in its primary project (its first tag); under the orchestrator a session is a worker's, found in its
   profile's own config home (`<profile>/claude-code`, `<profile>/codex`), and serves the card whose workspace it runs in.
   A project this install publishes for has its key in the
   install's own custody, `<secrets>/projects/<owner>/<repo>/agent.env`, served on its own valve port to its own reporter;

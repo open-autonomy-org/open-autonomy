@@ -322,8 +322,9 @@ for (const record of githubRecords) keys.push('--github-app', `${record.file}:${
 // own custody, <secrets>/projects/<owner>/<repo>/agent.env, placed there once the project's own install has retired
 // (it never publishes beside one). Each such project gets its key on its own port and its own reporter; a project
 // without one stays on the organization's page.
-const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown }> } } & Record<string, unknown>;
-const projectReporters: Array<{ account: string; port: number }> = [];
+const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown; tag?: unknown }> } } & Record<string, unknown>;
+// A project's cards carry its tag: its short name (`tag`, e.g. rh2), else its account or repository name.
+const projectReporters: Array<{ account: string; tag: string; port: number }> = [];
 if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
   const projectAccount = typeof entry?.account === 'string' && /^[\w.-]+\/[\w.-]+$/.test(entry.account) ? entry.account : undefined;
   if (!projectAccount) return;
@@ -331,7 +332,7 @@ if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((ent
   if (!existsSync(keyFile)) { say(`${projectAccount}: no key in this install's custody (${keyFile}); its cards publish on the organization's page`); return; }
   const port = valvePort + 4 * (i + 1);
   keys.push('--key', `${keyFile}:${port}`);
-  projectReporters.push({ account: projectAccount, port });
+  projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port });
 });
 spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: hostEnvironment });
 
@@ -374,14 +375,14 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.account).join(',') } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
 for (const p of projectReporters) {
   const dir = resolve(home, '..', 'reporters', ...p.account.split('/'));
   mkdirSync(dir, { recursive: true }); own(dir);
   const config = resolve(dir, 'config.yaml');
-  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.account, state_file: 'reporter-state.json' }, null, 2)}\n`);
+  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.tag, state_file: 'reporter-state.json' }, null, 2)}\n`);
   own(config);
   spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
