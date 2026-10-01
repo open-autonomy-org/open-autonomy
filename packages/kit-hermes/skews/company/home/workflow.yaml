@@ -302,7 +302,12 @@ run:
       - by: [platform]
         actions: [{ count: goal_turns }, { send_to_actor: "Work reminder: {{card.title}} ({{card.id}}). Continue, or record the outcome. Read the card and its available actions: supercode workflow show {{card.id}} {{where}}" }, { record: decision_asked }]
     spawn_failed: [{ by: [platform], target: failed, actions: [{ end_run: { outcome: spawn_failed } }, { count: failures }] }]
-    exited: [{ by: [platform], target: failed, actions: [{ end_run: { outcome: crashed } }, { count: failures }] }]
+    # A session here never completes its own card (only its creator or the manager does), so one that ends cleanly
+    # has finished its run: the completed outcome starts the arc's review or asks the manager. Only a failed end crashes.
+    exited:
+      - { by: [platform], guard: "event.code == 0", target: completed, actions: [{ end_run: { outcome: completed } }] }
+      - { by: [platform], target: failed, actions: [{ end_run: { outcome: crashed } }, { count: failures }] }
+    session_closed: [{ by: [platform], target: completed, actions: [{ end_run: { outcome: completed } }] }]
     timed_out: [{ by: [platform], target: failed, actions: [{ stop_run: null }, { end_run: { outcome: timed_out } }, { count: failures }] }]
     orphaned: [{ by: [platform], target: failed, actions: [{ end_run: { outcome: reclaimed } }, { count: failures }] }]
     session_lost: [{ by: [platform], target: failed, actions: [{ end_run: { outcome: reclaimed } }, { count: failures }] }]
@@ -331,6 +336,9 @@ run:
         actions: [{ card_event: { name: complete, as: [platform] } }]
       - guard: "card.status == 'running' && card.subtask_of == null"
         actions: [{ card_event: { name: request_review, as: [platform] } }]
+      # a reviewer that recorded its verdict in this run has already mailed it to the manager
+      - guard: "card.last_events.review_pass != null && card.last_run.started_at != null && card.last_events.review_pass.created_at >= card.last_run.started_at"
+        actions: []
       - actions: [{ ask: { to: "{{params.managers[0]}}", text: "{{card.id}} ended its run without a terminal verdict request. Obtain the recorded review before accepting it. {{params.request_rules.done}} {{params.request_denial}}" } }]
 dispatch:
   tick: params.dispatch_interval_seconds
