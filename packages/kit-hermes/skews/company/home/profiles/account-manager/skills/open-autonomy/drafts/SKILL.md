@@ -59,8 +59,8 @@ Every draft comes from a line of the principal's that decided something. Never f
    message (a draft); nothing else of yours can block a card:
 
    ```sh
-   supercode workflow block <card id> --waiting-on <message id> \
-     --reason "draft: it waits for the manager's answer to <message id>" --root <home>
+   supercode workflow block <card id> "draft: it waits for the manager's answer to <message id>" \
+     --waiting-on <message id> --root <home>
    ```
 
    The card is `blocked`, never `ready`, while the block holds; the manager's reply to that message ends it.
