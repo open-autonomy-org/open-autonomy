@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // create-open-autonomy: the Hermes kit's door.
 //
-//   bun create open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2]
+//   bun create open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2|company]
 //   create-open-autonomy adopt <dir> --project <name> --account <owner/repo> [--skew …]  # into an existing one; only what is missing
 //   create-open-autonomy check <dir>      # where the project stands against the kit (exit 1 behind it or mid-merge)
 //   create-open-autonomy upgrade <dir>    # merge the kit's change into the project's files three-way (exit 2 on conflicts)
@@ -25,7 +25,7 @@ if (verb === 'upgrade' && flag('--fleet')) {
   try { process.exit((await upgradeFleet(flag('--fleet')!)) ? 0 : 2); } catch (e) { console.error(`create-open-autonomy: ${(e as Error).message}`); process.exit(1); }
 }
 const dir = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1]?.startsWith('--') !== true && a !== verb)[0];
-if (!dir) { console.error('usage: create-open-autonomy [create|adopt] <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2] | check <dir> | upgrade <dir> | setup <dir> [--plan] | runtime <dir>'); process.exit(2); }
+if (!dir) { console.error('usage: create-open-autonomy [create|adopt] <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2|company] | check <dir> | upgrade <dir> | setup <dir> [--plan] | runtime <dir>'); process.exit(2); }
 const target = resolve(dir);
 try {
   if (verb === 'create' || verb === 'adopt') {
@@ -47,10 +47,10 @@ try {
   } else if (verb === 'check') {
     const s = check(target);
     for (const d of s.diverged) console.log(`  ${d}`);
-    if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
-    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${KIT.name} ${KIT.version}: ${target}: fix the project's declarations above`); process.exit(1); }
-    if (!s.current) { console.error(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
-    console.log(`kit ${KIT.name} ${KIT.version}: ${target} at ${s.version}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
+    if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
+    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${s.kit} ${KIT.version}: ${target}: fix the project's declarations above`); process.exit(1); }
+    if (!s.current) { console.error(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
+    console.log(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
   } else {
     const u = await upgrade(target);
     console.log(`upgrade: ${target} ${u.from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept as this project's, ${u.retired.length} retired${u.conflicts.length ? `, ${u.conflicts.length} in conflict` : ''}`);
