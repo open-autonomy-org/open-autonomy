@@ -91,7 +91,7 @@ jobs:
         run: |
           v=$(gh api "repos/$REPO/contents/packages/kit-hermes/package.json?ref=$SHA" --jq .content | base64 -d | jq -r .version)
           TAG="release-v$v"
-          notes=$(printf 'Published to npm: [create-open-autonomy@%s](https://www.npmjs.com/package/create-open-autonomy/v/%s).\n\nStart a project: `bun create open-autonomy <dir>`. What changed: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md).' "$v" "$v" "$REPO" "$TAG")
+          notes=$(printf 'Published to npm: [create-open-autonomy@%s](https://www.npmjs.com/package/create-open-autonomy/v/%s).\n\nStart a project: `bun create open-autonomy <dir>`. What changed: [the commits](https://github.com/%s/commits/%s).' "$v" "$v" "$REPO" "$TAG")
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "$TAG already has a GitHub release"
           else

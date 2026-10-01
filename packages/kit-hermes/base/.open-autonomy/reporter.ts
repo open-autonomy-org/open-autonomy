@@ -362,8 +362,9 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   timelineDigest = digest;
 }
 let docsDigest = '', setupDigest = '';
+// The project's "about" is the committed document its config names (`about: <path>`); with none named there is none.
 async function docs(): Promise<void> {
-  const d = { about_md: mainFile('CONSTITUTION.md') };
+  const d = { about_md: typeof cfg.about === 'string' && cfg.about ? mainFile(cfg.about) : undefined };
   const digest = JSON.stringify(d);
   if (digest !== docsDigest && (await oa.docs(d)).ok) docsDigest = digest;
 }

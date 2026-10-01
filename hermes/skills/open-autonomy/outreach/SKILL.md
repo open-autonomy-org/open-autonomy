@@ -18,8 +18,7 @@ it names no channel for is not made, and the run says so in a line.
 Read the channel first. If this period's post is already there, stop.
 
 **The week's post.**
-1. Each release `CHANGELOG.md` records since the last announcement, with a version and date (never `Unreleased`
-   lines), announced once on the announcements channel `project-communications` names. Where that channel is the
+1. Each release published since the last announcement (its GitHub release and its notes), announced once on the announcements channel `project-communications` names. Where that channel is the
    repository's Discussions, post in its Announcements category:
    `bun .open-autonomy/community.ts discussion-new announcements <title> <body-file>`.
 2. The dev log, on its channel: what shipped, what it cost (the books), what is next on the roadmap, written for

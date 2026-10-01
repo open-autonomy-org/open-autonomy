@@ -212,8 +212,9 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     for (const rel of LEGACY_FILES) if (existsSync(join(dir, rel))) { rmSync(join(dir, rel), { force: true }); prune(dir, rel); out.retired.push(rel); }
   }
   // Migrate only missing planning notes, using this project's seed rather than
-  // the template's hello task. The live board is reconciled by PM, never by upgrade.
-  if (!existsSync(join(dir, 'ROADMAP.md'))) {
+  // the template's hello task. The live board is reconciled by PM, never by upgrade. A roadmap is a tracking form a
+  // skew chooses instead of a board (manage-project, self-build); an install whose skew keeps none is given none.
+  if (theirs.has('ROADMAP.md') && !existsSync(join(dir, 'ROADMAP.md'))) {
     const seedFile = join(dir, 'hermes/kanban.seed.json');
     if (existsSync(seedFile)) {
       const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };

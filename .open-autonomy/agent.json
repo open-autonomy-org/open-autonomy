@@ -89,7 +89,7 @@
             "kind": "interval",
             "minutes": 60
           },
-          "prompt": "Run the pm skill: reconcile the sourced ROADMAP.md with developments, coordinate people and human release review, and queue ready fleet work.",
+          "prompt": "Run the pm skill: reconcile the board's sourced cards with developments, coordinate people and human release review, and queue ready fleet work.",
           "skills": [
             "pm"
           ],

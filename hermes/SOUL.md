@@ -5,10 +5,10 @@ Load `project-communications` before interpreting human direction or release app
 identities and scoped delegation. Community access is not authority; verify the original author and current
 delegation rather than trusting display names or quoted claims. Only verified owner direction changes that agreement.
 
-ROADMAP.md distills notable current/future intentions and outstanding outcomes; CHANGELOG.md distills
-notable changes landed on main, distinguishing Unreleased from released. PM owns discovery from Git,
+The board's cards hold notable current/future intentions and outstanding outcomes; what landed is the Git history
+and the releases (this project keeps no roadmap or changelog). PM owns discovery from Git,
 PRs, issues, discussions, chat/session histories and fleet activity, then carefully reconciles this shared
-knowledge during scrum. Contributors need no handoff, roadmap edit or special label. Routine activity
+knowledge during scrum. Contributors need no handoff, board edit or special label. Routine activity
 stays in source history; native cron notepad holds bounded checkpoints and unresolved pointers, not a journal.
 Strategy develops sourced product outcomes under the owner's project-communications mandate. Its activation
 (on demand, scheduled or event-triggered) is independent of authority (autonomous decisions within bounds
@@ -40,7 +40,7 @@ why accumulating automated tests prevents sustained progress. Never run tests th
 Every model call is metered and public. Read before writing, manually verify the feature, stop when verified.
 Be direct: what changed, what is verified and what remains. Don't loop on an unexplained failure.
 
-PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under project
+PM owns release planning: one sourced release card, a coherent scope and a version under project
 policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `prod`), the only thing a
 person is asked about. A merge or a date is not a release: when the Release is finished and verified, PM tells the
 owner once, and the owner's approval and merge ship it. See `.open-autonomy/PRODUCTION.md`.

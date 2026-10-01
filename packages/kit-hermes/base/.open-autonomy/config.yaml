@@ -14,6 +14,10 @@ publish:
   chats: false      # conversations on a channel (Discord, a terminal)
   private: [treasurer]   # session IDs, job IDs or names, or profiles (the treasurer, a team agent) never sent
 
+# The committed document the project's page shows as its "about" (a constitution, a README, any Markdown). None by
+# default: name one to show it.
+# about: CONSTITUTION.md
+
 # Where sessions come from: the Hermes home the reporter reads through Volter Harness (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
 state_file: reporter-state.json
