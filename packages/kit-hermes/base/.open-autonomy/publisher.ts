@@ -90,7 +90,7 @@ const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-
 // workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
 // The board's attempt that launched a session names its card and, once the run is over, its end.
 const attemptOf = (sessionId: string): { task: BoardTask; attempt: NonNullable<BoardTask['attempts']>[number] } | undefined => {
-  for (const task of boardTasksAll) for (const attempt of task.attempts ?? []) if (attempt.session?.id === sessionId) return { task, attempt };
+  for (const task of boardTasksAll) for (const attempt of task.attempts ?? []) if ((attempt.session?.session_id ?? attempt.session?.id) === sessionId) return { task, attempt };
   return undefined;
 };
 const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
@@ -199,7 +199,7 @@ async function sessions(only?: string): Promise<void> {
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
 // progress note on it, published once.
-type BoardTask = { id: string; title?: string; body?: string; tenant?: string; tags?: string[]; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
+type BoardTask = { id: string; title?: string; body?: string; tenant?: string; tags?: string[]; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string; session_id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
