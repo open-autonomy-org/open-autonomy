@@ -307,8 +307,9 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
 const homeReadme = resolve(home, 'README.md');
-// The site renders the setup's opening paragraphs; put the running version there.
-writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning Hermes kit ${runningKit.version}. `));
+// The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
+// Hermes kit's does; the IR kit's home is profiles and a board).
+if (existsSync(homeReadme)) writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning ${runningKit.kit === 'ir' ? 'IR' : 'Hermes'} kit ${runningKit.version}. `));
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
