@@ -167,12 +167,12 @@ verbs:
               Reason: {{event.reason}}
               Waiting on: {{event.on ?? event.waiting_on ?? 'none named'}}
               Deployment: {{card.ci.repository ?? 'no repository'}}@{{card.ci.commit ?? 'no code commit'}}; CI {{card.ci.workflow ?? 'missing'}} #{{card.ci.run_id ?? 'missing'}} {{card.ci.status ?? ''}}/{{card.ci.conclusion ?? ''}} {{card.ci.url ?? ''}}
-              Reviewed PR head: {{event.commit ?? event.deployed_sha ?? 'not supplied'}}
+              Reviewed PR head: {{event.reviewed_sha ?? event.commit ?? event.deployed_sha ?? 'not supplied'}}
               Additional deployed artifacts: {{card.ci.coverage ?? []}}
               Evidence: {{event.evidence ?? 'none supplied'}}
               Rules: {{params.request_rules[event.state]}}
               {{params.request_denial}}
-        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { state: "{{event.state}}", reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}" } }
+        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { state: "{{event.state}}", reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
   request_review:
     - from: [running]
       by: [platform]
