@@ -76,7 +76,7 @@ verbs:
     - from: [todo]
       by: [creator]
       guard: "event.waiting_on != null && event.on == null && card.current_run_id == null && card.dispatch_hold"
-      description: 'A draft: block your own held card (created with --no-start) on your message to the manager: --waiting-on <message> --reason "<why>".'
+      description: 'A draft: block your own held card (created with --no-start) on your message to the manager: block <card> "<why>" --waiting-on <message>.'
       validate: [{ expr: "event.reason != null && event.reason != ''", message: A block must name what is missing. }]
       actions:
         - relation: { add: "{{event.waiting_on}}", reason: "{{event.reason}}" }
