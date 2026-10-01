@@ -72,6 +72,8 @@ export interface UsageEvent {
   partner?: string;
   unit?: string;
   quantity?: number;
+  usd_cents_per_credit?: number;
+  reservation_key?: string;
   reference?: string;
   // The work item a purchase serves, named by the payer: the item page shows it under that item.
   item?: string;

@@ -38,6 +38,12 @@ export function agentHarness(setup: Setup | null): string {
   return setup?.harness ?? 'hermes';
 }
 
+/** The worker one profile runs: its own `worker.harness` where it names one (docs/decisions/0017), else the setup's. */
+export function profileHarness(setup: Setup | null, profile: string): string {
+  const own = setup?.profiles?.[profile]?.extensions?.hermes?.config?.['worker.harness'];
+  return typeof own === 'string' && own ? own : agentHarness(setup);
+}
+
 /**
  * The persona and skills of hermes/ (at `from`) in the workers' forms, into the home at `to` and each of its
  * profiles (docs/plans/hermes-compat.md in Volter Harness, row 15): `SOUL.md` as `AGENTS.md`, with `SOUL.md` a link to
@@ -52,7 +58,8 @@ export function renderWorkerForms(from: string, to: string): string[] {
   if (existsSync(profiles)) for (const name of readdirSync(profiles)) if (lstatSync(resolve(profiles, name)).isDirectory()) pairs.push([resolve(profiles, name), resolve(to, 'profiles', name)]);
   for (const [src, home] of pairs) {
     mkdirSync(home, { recursive: true });
-    const soul = resolve(src, 'SOUL.md');
+    // The persona: the IR's native AGENTS.md where the folder has one (docs/decisions/0017), else Hermes's SOUL.md.
+    const soul = existsSync(resolve(src, 'AGENTS.md')) ? resolve(src, 'AGENTS.md') : resolve(src, 'SOUL.md');
     if (existsSync(soul)) {
       writeFileSync(resolve(home, 'AGENTS.md'), readFileSync(soul));
       rmSync(resolve(home, 'SOUL.md'), { force: true });
@@ -117,7 +124,8 @@ export async function applyAgent(options: {
   const harness = agentHarness(options.setup);
   for (const [profile, declared] of Object.entries(options.setup.profiles)) {
     // another harness than Hermes is each profile's worker: the orchestrator's `worker:` key, which Hermes keeps
-    const spec: Package = harness === 'hermes' ? declared : { ...declared, extensions: { ...declared.extensions, hermes: { ...declared.extensions?.hermes, config: { ...declared.extensions?.hermes?.config, 'worker.harness': harness } } } };
+    // a profile that names its own worker keeps it (the IR kit's coder-codex and coder-claude, docs/decisions/0017)
+    const spec: Package = harness === 'hermes' ? declared : { ...declared, extensions: { ...declared.extensions, hermes: { ...declared.extensions?.hermes, config: { ...declared.extensions?.hermes?.config, 'worker.harness': declared.extensions?.hermes?.config?.['worker.harness'] ?? harness } } } };
     const home = options.homeOf(profile);
     // a named profile's home is made by its content (hermes/profiles/<name>/, copied in before this); Hermes's cron
     // never makes one, so a declared profile without it is said here, not as Hermes's missing cron directory

@@ -1,0 +1,64 @@
+# ADR 0017: The IR-native kit: a `company` skew whose home is Supercode's native folder, run only through its own start
+
+Status: Proposed. Accepted only upon independent constitution review and merge of this record with its first
+implementation; proposed until both occur.
+
+Amends [ADR 0006](0006-the-kit-is-a-lineage.md) (a second kit on the same lineage engine) and
+[ADR 0009](0009-another-harness-on-the-same-home.md) (the board's dispatcher is the start's, where the home declares
+one). Supersedes neither.
+
+## Context and sources
+
+**Authorization.** The owner locked the design in Volter's company repository on 2026-09-30:
+`volter-ai/volter` `company/rfcs/0021-one-open-autonomy-install-for-the-org.md` ("get everything locked down") and
+`company/rfcs/0022-the-process-auditor-and-the-box-maintainer.md` ("okay now let's lock down the design for these").
+The owner's lines it rests on, from RFC 0021: "I think making a new template for this is perfectly reasonable btw";
+"it's actually one OA install using the orchestration IR that compiles into supercode + the various default files or
+checkouts that may be needed + anything that needs to be setup for the reporter"; "perhaps we can start having a group
+of templates of open autonomy which are just in supercode IR, that allows people to compile into any system"; "also I
+already said we should be doing general IR not hermes"; "do we actually want to have a 'root profile'? What is that
+for?".
+
+**What exists** (this repository's `main` at 4365baf5; Supercode `main` at dacec23b):
+- One kit, `hermes`, in `packages/kit-hermes`: `base/` and four skews, rendered by one engine (`src/kit.ts`) whose
+  record is `.open-autonomy/kit.json`. The agent's content is `hermes/`, applied into a Hermes home by the start.
+- ADR 0009: where `.open-autonomy/agent.json` picks another harness, the start runs Supercode's orchestrator on the same
+  home. The board stays Hermes's, ticked inside the orchestrator.
+- Supercode's orchestrator IR (`docs/architecture/orchestrator.md`): the home is the IR's wire form, a folder shaped
+  like a Hermes home: the root is the `default` profile, `profiles/<name>/` the others, each with `config.yaml`,
+  `AGENTS.md` and `cron/jobs.json`; a root `workflow.yaml` declares the board (Supercode ADR 0001, the board IR), run by
+  `supercode-orchestrator workflow serve --root <home>`.
+- RFC 0021's finding: Volter's manager board ran from a home rendered by nothing (its dispatcher started by hand, its
+  root holding Hermes's stock persona).
+
+## Decision
+
+- **A second kit on the same engine.** `create-open-autonomy` renders two kits: `hermes` (its four skews, unchanged)
+  and `ir`, whose first skew is `company` (RFC 0021 decision 3). A skew names its kit; the record says which
+  (`"kit": "ir"`), and `check` and `upgrade` work for both, the ancestor rendered by the version that wrote it.
+  *(One package rather than two is this record's choice: RFC 0021 moves the Hermes skews into the IR kit later, each
+  proven by a round trip, so they share one engine and one release from the start.)*
+- **The IR kit's base is the Hermes kit's base without its `hermes/` folder**: the valve, credentials, the container
+  stack, the landing workflow, the reporter, the vendored SDK and the start. Its agent content is `home/`, the IR's
+  native folder, kit-owned except the skills a project adds outside `home/skills/open-autonomy/`.
+- **The `company` skew's home** (RFC 0021 decisions 4 and 5; RFC 0022):
+  - the root is the organization's layer only: its instructions, default permissions, the valve's address and shared
+    skills. No card is assigned to it and nobody runs as it;
+  - named profiles, each its job: `manager` (its tick a job), `account-manager` (its digest a job; its owner instance a
+    named profile until agents are their own layer), a `coder` parent with `coder-codex` and `coder-claude` children
+    differing only in harness, `reviewer`, `auditor` (a job `every: 1h`, read-only, a model family apart from the
+    manager's) and `box-maintainer` (the hourly pass a job; one instance per machine);
+  - `workflow.yaml`, the board IR: one board for the organization, one review per arc started by the dispatcher, a
+    review naming its reviewer profile, drafts blocked by a message.
+- **The start runs the whole install, and nothing else does.** For a project whose agent content is `home/`, the start
+  copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
+  it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
+  services, stopped and restarted with the rest. *(Running the dispatcher from the start is this record's reading of
+  RFC 0021's "started only through its own start".)*
+
+## Consequences
+
+- A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
+- The Hermes skews, their renders and their upgrades are byte for byte what they were.
+- Not in this record, each its own later step of RFC 0021's Order: the reporter publishing per project account
+  (step 3), and Hermes's and OpenClaw's export of the IR kit with its loss report (Supercode's codecs).
