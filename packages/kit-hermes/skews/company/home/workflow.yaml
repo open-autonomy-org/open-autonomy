@@ -344,7 +344,8 @@ run:
 dispatch:
   tick: params.dispatch_interval_seconds
   start: start
-  eligible: "card.subtask_of == null && !card.dispatch_hold && card.current_run_id == null && card.blocked_by.size() == 0 && card.paused == null && !card.archived && !(run.local && (host.memory_pressure == 'critical' || (host.memory_pressure == 'elevated' && tick.local_started >= 1)))"
+  # a reviewed arc (its verdict after its review request) waits for its creator or the manager, not another review
+  eligible: "card.subtask_of == null && !card.dispatch_hold && card.current_run_id == null && !(card.status == 'review' && card.last_events.review_pass != null && card.last_events.review_requested != null && card.last_events.review_pass.created_at >= card.last_events.review_requested.created_at) && card.blocked_by.size() == 0 && card.paused == null && !card.archived && !(run.local && (host.memory_pressure == 'critical' || (host.memory_pressure == 'elevated' && tick.local_started >= 1)))"
   order: ["card.status == 'review' ? 0 : 1", '-card.priority', card.created_at]
   limits:
     - { group: "'home'", counts: "card.current_run_id != null", max: "params.max_in_progress ?? host.max_in_progress", reserve: { for: "card.status == 'review'", slots: 1 } }
