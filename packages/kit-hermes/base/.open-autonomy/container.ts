@@ -125,7 +125,7 @@ export async function startContainer(options: {
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname() });
     let reportReady!: () => void;
     const reporterReady = new Promise<void>(resolve => { reportReady = resolve; });
-    own('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--container', container,
+    own('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--container', container,
       '--config', reportConfig, '--project', workspace, '--state-file', resolve(state, 'reporter-state.json')], {
       env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime, OPEN_AUTONOMY_HARNESS: harness },
       ipc(message) { if (message?.type === 'reporter-ready') reportReady(); },
