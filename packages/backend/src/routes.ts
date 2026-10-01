@@ -218,6 +218,18 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.stateRequest(claims.account, body.state, claims.kid, typeof body.reason === 'string' ? redactDeep(body.reason) : body.reason);
     return json(r, { status: r.ok ? 200 : 400 });
   }
+  // The owner's spending freeze, on a steer-scoped key (`{ "frozen": true, "reason"? }` or `{ "frozen": false }`): a cap of
+  // zero on every rail until lifted. On an org's key it holds every project of the org. Not the agent's pause.
+  if (path === '/v1/agent/freeze') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    const body = parseJson<{ frozen?: boolean; reason?: string }>(await req.text());
+    if (!body || typeof body.frozen !== 'boolean') return error('invalid_request');
+    const r = await ledger.freezeSet(claims.account, body.frozen ? { by: claims.kid, ...(typeof body.reason === 'string' ? { reason: String(redactDeep(body.reason)) } : {}) } : null);
+    return json(r, { status: r.ok ? 200 : 400 });
+  }
   // The owner's statements (ADR 0012), on a project's steer-scoped key: a tool the owner runs publishes its word about
   // the project, and withdraws it. The platform checks the shape and keeps every change; it knows nothing of the words.
   if (path === '/v1/agent/statement' || (m = path.match(/^\/v1\/agent\/statement\/([^/]+)$/))) {

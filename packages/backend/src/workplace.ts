@@ -8,12 +8,17 @@
 //   link is kept in the books under the project, with the role its alerts are for.
 // - Alerts. The books' own conditions are raised in the workspace as alerts, under stable keys, for the link's role, and
 //   cleared there when they end (the condition is read again on every tick): spent out, not yet funded, runway under a
-//   third of its goal, a spending limit at 80% or more, a pause asked for and not yet taken, and the org's pause. The
+//   third of its goal, a spending limit at 80% or more, a spending freeze (its own or its org's), a pause asked for and
+//   not yet taken, and the org's pause. The
 //   workspace shows them in its Inbox and its bot carries them; this side never names a person.
+// - Books. Every tick also publishes the project's books to the workspace (its `books` kind: standing, money in and out,
+//   balance, burn and runway, earmarks, spending caps and their use, the owner's statements, the daily metered spend),
+//   and does the controls asked there: a spending freeze, or lifting it, set on the books as the workspace's act.
 // Absent configuration (WORKPLACE_URL, WORKPLACE_APP_ID, WORKPLACE_CLIENT_ID, WORKPLACE_CLIENT_SECRET), the doors answer
 // `workplace_not_configured`, as the card rail does without Stripe.
 import { error, hmac, json, methodNotAllowed, parseJson } from './http.js';
-import { LedgerClient, LimitLedger, type LedgerCore, type ProjectView } from './ledger.js';
+import { LedgerClient, LimitLedger, type FundingSnapshot, type LedgerCore, type ProjectView } from './ledger.js';
+import type { Statement } from '@open-autonomy/sdk/statements';
 import { standingOf } from './page/parts.js';
 import { hasScope, type Env, type KeyClaims } from './types.js';
 
@@ -83,6 +88,9 @@ export function workplaceAlertsOf(v: ProjectView, origin: string): WorkplaceAler
   const org = v.control?.desired?.from?.slice(1);
   if (standing === 'requested') out.push({ key: 'agent.pause-not-taken', severity: 'warning', reason: `A pause was asked for${org ? ` by ${org}` : ''}; the agent has not reported it paused yet`, link: agent });
   if (org && (standing === 'paused' || standing === 'requested')) out.push({ key: 'agent.org-paused', severity: 'info', reason: `Paused by ${org}: the project runs again when ${org} resumes`, link: agent });
+  if (v.freeze) out.push(v.freeze.from
+    ? { key: 'books.org-frozen', severity: 'warning', reason: `Spending is frozen for every project of ${v.freeze.from.slice(1)} since ${v.freeze.at.slice(0, 16).replace('T', ' ')}`, link: books }
+    : { key: 'books.frozen', severity: 'warning', reason: `Spending is frozen by ${v.freeze.by}${v.freeze.reason ? `: ${v.freeze.reason}` : ''}`, link: books });
   if (standing === 'exhausted') out.push({ key: 'books.spent-out', severity: 'critical', reason: 'Spending stopped: the balance is spent', link: books });
   if (standing === 'unfunded') out.push({ key: 'books.unfunded', severity: 'info', reason: 'Not yet funded: nothing is spent on the platform until money comes in', link: books });
   const runway = v.runway_days !== null && Number.isFinite(v.runway_days) ? Math.round(v.runway_days) : null;
@@ -96,11 +104,42 @@ export function workplaceAlertsOf(v: ProjectView, origin: string): WorkplaceAler
   return out;
 }
 
-async function workplaceCall<T>(link: WorkplaceLink, path: string, body: unknown): Promise<{ ok: boolean; status: number; data?: T; code?: string }> {
+/** The source key the project's books publish under in the workspace. */
+export const booksSourceKey = (account: string): string => account.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 64) || 'books';
+const purposeWords = (purpose: ProjectView['envelopes'][number]['purpose']): string => (purpose.type === 'item' ? `for ${purpose.item}` : purpose.type === 'models' ? `for ${purpose.models.join(', ')}` : purpose.type === 'model' ? 'for model calls' : 'for anything');
+const daysBack = (count: number, now = Date.now()): string[] => Array.from({ length: count }, (_, index) => new Date(now - (count - 1 - index) * 86_400_000).toISOString().slice(0, 10));
+
+/** The project's books in the workspace's `books` format. */
+export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, statements: Statement[], origin: string): Record<string, unknown> {
+  const standing = standingOf(v, []);
+  const moved = (v.feed ?? []).filter((flow) => flow.kind === 'grant' || flow.kind === 'mint');
+  const flows = moved.filter((flow) => flow.to === v.account || flow.from === v.account).slice(-200).map((flow, index) => {
+    const out = flow.kind === 'grant' && flow.from === v.account;
+    const party = out ? flow.to : flow.from ? flow.from.replace(/^@/, '') : flow.sponsor_login ?? 'the operator';
+    const what = flow.kind === 'mint' ? (flow.coupon ? 'a coupon' : flow.sponsor_login ? 'sponsorship' : 'credits') : flow.note ? `a grant · "${flow.note}"` : 'a grant';
+    return { key: flow.id ?? `${flow.ts}-${index}`, at: flow.ts, direction: out ? 'out' : 'in', party, what, usdCents: flow.amount_usd_cents };
+  });
+  const days = funding.daily_spend_usd_cents ?? [];
+  const dates = daysBack(days.length);
+  return {
+    summary: {
+      account: v.account, standing, balanceUsdCents: v.balance_usd_cents, inUsdCents: v.granted_in_usd_cents, outUsdCents: v.granted_out_usd_cents ?? 0,
+      spentUsdCents: v.consumed_usd_cents, burnPerDayUsdCents: v.burn_per_day_usd_cents, runwayDays: v.runway_days === null || !Number.isFinite(v.runway_days) ? null : Math.round(v.runway_days),
+      runwayConfident: v.runway_confident, goalDays: v.goal_days, freeze: v.freeze ?? null, canFreeze: !v.freeze?.from, giveUrl: `${origin}/give?to=${encodeURIComponent(v.account)}`,
+    },
+    flows,
+    envelopes: v.envelopes.map((envelope) => ({ key: envelope.id, purpose: purposeWords(envelope.purpose), ...(envelope.from ? { from: envelope.from } : {}), balanceUsdCents: envelope.balance_usd_cents })),
+    limits: v.bounds.limits.map((limit, index) => ({ key: `${limit.window}:${limit.model ?? '*'}:${index}`, window: limit.window, ...(limit.model ? { model: limit.model } : {}), ...(limit.usd_cents !== undefined ? { usdCents: limit.usd_cents } : {}), ...(limit.calls !== undefined ? { calls: limit.calls } : {}), ...(limit.tokens !== undefined ? { tokens: limit.tokens } : {}), used: { usdCents: limit.used.usd_cents, calls: limit.used.calls, tokens: limit.used.tokens } })),
+    statements: statements.map((statement) => ({ key: statement.id, title: statement.title, text: statement.badges.map((badge) => `${badge.label}: ${badge.message}`).join(' · ') || statement.source.name, at: statement.as_of })),
+    daily: days.map((usdCents, index) => ({ key: dates[index], usdCents })),
+  };
+}
+
+async function workplaceCall<T>(link: WorkplaceLink, path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<{ ok: boolean; status: number; data?: T; code?: string }> {
   const response = await fetch(`${link.base}/api/v3/organizations/${encodeURIComponent(link.organizationId)}${path}`, {
-    method: 'POST', redirect: 'manual',
-    headers: { accept: 'application/json', authorization: `Bearer ${link.accessToken}`, 'content-type': 'application/json', 'x-rh2-organization': link.organizationId },
-    body: JSON.stringify(body),
+    method, redirect: 'manual',
+    headers: { accept: 'application/json', authorization: `Bearer ${link.accessToken}`, 'x-rh2-organization': link.organizationId, origin: link.base, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: { code?: string } };
   return { ok: response.ok, status: response.status, ...(payload.data === undefined ? {} : { data: payload.data }), ...(payload.error?.code ? { code: payload.error.code } : {}) };
@@ -111,11 +150,27 @@ async function workplaceCall<T>(link: WorkplaceLink, path: string, body: unknown
 export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceLink): Promise<WorkplaceLink> {
   const at = new Date().toISOString();
   if (Date.parse(link.expiresAt) <= Date.now()) return { ...link, lastTick: { at, ok: false, note: 'the installation token expired; link the project again' } };
+  const failures: string[] = [];
+  const source = booksSourceKey(link.account);
+  // The controls asked in the workspace first: a freeze taken now shows in the books published below.
+  const queue = await workplaceCall<{ controls: Array<{ action: string; controlId: string; reason: string | null; requestedBy: string; targetKey: string }> }>(link, `/books/${source}/controls`);
+  for (const control of queue.data?.controls ?? []) {
+    let ok = false; let note = `${control.action} is not a books control`;
+    if (control.targetKey !== link.account) note = 'the control names another project';
+    else if (control.action === 'freeze' || control.action === 'unfreeze') {
+      const done = await ledger.freezeSet(link.account, control.action === 'freeze' ? { by: `Workplace · ${control.requestedBy}`, ...(control.reason ? { reason: control.reason } : {}) } : null);
+      ok = done.ok; note = done.ok ? '' : done.error ?? 'refused';
+    }
+    const reported = await workplaceCall(link, `/books-controls/${encodeURIComponent(control.controlId)}/complete`, { ok, ...(note ? { note } : {}) });
+    if (!reported.ok) failures.push(`control ${control.controlId}: ${reported.code ?? reported.status}`);
+  }
   const v = await ledger.project(link.account);
   if (!v.found) return { ...link, lastTick: { at, ok: false, note: 'the project is not on the books' } };
+  const [funding, statements] = await Promise.all([ledger.funding(link.account), ledger.statements(link.account)]);
+  const published = await workplaceCall(link, `/books/${source}`, { name: link.account, system: 'Open Autonomy', link: `${link.origin}/${link.account}/books`, observedAt: at, model: workplaceBooksOf(v, funding, statements.statements ?? [], link.origin) }, 'PUT');
+  if (!published.ok) failures.push(`books: ${published.code ?? published.status}`);
   const wanted = workplaceAlertsOf(v, link.origin);
   const raised: Record<string, string> = {};
-  const failures: string[] = [];
   for (const alert of wanted) {
     const fingerprint = `${alert.severity}|${alert.reason}`;
     if (link.raised[alert.key] === fingerprint) { raised[alert.key] = fingerprint; continue; }

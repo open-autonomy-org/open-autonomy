@@ -1,7 +1,13 @@
 {
   "name": "Open Autonomy",
-  "description": "A project's books in its organization's workspace: its money conditions raised and cleared as alerts for the role its owner names",
-  "actions": ["alert.raise", "organization.read"],
+  "description": "A project's books in its organization's workspace: its money published there, a spending freeze asked there taken here, and its money conditions raised and cleared as alerts for the role its owner names",
+  "actions": [
+    "alert.raise",
+    "books.publish",
+    "organization.read"
+  ],
   "eventKinds": [],
-  "redirectUrls": ["https://open-autonomy.org/workplace/callback"]
+  "redirectUrls": [
+    "https://open-autonomy.org/workplace/callback"
+  ]
 }

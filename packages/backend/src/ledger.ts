@@ -81,6 +81,8 @@ function usedOver(a: Account | undefined, limit: SpendLimit, now = Date.now()): 
 }
 const secondsToNextBucket = (limit: SpendLimit, now = Date.now()): number => { const size = limit.window_seconds <= 3600 ? 60_000 : limit.window_seconds <= 86400 ? 3_600_000 : 86_400_000; return Math.ceil((size - (now % size)) / 1000); };
 
+export interface SpendFreeze { at: string; by: string; reason?: string }
+
 export interface Account {
   granted_in_usd_cents: number;
   granted_out_usd_cents: number;
@@ -110,6 +112,10 @@ export interface Account {
   // The agent's operating state: the owner's word (a steer key's request) and the automation's answer (what it
   // reported true of itself), kept apart. The platform records both and applies neither.
   control?: AgentControl;
+  // A spending freeze (company RFC 0024 B5(1): a cap of zero on every rail and window), set by the owner or through the
+  // project's workspace and lifted the same way. Nothing is reserved while it stands, the project's own or its org's.
+  // It is not the agent's pause (`control`), which stops the process and spends nothing by itself.
+  freeze?: SpendFreeze;
   // The owner's statements (ADR 0012), by id: the latest revision's number and, unless withdrawn, the live statement.
   // Every revision lives in storage, `statement:<account>:<id>:<revision, zero-padded>`.
   statements?: Record<string, { revision: number; live?: Statement }>;
@@ -432,6 +438,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at, body.id));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
+      case 'freeze_set': return json(await this.freezeSet(s('account'), body.freeze ?? null));
       case 'state': return json(this.stateView(s('account')));
       case 'state_request': return json(await this.stateRequest(s('account'), body.state, s('by'), body.reason));
       case 'state_report': return json(await this.stateReport(s('account'), body.state, body.note));
@@ -703,6 +710,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const key = this.keyCheck(kid);
     if (!key.ok) return { ok: false, error: key.error === 'account_banned' ? 'account_banned' : 'auth_failed' };
     if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
+    const frozen = this.effectiveFreeze(account);
+    if (frozen) return { ok: false, error: 'spending_frozen', message: `Spending is frozen${frozen.from ? ` for every project of ${frozen.from.slice(1)}` : ''} by ${frozen.by} since ${frozen.at}${frozen.reason ? `: ${frozen.reason}` : ''}. Nothing is spent until it is lifted.`, account };
     let spendItem = itemId(item);
     if (!spendItem && session) {
       const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${session}`);
@@ -1087,6 +1096,25 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!org || word?.state !== 'paused' || own?.desired?.state === 'paused') return own ? { ...own } : undefined;
     return { ...(own ?? {}), desired: { ...word, from: org }, ...(own?.desired ? { own: own.desired } : {}) };
   }
+  // The freeze that holds a project: its own, else its org's.
+  private effectiveFreeze(account: string): (SpendFreeze & { from?: string }) | undefined {
+    const own = this.acct(account)?.freeze;
+    if (own) return { ...own };
+    const org = orgOf(account);
+    const word = org ? this.acct(org)?.freeze : undefined;
+    return word ? { ...word, from: org } : undefined;
+  }
+  // The owner (or the project's workspace, through its link) freezes spending, or lifts the freeze (`freeze: null`).
+  private async freezeSet(account: string, freeze: unknown): Promise<Record<string, unknown>> {
+    if (!account) return { ok: false, error: 'invalid_account' };
+    const a = this.ensureAcct(account);
+    if (freeze === null) { delete a.freeze; await this.save(); return { ok: true, frozen: false }; }
+    const f = freeze as Partial<SpendFreeze> | undefined;
+    if (!f || typeof f.by !== 'string' || !f.by) return { ok: false, error: 'invalid_freeze' };
+    a.freeze = { at: new Date().toISOString(), by: f.by.slice(0, 120), ...(typeof f.reason === 'string' && f.reason.trim() ? { reason: f.reason.trim().slice(0, 300) } : {}) };
+    await this.save();
+    return { ok: true, frozen: true, freeze: a.freeze };
+  }
   // Every project of an org on the books.
   private membersOf(org: string): string[] {
     const prefix = `${org.slice(1)}/`;
@@ -1413,6 +1441,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       live_sessions: [...(a?.live_sessions ?? [])],
       ...(a?.deployment ? { live: { ...a.deployment } } : {}),
       ...(control ? { control } : {}),
+      ...(this.effectiveFreeze(account) ? { freeze: this.effectiveFreeze(account) } : {}),
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       status: fundingStatus(f),
     };
@@ -1553,6 +1582,8 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (deployment) acct.deployment = deployment;
     const control = normalizeControl(a.control);
     if (control) acct.control = control;
+    const freeze = (a as { freeze?: Partial<SpendFreeze> }).freeze;
+    if (freeze && typeof freeze.at === 'string' && typeof freeze.by === 'string') acct.freeze = { at: freeze.at, by: freeze.by, ...(typeof freeze.reason === 'string' ? { reason: freeze.reason } : {}) };
     const statements = (a as { statements?: unknown }).statements;
     if (statements && typeof statements === 'object') {
       acct.statements = {};
@@ -1779,6 +1810,8 @@ export interface DirectoryEntry {
   live_sessions: string[];
   live?: LiveDeployment;
   control?: AgentControl;
+  // The spending freeze that holds it: its own, or its org's (`from`).
+  freeze?: SpendFreeze & { from?: string };
   stripe_cardholder?: string;
   status: 'funded' | 'low' | 'unfunded';
 }
@@ -1840,6 +1873,7 @@ export class LedgerClient {
   session(account: string, key: string) { return this.call<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.call<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   setupPut(account: string, setup: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  freezeSet(account: string, freeze: { by: string; reason?: string } | null) { return this.call<{ ok: boolean; error?: string; frozen?: boolean; freeze?: SpendFreeze }>('freeze_set', { account, freeze }); }
   state(account: string) { return this.call<{ ok: true; account: string } & AgentControl>('state', { account }); }
   stateRequest(account: string, state: unknown, by: string, reason?: unknown) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl>('state_request', { account, state, by, reason }); }
   stateReport(account: string, state: unknown, note?: unknown) { return this.call<{ ok: boolean; error?: string } & AgentControl>('state_report', { account, state, note }); }
