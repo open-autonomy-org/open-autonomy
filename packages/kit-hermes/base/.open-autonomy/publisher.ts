@@ -175,7 +175,7 @@ async function sessions(only?: string): Promise<void> {
         // In an organization, a card's session publishes with its card's project; a session serving no card is the
         // organization's.
         // (Checked again each tick: a session can meet its card's workspace after it starts.)
-        if (organization && (candidates.length === 1 ? !ours(candidates[0].tenant) : Boolean(tenant))) continue;
+        if (organization && (candidates.length === 1 ? !ours(candidates[0].tags?.[0] ?? candidates[0].tenant) : Boolean(tenant))) continue;
         const item = (d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0].id : undefined;
         publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
           modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
