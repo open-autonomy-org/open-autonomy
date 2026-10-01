@@ -16,7 +16,21 @@ import { basename, dirname, relative, resolve } from 'node:path';
 
 type Model = { provider?: string; model?: string; endpoint?: string; base_url?: string; credential?: string; placeholder_key?: string };
 type Package = { schema_version: 1; inference?: { models?: Record<string, Model>; default?: string }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
-export type Setup = { harness?: string; profiles: Record<string, Package> };
+/**
+ * An agent with a mailbox (supercode docs/adr/0008-agent-mailbox.md): its main session runs `profile` in a pane the
+ * start opens once (`program`, `claude` or `codex`), declared with supercode so roots addressed to the agent reach it.
+ * `owners_account_manager` makes it the owner's account manager (RFC 0020 decision 17); `channel.rh2` carries its
+ * account Room to its mailbox (decisions 24-25), the Room opened for `principal` (an RH2 principal id) when the
+ * organization has none with its key.
+ */
+export type MailAgent = {
+  profile: string;
+  program?: string;
+  idle_minutes?: number;
+  owners_account_manager?: boolean;
+  channel?: { rh2?: { principal?: string; room?: string; room_key?: string; room_name?: string } };
+};
+export type Setup = { harness?: string; profiles: Record<string, Package>; agents?: Record<string, MailAgent> };
 
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
@@ -31,6 +45,13 @@ export function parseAgent(text: string, where: string): Setup {
   if (!setup?.profiles?.default) throw new Error(`${where}: a setup declares at least the default profile`);
   for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${where}: ${name} is not a Hermes profile name`);
   if (setup.harness !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(String(setup.harness))) throw new Error(`${where}: harness ${JSON.stringify(setup.harness)} is not a harness id`);
+  for (const [name, agent] of Object.entries(setup.agents ?? {})) {
+    if (!PROFILE.test(name)) throw new Error(`${where}: agent ${name} is not an agent name`);
+    if (!agent || !setup.profiles[agent.profile]) throw new Error(`${where}: agent ${name} runs profile ${agent?.profile}, which the setup does not declare`);
+    if (agent.program !== undefined && !['claude', 'codex'].includes(agent.program)) throw new Error(`${where}: agent ${name}'s program is claude or codex`);
+    if (agent.idle_minutes !== undefined && !(Number.isInteger(agent.idle_minutes) && agent.idle_minutes > 0)) throw new Error(`${where}: agent ${name}'s idle_minutes is a whole number of minutes`);
+  }
+  if (Object.values(setup.agents ?? {}).filter((agent) => agent.owners_account_manager).length > 1) throw new Error(`${where}: one agent at most is the owner's account manager`);
   return setup;
 }
 

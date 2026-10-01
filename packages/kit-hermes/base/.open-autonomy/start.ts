@@ -127,9 +127,10 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    if (name === 'reporter') {
-      // The reporter narrates; it never decides whether the brain runs. It comes back in ten seconds.
-      say(`reporter ended (${code}); the brain keeps running, the reporter returns in 10 s`);
+    if (name.startsWith('reporter') || name.startsWith('channel ')) {
+      // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
+      // ten seconds.
+      say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
@@ -389,6 +390,29 @@ const gateway = harness === 'hermes'
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin } });
+// The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
+// and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
+// start. RH2 is reached with <secrets>/rh2.env (RH2_API_URL, RH2_ORGANIZATION, RH2_SESSION_TOKEN, RH2_PRINCIPAL_ID).
+const rh2File = resolve(secrets, 'rh2.env');
+const rh2Env = existsSync(rh2File) ? Object.fromEntries(readFileSync(rh2File, 'utf8').split('\n').map((line) => /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())).filter((m): m is RegExpExecArray => !!m).map((m) => [m[1], m[2]])) : {};
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
+  const folder = resolve(home, 'profiles', mailAgent.profile);
+  const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
+    '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
+    ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
+    ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
+    ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
+  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
+  say(declared.stdout.toString().trim());
+  const rh2 = mailAgent.channel?.rh2;
+  if (!rh2) continue;
+  if (!rh2Env.RH2_SESSION_TOKEN) { say(`agent ${name}: its account Room needs ${rh2File}; no channel`); continue; }
+  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name,
+    ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
+    ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, ...rh2Env, SUPERCODE_BIN: supercodeBin } });
+}
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
