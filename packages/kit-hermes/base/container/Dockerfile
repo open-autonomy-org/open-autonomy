@@ -15,8 +15,7 @@ ARG CODEX_VERSION=0.156.1
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
-ARG RUNTIME_REGISTRY=https://registry.npmjs.org
-RUN cd /opt/agent/.open-autonomy && bun install-runtime.ts --runtime-registry "$RUNTIME_REGISTRY"
+RUN cd /opt/agent/.open-autonomy && bun install --no-save && ./node_modules/.bin/supercode --version
 # Login shells use /usr/local/bin; expose the installed World CLI there too.
 RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
