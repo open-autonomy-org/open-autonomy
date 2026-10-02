@@ -6,9 +6,9 @@ version: 1.0.0
 
 # The tick
 
-The tick arrives in your own main session as the mail "GTM MANAGER TICK", sent by your profile's clock job on the
-schedule in `.open-autonomy/agent.json`. It runs here, never in the job: the board grants the manager's verbs to your
-agent's own session alone (its address is the board's `params.managers`). Read `gtm:` in `.open-autonomy/config.yaml`
+The tick arrives in your own main session as the mail "GTM MANAGER TICK", sent by your profile's clock (a job with no
+model turn, running `scripts/clock.sh`) on the schedule in `.open-autonomy/agent.json`. It runs here, never in a job:
+the board grants the manager's verbs to your agent's own session alone (its address is the board's `params.managers`). Read `gtm:` in `.open-autonomy/config.yaml`
 first; every path below is named there.
 
 1. **The board and your mail.** Read every open card in full, then your inbox (`supercode message inbox`). A report

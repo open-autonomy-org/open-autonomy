@@ -37,8 +37,10 @@ closed and a pull request is open on its branch (`sdk/orchestrator/board/dispatc
 - **The go-to-market lane** (`workflow.gtm.yaml`) is the product lane's card machine and statuses, unchanged (no kernel
   change, RFC 0027 §11.1), with its own role prompts (`prompts/gtm/`) and profiles:
   - `gtm-manager`, a mail agent the install declares, whose own session is the board's manager (`params.managers`): the
-    board grants the manager's verbs to that session alone, so its profile's job is only a clock that mails it the tick
-    every 30 minutes. The tick: the rounds kept (each created held, its interval set, then started), the calendar's
+    board grants the manager's verbs to that session alone, so its profile's job is only a clock: every 30 minutes a
+    job with no model turn runs `scripts/clock.sh`, which sends the tick to that session through Supercode's session
+    service. *(Measured in the GTM World: a job's own session can neither act as the manager nor see the manager's live
+    session from its own config home, so it cannot wake it with `message send`.)* The tick: the rounds kept (each created held, its interval set, then started), the calendar's
     slots counted from the cards until
     the organization's calendar runs, the low buffer raised, reviewed posts blocked on their slot's live session, the
     release hold copied from strategy's report, the meeting's decisions turned into ranked cards;

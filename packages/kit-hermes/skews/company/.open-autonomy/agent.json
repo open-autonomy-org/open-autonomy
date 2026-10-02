@@ -105,9 +105,9 @@
             "kind": "interval",
             "minutes": 30
           },
-          "prompt": "GTM MANAGER CLOCK. Wake the GTM manager, whose own session holds the board's manager role: send it the tick at the address the board names as its manager, `supercode message send \"$(grep -o \"sc:[^'\\\" ]*:agent:[^'\\\" ]*\" \"${SUPERCODE_ORCHESTRATOR_ROOT}/workflow.yaml\" | head -1)\" --subject tick \"GTM MANAGER TICK\"`, and end your turn.",
-          "model": "project",
-          "workdir": "{{workspace}}"
+          "script": "clock.sh",
+          "no_agent": true,
+          "prompt": "GTM MANAGER CLOCK: the clock.sh script wakes the GTM manager's own session with its tick; no model turn."
         }
       }
     },
