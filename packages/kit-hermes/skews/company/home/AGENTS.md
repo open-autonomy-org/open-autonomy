@@ -14,6 +14,14 @@ ever assigned to it; every job has its own profile under `profiles/` (docs/decis
 | `reviewer` | the arc's one independent review, started by the board |
 | `auditor` | finds process drift every hour, and never fixes it |
 | `box-maintainer` | keeps one machine healthy; one instance per machine |
+| `strategy` | the daily strategic report over both lanes; asks nobody |
+| `gtm-manager` | the go-to-market lane's manager: the calendar, the rounds, posts held for their slot |
+| `gtm-auditor` | the go-to-market lane's rounds: the funnel audit, the report, research and collection |
+| `walker` | the blind walker: a stranger following one post to the end of the funnel |
+
+An install runs one lane (`lanes.yaml`; `lane:` in `.open-autonomy/config.yaml`): the product lane (its board
+`workflow.yaml`) or the go-to-market lane (`workflow.gtm.yaml`). Only the lane's profiles run. The go-to-market lane
+reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
 
 ## What every profile keeps
 

@@ -48,6 +48,11 @@ rows 1–14 done):
   and nothing changes for that project. The package is
   otherwise unchanged: the same `inference`, `jobs` and `extensions.hermes`, applied through Hermes's own
   door into the same home.
+  *Amended 2026-10-02 (Volter's company install, volter-switch t_5807f0f0):* a Claude Code profile's default model
+  names its endpoint, as the start's check has required since kit 3.17.0, or, on a bare start as the host's own user
+  (no `--as`), declares the harness's own login (`credential: "harness-login"`, no endpoint). There every process
+  already runs as that user and reads that login, so the declaration names the route the host already has; a
+  start with `--as` or in a container still requires the endpoint.
 - **The runtime.** For another harness, the kit's start runs Supercode's orchestrator
   (`supercode-orchestrator --root <home>`, on Node) where it ran `hermes gateway run`, on the same home. The
   applier adds `worker.harness` to each profile's `config.yaml`: this is the orchestrator's key, and Hermes
