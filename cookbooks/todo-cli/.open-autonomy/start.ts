@@ -120,7 +120,9 @@ const inherited = (): Record<string, string> => { const env: Record<string, stri
 // data root outside the checkout, beside its home, for its verification World, scratch and whatever must stay off the
 // tree (OPEN_AUTONOMY_DATA; the container mounts the same at /opt/data).
 const data = resolve(home, '..', 'data');
-const agentEnv = (): Record<string, string> => ({ ...inherited(), PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
+// AGENT_SECRETS names the custody directory this start reads, so a gated worker's sandbox keeps it unreadable (Volter
+// Harness's activation.mjs) whichever --secrets named it; it names a path, never a credential.
+const agentEnv = (): Record<string, string> => ({ ...inherited(), AGENT_SECRETS: secrets, PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
