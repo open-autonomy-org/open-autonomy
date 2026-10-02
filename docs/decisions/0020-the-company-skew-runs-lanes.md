@@ -66,6 +66,11 @@ closed and a pull request is open on its branch (`sdk/orchestrator/board/dispatc
   decisions pass an independent reviewer resumed until it passes. Its configuration is `strategy:` in `config.yaml`
   (the record's daily folder, the go-to-market installs it reads, the CRM, the cursors' file, the judge's command).
   The self-build skew's `strategy` skill is unchanged.
+- **The skew's constitution says it in its lane form.** Its invariant "One install, one board. The organization's work
+  runs on one board" becomes "One lane per install, one board per lane": an install runs one lane on its one board, and
+  an organization running both lanes runs two installs, which meet in the calendar. The template changes with this
+  record; an install that has rendered it (Volter's two) restates the line for its own lane. This changes a
+  constitution, so it lands only with the constitution review this record already requires.
 
 ## Consequences
 
