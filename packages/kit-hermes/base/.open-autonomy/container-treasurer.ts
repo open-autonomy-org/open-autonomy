@@ -91,7 +91,10 @@ from hermes_cli import kanban_db as kb, profiles
 LANE='treasurer'
 profile=pathlib.Path('/opt/data/profiles')/LANE
 work=profile/'work';logs=profile/'logs'
-profiles.profile_exists=lambda name: profiles.normalize_profile_name(name)==LANE
+def lane(name):
+    try: return profiles.normalize_profile_name(name)==LANE
+    except Exception: return False
+profiles.profile_exists=lane
 def own(task, board=None):
     work.mkdir(parents=True,exist_ok=True);return work
 kb.resolve_workspace=own
