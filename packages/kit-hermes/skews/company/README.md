@@ -7,7 +7,8 @@ This is a company's install: one board that runs the organization's work across 
 project. `home/` is its agents, in Supercode's native folder: the organization's layer at its root, and a profile for each
 job under `home/profiles/` (account manager, manager, coders, reviewer, auditor, box maintainer). `home/workflow.yaml` is
 the board. `.open-autonomy/` is its connection to the platform; its start runs the agents and the board, and nothing
-else does.
+else does. `bun .open-autonomy/usage.ts --publish` is the owner's usage statement: each project's usage and the
+organization's overhead (its sessions serving no card) as its own line.
 
 Made with the Open Autonomy IR kit, company skew (docs/decisions/0017); `create-open-autonomy check .` says whether the
 kit's files are current.

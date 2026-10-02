@@ -129,9 +129,10 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    if (name === 'reporter') {
-      // The reporter narrates; it never decides whether the brain runs. It comes back in ten seconds.
-      say(`reporter ended (${code}); the brain keeps running, the reporter returns in 10 s`);
+    if (name.startsWith('reporter') || name.startsWith('channel ')) {
+      // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
+      // ten seconds.
+      say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
@@ -281,7 +282,10 @@ writeFileSync(envFile, `${lines.join('\n')}\n`);
 if (onCodex) {
   type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
   const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
-  for (const profile of [home, resolve(home, 'profiles/treasurer')]) {
+  // The home and each profile the setup declares (a kit's profiles differ: the Hermes kit's treasurer, the company
+  // skew's manager, coders and the rest), wherever the start rendered one.
+  const profileHomes = Object.keys(agentSetup.profiles).map((name) => (name === 'default' ? home : resolve(home, 'profiles', name))).filter((dir) => existsSync(dir));
+  for (const profile of [...new Set([home, ...profileHomes])]) {
     const authFile = resolve(profile, 'auth.json');
     const store = readStore(authFile);
     // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
@@ -305,8 +309,9 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
 const homeReadme = resolve(home, 'README.md');
-// The site renders the setup's opening paragraphs; put the running version there.
-writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning Hermes kit ${runningKit.version}. `));
+// The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
+// Hermes kit's does; the IR kit's home is profiles and a board).
+if (existsSync(homeReadme)) writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning ${runningKit.kit === 'ir' ? 'IR' : 'Hermes'} kit ${runningKit.version}. `));
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
@@ -330,6 +335,22 @@ if (existsSync(resolve(secrets, 'treasurer.env'))) {
 if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
+// An organization's projects (docs/decisions/0017): a project this install publishes for has its key in this install's
+// own custody, <secrets>/projects/<owner>/<repo>/agent.env, placed there once the project's own install has retired
+// (it never publishes beside one). Each such project gets its key on its own port and its own reporter; a project
+// without one stays on the organization's page.
+const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown; tag?: unknown }> } } & Record<string, unknown>;
+// A project's cards carry its tag: its short name (`tag`, e.g. rh2), else its account or repository name.
+const projectReporters: Array<{ account: string; tag: string; port: number }> = [];
+if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
+  const projectAccount = typeof entry?.account === 'string' && /^[\w.-]+\/[\w.-]+$/.test(entry.account) ? entry.account : undefined;
+  if (!projectAccount) return;
+  const keyFile = resolve(secrets, 'projects', ...projectAccount.split('/'), 'agent.env');
+  if (!existsSync(keyFile)) { say(`${projectAccount}: no key in this install's custody (${keyFile}); its cards publish on the organization's page`); return; }
+  const port = valvePort + 4 * (i + 1);
+  keys.push('--key', `${keyFile}:${port}`);
+  projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port });
+});
 spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: valveEnv });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (Volter Harness, beside it in
@@ -367,17 +388,79 @@ try {
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+// The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
+// supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
+const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
+spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+// Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
+// and their sessions only, through the project's own key.
+for (const p of projectReporters) {
+  const dir = resolve(home, '..', 'reporters', ...p.account.split('/'));
+  mkdirSync(dir, { recursive: true }); own(dir);
+  const config = resolve(dir, 'config.yaml');
+  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.tag, state_file: 'reporter-state.json' }, null, 2)}\n`);
+  own(config);
+  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+}
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
-const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
-if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
+if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+// The install's own checkout in this machine's workspace map, so its board's cards on its own repository
+// (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
+if (harness !== 'hermes') {
+  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
+}
+// The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
+// and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
+// start. RH2 is reached as the agent's own principal where the organization declares it (supercode ADR 0017:
+// `supercode orchestrator apps install rh2-agent … --profile <agent>`), else through a Room-chat installation for it
+// (`apps install room-chat … --profile <agent>`); its channel reads the record from this home.
+// They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
+// §2.10), so an export names each one it folds into its profile.
+const agentLayerFile = resolve(home, 'agents.json');
+const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
+agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object.entries(agentSetup.agents ?? {}).map(([name, mailAgent]) => [name, { name, profile: mailAgent.profile }])) };
+if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON.stringify(agentLayer, null, 2)}\n`);
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
+  const folder = resolve(home, 'profiles', mailAgent.profile);
+  const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
+    '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
+    ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
+    ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
+    ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
+  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
+  say(declared.stdout.toString().trim());
+  // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
+  // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
+  if (mailAgent.every_machine) {
+    const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
+    const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
+    const machines = listed.exitCode === 0 ? ((JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
+    if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
+    for (const machine of machines) {
+      const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
+        '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`]),
+        cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+      say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
+    }
+  }
+  const rh2 = mailAgent.channel?.rh2;
+  if (!rh2) continue;
+  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
+    ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
+    ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+}
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
