@@ -102,7 +102,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
       env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
       service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
-    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-file ${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
+    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-out=${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }
 
   // ---- the World definition ----
@@ -118,7 +118,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
 
   // ---- the service unit: World `run`, the host command in the foreground ----
   const bun = process.execPath;
-  const command = [bun, worldCli, 'run', join(runtimeDir, 'world.json'), '--env-file', join(runtimeDir, 'world.env'), '--root', root, '--',
+  const command = [bun, worldCli, 'run', join(runtimeDir, 'world.json'), `--env-out=${join(runtimeDir, 'world.env')}`, '--root', root, '--',
     bun, join(kitDir, 'start.ts'), '--container', container, '--state', join(runtimeDir, 'state'), '--secrets', secrets, '--config', join(kitDir, 'config.yaml'), '--valve', String(opts.valve)];
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
