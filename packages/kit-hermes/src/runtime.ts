@@ -117,7 +117,10 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
 
   // ---- the service unit: World `run`, the host command in the foreground ----
+  // The unit runs the host with this Bun, so it must be one the host code runs on (container.ts reads YAML with Bun.YAML;
+  // measured: Homebrew's Bun 1.2 has none, and the unit failed at its first line).
   const bun = process.execPath;
+  if (typeof (Bun as { YAML?: unknown }).YAML !== 'object') throw new Error(`${bun} (Bun ${Bun.version}) has no Bun.YAML, which the host code needs; run this verb with a current Bun (bun upgrade), which the unit then runs`);
   // World writes the run's environment to world.env and refuses a file there it does not recognize as its own, which a
   // run that ended or failed leaves behind (measured: every restart refused). The file is World's output for this unit,
   // never custody, so each start clears it first.
