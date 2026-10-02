@@ -6,5 +6,5 @@
 - **Git.** Start from fresh `origin/main` on a branch; push it; open a pull request. The board starts the arc's one
   review on its own.
 - **Secrets.** Never read or print `.env` files or key material; credentials stay in the organization's custody.
-- **Do not edit** `container/`, `.open-autonomy/reporter.ts`, or the kit's files under `home/` except a skill a task asks
+- **Do not edit** `container/`, `.open-autonomy/publisher.ts`, or the kit's files under `home/` except a skill a task asks
   you to improve; `create-open-autonomy upgrade .` keeps them current.
