@@ -347,11 +347,11 @@ dispatch:
   # a reviewed arc (its verdict after its review request) waits for its creator or the manager, not another review
   eligible: "card.subtask_of == null && !card.dispatch_hold && card.current_run_id == null && !(card.status == 'review' && card.last_events.review_pass != null && card.last_events.review_requested != null && card.last_events.review_pass.created_at >= card.last_events.review_requested.created_at) && card.blocked_by.size() == 0 && card.paused == null && !card.archived && !(run.local && (host.memory_pressure == 'critical' || (host.memory_pressure == 'elevated' && tick.local_started >= 1)))"
   order: ["card.status == 'review' ? 0 : 1", '-card.priority', card.created_at]
-  limits:
-    - { group: "'home'", counts: "card.current_run_id != null", max: "params.max_in_progress ?? host.max_in_progress", reserve: { for: "card.status == 'review'", slots: 1 } }
-    - { group: card.board, counts: "card.current_run_id != null", max: params.max_spawn }
-    - { group: card.assignee, counts: "card.current_run_id != null", max: "lane.capacity ?? params.max_in_progress_per_profile" }
-    - { group: card.machine, counts: "card.current_run_id != null || card.session_live", max: "params.machines[card.machine].capacity" }
+  capacity:
+    - { name: the home's cards, scope: global, counts: runs, max: "params.max_in_progress ?? host.max_in_progress", reserve: { for: { status: review }, slots: 1 } }
+    - { name: the board's cards, scope: board, counts: runs, max: params.max_spawn }
+    - { name: the profile's cards, scope: profile, counts: runs, max: "lane.capacity ?? params.max_in_progress_per_profile" }
+    - { name: the machine's started cards, scope: machine, counts: cards, where: { status: [running, review] }, max: "params.machines[card.machine].capacity" }
 notify:
   manager:
     recurring_block: "{{card.id}} blocked again: {{event.reason}}"
