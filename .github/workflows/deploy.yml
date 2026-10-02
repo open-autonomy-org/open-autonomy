@@ -13,6 +13,7 @@ on:
     branches: [prod]
   workflow_dispatch:
 permissions:
+  actions: read
   contents: read
 jobs:
   deploy:
@@ -31,11 +32,20 @@ jobs:
             release-assets.githubusercontent.com:443
             registry.npmjs.org:443
             api.cloudflare.com:443
+            api.osv.dev:443
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.10
           no-cache: true # no restored cache can poison a privileged deploy
+      # The platform exchanges people's GitHub sign-ins and signs their keys, so a lockfile changed since the last deploy
+      # is scanned (OSV-Scanner, against api.osv.dev) before anything installs, and a finding stops the deploy (Volter
+      # company decision 0038).
+      - name: Release scan
+        run: node .github/release-scan.mjs bun.lock
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SCAN_WORKFLOW: deploy.yml
       - name: Install (frozen)
         run: bun install --frozen-lockfile
       - name: Deploy (the lockfile-pinned wrangler)
