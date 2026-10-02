@@ -419,7 +419,8 @@ async function setup(): Promise<void> {
 // flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
 // reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
 let reportedState = '', controlUnreadable = false;
-const kanban = (...args: string[]): string => { const r = Bun.spawnSync({ cmd: ['hermes', 'kanban', ...args], stdout: 'pipe', stderr: 'pipe' }); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
+// the board is the runtime's: in the executor for a container install, on this host for a bare one
+const kanban = (...args: string[]): string => { const r = run(['hermes', 'kanban', ...args]); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
 const boardTasks = (): Array<{id:string;status:string}> => [...source.cards.values()].filter(card=>card.board==='default').map(card=>({id:card.id,status:card.status}));
 const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
 async function control(): Promise<void> {

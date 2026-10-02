@@ -25,11 +25,12 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   Verify fresh installation in a disposable generated project.
 - `world/` — OA's ordinary World scenario: its opening data, model handlers and manual operators around
   the real platform and unmodified cookbook. World owns every service's lifecycle; follow [the guide](world/README.md).
-- `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running bare on
-  this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
-  `container/` is the kit's default for a real deployment (one World-managed executor): the
-  agent cannot reach its keys there. This Mac runs our own agent bare for fast debugging, an accepted trade here;
-  Hookline's runs in an executor.
+- `hermes/`, `.open-autonomy/`, `container/` — our own use: the kit applied to this repository, running in container
+  mode on this Mac under launchd. It develops the product, and it is not special. Runtime state is git-ignored.
+  `container/` is the kit's default for a real deployment (World-managed executors): the agent cannot reach its keys
+  there, and the treasurer runs in its own executor, the only place its pay credential is
+  ([ADR 0021](docs/decisions/0021-the-pay-boundary.md)). A bare start is no pay boundary and serves no pay port outside a
+  rehearsal.
 
 Architecture decisions follow the ADR process in `CONTRIBUTING.md`. This file does not replace
 accepted decision records; conflicting directions require a sourced proposal and constitution review.
@@ -59,9 +60,12 @@ accepted decision records; conflicting directions require a sourced proposal and
   real platform: our own (its model on the owner's Codex subscription; its narration and rails on its platform key) and
   Hookline's (`open-autonomy-org/hookline`, the first real project made with the kit, its model on the owner's Codex
   subscription through a Codex worker on Volter Harness's orchestrator; its narration and rails on its own key, grant and
-  bounds), each a launchd agent in the user's LaunchAgents. Ours, org.open-autonomy.agent, runs bare: the kit's start
-  script from the agent's own checkout under the open-autonomy state directory in .local/state, its home beside it, the
-  pinned Hermes installed once under that state directory. Hookline's, org.open-autonomy.hookline, runs in container
+  bounds), each a launchd agent in the user's LaunchAgents. Ours, org.open-autonomy.open-autonomy, runs in container mode
+  from the runtime `create-open-autonomy runtime` cut under open-autonomy-org/open-autonomy/runtime in that state
+  directory: the `oa-open-autonomy` executor (Hermes, its home and checkout on Docker volumes) and the
+  `oa-open-autonomy-treasurer` executor (the treasurer alone, on its own volume), both on the `oa-open-autonomy` Colima
+  profile, the valves and reporter on this host from the runtime's release. In its executor the developer has no Docker,
+  so it runs no World there. Hookline's, org.open-autonomy.hookline, runs in container
   mode (ADR 0009, as amended): the orchestrator and Codex in the `oa-hookline` executor (its home and checkout on Docker
   volumes, the `oa-pilot` Colima profile), the valves and reporter on this host from a copy of the kit under
   hookline/container-kit in that state directory, whose run.sh brings the executor up first. Their secrets are in the

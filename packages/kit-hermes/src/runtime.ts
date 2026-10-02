@@ -1,11 +1,13 @@
 // create-open-autonomy runtime: the host runtime for a real installation, materialized from the checkout, so
 // no installation hand-builds its own. The kit's container mode is one shape (container/README.md): World owns
-// one executor whose lifecycle is the kit's `container/executor.ts`; the host runs `start.ts --container`
+// the agent's executor and the treasurer's (the pay boundary, docs/decisions/0021), whose lifecycle is the kit's
+// `container/executor.ts`; the host runs `start.ts --container`
 // (the valves, the reporter, the gateway supervision) as World's foreground command; the machine's service
 // manager keeps that command alive. This verb writes exactly those files, outside the agent-writable checkout:
 //
-//   <runtime>/releases/kit-<rev>/    the kit at the checkout's HEAD (.open-autonomy and container/executor.ts),
-//                                    its dependencies installed: the trusted host copy a changed checkout does not touch
+//   <runtime>/releases/kit-<rev>/    the kit at the checkout's HEAD (.open-autonomy, container/executor.ts and the
+//                                    treasurer's persona), its dependencies installed: the trusted host copy a changed
+//                                    checkout does not touch, and the only source of what the treasurer is
 //   <runtime>/world.json             the World definition: the executor service and its environment
 //   <runtime>/build-world.json       the image build through World, against the reviewed checkout
 //   <runtime>/state/                 the host reporter's state; <runtime>/world/ World's own state root
@@ -41,8 +43,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
   // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
   // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A
-  // document the project changed (its production guide, its setup notes) ships nothing and passes.
-  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d));
+  // document the project changed (its production guide, its setup notes) ships nothing and passes, and so does its own
+  // word, the setup and config it declares (agent.json, config.yaml), which the release carries as landed.
+  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d) && !/^\.open-autonomy\/(agent\.json|config\.yaml):/.test(d));
   if (code.length) throw new Error(`the project's host files differ from the kit's (${code.join('; ')}); the runtime ships the kit's reviewed code: reconcile them before cutting a release`);
   const rev = out(run(['git', 'rev-parse', 'HEAD'], dir));
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);
@@ -58,6 +61,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const container = `oa-${project}`;
   const image = `${project}-agent:local`;
   const volumes = [`${container}-home`, `${container}-checkout`];
+  // the treasurer's home, which only its executor mounts (container/executor.ts `up treasurer`)
+  const treasurerVolume = `${container}-treasurer`;
   const dockerEnv = { ...process.env, ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) };
   const docker = (args: string[]) => spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, env: dockerEnv });
   for (const name of ['agent.env', 'treasurer.env', 'github-app.json']) if (!existsSync(join(secrets, name))) throw new Error(`${join(secrets, name)} is missing; the container runtime needs the platform keys and the project's GitHub App (setup prepares them)`);
@@ -67,7 +72,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const kitDir = join(release, '.open-autonomy');
   if (!existsSync(join(kitDir, 'start.ts'))) {
     mkdirSync(release, { recursive: true, mode: 0o750 });
-    const archive = spawnSync('git', ['archive', 'HEAD', '.open-autonomy', 'container/executor.ts'], { cwd: dir, maxBuffer: 256 * 1024 * 1024 });
+    // the treasurer's persona travels with the host code: its executor takes it from here, never from the agent's checkout
+    const persona = ['home', 'hermes'].map((content) => `${content}/profiles/treasurer`).filter((p) => ok(run(['git', 'cat-file', '-e', `HEAD:${p}/SOUL.md`], dir)));
+    const archive = spawnSync('git', ['archive', 'HEAD', '.open-autonomy', 'container/executor.ts', ...persona], { cwd: dir, maxBuffer: 256 * 1024 * 1024 });
     if (archive.status !== 0) throw new Error(`could not archive the kit at ${rev.slice(0, 8)}: ${archive.stderr?.toString().trim()}`);
     const extract = spawnSync('tar', ['-x', '-C', release], { input: archive.stdout });
     if (extract.status !== 0) throw new Error(`could not extract the kit into ${release}: ${extract.stderr?.toString().trim()}`);
@@ -84,7 +91,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (!ok(docker(['version', '--format', '{{.Server.Version}}']))) say(`docker: not reachable${opts.dockerHost ? ` at ${opts.dockerHost}` : ''}; the checks below are skipped until it is`);
   else {
     if (!ok(docker(['image', 'inspect', '--format', '{{.Id}}', image]))) say(`image ${image}: missing; build it with the printed World command`);
-    for (const v of volumes) {
+    for (const v of [...volumes, treasurerVolume]) {
       if (ok(docker(['volume', 'inspect', '--format', '{{.Name}}', v]))) continue;
       if (opts.prepareVolumes) { const c = docker(['volume', 'create', v]); if (!ok(c)) throw new Error(`could not create volume ${v}: ${(c.stderr ?? '').trim()}`); say(`volume ${v}: created, empty; clone the repository into the checkout volume as container/README.md says before loading the unit`); }
       else say(`volume ${v}: missing; --prepare-volumes creates it once`);
@@ -95,20 +102,30 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
       env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
       service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
-    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-file ${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
+    say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-out=${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }
 
   // ---- the World definition ----
   const executor = join(release, 'container', 'executor.ts');
-  const world = worldConfig({ id: `${project}-runtime`, description: `${account}: native Hermes in one executor; the credential valves and the SDK reporter on this host as World's foreground command.`,
+  const world = worldConfig({ id: `${project}-runtime`, description: `${account}: native Hermes in the agent's executor and the treasurer in its own; the credential valves and the SDK reporter on this host as World's foreground command.`,
     strip: ['HERMES_*', 'OPENAI_*'],
     env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
-    service: { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } });
+    service: [
+      { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] },
+      { id: 'treasurer', up: ['bun', executor, 'up', 'treasurer'], status: ['bun', executor, 'status', 'treasurer'], down: ['bun', executor, 'down', 'treasurer'] },
+    ] });
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);
 
   // ---- the service unit: World `run`, the host command in the foreground ----
+  // The unit runs the host with this Bun, so it must be one the host code runs on (container.ts reads YAML with Bun.YAML;
+  // measured: Homebrew's Bun 1.2 has none, and the unit failed at its first line).
   const bun = process.execPath;
-  const command = [bun, worldCli, 'run', join(runtimeDir, 'world.json'), '--env-file', join(runtimeDir, 'world.env'), '--root', root, '--',
+  if (typeof (Bun as { YAML?: unknown }).YAML !== 'object') throw new Error(`${bun} (Bun ${Bun.version}) has no Bun.YAML, which the host code needs; run this verb with a current Bun (bun upgrade), which the unit then runs`);
+  // World writes the run's environment to world.env and refuses a file there it does not recognize as its own, which a
+  // run that ended or failed leaves behind (measured: every restart refused). The file is World's output for this unit,
+  // never custody, so each start clears it first.
+  const envOut = join(runtimeDir, 'world.env');
+  const command = ['/bin/sh', '-c', 'rm -f "$0" && exec "$@"', envOut, bun, worldCli, 'run', join(runtimeDir, 'world.json'), `--env-out=${envOut}`, '--root', root, '--',
     bun, join(kitDir, 'start.ts'), '--container', container, '--state', join(runtimeDir, 'state'), '--secrets', secrets, '--config', join(kitDir, 'config.yaml'), '--valve', String(opts.valve)];
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
@@ -134,6 +151,6 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // launchd reads a unit at bootstrap and never again: a rewritten unit is loaded by bootout then bootstrap, never by
   // kickstart, which restarts the definition it already holds.
   const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}   (first load, and again after every release: launchd holds the unit it read)`];
-  say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${image}; volumes ${volumes.join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
+  say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} and ${container}-treasurer on ${image}; volumes ${[...volumes, treasurerVolume].join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
   say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
 }

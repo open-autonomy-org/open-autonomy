@@ -146,7 +146,8 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
 `.open-autonomy/`, run with Bun from the checkout:
 
 - **The valve** (`.open-autonomy/valve.ts`) holds the project's key: `--key <file>:<port>`, one port per key file
-  (the developer's on 8787, the treasurer's on 8788), each file re-read when it changes so a rotated key needs no
+  (the developer's on 8787, the treasurer's on 8788 with `--caller`, served in container mode to the treasurer's own
+  executor alone and in a bare start only for a rehearsal: the pay boundary, docs/decisions/0021), each file re-read when it changes so a rotated key needs no
   restart, `/healthz` naming the key's expiry. The agent is pointed at the valve with the literal word `valve` as its
   key and never sees the credential. It forwards the model routes, the narration route (`/v1/agent/events`), the
   rails and public reads of the account, and refuses the rest. `--codex <port>` forwards the host's current Codex
