@@ -406,6 +406,12 @@ if (harness !== 'hermes') {
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
 // start. RH2 is reached through the agent's Room-chat installation in this home (supercode ADR 0017:
 // `supercode orchestrator apps install room-chat … --profile <agent>`), which its channel reads.
+// They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
+// §2.10), so an export names each one it folds into its profile.
+const agentLayerFile = resolve(home, 'agents.json');
+const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
+agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object.entries(agentSetup.agents ?? {}).map(([name, mailAgent]) => [name, { name, profile: mailAgent.profile }])) };
+if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON.stringify(agentLayer, null, 2)}\n`);
 for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const folder = resolve(home, 'profiles', mailAgent.profile);
   const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
