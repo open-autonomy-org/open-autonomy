@@ -100,7 +100,7 @@
             "provider": "custom",
             "model": "zai/glm-5.3-flash",
             "endpoint": "OPEN_AUTONOMY_PAY_URL",
-            "placeholder_key": "valve",
+            "credential": "OPEN_AUTONOMY_PAY_KEY",
             "api_mode": "chat_completions"
           }
         },

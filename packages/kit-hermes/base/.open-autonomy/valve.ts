@@ -6,8 +6,12 @@
 // platform from the agent's side. Held outside the agent's process, the key survives anything the agent prints
 // or commits, which is the whole point: everything the agent produces is public.
 //
-//   bun .open-autonomy/valve.ts --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788] [--codex 8789]
+//   bun .open-autonomy/valve.ts --key /secrets/agent.env:8787 [--key /secrets/treasurer.env:8788 --caller 8788] [--codex 8789]
 //                       [--github-app /secrets/github-app.json:8790 [--github-app /secrets/other-app.json:8791]] [--loopback]
+// --caller <port>: the port answers only its own agent. Loopback is no identity (every process on the host reaches it),
+// so a port that serves a paying key refuses, before anything is forwarded, a request that does not present the
+// credential its start minted for it: OPEN_AUTONOMY_VALVE_CALLER_<port> in this process's environment, and the same
+// value in that agent's own profile (OPEN_AUTONOMY_PAY_KEY in its .env). A --caller port without one stops the valve.
 // Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
@@ -22,7 +26,7 @@
 // to that one repository ahead of every expiry, and forwards the desk's routes (the repository's issues and
 // their comments, GraphQL for its discussions, and native HTTPS Git) with it. The agent is configured with GITHUB_API_URL at this port
 // and GITHUB_TOKEN=valve; every comment it posts is the app's, and the key never enters it.
-import { createPrivateKey, sign } from 'node:crypto';
+import { createPrivateKey, sign, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { codexAccess, type CodexAccess } from './codex-auth.ts';
 
@@ -30,6 +34,20 @@ import { codexAccess, type CodexAccess } from './codex-auth.ts';
 // so a rotated key is picked up without a restart.
 const keys: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--key') { const [file, port] = String(process.argv[i + 1]).split(':'); keys.push({ file, port: Number(port || 8787 + keys.length) }); }
+// Each `--caller <port>` port takes its agent's credential from this process's environment, never from the command line.
+const callers = new Map<number, Buffer>();
+for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--caller') {
+  const port = Number(process.argv[i + 1]);
+  const credential = process.env[`OPEN_AUTONOMY_VALVE_CALLER_${port}`] ?? '';
+  if (!Number.isInteger(port) || credential.length < 32) { console.error(`valve: --caller ${process.argv[i + 1]} has no credential (OPEN_AUTONOMY_VALVE_CALLER_${process.argv[i + 1]}, 32+ characters); refusing to start`); process.exit(2); }
+  callers.set(port, Buffer.from(credential));
+}
+/** Whether the request presents the port's caller credential (its bearer or x-api-key), compared in constant time. */
+function presents(req: Request, expected: Buffer): boolean {
+  const auth = req.headers.get('authorization') ?? '';
+  const offered = Buffer.from(/^Bearer\s+(\S+)$/i.exec(auth)?.[1] ?? req.headers.get('x-api-key') ?? '');
+  return offered.length === expected.length && timingSafeEqual(offered, expected);
+}
 const codexArg = process.argv.includes('--codex') ? String(process.argv[process.argv.indexOf('--codex') + 1]) : undefined;
 // Each GitHub App record is served on its own port: `--github-app <file>:<port>`, repeatable, exactly as `--key` is.
 // One installation per port, each with its own installation token, so two installations never share a credential.
@@ -80,6 +98,8 @@ for (const { file, port } of keys) Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === '/healthz') return new Response(key(file) ? `ok · ${status(file)}` : 'no key yet');
+    const caller = callers.get(port);
+    if (caller && !presents(req, caller)) return Response.json({ error: { code: 'unauthorized', message: 'this valve port answers only its own agent' } }, { status: 401 });
     if (!FORWARDED.has(url.pathname) && !isPublicRead(url.pathname, req.method)) return Response.json({ error: { code: 'not_forwarded', message: 'the valve forwards the model routes, the narration route, the rails and public reads of this account only' } }, { status: 403 });
     const bearer = key(file);
     if (!bearer) return Response.json({ error: { code: 'no_key', message: 'the valve has no key yet' } }, { status: 503 });
@@ -97,7 +117,8 @@ for (const { file, port } of keys) Bun.serve({
     return new Response(upstream.body, { status: upstream.status, headers: out });
   },
 });
-for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)} on :${port}; forwarding ${[...FORWARDED].join(', ')}`);
+for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)} on :${port}${callers.has(port) ? ' for its own agent only' : ''}; forwarding ${[...FORWARDED].join(', ')}`);
+for (const port of callers.keys()) if (!keys.some((k) => k.port === port)) { console.error(`valve: --caller ${port} names no --key port; refusing to start`); process.exit(2); }
 
 // ── The Codex subscription ─────────────────────────────────────────────────────────────────────────────────────
 const CODEX_UPSTREAM = 'https://chatgpt.com/backend-api/codex';
