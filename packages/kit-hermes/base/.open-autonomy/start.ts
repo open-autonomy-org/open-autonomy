@@ -426,8 +426,9 @@ if (harness !== 'hermes') {
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
-// start. RH2 is reached through the agent's Room-chat installation in this home (supercode ADR 0017:
-// `supercode orchestrator apps install room-chat … --profile <agent>`), which its channel reads.
+// start. RH2 is reached as the agent's own principal where the organization declares it (supercode ADR 0017:
+// `supercode orchestrator apps install rh2-agent … --profile <agent>`), else through a Room-chat installation for it
+// (`apps install room-chat … --profile <agent>`); its channel reads the record from this home.
 // They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
 // §2.10), so an export names each one it folds into its profile.
 const agentLayerFile = resolve(home, 'agents.json');
