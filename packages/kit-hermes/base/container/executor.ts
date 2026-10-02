@@ -49,10 +49,12 @@ const docker = (args: string[], timeout?: number) => call('docker', args, timeou
 const exists = (): boolean => Boolean(must(docker(['ps', '-a', '--filter', `name=^/${container}$`, '--format', '{{.Names}}']), 'lookup'));
 
 try {
-  if (phase === 'up' && provider?.startsWith('colima:')) {
+  // The provider is resumed only when Docker does not answer: on a loaded host `colima status` alone outlasted 30 s
+  // (measured: spawnSync colima ETIMEDOUT) while its Docker answered, and the executor never came up.
+  if (phase === 'up' && provider?.startsWith('colima:') && docker(['version', '--format', '{{.Server.Version}}'], 60_000).status !== 0) {
     const profile = provider.slice('colima:'.length);
     if (!existsSync(join(process.env.COLIMA_HOME || join(homedir(), '.colima'), profile, 'colima.yaml'))) throw new Error(`colima profile ${profile} is not configured; refusing to create one`);
-    if (call('colima', ['--profile', profile, 'status']).status !== 0) must(call('colima', ['--profile', profile, 'start', '--activate=false', '--save-config=false', '--ssh-config=false'], 180_000), 'provider resume');
+    if (call('colima', ['--profile', profile, 'status'], 120_000).status !== 0) must(call('colima', ['--profile', profile, 'start', '--activate=false', '--save-config=false', '--ssh-config=false'], 300_000), 'provider resume');
   }
   must(docker(['version', '--format', '{{.Server.Version}}']), 'Docker unavailable');
   if (phase === 'up') {

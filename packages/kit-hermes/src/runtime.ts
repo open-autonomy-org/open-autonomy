@@ -118,7 +118,11 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
 
   // ---- the service unit: World `run`, the host command in the foreground ----
   const bun = process.execPath;
-  const command = [bun, worldCli, 'run', join(runtimeDir, 'world.json'), `--env-out=${join(runtimeDir, 'world.env')}`, '--root', root, '--',
+  // World writes the run's environment to world.env and refuses a file there it does not recognize as its own, which a
+  // run that ended or failed leaves behind (measured: every restart refused). The file is World's output for this unit,
+  // never custody, so each start clears it first.
+  const envOut = join(runtimeDir, 'world.env');
+  const command = ['/bin/sh', '-c', 'rm -f "$0" && exec "$@"', envOut, bun, worldCli, 'run', join(runtimeDir, 'world.json'), `--env-out=${envOut}`, '--root', root, '--',
     bun, join(kitDir, 'start.ts'), '--container', container, '--state', join(runtimeDir, 'state'), '--secrets', secrets, '--config', join(kitDir, 'config.yaml'), '--valve', String(opts.valve)];
   const log = join(runtimeDir, 'service.log');
   const path = [dirname(bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
