@@ -14,6 +14,12 @@ got right. Changing this file is the owner's act, never a task's.
 
 ## Invariants
 
+The invariants are the platform's: the public deployment, whose audience is everyone. The backend the platform
+is built on also runs as a private deployment, whose operator names its audience (a team, a client). There every
+invariant holds with "public" read as that audience, and nothing is shown beyond it. The backend's own default is
+that private reading; the platform states the public one. A project's committed word narrows what its deployment
+shows, never widens it.
+
 - **Every spend is metered on public books.** A balance is spent by one project's agent through a rail the
   platform meters: model calls, a minted card, a partner's charge. Nothing is spent off the books, and every
   spend names what it was for.
