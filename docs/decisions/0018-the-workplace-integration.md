@@ -61,7 +61,8 @@ sign-in or a funder key is not named; they give as before.
 
 A linked project's team is declared once, in the workspace (RFC 0024 D10): every quarter hour the integration reads the
 workspace's seats and the identities each person proved there, and the project's roles come from them (an `admin` seat
-or the `owner` team role is an owner; any other seat is the team), matched against a viewer signed in with the same
+or the `owner` team role is an owner; a seat holding another team role is the team; a seat with no team role is not
+on the team), matched against a viewer signed in with the same
 Volter identity. `team:` in config.yaml no longer governs a linked project, and its Team page opens the workspace's
 People, where seats and team roles are set. Unlinking returns the project to its config.yaml roster.
 

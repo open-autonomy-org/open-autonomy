@@ -112,13 +112,17 @@ LimitLedger.extend({
 export interface WorkplaceMember { name: string; identities: { issuer: string; subject: string }[]; scopes: string[] }
 
 /** The workspace's seats as this project's team: its `admin` seats and anyone holding the `owner` team role are owners;
- *  every other seat is the team. Authority scopes are Workplace roles, so they are set there, not in config.yaml. */
+ *  a seat holding any other team role is the team; a seat with none (a member who joined, say) is not on the team. The
+ *  team is declared, never implied by a seat. Authority scopes are Workplace roles, so they are set there, not in
+ *  config.yaml. */
 export function rosterOf(org: { members?: Array<{ principalId: string; displayName: string; identities?: { issuer: string; subject: string }[] }>; seats?: Array<{ principalId: string; role: string; teamRoles?: string[] }> }): WorkplaceMember[] {
   const people = new Map((org.members ?? []).map((member) => [member.principalId, member]));
   return (org.seats ?? []).flatMap((seat) => {
     const person = people.get(seat.principalId);
     if (!person?.identities?.length) return [];
-    const owner = seat.role === 'admin' || (seat.teamRoles ?? []).includes('owner');
+    const teamRoles = seat.teamRoles ?? [];
+    const owner = seat.role === 'admin' || teamRoles.includes('owner');
+    if (!owner && teamRoles.length === 0) return [];
     return [{ name: person.displayName, identities: person.identities, scopes: owner ? ['owner'] : ['team'] }];
   });
 }
