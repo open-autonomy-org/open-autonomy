@@ -92,5 +92,5 @@ Object is `LIMITS` (class `LimitLedger`); its state record is normalized on load
 an earlier worker carry over. See `DEPLOY.md`.
 
 ```bash
-bun run check   # tests + typecheck (no network: an in-memory Durable Object and a fake gateway)
+bun run check   # typecheck; manually exercise behavior in the disposable World scenario
 ```

@@ -18,7 +18,6 @@ src/site.tsx        the project page; `configurePage` takes an app's brand, navi
 src/stream-view.tsx the timeline's views (board, list, timeline, releases), the session and item pages, the Setup pane
 src/widgets.ts      runway, now, timeline and activity SVGs for a README
 src/sync.ts         the docs sync: a project's page is its repository's mirror
-test/env.ts         the harness an app's tests build on: `testEnv(gateway, app)`, fakes by origin
 ```
 
 ## What is core and what is a door

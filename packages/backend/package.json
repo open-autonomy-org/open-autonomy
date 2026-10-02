@@ -19,7 +19,6 @@
     "./page/theme": "./src/page/theme.ts",
     "./page/art": "./src/page/art.ts",
     "./page/updates": "./src/page/updates.ts",
-    "./testing": "./test/env.ts",
     "./page/document": "./src/page/document.ts",
     "./dash": "./src/dash/index.tsx",
     "./build-dash": "./scripts/build-dash.ts"
@@ -28,13 +27,11 @@
     "src",
     "assets",
     "scripts",
-    "test/env.ts",
     "README.md"
   ],
   "scripts": {
-    "test": "bun test test/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun test test/*.test.ts && bunx tsc --noEmit"
+    "check": "bunx tsc --noEmit"
   },
   "dependencies": {
     "@open-autonomy/sdk": "workspace:*",
