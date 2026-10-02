@@ -82,7 +82,7 @@ export async function startContainer(options: {
       catch { return false; }
     }, 'GitHub valve');
     const host = 'http://host.docker.internal';
-    // the developer's executor never holds the treasurer: its board sees a lane it does not run (docs/decisions/0019)
+    // the developer's executor never holds the treasurer: its board sees a lane it does not run (docs/decisions/0021)
     const prepared = await prepareContainerHome({ container, home, workspace, without: [TREASURER] });
     if ((Bun.YAML.parse(prepared.config) as any)?.account !== account) throw new Error('Committed configuration names another project');
     if (!prepared.agent) throw new Error('No .open-autonomy/agent.json at the committed revision; run `create-open-autonomy upgrade` (docs/decisions/0007)');
@@ -91,7 +91,7 @@ export async function startContainer(options: {
     const harness = agentHarness(agentSetup);
     // the executor's image carries Hermes and Codex; another harness has no runtime there
     if (!['hermes', 'codex'].includes(harness)) throw new Error(`.open-autonomy/agent.json picks ${harness}; the executor runs Hermes or Codex, so start ${harness} bare`);
-    // The pay boundary (docs/decisions/0019): the treasurer runs in its own executor, set up from this host's own copy of
+    // The pay boundary (docs/decisions/0021): the treasurer runs in its own executor, set up from this host's own copy of
     // the kit, never from the developer's checkout, and the pay port is served only while it runs. The paying key's port
     // answers only the treasurer (valve.ts --caller): a credential minted on every start, in the valve's environment and in
     // the treasurer's .env in its own executor (OPEN_AUTONOMY_PAY_KEY). Without that executor nothing pays, and the start
@@ -142,7 +142,7 @@ export async function startContainer(options: {
     if (payKey) {
       own('treasurer executor', ['docker', 'wait', seat]);
       const treasurerHome = `/opt/data/profiles/${TREASURER}`;
-      await prepareTreasurerHome({ container: seat, persona: persona! });
+      await prepareTreasurerHome({ container: seat, persona: persona!, config: readFileSync(configFile, 'utf8') });
       for (const line of await applyAgent({
         setup: { ...trusted!, profiles: { [TREASURER]: trusted!.profiles[TREASURER] } }, homeOf: () => treasurerHome,
         homeId: account, stateRoot: resolve(state, 'apply-treasurer'), workspace: `${treasurerHome}/work`, container: seat,

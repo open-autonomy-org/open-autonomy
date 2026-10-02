@@ -1,6 +1,6 @@
 // The executor's lifecycle, as World calls it: `up`, `status`, `down`. One container, native Hermes inside, on two
 // volumes that outlive it: the agent's home and its checkout. `up treasurer` (and its status and down) is the treasurer's
-// own executor, the pay boundary (docs/decisions/0019): <container>-treasurer on its own home volume at /opt/data
+// own executor, the pay boundary (docs/decisions/0021): <container>-treasurer on its own home volume at /opt/data
 // (<container>-treasurer), with the agent's home volume at /opt/board for the board it shares, and no checkout. It never creates the volumes or the image: an empty
 // home would be a new agent with the old name. `create-open-autonomy runtime` prepares those once; this refuses to
 // start without them. Everything it needs arrives in World's environment (world.json `env`):

@@ -1,6 +1,6 @@
 // create-open-autonomy runtime: the host runtime for a real installation, materialized from the checkout, so
 // no installation hand-builds its own. The kit's container mode is one shape (container/README.md): World owns
-// the agent's executor and the treasurer's (the pay boundary, docs/decisions/0019), whose lifecycle is the kit's
+// the agent's executor and the treasurer's (the pay boundary, docs/decisions/0021), whose lifecycle is the kit's
 // `container/executor.ts`; the host runs `start.ts --container`
 // (the valves, the reporter, the gateway supervision) as World's foreground command; the machine's service
 // manager keeps that command alive. This verb writes exactly those files, outside the agent-writable checkout:

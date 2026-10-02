@@ -1,6 +1,6 @@
 // The World definitions the kit writes (the executor's runtime, its image build, a fleet): external services whose
 // lifecycle World runs, in World's format 2 (@volter/world-runtime). A project's runtime has two, the agent's executor
-// and the treasurer's (docs/decisions/0019).
+// and the treasurer's (docs/decisions/0021).
 
 export type ExternalService = { id: string; cwd?: string; up: string[]; status: string[]; down: string[] };
 

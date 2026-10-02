@@ -21,7 +21,7 @@ async function python(container: string, script: string, input: unknown, bound =
 }
 
 /** Always load configuration from fetched main, including after an interrupted task. A profile named in `without` is
- *  left out of the home, and taken out of it if an earlier start put it there (the treasurer, docs/decisions/0019). */
+ *  left out of the home, and taken out of it if an earlier start put it there (the treasurer, docs/decisions/0021). */
 export async function prepareContainerHome(options: { container: string; home: string; workspace: string; without?: string[] }): Promise<{ revision: string; dirty: boolean; config: string; agent: string }> {
   const output = await python(options.container, String.raw`
 import io,json,os,pathlib,shutil,subprocess,sys,tarfile,tempfile,yaml

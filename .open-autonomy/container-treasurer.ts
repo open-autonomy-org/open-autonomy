@@ -1,4 +1,4 @@
-// The pay boundary in container mode (docs/decisions/0019): the treasurer in its own executor. The developer's executor
+// The pay boundary in container mode (docs/decisions/0021): the treasurer in its own executor. The developer's executor
 // runs every other profile and holds no treasurer, no pay address and no pay credential; this one runs the treasurer
 // alone, on its own home volume at /opt/data, with the developer's home volume at /opt/board for the shared board and
 // nothing else. The pay port's caller credential (valve.ts --caller) is written only here.
@@ -8,7 +8,8 @@
 // revision), never from the developer's checkout, which could otherwise point the treasurer's model, and the credential
 // it presents, anywhere. Its tasks run in its own workspace and log into its own home, whatever workspace a request
 // names: a worktree there would run the developer's Git hooks, and a log on the board's volume would put the
-// treasurer's transcript (a card's number among it) where the developer reads.
+// treasurer's transcript (a card's number among it) where the developer reads. The owner's bounds it reads before paying
+// (.open-autonomy/config.yaml) are the host's committed copy, written into that workspace; the platform enforces them.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -51,9 +52,9 @@ function python(container: string, script: string, input: unknown): Promise<stri
   });
 }
 
-/** The treasurer's home in its executor: the host kit's persona over what is there (its sessions and state stay), and
- *  the board's volume checked to be the developer's home, which holds the board. */
-export async function prepareTreasurerHome(options: { container: string; persona: Record<string, string> }): Promise<void> {
+/** The treasurer's home in its executor: the host kit's persona over what is there (its sessions and state stay), its
+ *  workspace holding the owner's committed config, and both mounts present. */
+export async function prepareTreasurerHome(options: { container: string; persona: Record<string, string>; config: string }): Promise<void> {
   await python(options.container, String.raw`
 import json,os,pathlib,shutil,sys,tempfile
 s=json.load(sys.stdin)
@@ -73,7 +74,11 @@ for name,text in s['persona'].items():
     with os.fdopen(fd,'w') as stream: stream.write(text)
     os.replace(temp,target)
 for d in ['work','logs']: (profile/d).mkdir(exist_ok=True)
-`, { persona: options.persona });
+bounds=profile/'work'/'.open-autonomy';bounds.mkdir(exist_ok=True)
+fd,temp=tempfile.mkstemp(dir=bounds)
+with os.fdopen(fd,'w') as stream: stream.write(s['config'])
+os.replace(temp,bounds/'config.yaml')
+`, { persona: options.persona, config: options.config });
 }
 
 // The treasurer's dispatcher: Hermes's own tick on the shared board, spawning only the treasurer's lane. Hermes skips an
@@ -88,7 +93,7 @@ profile=pathlib.Path('/opt/data/profiles')/LANE
 work=profile/'work';logs=profile/'logs'
 profiles.profile_exists=lambda name: profiles.normalize_profile_name(name)==LANE
 def own(task, board=None):
-    p=work/task.id;p.mkdir(parents=True,exist_ok=True);return p
+    work.mkdir(parents=True,exist_ok=True);return work
 kb.resolve_workspace=own
 kb._resolve_worktree_workspace=lambda task, board=None: (own(task), task.branch_name or '')
 kb.worker_logs_dir=lambda board=None: logs

@@ -24,7 +24,7 @@
 //               truth for what the agent IS; the home keeps what it has since done (its .env is kept)
 //   valve       <secrets>/agent.env on :8787 (the developer's key); <secrets>/treasurer.env (the treasurer's, the only
 //               one that pays) on :8788 only with --rehearsal, a World's twin keys: bare mode is no pay boundary
-//               (docs/decisions/0019); --valve moves both (the second is the next port) for a second agent on one
+//               (docs/decisions/0021); --valve moves both (the second is the next port) for a second agent on one
 //               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
@@ -86,11 +86,11 @@ const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
 const baseUrl = `http://127.0.0.1:${valvePort}/v1`;
 const payUrl = `http://127.0.0.1:${valvePort + 1}/v1`;
 const say = (m: string) => console.log(`start: ${m}`);
-// The pay boundary (docs/decisions/0019): every bare process is one OS user, so nothing here can keep a profile from the
+// The pay boundary (docs/decisions/0021): every bare process is one OS user, so nothing here can keep a profile from the
 // treasurer's key or its pay credential, and a bare start serves no pay port. Container mode carries the treasurer in its
 // own executor. A World's rehearsal, whose keys are twins, says --rehearsal and gets the port.
 const paying = argv.includes('--rehearsal') && existsSync(resolve(secrets, 'treasurer.env'));
-if (!paying && existsSync(resolve(secrets, 'treasurer.env'))) say(`${resolve(secrets, 'treasurer.env')} is not served: bare mode is one OS user, so it has no pay boundary (docs/decisions/0019); the treasurer pays from container mode's own executor`);
+if (!paying && existsSync(resolve(secrets, 'treasurer.env'))) say(`${resolve(secrets, 'treasurer.env')} is not served: bare mode is one OS user, so it has no pay boundary (docs/decisions/0021); the treasurer pays from container mode's own executor`);
 const sock = resolve(home, 'ssh-agent.sock');
 
 // Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
