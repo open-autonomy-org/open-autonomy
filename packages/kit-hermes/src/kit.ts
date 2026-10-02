@@ -178,7 +178,7 @@ function declarations(dir: string): string[] {
   } catch (e) { out.push((e as Error).message); }
   try {
     const seams = parseSeamsConfig(text);
-    for (const s of seams?.seams ?? []) if (scopes && !scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
+    for (const s of seams?.seams ?? []) if (scopes && s.scope !== 'member' && !scopes.has(s.scope)) out.push(`Seam ${s.id} is held by scope ${s.scope}, which no roster member has.`);
   } catch (e) { out.push((e as Error).message); }
   return out;
 }

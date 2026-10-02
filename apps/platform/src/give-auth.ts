@@ -111,9 +111,27 @@ async function finishVolterLogin(req: Request, env: Env, verifier: string): Prom
   return { login, id: String(id), ...(person.subject ? { volter: { issuer: person.issuer, subject: person.subject } } : {}) };
 }
 
+// A Volter link (OA ADR 0019): someone signed in with Volter is handed a token naming their GitHub account and Volter
+// subject, both from Volter's own identity token, for an owner to put on their roster entry. It lives a day.
+const VOLTER_LINK_SECONDS = 86_400;
+export async function volterLink(env: Env, session: GiveSession): Promise<string | undefined> {
+  if (!session.volter || !session.id) return undefined;
+  return signPayload(env, { kind: 'volter-link', github_id: session.id, subject: session.volter.subject, exp: Math.floor(Date.now() / 1000) + VOLTER_LINK_SECONDS });
+}
+async function verifiedVolterLink(env: Env, token: string): Promise<{ githubId: string; subject: string } | undefined> {
+  const link = await verifyPayload<{ kind?: unknown; github_id?: unknown; subject?: unknown; exp?: unknown }>(env, token);
+  return link?.kind === 'volter-link' && typeof link.github_id === 'string' && typeof link.subject === 'string' ? { githubId: link.github_id, subject: link.subject } : undefined;
+}
+
 export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
   // A team edit is a pull request under the person's own GitHub grant; plain sign-in is Volter's when it is configured.
   if (!team && volterConfigured(env)) return beginVolterLogin(req, env, next);
+  if (team?.volterProof) {
+    const volter = env.GIVE_SESSION_HMAC_SECRET ? await verifiedVolterLink(env, team.volterProof) : undefined;
+    if (!volter) return new Response('That Volter link was not given here, or has expired: ask the teammate to sign in at /team/volter again.', { status: 400 });
+    const { volterProof: _proof, ...rest } = team;
+    team = { ...rest, volter };
+  }
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET || !env.GIVE_SESSION_HMAC_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const state = crypto.randomUUID();
   const exp = Math.floor(Date.now() / 1000) + STATE_SECONDS;
