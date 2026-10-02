@@ -24,8 +24,8 @@ checkout path; in a fleet every project's checkout is a sibling of yours under `
   pages of 100, from the cursor the notepad keeps for that project
   (`hermes cron notepad <job> get cursor:<account>`); the first cycle has none and reads the last seven
   days. A project with no checkout is a gap the memo names, not a door to invent.
-- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main`: what the project says is planned, active and
-  shipped, and what its completion lines say done means.
+- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main` where it keeps them (a project planned on a board keeps
+  neither: read its board): what the project says is planned, active and shipped, and what done means.
 - Compare the two: git is what happened, the roadmap is what the project claims. A roadmap that lags its
   git, or git that lags its roadmap, is a finding. The platform's pages are the projects' own and are
   private to their keys; you read no project through the platform.

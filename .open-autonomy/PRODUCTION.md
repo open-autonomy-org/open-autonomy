@@ -47,12 +47,10 @@ Release, from `main` to `prod`: whatever has landed on `main` compounds onto it,
 other release pull request and no candidate to pin: the owner's approval covers the diff the Release shows, and a
 later push to `main` dismisses it.
 
-PM keeps `main` releasable and decides when the Release is ready. The roadmap carries one release section, a stable
-`## <release-id>: <title>` whose single-line `Release decision:` is `accumulate` while changes compound, `defer` when
-PM holds them back, and `request-review` when the Release is ready, with its scope and rationale, sourced. Neither a
-merge, a version bump nor a date ships anything.
+PM keeps `main` releasable and decides when the Release is ready: changes compound on the open Release until PM
+requests review. Neither a merge, a version bump nor a date ships anything.
 
-When PM requests review, it writes `$HERMES_HOME/release-review.md`, outside the checkout:
+PM requests review by writing `$HERMES_HOME/release-review.md`, outside the checkout:
 
 ```text
 Release: <the release section's id>

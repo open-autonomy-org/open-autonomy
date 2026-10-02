@@ -1,4 +1,5 @@
 {
+  "$schema": "agent.schema.json",
   "harness": "claude-code",
   "profiles": {
     "default": {

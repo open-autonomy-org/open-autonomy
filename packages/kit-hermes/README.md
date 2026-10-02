@@ -57,8 +57,8 @@ open-autonomy` from it against the npm registry twin (the [World operator guide]
 README.md            the project's front page, with the account's four widgets
 CONSTITUTION.md      what the project is and must remain; its first paragraph leads the page, its invariants bind every task
 CONTRIBUTING.md      how code is written here, the bar every diff is reviewed against
-ROADMAP.md           notable intentions and outstanding outcomes; PM-maintained, project-owned
-CHANGELOG.md         what shipped
+ROADMAP.md           (manage-project, self-build) notable intentions and outstanding outcomes; PM-maintained
+CHANGELOG.md         (manage-project, self-build) what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
@@ -123,7 +123,9 @@ roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changel
 
 The agent is stock Hermes in a container, its home the committed `hermes/`, its checkout the repository,
 its model calls forwarded by the key valve beside it (which alone holds the project's key) to the platform,
-where each is metered to the project's account. ROADMAP.md is the planning memory: the PM scrum reconciles sourced input and queues bounded fleet work.
+where each is metered to the project's account. A roadmap and changelog are a tracking form a skew chooses instead of
+a board (manage-project and self-build keep them; the others plan on the board): there, ROADMAP.md is the planning
+memory, which the PM scrum reconciles from sourced input and queues bounded fleet work from.
 The native kanban holds execution tasks; the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its

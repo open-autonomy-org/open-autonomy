@@ -235,7 +235,7 @@ outcome only after observing every listed result; otherwise keep the outstanding
   [x] PM contacted you and read your reply on GitHub
   [x] First bounded task landed and PM reconciled it
 
-  Planning       Strategy sets scope; PM manages delivery and CHANGELOG.md
+  Planning       Strategy sets scope; PM manages delivery on the board
   Human contact  GitHub issues
   Releases       The owner approves the one Release pull request
 ```

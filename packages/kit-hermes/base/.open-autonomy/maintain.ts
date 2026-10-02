@@ -93,21 +93,14 @@ if (command === 'ship') {
     open = await made.json() as { number: number; html_url: string };
     console.log(`Opened the Release: ${open.html_url}`);
   }
-  git('fetch', '-q', 'origin', 'main');
-  const requested = git('show', 'origin/main:ROADMAP.md').split(/^## /m)
-    .filter((section) => /^Release decision: request-review$/m.test(section));
-  if (requested.length !== 1) {
-    console.log(requested.length
-      ? 'More than one release section requests review; PM reconciles ROADMAP.md first.'
-      : `No release requested; changes keep compounding on ${open.html_url}.`);
-    process.exit(0);
-  }
-  const release = requested[0].split(':')[0]!.trim();
+  // PM requests the Release by writing its package; until it does, changes keep compounding on the open Release.
   const packagePath = resolve(home, 'release-review.md');
   const review = existsSync(packagePath) ? readFileSync(packagePath, 'utf8').trim() : '';
+  if (!review) { console.log(`No release requested; changes keep compounding on ${open.html_url}.`); process.exit(0); }
+  let release: string;
   let scope: string;
   try {
-    if (field(review, 'Release') !== release) throw new Error(`the package is for another release than ${release}`);
+    release = field(review, 'Release');
     scope = field(review, 'Scope');
     for (const name of ['Risks', 'Owner reads', 'Owner does']) field(review, name);
     if (!/\[[^\]]+\]\(https:\/\/[^)]+\)/.test(field(review, 'Verification'))) throw new Error('Verification needs source links');

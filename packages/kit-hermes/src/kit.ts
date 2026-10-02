@@ -49,7 +49,7 @@ export function validateSkew(s: unknown): Skew {
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
 // The agent setup (.open-autonomy/agent.json, docs/decisions/0007) is kit-owned: the kit's changes reach it by the
 // three-way merge, the project's own edits kept.
-const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.ts|publisher\.ts|source-events\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
+const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.schema\.json|agent\.ts|publisher\.ts|source-events\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -212,8 +212,9 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     for (const rel of LEGACY_FILES) if (existsSync(join(dir, rel))) { rmSync(join(dir, rel), { force: true }); prune(dir, rel); out.retired.push(rel); }
   }
   // Migrate only missing planning notes, using this project's seed rather than
-  // the template's hello task. The live board is reconciled by PM, never by upgrade.
-  if (!existsSync(join(dir, 'ROADMAP.md'))) {
+  // the template's hello task. The live board is reconciled by PM, never by upgrade. A roadmap is a tracking form a
+  // skew chooses instead of a board (manage-project, self-build); an install whose skew keeps none is given none.
+  if (theirs.has('ROADMAP.md') && !existsSync(join(dir, 'ROADMAP.md'))) {
     const seedFile = join(dir, 'hermes/kanban.seed.json');
     if (existsSync(seedFile)) {
       const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };
