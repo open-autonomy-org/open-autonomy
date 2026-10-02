@@ -39,13 +39,14 @@ spend:
     - { window: 1m, calls: 60 }
 
 # Who sees what on the project's pages and through the SDK's read doors (a closed panel answers 404 without the
-# project's key or an admitted signed-in viewer): a preset, then a role per panel that overrides it. Roles: public, giver
-# (whose money is on the books), team and owner (the roster above). Presets: roadmap (the default when this block is
-# absent: the roadmap and the books to everyone, the sessions, transcripts and the agent to the team), open
-# (everything public), status (transcripts and books for givers; calls and the agent for the team), private (team
-# and up). The books stay public under every preset but private: every spend is metered on public books. The owner's
-# published statements (a tool's compliance badges, ADR 0012) are a panel too, `statements`: public under every preset
-# but private.
+# project's key or an admitted signed-in viewer), within the audience its deployment names (everyone on the Open
+# Autonomy platform; whoever a private deployment admits): a preset, then a role per panel that overrides it. Roles:
+# public (the deployment's audience), giver (whose money is on the books), team and owner (the roster above). Presets:
+# roadmap (the default when this block is absent: the roadmap and the books to the audience, the sessions,
+# transcripts and the agent to the team) and open (everything to the audience). The books and every metered call stay
+# public under every word: every spend is metered on public books. A word that closes them, or that is not one of
+# these, is refused and the project is shown to its team alone until one that holds is committed. The owner's
+# published statements (a tool's compliance badges, ADR 0012) are a panel too, `statements`.
 # dashboard:
 #   visibility: open
 #   agent: team

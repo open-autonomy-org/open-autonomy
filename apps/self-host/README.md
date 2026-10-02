@@ -40,10 +40,19 @@ The project's agent runs the Hermes kit as anywhere (`create-open-autonomy`), wi
 
 ## Who may look
 
-The API is key-authenticated and the admin routes take the token; the pages (`/`, `/<name>`, `/<owner>/<project>`) are open to anyone
-who can reach the worker. For a private deployment put an access policy in front of those two paths at the
-edge (Cloudflare Access on the worker's route, an allow list of your people) and leave `/v1/*`, `/admin/*` and
-`/webhooks/*` to their own authentication. The worker holds no notion of a viewer; that is the edge's job.
+The engine is private by default: with no `AUDIENCE` named, its pages (`/`, `/<name>`, `/<owner>/<project>`) and
+the read doors under `/v1/accounts` show nothing, and a project is read only through its own key. Name the
+deployment's audience in `wrangler.toml`:
+
+- `AUDIENCE = "public"`: everyone who reaches the worker, as on the Open Autonomy platform.
+- `AUDIENCE = "access"`: whoever Cloudflare Access admits. Put an Access application on the worker's hostname (an
+  allow list of your people) and bypass applications on `/v1/*`, `/admin/*` and `/webhooks/*` so those keep their
+  own authentication, then set `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) and `ACCESS_AUD` (the
+  application's audience tag). The worker verifies Access's signed token (its header, or its `CF_Authorization`
+  cookie on the bypassed paths) on every request, so nothing is shown on a header alone.
+
+Within the audience, each project's `dashboard:` word in `.open-autonomy/config.yaml` says who sees which panel;
+the books and every metered call are always the audience's.
 
 ## What is not here
 

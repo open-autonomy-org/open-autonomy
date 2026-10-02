@@ -46,8 +46,8 @@ with their money.
 
 ## What needs a key
 
-A read needs no key for what the owner opened to everyone (the `dashboard:` block of the project's
-`.open-autonomy/config.yaml`: a preset, then a role per panel). A panel closed to the public answers `not open to
+A read needs no key for what the owner opened to the deployment's audience (everyone on the platform; the
+`dashboard:` block of the project's `.open-autonomy/config.yaml`: a preset, then a role per panel). A panel closed to it answers `not open to
 this view`; the project's own key opens it, and `oa` reads `~/.config/open-autonomy/<owner>/<project>/{steer,agent,treasurer}.env`
 in that order when no `--key` is given, the layout the kit's valves already use.
 

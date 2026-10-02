@@ -8,6 +8,9 @@ compatibility_date = "2026-06-15"
 workers_dev = true
 
 [vars]
+# Who the engine shows to: the engine is private by default; the platform is the engine configured public (the
+# constitution's opening paragraph). Every visitor is in the audience.
+AUDIENCE = "public"
 MODEL_GATEWAY_URL = "https://api-gateway.merge.dev"
 MAX_BODY_BYTES = "1048576"
 MODEL_PRICES_JSON = "{}"

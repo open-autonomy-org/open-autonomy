@@ -19,6 +19,8 @@ export interface DashData {
   logo: string;
   viewer: Role;
   visibility: Visibility;
+  // Why the owner's `dashboard:` word was refused (config.ts), for the team: the project is shown to the team alone.
+  refused?: string;
   v: ProjectView;
   sessions: SessionSummary[];
   live: string[];

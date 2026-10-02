@@ -16,6 +16,7 @@ const PREVIOUS_MODEL = `${MODEL}-previous`;
 const port = need('PORT');
 const persist = arg('--persist-to') ?? resolve('.volter/platform-state');
 const vars: Record<string, string> = {
+  AUDIENCE: 'public', // the platform is the engine configured public
   MODEL_GATEWAY_URL: need('GATEWAY_TWIN_URL'),
   MODEL_GATEWAY_API_KEY: process.env.MODEL_GATEWAY_API_KEY ?? 'world-gateway-key',
   AGENT_PROXY_ADMIN_TOKEN: process.env.AGENT_PROXY_ADMIN_TOKEN ?? 'world-admin',

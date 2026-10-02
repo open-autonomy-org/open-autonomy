@@ -6,7 +6,8 @@ import { gatewayBase, handleModelCall } from './proxy.js';
 import { partnerReservation } from './partner.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { servePages, type PageApp } from './page/serve.js';
-import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
+import { openTo, roleOf, sees, visibilityOf, within, type Visibility } from './page/model.js';
+import { inAudience } from './audience.js';
 import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.js';
 import { syncAllStale, syncProfile } from './sync.js';
 import { redactDeep } from './redact.js';
@@ -88,6 +89,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   const path = url.pathname;
   const ledger = new LedgerClient(env.LIMITS);
   const get = (): Response | null => (req.method === 'GET' ? null : methodNotAllowed());
+  // Whether this request is in the deployment's audience, asked once and only by a door that shows something.
+  let admitted: Promise<boolean> | undefined;
+  const audience = (): Promise<boolean> => (admitted ??= inAudience(req, env));
 
   // A health door that answers without touching the store says nothing about health: through a twelve-minute
   // Durable Object outage on 2026-09-15 every page and every read door returned 500 while this one returned ok.
@@ -149,19 +153,21 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     return json({ ...r, from: claims.account }, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_project' || r.error === 'no_such_item' ? 404 : 400 });
   }
   // An org at a glance (ADR 0010): its own word and bounds, and each project listed under it (its overview open to
-  // everyone) with its effective word, and its money and live sessions where those panels are open to everyone too.
+  // the audience) with its effective word, and its money and live sessions where those panels are open to it too.
   if ((m = path.match(/^\/v1\/orgs\/([^/]+)$/))) {
     if (get()) return get()!;
     const name = dec(m[1]).replace(/^@/, '').toLowerCase();
     const [{ entries }, org, claims] = await Promise.all([ledger.directory(), ledger.project(`@${name}`), authedClaims(req, env)]);
-    // The org's own key sees every project of the org and every figure; anyone else, what everyone may see.
+    // The org's own key sees every project of the org and every figure; anyone else, what the audience may see, and
+    // nothing from outside it.
     const owner = Boolean(claims && orgKeyOf(claims, name));
+    if (!owner && !(await audience())) return error('not_found', 404);
     const projects = entries.filter((e) => e.is_project && (owner || e.listed) && e.account.toLowerCase().startsWith(`${name}/`));
     if (!projects.length && !org.found) return error('not_found', 404);
     const own = await ledger.state(`@${name}`);
     return json({
       ok: true, org: `@${name}`, ...(own.desired ? { desired: own.desired } : {}), bounds: org.found ? org.bounds.org?.limits ?? [] : [],
-      // Each figure as the project's own doors would answer everyone: its money with its books, its sessions with them.
+      // Each figure as the project's own doors would answer the audience: its money with its books, its sessions with them.
       projects: projects.map((e) => ({
         account: e.account, ...(e.control ? { control: e.control } : {}),
         ...(owner || openTo(e.profile.config_yaml, 'books') ? { balance_usd_cents: e.balance_usd_cents, burn_per_day_usd_cents: e.burn_per_day_usd_cents, runway_days: e.runway_days, funded: e.funded, exhausted: e.exhausted } : {}),
@@ -169,7 +175,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
       })),
     }, { headers: NO_STORE });
   }
-  if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
+  if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; if (!(await audience())) return error('not_found', 404); const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
   if (path === '/v1/rails/partner/reservations' || (m = path.match(/^\/v1\/rails\/partner\/reservations\/([^/]+)\/([^/]+)(?:\/(capture|release))?$/))) {
     const claims = await authedClaims(req, env);
@@ -245,20 +251,22 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     return json(r, { status: r.ok ? 200 : r.error === 'statement_limit' ? 409 : 400 });
   }
   // The owner's word on visibility holds on these doors as on the pages: a panel the viewer may not see is not
-  // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else is
-  // the public. Answered 404 like the pages, never 403: the closed panel is not announced.
+  // there. The project's own key is its owner; an app's signed-in viewer is what the roster says; everyone else sees
+  // what the owner opened to the deployment's audience, when they are in it (audience.ts). Answered 404 like the
+  // pages, never 403: the closed panel is not announced.
   const admits = async (account: string, panel: keyof Visibility): Promise<Response | null> => {
     const view = await ledger.project(account);
     if (!view.found) return null;
     const visibility = visibilityOf(view.profile.config_yaml);
-    if (sees('public', visibility[panel])) return null;
+    if (sees('public', visibility[panel]) && await audience()) return null;
     const claims = await authedClaims(req, env);
     if (claims && claims.account.toLowerCase() === account.toLowerCase()) return null;
     // The org's own key reads every project of the org as that project's key does (ADR 0010, owner's ruling
     // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
     if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
-    const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
-    return sees(roleOf(who, view, await workplaceRoster(ledger, account)), visibility[panel]) ? null : error('not_open', 404);
+    const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity), audience: await audience() });
+    const role = roleOf(who, view, await workplaceRoster(ledger, account));
+    return within(role, await audience()) && sees(role, visibility[panel]) ? null : error('not_open', 404);
   };
   // A storage key is `<kind>:<account>:…`, so an account id holding `:` could name another account's records: never an account.
   const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? (account.includes(':') ? error('not_found', 404) : admits(account, panel));
@@ -346,7 +354,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     return unique.length ? json({ object: 'list', data: unique.map((id) => ({ id, object: 'model' })) }) : json({ object: 'list', data: [], upstream: first });
   }
   // ---- the pages, last: GitHub's addresses over the books ----
-  const served = await servePages(req, env, ctx, app.page ?? {}, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity), beginIdentity: app.identity ? (r, intent) => app.identity!.begin(r, env, intent) : undefined });
+  const served = await servePages(req, env, ctx, app.page ?? {}, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity), audience: await audience(), beginIdentity: app.identity ? (r, intent) => app.identity!.begin(r, env, intent) : undefined });
   if (served) return served;
   return error('not_found', 404);
 }
