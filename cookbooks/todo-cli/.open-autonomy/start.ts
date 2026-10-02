@@ -3,7 +3,7 @@
 // executor (container/README.md). Without it this is the bare development/rehearsal
 // stack; legacy --as privilege dropping remains available for existing installations.
 //
-//   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>]
+//   bun .open-autonomy/start.ts [--home <dir>] [--secrets <dir>] [--project <dir>] [--origin <url>] [--as <user>] [--valve <port>] [--rehearsal]
 //   bun .open-autonomy/start.ts --fleet <fleet.json> [--valve <port>]     several projects together (fleet.ts)
 //
 // <secrets>/github-app.json, when present, is the agent's own GitHub identity for its community desk (a GitHub App
@@ -22,9 +22,10 @@
 //               checkout is brought to origin/main on every start, so the agent is what the repository says today
 //   the home    hermes/ in the checkout copied into <home> before every start — the repository is the source of
 //               truth for what the agent IS; the home keeps what it has since done (its .env is kept)
-//   valve       <secrets>/agent.env on :8787 (the developer's key), <secrets>/treasurer.env on :8788 (the
-//               treasurer's, the only one that pays); --valve moves both (the second is the next port) for a second
-//               agent on one host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
+//   valve       <secrets>/agent.env on :8787 (the developer's key); <secrets>/treasurer.env (the treasurer's, the only
+//               one that pays) on :8788 only with --rehearsal, a World's twin keys: bare mode is no pay boundary
+//               (docs/decisions/0019); --valve moves both (the second is the next port) for a second agent on one
+//               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
 //               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
@@ -85,6 +86,11 @@ const valvePort = Number(arg('--valve') ?? process.env.VALVE_PORT ?? 8787);
 const baseUrl = `http://127.0.0.1:${valvePort}/v1`;
 const payUrl = `http://127.0.0.1:${valvePort + 1}/v1`;
 const say = (m: string) => console.log(`start: ${m}`);
+// The pay boundary (docs/decisions/0019): every bare process is one OS user, so nothing here can keep a profile from the
+// treasurer's key or its pay credential, and a bare start serves no pay port. Container mode carries the treasurer in its
+// own executor. A World's rehearsal, whose keys are twins, says --rehearsal and gets the port.
+const paying = argv.includes('--rehearsal') && existsSync(resolve(secrets, 'treasurer.env'));
+if (!paying && existsSync(resolve(secrets, 'treasurer.env'))) say(`${resolve(secrets, 'treasurer.env')} is not served: bare mode is one OS user, so it has no pay boundary (docs/decisions/0019); the treasurer pays from container mode's own executor`);
 const sock = resolve(home, 'ssh-agent.sock');
 
 // Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
@@ -264,7 +270,7 @@ if (!onCodex && !codexTwin && JSON.stringify(agentSetup).includes('HERMES_CODEX_
 const codexBase = codexForward ? [`HERMES_CODEX_BASE_URL=${codexForward}`] : [];
 // The desk's GitHub door likewise: the valve's fourth port, as api.github.com.
 const githubDoor = githubRecords.length ? [`GITHUB_API_URL=http://127.0.0.1:${githubRecords[0].port}`, 'GITHUB_TOKEN=valve'] : [];
-const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, `OPEN_AUTONOMY_PAY_URL=${payUrl}`, 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
+const lines = [`OPEN_AUTONOMY_BASE_URL=${baseUrl}`, ...(paying ? [`OPEN_AUTONOMY_PAY_URL=${payUrl}`] : []), 'OPEN_AUTONOMY_KEY=valve', ...codexBase, ...githubDoor, ...kept];
 // The agent's channels: <secrets>/channels.env (the setup writes it: the Discord bot and its channel; an engagement
 // adds its Slack bot, its webhook platform, whatever it speaks) is this start's truth for every line it holds — a
 // channel is whatever platform the gateway reads from the home's .env, not a list this script knows; on the first
@@ -310,19 +316,19 @@ writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\n
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
 // The paying key's port answers only the treasurer (valve.ts --caller): a credential minted on every start, given to the
 // valve in its environment and to the treasurer in its own profile's .env (OPEN_AUTONOMY_PAY_KEY, which its model key and
-// its rail calls present). Any other process on the host, which reaches loopback as easily, is refused.
+// its rail calls present). Any other process on the host, which reaches loopback as easily, is refused. Served only in a
+// rehearsal (above); otherwise a credential an earlier start left in the treasurer's .env is taken out.
 const valveEnv: Record<string, string> = { ...hostEnvironment };
-if (existsSync(resolve(secrets, 'treasurer.env'))) {
+const payKey = paying ? randomBytes(32).toString('base64url') : undefined;
+if (payKey) {
   keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`, '--caller', String(valvePort + 1));
-  const payKey = randomBytes(32).toString('base64url');
   valveEnv[`OPEN_AUTONOMY_VALVE_CALLER_${valvePort + 1}`] = payKey;
-  const treasurerHome = resolve(home, 'profiles', 'treasurer');
-  if (existsSync(treasurerHome)) {
-    const payEnv = resolve(treasurerHome, '.env');
-    const keptPay = existsSync(payEnv) ? readFileSync(payEnv, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_PAY_KEY=/.test(l)) : [];
-    writeFileSync(payEnv, `${[...keptPay, `OPEN_AUTONOMY_PAY_KEY=${payKey}`].join('\n')}\n`, { mode: 0o600 });
-    own(payEnv);
-  }
+}
+const payEnv = resolve(home, 'profiles', 'treasurer', '.env');
+if (existsSync(resolve(home, 'profiles', 'treasurer')) && (payKey || existsSync(payEnv))) {
+  const keptPay = existsSync(payEnv) ? readFileSync(payEnv, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_PAY_KEY=/.test(l)) : [];
+  writeFileSync(payEnv, `${[...keptPay, ...(payKey ? [`OPEN_AUTONOMY_PAY_KEY=${payKey}`] : [])].join('\n')}\n`, { mode: 0o600 });
+  own(payEnv);
 }
 // Both launch modes use the host Codex login. A model twin never starts real authentication.
 if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
@@ -420,6 +426,6 @@ setInterval(() => {
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, harness === 'hermes' ? constants.signals.SIGUSR1 : constants.signals.SIGTERM);
 }, 5000);
-say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${existsSync(resolve(secrets, 'treasurer.env')) ? ` and :${valvePort + 1}` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
+say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

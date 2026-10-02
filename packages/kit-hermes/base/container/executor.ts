@@ -1,5 +1,7 @@
 // The executor's lifecycle, as World calls it: `up`, `status`, `down`. One container, native Hermes inside, on two
-// volumes that outlive it: the agent's home and its checkout. It never creates the volumes or the image: an empty
+// volumes that outlive it: the agent's home and its checkout. `up treasurer` (and its status and down) is the treasurer's
+// own executor, the pay boundary (docs/decisions/0019): <container>-treasurer on its own home volume at /opt/data
+// (<container>-treasurer), with the agent's home volume at /opt/board for the board it shares, and no checkout. It never creates the volumes or the image: an empty
 // home would be a new agent with the old name. `create-open-autonomy runtime` prepares those once; this refuses to
 // start without them. Everything it needs arrives in World's environment (world.json `env`):
 //   OA_EXECUTOR_CONTAINER   the container's name (oa-<project>)
@@ -9,6 +11,7 @@
 //   OA_EXECUTOR_MEMORY      optional: the container's memory limit (Docker's syntax; 1536m when absent)
 //   OA_EXECUTOR_CPUS        optional: the container's CPU limit (2 when absent)
 //   OA_EXECUTOR_PROVIDER    optional: a provider to resume before Docker answers (colima:<profile>)
+//   OA_TREASURER_MEMORY     optional: the treasurer's memory limit (768m when absent; one CPU)
 //   DOCKER_HOST             which daemon, as Docker reads it
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -17,19 +20,26 @@ import { join } from 'node:path';
 
 const phase = process.argv[2];
 if (!['up', 'status', 'down'].includes(phase ?? '')) throw new Error('expected up, status or down');
+const treasurer = process.argv[3] === 'treasurer';
+if (process.argv[3] && !treasurer) throw new Error('the one executor role is treasurer');
 const env = (name: string): string => { const v = process.env[name]?.trim(); if (!v) throw new Error(`${name} is required in the World definition`); return v; };
-const container = env('OA_EXECUTOR_CONTAINER');
+const agent = env('OA_EXECUTOR_CONTAINER');
+const container = treasurer ? `${agent}-treasurer` : agent;
 const image = env('OA_EXECUTOR_IMAGE');
 const declared = env('OA_EXECUTOR_VOLUMES').split(',').map((v) => v.trim()).filter(Boolean);
 const provider = process.env.OA_EXECUTOR_PROVIDER?.trim();
-const memory = process.env.OA_EXECUTOR_MEMORY?.trim() || '1536m';
-const cpus = process.env.OA_EXECUTOR_CPUS?.trim() || '2';
+const memory = (treasurer ? process.env.OA_TREASURER_MEMORY?.trim() || '768m' : process.env.OA_EXECUTOR_MEMORY?.trim()) || '1536m';
+const cpus = treasurer ? '1' : process.env.OA_EXECUTOR_CPUS?.trim() || '2';
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 // Two bare names are the project shape (home, checkout); named targets are a fleet's, one per mount.
-const mounts: Array<{ volume: string; target: string }> = declared.every((v) => !v.includes('='))
+const declaredMounts: Array<{ volume: string; target: string }> = declared.every((v) => !v.includes('='))
   ? (declared.length === 2 ? [{ volume: declared[0], target: '/opt/data' }, { volume: declared[1], target: '/work/project' }] : [])
   : declared.map((v) => { const [volume, target] = v.split('='); return { volume, target }; });
-if (!NAME.test(container) || !mounts.length || !mounts.every((m) => NAME.test(m.volume) && /^\/(opt\/data|work\/[a-z0-9][a-z0-9_-]*)$/.test(m.target))) throw new Error('The executor needs a container name and its volumes: two bare names (home, checkout) or name=/opt/data and name=/work/<project> entries');
+// The treasurer's: its own home, and the agent's home for the board; a fleet carries no treasurer (fleet.ts).
+const agentHome = declaredMounts.find((m) => m.target === '/opt/data');
+if (treasurer && (declaredMounts.length !== 2 || !agentHome)) throw new Error('A treasurer executor serves one project: OA_EXECUTOR_VOLUMES names its home and checkout');
+const mounts = treasurer ? [{ volume: `${agent}-treasurer`, target: '/opt/data' }, { volume: agentHome!.volume, target: '/opt/board' }] : declaredMounts;
+if (!NAME.test(container) || !mounts.length || !mounts.every((m) => NAME.test(m.volume) && /^\/(opt\/(data|board)|work\/[a-z0-9][a-z0-9_-]*)$/.test(m.target))) throw new Error('The executor needs a container name and its volumes: two bare names (home, checkout) or name=/opt/data and name=/work/<project> entries');
 if (!/^\d+[kmg]?$/.test(memory) || !/^\d+(\.\d+)?$/.test(cpus)) throw new Error('OA_EXECUTOR_MEMORY and OA_EXECUTOR_CPUS take Docker\'s own values');
 const volumes = mounts.map((m) => m.volume);
 if (!/^[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$/.test(image)) throw new Error('The executor needs an image reference');
@@ -49,7 +59,8 @@ try {
     for (const v of volumes) must(docker(['volume', 'inspect', '--format', '{{.Name}}', v]), `volume ${v} is missing; an empty home would be a new agent (create-open-autonomy runtime --prepare-volumes makes it once)`);
     must(docker(['image', 'inspect', '--format', '{{.Id}}', image]), `image ${image} is missing; build it with the runtime's build definition`);
     if (exists()) throw new Error(`${container} already exists (a run World lost track of); stop it yourself with docker stop ${container}, then start again`);
-    must(docker(['run', '--init', '--detach', '--rm', '--name', container,
+    // the treasurer's hostname is its name: a claim on the board names its host, and a restarted treasurer finds its own
+    must(docker(['run', '--init', '--detach', '--rm', '--name', container, ...(treasurer ? ['--hostname', container] : []),
       // the pid limit is per checkout; the project shape keeps 256
       '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', String(256 * Math.max(1, mounts.length - 1)), '--memory', memory, '--cpus', cpus,
       '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456',
