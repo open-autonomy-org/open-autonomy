@@ -14,8 +14,8 @@ image, `oa-<project>-treasurer`. It runs the treasurer alone, on its own home vo
 treasurer profile, no pay address and no pay credential. The pay port's credential is written only into the
 treasurer's executor, and `treasurer.env` stays on the host, where only the valve reads it. The treasurer's persona and
 setup come from the release below, never from the agent's checkout. Its lane of the board is dispatched in its own
-executor, in its own workspace. Without that executor running (a runtime cut before it, or a harness other than
-Hermes), the start serves no pay port and says why.
+executor, in its own workspace. Whatever harness the project picks, the treasurer there is Hermes's own
+worker. Without that executor running (a runtime cut before it), the start serves no pay port and says why.
 
 `create-open-autonomy runtime` writes this shape from a landed checkout, so no installation hand-builds it:
 

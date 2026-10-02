@@ -101,7 +101,6 @@ export async function startContainer(options: {
     const seat = treasurerContainer(container);
     const seated = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.State.Running}}', seat], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }).stdout.toString().trim() === 'true';
     const unpaid = !existsSync(treasurerKey) ? `no ${treasurerKey}`
-      : harness !== 'hermes' ? `the treasurer's executor dispatches Hermes's board, and ${harness}'s board cannot yet give it its one lane`
       : !trusted?.profiles[TREASURER] || !persona ? 'this host\'s copy of the kit has no treasurer (.open-autonomy/agent.json and its persona)'
       : !seated ? `no ${seat} executor runs; \`create-open-autonomy runtime\` adds it to the World definition`
       : undefined;
@@ -138,13 +137,16 @@ export async function startContainer(options: {
       homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
     })) console.log(`host: agent: ${line}`);
     // The treasurer's executor: its persona and setup from this host's kit, the subscription forward as the developer's,
-    // the pay address and its credential, then its lane of the board. Its home is /opt/data on its own volume.
+    // the pay address and its credential, then its lane of the board. Its home is /opt/data on its own volume. Whatever
+    // harness the project picks, the treasurer there is Hermes's own worker on Hermes's own tick: the board is Hermes's
+    // kanban.db under the orchestrator too, and to the orchestrator its card is another implementation's claim, which
+    // Hermes's heartbeat keeps current (board/dispatch.mjs); the orchestrator's worker would open its own home's board.
     if (payKey) {
       own('treasurer executor', ['docker', 'wait', seat]);
       const treasurerHome = `/opt/data/profiles/${TREASURER}`;
       await prepareTreasurerHome({ container: seat, persona: persona!, config: readFileSync(configFile, 'utf8') });
       for (const line of await applyAgent({
-        setup: { ...trusted!, profiles: { [TREASURER]: trusted!.profiles[TREASURER] } }, homeOf: () => treasurerHome,
+        setup: { ...trusted!, harness: 'hermes', profiles: { [TREASURER]: trusted!.profiles[TREASURER] } }, homeOf: () => treasurerHome,
         homeId: account, stateRoot: resolve(state, 'apply-treasurer'), workspace: `${treasurerHome}/work`, container: seat,
       })) console.log(`host: treasurer: ${line}`);
       if (codexBase) await prepareContainerSubscription({ container: seat, home: '/opt/data', baseUrl: codexBase });

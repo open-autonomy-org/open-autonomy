@@ -58,8 +58,13 @@ means a World whose keys are twins. The World's launcher passes it.
 
 **Every other mode.**
 - A fleet opens no treasurer door, as before (`fleet.ts`).
-- A container install whose harness is not Hermes (the orchestrator's board engine) serves no pay port until the
-  orchestrator can dispatch a single lane. The start says so.
+- A container install whose harness is not Hermes (Codex, run by the orchestrator) gets the same treasurer executor.
+  There the treasurer is Hermes's own worker on Hermes's own tick, whatever the project picked:
+  - Under the orchestrator the board is still Hermes's `kanban.db`.
+  - The orchestrator's dispatcher skips a profile that is no lane of its home.
+  - To the orchestrator, a card claimed by Hermes's tick with no session of its own is "another implementation's
+    claim", which it leaves to the claim's expiry (`board/dispatch.mjs`). Hermes's heartbeat keeps that claim current.
+  - The orchestrator's own worker command would open its own home's board, not the shared one.
 - A runtime cut before this decision has no treasurer executor. Its start serves no pay port and names the step
   that adds one: `create-open-autonomy runtime`.
 
@@ -83,6 +88,8 @@ Costs:
 - The treasurer persona follows the runtime release, not each landed main.
 - The treasurer's dispatcher replaces three of Hermes's functions in its own process: workspace, worktree and log
   directory. They are pinned to the image's Hermes (`container/hermes.pin`).
+- In a project whose harness is Codex, the treasurer alone runs on Hermes. Its model is unchanged. The owner's pick
+  still holds for every profile that can reach no pay authority.
 
 ## Where the evidence stops
 
@@ -91,6 +98,9 @@ These are measured: one user on the live install (`m-6e061306`), and the caller 
 - Hermes skips a non-profile assignee.
 - A claim names its host, and crash detection checks only claims from its own host.
 - The dispatch lock is shared beside `kanban.db`.
+- Under the orchestrator, another implementation's claim is left to its expiry (orchestrator 0.5.1
+  `board/dispatch.mjs`). Hookline's board is Hermes's sqlite `kanban.db`. A Codex-harness install has not been
+  measured with the treasurer's executor.
 
 The card's run measures the boundary on the live install, from the developer's executor.
 
@@ -117,7 +127,9 @@ Not covered:
 - **Every spend is metered on public books.** Nothing changes about the rails. The treasurer still pays through the
   valve onto the same books.
 - **The kit renders its brain for the harness the owner picks and never implements one.** The treasurer's
-  dispatcher is Hermes's own tick, scoped to one lane. It adds no scheduler of its own. A non-Hermes harness gets no
-  pay port rather than a kit-made dispatcher.
+  dispatcher is Hermes's own tick, scoped to one lane. It adds no scheduler of its own. A project that picks Codex
+  keeps it for every profile that cannot pay. The treasurer runs as the stock Hermes worker that dispatcher spawns,
+  which is a harness, not one the kit implements. This departure from the owner's pick is the author's design, and the
+  independent review weighs it.
 - **No automated tests; nothing develops against a real API.** The proof is a manual reading on the live install,
   taken from the developer's executor, plus the World's rehearsal.
