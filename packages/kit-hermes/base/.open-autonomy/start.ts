@@ -33,7 +33,7 @@
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -230,6 +230,20 @@ if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `crea
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, content);
+// The lane this install runs (docs/decisions/0020): a home that declares its lanes (lanes.yaml: each lane's board file
+// and profiles) runs the one its config.yaml names (`lane:`), else the first. Of the profiles the lanes name, only this
+// lane's are rendered and applied, and its board file is the home's workflow.yaml; the other lanes' leave the home.
+const lanesFile = resolve(committed, 'lanes.yaml');
+const lanes = existsSync(lanesFile) ? Bun.YAML.parse(readFileSync(lanesFile, 'utf8')) as Record<string, { workflow?: string; profiles?: string[] }> : undefined;
+const laneName = lanes ? String((Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { lane?: unknown } | null)?.lane ?? Object.keys(lanes)[0]) : undefined;
+const lane = lanes && laneName ? lanes[laneName] : undefined;
+if (lanes && !lane) { console.error(`start: .open-autonomy/config.yaml names lane ${laneName}; the home's lanes are ${Object.keys(lanes).join(', ')}. No services were started.`); process.exit(1); }
+// A lane deselects only the skew's profiles another lane names; an install's own profiles (an account manager's owner
+// instance) run in every lane.
+const laned = new Set(Object.values(lanes ?? {}).flatMap((l) => l.profiles ?? []));
+const outOfLane = lane ? Object.keys(agentSetup.profiles).filter((name) => laned.has(name) && !(lane.profiles ?? []).includes(name)) : [];
+for (const name of outOfLane) delete agentSetup.profiles[name];
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) if (!agentSetup.profiles[mailAgent.profile]) { console.error(`start: agent ${name} runs profile ${mailAgent.profile}, which lane ${laneName} does not run. No services were started.`); process.exit(1); }
 // The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
@@ -245,6 +259,14 @@ if (existsSync(committed)) {
   const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
   cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
+  if (lane) {
+    // A profile the setup declared but the lane does not run, and a profile folder of another lane, leave the home.
+    const laneProfiles = new Set(Object.keys(agentSetup.profiles));
+    const committedProfiles = existsSync(resolve(committed, 'profiles')) ? readdirSync(resolve(committed, 'profiles')) : [];
+    for (const name of new Set([...outOfLane, ...committedProfiles])) if (laned.has(name) && !laneProfiles.has(name)) rmSync(resolve(home, 'profiles', name), { recursive: true, force: true });
+    if (lane.workflow && lane.workflow !== 'workflow.yaml') cpSync(resolve(committed, lane.workflow), resolve(home, 'workflow.yaml'), { force: true });
+    say(`lane ${laneName}: profiles ${[...laneProfiles].filter((n) => n !== 'default').join(', ')}; board ${lane.workflow ?? 'workflow.yaml'}`);
+  }
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
