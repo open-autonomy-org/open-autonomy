@@ -32,8 +32,8 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
-import { agentHarness, agentModels, applyAgent, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -56,6 +56,8 @@ if (arg('--container')) {
   process.exit(await runtime.exited);
 }
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
+// The agent's content: the IR kit's native folder, home/ (docs/decisions/0017), or the Hermes kit's hermes/.
+const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
 const loadedSource = readFileSync(import.meta.path, 'utf8');
 // Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
 // kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
@@ -127,9 +129,10 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    if (name === 'reporter') {
-      // The reporter narrates; it never decides whether the brain runs. It comes back in ten seconds.
-      say(`reporter ended (${code}); the brain keeps running, the reporter returns in 10 s`);
+    if (name.startsWith('reporter') || name.startsWith('channel ')) {
+      // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
+      // ten seconds.
+      say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
@@ -196,10 +199,10 @@ if (!existsSync(resolve(project, '.git'))) {
     const dir = mkdtempSync(resolve(tmpdir(), 'open-autonomy-hermes-'));
     process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
     own(dir);
-    const archive = git('archive', '--format=tar', 'origin/main', 'hermes');
+    const archive = git('archive', '--format=tar', 'origin/main', content);
     const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
-    if (!extracted || !existsSync(resolve(dir, 'hermes'))) { console.error('start: cannot extract committed Hermes configuration; startup stopped, repair snapshot permissions or the committed hermes directory'); process.exit(1); }
-    committedFrom = resolve(dir, 'hermes');
+    if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); process.exit(1); }
+    committedFrom = resolve(dir, content);
     say(`checkout ${project} has uncommitted changes; preserved, using Hermes configuration from origin/main`);
   } else {
     if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); process.exit(1); }
@@ -226,12 +229,30 @@ const agentSetup: Setup | null = (() => {
 if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
-const committed = committedFrom ?? resolve(project, 'hermes');
+const committed = committedFrom ?? resolve(project, content);
+// The lane this install runs (docs/decisions/0020): a home that declares its lanes (lanes.yaml: each lane's board file
+// and profiles) runs the one its config.yaml names (`lane:`), else the first. Of the profiles the lanes name, only this
+// lane's are rendered and applied, and its board file is the home's workflow.yaml; the other lanes' leave the home.
+const lanesFile = resolve(committed, 'lanes.yaml');
+const lanes = existsSync(lanesFile) ? Bun.YAML.parse(readFileSync(lanesFile, 'utf8')) as Record<string, { workflow?: string; profiles?: string[] }> : undefined;
+const laneName = lanes ? String((Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { lane?: unknown } | null)?.lane ?? Object.keys(lanes)[0]) : undefined;
+const lane = lanes && laneName ? lanes[laneName] : undefined;
+if (lanes && !lane) { console.error(`start: .open-autonomy/config.yaml names lane ${laneName}; the home's lanes are ${Object.keys(lanes).join(', ')}. No services were started.`); process.exit(1); }
+// A lane deselects only the skew's profiles another lane names; an install's own profiles (an account manager's owner
+// instance) run in every lane.
+const laned = new Set(Object.values(lanes ?? {}).flatMap((l) => l.profiles ?? []));
+const outOfLane = lane ? Object.keys(agentSetup.profiles).filter((name) => laned.has(name) && !(lane.profiles ?? []).includes(name)) : [];
+for (const name of outOfLane) delete agentSetup.profiles[name];
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) if (!agentSetup.profiles[mailAgent.profile]) { console.error(`start: agent ${name} runs profile ${mailAgent.profile}, which lane ${laneName} does not run. No services were started.`); process.exit(1); }
 // The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
-// Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
-if (harness === 'claude-code' && Object.values(agentSetup?.profiles ?? {}).some((p) => { const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json picks Claude Code; each profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
+// Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
+// so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
+// declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
+// user and reads that login, so the declaration names the route the host already has rather than opening one.
+const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
+if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
 if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
@@ -242,6 +263,14 @@ if (existsSync(committed)) {
   const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
   cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
+  if (lane) {
+    // A profile the setup declared but the lane does not run, and a profile folder of another lane, leave the home.
+    const laneProfiles = new Set(Object.keys(agentSetup.profiles));
+    const committedProfiles = existsSync(resolve(committed, 'profiles')) ? readdirSync(resolve(committed, 'profiles')) : [];
+    for (const name of new Set([...outOfLane, ...committedProfiles])) if (laned.has(name) && !laneProfiles.has(name)) rmSync(resolve(home, 'profiles', name), { recursive: true, force: true });
+    if (lane.workflow && lane.workflow !== 'workflow.yaml') cpSync(resolve(committed, lane.workflow), resolve(home, 'workflow.yaml'), { force: true });
+    say(`lane ${laneName}: profiles ${[...laneProfiles].filter((n) => n !== 'default').join(', ')}; board ${lane.workflow ?? 'workflow.yaml'}`);
+  }
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
@@ -279,7 +308,10 @@ writeFileSync(envFile, `${lines.join('\n')}\n`);
 if (onCodex) {
   type Store = { providers?: Record<string, { tokens?: { access_token?: string }; last_refresh?: string }>; credential_pool?: Record<string, Array<Record<string, unknown>>> };
   const readStore = (file: string): Store => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return {}; } };
-  for (const profile of [home, resolve(home, 'profiles/treasurer')]) {
+  // The home and each profile the setup declares (a kit's profiles differ: the Hermes kit's treasurer, the company
+  // skew's manager, coders and the rest), wherever the start rendered one.
+  const profileHomes = Object.keys(agentSetup.profiles).map((name) => (name === 'default' ? home : resolve(home, 'profiles', name))).filter((dir) => existsSync(dir));
+  for (const profile of [...new Set([home, ...profileHomes])]) {
     const authFile = resolve(profile, 'auth.json');
     const store = readStore(authFile);
     // The pool entry alone: Hermes copies a singleton token record into the pool under the real service's address,
@@ -303,8 +335,9 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version }));
 const homeReadme = resolve(home, 'README.md');
-// The site renders the setup's opening paragraphs; put the running version there.
-writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning Hermes kit ${runningKit.version}. `));
+// The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
+// Hermes kit's does; the IR kit's home is profiles and a board).
+if (existsSync(homeReadme)) writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\nRunning ${runningKit.kit === 'ir' ? 'IR' : 'Hermes'} kit ${runningKit.version}. `));
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
@@ -328,6 +361,22 @@ if (existsSync(resolve(secrets, 'treasurer.env'))) {
 if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
+// An organization's projects (docs/decisions/0017): a project this install publishes for has its key in this install's
+// own custody, <secrets>/projects/<owner>/<repo>/agent.env, placed there once the project's own install has retired
+// (it never publishes beside one). Each such project gets its key on its own port and its own reporter; a project
+// without one stays on the organization's page.
+const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown; tag?: unknown }> } } & Record<string, unknown>;
+// A project's cards carry its tag: its short name (`tag`, e.g. rh2), else its account or repository name.
+const projectReporters: Array<{ account: string; tag: string; port: number }> = [];
+if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
+  const projectAccount = typeof entry?.account === 'string' && /^[\w.-]+\/[\w.-]+$/.test(entry.account) ? entry.account : undefined;
+  if (!projectAccount) return;
+  const keyFile = resolve(secrets, 'projects', ...projectAccount.split('/'), 'agent.env');
+  if (!existsSync(keyFile)) { say(`${projectAccount}: no key in this install's custody (${keyFile}); its cards publish on the organization's page`); return; }
+  const port = valvePort + 4 * (i + 1);
+  keys.push('--key', `${keyFile}:${port}`);
+  projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port });
+});
 spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: valveEnv });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (Volter Harness, beside it in
@@ -365,13 +414,79 @@ try {
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness } });
+// The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
+// supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
+const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
+spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+// Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
+// and their sessions only, through the project's own key.
+for (const p of projectReporters) {
+  const dir = resolve(home, '..', 'reporters', ...p.account.split('/'));
+  mkdirSync(dir, { recursive: true }); own(dir);
+  const config = resolve(dir, 'config.yaml');
+  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.tag, state_file: 'reporter-state.json' }, null, 2)}\n`);
+  own(config);
+  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+}
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
-const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+// A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
+// rest, so the board runs only through the install's own start (docs/decisions/0017).
+const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
+if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+// The install's own checkout in this machine's workspace map, so its board's cards on its own repository
+// (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
+if (harness !== 'hermes') {
+  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
+}
+// The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
+// and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
+// start. RH2 is reached as the agent's own principal where the organization declares it (supercode ADR 0017:
+// `supercode orchestrator apps install rh2-agent … --profile <agent>`), else through a Room-chat installation for it
+// (`apps install room-chat … --profile <agent>`); its channel reads the record from this home.
+// They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
+// §2.10), so an export names each one it folds into its profile.
+const agentLayerFile = resolve(home, 'agents.json');
+const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
+agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object.entries(agentSetup.agents ?? {}).map(([name, mailAgent]) => [name, { name, profile: mailAgent.profile }])) };
+if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON.stringify(agentLayer, null, 2)}\n`);
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
+  const folder = resolve(home, 'profiles', mailAgent.profile);
+  const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
+    '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
+    ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
+    ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
+    ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
+  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
+  say(declared.stdout.toString().trim());
+  // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
+  // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
+  if (mailAgent.every_machine) {
+    const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
+    const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
+    const machines = listed.exitCode === 0 ? ((JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
+    if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
+    for (const machine of machines) {
+      const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
+        '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`]),
+        cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+      say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
+    }
+  }
+  const rh2 = mailAgent.channel?.rh2;
+  if (!rh2) continue;
+  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
+    ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
+    ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+}
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
@@ -400,11 +515,11 @@ setInterval(() => {
     if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
     const main = g('rev-parse', 'origin/main').stdout.toString().trim();
     const changed = startedMain && main && main !== startedMain ? g('diff', '--name-only', startedMain, main).stdout.toString().split('\n').filter(Boolean) : [];
-    if (changed.length && !changed.some((file) => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) startedMain = main;
+    if (changed.length && !changed.some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'))) startedMain = main;
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
-  const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
+  const board = Bun.spawnSync({ cmd: drop(boardDeclared ? [Bun.which('node')!, orchestratorBin, 'workflow', '--root', home, 'list', '--json'] : ['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
   if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
   try {
     const tasks = JSON.parse(board.stdout.toString());
