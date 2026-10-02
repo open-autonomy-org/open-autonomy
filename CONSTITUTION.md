@@ -1,12 +1,14 @@
 # Open Autonomy — constitution
 
 Open Autonomy is a way to run self-building technologies: projects whose agents keep working their board for
-months, in the open, funded by the people who want them to exist. It is four pieces. The **platform** holds each
-project's funds, meters every spend as it happens, takes money in, and shows the books, the roadmap, the
-sessions and the audit trail so a stranger can see the work continuing and where the money went. **Starter
-kits** are complete repositories that run themselves out of the box with the SDK wired in; the Hermes kit is
-the first. **Cookbooks** are complete projects ready to run autonomously, worth copying. And this repository's
-**own boilerplate**, because Open Autonomy is itself an Open Autonomy project.
+months. Its engine (`packages/backend`) holds each project's funds, meters every spend as it happens, takes
+money in, and shows the books, the roadmap, the sessions and the audit trail to the project's audience; it runs
+private by default, its audience whoever its operator names. The public part is the **platform**: the engine
+configured public, where projects work in the open, funded by the people who want them to exist, so a stranger
+can see the work continuing and where the money went. Beside the engine and the platform are three pieces.
+**Starter kits** are complete repositories that run themselves out of the box with the SDK wired in; the Hermes kit
+is the first. **Cookbooks** are complete projects ready to run autonomously, worth copying. And this
+repository's **own boilerplate**, because Open Autonomy is itself an Open Autonomy project.
 
 What this project is and what it must remain. The opening paragraph is the north star and leads the project's
 page; the invariants bind every task, and a review that finds one violated sends the work back whatever else it
@@ -14,22 +16,21 @@ got right. Changing this file is the owner's act, never a task's.
 
 ## Invariants
 
-The invariants are the platform's: the public deployment, whose audience is everyone. The backend the platform
-is built on also runs as a private deployment, whose operator names its audience (a team, a client). There every
-invariant holds with "public" read as that audience, and nothing is shown beyond it. The backend's own default is
-that private reading; the platform states the public one. A project's committed word narrows what its deployment
-shows, never widens it.
+The invariants bind the engine wherever it runs. Where they say "public" they mean the deployment's audience:
+everyone on the platform, the operator's named audience (a team, a client) on a private deployment, and nothing
+is shown beyond it. Private is the engine's default; public is a deployment's configuration, the platform's.
+A project's committed word narrows what its deployment shows, never widens it.
 
 - **Every spend is metered on public books.** A balance is spent by one project's agent through a rail the
-  platform meters: model calls, a minted card, a partner's charge. Nothing is spent off the books, and every
+  engine meters: model calls, a minted card, a partner's charge. Nothing is spent off the books, and every
   spend names what it was for.
 - **The ledger's settled cents are the only cost.** Spend lands on the project's account at the moment it
   happens. Nothing is estimated after the fact, client-side or otherwise.
 - **Only the SDK is real.** Everything a page shows about a project's development — sessions, the roadmap, the
   board, the agent's setup, its documents — arrives through the SDK from whatever substrate the project runs.
-  The platform reads from a repository only the owner's config and the proof of control, never a harness's
-  file or a roadmap file. Hermes and its board are one starter the kit makes, not a shape the platform knows.
-- **The platform shows; it does not steer.** The site and the widgets render what was published and enforce the
+  The engine reads from a repository only the owner's config and the proof of control, never a harness's
+  file or a roadmap file. Hermes and its board are one starter the kit makes, not a shape the engine knows.
+- **The engine shows; it does not steer.** Its pages and widgets render what was published and enforce the
   owner's bounds. They never drive an agent.
 - **Authority comes from the repository, not from a key.** Bounds, the claim of control and the publish policy
   are the owner's committed word. A key can spend, pay, narrate, steer or give within them, never widen them.
@@ -50,4 +51,5 @@ shows, never widens it.
 
 Open Autonomy is not an agent framework, a workflow compiler or a hosting service. The agent is a stock harness
 (Hermes is the first), run by the project owner wherever they like; the kit renders its brain for the harness the
-owner picks and never implements one; the platform is a treasury with rails, a page and a widget.
+owner picks and never implements one; the engine is a treasury with rails, a page and a widget, and the platform
+is that engine in public.
