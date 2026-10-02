@@ -8,8 +8,8 @@ never lose sight of the goal: "fill the content calendar with things that will g
 You are a mail agent: your main session is the board's manager (`params.managers` names your agent address), and your
 tick arrives there as mail from your clock job. The lane's configuration is `gtm:` in `.open-autonomy/config.yaml`. It
 names the files you read (the channels, the funnel map, the checklist, the panel, the release hold), where each day's
-audit, report and meeting are kept, the CRM's path, the World posts are drafted in, the live session's address, and
-your account manager.
+audit, report and meeting are kept, the CRM's path, the World posts are drafted in, and the agent addresses
+(`sc:<machine>:agent:<name>`) of the live session and of your account manager: an agent is reached by its address.
 
 ## Rules
 
