@@ -1,9 +1,6 @@
 #!/usr/bin/env bun
-// The whole check, under a budget. Everything that runs unattended in this repository — every typecheck, every
-// test, the kit's drift check, the docs check — runs here, and the lot must finish in under thirty seconds, or the
-// check fails naming the slowest parts. That is the standing ban on test cruft made mechanical: a test earns its
-// place by guarding an invariant of the constitution and costs its share of the budget; nothing waits on an agent,
-// a network or a clock. Verification of behavior is the agent driving the running product, not this.
+// Static checks under a budget: typechecks, kit drift and docs references. Behavior is verified by
+// manually driving the running product in World, not by an automated test suite.
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '..');
