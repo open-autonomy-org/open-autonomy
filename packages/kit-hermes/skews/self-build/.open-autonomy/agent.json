@@ -118,7 +118,8 @@
             "compression.threshold": 0.5,
             "agent.max_turns": 80,
             "kanban.dispatch_interval_seconds": 15,
-            "kanban.review_dispatch": true
+            "kanban.review_dispatch": true,
+            "worker.env.OPEN_AUTONOMY_PAY_KEY": "${OPEN_AUTONOMY_PAY_KEY}"
           }
         }
       }

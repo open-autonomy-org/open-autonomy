@@ -12,6 +12,10 @@
 // so a port that serves a paying key refuses, before anything is forwarded, a request that does not present the
 // credential its start minted for it: OPEN_AUTONOMY_VALVE_CALLER_<port> in this process's environment, and the same
 // value in that agent's own profile (OPEN_AUTONOMY_PAY_KEY in its .env). A --caller port without one stops the valve.
+// What it does not stop: any process of the same OS user can read that .env and this process's environment, the
+// developer profile included (no sandbox, approvals off), so the treasurer's credential is not yet out of the
+// developer's reach; that separation is its own work (a separate user or custody outside the shared home). The developer's
+// port forwards the rails too, with the developer's key, which the platform refuses to pay without the pay scope.
 // Host sidecars use --loopback; ordinary container valves retain their container interface.
 //   (each key file `OPEN_AUTONOMY_BASE_URL=…` and `OPEN_AUTONOMY_KEY=…`, re-read when it changes: a rotated key is
 //   picked up without a restart; /healthz on each port says when its key expires)
@@ -42,6 +46,7 @@ for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--caller'
   if (!Number.isInteger(port) || credential.length < 32) { console.error(`valve: --caller ${process.argv[i + 1]} has no credential (OPEN_AUTONOMY_VALVE_CALLER_${process.argv[i + 1]}, 32+ characters); refusing to start`); process.exit(2); }
   callers.set(port, Buffer.from(credential));
 }
+for (const port of callers.keys()) if (!keys.some((k) => k.port === port)) { console.error(`valve: --caller ${port} names no --key port; refusing to start`); process.exit(2); }
 /** Whether the request presents the port's caller credential (its bearer or x-api-key), compared in constant time. */
 function presents(req: Request, expected: Buffer): boolean {
   const auth = req.headers.get('authorization') ?? '';
@@ -118,7 +123,6 @@ for (const { file, port } of keys) Bun.serve({
   },
 });
 for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)} on :${port}${callers.has(port) ? ' for its own agent only' : ''}; forwarding ${[...FORWARDED].join(', ')}`);
-for (const port of callers.keys()) if (!keys.some((k) => k.port === port)) { console.error(`valve: --caller ${port} names no --key port; refusing to start`); process.exit(2); }
 
 // ── The Codex subscription ─────────────────────────────────────────────────────────────────────────────────────
 const CODEX_UPSTREAM = 'https://chatgpt.com/backend-api/codex';
