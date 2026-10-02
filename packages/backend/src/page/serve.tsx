@@ -18,7 +18,7 @@ import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
 import { redactDeep } from '../redact.js';
-import { workplaceLink } from '../workplace.js';
+import { workplaceLink, workplaceRoster } from '../workplace.js';
 import { atomFeed, updatesOf } from './updates.js';
 import { cardPng } from './raster.js';
 import type { ArtKind } from './art.js';
@@ -139,7 +139,12 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
     const linked = await workplaceLink(ledger, account);
     if (linked) return new Response(null, { status: 302, headers: { location: `${linked.base}/o/${encodeURIComponent(linked.organizationId)}`, ...NO_STORE } });
   }
-  const role = roleOf(who, view);
+  // Its team is declared once, in the workspace (RFC 0024 D10): the team page and its edits are the workspace's People.
+  if (page === 'team') {
+    const linked = await workplaceLink(ledger, account);
+    if (linked) return new Response(null, { status: 303, headers: { location: `${linked.base}/console/people`, ...NO_STORE } });
+  }
+  const role = roleOf(who, view, await workplaceRoster(ledger, account));
   // The owner's one control: running or paused, with a reason, from the roster's owner signed in at the page. The
   // request is recorded as the owner's; the automation applies it its own way and answers through the SDK.
   if (door === 'state') {

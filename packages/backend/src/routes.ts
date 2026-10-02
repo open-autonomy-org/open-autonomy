@@ -14,7 +14,7 @@ import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
 import { pageConfig } from './page/brand.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
 import { standing, today } from '@open-autonomy/sdk/statements';
-import { syncAllWorkplaceAlerts, WORKPLACE_CRON, workplaceRoute, type WorkplaceEnv } from './workplace.js';
+import { syncAllWorkplaceAlerts, WORKPLACE_CRON, workplaceRoute, type WorkplaceEnv, workplaceRoster } from './workplace.js';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
 // them. The app is tried first on every request and may answer; what it does not answer falls through to
@@ -258,7 +258,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
     if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
     const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
-    return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
+    return sees(roleOf(who, view, await workplaceRoster(ledger, account)), visibility[panel]) ? null : error('not_open', 404);
   };
   // A storage key is `<kind>:<account>:…`, so an account id holding `:` could name another account's records: never an account.
   const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? (account.includes(':') ? error('not_found', 404) : admits(account, panel));

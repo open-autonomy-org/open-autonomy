@@ -70,6 +70,13 @@ LimitLedger.extend({
     const links = await core.storage.list<WorkplaceLink>({ prefix: 'workplace:' });
     return { ok: true, links: [...links.values()] };
   },
+  async workplace_roster_put(core: LedgerCore, body) {
+    await core.storage.put(`workplace-roster:${String(body.account ?? '')}`, body.roster);
+    return { ok: true };
+  },
+  async workplace_roster(core: LedgerCore, body) {
+    return { ok: true, roster: (await core.storage.get<WorkplaceMember[]>(`workplace-roster:${String(body.account ?? '')}`)) ?? null };
+  },
   async workplace_giver_put(core: LedgerCore, body) {
     await core.storage.put(`giver-identity:${String(body.funder ?? '').toLowerCase()}`, body.identity);
     return { ok: true };
@@ -83,10 +90,32 @@ LimitLedger.extend({
     return { ok: true, givers: out };
   },
   async workplace_unlink(core: LedgerCore, body) {
+    await core.storage.delete(`workplace-roster:${String(body.account ?? '')}`);
     await core.storage.delete(`workplace:${String(body.account ?? '')}`);
     return { ok: true };
   },
 });
+
+/** A person on a linked project's team, as its workspace seats them (company RFC 0024 D10, "the team declared once"):
+ *  known by the identities they proved there, with the scopes their seat and team roles give here. */
+export interface WorkplaceMember { name: string; identities: { issuer: string; subject: string }[]; scopes: string[] }
+
+/** The workspace's seats as this project's team: its `admin` seats and anyone holding the `owner` team role are owners;
+ *  every other seat is the team. Authority scopes are Workplace roles, so they are set there, not in config.yaml. */
+export function rosterOf(org: { members?: Array<{ principalId: string; displayName: string; identities?: { issuer: string; subject: string }[] }>; seats?: Array<{ principalId: string; role: string; teamRoles?: string[] }> }): WorkplaceMember[] {
+  const people = new Map((org.members ?? []).map((member) => [member.principalId, member]));
+  return (org.seats ?? []).flatMap((seat) => {
+    const person = people.get(seat.principalId);
+    if (!person?.identities?.length) return [];
+    const owner = seat.role === 'admin' || (seat.teamRoles ?? []).includes('owner');
+    return [{ name: person.displayName, identities: person.identities, scopes: owner ? ['owner'] : ['team'] }];
+  });
+}
+
+/** A linked project's team as its workspace last declared it; null when the project is not linked (config.yaml governs). */
+export async function workplaceRoster(ledger: LedgerClient, account: string): Promise<WorkplaceMember[] | null> {
+  return (await ledger.call<{ roster: WorkplaceMember[] | null }>('workplace_roster', { account })).roster;
+}
 
 /** A funder who gave signed in with Volter: the identity a linked workspace names its givers by (its `giver` role). */
 export async function recordGiverIdentity(ledger: LedgerClient, funder: string, identity: { issuer: string; subject: string }): Promise<void> {
@@ -190,6 +219,10 @@ export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceL
   const model = { ...workplaceBooksOf(v, funding, statements.statements ?? [], link.origin), givers: givers.map((giver) => ({ key: giver.funder, issuer: giver.issuer, subject: giver.subject })) };
   const published = await workplaceCall(link, `/books/${source}`, { name: link.account, system: 'Open Autonomy', link: `${link.origin}/${link.account}/dashboard/books`, observedAt: at, model }, 'PUT');
   if (!published.ok) failures.push(`books: ${published.code ?? published.status}`);
+  // The team, declared once in the workspace: its seats read back as this project's roster.
+  const organization = await workplaceCall<Parameters<typeof rosterOf>[0]>(link, '');
+  if (organization.ok && organization.data) await ledger.call('workplace_roster_put', { account: link.account, roster: rosterOf(organization.data) });
+  else failures.push(`roster: ${organization.code ?? organization.status}`);
   const wanted = workplaceAlertsOf(v, link.origin);
   const raised: Record<string, string> = {};
   for (const alert of wanted) {

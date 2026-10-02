@@ -124,7 +124,7 @@ export const app: App = {
     // The give page's GitHub sign-in names the viewer on every page.
     signIn: (next) => `/give/login?next=${encodeURIComponent(next)}`,
     signOut: (next) => `/give/logout?next=${encodeURIComponent(next)}`,
-    async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}) } : undefined; },
+    async viewer(req, t) { const s = await giveSession(req, t.env as Env); return s ? { login: s.login, ...(s.id ? { id: s.id } : {}), ...(s.volter ? { volter: s.volter } : {}) } : undefined; },
     // The project's landing page and its whole story: the campaign around the core's records.
     async landing(base, t) {
       const patronage = await new Patronage(t.ledger).view(base.account);
