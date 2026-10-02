@@ -129,6 +129,14 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
+    // The board's dispatcher ends cleanly (0) when a newer orchestrator is installed under it, for its keeper to start the
+    // new one (supercode's `workflow serve`): this start is that keeper, so only the dispatcher restarts, not the stack.
+    if (name === 'board' && code === 0) {
+      say(`board ended (0) for a newer orchestrator; the rest keeps running, the board returns in 10 s`);
+      children.splice(children.findIndex((c) => c.proc === proc), 1);
+      setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
+      return;
+    }
     if (name.startsWith('reporter') || name.startsWith('channel ')) {
       // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
       // ten seconds.
