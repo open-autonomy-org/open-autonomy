@@ -43,8 +43,9 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
   // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
   // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A
-  // document the project changed (its production guide, its setup notes) ships nothing and passes.
-  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d));
+  // document the project changed (its production guide, its setup notes) ships nothing and passes, and so does its own
+  // word, the setup and config it declares (agent.json, config.yaml), which the release carries as landed.
+  const code = status.diverged.filter((d) => /^(\.open-autonomy\/|container\/)/.test(d) && !/^[^:]*\.md:/i.test(d) && !/^\.open-autonomy\/(agent\.json|config\.yaml):/.test(d));
   if (code.length) throw new Error(`the project's host files differ from the kit's (${code.join('; ')}); the runtime ships the kit's reviewed code: reconcile them before cutting a release`);
   const rev = out(run(['git', 'rev-parse', 'HEAD'], dir));
   if (!/^[0-9a-f]{40}$/.test(rev)) throw new Error(`${dir} is not a git checkout at a commit`);

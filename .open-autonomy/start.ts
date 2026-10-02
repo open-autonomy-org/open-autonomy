@@ -33,7 +33,7 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
-import { agentHarness, agentModels, applyAgent, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
+import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -57,6 +57,8 @@ if (arg('--container')) {
   process.exit(await runtime.exited);
 }
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
+// The agent's content: the IR kit's native folder, home/ (docs/decisions/0017), or the Hermes kit's hermes/.
+const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
 const loadedSource = readFileSync(import.meta.path, 'utf8');
 // Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
 // kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
@@ -202,10 +204,10 @@ if (!existsSync(resolve(project, '.git'))) {
     const dir = mkdtempSync(resolve(tmpdir(), 'open-autonomy-hermes-'));
     process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
     own(dir);
-    const archive = git('archive', '--format=tar', 'origin/main', 'hermes');
+    const archive = git('archive', '--format=tar', 'origin/main', content);
     const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
-    if (!extracted || !existsSync(resolve(dir, 'hermes'))) { console.error('start: cannot extract committed Hermes configuration; startup stopped, repair snapshot permissions or the committed hermes directory'); process.exit(1); }
-    committedFrom = resolve(dir, 'hermes');
+    if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); process.exit(1); }
+    committedFrom = resolve(dir, content);
     say(`checkout ${project} has uncommitted changes; preserved, using Hermes configuration from origin/main`);
   } else {
     if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); process.exit(1); }
@@ -232,12 +234,12 @@ const agentSetup: Setup | null = (() => {
 if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
-const committed = committedFrom ?? resolve(project, 'hermes');
+const committed = committedFrom ?? resolve(project, content);
 // The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
-if (harness === 'claude-code' && Object.values(agentSetup?.profiles ?? {}).some((p) => { const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json picks Claude Code; each profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
+if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
 if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
@@ -378,6 +380,10 @@ const orchestratorBin = resolve(import.meta.dir, 'node_modules', '@volter', 'sup
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
+// A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
+// rest, so the board runs only through the install's own start (docs/decisions/0017).
+const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
+if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: resolve(import.meta.dir, 'node_modules', '.bin', 'supercode') } });
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
@@ -406,11 +412,11 @@ setInterval(() => {
     if (g('fetch', '-q', 'origin', 'main').exitCode !== 0) return;
     const main = g('rev-parse', 'origin/main').stdout.toString().trim();
     const changed = startedMain && main && main !== startedMain ? g('diff', '--name-only', startedMain, main).stdout.toString().split('\n').filter(Boolean) : [];
-    if (changed.length && !changed.some((file) => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) startedMain = main;
+    if (changed.length && !changed.some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'))) startedMain = main;
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
-  const board = Bun.spawnSync({ cmd: drop(['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
+  const board = Bun.spawnSync({ cmd: drop(boardDeclared ? [Bun.which('node')!, orchestratorBin, 'workflow', '--root', home, 'list', '--json'] : ['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
   if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
   try {
     const tasks = JSON.parse(board.stdout.toString());
