@@ -18,8 +18,9 @@ The tick arrives as a turn in your own conversation, on the schedule in `.open-a
    - `report` (`--every 24h`), timed to finish before the meeting;
    - `research and collection` (`--every` the interval `gtm.collection_every` names, 4h when it names none).
 
-   `supercode workflow create "<round>" --assignee gtm-auditor --every <interval> …`. A round that missed its day is a
-   finding for the next audit; never run a round yourself.
+   `supercode workflow create "<round>" --assignee gtm-auditor --workspace worktree:<the install's repository> …`,
+   then `supercode workflow set <id> every <interval>`; a round commits its day file in that worktree. A round that
+   missed its day is a finding for the next audit; never run a round yourself.
 
 3. **The calendar.** Until the organization's calendar runs, the slots are counted from the cards: a post card names its
    slots as lines `Slot: <date> <channel id> #<n> <time>`. For each of the coming days in `gtm.horizon_days` (3 when it
