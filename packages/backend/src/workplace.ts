@@ -29,16 +29,14 @@ export interface WorkplaceEnv extends Env {
   WORKPLACE_CLIENT_SECRET?: string;
 }
 
-/** What the books keep of one project's link: the organization, the installation's token, the role its alerts are for,
- *  and the alerts raised there that are still standing (so a condition that ends is cleared). */
+/** What the books keep of one project's link: the organization, the role its alerts are for, and the alerts raised
+ *  there that are still standing (so a condition that ends is cleared). The token is its installation's (below). */
 export interface WorkplaceLink {
   account: string;
   base: string;
   organizationId: string;
   installationId: string;
   principalId: string;
-  accessToken: string;
-  expiresAt: string;
   role: string;
   linkedAt: string;
   linkedBy: string;
@@ -55,8 +53,21 @@ const STATE_TTL_MS = 30 * 60_000;
 const configured = (env: WorkplaceEnv): boolean => Boolean(env.WORKPLACE_URL && env.WORKPLACE_APP_ID && env.WORKPLACE_CLIENT_ID && env.WORKPLACE_CLIENT_SECRET);
 const base = (env: WorkplaceEnv): string => String(env.WORKPLACE_URL).replace(/\/+$/, '');
 
+/** The app's installation in one workspace's organization: one token, shared by every project linked there. A workspace
+ *  keeps one installation per organization, and installing again (linking another project) replaces its token. */
+export interface WorkplaceInstallation { base: string; organizationId: string; installationId: string; principalId: string; accessToken: string; expiresAt: string }
+const installKey = (base: string, organizationId: string): string => `workplace-install:${base}|${organizationId}`;
+
 // The books keep links under their own keys in the ledger's storage; the ledger's core knows nothing of them.
 LimitLedger.extend({
+  async workplace_install_put(core: LedgerCore, body) {
+    const install = body.install as WorkplaceInstallation;
+    await core.storage.put(installKey(install.base, install.organizationId), install);
+    return { ok: true };
+  },
+  async workplace_install(core: LedgerCore, body) {
+    return { ok: true, install: (await core.storage.get<WorkplaceInstallation>(installKey(String(body.base ?? ''), String(body.organizationId ?? '')))) ?? null };
+  },
   async workplace_link_put(core: LedgerCore, body) {
     const link = body.link as WorkplaceLink;
     await core.storage.put(`workplace:${link.account}`, link);
@@ -181,7 +192,7 @@ export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, state
   };
 }
 
-async function workplaceCall<T>(link: WorkplaceLink, path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<{ ok: boolean; status: number; data?: T; code?: string }> {
+async function workplaceCall<T>(link: WorkplaceLink & { accessToken: string }, path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<{ ok: boolean; status: number; data?: T; code?: string }> {
   const response = await fetch(`${link.base}/api/v3/organizations/${encodeURIComponent(link.organizationId)}${path}`, {
     method, redirect: 'manual',
     headers: { accept: 'application/json', authorization: `Bearer ${link.accessToken}`, 'x-rh2-organization': link.organizationId, origin: link.base, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
@@ -193,9 +204,12 @@ async function workplaceCall<T>(link: WorkplaceLink, path: string, body?: unknow
 
 /** One project's alerts brought in step with its books: each standing condition raised (a repeat is a no-op there), each
  *  one that ended cleared. The keys raised are kept on the link so a condition that ends is cleared, never forgotten. */
-export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceLink): Promise<WorkplaceLink> {
+export async function syncWorkplaceAlerts(ledger: LedgerClient, stored: WorkplaceLink): Promise<WorkplaceLink> {
   const at = new Date().toISOString();
-  if (Date.parse(link.expiresAt) <= Date.now()) return { ...link, lastTick: { at, ok: false, note: 'the installation token expired; link the project again' } };
+  const { install } = await ledger.call<{ install: WorkplaceInstallation | null }>('workplace_install', { base: stored.base, organizationId: stored.organizationId });
+  if (!install) return { ...stored, lastTick: { at, ok: false, note: 'the workspace has no installation for this organization; link the project again' } };
+  if (Date.parse(install.expiresAt) <= Date.now()) return { ...stored, lastTick: { at, ok: false, note: 'the installation token expired; link the project again' } };
+  const link = { ...stored, accessToken: install.accessToken };
   const failures: string[] = [];
   const source = booksSourceKey(link.account);
   // The controls asked in the workspace first: a freeze taken now shows in the books published below.
@@ -223,7 +237,9 @@ export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceL
   const organization = await workplaceCall<Parameters<typeof rosterOf>[0]>(link, '');
   if (organization.ok && organization.data) await ledger.call('workplace_roster_put', { account: link.account, roster: rosterOf(organization.data) });
   else failures.push(`roster: ${organization.code ?? organization.status}`);
-  const wanted = workplaceAlertsOf(v, link.origin);
+  // Each alert names its project: an organization links several, and one project's condition never clears another's.
+  const scope = link.account.toLowerCase().replace(/[^a-z0-9._:/-]+/g, '-');
+  const wanted = workplaceAlertsOf(v, link.origin).map((alert) => ({ ...alert, key: `${alert.key}:${scope}`, reason: `${link.account}: ${alert.reason}`.slice(0, 300) }));
   const raised: Record<string, string> = {};
   for (const alert of wanted) {
     const fingerprint = `${alert.severity}|${alert.reason}`;
@@ -236,7 +252,7 @@ export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceL
     const answer = await workplaceCall(link, '/alerts/clear', { key });
     if (!answer.ok) { raised[key] = link.raised[key]!; failures.push(`${key}: ${answer.code ?? answer.status}`); }
   }
-  const next = { ...link, raised, lastTick: { at, ok: failures.length === 0, ...(failures.length ? { note: failures.join('; ').slice(0, 300) } : {}) } };
+  const next: WorkplaceLink = { ...stored, raised, lastTick: { at, ok: failures.length === 0, ...(failures.length ? { note: failures.join('; ').slice(0, 300) } : {}) } };
   await putLink(ledger, next);
   return next;
 }
@@ -292,7 +308,9 @@ export async function workplaceRoute(req: Request, env: WorkplaceEnv, url: URL, 
     const exchanged = await fetch(`${base(env)}/api/v3/automation/apps/oauth/access`, { method: 'POST', redirect: 'manual', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ clientId: env.WORKPLACE_CLIENT_ID, clientSecret: env.WORKPLACE_CLIENT_SECRET, code }) });
     const data = (await exchanged.json().catch(() => ({})) as { data?: { accessToken: string; expiresAt: string; installationId: string; organizationId: string; principalId: string } }).data;
     if (!exchanged.ok || !data) return error('workplace_refused_code', 502);
-    const link: WorkplaceLink = { account: state.account!, base: base(env), organizationId: data.organizationId, installationId: data.installationId, principalId: data.principalId, accessToken: data.accessToken, expiresAt: data.expiresAt, role: state.role!, linkedAt: new Date().toISOString(), linkedBy: state.by!, origin: url.origin, raised: {} };
+    // The installation's token is the organization's, shared with every project linked there (installing again replaced it).
+    await ledger.call('workplace_install_put', { install: { base: base(env), organizationId: data.organizationId, installationId: data.installationId, principalId: data.principalId, accessToken: data.accessToken, expiresAt: data.expiresAt } satisfies WorkplaceInstallation });
+    const link: WorkplaceLink = { account: state.account!, base: base(env), organizationId: data.organizationId, installationId: data.installationId, principalId: data.principalId, role: state.role!, linkedAt: new Date().toISOString(), linkedBy: state.by!, origin: url.origin, raised: {} };
     await putLink(ledger, link);
     await syncWorkplaceAlerts(ledger, link).catch((cause) => console.error('[workplace] first sync', cause));
     return Response.redirect(`${base(env)}/console/inbox`, 303);
@@ -304,8 +322,7 @@ export async function workplaceRoute(req: Request, env: WorkplaceEnv, url: URL, 
   if (!m![2]) {
     if (req.method !== 'GET') return methodNotAllowed();
     if (!link) return json({ ok: true, linked: false });
-    const { accessToken: _token, ...shown } = link;
-    return json({ ok: true, linked: true, link: shown });
+    return json({ ok: true, linked: true, link });
   }
   if (req.method !== 'POST') return methodNotAllowed();
   if (m![2] === 'unlink') { await ledger.call('workplace_unlink', { account }); return json({ ok: true, linked: false }); }

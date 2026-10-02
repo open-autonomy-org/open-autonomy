@@ -29,11 +29,14 @@ rather each sub systems have their own alerts that go up to the alerts system".
    (`POST /v1/accounts/:account/workplace/link`, `{ "role" }`), opens the install page the answer names, and the
    workspace's admin consents there. The return (`GET /workplace/callback`) carries a state signed here, so a code can
    only complete the link its owner started. The books keep the link under the project in the ledger's storage, through
-   operations the integration registers (`LimitLedger.extend`), never in the core's state.
+   operations the integration registers (`LimitLedger.extend`), never in the core's state. The token is the
+   installation's, kept once per workspace organization: a workspace holds one installation of the app per organization,
+   so linking a second project there replaces the token, and every project linked to that organization uses the new one.
 2. **The books' conditions are raised as alerts, for the role the owner named.** Spent out, not yet funded, runway under
    a third of its goal, a spending limit at 80% or more, a spending freeze (its own or its org's), a pause asked for and
    not yet taken, and the org's pause: the
-   same facts the dashboard reads, each under a stable key. Every quarter hour each link is brought in step: a standing
+   same facts the dashboard reads, each under a stable key that names its project (`books.runway-low:<account>`), so
+   the projects of one organization never clear one another's. Every quarter hour each link is brought in step: a standing
    condition is raised (a repeat is a no-op there), one that ended is cleared. The keys raised are kept on the link, so an
    ended condition is always cleared. No person is named here; the workspace's roles say who.
 3. **The books are published there, and a spending freeze asked there is taken here.** Every tick publishes the
