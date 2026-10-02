@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://supercode.volter.ai/schemas/agent-setup.json",
+  "title": "Agent setup",
+  "description": "A repository's agent setup (.open-autonomy/agent.json): each profile's Inference, jobs and harness settings, applied to its home by Volter Harness's applier (sdk/orchestrator/apply). Edited in Git Notes with supercode-ui's AgentSetupEditor; each save is proposed as a pull request. Copied from supercode-ui (@volter/supercode-ui/agent-setup.schema.json) by the kit, which keeps it current.",
+  "x-git-notes-widget": "supercode-agent-setup",
+  "type": "object",
+  "required": [
+    "profiles"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "harness": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "The harness the owner picks; hermes runs itself, any other runs as the orchestrator's worker."
+    },
+    "profiles": {
+      "type": "object",
+      "required": [
+        "default"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "inference": {
+            "type": "object",
+            "properties": {
+              "models": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "default": {
+                "type": "string"
+              },
+              "unattended": {
+                "type": "string"
+              }
+            }
+          },
+          "jobs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "schedule": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "minutes"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "interval"
+                        },
+                        "minutes": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "expr"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "cron"
+                        },
+                        "expr": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "run_at"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "once"
+                        },
+                        "run_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "prompt": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "config": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
