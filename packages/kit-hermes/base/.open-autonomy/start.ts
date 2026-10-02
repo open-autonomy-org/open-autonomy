@@ -262,23 +262,32 @@ const harness = agentHarness(agentSetup);
 const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
 if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
 if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
-if (existsSync(committed)) {
+// The home from the repository's folder `from`: at start, and again in place when main moves only the home's own files.
+function renderHome(from: string) {
+  if (!existsSync(from)) return;
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
   // The workers' forms before anything of Hermes's runs here: the persona as AGENTS.md (SOUL.md its link), each skill
   // under .agents/skills/; a Hermes call first would write a default SOUL.md beside the rendered persona.
-  if (harness !== 'hermes') for (const line of renderWorkerForms(committed, home)) say(line);
-  const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
+  if (harness !== 'hermes') for (const line of renderWorkerForms(from, home)) say(line);
+  const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(from, src));
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
-  cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
+  cpSync(from, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
   if (lane) {
     // A profile the setup declared but the lane does not run, and a profile folder of another lane, leave the home.
     const laneProfiles = new Set(Object.keys(agentSetup.profiles));
-    const committedProfiles = existsSync(resolve(committed, 'profiles')) ? readdirSync(resolve(committed, 'profiles')) : [];
+    const committedProfiles = existsSync(resolve(from, 'profiles')) ? readdirSync(resolve(from, 'profiles')) : [];
     for (const name of new Set([...outOfLane, ...committedProfiles])) if (laned.has(name) && !laneProfiles.has(name)) rmSync(resolve(home, 'profiles', name), { recursive: true, force: true });
-    if (lane.workflow && lane.workflow !== 'workflow.yaml') cpSync(resolve(committed, lane.workflow), resolve(home, 'workflow.yaml'), { force: true });
+    if (lane.workflow && lane.workflow !== 'workflow.yaml') cpSync(resolve(from, lane.workflow), resolve(home, 'workflow.yaml'), { force: true });
     say(`lane ${laneName}: profiles ${[...laneProfiles].filter((n) => n !== 'default').join(', ')}; board ${lane.workflow ?? 'workflow.yaml'}`);
   }
+}
+renderHome(committed);
+// Which commit the home is (a dirty checkout's start renders origin/main's snapshot), for whoever asks whether a landed
+// change is live.
+{
+  const rendered = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', committedFrom ? 'origin/main' : 'HEAD']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+  if (rendered && existsSync(home)) writeFileSync(resolve(home, '.rendered-from.json'), JSON.stringify({ commit: rendered, at: new Date().toISOString(), lag: 'within ten minutes of main' }) + '\n');
 }
 // The home's .env is the home's own, except the valve's three lines, which are this start's truth on every start.
 const envFile = resolve(home, '.env');
@@ -532,6 +541,20 @@ setInterval(() => {
     const main = g('rev-parse', 'origin/main').stdout.toString().trim();
     const changed = startedMain && main && main !== startedMain ? g('diff', '--name-only', startedMain, main).stdout.toString().split('\n').filter(Boolean) : [];
     if (changed.length && !changed.some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'))) startedMain = main;
+    // A move of the home's own files alone (a prompt, a persona, a board file) is rendered in place: a session reads the
+    // home when it starts, so nothing drains, and a board that is never quiet (a fleet has a card running at every hour)
+    // no longer holds a landed prompt back. The setup, the host code and the lanes still restart the stack. A checkout on
+    // a branch is a developer's run and is left alone. The lag is this check's ten minutes; .rendered-from.json says
+    // which commit the home is.
+    if (changed.length && changed.some((file) => file.startsWith(`${content}/`)) && !changed.some((file) => file.startsWith('.open-autonomy/') || file === `${content}/lanes.yaml`)
+      && g('symbolic-ref', '-q', 'HEAD').exitCode !== 0 && g('checkout', '-q', '--detach', 'origin/main').exitCode === 0) {
+      try {
+        renderHome(resolve(project, content));
+        writeFileSync(resolve(home, '.rendered-from.json'), JSON.stringify({ commit: main, at: new Date().toISOString(), lag: 'within ten minutes of main' }) + '\n');
+        say(`main moved to ${main.slice(0, 8)}; the home is rendered from it in place`);
+        startedMain = main;
+      } catch (error) { say(`main moved to ${main.slice(0, 8)}; rendering the home in place failed (${(error as Error).message}); the stack restarts onto it when the board is quiet`); }
+    }
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
