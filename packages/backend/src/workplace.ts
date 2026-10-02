@@ -70,19 +70,36 @@ LimitLedger.extend({
     const links = await core.storage.list<WorkplaceLink>({ prefix: 'workplace:' });
     return { ok: true, links: [...links.values()] };
   },
+  async workplace_giver_put(core: LedgerCore, body) {
+    await core.storage.put(`giver-identity:${String(body.funder ?? '').toLowerCase()}`, body.identity);
+    return { ok: true };
+  },
+  async workplace_givers(core: LedgerCore, body) {
+    const out: Array<{ funder: string; issuer: string; subject: string }> = [];
+    for (const funder of (body.funders as string[] | undefined) ?? []) {
+      const identity = await core.storage.get<{ issuer: string; subject: string }>(`giver-identity:${funder.toLowerCase()}`);
+      if (identity) out.push({ funder, ...identity });
+    }
+    return { ok: true, givers: out };
+  },
   async workplace_unlink(core: LedgerCore, body) {
     await core.storage.delete(`workplace:${String(body.account ?? '')}`);
     return { ok: true };
   },
 });
 
+/** A funder who gave signed in with Volter: the identity a linked workspace names its givers by (its `giver` role). */
+export async function recordGiverIdentity(ledger: LedgerClient, funder: string, identity: { issuer: string; subject: string }): Promise<void> {
+  await ledger.call('workplace_giver_put', { funder, identity });
+}
+
 export const workplaceLink = async (ledger: LedgerClient, account: string): Promise<WorkplaceLink | null> => (await ledger.call<{ link: WorkplaceLink | null }>('workplace_link', { account })).link;
 const putLink = (ledger: LedgerClient, link: WorkplaceLink) => ledger.call<{ ok: true }>('workplace_link_put', { link });
 
 /** The books' conditions as alerts, read from the project's view: the same facts its dashboard's "Needs attention" reads. */
 export function workplaceAlertsOf(v: ProjectView, origin: string): WorkplaceAlert[] {
-  const books = `${origin}/${v.account}/books`;
-  const agent = `${origin}/${v.account}/agent`;
+  const books = `${origin}/${v.account}/dashboard/books`;
+  const agent = `${origin}/${v.account}/dashboard/agent`;
   const out: WorkplaceAlert[] = [];
   const standing = standingOf(v, []);
   const org = v.control?.desired?.from?.slice(1);
@@ -167,7 +184,11 @@ export async function syncWorkplaceAlerts(ledger: LedgerClient, link: WorkplaceL
   const v = await ledger.project(link.account);
   if (!v.found) return { ...link, lastTick: { at, ok: false, note: 'the project is not on the books' } };
   const [funding, statements] = await Promise.all([ledger.funding(link.account), ledger.statements(link.account)]);
-  const published = await workplaceCall(link, `/books/${source}`, { name: link.account, system: 'Open Autonomy', link: `${link.origin}/${link.account}/books`, observedAt: at, model: workplaceBooksOf(v, funding, statements.statements ?? [], link.origin) }, 'PUT');
+  // Its givers, by the Volter identity they gave under, so the workspace can seat them in its `giver` role.
+  const funders = [...new Set((v.feed ?? []).filter((flow) => flow.to === link.account && flow.kind === 'grant' && flow.from?.startsWith('@')).map((flow) => flow.from!))];
+  const { givers } = await ledger.call<{ givers: Array<{ funder: string; issuer: string; subject: string }> }>('workplace_givers', { funders });
+  const model = { ...workplaceBooksOf(v, funding, statements.statements ?? [], link.origin), givers: givers.map((giver) => ({ key: giver.funder, issuer: giver.issuer, subject: giver.subject })) };
+  const published = await workplaceCall(link, `/books/${source}`, { name: link.account, system: 'Open Autonomy', link: `${link.origin}/${link.account}/dashboard/books`, observedAt: at, model }, 'PUT');
   if (!published.ok) failures.push(`books: ${published.code ?? published.status}`);
   const wanted = workplaceAlertsOf(v, link.origin);
   const raised: Record<string, string> = {};

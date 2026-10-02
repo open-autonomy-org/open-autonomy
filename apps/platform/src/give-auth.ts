@@ -13,7 +13,8 @@ const STATE_COOKIE = 'oa_give_state';
 const SESSION_SECONDS = 8 * 60 * 60;
 const STATE_SECONDS = 10 * 60;
 
-export interface GiveSession { login: string; id?: string; exp: number; grants_admin: boolean }
+// `volter`: the Volter identity the person signed in with, when they did (a workspace names its givers by it).
+export interface GiveSession { login: string; id?: string; exp: number; grants_admin: boolean; volter?: { issuer: string; subject: string } }
 
 const oauthBase = (env: Env): string => env.GITHUB_OAUTH_BASE ?? 'https://github.com';
 const cookieValue = (req: Request, name: string): string | undefined => req.headers.get('cookie')?.split(';').map((v) => v.trim()).find((v) => v.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -79,7 +80,7 @@ async function beginVolterLogin(req: Request, env: Env, next?: string): Promise<
 /** Volter's answer: the code traded with this client's secret, the id token verified, the linked GitHub account the person.
  *  The account is keyed by its GitHub id; the token's login is what the identity service recorded and a login can be
  *  renamed and re-registered, so the current login (which the books and the grants-pool check name) is read from GitHub. */
-async function finishVolterLogin(req: Request, env: Env, verifier: string): Promise<{ login: string; id?: string } | Response> {
+async function finishVolterLogin(req: Request, env: Env, verifier: string): Promise<{ login: string; id?: string; volter?: { issuer: string; subject: string } } | Response> {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   if (!code) return new Response('Volter sign-in did not complete.', { status: 401 });
@@ -107,7 +108,7 @@ async function finishVolterLogin(req: Request, env: Env, verifier: string): Prom
   const user = await userResponse.json().catch(() => ({})) as { login?: string; id?: number };
   const login = user.login?.toLowerCase() ?? '';
   if (!userResponse.ok || user.id !== id || !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(login)) return new Response(`Volter sign-in refused: GitHub answered ${userResponse.status} for the linked account.`, { status: 502 });
-  return { login, id: String(id) };
+  return { login, id: String(id), ...(person.subject ? { volter: { issuer: person.issuer, subject: person.subject } } : {}) };
 }
 
 export async function beginGiveLogin(req: Request, env: Env, team?: TeamEdit, next?: string): Promise<Response> {
@@ -136,7 +137,7 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
     if (!volterConfigured(env)) return new Response('Volter sign-in is not configured.', { status: 503 });
     const person = await finishVolterLogin(req, env, expected.volter);
     if (person instanceof Response) return person;
-    return grantSession(req, env, person.login, person.id, expected.next);
+    return grantSession(req, env, person.login, person.id, expected.next, person.volter);
   }
   if (!env.GITHUB_OAUTH_CLIENT_ID || !env.GITHUB_OAUTH_CLIENT_SECRET) return new Response('GitHub sign-in is not configured.', { status: 503 });
   const redirectUri = new URL('/give/callback', req.url).toString();
@@ -166,7 +167,7 @@ export async function finishGiveLogin(req: Request, env: Env): Promise<Response>
 }
 
 /** The signed-in person's session: their login, account id and whether they administer the grants pool. */
-async function grantSession(req: Request, env: Env, login: string, id: string | undefined, next: string | undefined): Promise<Response> {
+async function grantSession(req: Request, env: Env, login: string, id: string | undefined, next: string | undefined, volter?: { issuer: string; subject: string }): Promise<Response> {
   // The sign-in proves identity but cannot read organization roles. The platform's server-side GitHub
   // credential performs that separate check; without one the pool stays hidden.
   const org = grantsAccount(env).split('/')[0];
@@ -174,7 +175,7 @@ async function grantSession(req: Request, env: Env, login: string, id: string | 
     headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${env.GITHUB_TOKEN}`, 'user-agent': 'open-autonomy' },
   }) : undefined;
   const membership = await membershipResponse?.json().catch(() => ({})) as { role?: string; state?: string } | undefined;
-  const session: GiveSession = { login, ...(id ? { id } : {}), exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
+  const session: GiveSession = { login, ...(id ? { id } : {}), ...(volter ? { volter } : {}), exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS, grants_admin: Boolean(membershipResponse?.ok && membership?.role === 'admin' && membership.state === 'active') };
   const res = redirect(new URL(safeNext(next, req.url) ?? '/give', req.url).toString(), `${SESSION_COOKIE}=${await signPayload(env, session)}; ${cookieAttrs(req, '/', SESSION_SECONDS)}`);
   res.headers.append('set-cookie', `${STATE_COOKIE}=; ${cookieAttrs(req, '/give/callback', 0)}`);
   return res;

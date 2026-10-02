@@ -20,4 +20,4 @@ export { readTeamFile, readTeamEdit, proposeTeamEdit, validTeamAccount, type Tea
 export { configureSync, isStale, syncProfile, syncAllStale, type SyncPolicy } from './sync.ts';
 export { grantsAccount, hasScope, isFunder, DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope, type UsageEvent } from './types.ts';
 export { MODEL_PRICES } from './pricing.ts';
-export { syncAllWorkplaceAlerts, syncWorkplaceAlerts, workplaceAlertsOf, workplaceLink, workplaceRoute, WORKPLACE_CRON, type WorkplaceAlert, type WorkplaceEnv, type WorkplaceLink } from './workplace.ts';
+export { recordGiverIdentity, syncAllWorkplaceAlerts, syncWorkplaceAlerts, workplaceAlertsOf, workplaceLink, workplaceRoute, WORKPLACE_CRON, type WorkplaceAlert, type WorkplaceEnv, type WorkplaceLink } from './workplace.ts';

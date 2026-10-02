@@ -50,6 +50,12 @@ rather each sub systems have their own alerts that go up to the alerts system".
 The runs' conditions (failed runs, no scheduled run, proposed items) are supercode orchestration's, raised by its own
 integration (RFC 0024 C8), not here.
 
+A linked project's page is the workspace's Overview (RFC 0025 decision 8): `/<owner>/<project>` redirects there, and the
+dashboard stays the owner's controls and the books' depths. A person who gives signed in with Volter is recorded against
+their funder name (`@login` → the Volter issuer and subject), and the books snapshot lists the project's givers by that
+identity, so the workspace seats them in its `giver` role without a second sign-up. A giver who gave with a GitHub
+sign-in or a funder key is not named; they give as before.
+
 ## Consequences
 
 - A project's owner, and anyone the workspace's role names, is told where they work when money runs short, without

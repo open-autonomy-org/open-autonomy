@@ -18,6 +18,7 @@ import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
 import { redactDeep } from '../redact.js';
+import { workplaceLink } from '../workplace.js';
 import { atomFeed, updatesOf } from './updates.js';
 import { cardPng } from './raster.js';
 import type { ArtKind } from './art.js';
@@ -132,6 +133,12 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const view = await ledger.project(account);
   if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
   if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
+  // A project linked to a workplace lands there (company RFC 0025 decision 8): its Overview is the project's page, read by
+  // each viewer as the workplace's roles allow. The dashboard stays the owner's controls and the books' depths.
+  if (door === undefined && isGet) {
+    const linked = await workplaceLink(ledger, account);
+    if (linked) return new Response(null, { status: 302, headers: { location: `${linked.base}/o/${encodeURIComponent(linked.organizationId)}`, ...NO_STORE } });
+  }
   const role = roleOf(who, view);
   // The owner's one control: running or paused, with a reason, from the roster's owner signed in at the page. The
   // request is recorded as the owner's; the automation applies it its own way and answers through the SDK.

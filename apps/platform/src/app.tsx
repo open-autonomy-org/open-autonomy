@@ -3,7 +3,7 @@
 // on the core's pages, its slots: the pitch and the patrons on Explore, the tiers and the patrons wall on a
 // project, the doors to buy credits or sponsor on a name's page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
-import { LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
+import { recordGiverIdentity, LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
 import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
@@ -49,6 +49,8 @@ export const app: App = {
             if (amount === null) message = { ok: false, text: 'Enter an amount in dollars, like 5 or 1.50.' };
             else {
             const result = await t.give(source, String(form.get('to') ?? ''), amount, String(form.get('note') ?? '').trim() || undefined, `give-page:${session.login}:${source}:${attempt}`, String(form.get('for') ?? 'unrestricted'), source === pool ? `@${session.login}` : undefined);
+            // A gift from someone signed in with Volter names them in a linked workspace (its giver role).
+            if (result.ok && session.volter && source === funder) await recordGiverIdentity(ledger, funder, session.volter);
             message = result.ok
               ? { ok: true, text: `${source} granted $${(Math.floor(amount) / 100).toFixed(2)} to ${String(form.get('to'))}. It is on the project's books.` }
               : { ok: false, text: result.error === 'insufficient_balance' ? `${source} holds fewer credits than that.` : `The gift was refused: ${result.error}.` };
