@@ -11,7 +11,7 @@ MODEL_PRICES_JSON = "{}"
 MAX_GLOBAL_DAILY_USD_CENTS = "5000"
 
 [triggers]
-crons = ["0 6 * * *"]
+crons = ["0 6 * * *", "*/15 * * * *"]
 
 # One Durable Object: the books. The class name and binding are the backend's.
 [[durable_objects.bindings]]

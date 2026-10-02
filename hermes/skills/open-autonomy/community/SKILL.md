@@ -11,8 +11,8 @@ metadata:
 
 # Community
 
-Answer people where they spoke. The project's plan lives in `ROADMAP.md`; the PM scrum reconciles input
-into that plan and queues authorized fleet work. Strategy develops new scope under the owner's mandate.
+Answer people where they spoke. The project's plan is its board; the PM scrum reconciles input into
+cards and queues authorized fleet work. Strategy develops new scope under the owner's mandate.
 Explicit authorized user requests always reach PM; strategy is not a required intermediary. You don't create implementation tasks or promise that every request
 will be built. An older cron prompt saying "file what fits" means preserve the input for scrum.
 

@@ -6,8 +6,8 @@ It remains available on demand; an agreed native schedule or trigger can activat
 Scheduling and decision authority are independent. PM always captures explicit authorized requests,
 but does not invent features from an empty board or the constitution.
 
-The PM runs an hourly scrum over `ROADMAP.md` (notable present/future intentions) and `CHANGELOG.md`
-(notable changes consolidated into main, separating Unreleased from released). It consolidates owner
+The PM runs an hourly scrum over the board (this project keeps no roadmap or changelog: its intentions are cards,
+and what landed is its Git history and releases). It consolidates owner
 direction, community input, outside contributions and fleet activity, coordinates human commitments and
 required release review, and queues executable work through Hermes's native kanban. The community desk
 runs every quarter hour and answers people; the dispatcher and review lane handle fleet execution.
@@ -44,7 +44,7 @@ The start script runs the stack, drains active work before kit restarts, and kee
 the platform. The reporter publishes real Hermes activity through the SDK; outside contributions are never
 represented as fabricated fleet sessions. Running instructions: `container/README.md`.
 
-PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under project
+PM owns release planning: one sourced release card, a coherent scope and a version under project
 policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `prod`), the only thing a
 person is asked about. A merge or a date is not a release: when the Release is finished and verified, PM tells the
 owner once, and the owner's approval and merge ship it. See `.open-autonomy/PRODUCTION.md`.
