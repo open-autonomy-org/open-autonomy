@@ -34,6 +34,7 @@ import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, relative, resolve } from 'node:path';
@@ -307,12 +308,27 @@ writeFileSync(homeReadme, readFileSync(homeReadme, 'utf8').replace('\n\n', `\n\n
 
 // 4. The valve: one key file per port; a missing developer's key is the one thing that stops the start.
 const keys: string[] = ['--key', `${developerKey}:${valvePort}`];
-if (existsSync(resolve(secrets, 'treasurer.env'))) keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`);
+// The paying key's port answers only the treasurer (valve.ts --caller): a credential minted on every start, given to the
+// valve in its environment and to the treasurer in its own profile's .env (OPEN_AUTONOMY_PAY_KEY, which its model key and
+// its rail calls present). Any other process on the host, which reaches loopback as easily, is refused.
+const valveEnv: Record<string, string> = { ...hostEnvironment };
+if (existsSync(resolve(secrets, 'treasurer.env'))) {
+  keys.push('--key', `${resolve(secrets, 'treasurer.env')}:${valvePort + 1}`, '--caller', String(valvePort + 1));
+  const payKey = randomBytes(32).toString('base64url');
+  valveEnv[`OPEN_AUTONOMY_VALVE_CALLER_${valvePort + 1}`] = payKey;
+  const treasurerHome = resolve(home, 'profiles', 'treasurer');
+  if (existsSync(treasurerHome)) {
+    const payEnv = resolve(treasurerHome, '.env');
+    const keptPay = existsSync(payEnv) ? readFileSync(payEnv, 'utf8').split('\n').filter((l) => l.trim() && !/^OPEN_AUTONOMY_PAY_KEY=/.test(l)) : [];
+    writeFileSync(payEnv, `${[...keptPay, `OPEN_AUTONOMY_PAY_KEY=${payKey}`].join('\n')}\n`, { mode: 0o600 });
+    own(payEnv);
+  }
+}
 // Both launch modes use the host Codex login. A model twin never starts real authentication.
 if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
-spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: hostEnvironment });
+spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...keys], { env: valveEnv });
 
 // 5. The reporter and the gateway, as the agent. The reporter's own dependencies (Volter Harness, beside it in
 //    .open-autonomy/package.json) are installed when that file is not the one the last complete install satisfied:
