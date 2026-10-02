@@ -474,8 +474,11 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     // Only machines Teams reports online: an enrollment whose machine is gone (an old VM, a retired box) would refuse the
     // open and spend the server's rate limit on every start. An offline machine gets its instance at the next start.
     const enrolled = listed.exitCode === 0 ? (JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string; connection?: string }> : [];
-    const machines = enrolled.filter((m) => m.connection === 'online').map((m) => m.name).filter((m): m is string => !!m && m !== here);
-    const offline = enrolled.filter((m) => m.connection !== 'online' && m.name && m.name !== here).map((m) => m.name);
+    // This machine under any of the names Teams lists it by (`yuerans-macbook-pro`, `Yuerans-MacBook-Pro.local`): its
+    // instance is the one just declared, and opening another here would make two (one per machine).
+    const same = (name: string) => name.toLowerCase().replace(/\.local$/, '') === String(here ?? '').toLowerCase().replace(/\.local$/, '');
+    const machines = enrolled.filter((m) => m.connection === 'online').map((m) => m.name).filter((m): m is string => !!m && !same(m));
+    const offline = enrolled.filter((m) => m.connection !== 'online' && m.name && !same(m.name)).map((m) => m.name);
     if (offline.length) say(`agent ${name}: not opened on ${offline.length} offline machine(s) (${offline.join(', ')}); each gets its instance at a start that finds it online`);
     if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
     for (const machine of machines) {
