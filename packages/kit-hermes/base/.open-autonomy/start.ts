@@ -247,8 +247,12 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) if (!ag
 // The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
-// Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
-if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
+// Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
+// so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
+// declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
+// user and reads that login, so the declaration names the route the host already has rather than opening one.
+const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
+if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
 if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
