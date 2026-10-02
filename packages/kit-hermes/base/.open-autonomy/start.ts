@@ -541,11 +541,10 @@ setInterval(() => {
     const main = g('rev-parse', 'origin/main').stdout.toString().trim();
     const changed = startedMain && main && main !== startedMain ? g('diff', '--name-only', startedMain, main).stdout.toString().split('\n').filter(Boolean) : [];
     if (changed.length && !changed.some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'))) startedMain = main;
-    // A move of the home's own files alone (a prompt, a persona, a board file) is rendered in place: a session reads the
-    // home when it starts, so nothing drains, and a board that is never quiet (a fleet has a card running at every hour)
-    // no longer holds a landed prompt back. The setup, the host code and the lanes still restart the stack. A checkout on
-    // a branch is a developer's run and is left alone. The lag is this check's ten minutes; .rendered-from.json says
-    // which commit the home is.
+    // A move of the home's own files alone (a prompt, a persona, a board file) is rendered in place, with no restart: a
+    // session reads the home when it starts, so nothing needs to drain for it. The setup, the host code and the lanes
+    // restart the stack onto main below. A checkout on a branch is a developer's run and is left alone. The lag is this
+    // check's ten minutes; .rendered-from.json says which commit the home is.
     if (changed.length && changed.some((file) => file.startsWith(`${content}/`)) && !changed.some((file) => file.startsWith('.open-autonomy/') || file === `${content}/lanes.yaml`)
       && g('symbolic-ref', '-q', 'HEAD').exitCode !== 0 && g('checkout', '-q', '--detach', 'origin/main').exitCode === 0) {
       try {
@@ -553,7 +552,7 @@ setInterval(() => {
         writeFileSync(resolve(home, '.rendered-from.json'), JSON.stringify({ commit: main, at: new Date().toISOString(), lag: 'within ten minutes of main' }) + '\n');
         say(`main moved to ${main.slice(0, 8)}; the home is rendered from it in place`);
         startedMain = main;
-      } catch (error) { say(`main moved to ${main.slice(0, 8)}; rendering the home in place failed (${(error as Error).message}); the stack restarts onto it when the board is quiet`); }
+      } catch (error) { say(`main moved to ${main.slice(0, 8)}; rendering the home in place failed (${(error as Error).message}); the stack restarts onto it instead`); }
     }
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
