@@ -55,14 +55,15 @@ Every draft comes from a line of the principal's that decided something. Never f
 
    Its message id is the one the card waits on.
 
-3. **Ask for the block on that message.** Only the manager blocks a card; the request mails it:
+3. **Block the card on that message.** The board lets a card's creator block its own held, never-run card on a
+   message (a draft); nothing else of yours can block a card:
 
    ```sh
-   supercode workflow request-state <card id> --state block --waiting-on <message id> \
-     --reason "draft: it waits for the manager's answer to <message id>" --root <home>
+   supercode workflow block <card id> "draft: it waits for the manager's answer to <message id>" \
+     --waiting-on <message id> --root <home>
    ```
 
-   The card stays `todo` and not `ready` while the block holds, and its dispatch stays held until the manager starts it.
+   The card is `blocked`, never `ready`, while the block holds; the manager's reply to that message ends it.
 
 ## While it is a draft
 
