@@ -100,17 +100,14 @@
         }
       },
       "jobs": {
-        "tick": {
+        "clock": {
           "schedule": {
             "kind": "interval",
             "minutes": 30
           },
-          "prompt": "GTM MANAGER TICK. Run the gtm-manager skill's tick exactly.",
+          "prompt": "GTM MANAGER CLOCK. Wake the GTM manager, whose own session holds the board's manager role: run `supercode message send gtm-manager --subject tick \"GTM MANAGER TICK\"` and end your turn.",
           "model": "project",
-          "workdir": "{{workspace}}",
-          "skills": [
-            "gtm-manager"
-          ]
+          "workdir": "{{workspace}}"
         }
       }
     },

@@ -6,8 +6,10 @@ version: 1.0.0
 
 # The tick
 
-The tick arrives as a turn in your own conversation, on the schedule in `.open-autonomy/agent.json`. Read `gtm:` in
-`.open-autonomy/config.yaml` first; every path below is named there.
+The tick arrives in your own main session as the mail "GTM MANAGER TICK", sent by your profile's clock job on the
+schedule in `.open-autonomy/agent.json`. It runs here, never in the job: the board grants the manager's verbs to your
+agent's own session alone (its address is the board's `params.managers`). Read `gtm:` in `.open-autonomy/config.yaml`
+first; every path below is named there.
 
 1. **The board and your mail.** Read every open card in full, then your inbox (`supercode message inbox`). A report
    updates its card; a fact another card needs goes on that card.
@@ -18,8 +20,9 @@ The tick arrives as a turn in your own conversation, on the schedule in `.open-a
    - `report` (`--every 24h`), timed to finish before the meeting;
    - `research and collection` (`--every` the interval `gtm.collection_every` names, 4h when it names none).
 
-   `supercode workflow create "<round>" --assignee gtm-auditor --workspace worktree:<the install's repository> …`,
-   then `supercode workflow set <id> every <interval>`; a round commits its day file in that worktree. A round that
+   `supercode workflow create "<round>" --assignee gtm-auditor --workspace worktree:<the install's repository> --no-start …`,
+   then `supercode workflow set <id> every <interval>`, then `supercode workflow start <id>`: held until its interval is
+   set, so its first run is already a round. A round commits its day file in that worktree. A round that
    missed its day is a finding for the next audit; never run a round yourself.
 
 3. **The calendar.** Until the organization's calendar runs, the slots are counted from the cards: a post card names its

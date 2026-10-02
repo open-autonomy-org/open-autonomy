@@ -36,7 +36,10 @@ closed and a pull request is open on its branch (`sdk/orchestrator/board/dispatc
 - **The product lane** is the board and profiles that were, plus `strategy`.
 - **The go-to-market lane** (`workflow.gtm.yaml`) is the product lane's card machine and statuses, unchanged (no kernel
   change, RFC 0027 §11.1), with its own role prompts (`prompts/gtm/`) and profiles:
-  - `gtm-manager`, its tick a job every 30 minutes: the rounds kept, the calendar's slots counted from the cards until
+  - `gtm-manager`, a mail agent the install declares, whose own session is the board's manager (`params.managers`): the
+    board grants the manager's verbs to that session alone, so its profile's job is only a clock that mails it the tick
+    every 30 minutes. The tick: the rounds kept (each created held, its interval set, then started), the calendar's
+    slots counted from the cards until
     the organization's calendar runs, the low buffer raised, reviewed posts blocked on their slot's live session, the
     release hold copied from strategy's report, the meeting's decisions turned into ranked cards;
   - `gtm-auditor`, which runs the rounds as recurring cards: the funnel audit, the report and research and collection;
