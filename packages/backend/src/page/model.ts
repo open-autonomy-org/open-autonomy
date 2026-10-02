@@ -9,10 +9,11 @@ const RANK: Record<Role, number> = { public: 0, giver: 1, team: 2, owner: 3 };
 export const sees = (viewer: Role, least: Role): boolean => RANK[viewer] >= RANK[least];
 
 // Who is looking, as an app's identity door names them: a GitHub login, and its account id when the door learned
-// it. The core has no door of its own; a self-host serves everyone the public view. What a login is to a project
-// comes from the project's own records: the roster in its committed config (owner, then any member as team), the
-// books (a giver: whose money it is, never who passed it on). A roster member is matched by GitHub account id alone,
-// the one thing a rename keeps; a door that learned no id names no owner. Never from a key.
+// it. The core has no door of its own: a bare deployment shows its audience (audience.ts) what the owner opened to it,
+// and nothing to anyone else. What a login is to a project comes from the project's own records: the roster in its
+// committed config (owner, then any member as team), the books (a giver: whose money it is, never who passed it on).
+// A roster member is matched by GitHub account id alone, the one thing a rename keeps; a door that learned no id names
+// no owner. Never from a key.
 export interface Viewer { login: string; id?: string; volter?: { issuer: string; subject: string } }
 /** A viewer's role on a project. A project linked to a workspace takes its team from there (`roster`, company RFC 0024
  *  D10): a viewer signed in with the identity a seat proved is owner or team as that seat says, and config.yaml's
@@ -35,22 +36,26 @@ export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' |
 }
 
 // The owner's word on who sees what: the `dashboard:` section of .open-autonomy/config.yaml beside the bounds, read
-// with the rest of the repository's config. Absent, the public sees the roadmap and the books (every spend is metered
-// on public books, by the constitution) and the team sees the rest: the sessions, the transcripts, the agent.
-// The word holds on the pages and on the SDK's read doors alike: a closed panel answers 404 to a request without the
-// project's own key or an admitted signed-in viewer.
-// `statements` are the owner's published word (ADR 0012): public unless the project is private.
+// with the rest of the repository's config. `public` is the deployment's audience. Absent, the audience sees the
+// roadmap and the books and the team sees the rest: the sessions, the transcripts, the agent. The books and every
+// metered call are the audience's under every word (config.ts); a word the parser refuses shows the project to its
+// team alone. The word holds on the pages and on the SDK's read doors alike: a closed panel answers 404 to a request
+// without the project's own key or an admitted signed-in viewer.
+// `statements` are the owner's published word (ADR 0012).
 export interface Visibility { overview: Role; work: Role; sessions: Role; transcripts: Role; books: Role; calls: Role; agent: Role; team: Role; statements: Role }
-export const PRESETS: Record<'roadmap' | 'open' | 'status' | 'private', Visibility> = {
+export const PRESETS: Record<'roadmap' | 'open', Visibility> = {
   roadmap: { overview: 'public', work: 'public', sessions: 'team', transcripts: 'team', books: 'public', calls: 'public', agent: 'team', team: 'public', statements: 'public' },
   open:    { overview: 'public', work: 'public', sessions: 'public', transcripts: 'public', books: 'public', calls: 'public', agent: 'public', team: 'public', statements: 'public' },
-  status:  { overview: 'public', work: 'public', sessions: 'public', transcripts: 'giver', books: 'giver', calls: 'team', agent: 'team', team: 'public', statements: 'public' },
-  private: { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team', statements: 'team' },
 };
+const TEAM_ONLY: Visibility = { overview: 'team', work: 'team', sessions: 'team', transcripts: 'team', books: 'team', calls: 'team', agent: 'team', team: 'team', statements: 'team' };
 export const DEFAULT_PRESET = 'roadmap' as const;
-export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
-// Whether everyone may see a panel of a project, from the config it synced.
+export const visibilityOf = (yaml: string | undefined): Visibility => { const c = parseDashboardConfig(yaml ?? ''); return c.invalid ? TEAM_ONLY : { ...PRESETS[c.visibility ?? DEFAULT_PRESET], ...c.panels }; };
+// Why the owner's word was refused, for the team's own view of the settings; undefined when it holds.
+export const wordRefused = (yaml: string | undefined): string | undefined => parseDashboardConfig(yaml ?? '').invalid;
+// Whether the deployment's audience may see a panel of a project, from the config it synced.
 export const openTo = (yaml: string | undefined, panel: keyof Visibility): boolean => sees('public', visibilityOf(yaml)[panel]);
+// A viewer the project knows no more of than `public` is shown the audience's view only from inside the audience.
+export const within = (viewer: Role, audience: boolean): boolean => audience || viewer !== 'public';
 
 // The deployment's front: the grid of its projects. The core's words are "Projects" and how many; the platform's
 // are its pitch, its patrons in the figures, and each project's patrons on its card.

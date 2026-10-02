@@ -22,7 +22,6 @@ type S = StoryObj;
 export const OwnerWorkingNow: S = { args: { ...live(openAutonomy), viewer: 'owner' } };
 export const TeamBetweenRuns: S = { args: { viewer: 'team' } };
 export const PublicUnderRoadmapPreset: S = { args: { viewer: 'public', visibility: PRESETS.roadmap } };
-export const GiverUnderStatusPreset: S = { args: { viewer: 'giver', visibility: PRESETS.status, ...hookline } };
 export const HooklinePaused: S = { args: { ...hookline, viewer: 'owner', v: { ...hookline.v, control: { desired: { state: 'paused', at: '2026-09-12T20:10:00Z', by: 'key_1', reason: 'holiday' }, observed: { state: 'paused', at: '2026-09-12T20:11:00Z', note: 'scheduled runs paused: pm' } } } } };
 export const SessionsPage: S = { args: { ...live(openAutonomy), page: 'sessions' } };
 export const OneSession: S = { args: { page: 'sessions', session: (oaPm as any).session } };

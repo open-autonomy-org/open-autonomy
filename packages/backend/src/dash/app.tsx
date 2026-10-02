@@ -334,7 +334,7 @@ function Jobs({ d, jobs, compact }: { d: DashData; jobs: JobModel[]; compact?: b
   );
 }
 const PANEL_WORDS = { overview: 'overview and project page', work: 'roadmap and board', sessions: 'session list', transcripts: 'transcripts', books: 'books', calls: 'every metered call', agent: 'agent and its setup', team: 'team', statements: 'owner\'s statements' } as const;
-const WHO_WORDS: Record<Role, string> = { public: 'open to everyone', giver: 'givers and the team', team: 'the team', owner: 'the owner only' };
+const WHO_WORDS: Record<Role, string> = { public: 'open to the audience', giver: 'givers and the team', team: 'the team', owner: 'the owner only' };
 export function Agent({ d }: { d: DashData }) {
   const c = d.v.control;
   const jobs = jobsOf(d);
@@ -362,6 +362,7 @@ export function Agent({ d }: { d: DashData }) {
             <ul class="oa-rows">{(Object.keys(PANEL_WORDS) as Array<keyof typeof PANEL_WORDS>).map((k) => <li><span class="t">{PANEL_WORDS[k]}</span><span class="n">{WHO_WORDS[d.visibility[k]]}</span></li>)}</ul>
           </div>
           <p class="oa-fine" style="margin-top:8px">The owner's committed word, read from the repository's configuration; change it there, by commit.</p>
+          {d.refused ? <p class="oa-fine" style="margin-top:8px">The dashboard word was refused ({d.refused}), so the project is shown to its team alone until a word that holds is committed.</p> : null}
         </Panel>
         <Panel title="Who it is" span={4}>{d.v.profile.soul_md ? <div class="oa-prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.soul_md) }} /> : <p class="oa-empty">Not published yet.</p>}</Panel>
         <Panel title="How it runs" span={8}>{d.v.profile.setup_md ? <div class="oa-prose" dangerouslySetInnerHTML={{ __html: mdToSafeHtml(d.v.profile.setup_md) }} /> : <p class="oa-empty">Not published yet.</p>}</Panel>

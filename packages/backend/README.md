@@ -9,6 +9,7 @@ run this same backend; what differs is the app mounted around it.
 src/routes.ts       the routes, with an app around them: `worker(app)` is the whole handler
 src/ledger.ts       the Durable Object: accounts, envelopes, the audit trail, the key registry, sessions, the timeline;
                     `LimitLedger.extend` registers an app's operations on the same books
+src/audience.ts     who the deployment shows to: nobody by default, everyone, or whoever Cloudflare Access admits
 src/keys.ts         claim-file keys: challenge, mint, rotate, list; verification by signature and expiry
 src/proxy.ts        the model rail: OpenAI and Anthropic wires → the model gateway, reserve then settle
 src/pricing.ts      reservation prices; settle uses the gateway's reported cost
@@ -26,8 +27,9 @@ The core takes money onto the books only through the admin route (an operator mi
 only between accounts (`grant`, on a key with the `give` scope). Every public door onto money in is an app's:
 Open Autonomy's patronage registers its operations with `LimitLedger.extend`, answers its own routes before the
 core's through `App.route`, and fills the page's slots. What an app keeps on the books is persisted beside the
-core's keys and never read or dropped by it. A private deployment mounts `worker()` with no app and puts an
-access policy in front of the pages (`/`, `/<name>`, `/<owner>/<project>` and its tabs); the API paths under `/v1` stay key-authenticated.
+core's keys and never read or dropped by it. A deployment names its audience (`AUDIENCE`, `src/audience.ts`): the
+engine is private by default and shows its pages and read doors to nobody without a key; the platform names `public`,
+and a private deployment mounts `worker()` with no app and names `access`, behind Cloudflare Access.
 
 ## The wire
 

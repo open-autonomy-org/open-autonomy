@@ -17,6 +17,13 @@ export interface Env {
   // The source commit baked into a deployment; the health check reports it so this platform can be used as
   // another project's live service too.
   DEPLOY_COMMIT?: string;
+  // Who the deployment shows to (audience.ts). Absent, nobody: the engine is private by default, read only through a
+  // project's key or a roster seat. `public`: everyone (the platform). `access`: whoever Cloudflare Access admitted
+  // on this hostname, proved by its signed assertion against ACCESS_TEAM_DOMAIN (`<team>.cloudflareaccess.com`) and
+  // ACCESS_AUD (the Access application's audience tag).
+  AUDIENCE?: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
   // Lifetime of a minted key (default 90 days).
   KEY_EXPIRES_SECONDS?: string;
   // The organization's own grants account: its giver identity on the books, the pool an operator gives from.

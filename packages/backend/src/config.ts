@@ -166,22 +166,28 @@ export function parseRoadmapConfig(yaml: string): RoadmapConfig {
   return cfg;
 }
 
-// `.open-autonomy/config.yaml`'s `dashboard:` block: the owner's word on who sees what on the project's pages. A
-// preset (`roadmap` when absent: the roadmap and the books to everyone, the sessions and the agent to the team;
-// `open`, `status`, `private`) and, under it, a role per panel that overrides the preset:
+// `.open-autonomy/config.yaml`'s `dashboard:` block: the owner's word on who in the deployment's audience sees what on
+// the project's pages. A preset (`roadmap` when absent: the roadmap and the books to the audience, the sessions and the
+// agent to the team; `open`: everything to the audience) and, under it, a role per panel that overrides the preset:
 //
 //   dashboard:
-//     visibility: status
-//     books: public
+//     visibility: roadmap
+//     agent: owner
 //
-// The word holds on the pages and on the SDK's read doors alike; the books stay public under every preset but private.
+// `public` is the deployment's audience (audience.ts), so the word narrows what its deployment shows and never widens
+// it. The books and every metered call stay with the audience whatever the word says (every spend is metered on
+// public books): a word that closes either, or that the parser does not know, is `invalid`, and the project is then
+// shown to its team alone until the owner commits a word that holds.
 export const DASHBOARD_ROLES = ['public', 'giver', 'team', 'owner'] as const;
 export const DASHBOARD_PANELS = ['overview', 'work', 'sessions', 'transcripts', 'books', 'calls', 'agent', 'team', 'statements'] as const;
+export const DASHBOARD_PRESETS = ['roadmap', 'open'] as const;
+export const BOOKS_PANELS = ['books', 'calls'] as const;
 export type DashboardRole = typeof DASHBOARD_ROLES[number];
 export type DashboardPanel = typeof DASHBOARD_PANELS[number];
-export interface DashboardConfig { visibility?: 'roadmap' | 'open' | 'status' | 'private'; panels: Partial<Record<DashboardPanel, DashboardRole>> }
+export interface DashboardConfig { visibility?: typeof DASHBOARD_PRESETS[number]; panels: Partial<Record<DashboardPanel, DashboardRole>>; invalid?: string }
 export function parseDashboardConfig(yaml: string): DashboardConfig {
   const cfg: DashboardConfig = { panels: {} };
+  const refuse = (why: string): void => { cfg.invalid ??= why; };
   let block = '';
   for (const raw of yaml.split('\n')) {
     const line = raw.replace(/\s+#.*$/, '').trimEnd();
@@ -190,10 +196,15 @@ export function parseDashboardConfig(yaml: string): DashboardConfig {
     if (top) { block = top[2] === '' ? top[1] : ''; continue; }
     if (block !== 'dashboard') continue;
     const l2 = /^  ([a-z_]+):\s*(.+)$/.exec(line);
-    if (!l2) continue;
+    if (!l2) { refuse(`dashboard: cannot read "${line.trim()}"`); continue; }
     const v = l2[2].trim().replace(/^["']|["']$/g, '');
-    if (l2[1] === 'visibility' && (v === 'roadmap' || v === 'open' || v === 'status' || v === 'private')) cfg.visibility = v;
-    else if ((DASHBOARD_PANELS as readonly string[]).includes(l2[1]) && (DASHBOARD_ROLES as readonly string[]).includes(v)) cfg.panels[l2[1] as DashboardPanel] = v as DashboardRole;
+    if (l2[1] === 'visibility') {
+      if ((DASHBOARD_PRESETS as readonly string[]).includes(v)) cfg.visibility = v as DashboardConfig['visibility'];
+      else refuse(`dashboard.visibility: "${v}" is not one of ${DASHBOARD_PRESETS.join(', ')}`);
+    } else if (!(DASHBOARD_PANELS as readonly string[]).includes(l2[1])) refuse(`dashboard: "${l2[1]}" is not a panel`);
+    else if (!(DASHBOARD_ROLES as readonly string[]).includes(v)) refuse(`dashboard.${l2[1]}: "${v}" is not one of ${DASHBOARD_ROLES.join(', ')}`);
+    else if ((BOOKS_PANELS as readonly string[]).includes(l2[1]) && v !== 'public') refuse(`dashboard.${l2[1]}: every spend is metered on public books, so ${l2[1]} stay public`);
+    else cfg.panels[l2[1] as DashboardPanel] = v as DashboardRole;
   }
   return cfg;
 }

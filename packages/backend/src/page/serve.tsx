@@ -15,7 +15,7 @@ import { Account, type Impact } from './account.js';
 import { Directory } from './directory.js';
 import { document } from './document.js';
 import { renderMessage } from './message.js';
-import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
+import { roleOf, sees, visibilityOf, within, wordRefused, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
 import { redactDeep } from '../redact.js';
 import { workplaceLink, workplaceRoster } from '../workplace.js';
@@ -51,7 +51,8 @@ export interface PageApp {
   signIn?(next: string): string;
   signOut?(next: string): string;
 }
-export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response>; who?: Viewer }
+// `audience`: whether this request is in the deployment's audience (audience.ts); outside it, only the roster sees.
+export interface PageTools { env: Env; ledger: LedgerClient; url: URL; grantsAccount: string; identity: boolean; audience: boolean; beginIdentity?(req: Request, intent: unknown): Promise<Response>; who?: Viewer }
 // What the core hands an app for the landing page: the project as the books and the stream have it, who is looking
 // and what they may open. `about` asks for the whole document rather than the page.
 export interface LandingBase { account: string; view: ProjectView; role: Role; visibility: Visibility; sessions: SessionSummary[]; live: string[]; roadmap: Roadmap; daily: number[]; now: number; who?: Viewer; about: boolean; origin: string }
@@ -78,7 +79,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const isGet = req.method === 'GET' || req.method === 'HEAD';
   // Who is looking is asked of the app only for an address this router serves, never for one falling through.
   const identify = async () => { tools.who = await app.viewer?.(req, tools); return tools.who; };
-  const viewer = 'public' as const; // the front and a name's page read the same to everyone; a project's role is the project's
+  const viewer = 'public' as const; // the front and a name's page read the same to the audience; a project's role is the project's
+  const closedFront = (name: string): Response => html(renderMessage(name, false, 'Not open', `${brand} is not open to everyone.`), 404);
 
   // ---- a link preview's picture: a public page's drawing as a PNG card, drawn once and kept at the edge ----
   if (url.pathname === '/card.png' && isGet) return cardResponse(req, brand, 'vortex');
@@ -86,6 +88,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // ---- the front ----
   if (url.pathname === '/') {
     if (!isGet) return undefined;
+    if (!tools.audience) return closedFront(brand);
     await identify();
     const { entries } = await ledger.directory();
     for (const e of entries) if (e.is_project && isStale(e.profile.synced_at)) ctx.waitUntil(syncProfile(env, e.account));
@@ -99,6 +102,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   if (seg.length === 1) {
     if (!isGet) return undefined;
     const name = seg[0];
+    if (!tools.audience) return closedFront(name);
     const [{ entries }, funder] = await Promise.all([ledger.directory(), ledger.funder(`@${name.toLowerCase()}`)]);
     // Only projects listed where everyone looks count: a name whose projects are all closed answers as an unknown one.
     const owns = entries.some((e) => e.is_project && e.listed && e.account.toLowerCase().startsWith(`${name.toLowerCase()}/`));
@@ -163,9 +167,9 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // The owner's word holds on every address: a panel the viewer may not see is not there.
   const visibility = visibilityOf(view.profile.config_yaml);
   const gate = door === 'about' ? 'about' : page === undefined ? 'overview' : page === 'sessions' && key !== undefined ? 'transcript' : page;
-  if (!sees(role, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' || gate === 'overview' ? 'page' : gate} is not open to ${who ? `@${who.login}` : 'everyone'}.`), 404);
+  if (!within(role, tools.audience) || !sees(role, visibility[GATE[gate]])) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s ${gate === 'about' || gate === 'overview' ? 'page' : gate} is not open to ${who ? `@${who.login}` : 'everyone'}.`), 404);
   // The project's card only when its page is open to everyone, like its feed: a cached picture never says a closed page exists.
-  if (door === 'card.png') return sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
+  if (door === 'card.png') return tools.audience && sees('public', visibility.overview) ? cardResponse(req, account) : html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone.`), 404);
 
   const [stream, road, funding] = await Promise.all([ledger.sessions(account, page === 'sessions' ? 100 : 50), ledger.roadmap(account), ledger.funding(account)]);
   // The money is the books panel's: a viewer the owner keeps from the books gets none of it, not in what a page draws
@@ -184,7 +188,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   // A feed reader is anonymous and a shared cache may keep the answer, so the feed is the public's, whoever asks:
   // run reports only when the owner opens the sessions to everyone, links only into panels open to everyone.
   if (door === 'updates.xml') {
-    const open = (panel: keyof Visibility) => sees('public', visibility[panel]);
+    const open = (panel: keyof Visibility) => tools.audience && sees('public', visibility[panel]);
     // A page the owner keeps from the public has no feed at all, for anyone: a cached answer can never say it exists.
     if (!open('overview')) return html(renderMessage(account, false, 'Not open', `${nameOf(account)}'s page is not open to everyone, so it has no feed.`), 404);
     const feed = atomFeed({ origin: url.origin, account, title: `${nameOf(account)} · ${brand}`, page: at(account),
@@ -211,7 +215,8 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
   // The owner's statements, for the rail's rows and their pages, when the owner opened them to this viewer.
   const statements = sees(role, visibility.statements) ? (await ledger.statements(account)).statements : [];
-  const d: DashData = { brand, logo, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
+  const refused = sees(role, 'team') ? wordRefused(view.profile.config_yaml) : undefined;
+  const d: DashData = { brand, logo, viewer: role, visibility, ...(refused ? { refused } : {}), v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {

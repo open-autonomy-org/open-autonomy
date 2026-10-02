@@ -25,7 +25,8 @@ around them (the rail, the facts strip, the money, the roster) in the kit's own 
 renders the same tree and the browser hydrates it, where a live session's turns land as they are narrated. Its
 scale and structure are its own, not the landing page's. The `dashboard:` block in `.open-autonomy/config.yaml` decides
 which panels each role sees and whether the public sees any of it (`packages/backend/src/page/model.ts` holds the
-presets: roadmap by default, open, status, private); a self-host serves this and nothing else.
+presets: roadmap by default, and open), within the audience the deployment names; a self-host serves this and
+nothing else.
 
 **The front and a name's page** (`Core/Front`, `packages/backend/src/page/directory.tsx` and `account.tsx`): the
 deployment's front (the grid of its projects, the ones working now first) and a GitHub login's page, org or
