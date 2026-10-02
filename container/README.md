@@ -5,13 +5,23 @@ and its tools on two volumes that outlive it, the agent's home and its checkout.
 `.open-autonomy/start.ts --container` beside it: the credential valves, the SDK reporter and the gateway
 supervision, as World's foreground command. No host credential directory or Docker socket is mounted into the
 executor; Volter Harness reads native state inside it over its SDK transport, and the reporter publishes through the
-Open Autonomy SDK. Bare `start.ts` is for development and twin rehearsals; it is not isolation.
+Open Autonomy SDK. Bare `start.ts` is for development and twin rehearsals; it is not isolation, and it serves no pay
+port outside a rehearsal (`--rehearsal`).
+
+**The pay boundary** ([ADR 0021](https://github.com/open-autonomy-org/open-autonomy/blob/main/docs/decisions/0021-the-pay-boundary.md)) is a second executor from the same
+image, `oa-<project>-treasurer`. It runs the treasurer alone, on its own home volume (`oa-<project>-treasurer`) at
+`/opt/data`, with the agent's home volume at `/opt/board` for the board they share. The agent's executor holds no
+treasurer profile, no pay address and no pay credential. The pay port's credential is written only into the
+treasurer's executor, and `treasurer.env` stays on the host, where only the valve reads it. The treasurer's persona and
+setup come from the release below, never from the agent's checkout. Its lane of the board is dispatched in its own
+executor, in its own workspace. Whatever harness the project picks, the treasurer there is Hermes's own
+worker. Without that executor running (a runtime cut before it), the start serves no pay port and says why.
 
 `create-open-autonomy runtime` writes this shape from a landed checkout, so no installation hand-builds it:
 
 ```
 <runtime>/releases/kit-<rev>/   the kit at that revision, its dependencies installed: the trusted host copy
-<runtime>/world.json            World's definition: the executor service and its environment
+<runtime>/world.json            World's definition: the executor and treasurer services and their environment
 <runtime>/build-world.json      the image build through World
 <runtime>/state/, world/        the host reporter's state; World's own state root
 the launchd unit                World `run` with the host command in the foreground
@@ -35,7 +45,7 @@ must be in the protected credential directory first.
    build reservation and keeps the image). Adjust the declared resources to the actual build before starting.
 3. Put the checkout on its volume once, before the unit is loaded. The executor only sleeps until the host starts
    Hermes, so bring it up through World and step in as its user:
-   `bun <release>/.open-autonomy/node_modules/@volter/world-runtime/src/cli.ts up <runtime>/world.json --env-file <runtime>/world.env --root <runtime>/world`,
+   `bun <release>/.open-autonomy/node_modules/@volter/world-runtime/src/cli.ts up <runtime>/world.json --env-out=<runtime>/world.env --root <runtime>/world`,
    then `docker exec -it --user hermes oa-<project> sh`; there, the repository-specific Git URL rewriting shown in
    SETUP.md and the clone of the canonical repository into `/work/project`; then World `down`. A temporary valve on
    the host proves both Git routes; stop it before startup. Startup only fetches and checks out inside that clone.
