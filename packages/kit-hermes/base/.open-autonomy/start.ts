@@ -31,6 +31,7 @@
 //               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
+import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -348,10 +349,10 @@ const env = agentEnv();
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
-  const want = String(Bun.hash(readFileSync(resolve(import.meta.dir, 'package.json'))));
+  const runtimeOptions = { directory: import.meta.dir, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
-    const install = Bun.spawnSync({ cmd: drop(['bun', 'install', ...(lock ? ['--frozen-lockfile'] : [])]), cwd: import.meta.dir, env, stdout: 'inherit', stderr: 'inherit' });
-    if (install.exitCode !== 0) { console.error(`start: cannot install the reporter's dependencies in ${import.meta.dir}`); process.exit(1); }
+    await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
     writeFileSync(stamp, `${want}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
@@ -375,7 +376,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
-spawn('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
 for (const p of projectReporters) {
@@ -384,7 +385,7 @@ for (const p of projectReporters) {
   const config = resolve(dir, 'config.yaml');
   writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.tag, state_file: 'reporter-state.json' }, null, 2)}\n`);
   own(config);
-  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
@@ -403,9 +404,8 @@ if (harness !== 'hermes') {
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
-// start. RH2 is reached with <secrets>/rh2.env (RH2_API_URL, RH2_ORGANIZATION, RH2_SESSION_TOKEN, RH2_PRINCIPAL_ID).
-const rh2File = resolve(secrets, 'rh2.env');
-const rh2Env = existsSync(rh2File) ? Object.fromEntries(readFileSync(rh2File, 'utf8').split('\n').map((line) => /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())).filter((m): m is RegExpExecArray => !!m).map((m) => [m[1], m[2]])) : {};
+// start. RH2 is reached through the agent's Room-chat installation in this home (supercode ADR 0017:
+// `supercode orchestrator apps install room-chat … --profile <agent>`), which its channel reads.
 for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const folder = resolve(home, 'profiles', mailAgent.profile);
   const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
@@ -433,11 +433,10 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   }
   const rh2 = mailAgent.channel?.rh2;
   if (!rh2) continue;
-  if (!rh2Env.RH2_SESSION_TOKEN) { say(`agent ${name}: its account Room needs ${rh2File}; no channel`); continue; }
-  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name,
+  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
     ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
     ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
-    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, ...rh2Env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');

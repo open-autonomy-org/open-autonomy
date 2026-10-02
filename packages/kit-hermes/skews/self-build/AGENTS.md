@@ -7,7 +7,7 @@
 - **Git.** Never push to main, rewrite history or force-push. Start from fresh origin/main on agent/<task id>. Push to open a PR, then hand its exact head and manual evidence to native review. GitHub approval is required before merge; changed diffs invalidate stale approval. Reviewers confirm the merge before completing the task. Authors never approve their own work or bypass the gate.
 - **The community.** `.open-autonomy/community.ts` is your door to the repository's issues and discussions (`GITHUB_API_URL` and `GITHUB_TOKEN`: in the stack, the valve's GitHub port and the word `valve` — the project's own GitHub App answers); Discord is the project's own application and bot, used through Hermes's native tools. The `community` skill says what to answer, what to preserve for scrum and what to decline; its job runs every quarter hour.
 - **Secrets.** There are none for you to use: your model calls and your pushes are authorized outside your reach. Never read or print `.env` files or key material; your sessions are published live.
-- **Do not edit** `LICENSE`, `.github/workflows/`, `container/`, `.open-autonomy/reporter.ts`, or anything under `hermes/` except a skill a task asks you to improve.
+- **Do not edit** `LICENSE`, `.github/workflows/`, `container/`, `.open-autonomy/publisher.ts`, or anything under `hermes/` except a skill a task asks you to improve.
 - **Cost.** Your calls are metered and public. Read before writing; manually verify the feature; stop when verified.
 
 - **Native calls and agent decisions, not scripts.** Reach for Hermes' own surface first — the kanban toolset, the

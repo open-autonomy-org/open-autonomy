@@ -180,7 +180,7 @@ export async function startFleet(options: { definition: string; port: number; se
       writeFileSync(reportConfig, configs.get(p.name)!, { mode: 0o600 });
       let reportReady!: () => void;
       readiness.push(new Promise<void>((r) => { reportReady = r; }));
-      own(`reporter ${p.name}`, ['bun', resolve(import.meta.dir, 'reporter.ts'), '--container', container, '--config', reportConfig, '--project', p.workspace, '--state-file', resolve(p.state, 'reporter-state.json')],
+      own(`reporter ${p.name}`, ['bun', resolve(import.meta.dir, 'publisher.ts'), '--container', container, '--config', reportConfig, '--project', p.workspace, '--state-file', resolve(p.state, 'reporter-state.json')],
         { env: { ...process.env, HERMES_HOME: p.home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.key}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime }, ipc(message) { if (message?.type === 'reporter-ready') reportReady(); } });
     }
     await Promise.race([Promise.all(readiness), exited.then(() => { throw new Error('the runtime stopped before the reporters were ready'); })]);
