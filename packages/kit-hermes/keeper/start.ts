@@ -515,21 +515,40 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
 }
 // The board the repository declares (`board:` in .open-autonomy/config.yaml; company RFC 0025 decisions 3 and 4): its
 // document at the repository's root, in the board's own checkout beside the home (a clone of the project's origin, on
-// main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one the
-// home's workflow.yaml names. Made here, from the repository, before any dispatcher or reporter opens the board, so a
-// new machine needs no step by hand. A board already there is kept: the same one again changes nothing, and one the home
-// keeps on another backing or document is left as it is, the install runs on it, and why is said once.
+// main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one this
+// install declares. Made here, from the repository, before any dispatcher or reporter opens the board, so a new machine
+// needs no step by hand. What is declared, and whether it is made, is recorded in <home>/board-setup.json, which the
+// orchestrator reads: until the declared board is made it makes no board of another kind on this home (a failed first
+// clone must not leave an install on SQLite for good), and every start that cannot make it says what it waits for. A
+// board already there is kept: the same one again changes nothing; one the home keeps on another backing or document is
+// left as it is, the install runs on it, and why is said once.
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
+  const record = resolve(home, 'board-setup.json');
+  let previous: { made?: boolean; refused?: string } = {};
+  try { previous = JSON.parse(readFileSync(record, 'utf8')); } catch { /* none yet */ }
+  const declared = { backing: 'ztrack', document: boardSetup.document };
+  const note = (state: { made: boolean; waiting?: string; refused?: string }) => {
+    writeFileSync(record, `${JSON.stringify({ declared, ...state, at: new Date().toISOString() })}\n`);
+    own(record);
+  };
   const checkout = resolve(home, '..', 'board');
-  let ready = existsSync(resolve(checkout, '.git'));
-  if (!ready) {
+  let waiting: string | undefined;
+  if (!existsSync(resolve(checkout, '.git'))) {
     const from = Bun.spawnSync({ cmd: drop(['git', 'remote', 'get-url', 'origin']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
     const clone = from ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
-    ready = clone?.exitCode === 0;
-    say(ready ? `board: cloned ${from} on main → ${checkout}` : `board: cannot make the board's checkout ${checkout} (${from ? clone?.stderr.trim().split('\n').at(-1) : `${project} names no origin`}); its board is not set up this start`);
+    if (clone?.exitCode === 0) say(`board: cloned ${from} on main → ${checkout}`);
+    else {
+      rmSync(checkout, { recursive: true, force: true });
+      waiting = `its checkout ${checkout} cannot be made (${from ? clone?.stderr.trim().split('\n').at(-1) || `the clone ran past its bound` : `${project} names no origin`})`;
+    }
   }
-  if (ready) {
+  if (waiting) {
+    // Recorded before anything else opens the home, so no verb or round makes another board in its place.
+    if (!previous.made) note({ made: false, waiting });
+    say(`board: the repository's board is not made this start and nothing makes another in its place; it waits: ${waiting}`);
+  } else {
+    if (!previous.made) note({ made: false, waiting: 'the start is making it' });
     const archive = boardSetup.archive ?? {};
     // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
     // of this install's own mail agents (agent.json); else init takes the workflow's one manager, or asks which.
@@ -541,20 +560,20 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
       cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
     let answer: { kept?: boolean; path?: string } | undefined;
     try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
-    // A board the home keeps otherwise is left as it is and the install runs on it; why is said once, kept in the home,
-    // and said again only when it changes.
-    const refused = resolve(home, 'board-setup.json');
     if (init.exitCode === 0 && answer) {
-      rmSync(refused, { force: true });
+      note({ made: true });
       say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing (${answer.path ?? home})`);
     } else {
       const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
-      let said: string | undefined;
-      try { said = JSON.parse(readFileSync(refused, 'utf8')).why; } catch { /* not said yet */ }
-      if (said !== why) {
-        say(`board: not set up as the repository declares; the board this home keeps is left as it is and runs: ${why}`);
-        writeFileSync(refused, `${JSON.stringify({ why, at: new Date().toISOString() })}\n`);
-        own(refused);
+      // A board the home already keeps otherwise (init names it: 'is kept by', 'is kept on') is the one it runs on, made as
+      // far as the orchestrator is concerned; why is said once, and again only when it changes. Any other refusal (a
+      // workflow naming several managers) leaves the declared board waiting, said on every start.
+      if (/ is kept (by|on) /.test(why)) {
+        note({ made: true, refused: why });
+        if (previous.refused !== why) say(`board: not set up as the repository declares; the board this home keeps is left as it is and runs: ${why}`);
+      } else {
+        if (!previous.made) note({ made: false, waiting: why });
+        say(`board: the repository's board is not made this start and nothing makes another in its place; it waits: ${why}`);
       }
     }
   }
