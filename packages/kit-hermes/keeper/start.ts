@@ -525,10 +525,13 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
   const record = resolve(home, 'board-setup.json');
-  let previous: { made?: boolean; refused?: string } = {};
+  let previous: { declared?: unknown; made?: boolean; waiting?: string; refused?: string } = {};
   try { previous = JSON.parse(readFileSync(record, 'utf8')); } catch { /* none yet */ }
   const declared = { backing: 'ztrack', document: boardSetup.document };
+  // Written only when what it says changes, so a start that changes nothing leaves it as it was.
   const note = (state: { made: boolean; waiting?: string; refused?: string }) => {
+    const was = previous as { declared?: unknown; made?: boolean; waiting?: string; refused?: string };
+    if (JSON.stringify(was.declared) === JSON.stringify(declared) && was.made === state.made && was.waiting === state.waiting && was.refused === state.refused) return;
     writeFileSync(record, `${JSON.stringify({ declared, ...state, at: new Date().toISOString() })}\n`);
     own(record);
   };
