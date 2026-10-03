@@ -42,9 +42,7 @@
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { codexAccess } from '../base/.open-autonomy/codex-auth.ts';
-import { installHostRuntime, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
-import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from '../base/.open-autonomy/agent.ts';
+import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -54,6 +52,11 @@ import { basename, dirname, relative, resolve } from 'node:path';
 // The host directory: the project's .open-autonomy, whose start.ts is the entry that imported this keeper.
 if (Bun.main === import.meta.path) { console.error('start: the keeper runs through a project\'s .open-autonomy/start.ts, not on its own. Nothing was started.'); process.exit(1); }
 const host = dirname(Bun.main);
+// The kit's modules the keeper calls are the host's copies, rendered beside the entry: their own imports (the applier
+// in @volter/supercode-orchestrator) resolve from the host's node_modules, wherever the kit package itself is installed.
+const { codexAccess }: typeof import('../base/.open-autonomy/codex-auth.ts') = await import(resolve(host, 'codex-auth.ts'));
+const { installHostRuntime, runtimeInstallIdentity }: typeof import('../base/.open-autonomy/install-runtime.ts') = await import(resolve(host, 'install-runtime.ts'));
+const { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms }: typeof import('../base/.open-autonomy/agent.ts') = await import(resolve(host, 'agent.ts'));
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 // A managed executor keeps credentials, reporting and supervision on this host.
