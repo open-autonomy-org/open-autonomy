@@ -56,7 +56,7 @@ const host = dirname(Bun.main);
 // in @volter/supercode-orchestrator) resolve from the host's node_modules, wherever the kit package itself is installed.
 const { codexAccess }: typeof import('../base/.open-autonomy/codex-auth.ts') = await import(resolve(host, 'codex-auth.ts'));
 const { installHostRuntime, runtimeInstallIdentity }: typeof import('../base/.open-autonomy/install-runtime.ts') = await import(resolve(host, 'install-runtime.ts'));
-const { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms }: typeof import('../base/.open-autonomy/agent.ts') = await import(resolve(host, 'agent.ts'));
+const { agentHarness, agentModels, parseAgent, profileHarness, readAgent, renderWorkerForms }: typeof import('../base/.open-autonomy/agent.ts') = await import(resolve(host, 'agent.ts'));
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 // A managed executor keeps credentials, reporting and supervision on this host.
@@ -481,18 +481,18 @@ const env = agentEnv();
 // 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
 //    Hermes's own functions (Volter Harness's applier), owned by their Hermes ids against a base beside the home. A setup
 //    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
-try {
-  const lines = await applyAgent({
-    setup: agentSetup, homeOf: (profile) => (profile === 'default' ? home : resolve(home, 'profiles', profile)),
-    homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [],
-  });
-  for (const line of lines) say(`agent: ${line}`);
-} catch (error) {
-  await halted();
-  console.error(`start: the agent's setup could not be applied: ${(error as Error).message}. No gateway was started.`);
-  process.exit(1);
+//    The applier runs as a child the start waits on, tracked like any command: it drives Hermes synchronously, profile
+//    after profile, and in this process would hold every signal handler until it finished (a stop mid-startup waited
+//    for the whole setup, then started the services before stopping them).
+{
+  const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [] });
+  const applier = `const r = JSON.parse(process.argv[1]); const { applyAgent } = await import(r.agent); const { resolve } = await import('node:path');
+const lines = await applyAgent({ setup: r.setup, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
+process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
+  const applied = await command(['bun', '-e', applier, request], { cwd: project, env: process.env as Record<string, string>, boundMs: 600_000 });
+  if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied: ${applied.stderr.trim().split('\n').at(-1)}. No gateway was started.`); process.exit(1); }
+  for (const line of JSON.parse(applied.stdout.trim().split('\n').at(-1) ?? '[]') as string[]) say(`agent: ${line}`);
 }
-await halted();
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
