@@ -536,10 +536,13 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
   let waiting: string | undefined;
   if (!existsSync(resolve(checkout, '.git'))) {
     const from = Bun.spawnSync({ cmd: drop(['git', 'remote', 'get-url', 'origin']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
-    const clone = from ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
+    // Something already at the checkout's path that is not a checkout is never this start's to remove.
+    const occupied = existsSync(checkout);
+    const clone = from && !occupied ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
     if (clone?.exitCode === 0) say(`board: cloned ${from} on main → ${checkout}`);
+    else if (occupied) waiting = `${checkout} is there and is not a checkout of ${from || 'the project'}; it is left as it is`;
     else {
-      rmSync(checkout, { recursive: true, force: true });
+      rmSync(checkout, { recursive: true, force: true }); // what this start's own clone left
       waiting = `its checkout ${checkout} cannot be made (${from ? clone?.stderr.trim().split('\n').at(-1) || `the clone ran past its bound` : `${project} names no origin`})`;
     }
   }
