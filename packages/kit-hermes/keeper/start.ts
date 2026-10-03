@@ -555,7 +555,7 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
     if (!previous.made) note({ made: false, waiting });
     say(`board: the repository's board is not made this start and nothing makes another in its place; it waits: ${waiting}`);
   } else {
-    if (!previous.made) note({ made: false, waiting: 'the start is making it' });
+    if (!previous.made && !previous.refused) note({ made: false, waiting: 'the start is making it' });
     const archive = boardSetup.archive ?? {};
     // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
     // of this install's own mail agents (agent.json); else init takes the workflow's one manager, or asks which.
@@ -572,11 +572,12 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
       say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing (${answer.path ?? home})`);
     } else {
       const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
-      // A board the home already keeps otherwise (init names it: 'is kept by', 'is kept on') is the one it runs on, made as
-      // far as the orchestrator is concerned; why is said once, and again only when it changes. Any other refusal (a
-      // workflow naming several managers) leaves the declared board waiting, said on every start.
+      // A board the home already keeps otherwise (init names it: 'is kept by', 'is kept on') is the one it runs on: the
+      // declared one is not made (made: false), and with a board there the orchestrator makes none in its place anyway;
+      // why is said once, and again only when it changes. Any other refusal (a workflow naming several managers) leaves
+      // the declared board waiting, said on every start.
       if (/ is kept (by|on) /.test(why)) {
-        note({ made: true, refused: why });
+        note({ made: false, refused: why });
         if (previous.refused !== why) say(`board: not set up as the repository declares; the board this home keeps is left as it is and runs: ${why}`);
       } else {
         if (!previous.made) note({ made: false, waiting: why });
