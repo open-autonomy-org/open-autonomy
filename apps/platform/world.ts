@@ -52,19 +52,31 @@ if (process.env.STRIPE_TWIN_URL) {
 // operator registers a product at id.volter.ai: the operator creates the confidential client through the service's
 // admin routes, and its id and secret become the worker's. It is `native` because the service admits a loopback http
 // redirect only for native clients; production registers a web client whose redirect is https. The people and the
-// operator's sign-in are the twin's own seeding doors (/_twin/people, /_twin/login). The funder is a Volter person whose linked GitHub account is the GitHub
-// twin's octocat, by the id that twin gives it, so the login the platform reads back from GitHub is octocat's.
+// operator's admin token are the twin's own seeding doors (/_twin/users, /_twin/app-credentials). The operator signs
+// in through /login before presenting that token to /admin/clients. The funder's GitHub account is linked through
+// the provider callback at sign-in, with the GitHub twin's octocat id, so the login the platform reads back is octocat's.
 if (process.env.VOLTER_IDENTITY_TWIN_URL) {
   const id = process.env.VOLTER_IDENTITY_TWIN_URL.replace(/\/$/, '');
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${id}${path}`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
-  const person = async (body: object): Promise<string> => { const r = await post('/_twin/people', body); const p = await r.json().catch(() => ({})) as { id?: string }; if (!r.ok || !p.id) { console.error(`apps/platform/world.ts: cannot seed a Volter person (${r.status})`); process.exit(2); } return p.id; };
-  const operator = await person({ email: 'operator@open-autonomy.test', name: 'Operator' });
+  const person = async (body: object): Promise<string> => { const r = await post('/_twin/users', body); const p = await r.json().catch(() => ({})) as { id?: string }; if (!r.ok || !p.id) { console.error(`apps/platform/world.ts: cannot seed a Volter person (${r.status})`); process.exit(2); } return p.id; };
+  await person({ email: 'operator@open-autonomy.test', name: 'Operator' });
   const octocat = await fetch(`${process.env.GITHUB_TWIN_URL}/users/octocat`).then((r) => r.json()).catch(() => ({})) as { id?: number };
   if (!octocat.id) { console.error('apps/platform/world.ts: the GitHub twin did not answer for octocat'); process.exit(2); }
-  await person({ email: 'octocat@open-autonomy.test', name: 'The Octocat', github_id: String(octocat.id), github_login: 'octocat' });
-  const login = await post('/_twin/login', { person: operator });
+  await person({ email: 'octocat@open-autonomy.test', name: 'The Octocat' });
+  // Configure the identity service's GitHub app: at sign-in GitHub vouches for octocat's verified email and numeric id.
+  const github = process.env.GITHUB_TWIN_URL!.replace(/\/$/, '');
+  const app = await fetch(`${github}/_twin/oauth_apps`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ owner: 'octocat', name: 'Volter Identity', callback_url: 'https://id.volter.ai/api/auth/callback/github' }) });
+  const social = await app.json().catch(() => ({})) as { client_id?: string; client_secret?: string };
+  if (!app.ok || !social.client_id || !social.client_secret) { console.error(`apps/platform/world.ts: cannot register the identity service on the GitHub twin (${app.status})`); process.exit(2); }
+  const configured = await post('/_twin/social', { provider: 'github', ...social });
+  if (!configured.ok) { console.error(`apps/platform/world.ts: cannot configure GitHub sign-in on the Volter identity twin (${configured.status})`); process.exit(2); }
+  const credentials = await post('/_twin/app-credentials', {});
+  const token = await credentials.json().catch(() => ({})) as { admin_token?: string };
+  if (!credentials.ok || !token.admin_token) { console.error(`apps/platform/world.ts: cannot read the Volter identity admin token (${credentials.status})`); process.exit(2); }
+  const login = await fetch(`${id}/login`, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email: 'operator@open-autonomy.test', return_to: '/' }) });
   const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-  const admin = { authorization: 'Bearer world-identity-admin', cookie };
+  if (login.status !== 303 || !cookie) { console.error(`apps/platform/world.ts: cannot sign the operator in on the Volter identity twin (${login.status})`); process.exit(2); }
+  const admin = { authorization: `Bearer ${token.admin_token}`, cookie };
   const client = await post('/admin/clients', { client_name: 'Open Autonomy', redirect_uris: [`http://127.0.0.1:${port}/give/callback`, `http://localhost:${port}/give/callback`], token_endpoint_auth_method: 'client_secret_post', application_type: 'native', skip_consent: true, scope: 'openid profile email' }, admin);
   const registered = await client.json().catch(() => ({})) as { client_id?: string; client_secret?: string };
   if (!client.ok || !registered.client_id || !registered.client_secret) { console.error(`apps/platform/world.ts: cannot register the platform on the Volter identity twin (${client.status})`); process.exit(2); }
