@@ -120,6 +120,12 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (path === '/admin/status') { if (get()) return get()!; return json(await ledger.status()); }
     if (path === '/admin/reset-daily') { if (req.method !== 'POST') return methodNotAllowed(); return json(await ledger.resetDaily()); }
+    // An abandoned partner hold, released by its identity (ADR 0016); /admin/status lists every outstanding hold.
+    if ((m = path.match(/^\/admin\/rails\/partner\/reservations\/([^/]+)\/([^/]+)\/([^/]+)\/release$/))) {
+      if (req.method !== 'POST') return methodNotAllowed();
+      const r = await ledger.partnerOperatorRelease(dec(m[1]), dec(m[2]), dec(m[3]));
+      return json(r, { status: r.ok ? 200 : r.error === 'not_found' ? 404 : r.error === 'invalid_identity' ? 400 : 409 });
+    }
     if ((m = path.match(/^\/admin\/keys\/([^/]+)\/revoke$/))) { if (req.method !== 'POST') return methodNotAllowed(); const r = await ledger.keyRevoke(dec(m[1])); return json(r, { status: r.ok ? 200 : 404 }); }
     if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/(mint|grant|sync|profile|moderate|keys)$/))) {
       const id = dec(m[1]);
