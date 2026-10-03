@@ -227,7 +227,8 @@ committed `.open-autonomy/config.yaml`. A default developer key cannot use these
 Responses are `{ ok: true, reservation }`, or `{ ok: false, error, ...details }` with an HTTP
 refusal status. The reservation includes `account`, `partner`, `recipient` (the service id),
 `key`, `reference`, `request_id`, the original quote, `status` (`held`, `captured`, `released`),
-`created_at`, and, after close, `closed_at` and captured cents/credits when applicable.
+`created_at`, and, after close, `closed_at` and captured cents/credits when applicable, or
+`closed_by: "operator"` when the platform operator released an abandoned hold.
 `request_id` joins the captured receipt to the project's public calls.
 
 Credits, cents per credit and cents must be positive safe integers with an exact product:
@@ -246,7 +247,8 @@ terminal operation returns 409 `reservation_closed`. A GET with another account'
 UTC rollover, model reservation garbage collection, key rotation and worker restart retain them.
 A new pay key for the same account can finish or read old holds. Disabling the rail prevents new
 holds and still allows the payer to finish existing obligations. Outstanding holds continue to
-count against the balance, envelopes, owner limits and conservative global daily capacity.
+count against the balance and envelopes. They count against the global daily capacity on the UTC
+day they were made, and against owner spend limits in the windows that contain their creation.
 
 RH2 owns enrollment, buyer close/cancel authority, and deciding whether funding is grants-only,
 prepaid or directly treasury-funded. Grants-only work never calls these doors; prepaid funding
