@@ -59,12 +59,17 @@ const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
 // The agent's content: the IR kit's native folder, home/ (docs/decisions/0017), or the Hermes kit's hermes/.
 const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
 const loadedSource = readFileSync(import.meta.path, 'utf8');
+// The termination signals: launchd's bootout (SIGTERM), a terminal's ^C (SIGINT) and a closed terminal (SIGHUP). Both
+// layers below handle all three, so none of them takes the default action that ends one process alone and leaves its
+// children running with no one above them.
+const stopSignals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
 // Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
 // kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
 if (!argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
-  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { stopping = true; child?.kill(signal); });
+  // The stack below stops on the same signal and exits once its children have; this process leaves when it does.
+  for (const signal of stopSignals) process.on(signal, () => { stopping = true; child?.kill(constants.signals[signal]); });
   let entry = import.meta.path;
   while (!stopping) {
     child = Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] });
@@ -119,12 +124,17 @@ const data = resolve(home, '..', 'data');
 const agentEnv = (): Record<string, string> => ({ ...inherited(), PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
+// The one-shot commands the start waits on (an agent's declaration, which can take a minute), so a signal reaches them too.
+const helpers = new Set<ReturnType<typeof Bun.spawn>>();
+// Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
+// no declaration — and only waits for what it already started to exit.
 let ending = false;
 let restartAsked = false;
 process.on('exit', () => {
-  for (const child of children) { try { child.proc.kill(); } catch { /* already gone */ } }
+  for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
 });
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean }) {
+  if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
   const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' });
   children.push({ name, proc });
   proc.exited.then(async (code) => {
@@ -156,15 +166,34 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
 }
 // Leave only once every child is gone: launchd starts the successor the moment this process exits, and a gateway still
 // winding down (a tick in flight) makes that successor find it "already running" and die at once.
-for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, async () => {
+// Every child is told SIGTERM whichever signal arrived: it is the stop every service has always been sent here (the
+// orchestrator records each conversation to resume on it), while what SIGHUP means is each program's own.
+for (const sig of stopSignals) process.on(sig, async () => {
   if (ending) return;
   ending = true;
-  for (const c of children) c.proc.kill();
+  say(`${sig}: stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
+  const live = [...children.map((c) => c.proc), ...helpers];
+  for (const proc of live) proc.kill(constants.signals.SIGTERM);
   const bound = new Promise<void>((done) => setTimeout(done, 15_000));
-  await Promise.race([Promise.all(children.map((c) => c.proc.exited)), bound]);
-  for (const c of children) if (c.proc.exitCode === null && c.proc.signalCode === null) c.proc.kill('SIGKILL');
+  await Promise.race([Promise.all(live.map((proc) => proc.exited)), bound]);
+  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
   process.exit(0);
 });
+// The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
+// when what it already started has exited). Startup code between two awaits runs whole, so these are the only places a
+// signal can have arrived since the last check.
+const halted = (): Promise<void> => (ending ? new Promise<never>(() => {}) : Promise.resolve());
+// A one-shot command the start waits on without blocking the event loop (Bun.spawnSync would hold every signal handler
+// until it returned: an agent's declaration waits up to a minute for its session), tracked so a signal reaches it.
+async function command(cmd: string[], opts: { cwd: string; env: Record<string, string> }): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  await halted();
+  const proc = Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+  helpers.add(proc);
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  helpers.delete(proc);
+  await halted();
+  return { exitCode, stdout, stderr };
+}
 
 mkdirSync(home, { recursive: true });
 own(home);
@@ -295,6 +324,7 @@ const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
 if (onCodex && !codexTwin) await codexAccess();
+await halted();
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
 if (!onCodex && !codexTwin && JSON.stringify(agentSetup).includes('HERMES_CODEX_BASE_URL')) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; give the named model provider openai-codex in .open-autonomy/agent.json and drop the custom provider, or every run fails to connect');
@@ -403,6 +433,7 @@ const env = agentEnv();
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
+    await halted();
     writeFileSync(stamp, `${want}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
@@ -417,9 +448,11 @@ try {
   });
   for (const line of lines) say(`agent: ${line}`);
 } catch (error) {
+  await halted();
   console.error(`start: the agent's setup could not be applied: ${(error as Error).message}. No gateway was started.`);
   process.exit(1);
 }
+await halted();
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
@@ -452,8 +485,8 @@ if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflo
 // The install's own checkout in this machine's workspace map, so its board's cards on its own repository
 // (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
 if (harness !== 'hermes') {
-  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
-  say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
+  const registered = await command(drop([supercodeBin, 'teams', 'workspace', 'register', project]), { cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.trim().split('\n').at(-1)}`);
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
 // and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
@@ -473,30 +506,30 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
     ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
     ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
-  const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
-  if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
-  say(declared.stdout.toString().trim());
+  const declared = await command(drop(declare), { cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.trim()}`); continue; }
+  say(declared.stdout.trim());
   // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
   // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
   if (mailAgent.every_machine) {
-    const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    const listed = await command(drop([supercodeBin, 'teams', 'machines', 'list', '--json']), { cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin } });
     // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
-    const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
+    const here = /sc:([^:\s]+):agent:/.exec(declared.stdout)?.[1];
     // Only machines Teams reports online: an enrollment whose machine is gone (an old VM, a retired box) would refuse the
     // open and spend the server's rate limit on every start. An offline machine gets its instance at the next start.
-    const enrolled = listed.exitCode === 0 ? (JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string; connection?: string }> : [];
+    const enrolled = listed.exitCode === 0 ? (JSON.parse(listed.stdout || '{}').items ?? []) as Array<{ name?: string; connection?: string }> : [];
     // This machine under any of the names Teams lists it by (`yuerans-macbook-pro`, `Yuerans-MacBook-Pro.local`): its
     // instance is the one just declared, and opening another here would make two (one per machine).
     const same = (name: string) => name.toLowerCase().replace(/\.local$/, '') === String(here ?? '').toLowerCase().replace(/\.local$/, '');
     const machines = enrolled.filter((m) => m.connection === 'online').map((m) => m.name).filter((m): m is string => !!m && !same(m));
     const offline = enrolled.filter((m) => m.connection !== 'online' && m.name && !same(m.name)).map((m) => m.name);
     if (offline.length) say(`agent ${name}: not opened on ${offline.length} offline machine(s) (${offline.join(', ')}); each gets its instance at a start that finds it online`);
-    if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
+    if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.trim().split('\n').at(-1)}); its instance is this machine's only`);
     for (const machine of machines) {
-      const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
+      const opened = await command(drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
         '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`]),
-        cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
-      say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
+        { cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin } });
+      say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.trim().split('\n').at(-1)}`);
     }
   }
   const rh2 = mailAgent.channel?.rh2;
