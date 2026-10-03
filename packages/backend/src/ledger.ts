@@ -29,7 +29,9 @@ const DEFAULT_GOAL_DAYS = 30;
 
 export interface LedgerState {
   day_key: string;
-  // Today's settled spend across every account, and outstanding reservations: the global daily rail.
+  // Today's settled spend across every account, and the reservations that count on today's rail: the global daily
+  // rail. A partner hold counts on the day it was made; one carried past rollover still holds its account's money
+  // (and its project's windows that contain it) but no longer today's global capacity (ADR 0016).
   consumed_usd_cents: number;
   reserved_usd_cents: number;
   reservations: Record<string, Reservation>;
@@ -227,6 +229,12 @@ interface Reservation {
   amount: number;
   expires_at_ms: number;
   persistent?: 'partner';
+  // The UTC day whose global daily rail this reservation occupies; '' once it occupies none (an operator's reset).
+  counts_on: string;
+  // When it was made: a partner hold counts against a spend limit only in the windows that contain this moment.
+  created_ms: number;
+  // A partner hold's identity (ADR 0016), so the operator's status can name it and the operator's release can finish it.
+  hold?: { partner: string; key: string };
   account: string;
   kid: string;
   allocations: ReservationAllocation[];
@@ -680,7 +688,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       if (!rails.partner.partners.includes(partner)) return { ok: false, error: 'partner_not_allowed' };
       if (quote!.usd_cents > rails.partner.max_usd_cents) return { ok: false, error: 'amount_over_bound', max_usd_cents: rails.partner.max_usd_cents };
       const receipt: PartnerReceipt = { ...quote!, account, recipient: partner, request_id: crypto.randomUUID(), status: 'held', created_at: new Date().toISOString() };
-      const reserved = await this.reserve(receipt.request_id, account, kid, receipt.usd_cents, Number(body.daily_cap_usd_cents), '', 0, 'partner', receipt.item, undefined, { [storageKey]: receipt });
+      const reserved = await this.reserve(receipt.request_id, account, kid, receipt.usd_cents, Number(body.daily_cap_usd_cents), '', 0, 'partner', receipt.item, undefined, { [storageKey]: receipt }, { partner, key });
       return reserved.ok ? { ok: true, reservation: receipt } : reserved as PartnerResult;
     }
     if (!prior) return { ok: false, error: 'not_found' };
@@ -703,7 +711,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
 
   // ---- the model rail: reserve, settle, release ------------------------------------------------------
 
-  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string, durable?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string, durable?: Record<string, unknown>, hold?: { partner: string; key: string }): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
     if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid_amount' };
@@ -766,8 +774,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
       if (limit.tokens !== undefined && used.t + estimatedTokens > limit.tokens) return refusal('tokens', limit.tokens, used.t);
     }
     recordUsage(this.ensureAcct(account), { calls: 1, model: model || undefined });
-    this.state.reserved_usd_cents += amount;
-    this.state.reservations[requestId] = { amount, expires_at_ms: durable ? 0 : Date.now() + 10 * 60_000, ...(durable ? { persistent: 'partner' as const } : {}), account, kid, allocations };
+    this.state.reservations[requestId] = { amount, expires_at_ms: durable ? 0 : Date.now() + 10 * 60_000, ...(durable ? { persistent: 'partner' as const, ...(hold ? { hold } : {}) } : {}), counts_on: this.state.day_key, created_ms: Date.now(), account, kid, allocations };
+    this.retally();
     this.ensureAcct(account);
     if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
     else await this.save();
@@ -778,8 +786,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
     const spent = Number.isFinite(actual) ? Math.max(0, actual) : 0;
-    this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
     delete this.state.reservations[requestId];
+    this.retally();
     this.state.consumed_usd_cents += spent;
     const a = this.ensureAcct(reservation.account);
     a.consumed_usd_cents += spent;
@@ -835,8 +843,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private async release(requestId: string, durable?: Record<string, unknown>): Promise<void> {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
-    this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
     delete this.state.reservations[requestId];
+    this.retally();
     if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
     else await this.save();
   }
@@ -1523,13 +1531,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
     };
   }
 
-  // Operator escape hatch: zero today's daily rail without waiting for the UTC rollover. Balances and
-  // in-flight reservations are untouched.
+  // Operator escape hatch: zero today's daily rail without waiting for the UTC rollover, as the rollover would. Balances
+  // and reservations are untouched; partner holds stop counting on today's rail exactly as a rollover carries them, and a
+  // model or card reservation still in flight keeps counting until it settles.
   private async resetDaily(): Promise<Record<string, unknown>> {
     const before = this.state.consumed_usd_cents;
+    const reservedBefore = this.state.reserved_usd_cents;
     this.state.consumed_usd_cents = 0;
+    for (const r of Object.values(this.state.reservations)) if (r.persistent === 'partner') r.counts_on = '';
+    this.retally();
     await this.save();
-    return { ok: true, day_key: this.state.day_key, cleared_consumed_usd_cents: before, consumed_usd_cents: 0, reserved_usd_cents: this.state.reserved_usd_cents };
+    return { ok: true, day_key: this.state.day_key, cleared_consumed_usd_cents: before, consumed_usd_cents: 0, cleared_reserved_usd_cents: reservedBefore - this.state.reserved_usd_cents, reserved_usd_cents: this.state.reserved_usd_cents };
   }
 
   private rolloverIfNeeded(): void {
@@ -1538,14 +1550,19 @@ export class LimitLedger implements DurableObject, LedgerCore {
     this.state.day_key = today;
     this.state.consumed_usd_cents = 0;
     this.state.reservations = Object.fromEntries(Object.entries(this.state.reservations).filter(([, r]) => r.persistent === 'partner'));
-    this.state.reserved_usd_cents = Object.values(this.state.reservations).reduce((sum, r) => sum + r.amount, 0);
+    this.retally();
   }
 
   private gcReservations(): void {
     const now = Date.now();
-    for (const [id, r] of Object.entries(this.state.reservations)) {
-      if (r.persistent !== 'partner' && r.expires_at_ms < now) { this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - r.amount); delete this.state.reservations[id]; }
-    }
+    for (const [id, r] of Object.entries(this.state.reservations)) if (r.persistent !== 'partner' && r.expires_at_ms < now) delete this.state.reservations[id];
+    this.retally();
+  }
+
+  // The global rail's in-flight share, recomputed from the reservations themselves: those that count on today. A hold
+  // carried over from an earlier day (or cleared by the operator's reset) keeps its money held and adds nothing here.
+  private retally(): void {
+    this.state.reserved_usd_cents = Object.values(this.state.reservations).reduce((sum, r) => sum + (r.counts_on === this.state.day_key ? r.amount : 0), 0);
   }
 }
 
@@ -1555,7 +1572,9 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
   if (typeof stored.day_key === 'string') state.day_key = stored.day_key;
   if (typeof stored.consumed_usd_cents === 'number') state.consumed_usd_cents = stored.consumed_usd_cents;
   if (typeof stored.reserved_usd_cents === 'number') state.reserved_usd_cents = stored.reserved_usd_cents;
-  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', ...(r.persistent === 'partner' ? { persistent: 'partner' as const } : {}), allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
+  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', ...(r.persistent === 'partner' ? { persistent: 'partner' as const, ...(r.hold && partnerId(r.hold.partner) && partnerKey(r.hold.key) ? { hold: { partner: r.hold.partner, key: r.hold.key } } : {}) } : {}),
+    // A reservation stored before these fields counts on the day the books were last on, made at that day's start.
+    counts_on: typeof r.counts_on === 'string' ? r.counts_on : state.day_key, created_ms: typeof r.created_ms === 'number' ? r.created_ms : Date.parse(state.day_key) || 0, allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
   for (const [id, a] of Object.entries(stored.accounts ?? {})) {
     if (!a || typeof a !== 'object') continue;
     const acct = emptyAccount();
@@ -1897,5 +1916,5 @@ export class LedgerClient {
   directory() { return this.call<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
   project(account: string) { return this.call<ProjectView>('project', { account }); }
   status() { return this.call<unknown>('status'); }
-  resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number }>('reset_daily'); }
+  resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number; cleared_reserved_usd_cents: number; reserved_usd_cents: number }>('reset_daily'); }
 }
