@@ -535,7 +535,8 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
   const checkout = resolve(home, '..', 'board');
   let waiting: string | undefined;
   if (!existsSync(resolve(checkout, '.git'))) {
-    const from = Bun.spawnSync({ cmd: drop(['git', 'remote', 'get-url', 'origin']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+    // The origin as the project configures it (`get-url` would hand over an insteadOf rewrite's target instead).
+    const from = Bun.spawnSync({ cmd: drop(['git', 'config', '--get', 'remote.origin.url']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
     // Something already at the checkout's path that is not a checkout is never this start's to remove.
     const occupied = existsSync(checkout);
     const clone = from && !occupied ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
