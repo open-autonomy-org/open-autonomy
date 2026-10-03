@@ -13,12 +13,13 @@ want=$(bun -e 'console.log(require(process.argv[1]).version)' "$kit" 2>/dev/null
 host="$root/packages/kit-hermes/base/.open-autonomy/package.json"
 pinned=$(bun -e 'console.log(require(process.argv[1]).dependencies["create-open-autonomy"] ?? "")' "$host" 2>/dev/null) || pinned=$want
 if [ -n "$pinned" ] && [ "$pinned" != "$want" ]; then
-  bun -e '
-    const fs = require("fs");
-    const p = process.argv[1];
-    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(/("create-open-autonomy": ")[^"]*(")/, `$1${process.argv[2]}$2`));
-  ' "$host" "$want"
-  git add "$host"
+  # The pin alone: the same one-line change to the staged copy and to the working copy, so whatever else is unstaged
+  # in that file stays unstaged.
+  pin='const fs = require("fs"); const s = fs.readFileSync(0, "utf8"); process.stdout.write(s.replace(/("create-open-autonomy": ")[^"]*(")/, `$1${process.argv[1]}$2`));'
+  rel=packages/kit-hermes/base/.open-autonomy/package.json
+  staged=$(git show ":$rel" | bun -e "$pin" "$want" | git hash-object -w --stdin)
+  git update-index --cacheinfo "100644,$staged,$rel"
+  bun -e "$pin" "$want" < "$host" > "$host.pin" && mv "$host.pin" "$host"
   echo "pre-commit: the host package's kit pin $pinned -> $want"
 fi
 [ -f "$record" ] || exit 0

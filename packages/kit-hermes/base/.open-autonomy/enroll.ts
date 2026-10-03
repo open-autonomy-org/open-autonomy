@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // The install's enrollment on this machine: what Teams and the machine daemon are told about this install, as one-shot
-// acts that are idempotent, run by whoever moves the install onto a new revision (after the start has rendered the home,
-// whose profile folders the agents run in), never by the keeper (start.ts), which only starts and stops processes.
+// acts that are idempotent, run by the deployer pass (`maintain.ts restart`) once per revision the stack runs, after the
+// start has rendered the home whose profile folders the agents run in; never by the keeper (start.ts), which only starts
+// and stops processes. By hand: `bun .open-autonomy/enroll.ts` after a first start (SETUP.md).
 //   - The checkout in this machine's workspace map, so the board's cards on the install's own repository
 //     (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
 //   - Each mail agent of .open-autonomy/agent.json (supercode docs/adr/0008): declared, its main session opened once in a

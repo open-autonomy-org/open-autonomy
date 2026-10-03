@@ -11,10 +11,10 @@
 // What a keeper does not do, and where it is done instead:
 //   - declaring the install's mail agents, opening their main sessions, opening an every-machine agent's instance on
 //     each other machine, and registering the checkout in this machine's workspace map: .open-autonomy/enroll.ts, run
-//     by whoever moves the install onto a new revision. These acts belong to Teams and the machine daemon, and enroll.ts
-//     goes when those own them;
-//   - deciding that the install should move onto a new main: `maintain.ts restart`, run by whoever deploys (it asks
-//     for the restart this keeper performs; see the restart request below).
+//     by the deployer pass once per revision this stack runs. These acts belong to Teams and the machine daemon, and
+//     enroll.ts goes when those own them;
+//   - deciding that the install should move onto a new main: the deployer pass, `maintain.ts restart`, which the host
+//     schedules beside the start (SETUP.md, "Keep the install on main"); it asks for the restart this keeper performs.
 //
 // <secrets>/github-app.json, when present, is the agent's own GitHub identity for its community desk (a GitHub App
 // installed on the repository: app_id, installation_id, repository, private_key): the valve serves it on the fourth

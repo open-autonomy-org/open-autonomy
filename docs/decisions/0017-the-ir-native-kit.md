@@ -53,7 +53,11 @@ for?".
 - **The start runs the install's processes, and nothing else does.** The keeper is the kit package's
   (`create-open-autonomy`'s `keeper/start.ts`), which the project's `.open-autonomy/start.ts` imports from the installed
   package rather than carrying a copy; it starts, keeps and stops processes, and restarts the stack when
-  `maintain.ts restart` asks (D138 step 8), never fetching main to decide that itself. For a project whose agent content is `home/`, the start
+  `maintain.ts restart` asks (D138 step 8), never fetching main to decide that itself. Who moves an install: the
+  deployer pass, `maintain.ts restart`, which the host schedules beside the start (SETUP.md, "Keep the install on main":
+  a launchd or cron job every ten minutes, or a project's keep job). It requests the restart when main moved the stack's
+  files or the kit landed, and enrolls each new revision. The kit ships the pass and the instruction to schedule it,
+  not a daemon of its own. For a project whose agent content is `home/`, the start
   copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
   services, stopped and restarted with the rest. That serve is the board's only dispatcher: the start runs the
@@ -79,8 +83,8 @@ for?".
 - **The install declares its mail agents, and the keeper does not** (Supercode ADR 0008; RFC 0020 decisions 3, 17,
   24 and 25; Volter's decision record D138 step 8: the keeper only starts and stops processes).
   `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
-  or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by whoever
-  moves the install onto a new revision once the start has rendered the home, runs `supercode agent declare <name>
+  or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by the
+  deployer pass once per revision the stack runs (below), runs `supercode agent declare <name>
   --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
   registers the checkout in this machine's workspace map. An agent with `every_machine` (the box maintainer, RFC 0022
   decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it

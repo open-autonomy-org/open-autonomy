@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
-// release on the Release pull request. Never deploys, tags or publishes. `restart` is also what any deployer runs (a
-// person, a keep job on a schedule) to move a running install onto main: the keeper performs the restart it asks for
-// and never fetches main itself.
+// release on the Release pull request. Never deploys, tags or publishes. `restart` is the install's deployer pass, run
+// on a schedule by whoever runs the install (SETUP.md, "Keep the install on main": a launchd or cron job every ten
+// minutes, a project's keep job, a PM's pass): it moves a running install onto main (the keeper performs the restart it
+// asks for and never fetches main itself), and once the stack runs a revision it has not enrolled, runs enroll.ts.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -139,6 +140,16 @@ if (command === 'ship') {
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   const main = git('rev-parse', 'origin/main');
   if (!runningRecord) throw new Error('the running stack predates managed restarts; restart it once with the current start script');
+  // The revision the stack runs, enrolled once: its mail agents declared and their sessions opened, the box maintainer on
+  // each online machine, the checkout in the workspace map (enroll.ts). The start renders the home and records the
+  // revision; enrolling is this pass's, never the keeper's. A failed enrollment is tried again on the next pass.
+  const enrolledFile = resolve(home, 'enrolled.json');
+  const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
+  if (runningRecord.revision && runningRecord.revision !== enrolled) {
+    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 900_000 });
+    if (enroll.exitCode === 0) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
+    else console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
+  }
   const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
   const moved = !!runningRecord.revision && runningRecord.revision !== main
     && git('diff', '--name-only', runningRecord.revision, main).split('\n').some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'));
