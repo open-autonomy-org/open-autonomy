@@ -247,8 +247,8 @@ terminal operation returns 409 `reservation_closed`. A GET with another account'
 UTC rollover, model reservation garbage collection, key rotation and worker restart retain them.
 A new pay key for the same account can finish or read old holds. Disabling the rail prevents new
 holds and still allows the payer to finish existing obligations. Outstanding holds continue to
-count against the balance and envelopes. They count against the global daily capacity on the UTC
-day they were made, and against owner spend limits in the windows that contain their creation.
+count against the balance, envelopes and owner spend limits. They count against the global daily
+capacity only on the UTC day they were made.
 
 RH2 owns enrollment, buyer close/cancel authority, and deciding whether funding is grants-only,
 prepaid or directly treasury-funded. Grants-only work never calls these doors; prepaid funding
