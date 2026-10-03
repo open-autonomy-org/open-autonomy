@@ -697,6 +697,21 @@ the reviewed procedure in `.open-autonomy/PRODUCTION.md`; `--with release` repor
 is not implemented and refuses before collecting a credential. Other deployment targets use their own
 documented setup. Optional sponsorship setup is also separate, explicitly selected with `--with sponsors`.
 
+## Keep the install on main
+
+The start only starts and stops the install's processes. Two things it does not do are the deployer pass's,
+`HERMES_HOME=<home> bun .open-autonomy/maintain.ts restart`, which the kit ships and the host runs on a schedule:
+
+- **Moving onto main.** When main moved what the install runs on (its content folder or `.open-autonomy/`) or a kit
+  release landed, the pass asks the start for a drained restart, whatever the board holds.
+- **Enrolling the install on this machine.** Once the stack runs a revision not yet enrolled, the pass runs
+  `.open-autonomy/enroll.ts`: each mail agent of `agent.json` declared with its main session opened, an `every_machine`
+  agent's instance on each other online machine, and the checkout in the machine's workspace map.
+
+After the first start has rendered the home, run the pass once by hand, then schedule it every ten minutes beside the
+start: a launchd job with `StartInterval` 600 (or a cron line) running that command in the checkout, with the start's
+`--home` as `HERMES_HOME`. A project with a keep job of its own may run the pass from it instead.
+
 ## Verify, resume and hand off
 
 Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing
