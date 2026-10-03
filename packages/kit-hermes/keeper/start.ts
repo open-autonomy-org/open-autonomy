@@ -513,6 +513,35 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
   const orchestrator = named(orchestratorBin);
   writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
 }
+// The board the repository declares (`board:` in .open-autonomy/config.yaml; company RFC 0025 decisions 3 and 4): its
+// document at the repository's root, in the board's own checkout beside the home (a clone of the project's origin, on
+// main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one the
+// home's workflow.yaml names. Made here, from the repository, before any dispatcher or reporter opens the board, so a
+// new machine needs no step by hand. A board already there is kept: the same one again changes nothing, and one the home
+// keeps on another backing or document is left as it is and said, once per start.
+const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
+if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
+  const checkout = resolve(home, '..', 'board');
+  let ready = existsSync(resolve(checkout, '.git'));
+  if (!ready) {
+    const from = Bun.spawnSync({ cmd: drop(['git', 'remote', 'get-url', 'origin']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+    const clone = from ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
+    ready = clone?.exitCode === 0;
+    say(ready ? `board: cloned ${from} on main → ${checkout}` : `board: cannot make the board's checkout ${checkout} (${from ? clone?.stderr.trim().split('\n').at(-1) : `${project} names no origin`}); its board is not set up this start`);
+  }
+  if (ready) {
+    // The document by its real path, as git names the checkout's files: a path through a symlink names a file outside it.
+    const document = resolve(realpathSync(checkout), boardSetup.document);
+    const archive = boardSetup.archive ?? {};
+    const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, '--backing', 'ztrack', '--document', document, '--commit', '--json',
+      ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])]),
+      cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+    let answer: { kept?: boolean } | undefined;
+    try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
+    if (init.exitCode === 0 && answer) say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing, document ${document}`);
+    else say(`board: not set up as the repository declares, and left as it is: ${init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`}`);
+  }
+}
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
