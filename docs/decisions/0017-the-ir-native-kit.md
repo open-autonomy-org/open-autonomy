@@ -53,7 +53,9 @@ for?".
 - **The start runs the whole install, and nothing else does.** For a project whose agent content is `home/`, the start
   copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
-  services, stopped and restarted with the rest. *(Running the dispatcher from the start is this record's reading of
+  services, stopped and restarted with the rest. That serve is the board's only dispatcher: the start runs the
+  orchestrator with `SUPERCODE_BOARD_DISPATCHER=serve`, so the orchestrator runs no dispatch round and no board event
+  relay. It still delivers chat-platform subscriptions through its channel adapters. No lock is involved. *(Running the dispatcher from the start is this record's reading of
   RFC 0021's "started only through its own start".)*
 - **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
   `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and

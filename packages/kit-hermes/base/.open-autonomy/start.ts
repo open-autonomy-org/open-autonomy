@@ -437,14 +437,17 @@ for (const p of projectReporters) {
   own(config);
   spawn(`reporter ${p.account}`, ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
-// The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
-// (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
-const gateway = harness === 'hermes'
-  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
+// The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
+// (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). Where this
+// start runs the board's dispatcher, the orchestrator is told so (SUPERCODE_BOARD_DISPATCHER=serve) and runs no round
+// of its own: one dispatcher per board by what is started, with no lock (supercode's orchestrator §2.9). It still tells
+// chat-platform subscribers through its channel adapters, which the dispatcher does not host.
+const gateway = harness === 'hermes'
+  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, ...(boardDeclared ? { SUPERCODE_BOARD_DISPATCHER: 'serve' } : {}) } });
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // The install's own checkout in this machine's workspace map, so its board's cards on its own repository
 // (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
