@@ -43,9 +43,10 @@ merge commits only (the repository allows no squash or rebase merge, so `prod`'s
 
 ## Consequences
 
-- `.github/workflows/ship.yml` (new) keeps the pull request open, every fifteen minutes and by hand (merges to `main`
-  are the landing workflow's pushes, which start no workflow); `deploy.yml` and `release.yml` run on a push to
-  `prod` and record their tags; `apps/platform/DEPLOY.md`, `CLAUDE.md` and the kit's README say so.
+- `maintain.ts ship`, which PM runs every pass through the project's App, keeps the pull request open. A scheduled
+  workflow did at first, and was removed: merges to `main` start no workflow, and GitHub ran its fifteen-minute schedule
+  not once in the two hours after the first ship. `deploy.yml` and `release.yml` run on a push to `prod` and record
+  their tags; `apps/platform/DEPLOY.md`, `CLAUDE.md` and the kit's README say so.
 - Repository settings, applied after this lands: a `prod` branch at the commit last deployed; a `prod-protected`
   ruleset (deletion, non-fast-forward, and a pull request approved by the `owners` team, merge commits only, no
   bypass); the `production` environment's deployment branches `prod` alone, its required reviewer removed; the
@@ -58,8 +59,8 @@ merge commits only (the repository allows no squash or rebase merge, so `prod`'s
 - The record tags are records, not triggers: anyone who may push may create one, so a record can be forged, but only
   an org admin may move or delete one once made. Nothing runs on a tag; what shipped is `prod`'s history and the
   deploy runs.
-- The kit's production door (`setup.ts`, `PRODUCTION.md`) keeps tags until this has shipped here; a later change
-  carries it to generated projects.
+- The kit's production door (`setup.ts`, `PRODUCTION.md`, `maintain.ts ship`) kept tags until this had
+  shipped here; kit 3.19.0 carries it to generated projects.
 
 ## Constitution review
 
@@ -68,6 +69,6 @@ only in a workflow the owner shipped, never on `main`.
 
 ## Verification
 
-After the settings: `ship.yml` opens the pull request on the next push to `main`; an agent's attempt to push to `prod`
+After the settings: `maintain.ts ship` opens the pull request while `main` is ahead of `prod`; an agent's attempt to push to `prod`
 is refused; the owner's merge deploys, tags `deploy-v<date>.<n>` and publishes any new version, and the platform's
 `/healthz` answers from the new commit.

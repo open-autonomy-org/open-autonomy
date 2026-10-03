@@ -24,8 +24,8 @@ checkout path; in a fleet every project's checkout is a sibling of yours under `
   pages of 100, from the cursor the notepad keeps for that project
   (`hermes cron notepad <job> get cursor:<account>`); the first cycle has none and reads the last seven
   days. A project with no checkout is a gap the memo names, not a door to invent.
-- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main`: what the project says is planned, active and
-  shipped, and what its completion lines say done means.
+- Read its `ROADMAP.md` and `CHANGELOG.md` at `origin/main` where it keeps them (a project planned on a board keeps
+  neither: read its board): what the project says is planned, active and shipped, and what done means.
 - Compare the two: git is what happened, the roadmap is what the project claims. A roadmap that lags its
   git, or git that lags its roadmap, is a finding. The platform's pages are the projects' own and are
   private to their keys; you read no project through the platform.
@@ -91,7 +91,7 @@ the daily ones; it is the same memo, not a second job.
 
 Inspect `hermes cron list`, `runs` and `incidents` for a missed cycle or a delivery that did not reach the
 channel; a memo prepared but not delivered is not a memo. Run `bun .open-autonomy/maintain.ts upgrade`,
-then `restart`, for idle kit maintenance; the upgrade merges the kit's change into this repository's files
+then `restart` for kit maintenance; the upgrade merges the kit's change into this repository's files
 three-way, and a file where both moved is left with conflict markers in the upgrade worktree for you to
 resolve, keeping the organization's intent and the kit's change, before it lands: on a `land/kit-<version>`
 branch where a landing workflow takes it, on main itself where none stands.

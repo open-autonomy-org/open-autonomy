@@ -18,6 +18,7 @@ import { renderMessage } from './message.js';
 import { roleOf, sees, visibilityOf, type AccountSlots, type DirectorySlots, type Role, type Viewer, type Visibility } from './model.js';
 import { accountAt, at, nameOf } from './parts.js';
 import { redactDeep } from '../redact.js';
+import { workplaceLink, workplaceRoster } from '../workplace.js';
 import { atomFeed, updatesOf } from './updates.js';
 import { cardPng } from './raster.js';
 import type { ArtKind } from './art.js';
@@ -71,7 +72,7 @@ const privateHtml = (body: string, status = 200): Response => new Response(body,
 
 export async function servePages(req: Request, env: Env, ctx: ExecutionContext, app: PageApp, tools: PageTools): Promise<Response | undefined> {
   const { ledger, url } = tools;
-  const { brand } = pageConfig();
+  const { brand, logo } = pageConfig();
   const now = Date.now();
   const seg = url.pathname.split('/').slice(1).map(dec);
   const isGet = req.method === 'GET' || req.method === 'HEAD';
@@ -132,7 +133,18 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const view = await ledger.project(account);
   if (!view.found) return html(renderMessage(account, false, 'No such project', `No project found for ${account}.`), 404);
   if (view.is_project && isStale(view.profile.synced_at)) ctx.waitUntil(syncProfile(env, account));
-  const role = roleOf(who, view);
+  // A project linked to a workplace lands there (company RFC 0025 decision 8): its Overview is the project's page, read by
+  // each viewer as the workplace's roles allow. The dashboard stays the owner's controls and the books' depths.
+  if (door === undefined && isGet) {
+    const linked = await workplaceLink(ledger, account);
+    if (linked) return new Response(null, { status: 302, headers: { location: `${linked.base}/o/${encodeURIComponent(linked.organizationId)}`, ...NO_STORE } });
+  }
+  // Its team is declared once, in the workspace (RFC 0024 D10): the team page and its edits are the workspace's People.
+  if (page === 'team') {
+    const linked = await workplaceLink(ledger, account);
+    if (linked) return new Response(null, { status: 303, headers: { location: `${linked.base}/console/people`, ...NO_STORE } });
+  }
+  const role = roleOf(who, view, await workplaceRoster(ledger, account));
   // The owner's one control: running or paused, with a reason, from the roster's owner signed in at the page. The
   // request is recorded as the owner's; the automation applies it its own way and answers through the SDK.
   if (door === 'state') {
@@ -199,7 +211,7 @@ export async function servePages(req: Request, env: Env, ctx: ExecutionContext, 
   const signDoor = who ? (app.signOut ? { who: who.login, out: app.signOut(back) } : undefined) : app.signIn ? { in: app.signIn(back) } : undefined;
   // The owner's statements, for the rail's rows and their pages, when the owner opened them to this viewer.
   const statements = sees(role, visibility.statements) ? (await ledger.statements(account)).statements : [];
-  const d: DashData = { brand, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
+  const d: DashData = { brand, logo, viewer: role, visibility, v: shown, sessions: priced, live: stream.live, roadmap, tail, daily, now, page: dash, statements, origin: url.origin, ...(signDoor ? { door: signDoor } : {}) };
   const serve = (status = 200) => privateHtml(dashDocument(d), status);
 
   if (dash === 'sessions') {

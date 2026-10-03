@@ -1,6 +1,6 @@
-// Publication policy and delivery only. Supercode owns native reconstruction and lifecycle.
+// Publication policy and delivery only. Volter Harness owns native reconstruction and lifecycle.
 import { createHash } from 'node:crypto';
-import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter-ai-dev/supercode-harness-sdk';
+import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
 
 export interface PublicationPolicy { runs: boolean; chats: boolean; private: string[] }
@@ -18,7 +18,7 @@ export const publishes = (p: PublicationPolicy, d: SessionDescriptor, kind: 'run
 
 const content = (m: NormalizedMessage): string => typeof m.content === 'string' ? m.content : (m.content ?? []).map(p => typeof p === 'string' ? p : (p as { text?: string })?.text ?? '').join('');
 export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {
-  // Supercode stamps stored Hermes rows with their native ID. Its reconstructed
+  // Volter Harness stamps stored Hermes rows with their native ID. Its reconstructed
   // missing-tool placeholders have no native row: never publish them as evidence.
   if (harness === 'hermes' && !m.metadata.hermes_message_id) return [];
   const text = content(m), ts = m.metadata.timestamp ?? m.metadata.ts;
@@ -31,7 +31,14 @@ export function turnsOf(m: NormalizedMessage, harness: string): Turn[] {
   return m.role === 'user' ? [{ ...stamp, role: 'user', ...(text ? { text: text.slice(0, 2000) } : {}) }] : [];
 }
 // Match the published wire fields, independent of object-key order or server seq metadata.
+/** A live source rewrote its history: the reporter continues it under a new key. */
+export class SourceRewritten extends Error { constructor(readonly key: string) { super(`${key}: source history rewritten; continuing under a new key`); } }
 const canonical = (t: Turn): string => JSON.stringify([t.role, t.ts, t.text, t.tool, t.args, t.result]);
+// The loader answers a tool call that has no result yet with a stand-in, so a replayed transcript stays valid. In a
+// live session that is a call still running: its real result comes later, in the same place.
+const standIn = (t: Turn | undefined): boolean => t?.role === 'tool' && typeof t.result === 'string' && t.result.startsWith('[no tool result recorded');
+// A published stand-in and the result that replaced it are the same turn.
+const same = (published: Turn, source: Turn | undefined): boolean => !!source && (canonical(published) === canonical(source) || (standIn(published) && source.role === 'tool'));
 const digest = (turns: Turn[]): string => createHash('sha256').update(turns.map(canonical).join('\n')).digest('hex');
 export interface PublicationCheckpoint { seq: number; digest: string; endedAt?: string }
 export type RecordedCompletion = Pick<SessionEnd, 'endedAt' | 'outcome'> & { endedAt: string };
@@ -52,7 +59,8 @@ export class TranscriptPublisher {
     return work;
   }
   private async reconcile(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
-    const key = this.descriptor.locator.session_id;
+    // The platform's key: the session's own id, or a continuation of it (`<id>~<n>`) once its source was rewritten.
+    const key = this.start.key;
     const turns: Turn[] = [];
     let offset = 0, report: string | undefined, nativeCompletion: RecordedCompletion | undefined;
     for (;;) {
@@ -72,22 +80,31 @@ export class TranscriptPublisher {
     const remote = await this.oa.session(this.account, key);
     const seq = remote?.next_seq ?? 0;
     const ended = completion ?? nativeCompletion;
+    // A live session's calls still running are published once they have their results, never as stand-ins.
+    if (!ended) while (standIn(turns[turns.length - 1])) turns.pop();
     // The destination is append-only. When what it holds no longer matches what the source says (an older reporter,
     // a lost acknowledgement), no turn is rewritten. But a session that has ended is ended: its end is published
     // over the transcript as it stands, so the books never call a finished session live.
     const diverged = (!this.checkpoint && seq > (remote?.turns.length ?? 0))
       || seq > turns.length || (this.checkpoint && this.checkpoint.seq <= seq && digest(turns.slice(0, this.checkpoint.seq)) !== this.checkpoint.digest)
-      || (remote?.turns ?? []).some((t) => t.seq === undefined || !turns[t.seq] || canonical(t) !== canonical(turns[t.seq]));
+      || (remote?.turns ?? []).some((t) => t.seq === undefined || !same(t, turns[t.seq]));
     if (diverged) {
       // A destination that is no longer live cannot be reconciled and never will be: the source's earlier turns were
       // rewritten (Hermes compresses a long run) and nothing may be rewritten here. What the platform holds is the
       // record. Settle it at the checkpoint instead of reloading the whole session from the source every minute for
       // the rest of the install's life, which is what retrying a permanent divergence amounts to.
-      if (remote && remote.status !== 'live') {
+      if (remote && remote.status !== 'live' && ended) {
         const settled: PublicationCheckpoint = { seq, digest: digest(turns.slice(0, Math.min(seq, turns.length))), endedAt: ended?.endedAt ?? remote.ended_at ?? new Date().toISOString() };
         this.checkpoint = settled;
         this.save?.(settled);
         return settled;
+      }
+      // A live source whose history was rewritten (a harness compacting a long session keeps only what follows the
+      // boundary) goes on as a continuation: its published record ends at its last turn, and the source is published
+      // again from its first turn under the next key.
+      if (!ended && remote) {
+        if (remote.status === 'live') await new Session(this.oa, key, seq).end({ endedAt: remote.turns.at(-1)?.ts ?? new Date().toISOString(), item: this.start.item });
+        throw new SourceRewritten(key);
       }
       if (!ended || !remote) throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
       await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });

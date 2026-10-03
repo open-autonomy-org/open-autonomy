@@ -4,7 +4,7 @@ A real installation runs in the kit's container mode: World owns one executor, a
 and its tools on two volumes that outlive it, the agent's home and its checkout. The host runs
 `.open-autonomy/start.ts --container` beside it: the credential valves, the SDK reporter and the gateway
 supervision, as World's foreground command. No host credential directory or Docker socket is mounted into the
-executor; Supercode reads native state inside it over its SDK transport, and the reporter publishes through the
+executor; Volter Harness reads native state inside it over its SDK transport, and the reporter publishes through the
 Open Autonomy SDK. Bare `start.ts` is for development and twin rehearsals; it is not isolation.
 
 `create-open-autonomy runtime` writes this shape from a landed checkout, so no installation hand-builds it:
@@ -35,7 +35,7 @@ must be in the protected credential directory first.
    build reservation and keeps the image). Adjust the declared resources to the actual build before starting.
 3. Put the checkout on its volume once, before the unit is loaded. The executor only sleeps until the host starts
    Hermes, so bring it up through World and step in as its user:
-   `bun <release>/.open-autonomy/node_modules/@volter/twin-world/src/cli.ts up <runtime>/world.json --env-file <runtime>/world.env --root <runtime>/world`,
+   `bun <release>/.open-autonomy/node_modules/@volter/world-runtime/src/cli.ts up <runtime>/world.json --env-file <runtime>/world.env --root <runtime>/world`,
    then `docker exec -it --user hermes oa-<project> sh`; there, the repository-specific Git URL rewriting shown in
    SETUP.md and the clone of the canonical repository into `/work/project`; then World `down`. A temporary valve on
    the host proves both Git routes; stop it before startup. Startup only fetches and checks out inside that clone.
@@ -48,7 +48,7 @@ Startup fetches main and verifies the project identity before starting Hermes, l
 committed main while preserving a dirty worker checkout, and waits for the reporter's SDK readiness. The agent
 then reports what runs it, the mode, the kit version, the executor's image and the host, on its page's Agent tab.
 While it runs, the clean checkout fetches main every ten minutes; when a change to `hermes/` or `.open-autonomy/`
-landed and no board task is running or in review, the runtime drains and the host exits 75, so the service manager
+landed, the runtime drains at once, whatever the board holds, and the host exits 75, so the service manager
 restarts it onto that main, as a bare start restarts itself.
 
 ## Verification and upgrades

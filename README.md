@@ -1,3 +1,5 @@
+<p align="center"><img src="https://brand.volter.ai/logo/open-autonomy/svg?size=96" alt="Open Autonomy"></p>
+
 # Open Autonomy
 
 **Open-source projects that build themselves, backed by the people who want them to exist.**
@@ -57,7 +59,7 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
 
 Open Autonomy is itself an Open Autonomy project. Its agent works from the kit applied to this repository
 (`hermes/`, `.open-autonomy/`): strategy develops scope under the owner's mandate, PM's hourly scrum turns
-contributions, conversations and the board's work into `ROADMAP.md` and `CHANGELOG.md`, and releases wait for a
+contributions, conversations and the board's work into cards on its board, and releases wait for a
 person's review. The **Open Autonomy** bot coordinates in Discord **#development**, with **#general** for
 conversation and **#announcements** for news, as the
 [project communication agreement](hermes/skills/project-communications/SKILL.md) says. The team and their verified

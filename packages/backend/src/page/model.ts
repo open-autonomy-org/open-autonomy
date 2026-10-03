@@ -13,13 +13,21 @@ export const sees = (viewer: Role, least: Role): boolean => RANK[viewer] >= RANK
 // comes from the project's own records: the roster in its committed config (owner, then any member as team), the
 // books (a giver: whose money it is, never who passed it on). A roster member is matched by GitHub account id alone,
 // the one thing a rename keeps; a door that learned no id names no owner. Never from a key.
-export interface Viewer { login: string; id?: string }
-export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' | 'envelopes' | 'feed'>): Role {
+export interface Viewer { login: string; id?: string; volter?: { issuer: string; subject: string } }
+/** A viewer's role on a project. A project linked to a workspace takes its team from there (`roster`, company RFC 0024
+ *  D10): a viewer signed in with the identity a seat proved is owner or team as that seat says, and config.yaml's
+ *  `team:` no longer governs. Unlinked, the roster in config.yaml does. Givers come from the books either way. */
+export function roleOf(who: Viewer | undefined, v: Pick<ProjectView, 'profile' | 'envelopes' | 'feed'>, roster: Array<{ identities: { issuer: string; subject: string }[]; scopes: string[] }> | null = null): Role {
   if (!who) return 'public';
   const login = who.login.toLowerCase();
-  let members: ReturnType<typeof parseTeamConfig>['members'] = [];
-  try { members = parseTeamConfig(v.profile.config_yaml ?? '').members; } catch { members = []; }
-  const mine = who.id ? members.filter((m) => m.github?.id === who.id) : [];
+  let mine: { scopes: string[] }[];
+  if (roster) {
+    mine = who.volter ? roster.filter((m) => m.identities.some((i) => i.issuer === who.volter!.issuer && i.subject === who.volter!.subject)) : [];
+  } else {
+    let members: ReturnType<typeof parseTeamConfig>['members'] = [];
+    try { members = parseTeamConfig(v.profile.config_yaml ?? '').members; } catch { members = []; }
+    mine = who.id ? members.filter((m) => m.github?.id === who.id) : [];
+  }
   if (mine.some((m) => m.scopes.includes('owner'))) return 'owner';
   if (mine.length) return 'team';
   const gave = [...(v.envelopes ?? []).map((e) => e.from), ...(v.feed ?? []).map((f) => f.from)].some((x) => x?.toLowerCase() === `@${login}`);

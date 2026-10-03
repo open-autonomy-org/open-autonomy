@@ -1,4 +1,4 @@
-# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/reporter.ts) and the key
+# The project's connection to Open Autonomy. Read by the reporter (.open-autonomy/publisher.ts) and the key
 # tool (.open-autonomy/mint-key.ts). The kit seeds this file once; it is the project's own.
 account: cookbook/todo-cli
 platform: https://open-autonomy.org
@@ -20,7 +20,7 @@ rails:
     max_usd_cents: 100
     partners: [browserless]
 
-# Where sessions come from: the Hermes home the reporter reads through supercode (HERMES_HOME in its
+# Where sessions come from: the Hermes home the reporter reads through Volter Harness (HERMES_HOME in its
 # environment), and where it keeps its own cursor (beside this file).
 state_file: reporter-state.json
 

@@ -3,6 +3,7 @@ import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './
 import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
+import { partnerReservation } from './partner.js';
 import { mintCard, settlePartner, stripeWebhook } from './rails.js';
 import { servePages, type PageApp } from './page/serve.js';
 import { openTo, roleOf, sees, visibilityOf, type Visibility } from './page/model.js';
@@ -10,9 +11,10 @@ import { accountEvents, agentEvents, itemEvents, sessionEvents } from './stream.
 import { syncAllStale, syncProfile } from './sync.js';
 import { redactDeep } from './redact.js';
 import { grantsAccount, hasScope, type Env, type KeyClaims } from './types.js';
-import { LOGO_SVG } from './ui.js';
+import { pageConfig } from './page/brand.js';
 import { renderActivitySvg, renderNowSvg, renderRoadmapSvg, renderRunwaySvg, renderStatementSvg } from './widgets.js';
 import { standing, today } from '@open-autonomy/sdk/statements';
+import { syncAllWorkplaceAlerts, WORKPLACE_CRON, workplaceRoute, type WorkplaceEnv, workplaceRoster } from './workplace.js';
 
 // The routes: the books, the keys, the rails, the stream, the timeline and a project's page, with an app around
 // them. The app is tried first on every request and may answer; what it does not answer falls through to
@@ -52,8 +54,12 @@ export function worker(app: App = {}): ExportedHandler<Env> {
         return error('internal_error', 500);
       }
     },
-    // The app's own clock first (Open Autonomy accrues its sponsors monthly), then every public project's docs refreshed.
+    // The app's own clock (Open Autonomy accrues its sponsors monthly), then every public project's docs refreshed.
     async scheduled(event: ScheduledController, env: Env): Promise<void> {
+      // Every tick brings each linked workspace's alerts in step with the books (workplace.ts); the quarter-hour clock
+      // is for that alone.
+      console.log('[platform] workplace alerts', JSON.stringify(await syncAllWorkplaceAlerts(env as WorkplaceEnv)));
+      if (event.cron === WORKPLACE_CRON) return;
       await app.scheduled?.(event, env);
       console.log('[platform] docs sync', await syncAllStale(env));
     },
@@ -99,11 +105,14 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const ok = store === 'ok';
     return json({ ok, store, ms: Date.now() - at, commit: env.DEPLOY_COMMIT ? env.DEPLOY_COMMIT.slice(0, 7) : null }, { status: ok ? 200 : 503 });
   }
-  if (path === '/favicon.svg') return new Response(LOGO_SVG, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'max-age=86400' } });
+  if (path === '/favicon.svg') return new Response(null, { status: 302, headers: { location: pageConfig().logo, 'cache-control': 'max-age=86400' } });
   if (path === '/favicon.ico') return new Response(null, { status: 204 });
   const tools: RouteTools = { env, ledger, url, path, dec, get, isAdmin: () => isAdmin(req, env), privateHtml, give: (...a) => give(env, ...a), fundingAccount: fundingAccount(env), grantsAccount: grantsAccount(env) };
   const answered = await app.route?.(req, env, ctx, tools);
   if (answered) return answered;
+  // The Workplace integration's doors (workplace.ts): a project's link to its organization's workspace, and its alerts there.
+  const workplace = await workplaceRoute(req, env as WorkplaceEnv, url, () => authedClaims(req, env));
+  if (workplace) return workplace;
 
   let m: RegExpMatchArray | null;
   // ---- admin: through the reviewed workflow only ----
@@ -111,15 +120,11 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!isAdmin(req, env)) return error('auth_failed', 401);
     if (path === '/admin/status') { if (get()) return get()!; return json(await ledger.status()); }
     if (path === '/admin/reset-daily') { if (req.method !== 'POST') return methodNotAllowed(); return json(await ledger.resetDaily()); }
-    // The books, whole: an export is every storage entry; an import restores one into an empty worker, or
-    // over this one when the reviewed caller says replace.
-    if (path === '/admin/export') { if (get()) return get()!; return json(await ledger.exportAll(), { headers: NO_STORE }); }
-    if (path === '/admin/import') {
+    // An abandoned partner hold, released by its identity (ADR 0016); /admin/status lists every outstanding hold.
+    if ((m = path.match(/^\/admin\/rails\/partner\/reservations\/([^/]+)\/([^/]+)\/([^/]+)\/release$/))) {
       if (req.method !== 'POST') return methodNotAllowed();
-      const body = parseJson<{ entries?: Array<[string, unknown]>; replace?: boolean }>(await req.text());
-      if (!body || !Array.isArray(body.entries)) return error('invalid_request');
-      const r = await ledger.importAll(body.entries, body.replace === true);
-      return json(r, { status: r.ok ? 200 : r.error === 'not_empty' ? 409 : 400 });
+      const r = await ledger.partnerOperatorRelease(dec(m[1]), dec(m[2]), dec(m[3]));
+      return json(r, { status: r.ok ? 200 : r.error === 'not_found' ? 404 : r.error === 'invalid_identity' ? 400 : 409 });
     }
     if ((m = path.match(/^\/admin\/keys\/([^/]+)\/revoke$/))) { if (req.method !== 'POST') return methodNotAllowed(); const r = await ledger.keyRevoke(dec(m[1])); return json(r, { status: r.ok ? 200 : 404 }); }
     if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/(mint|grant|sync|profile|moderate|keys)$/))) {
@@ -172,6 +177,12 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   }
   if ((m = path.match(/^\/v1\/funders\/([^/]+)$/))) { if (get()) return get()!; const f = await ledger.funder(`@${dec(m[1]).replace(/^@/, '').toLowerCase()}`); return json(f, { status: f.found ? 200 : 404, headers: NO_STORE }); }
   // The rails beyond the model, on a spending key: a card minted against the balance, a partner's charge.
+  if (path === '/v1/rails/partner/reservations' || (m = path.match(/^\/v1\/rails\/partner\/reservations\/([^/]+)\/([^/]+)(?:\/(capture|release))?$/))) {
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'pay')) return error('scope_required', 403, { scope: 'pay' });
+    return partnerReservation(req, env, claims, m ? dec(m[1]) : undefined, m ? dec(m[2]) : undefined, m?.[3]);
+  }
   if (path === '/v1/rails/card' || path === '/v1/rails/partner') {
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
@@ -213,6 +224,18 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     const r = await ledger.stateRequest(claims.account, body.state, claims.kid, typeof body.reason === 'string' ? redactDeep(body.reason) : body.reason);
     return json(r, { status: r.ok ? 200 : 400 });
   }
+  // The owner's spending freeze, on a steer-scoped key (`{ "frozen": true, "reason"? }` or `{ "frozen": false }`): a cap of
+  // zero on every rail until lifted. On an org's key it holds every project of the org. Not the agent's pause.
+  if (path === '/v1/agent/freeze') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    const body = parseJson<{ frozen?: boolean; reason?: string }>(await req.text());
+    if (!body || typeof body.frozen !== 'boolean') return error('invalid_request');
+    const r = await ledger.freezeSet(claims.account, body.frozen ? { by: claims.kid, ...(typeof body.reason === 'string' ? { reason: String(redactDeep(body.reason)) } : {}) } : null);
+    return json(r, { status: r.ok ? 200 : 400 });
+  }
   // The owner's statements (ADR 0012), on a project's steer-scoped key: a tool the owner runs publishes its word about
   // the project, and withdraws it. The platform checks the shape and keeps every change; it knows nothing of the words.
   if (path === '/v1/agent/statement' || (m = path.match(/^\/v1\/agent\/statement\/([^/]+)$/))) {
@@ -241,7 +264,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     // 2026-09-24): a steer key for `@<owner>`, minted only through `<owner>/.github`.
     if (claims && orgKeyOf(claims, account.split('/')[0])) return null;
     const who = await app.page?.viewer?.(req, { env, ledger, url, grantsAccount: grantsAccount(env), identity: Boolean(app.identity) });
-    return sees(roleOf(who, view), visibility[panel]) ? null : error('not_open', 404);
+    return sees(roleOf(who, view, await workplaceRoster(ledger, account)), visibility[panel]) ? null : error('not_open', 404);
   };
   // A storage key is `<kind>:<account>:…`, so an account id holding `:` could name another account's records: never an account.
   const closed = async (account: string, panel: keyof Visibility): Promise<Response | null> => get() ?? (account.includes(':') ? error('not_found', 404) : admits(account, panel));

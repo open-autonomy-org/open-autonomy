@@ -21,8 +21,15 @@ export const KIT_FILE = '.open-autonomy/kit.json';
 // The kit is a lineage (docs/decisions/0006): an abstract base every subject runs, and one skew laid over it, whole
 // files, a later key winning. A skew is what its PM does and to whom; a PM knows only its own skew. A skew may extend
 // another: soc2 is self-build with the SOC 2 layer of docs/decisions/0008 laid over it, so its PM is self-build's.
-export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2'] as const;
+export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2', 'company'] as const;
 export type Skew = (typeof SKEWS)[number];
+// Two kits share this engine (docs/decisions/0017): `hermes`, whose agent content is hermes/, and `ir`, whose content is
+// home/, Supercode's native folder. A skew belongs to one kit; the record names it. The IR kit's base is the Hermes kit's
+// base without hermes/.
+export const KITS = ['hermes', 'ir'] as const;
+export type KitName = (typeof KITS)[number];
+const KIT_OF: Partial<Record<Skew, KitName>> = { company: 'ir' };
+export const kitOf = (skew: Skew): KitName => KIT_OF[skew] ?? 'hermes';
 // A child's copy of a parent's or base's file replaces it whole: change the copy whenever the original changes
 // (soc2 carries PRODUCTION.md and project-communications with the seams text added).
 const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
@@ -31,7 +38,7 @@ const BASE = resolve(import.meta.dir, '..', 'base');
 const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
 
 export interface KitParams { project: string; account: string }
-export interface KitRecord { kit: string; skew: Skew; version: string; params: KitParams }
+export interface KitRecord { kit: KitName; skew: Skew; version: string; params: KitParams }
 export function validateSkew(s: unknown): Skew {
   if (typeof s !== 'string' || !(SKEWS as readonly string[]).includes(s)) throw new Error(`skew: one of ${SKEWS.join(', ')}`);
   return s as Skew;
@@ -42,7 +49,7 @@ export function validateSkew(s: unknown): Skew {
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
 // The agent setup (.open-autonomy/agent.json, docs/decisions/0007) is kit-owned: the kit's changes reach it by the
 // three-way merge, the project's own edits kept.
-const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.ts|reporter\.ts|mint-key\.ts|start\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
+const OWNED = [/^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.schema\.json|agent\.ts|publisher\.ts|source-events\.ts|mint-key\.ts|start\.ts|enroll\.ts|install-runtime\.ts|fleet\.ts|host\.ts|container(?:-home|-process)?\.ts|community\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -63,7 +70,7 @@ function walk(dir: string, base = dir): string[] {
 // The Open Autonomy SDK (the interface: the client, the timeline codec, the drivers, the roster model) is vendored
 // into the generated repository under .open-autonomy/sdk, kit-owned, so the reporter and the key tool run from a
 // bare clone with no package to publish or install. The host tools beside it (the valve, the credential handoff,
-// the Codex connection, the Supercode adapter) are the kit's own files.
+// the Codex connection, the Volter Harness adapter) are the kit's own files.
 // A generated project reads the platform through the SDK this kit vendors into it. The published kit pins that
 // dependency, and a stale pin ships a client that silently cannot do what the project needs: 3.1.0 is the first
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
@@ -86,7 +93,10 @@ const SDK_FILES = ['client.ts', 'roadmap.ts', 'drivers.ts', 'team.ts', 'seams.ts
 export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
+  const kit = kitOf(skew);
   for (const dir of [BASE, ...lineage(skew).map(SKEW_DIR)]) for (const rel of walk(dir)) {
+    // The IR kit's agent content is its skew's home/; the Hermes kit's hermes/ is not part of it.
+    if (kit === 'ir' && dir === BASE && rel.startsWith('hermes/')) continue;
     const raw = readFileSync(join(dir, rel));
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
@@ -95,7 +105,7 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
-  out.set(KIT_FILE, Buffer.from(record({ kit: KIT.name, skew, version: KIT.version, params })));
+  out.set(KIT_FILE, Buffer.from(record({ kit, skew, version: KIT.version, params })));
   return out;
 }
 
@@ -103,12 +113,14 @@ export function readKit(dir: string): KitRecord {
   const p = join(dir, KIT_FILE);
   if (!existsSync(p)) throw new Error(`${p} is missing: not a repository this kit made (create or adopt it first)`);
   const rec = JSON.parse(readFileSync(p, 'utf8')) as Partial<KitRecord>;
-  if (rec.kit !== KIT.name) throw new Error(`${p} names kit ${rec.kit}, not ${KIT.name}`);
+  if (!(KITS as readonly string[]).includes(String(rec.kit))) throw new Error(`${p} names kit ${rec.kit}, not one of ${KITS.join(', ')}`);
   // The version names the ancestor an upgrade fetches from the registry: a release number and nothing else, never a
   // dependency spec or a path.
   if (typeof rec.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(rec.version)) throw new Error(`${p} records no kit release version (x.y.z)`);
   // A record older than the skews was made by the one brain there was: it is self-build.
-  return { kit: rec.kit, skew: validateSkew(rec.skew ?? 'self-build'), version: rec.version, params: validateParams(rec.params ?? {}) };
+  const skew = validateSkew(rec.skew ?? 'self-build');
+  if (kitOf(skew) !== rec.kit) throw new Error(`${p} names kit ${rec.kit}, but skew ${skew} belongs to kit ${kitOf(skew)}`);
+  return { kit: rec.kit as KitName, skew, version: rec.version, params: validateParams(rec.params ?? {}) };
 }
 function record(rec: KitRecord): string {
   return `${JSON.stringify({ kit: rec.kit, skew: rec.skew, version: rec.version, params: rec.params } satisfies KitRecord, null, 2)}\n`;
@@ -132,7 +144,7 @@ export function adopt(dir: string, params: KitParams, skew: Skew = 'self-build')
 // edits, a merge's result, a file it removed); which carry an unresolved merge. A project is a branch of its skew
 // (docs/decisions/0006), so divergence is its right and is reported, never an error. An old version and an
 // unresolved merge are.
-export interface Status { version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
+export interface Status { kit: KitName; version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
 export function check(dir: string): Status {
   const rec = readKit(dir);
   const diverged: string[] = [];
@@ -145,7 +157,7 @@ export function check(dir: string): Status {
     if (hasMarkers(have)) conflicted.push(rel);
     else if (!eq(have, want)) diverged.push(`${rel}: changed here`);
   }
-  return { version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir) };
+  return { kit: rec.kit, version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir) };
 }
 
 // The project's own declarations in config.yaml: the roster must read, and declared seams (ADR 0008) must use the
@@ -200,8 +212,9 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     for (const rel of LEGACY_FILES) if (existsSync(join(dir, rel))) { rmSync(join(dir, rel), { force: true }); prune(dir, rel); out.retired.push(rel); }
   }
   // Migrate only missing planning notes, using this project's seed rather than
-  // the template's hello task. The live board is reconciled by PM, never by upgrade.
-  if (!existsSync(join(dir, 'ROADMAP.md'))) {
+  // the template's hello task. The live board is reconciled by PM, never by upgrade. A roadmap is a tracking form a
+  // skew chooses instead of a board (manage-project, self-build); an install whose skew keeps none is given none.
+  if (theirs.has('ROADMAP.md') && !existsSync(join(dir, 'ROADMAP.md'))) {
     const seedFile = join(dir, 'hermes/kanban.seed.json');
     if (existsSync(seedFile)) {
       const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };

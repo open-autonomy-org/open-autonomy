@@ -99,7 +99,7 @@ The fleet's public agents work in public. Any confidential human space stays out
 channels, DMs and stored session history. During setup, enforce this with service permissions and native
 Hermes access settings; do not grant administrative access that bypasses the boundary. Verify the bot's
 effective access. Disabling chat publication or asking PM to omit details does not protect content read
-by a published run. Humans bring an appropriate public statement when private matters affect the project. A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold (a release is approved as the `production` environment's reviewer). Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record.
+by a published run. Humans bring an appropriate public statement when private matters affect the project. A request made in a coding session on the owner's own machine, under the owner's login, is verified as from that login; like any request, it binds once recorded. This project declares its seams in `.open-autonomy/config.yaml` (ADR 0008): direction takes effect once recorded as an issue or comment by the person's verified GitHub account, or as a commit they land; approvals only through the code host's gate they hold (a release is approved by the owners team approving the Release pull request). Chat carries requests; act on the record, not the conversation, and when only a conversation exists, ask for the record.
 
 In a team space (the team's own meetings) only a team agent takes part: a profile named in `publish.private`,
 whose persona says it speaks for the team and whose bot alone is in that space. Record each team
@@ -146,9 +146,10 @@ they give and when they expect to be available.
 - **Work anyone could take** (a post on a channel that needs a person, a test on real hardware) goes to a member
   with the role, one available now first; with no one, it is posted once as help-wanted:
   `community.ts issue open <key> <title> <body>` with no assignee.
-- **Work that needs a permission** goes to a member holding the scope. The repository's settings (description,
-  topics, homepage, social preview, Pages source, Discussions) and the roster are `owner`; a release is
-  `release-review`. It is never posted as help-wanted: no one else could do it.
+- **Work that needs a permission** goes to a member holding the scope. What only the owner may do (the repository's
+  settings: description, topics, homepage, social preview, Pages source, Discussions; the roster) is never asked on
+  its own: it waits in the Release package's `Owner does`, prepared completely. The owner is contacted once per
+  release, on the Release pull request (`main` → `prod`), by `maintain.ts ship`. None of it is posted as help-wanted.
 - Every ask is prepared completely, so it costs one decision (the exact values, the file, the drafted text), and
   sent once. Follow up only when agreed or when evidence changes.
 

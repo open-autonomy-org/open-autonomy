@@ -1,9 +1,10 @@
-import { parseModelsBound, parseSpendLimits, type SpendLimit } from './config.js';
+import { parseModelsBound, parseRailsConfig, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
 import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
 import { checkStatement, MAX_STATEMENTS, statementChanges, storedStatement, today, type Statement, type StatementRevision } from '@open-autonomy/sdk/statements';
 import { redactDeep } from './redact.js';
 import { json } from './http.js';
+import { partnerId, partnerKey, partnerQuote, partnerStorageKey, sameQuote, type PartnerReceipt, type PartnerResult } from './partner.js';
 import { sees, visibilityOf } from './page/model.js';
 import { estimateRunway } from './runway.js';
 import type { KeyClaims, UsageEvent } from './types.js';
@@ -28,7 +29,9 @@ const DEFAULT_GOAL_DAYS = 30;
 
 export interface LedgerState {
   day_key: string;
-  // Today's settled spend across every account, and outstanding reservations: the global daily rail.
+  // Today's settled spend across every account, and the reservations that count on today's rail: the global daily
+  // rail. A partner hold counts on the day it was made; one carried past rollover still holds its account's money and
+  // counts against its owner's spend limits, but no longer against today's global capacity (ADR 0016).
   consumed_usd_cents: number;
   reserved_usd_cents: number;
   reservations: Record<string, Reservation>;
@@ -80,6 +83,8 @@ function usedOver(a: Account | undefined, limit: SpendLimit, now = Date.now()): 
 }
 const secondsToNextBucket = (limit: SpendLimit, now = Date.now()): number => { const size = limit.window_seconds <= 3600 ? 60_000 : limit.window_seconds <= 86400 ? 3_600_000 : 86_400_000; return Math.ceil((size - (now % size)) / 1000); };
 
+export interface SpendFreeze { at: string; by: string; reason?: string }
+
 export interface Account {
   granted_in_usd_cents: number;
   granted_out_usd_cents: number;
@@ -109,6 +114,10 @@ export interface Account {
   // The agent's operating state: the owner's word (a steer key's request) and the automation's answer (what it
   // reported true of itself), kept apart. The platform records both and applies neither.
   control?: AgentControl;
+  // A spending freeze (company RFC 0024 B5(1): a cap of zero on every rail and window), set by the owner or through the
+  // project's workspace and lifted the same way. Nothing is reserved while it stands, the project's own or its org's.
+  // It is not the agent's pause (`control`), which stops the process and spends nothing by itself.
+  freeze?: SpendFreeze;
   // The owner's statements (ADR 0012), by id: the latest revision's number and, unless withdrawn, the live statement.
   // Every revision lives in storage, `statement:<account>:<id>:<revision, zero-padded>`.
   statements?: Record<string, { revision: number; live?: Statement }>;
@@ -219,6 +228,13 @@ interface ReservationAllocation { envelope_id: string; amount: number }
 interface Reservation {
   amount: number;
   expires_at_ms: number;
+  persistent?: 'partner';
+  // The UTC day whose global daily rail this reservation occupies; '' once it occupies none (an operator's reset).
+  counts_on: string;
+  // When it was made: the operator's status lists partner holds oldest first.
+  created_ms: number;
+  // A partner hold's identity (ADR 0016), so the operator's status can name it and the operator's release can finish it.
+  hold?: { partner: string; key: string };
   account: string;
   kid: string;
   allocations: ReservationAllocation[];
@@ -288,6 +304,8 @@ export interface CallRecord {
   partner?: string;
   unit?: string;
   quantity?: number;
+  usd_cents_per_credit?: number;
+  reservation_key?: string;
   reference?: string;
   item?: string;
   usd_cents: number;
@@ -401,6 +419,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const extension = extensions.get(op);
     if (extension) return json(await extension(this, body));
     switch (body.op) {
+      case 'partner_reservation': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.partnerReservation(body); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
+      case 'partner_operator_release': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.partnerOperatorRelease(body); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
@@ -424,6 +450,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'session_delete': return json(await this.deleteSession(s('account'), s('key')));
       case 'update_post': return json(await this.postUpdate(s('account'), s('item_id'), body.text, body.session, body.at, body.id));
       case 'setup_put': return json(await this.setupPut(s('account'), body.setup as Record<string, unknown>));
+      case 'freeze_set': return json(await this.freezeSet(s('account'), body.freeze ?? null));
       case 'state': return json(this.stateView(s('account')));
       case 'state_request': return json(await this.stateRequest(s('account'), body.state, s('by'), body.reason));
       case 'state_report': return json(await this.stateReport(s('account'), body.state, body.note));
@@ -443,8 +470,6 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'set_profile': return json(await this.setProfile(s('account'), body.profile as Partial<AccountProfile>, body.goal_days as number | undefined));
       case 'set_deployment': return json(await this.setDeployment(s('account'), body.deployment as LiveDeployment | undefined));
       case 'moderate': return json(await this.moderate(s('account'), s('status') as Moderation, body.reason ? s('reason') : undefined, body as Partial<AccountProfile>));
-      case 'export_all': return json(await this.exportAll());
-      case 'import_all': return json(await this.importAll(body.entries as Array<[string, unknown]>, body.replace === true));
       case 'directory': return json({ ok: true, entries: this.directory() });
       case 'project': return json(this.projectView(s('account')));
       case 'status': return json(this.snapshot());
@@ -464,26 +489,6 @@ export class LimitLedger implements DurableObject, LedgerCore {
 
   async save(): Promise<void> {
     await this.ctx.storage.put('state', this.state);
-  }
-
-  // ---- the books as a whole: export and restore -------------------------------------------------------
-  // Everything the platform holds is this object's storage: the state (accounts, flows, coupons, the key
-  // registry), the audit trail, sessions and their item pointers, updates, roadmap revisions, cards,
-  // checkouts. An export is every entry; a restore puts every entry back, into an empty worker unless the
-  // caller says replace.
-  private async exportAll(): Promise<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }> {
-    const all = await this.ctx.storage.list();
-    return { ok: true, exported_at: new Date().toISOString(), entries: [...all.entries()] };
-  }
-  private async importAll(entries: Array<[string, unknown]>, replace: boolean): Promise<{ ok: boolean; error?: string; entries?: number }> {
-    if (!Array.isArray(entries) || !entries.every((e) => Array.isArray(e) && typeof e[0] === 'string')) return { ok: false, error: 'invalid_export' };
-    const existing = await this.ctx.storage.list({ limit: 1 });
-    if (existing.size && !replace) return { ok: false, error: 'not_empty' };
-    if (replace) await this.ctx.storage.deleteAll();
-    for (let i = 0; i < entries.length; i += 128) await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + 128)));
-    this.loaded = false;
-    await this.load();
-    return { ok: true, entries: entries.length };
   }
 
   // ---- accounts --------------------------------------------------------------------------------------
@@ -553,7 +558,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!from || !to || from === to || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_grant' };
     const marked = await this.earmark(to, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
-    if (key && this.applyKey(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
+    if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, from_balance_usd_cents: this.balanceOf(from), to_balance_usd_cents: this.balanceOf(to) };
     // A funder's bonus credits go only to other people's projects: giving to their own draws on what they hold
     // beyond the bonus; giving to another's draws on the bonus first.
     if (from.startsWith('@')) {
@@ -561,11 +566,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
       const own = to.split('/')[0].toLowerCase() === from.slice(1).toLowerCase();
       if (own && this.balanceOf(from) - bonus < amount) return { ok: false, error: 'bonus_only_for_others', bonus_usd_cents: bonus };
     }
-    if (this.balanceOf(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    if (this.balanceOf(from) - this.reservedFor(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from) };
     const source = this.ensureAcct(from).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
-    if (source.reduce((sum, e) => sum + e.balance_usd_cents, 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    if (source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(from, e.id)), 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
+    this.applyKey(key);
     let debit = Math.floor(amount);
-    for (const envelope of source) { const take = Math.min(debit, envelope.balance_usd_cents); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
+    for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(from, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
     this.ensureAcct(from).granted_out_usd_cents += Math.floor(amount);
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(to, Math.floor(amount), marked.purpose, from, key);
@@ -662,15 +668,81 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return { ok: true, account, keys: Object.values(this.state.keys).filter((k) => k.account === account).sort((a, b) => b.created_at.localeCompare(a.created_at)) };
   }
 
+  // Partner lifetime operations run under the Durable Object concurrency gate. Each mutation writes the
+  // immutable receipt together with the reservation/balance and (on capture) public spend in one atomic put.
+  private async partnerReservation(body: Record<string, unknown>): Promise<PartnerResult> {
+    const account = typeof body.account === 'string' ? body.account : '';
+    const kid = typeof body.kid === 'string' ? body.kid : '';
+    const entry = this.state.keys[kid];
+    if (!this.keyCheck(kid).ok || !entry || entry.account !== account) return { ok: false, error: 'auth_failed' };
+    if (!Array.isArray(body.scopes) || !body.scopes.includes('pay')) return { ok: false, error: 'scope_required', scope: 'pay' };
+    const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload as Record<string, unknown> : {};
+    const create = body.action === 'create';
+    const quote = create ? partnerQuote(payload) : undefined;
+    if (create && !quote) return { ok: false, error: 'invalid_quote', message: 'Supply a partner, key, work reference, positive whole credits, cents per credit and their exact USD-cent product.' };
+    const partner = create ? quote!.partner : body.partner;
+    const key = create ? quote!.key : body.key;
+    if (!partnerId(partner) || !partnerKey(key)) return { ok: false, error: 'invalid_identity' };
+    const storageKey = partnerStorageKey(account, partner, key);
+    const prior = await this.ctx.storage.get<PartnerReceipt>(storageKey);
+    if (create) {
+      if (prior) return sameQuote(prior, quote!) ? { ok: true, reservation: prior } : { ok: false, error: 'key_conflict' };
+      const rails = parseRailsConfig(this.acct(account)?.profile?.config_yaml ?? '');
+      if (rails.partner.max_usd_cents <= 0) return { ok: false, error: 'rail_off' };
+      if (!rails.partner.partners.includes(partner)) return { ok: false, error: 'partner_not_allowed' };
+      if (quote!.usd_cents > rails.partner.max_usd_cents) return { ok: false, error: 'amount_over_bound', max_usd_cents: rails.partner.max_usd_cents };
+      const receipt: PartnerReceipt = { ...quote!, account, recipient: partner, request_id: crypto.randomUUID(), status: 'held', created_at: new Date().toISOString() };
+      const reserved = await this.reserve(receipt.request_id, account, kid, receipt.usd_cents, Number(body.daily_cap_usd_cents), '', 0, 'partner', receipt.item, undefined, { [storageKey]: receipt }, { partner, key });
+      return reserved.ok ? { ok: true, reservation: receipt } : reserved as PartnerResult;
+    }
+    if (!prior) return { ok: false, error: 'not_found' };
+    if (body.action === 'get') return { ok: true, reservation: prior };
+    if (body.action !== 'capture' && body.action !== 'release') return { ok: false, error: 'invalid_action' };
+    const capture = body.action === 'capture';
+    if (capture && (!Number.isSafeInteger(payload.credits) || Number(payload.credits) <= 0 || Number(payload.credits) > prior.credits || !Number.isSafeInteger(payload.usd_cents) || payload.usd_cents !== Number(payload.credits) * prior.usd_cents_per_credit)) return { ok: false, error: 'invalid_capture', message: 'Capture positive whole credits within the hold at its frozen cents-per-credit rate.' };
+    if (prior.status !== 'held') {
+      if ((!capture && prior.status === 'released') || (capture && prior.status === 'captured' && prior.captured_credits === payload.credits && prior.captured_usd_cents === payload.usd_cents)) return { ok: true, reservation: prior };
+      return { ok: false, error: prior.status === 'captured' && capture ? 'key_conflict' : 'reservation_closed' };
+    }
+    const held = this.state.reservations[prior.request_id];
+    if (!held || held.account !== account || held.persistent !== 'partner' || held.amount !== prior.usd_cents) return { ok: false, error: 'reservation_missing' };
+    this.rolloverIfNeeded();
+    const receipt: PartnerReceipt = { ...prior, status: capture ? 'captured' : 'released', closed_at: new Date().toISOString(), ...(capture ? { captured_usd_cents: payload.usd_cents as number, captured_credits: payload.credits as number } : {}) };
+    if (capture) await this.consume(prior.request_id, payload.usd_cents as number, { request_id: prior.request_id, rail: 'partner', partner, unit: 'credit', quantity: payload.credits as number, usd_cents_per_credit: prior.usd_cents_per_credit, reservation_key: key, reference: prior.reference, item: prior.item, reserved_usd_cents: prior.usd_cents, actual_usd_cents: payload.usd_cents as number, outcome: 'ok' }, { [storageKey]: receipt });
+    else await this.release(prior.request_id, { [storageKey]: receipt });
+    return { ok: true, reservation: receipt };
+  }
+
+  // The operator's release (through the reviewed admin workflow): ends a hold its payer abandoned, by the same identity,
+  // charging nothing. The receipt closes as `released` with `closed_by: 'operator'`, so the payer's own replay of
+  // release succeeds and a later capture is refused as closed.
+  private async partnerOperatorRelease(body: Record<string, unknown>): Promise<PartnerResult> {
+    const account = typeof body.account === 'string' ? body.account : '';
+    if (!account || !partnerId(body.partner) || !partnerKey(body.key)) return { ok: false, error: 'invalid_identity' };
+    const storageKey = partnerStorageKey(account, body.partner, body.key);
+    const prior = await this.ctx.storage.get<PartnerReceipt>(storageKey);
+    if (!prior) return { ok: false, error: 'not_found' };
+    if (prior.status === 'released') return { ok: true, reservation: prior };
+    if (prior.status !== 'held') return { ok: false, error: 'reservation_closed' };
+    const held = this.state.reservations[prior.request_id];
+    if (!held || held.account !== account || held.persistent !== 'partner') return { ok: false, error: 'reservation_missing' };
+    this.rolloverIfNeeded();
+    const receipt: PartnerReceipt = { ...prior, status: 'released', closed_at: new Date().toISOString(), closed_by: 'operator' };
+    await this.release(prior.request_id, { [storageKey]: receipt });
+    return { ok: true, reservation: receipt };
+  }
+
   // ---- the model rail: reserve, settle, release ------------------------------------------------------
 
-  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string): Promise<Record<string, unknown>> {
+  private async reserve(requestId: string, account: string, kid: string, amount: number, dailyCap: number, model = '', estimatedTokens = 0, rail: Rail = 'model', item?: string, session?: string, durable?: Record<string, unknown>, hold?: { partner: string; key: string }): Promise<Record<string, unknown>> {
     this.rolloverIfNeeded();
     this.gcReservations();
     if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid_amount' };
     const key = this.keyCheck(kid);
     if (!key.ok) return { ok: false, error: key.error === 'account_banned' ? 'account_banned' : 'auth_failed' };
     if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
+    const frozen = this.effectiveFreeze(account);
+    if (frozen) return { ok: false, error: 'spending_frozen', message: `Spending is frozen${frozen.from ? ` for every project of ${frozen.from.slice(1)}` : ''} by ${frozen.by} since ${frozen.at}${frozen.reason ? `: ${frozen.reason}` : ''}. Nothing is spent until it is lifted.`, account };
     let spendItem = itemId(item);
     if (!spendItem && session) {
       const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${session}`);
@@ -716,6 +788,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     for (const { holder, members: over, how } of holders) for (const limit of parseSpendLimits(this.acct(holder)?.profile?.config_yaml ?? '')) {
       if (limit.model && limit.model !== model) continue;
       const used = over.reduce((sum, id) => { const u = usedOver(this.acct(id), limit); return { u: sum.u + u.u, c: sum.c + u.c, t: sum.t + u.t }; }, { u: 0, c: 0, t: 0 });
+      // Every open reservation counts in every window while it stands, a partner hold included (ADR 0016): the owner's
+      // limits stay conservative, so holds opened across windows can never settle together past a window's limit.
       const reserved = over.reduce((sum, id) => sum + this.reservedFor(id), 0);
       // The caller holds one project's key: the org's total reaches it only as the pages would publish it.
       const shown = holder === account || this.booksOpen(over);
@@ -725,19 +799,20 @@ export class LimitLedger implements DurableObject, LedgerCore {
       if (limit.tokens !== undefined && used.t + estimatedTokens > limit.tokens) return refusal('tokens', limit.tokens, used.t);
     }
     recordUsage(this.ensureAcct(account), { calls: 1, model: model || undefined });
-    this.state.reserved_usd_cents += amount;
-    this.state.reservations[requestId] = { amount, expires_at_ms: Date.now() + 10 * 60_000, account, kid, allocations };
+    this.state.reservations[requestId] = { amount, expires_at_ms: durable ? 0 : Date.now() + 10 * 60_000, ...(durable ? { persistent: 'partner' as const, ...(hold ? { hold } : {}) } : {}), counts_on: this.state.day_key, created_ms: Date.now(), account, kid, allocations };
+    this.retally();
     this.ensureAcct(account);
-    await this.save();
+    if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
+    else await this.save();
     return { ok: true, balance_usd_cents: this.balanceOf(account) - this.reservedFor(account) };
   }
 
-  private async consume(requestId: string, actual: number, event?: UsageEvent): Promise<void> {
+  private async consume(requestId: string, actual: number, event?: UsageEvent, durable?: Record<string, unknown>): Promise<void> {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
     const spent = Number.isFinite(actual) ? Math.max(0, actual) : 0;
-    this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
     delete this.state.reservations[requestId];
+    this.retally();
     this.state.consumed_usd_cents += spent;
     const a = this.ensureAcct(reservation.account);
     a.consumed_usd_cents += spent;
@@ -781,21 +856,22 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (drawn.length) Object.assign(record, { envelope: drawn[0].purpose, envelopes: drawn });
     if (rail === 'model') Object.assign(record, { model: event?.model, route: event?.route, input_tokens: event?.input_tokens, output_tokens: event?.output_tokens });
     if (rail === 'card') Object.assign(record, { merchant: event?.merchant, category: event?.category, card_last4: event?.card_last4, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
-    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
+    if (rail === 'partner') Object.assign(record, { partner: event?.partner, unit: event?.unit, quantity: event?.quantity, usd_cents_per_credit: event?.usd_cents_per_credit, reservation_key: event?.reservation_key, reference: event?.reference, ...(event?.item ? { item: event.item } : {}) });
     const callKey = `call:${reservation.account}:${String(Date.now()).padStart(13, '0')}:${String(a.calls_total).padStart(9, '0')}:${requestId}`;
     const writes: Record<string, CallRecord | string> = { [callKey]: record };
     if (session) writes[this.sessionCallKey(reservation.account, session, callKey)] = callKey;
     if (record.item) writes[this.itemCallKey(reservation.account, record.item, callKey)] = callKey;
-    await this.ctx.storage.put(writes);
-    await this.save();
+    if (durable) await this.ctx.storage.put({ ...writes, ...durable, state: this.state });
+    else { await this.ctx.storage.put(writes); await this.save(); }
   }
 
-  private async release(requestId: string): Promise<void> {
+  private async release(requestId: string, durable?: Record<string, unknown>): Promise<void> {
     const reservation = this.state.reservations[requestId];
     if (!reservation) return;
-    this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - reservation.amount);
     delete this.state.reservations[requestId];
-    await this.save();
+    this.retally();
+    if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
+    else await this.save();
   }
 
   // Storage key: `call:<account>:<ms, zero-padded>:<request id>`; lexicographic order is time order, so a
@@ -1052,6 +1128,25 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const word = org ? this.acct(org)?.control?.desired : undefined;
     if (!org || word?.state !== 'paused' || own?.desired?.state === 'paused') return own ? { ...own } : undefined;
     return { ...(own ?? {}), desired: { ...word, from: org }, ...(own?.desired ? { own: own.desired } : {}) };
+  }
+  // The freeze that holds a project: its own, else its org's.
+  private effectiveFreeze(account: string): (SpendFreeze & { from?: string }) | undefined {
+    const own = this.acct(account)?.freeze;
+    if (own) return { ...own };
+    const org = orgOf(account);
+    const word = org ? this.acct(org)?.freeze : undefined;
+    return word ? { ...word, from: org } : undefined;
+  }
+  // The owner (or the project's workspace, through its link) freezes spending, or lifts the freeze (`freeze: null`).
+  private async freezeSet(account: string, freeze: unknown): Promise<Record<string, unknown>> {
+    if (!account) return { ok: false, error: 'invalid_account' };
+    const a = this.ensureAcct(account);
+    if (freeze === null) { delete a.freeze; await this.save(); return { ok: true, frozen: false }; }
+    const f = freeze as Partial<SpendFreeze> | undefined;
+    if (!f || typeof f.by !== 'string' || !f.by) return { ok: false, error: 'invalid_freeze' };
+    a.freeze = { at: new Date().toISOString(), by: f.by.slice(0, 120), ...(typeof f.reason === 'string' && f.reason.trim() ? { reason: f.reason.trim().slice(0, 300) } : {}) };
+    await this.save();
+    return { ok: true, frozen: true, freeze: a.freeze };
   }
   // Every project of an org on the books.
   private membersOf(org: string): string[] {
@@ -1379,6 +1474,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       live_sessions: [...(a?.live_sessions ?? [])],
       ...(a?.deployment ? { live: { ...a.deployment } } : {}),
       ...(control ? { control } : {}),
+      ...(this.effectiveFreeze(account) ? { freeze: this.effectiveFreeze(account) } : {}),
       ...(a?.stripe_cardholder ? { stripe_cardholder: a.stripe_cardholder } : {}),
       status: fundingStatus(f),
     };
@@ -1455,18 +1551,27 @@ export class LimitLedger implements DurableObject, LedgerCore {
       consumed_usd_cents: this.state.consumed_usd_cents,
       reserved_usd_cents: this.state.reserved_usd_cents,
       reservations: Object.keys(this.state.reservations).length,
+      // Every outstanding partner hold, oldest first, by the identity the operator's release takes; `counts_on` is the day
+      // whose global rail it occupies ('' or an earlier day: none today).
+      held_usd_cents: Object.values(this.state.reservations).reduce((sum, r) => sum + (r.persistent === 'partner' ? r.amount : 0), 0),
+      holds: Object.entries(this.state.reservations).filter(([, r]) => r.persistent === 'partner').sort(([, a], [, b]) => a.created_ms - b.created_ms)
+        .map(([id, r]) => ({ request_id: id, account: r.account, ...(r.hold ?? {}), amount_usd_cents: r.amount, created_at: new Date(r.created_ms).toISOString(), counts_on: r.counts_on })),
       keys: Object.values(this.state.keys).map((k) => ({ kid: k.kid, account: k.account, exp: k.exp, revoked_at: k.revoked_at ?? null })),
       accounts: Object.fromEntries(Object.keys(this.state.accounts).map((id) => [id, { ...this.state.accounts[id], profile: undefined, balance_usd_cents: this.balanceOf(id) }])),
     };
   }
 
-  // Operator escape hatch: zero today's daily rail without waiting for the UTC rollover. Balances and
-  // in-flight reservations are untouched.
+  // Operator escape hatch: zero today's daily rail without waiting for the UTC rollover, as the rollover would. Balances
+  // and reservations are untouched; partner holds stop counting on today's rail exactly as a rollover carries them, and a
+  // model or card reservation still in flight keeps counting until it settles.
   private async resetDaily(): Promise<Record<string, unknown>> {
     const before = this.state.consumed_usd_cents;
+    const reservedBefore = this.state.reserved_usd_cents;
     this.state.consumed_usd_cents = 0;
+    for (const r of Object.values(this.state.reservations)) if (r.persistent === 'partner') r.counts_on = '';
+    this.retally();
     await this.save();
-    return { ok: true, day_key: this.state.day_key, cleared_consumed_usd_cents: before, consumed_usd_cents: 0, reserved_usd_cents: this.state.reserved_usd_cents };
+    return { ok: true, day_key: this.state.day_key, cleared_consumed_usd_cents: before, consumed_usd_cents: 0, cleared_reserved_usd_cents: reservedBefore - this.state.reserved_usd_cents, reserved_usd_cents: this.state.reserved_usd_cents };
   }
 
   private rolloverIfNeeded(): void {
@@ -1474,15 +1579,20 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (this.state.day_key === today) return;
     this.state.day_key = today;
     this.state.consumed_usd_cents = 0;
-    this.state.reserved_usd_cents = 0;
-    this.state.reservations = {};
+    this.state.reservations = Object.fromEntries(Object.entries(this.state.reservations).filter(([, r]) => r.persistent === 'partner'));
+    this.retally();
   }
 
   private gcReservations(): void {
     const now = Date.now();
-    for (const [id, r] of Object.entries(this.state.reservations)) {
-      if (r.expires_at_ms < now) { this.state.reserved_usd_cents = Math.max(0, this.state.reserved_usd_cents - r.amount); delete this.state.reservations[id]; }
-    }
+    for (const [id, r] of Object.entries(this.state.reservations)) if (r.persistent !== 'partner' && r.expires_at_ms < now) delete this.state.reservations[id];
+    this.retally();
+  }
+
+  // The global rail's in-flight share, recomputed from the reservations themselves: those that count on today. A hold
+  // carried over from an earlier day (or cleared by the operator's reset) keeps its money held and adds nothing here.
+  private retally(): void {
+    this.state.reserved_usd_cents = Object.values(this.state.reservations).reduce((sum, r) => sum + (r.counts_on === this.state.day_key ? r.amount : 0), 0);
   }
 }
 
@@ -1492,7 +1602,9 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
   if (typeof stored.day_key === 'string') state.day_key = stored.day_key;
   if (typeof stored.consumed_usd_cents === 'number') state.consumed_usd_cents = stored.consumed_usd_cents;
   if (typeof stored.reserved_usd_cents === 'number') state.reserved_usd_cents = stored.reserved_usd_cents;
-  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
+  for (const [id, r] of Object.entries(stored.reservations ?? {})) if (r && typeof r.amount === 'number' && typeof r.account === 'string') state.reservations[id] = { amount: r.amount, expires_at_ms: r.expires_at_ms ?? 0, account: r.account, kid: r.kid ?? '', ...(r.persistent === 'partner' ? { persistent: 'partner' as const, ...(r.hold && partnerId(r.hold.partner) && partnerKey(r.hold.key) ? { hold: { partner: r.hold.partner, key: r.hold.key } } : {}) } : {}),
+    // A reservation stored before these fields counts on the day the books were last on, made at that day's start.
+    counts_on: typeof r.counts_on === 'string' ? r.counts_on : state.day_key, created_ms: typeof r.created_ms === 'number' ? r.created_ms : Date.parse(state.day_key) || 0, allocations: Array.isArray(r.allocations) ? r.allocations.filter((p) => p && typeof p.envelope_id === 'string' && typeof p.amount === 'number') : [] };
   for (const [id, a] of Object.entries(stored.accounts ?? {})) {
     if (!a || typeof a !== 'object') continue;
     const acct = emptyAccount();
@@ -1519,6 +1631,8 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (deployment) acct.deployment = deployment;
     const control = normalizeControl(a.control);
     if (control) acct.control = control;
+    const freeze = (a as { freeze?: Partial<SpendFreeze> }).freeze;
+    if (freeze && typeof freeze.at === 'string' && typeof freeze.by === 'string') acct.freeze = { at: freeze.at, by: freeze.by, ...(typeof freeze.reason === 'string' ? { reason: freeze.reason } : {}) };
     const statements = (a as { statements?: unknown }).statements;
     if (statements && typeof statements === 'object') {
       acct.statements = {};
@@ -1745,6 +1859,8 @@ export interface DirectoryEntry {
   live_sessions: string[];
   live?: LiveDeployment;
   control?: AgentControl;
+  // The spending freeze that holds it: its own, or its org's (`from`).
+  freeze?: SpendFreeze & { from?: string };
   stripe_cardholder?: string;
   status: 'funded' | 'low' | 'unfunded';
 }
@@ -1806,6 +1922,7 @@ export class LedgerClient {
   session(account: string, key: string) { return this.call<{ ok: boolean; error?: string; session?: SessionRecord }>('session', { account, key }); }
   sessionDelete(account: string, key: string) { return this.call<{ ok: boolean; error?: string }>('session_delete', { account, key }); }
   setupPut(account: string, setup: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('setup_put', { account, setup }); }
+  freezeSet(account: string, freeze: { by: string; reason?: string } | null) { return this.call<{ ok: boolean; error?: string; frozen?: boolean; freeze?: SpendFreeze }>('freeze_set', { account, freeze }); }
   state(account: string) { return this.call<{ ok: true; account: string } & AgentControl>('state', { account }); }
   stateRequest(account: string, state: unknown, by: string, reason?: unknown) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean } & AgentControl>('state_request', { account, state, by, reason }); }
   stateReport(account: string, state: unknown, note?: unknown) { return this.call<{ ok: boolean; error?: string } & AgentControl>('state_report', { account, state, note }); }
@@ -1826,10 +1943,9 @@ export class LedgerClient {
   setProfile(account: string, profile: Partial<AccountProfile>, goalDays?: number) { return this.call<Record<string, unknown>>('set_profile', { account, profile, goal_days: goalDays }); }
   setDeployment(account: string, deployment?: LiveDeployment) { return this.call<{ ok: true }>('set_deployment', { account, deployment }); }
   moderate(account: string, status: Moderation, reason?: string, overrides: Partial<AccountProfile> = {}) { return this.call<{ ok: boolean; moderation?: Moderation; error?: string }>('moderate', { account, status, reason, ...overrides }); }
-  exportAll() { return this.call<{ ok: true; exported_at: string; entries: Array<[string, unknown]> }>('export_all'); }
-  importAll(entries: Array<[string, unknown]>, replace = false) { return this.call<{ ok: boolean; error?: string; entries?: number }>('import_all', { entries, replace }); }
   directory() { return this.call<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
   project(account: string) { return this.call<ProjectView>('project', { account }); }
   status() { return this.call<unknown>('status'); }
-  resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number }>('reset_daily'); }
+  partnerOperatorRelease(account: string, partner: string, key: string) { return this.call<PartnerResult>('partner_operator_release', { account, partner, key }); }
+  resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number; cleared_reserved_usd_cents: number; reserved_usd_cents: number }>('reset_daily'); }
 }

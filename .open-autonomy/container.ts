@@ -1,7 +1,8 @@
 // Container startup for the existing start.ts entrypoint. The valve and reporter
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
-// another harness, Supercode's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
+// another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -72,6 +73,10 @@ export async function startContainer(options: {
     own('executor', ['docker', 'wait', container]);
     const ports = [port, port + 1];
     const args = keys.flatMap((file, i) => ['--key', `${file}:${port + i}`]);
+    // The paying key's port answers only the treasurer (valve.ts --caller): a credential minted on every start, in the
+    // valve's environment and the treasurer profile's own .env inside the executor (OPEN_AUTONOMY_PAY_KEY).
+    const payKey = randomBytes(32).toString('base64url');
+    args.push('--caller', String(port + 1));
     // Git must be available before fetching the committed model/configuration.
     own('github valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', '--github-app', `${github}:${port + 3}`]);
     await ready(async () => {
@@ -96,7 +101,7 @@ export async function startContainer(options: {
     const codexBase = onCodex ? (twin || `${host}:${port + 2}/backend-api/codex`) : '';
     if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
     if (onCodex && !twin) args.push('--codex', String(port + 2));
-    own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...args]);
+    own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...args], { env: { ...process.env, [`OPEN_AUTONOMY_VALVE_CALLER_${port + 1}`]: payKey } });
     await ready(async () => {
       try { return (await Promise.all(ports.map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
       catch { return false; }
@@ -114,6 +119,7 @@ export async function startContainer(options: {
       setup: agentSetup, homeOf: (profile) => (profile === 'default' ? home : `${home}/profiles/${profile}`),
       homeId: account, stateRoot: resolve(state, 'apply'), workspace, container,
     })) console.log(`host: agent: ${line}`);
+    if (agentSetup.profiles.treasurer) await writeContainerEnvironment({ container, home: `${home}/profiles/treasurer`, env: { OPEN_AUTONOMY_PAY_KEY: payKey } });
     await mergeImageDenylist({ container, home });
     // a Codex worker's own sandbox cannot run in the executor, which is the boundary itself; a profile that keeps its
     // approvals is asked before every command instead (container-home.ts)
@@ -125,7 +131,7 @@ export async function startContainer(options: {
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname() });
     let reportReady!: () => void;
     const reporterReady = new Promise<void>(resolve => { reportReady = resolve; });
-    own('reporter', ['bun', resolve(import.meta.dir, 'reporter.ts'), '--container', container,
+    own('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--container', container,
       '--config', reportConfig, '--project', workspace, '--state-file', resolve(state, 'reporter-state.json')], {
       env: { ...process.env, HERMES_HOME: home, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve', OPEN_AUTONOMY_RUNTIME: runtime, OPEN_AUTONOMY_HARNESS: harness },
       ipc(message) { if (message?.type === 'reporter-ready') reportReady(); },
@@ -133,11 +139,11 @@ export async function startContainer(options: {
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    // the orchestrator and Supercode are the image's own (its .open-autonomy, installed for Linux)
+    // the orchestrator and Volter Harness are the image's own (its .open-autonomy, installed for Linux)
     const kitDir = '/opt/agent/.open-autonomy';
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
-      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter-ai-dev/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
         env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode` } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
     const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;
@@ -145,7 +151,7 @@ export async function startContainer(options: {
     const restart = () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); };
     // What the agent IS is what main says, and main moves while it runs (start.ts's watch, read in the executor): every
     // ten minutes the checkout fetches main; a move that touches the stack's own files (hermes/, .open-autonomy/) drains
-    // the runtime once the board is quiet, and this host exits 75, which its service manager restarts onto the new main.
+    // the runtime at once, whatever the board holds, and this host exits 75, which its service manager restarts onto the new main.
     // A move that touches only the project's books advances the mark; a checkout with tracked changes is left alone.
     let startedMain = prepared.revision, watching = false;
     mainWatch = setInterval(async () => {
@@ -156,8 +162,6 @@ export async function startContainer(options: {
         if (!seen.main || seen.main === startedMain) return;
         // a started revision main no longer reaches names no files, and restarts as bare mode's does
         if (seen.changed && !seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
-        if (seen.busy === null) { console.error('host: cannot read the board; the restart onto main waits'); return; }
-        if (seen.busy) return;
         console.log(`host: main moved to ${seen.main.slice(0, 8)}; asking ${runtimeName} to drain before restarting the stack onto it`);
         restartAsked = true;
         restart();

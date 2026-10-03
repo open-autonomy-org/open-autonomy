@@ -10,6 +10,7 @@ on:
     branches: [prod]
   workflow_dispatch:
 permissions:
+  actions: read
   contents: read
 jobs:
   publish:
@@ -27,11 +28,20 @@ jobs:
             objects.githubusercontent.com:443
             release-assets.githubusercontent.com:443
             registry.npmjs.org:443
+            api.osv.dev:443
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.10
           no-cache: true # no restored cache can poison a privileged publish
+      # The kit receives and saves its owner's credentials and ships the lockfile every project it makes installs, so a
+      # lockfile changed since the last release is scanned (OSV-Scanner, against api.osv.dev) before anything installs,
+      # and a finding stops the release (Volter company decision 0038).
+      - name: Release scan
+        run: node .github/release-scan.mjs bun.lock packages/kit-hermes/base/.open-autonomy/bun.lock
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SCAN_WORKFLOW: release.yml
       - name: Install (frozen)
         run: bun install --frozen-lockfile
       - name: Publish (the SDK first; the kit and the CLI depend on it)
@@ -91,7 +101,7 @@ jobs:
         run: |
           v=$(gh api "repos/$REPO/contents/packages/kit-hermes/package.json?ref=$SHA" --jq .content | base64 -d | jq -r .version)
           TAG="release-v$v"
-          notes=$(printf 'Published to npm: [create-open-autonomy@%s](https://www.npmjs.com/package/create-open-autonomy/v/%s).\n\nStart a project: `bun create open-autonomy <dir>`. What changed: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md).' "$v" "$v" "$REPO" "$TAG")
+          notes=$(printf 'Published to npm: [create-open-autonomy@%s](https://www.npmjs.com/package/create-open-autonomy/v/%s).\n\nStart a project: `bun create open-autonomy <dir>`. What changed: [the commits](https://github.com/%s/commits/%s).' "$v" "$v" "$REPO" "$TAG")
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "$TAG already has a GitHub release"
           else

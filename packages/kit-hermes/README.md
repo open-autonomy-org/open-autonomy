@@ -14,6 +14,7 @@ only its own skew:
 | `self-build` (the default) | executes through the project's own fleet: kanban, seats, develop and review lanes, strategy, the community desk; an hourly scrum |
 | `manage-project` | keeps the plan and the record for a project people build; reconciles what landed against what was asked, names what is stalled, asks people, proposes releases; one scrum a day; no board, no dispatch |
 | `manage-organization` | an organization whose executors are its projects: gathers every project daily, posts the memo with the agenda in the organization's channel, records the meeting's outcomes, files each outcome down as a request in the project's intake; one cycle a day |
+| `company` (kit `ir`) | a company's one install (ADR 0017): `home/` in Supercode's native folder, the organization's layer at its root and a profile per job (account manager, manager, coders, reviewer, auditor, box maintainer), one board for the organization's work, cards tagged by project |
 | `soc2` | self-build's PM, with the SOC 2 layer laid over self-build ([ADR 0008](../../docs/decisions/0008-human-seams.md)): the seams declared in `config.yaml`, release approval by gate rather than reply, a records folder for people's acts ([`skews/soc2/records/`](skews/soc2/records/README.md)) and [`skews/soc2/COMPLIANCE.md`](skews/soc2/COMPLIANCE.md) for the Evidence Desk program |
 
 ```bash
@@ -56,22 +57,22 @@ open-autonomy` from it against the npm registry twin (the [World operator guide]
 README.md            the project's front page, with the account's four widgets
 CONSTITUTION.md      what the project is and must remain; its first paragraph leads the page, its invariants bind every task
 CONTRIBUTING.md      how code is written here, the bar every diff is reviewed against
-ROADMAP.md           notable intentions and outstanding outcomes; PM-maintained, project-owned
-CHANGELOG.md         what shipped
+ROADMAP.md           (manage-project, self-build) notable intentions and outstanding outcomes; PM-maintained
+CHANGELOG.md         (manage-project, self-build) what shipped
 AGENTS.md            the agent's rules for this repository
 LICENSE              Apache-2.0, seeded; the project's own
 package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
 hermes/              the agent's content: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile's persona: the one that pays), kanban.seed.json (historical migration input),
                      scripts/community-monitor.sh (the community desk's monitor source: every five minutes it reads when the newest issue or discussion last changed, and the agent wakes only when that changed)
-.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Supercode's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — a human-cut tag, a reviewed environment, the workflows the owner's): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), reporter.ts (the publisher:
-                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (bare for development; --container for the host sidecar), the vendored SDK, kit.json (which kit, version and parameters made this repository)
+.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Volter Harness's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — the one Release pull request the owner approves and merges into prod): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), publisher.ts (the publisher:
+                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the entry that runs the kit package's keeper, which only starts and stops the install's processes: bare, or --container for the host sidecar), enroll.ts (the install's mail agents and workspace on this machine, run by the deployer pass `maintain.ts restart`), the vendored SDK, kit.json (which kit, version and parameters made this repository)
 container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
 .github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
 ```
 
 ## The guided setup
 
-Understand the project first, then choose the starter. Hermes is currently the only kit; the cookbooks
+Understand the project first, then choose the starter. Two kits share one engine: `hermes`, and `ir` with its `company` skew (ADR 0017); the cookbooks
 are working applications of it. Start a fresh repository with `create`, or preserve an existing one
 with `adopt`. The generated [setup guide](base/.open-autonomy/SETUP.md) is the setup agent's
 procedure and is kept current by kit upgrades, including in this repository and every cookbook.
@@ -102,10 +103,12 @@ Discord is optional regardless of token availability. GitHub can carry human que
 review, but the agent must actually post requests and inspect replies there. The communication skill
 owns that policy; the shared team roster owns identities and authority.
 
-Application dependencies run in the local world. Production provisioning is a later explicit
-`--with production` step for a Cloudflare Worker. Package release automation is not yet implemented;
-`--with release` refuses before mutation and points to the reviewed publication procedure. Other live
-application connections are established at deployment or customer activation.
+Application dependencies run in the local world. Production provisioning is a later explicit `--with
+production` step: the `owners` team, the `prod` branch the standing Release pull request merges into, the
+`production` environment that admits it, and for a Cloudflare Worker the token and `deploy.yml`. Package
+release automation is not yet implemented; `--with release` refuses before mutation and points to the reviewed
+publication procedure. Other live application connections are established at deployment or customer
+activation.
 
 **Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
 the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
@@ -120,7 +123,9 @@ roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changel
 
 The agent is stock Hermes in a container, its home the committed `hermes/`, its checkout the repository,
 its model calls forwarded by the key valve beside it (which alone holds the project's key) to the platform,
-where each is metered to the project's account. ROADMAP.md is the planning memory: the PM scrum reconciles sourced input and queues bounded fleet work.
+where each is metered to the project's account. A roadmap and changelog are a tracking form a skew chooses instead of
+a board (manage-project and self-build keep them; the others plan on the board): there, ROADMAP.md is the planning
+memory, which the PM scrum reconciles from sourced input and queues bounded fleet work from.
 The native kanban holds execution tasks; the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its
@@ -131,10 +136,9 @@ session shows on the project's page with its cost.
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
 worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
 way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
-landing workflow stands), and requests a complete stack restart after the upgrade lands. It prepares
-human review only for a ready, sourced PM release decision with a fixed candidate and proposed version.
-PM contacts the reviewer using the project communication skill and tracks the conversation on the
-native task. Tags and deployment approvals remain human acts.
+landing workflow stands), and requests a complete stack restart after the upgrade lands. When PM decides the
+Release is ready, `maintain.ts ship` writes its package on the standing Release pull request (`main` → `prod`) and
+mentions the owner there once. The owner's approval and merge of the Release is the one human act that ships.
 
 ## Host tools
 
@@ -153,17 +157,17 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
   receives a GitHub App manifest callback instead; `capture` transfers one field from a page in the existing
   normal browser straight to the receiver. The command prints an address or a receipt, never the secret. Destinations
   are outside every Git checkout; `checkCredentialDirectory` is shared with `mint-key.ts` and the kit's setup.
-- **The Supercode adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
-  reporter uses to read native Hermes through Supercode's harness SDK and publish through the Open Autonomy SDK.
+- **The Volter Harness adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
+  reporter uses to read native Hermes through Volter Harness's harness SDK and publish through the Open Autonomy SDK.
 
-The reporter is an SDK-to-SDK publisher. Supercode supplies session discovery and paginated transcripts,
+The reporter is an SDK-to-SDK publisher. Volter Harness supplies session discovery and paginated transcripts,
 native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's
 SDK batches and acknowledges delivery. Silence never ends a session, and a task's lane never invents
 a review verdict. The reporter reads repository-owned documents from committed main and applies the
 YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files.
 
 Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
-history-change events reconcile against Supercode and the destination's receipt. An upload failure stays
+history-change events reconcile against Volter Harness and the destination's receipt. An upload failure stays
 retryable. If already-published history changes, the append-only destination cannot replace it: reporting
 stops for that session with an explicit reconciliation error rather than skipping or duplicating it.
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
@@ -228,11 +232,9 @@ bounded cursors, coverage gaps and pending pointers; no permanent scrum journal 
 is preserved until acknowledged, then pruned. An unavailable source retains its checkpoint. Release review
 and outstanding operational acceptance remain on roadmap even after implementation enters changelog.
 
-PM owns release planning: maintain a sourced target schedule in ROADMAP.md, choose coherent scope and a
-proposed version under project policy, and allow time for human review. A merge or elapsed target date is
-not a release trigger. Only a landed, ready PM decision with a fixed candidate warrants a review request;
-later main commits can accumulate independently. Humans approve the concrete proposal before shipping.
-See `.open-autonomy/PRODUCTION.md` for the release fields and review package.
+PM owns release planning: one sourced release section in ROADMAP.md, a coherent scope and a version under
+project policy. Everything landed on `main` compounds onto the one Release pull request, the only thing a person is
+asked about; a merge or a date is not a release. See `.open-autonomy/PRODUCTION.md`.
 
 The local Codex setup choice uses the operator's ChatGPT allowance on this computer. Both launch modes use
 the host valve, which asks the installed Codex for the current login through its app-server protocol.
@@ -242,7 +244,7 @@ hosting. The setup agent installs the local image and trusted host service, then
 project connections and development loop. Follow the
 generated `.open-autonomy/SETUP.md` for model selection and the remaining activation checks. The reporter
 can run on the host with `--container <id> --project <container checkout> --state-file <host cursor file>`
-and `HERMES_HOME=<container home>`. It reads through the container's native Supercode process; the host
+and `HERMES_HOME=<container home>`. It reads through the container's native Volter Harness process; the host
 filters and publishes the stream, without copying SQLite files or mounting host credentials into the agent.
 
 Automated tests are banned: their accumulated code and maintenance become cruft that can prevent

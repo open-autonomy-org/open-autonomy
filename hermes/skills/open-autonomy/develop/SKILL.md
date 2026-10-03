@@ -21,7 +21,7 @@ is not done.
 
 1. Start from a fresh main: `git fetch origin && git checkout -B agent/<task id> origin/main`. If you already
    changed files, do this first and carry the changes over.
-2. Read `ROADMAP.md` and any newer landed changes to your outcome. If outside work or owner direction
+2. Read your card and any newer landed changes to your outcome. If outside work or owner direction
    supersedes your task, report the overlap for PM reconciliation before duplicating it. Read `CONSTITUTION.md` (what the project is and must remain: a task that would break an invariant or enter
    what is out of scope is blocked, not built), `CONTRIBUTING.md` (how code is written here) and `AGENTS.md`.
    Read the code an acceptance line touches before you write. Consult accepted architecture decisions in

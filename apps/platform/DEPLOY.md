@@ -2,7 +2,7 @@
 
 Deploys and admin operations happen through GitHub only, and only from the `prod` branch: the `production`
 environment admits `prod` and nothing else (never `main`), so the workflow that holds a secret is always one the
-owner shipped, never the one the agent last landed. `ship.yml` keeps one pull request open from `main` to `prod`; it
+owner shipped, never the one the agent last landed. The PM's `maintain.ts ship` keeps one pull request open from `main` to `prod`; it
 grows as `main` moves, so changes compound until the owner reads the whole diff and merges it (a merge commit, so
 `prod` never drifts from `main`). The `prod` ruleset allows no update but a merged pull request that the `owners`
 team (the owner) has approved, with no bypass: that approval is the owner's act, and the merge follows it. On the

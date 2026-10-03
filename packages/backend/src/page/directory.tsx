@@ -4,7 +4,8 @@ import type { DirectoryEntry } from '../ledger.js';
 import { usd } from '../ui.js';
 import { raw } from 'hono/html';
 import { Cover, Foot, Pill, TopBar, at, nameOf, ownerOf, runwayWords, safeUrl, standingOf, type Standing } from './parts.js';
-import { MARK_SVG, vortex } from './art.js';
+import { vortex } from './art.js';
+import { pageConfig } from './brand.js';
 import { openTo, type DirectorySlots, type Role } from './model.js';
 
 export interface DirectoryPageData { brand: string; viewer: Role; entries: DirectoryEntry[]; now: number; slots?: DirectorySlots; q?: string; sort?: string }
@@ -84,7 +85,7 @@ export function Directory(d: DirectoryPageData) {
             {d.slots?.front ?? <><p class="label">{d.brand}</p><h1>Projects that build themselves.</h1><p class="lede">{all.length === 1 ? 'One project builds itself here.' : `${all.length} projects build themselves here.`} Every session they work and every cent they spend is on their pages as it happens.</p></>}
             <Stripe entries={all} more={d.slots?.stripe} />
           </div>
-          <div class="pic">{raw(vortex(d.brand))}<span class="cap tr">Simple<br />rules<br />open<br />books</span>{raw(MARK_SVG)}<span class="cap br">Every call<br />metered<br />as it<br />happens</span></div>
+          <div class="pic">{raw(vortex(d.brand))}<span class="cap tr">Simple<br />rules<br />open<br />books</span><img class="mark" src={pageConfig().logo} alt="" /><span class="cap br">Every call<br />metered<br />as it<br />happens</span></div>
         </div>
         <div class="shelf" id="projects"><h2 class="sech" style="margin:0">Projects</h2><span class="label">{d.q ? `${projects.length} of ${all.length}` : `${all.length} ${all.length === 1 ? 'project' : 'projects'}`}</span></div>
         {all.length > 1 ? <form class="finder" method="get" action="/#projects" role="search">

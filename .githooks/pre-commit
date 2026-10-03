@@ -6,8 +6,23 @@ set -e
 root=$(git rev-parse --show-toplevel)
 kit="$root/packages/kit-hermes/package.json"
 record="$root/.open-autonomy/kit.json"
-[ -f "$kit" ] && [ -f "$record" ] || exit 0
+[ -f "$kit" ] || exit 0
 want=$(bun -e 'console.log(require(process.argv[1]).version)' "$kit" 2>/dev/null) || exit 0
+# A rendered project's start runs the keeper of the kit its host package pins (base/.open-autonomy/package.json), so
+# that pin is the kit's own version: a release that bumps one bumps the other here.
+host="$root/packages/kit-hermes/base/.open-autonomy/package.json"
+pinned=$(bun -e 'console.log(require(process.argv[1]).dependencies["create-open-autonomy"] ?? "")' "$host" 2>/dev/null) || pinned=$want
+if [ -n "$pinned" ] && [ "$pinned" != "$want" ]; then
+  # The pin alone: the same one-line change to the staged copy and to the working copy, so whatever else is unstaged
+  # in that file stays unstaged.
+  pin='const fs = require("fs"); const s = fs.readFileSync(0, "utf8"); process.stdout.write(s.replace(/("create-open-autonomy": ")[^"]*(")/, `$1${process.argv[1]}$2`));'
+  rel=packages/kit-hermes/base/.open-autonomy/package.json
+  staged=$(git show ":$rel" | bun -e "$pin" "$want" | git hash-object -w --stdin)
+  git update-index --cacheinfo "100644,$staged,$rel"
+  bun -e "$pin" "$want" < "$host" > "$host.pin" && mv "$host.pin" "$host"
+  echo "pre-commit: the host package's kit pin $pinned -> $want"
+fi
+[ -f "$record" ] || exit 0
 have=$(bun -e 'console.log(require(process.argv[1]).version)' "$record" 2>/dev/null) || exit 0
 [ "$want" = "$have" ] && exit 0
 bun -e '

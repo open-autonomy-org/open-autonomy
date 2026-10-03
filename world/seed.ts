@@ -81,21 +81,30 @@ console.log(`seed: ${ACCOUNT} funded, balance ${(await pub.get(`/v1/accounts/${E
 //    the project's bounds and previous model (the registry holds a few keys per account: these two are all it mints).
 const models = [...new Set([MODEL, ...CONFIG.models, PREVIOUS_MODEL])];
 const keyFile = resolve(SECRETS, 'agent.env');
-const alive = async (file: string): Promise<boolean> => { const k = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(existsSync(file) ? readFileSync(file, 'utf8') : '')?.[1]; return !!k && (await fetch(`${platform}/v1/accounts/${ENC}`, { headers: { authorization: `Bearer ${k}` } })).status === 200; };
+const alive = async (file: string): Promise<boolean> => { const k = /^OPEN_AUTONOMY_KEY=(.+)$/m.exec(existsSync(file) ? readFileSync(file, 'utf8') : '')?.[1]; return !!k && (await fetch(`${platform}/v1/keys`, { headers: { authorization: `Bearer ${k}` } })).status === 200; };
+// A retained boot may replace the cookbook snapshot on main. Reestablish its owner claim even
+// when the existing signed keys survive, so the next public mint/rotation proof still works.
+const challenge = await pub.get(`/v1/keys/challenge?account=${ENC}`);
+if (challenge.status !== 200) throw new Error(`platform: challenge → ${challenge.status} ${challenge.text.slice(0, 200)}`);
+writeFileSync(resolve(project, challenge.body.file), `${challenge.body.claim}\n`);
+await git(project, 'add', challenge.body.file);
+if ((await git(project, 'status', '--porcelain', '--', challenge.body.file)).trim()) await git(project, 'commit', '-q', '-m', 'claim');
+await git(project, 'push', '-q', '--no-thin', 'origin', 'HEAD:refs/heads/main');
 if (await alive(keyFile)) console.log('seed: the key already minted on this backend copy is kept');
 else {
-  const challenge = await pub.get(`/v1/keys/challenge?account=${ENC}`);
-  if (challenge.status !== 200) throw new Error(`platform: challenge → ${challenge.status} ${challenge.text.slice(0, 200)}`);
-  writeFileSync(resolve(project, challenge.body.file), `${challenge.body.claim}\n`);
-  await git(project, 'add', challenge.body.file);
-  if ((await git(project, 'status', '--porcelain', '--', challenge.body.file)).trim()) await git(project, 'commit', '-q', '-m', 'claim');
-  await git(project, 'push', '-q', '--no-thin', 'origin', 'HEAD:refs/heads/main');
   const key = await pub.post('/v1/keys/mint', { account: ACCOUNT, models });
   if (key.status !== 200 || !key.body?.token) throw new Error(`platform: mint key → ${key.status} ${key.text.slice(0, 300)}`);
   writeFileSync(keyFile, `OPEN_AUTONOMY_BASE_URL=${platform}/v1\nOPEN_AUTONOMY_KEY=${key.body.token}\n`);
   const payKey = await pub.post('/v1/keys/mint', { account: ACCOUNT, models, scopes: ['spend', 'narrate', 'pay'] });
   if (payKey.status === 200 && payKey.body?.token) writeFileSync(resolve(SECRETS, 'treasurer.env'), `OPEN_AUTONOMY_BASE_URL=${platform}/v1\nOPEN_AUTONOMY_KEY=${payKey.body.token}\n`);
   console.log(`seed: keys minted by claim file (models ${models.join(', ')}) → ${SECRETS}`);
+}
+
+// World chooses fresh endpoints on a retained boot; keep the generated synthetic keys but
+// refresh their base URL before the native valve reads them. Never print their contents.
+for (const file of [keyFile, resolve(SECRETS, 'treasurer.env')]) if (existsSync(file)) {
+  const previous = readFileSync(file, 'utf8');
+  writeFileSync(file, previous.replace(/^OPEN_AUTONOMY_BASE_URL=.*$/m, `OPEN_AUTONOMY_BASE_URL=${platform}/v1`));
 }
 
 // 4. The channels' twin credentials, for the stack: the GitHub twin as the community desk's door (the desk re-enters

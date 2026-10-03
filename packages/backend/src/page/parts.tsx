@@ -3,7 +3,7 @@
 import { raw } from 'hono/html';
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import type { EnvelopePurpose, ProjectView } from '../ledger.js';
-import { LOGO_SVG } from '../ui.js';
+import { pageConfig } from './brand.js';
 import { art, groundOf } from './art.js';
 
 export const nameOf = (account: string): string => account.split('/')[1] ?? account;
@@ -30,7 +30,7 @@ export function purposeSentence(account: string, purpose: EnvelopePurpose, roadm
 export function TopBar({ brand, nav, cta }: { brand: string; nav?: unknown; cta?: unknown }) {
   return (
     <div class="topbar"><div class="in">
-      <a href="/" class="brand">{raw(LOGO_SVG)}<span>{brand}</span></a>
+      <a href="/" class="brand"><img src={pageConfig().logo} alt="" /><span>{brand}</span></a>
       {nav ? <nav>{nav}</nav> : null}
       <span class="grow" />
       {cta}
@@ -80,7 +80,7 @@ export const firstLine = (s: string | undefined, max = 140): string => { const l
 // The foot of every page: the one sentence the books stand behind, on the lime band, then the brand and its doors.
 export const Foot = ({ brand, nav }: { brand: string; nav?: unknown }) => (
   <footer class="foot">
-    <div class="band"><span class="say">Every spend on these books is metered as it happens.</span><span class="rule" /><span class="say">{brand} shows; it does not steer.</span>{raw(LOGO_SVG.replace('<svg ', '<svg class="mark" '))}</div>
-    <div class="base"><a href="/" class="brand">{raw(LOGO_SVG)}<span>{brand}</span></a>{nav ? <nav>{nav}</nav> : null}</div>
+    <div class="band"><span class="say">Every spend on these books is metered as it happens.</span><span class="rule" /><span class="say">{brand} shows; it does not steer.</span><img class="mark" src={pageConfig().logo} alt="" /></div>
+    <div class="base"><a href="/" class="brand"><img src={pageConfig().logo} alt="" /><span>{brand}</span></a>{nav ? <nav>{nav}</nav> : null}</div>
   </footer>
 );

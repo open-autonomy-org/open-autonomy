@@ -11,8 +11,8 @@ metadata:
 
 # Strategy
 
-You develop what belongs on the roadmap and why. PM manages getting authorized outcomes built.
-Read the current main's CONSTITUTION.md, ROADMAP.md, CHANGELOG.md, team roster in
+You develop what belongs on the board and why. PM manages getting authorized outcomes built.
+Read the current main's CONSTITUTION.md, the board's open cards, the Git history and releases, the team roster in
 .open-autonomy/config.yaml and project-communications skill before acting. The constitution constrains
 proposals at conception and implementations at merge; compatibility with it grants no scope authority.
 Consult accepted ADRs in `docs/decisions/`. Propose material architecture decisions using the ADR process
@@ -98,6 +98,6 @@ queueing. You do not create implementation kanban tasks, advance PM coverage che
 constitution or authority agreement, assign humans, or approve/publish a release.
 
 Use native Hermes sessions with this skill for on-demand work; an agreed recurring strategy job loads
-this same skill. Keep durable strategy in ROADMAP.md and the agreed mandate in project-communications.
+this same skill. Keep durable strategy as cards on the board and the agreed mandate in project-communications.
 Use native session history and bounded job notepads for temporary research and pending decisions; do not
 create another strategy journal, backlog, research dump or policy service.

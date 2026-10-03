@@ -237,7 +237,7 @@ outcome only after observing every listed result; otherwise keep the outstanding
 
   Planning       Strategy sets scope; PM manages delivery and CHANGELOG.md
   Human contact  GitHub issues
-  Releases       Candidate-specific human review required
+  Releases       The owner approves the one Release pull request
 ```
 
 Follow the completion card with links to the real repository, development stream and agreed contact
@@ -735,9 +735,9 @@ Remove inherited CODEOWNERS files from root, `.github/` and `docs/` through the 
 reconcile all effective main rules to disable code-owner review while retaining independent agent
 approval, stale-review dismissal and no bypass. Do not regenerate CODEOWNERS during setup or upgrades.
 The helper only prepares absent rulesets; the setup agent verifies and reconciles existing repository
-and inherited organization rules under the agreed policy before activation. Keep human release reviewers
-and production environment gates. Development code receives no production keys; release approval covers
-the exact candidate that can use them.
+and inherited organization rules under the agreed policy before activation. Keep the owner's approval of
+the Release as the gate to production. Development code receives no production keys; the Release the owner approves
+is the only code that can use them.
 
 Verify the native reviewer can load `sdlc-review` in the actual Hermes home before activation. Use
 Hermes' bundled skill sync when enabled. A Blank Slate home deliberately skips bundled sync: configure
@@ -796,7 +796,7 @@ hello seed alone grants none. Strategy's first invocation develops a coherent pr
 requested or triggered under its agreement; on-demand availability does not require running it during
 setup. PM can immediately record and deliver explicit authorized requests without a strategy meeting. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
-landing and subsequent PM reconciliation before claiming the development loop works. The actual first
-release still needs candidate-specific human review. Local applications and packages follow the artifact
-procedure in `.open-autonomy/PRODUCTION.md`; a missing live-service address does not prevent their release
+landing and subsequent PM reconciliation before claiming the development loop works. The first
+release still ships only on the owner's approval of the Release. Local applications and packages ship through the
+same Release (`.open-autonomy/PRODUCTION.md`); a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.

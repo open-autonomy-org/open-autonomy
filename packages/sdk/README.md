@@ -7,7 +7,7 @@ agent comes through this wire and nothing through the platform reading a harness
 can be a project: the Hermes kit and the file roadmap are starters, not the shape. Everything
 here is one documented HTTP wire, shown raw below, so any language can do the same without this package.
 The Hermes kit vendors it into a generated repository under `.open-autonomy/sdk/`; the kit's own host tools (the
-valve that holds the key, the credential handoff, the Codex connection, the Supercode adapter) live beside it and are
+valve that holds the key, the credential handoff, the Codex connection, the Volter Harness adapter) live beside it and are
 documented in the kit's README.
 
 ```ts
@@ -130,7 +130,7 @@ the same way: `{ ok, status, error? }`, the platform's error code when refused, 
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
-The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Supercode's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
+The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Volter Harness's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
 
 Public reads, no key:
 
@@ -209,3 +209,50 @@ unknown fields, any scope but `owner`, `direction` and `release-review` (moderat
 and any other door. Import it from `@open-autonomy/sdk/seams` or
 the kit's vendored `.open-autonomy/sdk/seams.ts`. `create-open-autonomy check` also reports a seam whose scope no roster
 member holds.
+
+### Partner reservations
+
+A treasury-funded service can hold money until work closes through the account's **pay** key.
+The payer is the key's account; body fields cannot select another account. Enable
+`rails.partner.max_usd_cents` and list the service in `rails.partner.partners` in the owner's
+committed `.open-autonomy/config.yaml`. A default developer key cannot use these doors.
+
+| Door | Body | Result |
+|---|---|---|
+| `POST /v1/rails/partner/reservations` | `{ partner, key, reference, credits, usd_cents_per_credit, usd_cents, item? }` | hold funds without a charge |
+| `GET /v1/rails/partner/reservations/:partner/:key` | — | the current immutable receipt for this payer |
+| `POST /v1/rails/partner/reservations/:partner/:key/capture` | `{ credits, usd_cents }` | one bounded charge; release the unused remainder |
+| `POST /v1/rails/partner/reservations/:partner/:key/release` | `{}` | release the full hold without charging |
+
+Responses are `{ ok: true, reservation }`, or `{ ok: false, error, ...details }` with an HTTP
+refusal status. The reservation includes `account`, `partner`, `recipient` (the service id),
+`key`, `reference`, `request_id`, the original quote, `status` (`held`, `captured`, `released`),
+`created_at`, and, after close, `closed_at` and captured cents/credits when applicable, or
+`closed_by: "operator"` when the platform operator released an abandoned hold.
+`request_id` joins the captured receipt to the project's public calls.
+
+Credits, cents per credit and cents must be positive safe integers with an exact product:
+10 credits at 2 cents per credit holds 20 cents. Capture uses the frozen rate and can charge
+up to the held credits, once; 6 credits captures 12 cents and returns 8 cents to spendable funds.
+Use release for zero-cost closure or cancellation. Conversion is explicitly agreed at supplier
+enrollment; OA never assumes RH2's credit denomination. The work reference is required and
+retained on the public charge; optional `item` attributes it to a published roadmap item.
+
+The identity is `(account, partner, key)`; a caller key is 1–120 ASCII letters, digits, `.`, `_`,
+or `-`, starting with a letter or digit. Use a stable Task/posting identity, never a fresh key
+on retry. Identical creates or terminal replays return the existing receipt, including after
+restart. A different quote/capture for the same identity returns 409 `key_conflict`; the opposite
+terminal operation returns 409 `reservation_closed`. A GET with another account's key returns
+404. Lost responses are reconciled by GET and retrying the same operation. Holds have no timeout;
+UTC rollover, model reservation garbage collection, key rotation and worker restart retain them.
+A new pay key for the same account can finish or read old holds. Disabling the rail prevents new
+holds and still allows the payer to finish existing obligations. Outstanding holds continue to
+count against the balance, envelopes and owner spend limits. They count against the global daily
+capacity only on the UTC day they were made.
+
+RH2 owns enrollment, buyer close/cancel authority, and deciding whether funding is grants-only,
+prepaid or directly treasury-funded. Grants-only work never calls these doors; prepaid funding
+must never be billed a second time. A capture meters the named service's charge; it does not
+transfer funds to a seller or assert a seller payout. The older `POST /v1/rails/partner` remains
+immediate and unkeyed; RH2’s legacy supplier consume door is not an OA route. See
+[the lifecycle decision](../../docs/decisions/0016-partner-reservations.md).

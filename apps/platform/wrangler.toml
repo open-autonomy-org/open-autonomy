@@ -18,16 +18,18 @@ DEFAULT_FUNDING_ACCOUNT = "open-autonomy-org/open-autonomy"
 # GitHub Sponsors is one listing per org, so its money lands on the org's grants account and is given on from there.
 DEFAULT_SPONSOR_ACCOUNT = "open-autonomy-org/grants"
 
-# Monthly sponsorship accrual (credits active recurring sponsors; idempotent per month) and the docs sync.
+# Monthly sponsorship accrual (credits active recurring sponsors; idempotent per month) and the docs sync; every quarter
+# hour, each linked Workplace's alerts brought in step with the books (packages/backend/src/workplace.ts).
 [triggers]
-crons = ["0 6 1 * *"]
+crons = ["0 6 1 * *", "*/15 * * * *"]
 
 # One Durable Object: the books. The class name and binding are the deployed worker's, so the state carries
 # over. Secrets (never in this file): AGENT_PROXY_ADMIN_TOKEN, AGENT_PROXY_HMAC_SECRET, MODEL_GATEWAY_API_KEY,
 # GITHUB_SPONSORS_WEBHOOK_SECRET, GITHUB_TOKEN (with read:org for grants-pool admins), the giving page's GITHUB_OAUTH_CLIENT_ID,
 # GITHUB_OAUTH_CLIENT_SECRET and GIVE_SESSION_HMAC_SECRET, the Volter sign-in's VOLTER_ISSUER, VOLTER_CLIENT_ID and
 # VOLTER_CLIENT_SECRET (ADR 0011), and the money paths' POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET,
-# STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET. The money-path secrets are installed by admin.yml → sync-secrets.
+# STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and the Workplace app's WORKPLACE_CLIENT_SECRET (its WORKPLACE_URL, WORKPLACE_APP_ID and
+# WORKPLACE_CLIENT_ID are vars). The money-path secrets are installed by admin.yml → sync-secrets.
 # ISSUING_BILLING_ADDRESS_JSON, the
 # org's billing address for the cardholder, is a var set here once the org exists.
 [[durable_objects.bindings]]

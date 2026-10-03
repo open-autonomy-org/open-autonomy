@@ -28,5 +28,5 @@ the project's identity. Record unresolved provider fields in setup notes and ret
 setup complete. Later branding refinements update this bundle and the same integrations.
 
 This installation's icon is the coral open-loop mark the platform used to wear; the platform's pages now use
-the two-square mark of the Plotter Logic direction. The integrations keep this icon until it is changed here.
+the acorn, referenced from https://brand.volter.ai/logo/open-autonomy/svg. The integrations keep this icon until it is changed here.
 The first-pass blurb follows the project constitution.

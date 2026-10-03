@@ -1,4 +1,4 @@
-// The dashboard's data, and the SDK's records projected into Supercode's UI models: a session is a chat row and
+// The dashboard's data, and the SDK's records projected into Volter Harness's UI models: a session is a chat row and
 // a run, its turns a transcript, the roadmap a workflow board, the schedule a job list, the owner's control a
 // job's pause. Nothing is invented: a field the records do not carry stays empty, and a control the viewer may
 // not use is absent.
@@ -9,13 +9,14 @@ import type { Statement } from '@open-autonomy/sdk/statements';
 import { sees, type Role, type Visibility } from '../page/model.js';
 import { firstLine, type SessionTail, type Turn } from '../page/parts.js';
 import { fmtWhen } from '../ui.js';
-import { normalizeUiState, relativeAge, type SessionRowModel, type SupercodeUiState, type TranscriptEntryModel } from '@volter-ai-dev/supercode-ui/core';
-import type { JobModel, RunModel, TaskAttempt, WorkflowBoardModel, WorkflowTask } from '@volter-ai-dev/supercode-ui/supervision';
+import { normalizeUiState, relativeAge, type SessionRowModel, type SupercodeUiState, type TranscriptEntryModel } from '@volter/supercode-ui/core';
+import type { JobModel, RunModel, TaskAttempt, WorkflowBoardModel, WorkflowTask } from '@volter/supercode-ui/supervision';
 
 // `statements` is a page only under an id, reached from the rail's rows below the fixed pages (ADR 0012).
 export type DashPage = 'overview' | 'sessions' | 'board' | 'books' | 'agent' | 'team' | 'statements';
 export interface DashData {
   brand: string;
+  logo: string;
   viewer: Role;
   visibility: Visibility;
   v: ProjectView;

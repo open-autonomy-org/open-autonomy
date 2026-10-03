@@ -235,7 +235,7 @@ outcome only after observing every listed result; otherwise keep the outstanding
   [x] PM contacted you and read your reply on GitHub
   [x] First bounded task landed and PM reconciled it
 
-  Planning       Strategy sets scope; PM manages delivery and CHANGELOG.md
+  Planning       Strategy sets scope; PM manages delivery on the board
   Human contact  GitHub issues
   Releases       The owner approves the one Release pull request
 ```
@@ -797,6 +797,6 @@ requested or triggered under its agreement; on-demand availability does not requ
 setup. PM can immediately record and deliver explicit authorized requests without a strategy meeting. The historical kanban seed
 does not dispatch work on startup. Observe a bounded task through implementation, verification, review,
 landing and subsequent PM reconciliation before claiming the development loop works. The first
-release still ships only on the owner's approval of the Release. Local applications and packages follow the artifact
-procedure in `.open-autonomy/PRODUCTION.md`; a missing live-service address does not prevent their release
+release still ships only on the owner's approval of the Release. Local applications and packages ship through the
+same Release (`.open-autonomy/PRODUCTION.md`); a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.
