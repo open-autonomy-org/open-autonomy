@@ -8,7 +8,7 @@
         "@chat-adapter/state-memory": "4.39.0",
         "@volter/supercode": "0.5.94",
         "@volter/supercode-harness-sdk": "^0.3.45",
-        "@volter/supercode-orchestrator": "0.5.12",
+        "@volter/supercode-orchestrator": "0.5.33",
         "@volter/twin-discord": "^2.0.5",
         "@volter/twin-github": "^2.0.6",
         "@volter/twin-jira": "^2.0.5",
@@ -79,9 +79,9 @@
 
     "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.45", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-KWhY7ytjI/gXT7HhgJuATqESHNDswYFbUAniO/Xf0X8RISlNcz7JaAtk8Dx6YRtLvKESEVpsafVHK+7yhHIqgA=="],
 
-    "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.5.12", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.41", "@volter/teams": "0.2.7", "@volter/ztrack": "^2.4.23", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-unGbQ0ENK7YQQAqtLBZVxv2hRa2qeJjYGIoIM46UABmbFQanE2xl+s6/L40VfjHxoRwjs6qWOszeV3ep3EBijw=="],
+    "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.5.33", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.60", "@volter/teams": "0.2.13", "@volter/ztrack": "^2.4.23", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-7PmZfUQh8BQ21rKkgHEeo2pticUQpLTJ/ttXyEcC99gC81qoxZYG1Cm26bfBR8WvaY32xJj6cPVcW9kzQwDP0Q=="],
 
-    "@volter/teams": ["@volter/teams@0.2.7", "", { "dependencies": { "@volter/identity": "^0.4.1", "ws": "^8.21.0" } }, "sha512-xrICnhOyKdrNLTLORLNTnNtI4jlExRJPQDUCW/ERPEs04cEpn0L9jGqCIligYiJMxavCoWQjz2FOOrZefFpqAQ=="],
+    "@volter/teams": ["@volter/teams@0.2.13", "", { "dependencies": { "@volter/identity": "^0.4.1", "ws": "^8.21.0" } }, "sha512-0bM6kEaQ/rUlO20Sae3K7UETr3bSIsTXwLID4Juy+kKse3rL8puODhv+sZMXG5mZWLkAotyXFlmGuEDpQD+Xzg=="],
 
     "@volter/twin-discord": ["@volter/twin-discord@2.0.6", "", { "dependencies": { "@volter/world-ui": "0.1.6", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.6" }, "bin": { "world-discord": "dist/src/cli.js" } }, "sha512-8/6Ne2O/7FTNMS4h4tRxqPPWl/ERhOkPim2ZsFNIQTR73fMg8VW4Kwnpdo55OtuBPuMJVVz0i5bQ9lzNFM+HyQ=="],
 
@@ -296,6 +296,8 @@
     "@discordjs/ws/@discordjs/collection": ["@discordjs/collection@2.1.1", "", {}, "sha512-LiSusze9Tc7qF03sLCujF5iZp7K+vRNEDBZ86FT9aQAv3vxMLihUvKvpsCWiQ2DJq1tVckopKm1rxomgNUc9hg=="],
 
     "@discordjs/ws/discord-api-types": ["discord-api-types@0.38.55", "", {}, "sha512-ytuaRTzdnHUCXJ6KjL9MrItQX0xKncBKEeYI1Bst4+ud47eejH3cG6gaesYakjpPcUhh68XYS2YwGq3mmujFsA=="],
+
+    "@volter/supercode-orchestrator/@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.61", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-IDWUqdn3/Pd8hzW2LK78AH5vCI+nXU4VBgOVF+G61CbYHnAdNkCSLx1biaz+9c9WZYmCTyUtg71+PIcPSTo8ZQ=="],
 
     "@volter/world-runtime/@volter/world-core": ["@volter/world-core@2.0.5", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-HGuEyw5wdaqb2Q/2JvoAARftwzQmjMyy4i0UXe6sqYWjkYSiPAjGcKFTTaf2daDZaPZPXxbHBIOhvDw096TVig=="],
 
