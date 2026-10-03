@@ -19,6 +19,8 @@ export interface PartnerReceipt extends PartnerQuote {
   status: 'held' | 'captured' | 'released';
   created_at: string;
   closed_at?: string;
+  // Set when the operator, not the payer, released an abandoned hold.
+  closed_by?: 'operator';
   captured_usd_cents?: number;
   captured_credits?: number;
 }

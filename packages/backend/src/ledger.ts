@@ -429,6 +429,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
         try { return await this.partnerReservation(body); }
         catch (cause) { this.loaded = false; await this.load(); throw cause; }
       }));
+      case 'partner_operator_release': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.partnerOperatorRelease(body); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
@@ -720,6 +724,25 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const receipt: PartnerReceipt = { ...prior, status: capture ? 'captured' : 'released', closed_at: new Date().toISOString(), ...(capture ? { captured_usd_cents: payload.usd_cents as number, captured_credits: payload.credits as number } : {}) };
     if (capture) await this.consume(prior.request_id, payload.usd_cents as number, { request_id: prior.request_id, rail: 'partner', partner, unit: 'credit', quantity: payload.credits as number, usd_cents_per_credit: prior.usd_cents_per_credit, reservation_key: key, reference: prior.reference, item: prior.item, reserved_usd_cents: prior.usd_cents, actual_usd_cents: payload.usd_cents as number, outcome: 'ok' }, { [storageKey]: receipt });
     else await this.release(prior.request_id, { [storageKey]: receipt });
+    return { ok: true, reservation: receipt };
+  }
+
+  // The operator's release (through the reviewed admin workflow): ends a hold its payer abandoned, by the same identity,
+  // charging nothing. The receipt closes as `released` with `closed_by: 'operator'`, so the payer's own replay of
+  // release succeeds and a later capture is refused as closed.
+  private async partnerOperatorRelease(body: Record<string, unknown>): Promise<PartnerResult> {
+    const account = typeof body.account === 'string' ? body.account : '';
+    if (!account || !partnerId(body.partner) || !partnerKey(body.key)) return { ok: false, error: 'invalid_identity' };
+    const storageKey = partnerStorageKey(account, body.partner, body.key);
+    const prior = await this.ctx.storage.get<PartnerReceipt>(storageKey);
+    if (!prior) return { ok: false, error: 'not_found' };
+    if (prior.status === 'released') return { ok: true, reservation: prior };
+    if (prior.status !== 'held') return { ok: false, error: 'reservation_closed' };
+    const held = this.state.reservations[prior.request_id];
+    if (!held || held.account !== account || held.persistent !== 'partner') return { ok: false, error: 'reservation_missing' };
+    this.rolloverIfNeeded();
+    const receipt: PartnerReceipt = { ...prior, status: 'released', closed_at: new Date().toISOString(), closed_by: 'operator' };
+    await this.release(prior.request_id, { [storageKey]: receipt });
     return { ok: true, reservation: receipt };
   }
 
@@ -1541,6 +1564,11 @@ export class LimitLedger implements DurableObject, LedgerCore {
       consumed_usd_cents: this.state.consumed_usd_cents,
       reserved_usd_cents: this.state.reserved_usd_cents,
       reservations: Object.keys(this.state.reservations).length,
+      // Every outstanding partner hold, oldest first, by the identity the operator's release takes; `counts_on` is the day
+      // whose global rail it occupies ('' or an earlier day: none today).
+      held_usd_cents: Object.values(this.state.reservations).reduce((sum, r) => sum + (r.persistent === 'partner' ? r.amount : 0), 0),
+      holds: Object.entries(this.state.reservations).filter(([, r]) => r.persistent === 'partner').sort(([, a], [, b]) => a.created_ms - b.created_ms)
+        .map(([id, r]) => ({ request_id: id, account: r.account, ...(r.hold ?? {}), amount_usd_cents: r.amount, created_at: new Date(r.created_ms).toISOString(), counts_on: r.counts_on })),
       keys: Object.values(this.state.keys).map((k) => ({ kid: k.kid, account: k.account, exp: k.exp, revoked_at: k.revoked_at ?? null })),
       accounts: Object.fromEntries(Object.keys(this.state.accounts).map((id) => [id, { ...this.state.accounts[id], profile: undefined, balance_usd_cents: this.balanceOf(id) }])),
     };
@@ -1931,5 +1959,6 @@ export class LedgerClient {
   directory() { return this.call<{ ok: boolean; entries: DirectoryEntry[] }>('directory'); }
   project(account: string) { return this.call<ProjectView>('project', { account }); }
   status() { return this.call<unknown>('status'); }
+  partnerOperatorRelease(account: string, partner: string, key: string) { return this.call<PartnerResult>('partner_operator_release', { account, partner, key }); }
   resetDaily() { return this.call<{ ok: true; day_key: string; cleared_consumed_usd_cents: number; consumed_usd_cents: number; cleared_reserved_usd_cents: number; reserved_usd_cents: number }>('reset_daily'); }
 }
