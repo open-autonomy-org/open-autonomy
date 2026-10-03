@@ -81,6 +81,12 @@ function usedOver(a: Account | undefined, limit: SpendLimit, now = Date.now()): 
   }
   return sum;
 }
+// Where a limit's window begins: the oldest of the buckets usedOver reads.
+function windowStart(limit: SpendLimit, now = Date.now()): number {
+  const size = limit.window_seconds <= 3600 ? 60_000 : limit.window_seconds <= 86400 ? 3_600_000 : 86_400_000;
+  const n = Math.max(1, Math.round(limit.window_seconds * 1000 / size));
+  return now - (now % size) - (n - 1) * size;
+}
 const secondsToNextBucket = (limit: SpendLimit, now = Date.now()): number => { const size = limit.window_seconds <= 3600 ? 60_000 : limit.window_seconds <= 86400 ? 3_600_000 : 86_400_000; return Math.ceil((size - (now % size)) / 1000); };
 
 export interface SpendFreeze { at: string; by: string; reason?: string }
@@ -500,6 +506,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
     for (const r of Object.values(this.state.reservations)) if (r.account === id) total += r.amount;
     return total;
   }
+  // In flight against a spend limit's window: every transient reservation (it settles or expires within minutes), and a
+  // partner hold only in the windows that contain the moment it was made. A hold outlives its windows (ADR 0016); its
+  // money stays held against the balance (reservedFor), and its capture is the spend of the window it settles in.
+  private reservedWithin(id: string, since: number): number {
+    let total = 0;
+    for (const r of Object.values(this.state.reservations)) if (r.account === id && (r.persistent !== 'partner' || r.created_ms >= since)) total += r.amount;
+    return total;
+  }
   private reservedFrom(id: string, envelopeId: string): number {
     let total = 0;
     for (const r of Object.values(this.state.reservations)) if (r.account === id) for (const part of r.allocations) if (part.envelope_id === envelopeId) total += part.amount;
@@ -765,7 +779,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     for (const { holder, members: over, how } of holders) for (const limit of parseSpendLimits(this.acct(holder)?.profile?.config_yaml ?? '')) {
       if (limit.model && limit.model !== model) continue;
       const used = over.reduce((sum, id) => { const u = usedOver(this.acct(id), limit); return { u: sum.u + u.u, c: sum.c + u.c, t: sum.t + u.t }; }, { u: 0, c: 0, t: 0 });
-      const reserved = over.reduce((sum, id) => sum + this.reservedFor(id), 0);
+      const since = windowStart(limit);
+      const reserved = over.reduce((sum, id) => sum + this.reservedWithin(id, since), 0);
       // The caller holds one project's key: the org's total reaches it only as the pages would publish it.
       const shown = holder === account || this.booksOpen(over);
       const refusal = (kind: 'usd_cents' | 'calls' | 'tokens', bound: number, current: number) => ({ ok: false, error: kind === 'usd_cents' ? 'spend_limit_reached' : 'rate_limit_reached', account, ...(holder !== account ? { org: holder } : {}), limit: { window: limit.window, [kind]: bound, ...(limit.model ? { model: limit.model } : {}) }, ...(shown ? { used: { usd_cents: used.u, calls: used.c, tokens: used.t }, current } : {}), needed: kind === 'usd_cents' ? amount : kind === 'calls' ? 1 : estimatedTokens, retry_after_seconds: secondsToNextBucket(limit), how });
