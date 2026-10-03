@@ -140,25 +140,32 @@ if (command === 'ship') {
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   const main = git('rev-parse', 'origin/main');
   if (!runningRecord) throw new Error('the running stack predates managed restarts; restart it once with the current start script');
-  // The revision the stack runs, enrolled once: its mail agents declared and their sessions opened, the box maintainer on
-  // each online machine, the checkout in the workspace map (enroll.ts). The start renders the home and records the
-  // revision; enrolling is this pass's, never the keeper's. A failed enrollment is tried again on the next pass.
-  const enrolledFile = resolve(home, 'enrolled.json');
-  const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
-  if (runningRecord.revision && runningRecord.revision !== enrolled) {
-    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 900_000 });
-    if (enroll.exitCode === 0) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
-    else console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
-  }
+  // The move first: nothing about Teams decides or delays a deploy (D137). Enrolling comes after, and only on a pass that
+  // asked for no restart, since a revision about to be replaced is enrolled once the stack runs its successor.
   const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
   const moved = !!runningRecord.revision && runningRecord.revision !== main
     && git('diff', '--name-only', runningRecord.revision, main).split('\n').some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'));
-  if (running === landed && !moved) { console.log(`The stack already runs kit ${landed}${runningRecord.revision ? ` and main's ${content}/ and .open-autonomy/ as of ${runningRecord.revision.slice(0, 8)}` : ''}.`); process.exit(0); }
-  // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked changes
-  // are a killed attempt's work.
-  if (git('status', '--porcelain', '--untracked-files=no')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
-  writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed, revision: main }));
-  console.log(`${moved ? `Main moved to ${main.slice(0, 8)}` : `Kit ${landed} landed`}; the keeper will drain the runtime and restart the complete stack onto it.`);
+  if (running !== landed || moved) {
+    // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked changes
+    // are a killed attempt's work.
+    if (git('status', '--porcelain', '--untracked-files=no')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
+    writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed, revision: main }));
+    console.log(`${moved ? `Main moved to ${main.slice(0, 8)}` : `Kit ${landed} landed`}; the keeper will drain the runtime and restart the complete stack onto it.`);
+    process.exit(0);
+  }
+  console.log(`The stack already runs kit ${landed}${runningRecord.revision ? ` and main's ${content}/ and .open-autonomy/ as of ${runningRecord.revision.slice(0, 8)}` : ''}.`);
+  // The revision the stack runs, enrolled once: its mail agents declared and their sessions opened, the box maintainer on
+  // each online machine, the checkout in the workspace map (enroll.ts). The start renders the home and records the
+  // revision; enrolling is this pass's, never the keeper's. A failed or slow enrollment (Teams down) only delays the next
+  // enrollment, never a restart request, which this pass has already decided; the next pass tries again. Bounded at
+  // 120 s, enough for the declarations and opens over a healthy Teams, so a slow one cannot hold the next pass's move.
+  const enrolledFile = resolve(home, 'enrolled.json');
+  const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
+  if (runningRecord.revision && runningRecord.revision !== enrolled) {
+    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 120_000 });
+    if (enroll.exitCode === 0) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
+    else console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
+  }
 } else if (command === 'status' || command === 'upgrade') {
   const latest = run(['npm', 'view', 'create-open-autonomy', 'version']).trim();
   console.log(JSON.stringify({ installed, running, latest }));
