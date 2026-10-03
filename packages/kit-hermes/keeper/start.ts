@@ -499,13 +499,19 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
-// The orchestrator that serves this home is the one this install runs, named in the home (orchestrator.json: package,
-// version, entry) when it is put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the
-// connector's board follower, the board door) runs it, never the orchestrator the machine has installed globally.
+// The orchestrator that serves this home, and the supercode it drives, are the ones this install runs, named in the home
+// (orchestrator.json) when they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell,
+// the connector's board follower, the board door) runs that orchestrator driving that supercode, never what the machine
+// has installed globally.
 {
-  let version: string | null = null;
-  try { version = JSON.parse(readFileSync(resolve(dirname(orchestratorBin), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
-  writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version, entry: existsSync(orchestratorBin) ? realpathSync(orchestratorBin) : orchestratorBin })}\n`);
+  const named = (bin: string) => {
+    const entry = existsSync(bin) ? realpathSync(bin) : bin;
+    let version: string | null = null;
+    try { version = JSON.parse(readFileSync(resolve(dirname(entry), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
+    return { entry, version };
+  };
+  const orchestrator = named(orchestratorBin);
+  writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
 }
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
