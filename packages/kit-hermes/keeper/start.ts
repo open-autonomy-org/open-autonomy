@@ -518,7 +518,7 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
 // main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one the
 // home's workflow.yaml names. Made here, from the repository, before any dispatcher or reporter opens the board, so a
 // new machine needs no step by hand. A board already there is kept: the same one again changes nothing, and one the home
-// keeps on another backing or document is left as it is and said, once per start.
+// keeps on another backing or document is left as it is, the install runs on it, and why is said once.
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
   const checkout = resolve(home, '..', 'board');
@@ -530,16 +530,33 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
     say(ready ? `board: cloned ${from} on main → ${checkout}` : `board: cannot make the board's checkout ${checkout} (${from ? clone?.stderr.trim().split('\n').at(-1) : `${project} names no origin`}); its board is not set up this start`);
   }
   if (ready) {
-    // The document by its real path, as git names the checkout's files: a path through a symlink names a file outside it.
-    const document = resolve(realpathSync(checkout), boardSetup.document);
     const archive = boardSetup.archive ?? {};
-    const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, '--backing', 'ztrack', '--document', document, '--commit', '--json',
+    // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
+    // of this install's own mail agents (agent.json); else init takes the workflow's one manager, or asks which.
+    const managers = [(Bun.YAML.parse(readFileSync(resolve(home, 'workflow.yaml'), 'utf8')) as { params?: { managers?: unknown } } | null)?.params?.managers ?? []].flat().filter((m): m is string => typeof m === 'string');
+    const ours = managers.filter((m) => Object.keys(agentSetup.agents ?? {}).some((name) => m.endsWith(`:agent:${name}`)));
+    const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, '--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit', '--json',
+      ...(ours.length === 1 ? ['--manager', ours[0]] : []),
       ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])]),
       cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
-    let answer: { kept?: boolean } | undefined;
+    let answer: { kept?: boolean; path?: string } | undefined;
     try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
-    if (init.exitCode === 0 && answer) say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing, document ${document}`);
-    else say(`board: not set up as the repository declares, and left as it is: ${init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`}`);
+    // A board the home keeps otherwise is left as it is and the install runs on it; why is said once, kept in the home,
+    // and said again only when it changes.
+    const refused = resolve(home, 'board-setup.json');
+    if (init.exitCode === 0 && answer) {
+      rmSync(refused, { force: true });
+      say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing (${answer.path ?? home})`);
+    } else {
+      const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
+      let said: string | undefined;
+      try { said = JSON.parse(readFileSync(refused, 'utf8')).why; } catch { /* not said yet */ }
+      if (said !== why) {
+        say(`board: not set up as the repository declares; the board this home keeps is left as it is and runs: ${why}`);
+        writeFileSync(refused, `${JSON.stringify({ why, at: new Date().toISOString() })}\n`);
+        own(refused);
+      }
+    }
   }
 }
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
