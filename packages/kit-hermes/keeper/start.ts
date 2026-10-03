@@ -43,7 +43,7 @@
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -499,6 +499,14 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
+// The orchestrator that serves this home is the one this install runs, named in the home (orchestrator.json: package,
+// version, entry) when it is put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the
+// connector's board follower, the board door) runs it, never the orchestrator the machine has installed globally.
+{
+  let version: string | null = null;
+  try { version = JSON.parse(readFileSync(resolve(dirname(orchestratorBin), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
+  writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version, entry: existsSync(orchestratorBin) ? realpathSync(orchestratorBin) : orchestratorBin })}\n`);
+}
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
