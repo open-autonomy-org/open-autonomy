@@ -50,7 +50,10 @@ for?".
     manager's) and `box-maintainer` (the hourly pass a job; one instance per machine);
   - `workflow.yaml`, the board IR: one board for the organization, one review per arc started by the dispatcher, a
     review naming its reviewer profile, drafts blocked by a message.
-- **The start runs the whole install, and nothing else does.** For a project whose agent content is `home/`, the start
+- **The start runs the install's processes, and nothing else does.** The keeper is the kit package's
+  (`create-open-autonomy`'s `keeper/start.ts`), which the project's `.open-autonomy/start.ts` imports from the installed
+  package rather than carrying a copy; it starts, keeps and stops processes, and restarts the stack when
+  `maintain.ts restart` asks (D138 step 8), never fetching main to decide that itself. For a project whose agent content is `home/`, the start
   copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
   services, stopped and restarted with the rest. That serve is the board's only dispatcher: the start runs the
@@ -73,14 +76,17 @@ for?".
   record's choice: a project's own install keeps its key where the fleet reads it, and RFC 0021 decision 2 has the new
   install publish for a project only once that install is retired, so placing the key here is the takeover.)*
 
-- **The start declares the install's mail agents** (Supercode ADR 0008; RFC 0020 decisions 3, 17, 24 and 25).
+- **The install declares its mail agents, and the keeper does not** (Supercode ADR 0008; RFC 0020 decisions 3, 17,
+  24 and 25; Volter's decision record D138 step 8: the keeper only starts and stops processes).
   `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
-  or `codex`), its idle time and whether it is the owner's account manager. On every start, the start runs `supercode
-  agent declare <name> --open <program>`, which opens the main session once in a pane on this machine (headful) and
-  keeps it across starts. An agent with `every_machine` (the box maintainer, RFC 0022 decision 7) also has one instance on
-  each other machine enrolled in the install's Teams context: the start opens it there once by its launch key
-  (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares itself the machine's agent of
-  that name, so the machine's own mail (its probe's alarms) reaches only it. *(The launch key as the "exactly one" and
+  or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by whoever
+  moves the install onto a new revision once the start has rendered the home, runs `supercode agent declare <name>
+  --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
+  registers the checkout in this machine's workspace map. An agent with `every_machine` (the box maintainer, RFC 0022
+  decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it
+  there once by its launch key (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares
+  itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts
+  are Teams' and the machine daemon's to own (D137; D138 step 5), and enroll.ts goes when they do. *(The launch key as the "exactly one" and
   the session's self-declaration are this record's choices; the profile folder must exist at the same path there.)* An
   agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
   agent-channel`, a service of the start that restarts like the reporter, reaching RH2 with `<secrets>/rh2.env`. The
