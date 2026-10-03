@@ -38,7 +38,7 @@ export async function mintCard(req: Request, env: Env, claims: KeyClaims): Promi
     await ledger.setCardholder(claims.account, cardholder);
   }
   const card = await stripe<{ id?: string; last4?: string; exp_month?: number; exp_year?: number; number?: string; cvc?: string }>(env, 'POST', '/v1/issuing/cards', {
-    cardholder, currency: 'usd', type: 'virtual',
+    cardholder, currency: 'usd', type: 'virtual', status: 'active',
     spending_controls: { spending_limits: [{ amount: body.usd_cents, interval: 'per_authorization' }], ...(rails.card.categories.length ? { allowed_categories: rails.card.categories } : {}) },
     metadata: { account: claims.account, request_id: requestId, purpose: (body.purpose ?? '').slice(0, 200) },
   });
