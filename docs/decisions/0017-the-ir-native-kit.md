@@ -60,13 +60,9 @@ for?".
   not a daemon of its own. For a project whose agent content is `home/`, the start
   copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
-  services, stopped and restarted with the rest. That serve is the board's only dispatcher: the start runs the
-  orchestrator with `SUPERCODE_BOARD_DISPATCHER=serve`, so the orchestrator runs no dispatch round and no board event
-  relay. This needs `@volter/supercode-orchestrator` 0.5.33 or later (the kit pins 0.5.33). An older orchestrator
-  ignores the variable and dispatches beside the serve. The orchestrator still delivers chat-platform subscriptions
-  when the workflow's `notify.chat` names kinds and it hosts channel adapters. It sends them in a sweep every
-  `dispatch.tick` seconds, so a notice can wait up to `dispatch.tick` (before, it went out after each round). No
-  lock is involved. *(Running the dispatcher from the start is this record's reading of
+  services, stopped and restarted with the rest. That serve is the board's only dispatcher: the orchestrator runs no
+  dispatch round (supercode D138 step 7), and a second round beside it is harmless. Chat-platform subscriptions are
+  told by the agent mailbox (supercode D140). No lock is involved. *(Running the dispatcher from the start is this record's reading of
   RFC 0021's "started only through its own start".)*
 - **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
   `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and
