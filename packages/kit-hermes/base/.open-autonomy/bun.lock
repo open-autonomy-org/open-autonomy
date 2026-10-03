@@ -7,7 +7,7 @@
         "@chat-adapter/discord": "4.39.0",
         "@chat-adapter/state-memory": "4.39.0",
         "@volter/supercode": "0.5.127",
-        "@volter/supercode-harness-sdk": "^0.3.45",
+        "@volter/supercode-harness-sdk": "^0.3.61",
         "@volter/supercode-orchestrator": "0.5.33",
         "@volter/twin-discord": "^2.0.5",
         "@volter/twin-github": "^2.0.6",
@@ -77,7 +77,7 @@
 
     "@volter/supercode-cli-win32-x64": ["@volter/supercode-cli-win32-x64@0.5.127", "", { "os": "win32", "cpu": "x64" }, "sha512-k7Pfok3iL0wbnpN7BmQOMt92ADKzIRsYKsaZmSycbZ8u0NBtYSNY6mQtlE6u/ndRWdfh9356FpPTUxrvYe2Myg=="],
 
-    "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.55", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-kf3dwV9Ofo/UT8lvSTkLPc67A5OCvdqlC9/qwFqRK0JT2J4/yEg7+BpxQxjHN3xBEMbSjLS5xDJRRsKBMbiRiQ=="],
+    "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.61", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-IDWUqdn3/Pd8hzW2LK78AH5vCI+nXU4VBgOVF+G61CbYHnAdNkCSLx1biaz+9c9WZYmCTyUtg71+PIcPSTo8ZQ=="],
 
     "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.5.33", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.60", "@volter/teams": "0.2.13", "@volter/ztrack": "^2.4.23", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-7PmZfUQh8BQ21rKkgHEeo2pticUQpLTJ/ttXyEcC99gC81qoxZYG1Cm26bfBR8WvaY32xJj6cPVcW9kzQwDP0Q=="],
 
@@ -298,8 +298,6 @@
     "@discordjs/ws/@discordjs/collection": ["@discordjs/collection@2.1.1", "", {}, "sha512-LiSusze9Tc7qF03sLCujF5iZp7K+vRNEDBZ86FT9aQAv3vxMLihUvKvpsCWiQ2DJq1tVckopKm1rxomgNUc9hg=="],
 
     "@discordjs/ws/discord-api-types": ["discord-api-types@0.38.56", "", {}, "sha512-Hti4RZsGvF5C7SM8rF2MDHtIm0Hyfrlk84GpEA29nj91tvVVMvX+oQSCodu10t2ZcjFGofq8TX0YyC04B2E69Q=="],
-
-    "@volter/supercode-orchestrator/@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.61", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-IDWUqdn3/Pd8hzW2LK78AH5vCI+nXU4VBgOVF+G61CbYHnAdNkCSLx1biaz+9c9WZYmCTyUtg71+PIcPSTo8ZQ=="],
 
     "@volter/ztrack/zod": ["zod@4.4.2", "", {}, "sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw=="],
 
