@@ -514,13 +514,11 @@ for (const p of projectReporters) {
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
-// (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). Where this
-// start runs the board's dispatcher, the orchestrator is told so (SUPERCODE_BOARD_DISPATCHER=serve) and runs no round
-// of its own: one dispatcher per board by what is started, with no lock (supercode's orchestrator §2.9). It still tells
-// chat-platform subscribers through its channel adapters, which the dispatcher does not host.
+// (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). The board's one
+// dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, ...(boardDeclared ? { SUPERCODE_BOARD_DISPATCHER: 'serve' } : {}) } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // The home's declared agents (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md §2.10),
 // rendered from the setup like the rest of the home, so an export names each one it folds into its profile. Declaring
