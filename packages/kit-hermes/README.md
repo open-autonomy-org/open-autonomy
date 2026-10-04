@@ -85,6 +85,12 @@ the keeper applies that lane's profiles and starts its external board dispatcher
 also supplies [.open-autonomy/usage.ts](skews/company/.open-autonomy/usage.ts) for the owner's usage statement. See the
 [company template](skews/company/README.md) and its decisions for lane behavior.
 
+For example, OA owns the reusable `company` skew; a Volter company install is an owner-operated
+organization instance of it, with Volter's agents, lanes, policies and project assignments. Supercode
+owns its native IR and orchestration. OA adapters can publish each project's projections to its selected
+backend; RH2 owns Workplace when the owner selects that integration. These connections are choices of
+the instance, rather than Volter-specific behavior in OA's core.
+
 Both layouts use the same creator and recorded lineage. Native homes retain execution state; the
 publisher sends OA projections through the SDK. A published view is not a lossless native home backup.
 
