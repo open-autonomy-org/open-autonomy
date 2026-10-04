@@ -14,7 +14,7 @@ only its own skew:
 | `self-build` (the default) | executes through the project's own fleet: kanban, seats, develop and review lanes, strategy, the community desk; an hourly scrum |
 | `manage-project` | keeps the plan and the record for a project people build; reconciles what landed against what was asked, names what is stalled, asks people, proposes releases; one scrum a day; no board, no dispatch |
 | `manage-organization` | an organization whose executors are its projects: gathers every project daily, posts the memo with the agenda in the organization's channel, records the meeting's outcomes, files each outcome down as a request in the project's intake; one cycle a day |
-| `company` (kit `ir`) | a company's one install (ADR 0017): `home/` in Supercode's native folder, the organization's layer at its root and a profile per job (account manager, manager, coders, reviewer, auditor, box maintainer), one board for the organization's work, cards tagged by project |
+| `company` (kit `ir`) | a company's one install (ADR 0017): `home/` in Supercode's native folder, the organization's layer at its root and a profile per job (account manager, manager, coders, reviewer, auditor, box maintainer), one board for the organization's work, cards tagged by project; its records register in the organization's record repository (`create-open-autonomy records init`, [ADR 0022](../../docs/decisions/0022-the-records-register.md)) |
 | `soc2` | self-build's PM, with the SOC 2 layer laid over self-build ([ADR 0008](../../docs/decisions/0008-human-seams.md)): the seams declared in `config.yaml`, release approval by gate rather than reply, a records folder for people's acts ([`skews/soc2/records/`](skews/soc2/records/README.md)) and [`skews/soc2/COMPLIANCE.md`](skews/soc2/COMPLIANCE.md) for the Evidence Desk program |
 
 ```bash
@@ -146,7 +146,8 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
 `.open-autonomy/`, run with Bun from the checkout:
 
 - **The valve** (`.open-autonomy/valve.ts`) holds the project's key: `--key <file>:<port>`, one port per key file
-  (the developer's on 8787, the treasurer's on 8788), each file re-read when it changes so a rotated key needs no
+  (the developer's on 8787, the treasurer's on 8788 with `--caller`, served in container mode to the treasurer's own
+  executor alone and in a bare start only for a rehearsal: the pay boundary, docs/decisions/0021), each file re-read when it changes so a rotated key needs no
   restart, `/healthz` naming the key's expiry. The agent is pointed at the valve with the literal word `valve` as its
   key and never sees the credential. It forwards the model routes, the narration route (`/v1/agent/events`), the
   rails and public reads of the account, and refuses the rest. `--codex <port>` forwards the host's current Codex
