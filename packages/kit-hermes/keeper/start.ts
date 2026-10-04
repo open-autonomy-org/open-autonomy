@@ -517,74 +517,51 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
 // document at the repository's root, in the board's own checkout beside the home (a clone of the project's origin, on
 // main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one this
 // install declares. Made here, from the repository, before any dispatcher or reporter opens the board, so a new machine
-// needs no step by hand. What is declared, and whether it is made, is recorded in <home>/board-setup.json, which the
-// orchestrator reads: until the declared board is made it makes no board of another kind on this home (a failed first
-// clone must not leave an install on SQLite for good), and every start that cannot make it says what it waits for. A
-// board already there is kept: the same one again changes nothing; one the home keeps on another backing or document is
-// left as it is, the install runs on it, and why is said once.
+// needs no step by hand; the same board again changes nothing. A start that cannot make it stops and says why, as it
+// does when it cannot fetch the project: nothing serves a home whose board is not the one its repository declares, so
+// nothing makes another in its place. A home that keeps its board on SQLite is brought over by the one command the stop
+// names (workflow migrate), its cards with their titles and states.
+const stopStart = (why: string): never => {
+  console.error(`start: ${why}; startup stopped`);
+  ending = true;
+  for (const c of children) c.proc.kill();
+  process.exit(1);
+};
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
-  const record = resolve(home, 'board-setup.json');
-  let previous: { declared?: unknown; made?: boolean; waiting?: string; refused?: string } = {};
-  try { previous = JSON.parse(readFileSync(record, 'utf8')); } catch { /* none yet */ }
-  const declared = { backing: 'ztrack', document: boardSetup.document };
-  // Written only when what it says changes, so a start that changes nothing leaves it as it was.
-  const note = (state: { made: boolean; waiting?: string; refused?: string }) => {
-    const was = previous as { declared?: unknown; made?: boolean; waiting?: string; refused?: string };
-    if (JSON.stringify(was.declared) === JSON.stringify(declared) && was.made === state.made && was.waiting === state.waiting && was.refused === state.refused) return;
-    writeFileSync(record, `${JSON.stringify({ declared, ...state, at: new Date().toISOString() })}\n`);
-    own(record);
-  };
   const checkout = resolve(home, '..', 'board');
-  let waiting: string | undefined;
   if (!existsSync(resolve(checkout, '.git'))) {
     // The origin as the project configures it (`get-url` would hand over an insteadOf rewrite's target instead).
     const from = Bun.spawnSync({ cmd: drop(['git', 'config', '--get', 'remote.origin.url']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+    if (!from) stopStart(`the board's checkout ${checkout} cannot be made: ${project} names no origin`);
     // Something already at the checkout's path that is not a checkout is never this start's to remove.
-    const occupied = existsSync(checkout);
-    const clone = from && !occupied ? await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 }) : undefined;
-    if (clone?.exitCode === 0) say(`board: cloned ${from} on main → ${checkout}`);
-    else if (occupied) waiting = `${checkout} is there and is not a checkout of ${from || 'the project'}; it is left as it is`;
-    else {
+    if (existsSync(checkout)) stopStart(`the board's checkout ${checkout} cannot be made: ${checkout} is there and is not a checkout of ${from}`);
+    const clone = await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 });
+    if (clone.exitCode !== 0) {
       rmSync(checkout, { recursive: true, force: true }); // what this start's own clone left
-      waiting = `its checkout ${checkout} cannot be made (${from ? clone?.stderr.trim().split('\n').at(-1) || `the clone ran past its bound` : `${project} names no origin`})`;
+      stopStart(`the board's checkout ${checkout} cannot be made: ${clone.stderr.trim().split('\n').at(-1) || 'the clone ran past its bound'}`);
     }
+    say(`board: cloned ${from} on main → ${checkout}`);
   }
-  if (waiting) {
-    // Recorded before anything else opens the home, so no verb or round makes another board in its place.
-    if (!previous.made) note({ made: false, waiting });
-    say(`board: the repository's board is not made this start and nothing makes another in its place; it waits: ${waiting}`);
-  } else {
-    if (!previous.made && !previous.refused) note({ made: false, waiting: 'the start is making it' });
-    const archive = boardSetup.archive ?? {};
-    // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
-    // of this install's own mail agents (agent.json); else init takes the workflow's one manager, or asks which.
-    const managers = [(Bun.YAML.parse(readFileSync(resolve(home, 'workflow.yaml'), 'utf8')) as { params?: { managers?: unknown } } | null)?.params?.managers ?? []].flat().filter((m): m is string => typeof m === 'string');
-    const ours = managers.filter((m) => Object.keys(agentSetup.agents ?? {}).some((name) => m.endsWith(`:agent:${name}`)));
-    const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, '--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit', '--json',
-      ...(ours.length === 1 ? ['--manager', ours[0]] : []),
-      ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])]),
-      cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
-    let answer: { kept?: boolean; path?: string } | undefined;
-    try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
-    if (init.exitCode === 0 && answer) {
-      note({ made: true });
-      say(`board: ${answer.kept ? 'kept' : 'made'} on the ztrack backing (${answer.path ?? home})`);
-    } else {
-      const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
-      // A board the home already keeps otherwise (init names it: 'is kept by', 'is kept on') is the one it runs on: the
-      // declared one is not made (made: false), and with a board there the orchestrator makes none in its place anyway;
-      // why is said once, and again only when it changes. Any other refusal (a workflow naming several managers) leaves
-      // the declared board waiting, said on every start.
-      if (/ is kept (by|on) /.test(why)) {
-        note({ made: false, refused: why });
-        if (previous.refused !== why) say(`board: not set up as the repository declares; the board this home keeps is left as it is and runs: ${why}`);
-      } else {
-        if (!previous.made) note({ made: false, waiting: why });
-        say(`board: the repository's board is not made this start and nothing makes another in its place; it waits: ${why}`);
-      }
-    }
+  const archive = boardSetup.archive ?? {};
+  // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
+  // of this install's own mail agents (agent.json); else the workflow's one manager, or the orchestrator asks which.
+  const managers = [(Bun.YAML.parse(readFileSync(resolve(home, 'workflow.yaml'), 'utf8')) as { params?: { managers?: unknown } } | null)?.params?.managers ?? []].flat().filter((m): m is string => typeof m === 'string');
+  const ours = managers.filter((m) => Object.keys(agentSetup.agents ?? {}).some((name) => m.endsWith(`:agent:${name}`)));
+  const declares = ['--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit',
+    ...(ours.length === 1 ? ['--manager', ours[0]] : []),
+    ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])];
+  const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
+    cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  let answer: { kept?: boolean; path?: string } | undefined;
+  try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
+  if (init.exitCode !== 0 || !answer) {
+    const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
+    const quote = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`);
+    if (/ is kept by the sqlite backing/.test(why)) stopStart(`the board ${home} keeps on SQLite is not the one its repository declares (${boardSetup.document}, ztrack); bring it over with: supercode workflow migrate --root ${quote(home)} ${declares.map(quote).join(' ')}`);
+    stopStart(`the board its repository declares cannot be made: ${why}`);
   }
+  say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
 }
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
