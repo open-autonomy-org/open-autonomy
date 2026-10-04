@@ -79,6 +79,10 @@ integration still require their independent review and World evidence.
 Current apps also create RH2 Task, agent-principal and books-snapshot records, beyond embedded views. Whether
 the target keeps Task mirrors or displays native tasks directly remains unresolved; this map selects neither.
 
+Agent/session binding requires native attribution. [Supercode ADR 0013](https://github.com/volter-ai/supercode/blob/main/docs/adr/0013-agents-own-identity-sessions-and-memory.md)
+records that Hermes's current own loop records no launch agent, so its sessions remain unbound. OA publication
+or a Workplace Room does not establish that attribution or imply a main-session binding.
+
 Source namespaces are not yet preserved everywhere. OA's [native event cache](../packages/kit-hermes/base/.open-autonomy/source-events.ts)
 uses `board:card.id`, while its [published item adapter](../packages/kit-hermes/base/.open-autonomy/publisher.ts)
 still uses the raw card ID. RH2's [Cards → Tasks map](https://github.com/volter-ai/runhuman-2/blob/main/bots/cards-tasks/main.mjs)
