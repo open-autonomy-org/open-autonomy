@@ -42,8 +42,11 @@ or seller payout. Live session/resource access is enforced by the owning service
 
 Read-only rendering, explicit control requests and delegation of team authority are separate capabilities.
 Rendering alone grants neither control nor roster authority. The full consented link in ADR 0018 currently
-includes books controls and adoption of the linked team roster. Native execution and OA treasury semantics
-do not depend on the visualizer being available; its loss impairs the integration's views and requests.
+includes books controls and adoption of the linked team roster. Without authorized user interaction, connecting
+Workplace leaves native schedules, execution and OA publication, funding and spending rules unchanged.
+Viewers, access checks, bindings and mirrors present existing state or mediate access; they grant no new
+autonomous work authority. Explicit controls use the existing contracts. Visualizer availability does not
+change native execution or treasury semantics; its loss impairs the integration's views and requests.
 
 The current OA integration accepts only Workplace `freeze`/`unfreeze` books controls naming the linked
 project. A freeze refuses new spending reservations on the account's rails; it does not pause native work.
@@ -76,8 +79,8 @@ failed sync and requires relinking. Local unlink removes OA's association; the R
 the app there. Registered app IDs in source do not prove a released deployment or synced service credentials.
 RH2's three native mapping apps are implemented in source; reliable replay and actual Teams/RH2/native
 integration still require their independent review and World evidence.
-Current apps also create RH2 Task, agent-principal and books-snapshot records, beyond embedded views. Whether
-the target keeps Task mirrors or displays native tasks directly remains unresolved; this map selects neither.
+Current apps also create RH2 Task, agent-principal and books-snapshot projections, beyond embedded views;
+these copies do not acquire native execution or treasury authority.
 
 Agent/session binding requires native attribution. [Supercode ADR 0013](https://github.com/volter-ai/supercode/blob/main/docs/adr/0013-agents-own-identity-sessions-and-memory.md)
 records that Hermes's current own loop records no launch agent, so its sessions remain unbound. OA publication
