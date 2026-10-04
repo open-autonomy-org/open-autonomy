@@ -9,7 +9,8 @@
 // The register is Markdown: the register file and its volumes under the register directory (records.json). An entry is a
 // table row whose first cell names its path in backticks. A volume named `<owner>--<repo>.md` holds one repository's
 // entries, by path inside that repository; any other volume holds entries by absolute path (`~/` for the home), for
-// records outside a repository. An entry whose path ends in `/` is a series: it registers every file under that folder.
+// records outside a repository. An entry naming a folder (with or without a final `/`) is a series: it registers every
+// file under that folder.
 // An entry with a field still `TBD` is a stub, which the check writes for the writer to complete and does not accept.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -64,7 +65,7 @@ function entries(registerRoot) {
 }
 
 function covered(list, repository, path) {
-  return list.find((entry) => entry.repository === repository && (entry.path === path || (entry.path.endsWith('/') && path.startsWith(entry.path))));
+  return list.find((entry) => entry.repository === repository && (entry.path === path || path.startsWith(`${entry.path.replace(/\/+$/, '')}/`)));
 }
 
 const repositoryOf = (dir) => {

@@ -29,8 +29,8 @@ had none of it.
    repository's volume and stages it, and refuses until the writer completes it. Where the repository already has a
    pre-commit, init puts the check first in it.
 4. **Entries are Markdown table rows** whose first cell is the path in backticks, in one volume per repository
-   (`<owner>--<repo>.md`, paths inside the repository) or in a volume of absolute paths for records outside one. A path
-   ending in `/` is a series and registers every file under it (a log folder, an evidence folder, a mailbox). This is
+   (`<owner>--<repo>.md`, paths inside the repository) or in a volume of absolute paths for records outside one. An entry
+   naming a folder is a series and registers every file under it (a log folder, an evidence folder, a mailbox). This is
    the shape Volter's register already has, so it is checked as it stands.
 5. **The auditor counts what is unregistered every round.** `create-open-autonomy records estate <record repository>`
    walks the roots `records.json` declares (every repository checkout, home and state directory of the install). For

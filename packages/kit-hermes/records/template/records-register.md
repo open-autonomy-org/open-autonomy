@@ -20,8 +20,8 @@ and which roots make up the estate the auditor counts. Both are written by `crea
 
 Entries are table rows whose first cell names the path in backticks. `records-register/<owner>--<repo>.md` holds one
 repository's entries by their path inside it; any other volume (for example `records-register/operations.md`) holds
-records outside a repository by absolute path, `~/` for the home. An entry whose path ends in `/` is a series and
-registers every file under that folder (a log directory, an evidence folder, a mailbox). One original per path: a
+records outside a repository by absolute path, `~/` for the home. An entry naming a folder is a series and registers
+every file under that folder (a log directory, an evidence folder, a mailbox). One original per path: a
 checkout, worktree, export or hosted view is a copy of it, never a second original.
 
 | Asset / original path | Purpose | Owner | Writers | Copies | Format | Classification | Access | Retention | Depends on / replaces | Evidence |
