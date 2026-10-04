@@ -92,8 +92,9 @@ still uses the raw card ID. RH2's [Cards → Tasks map](https://github.com/volte
 uses a source-qualified card ID, but the [Room keys](https://github.com/volter-ai/runhuman-2/blob/main/bots/arcs-rooms/main.mjs)
 and [agent/Room associations](https://github.com/volter-ai/runhuman-2/blob/main/bots/agents-rooms/main.mjs) derive
 normalized, truncated keys from raw IDs. Same-ID records from different sources/boards can therefore collide
-in these narrower projections. A separately reviewed migration must preserve existing associations and replay
-identities before claiming source-qualified mappings throughout; that migration remains pending.
+in these narrower projections. [Proposed ADR 0023](decisions/0023-source-qualified-associations-and-replay.md) describes
+preserving existing associations and replay identities; migration remains pending its owning contract reviews
+and implementation evidence before source-qualified mappings can be claimed throughout.
 Upstream [Teams publication](https://github.com/volter-ai/supercode/blob/main/sdk/teams/board-events.mjs) also
 allocates a source per board home and publishes `source:card.id`; board metadata downstream cannot recover a
 same-ID head already overwritten or refused at that upstream boundary.
