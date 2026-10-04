@@ -519,8 +519,7 @@ const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'n
 // install declares. Made here, from the repository, before any dispatcher or reporter opens the board, so a new machine
 // needs no step by hand; the same board again changes nothing. A start that cannot make it stops and says why, as it
 // does when it cannot fetch the project: nothing serves a home whose board is not the one its repository declares, so
-// nothing makes another in its place. A home that keeps its board on SQLite is brought over by the one command the stop
-// names (workflow migrate), its cards with their titles and states.
+// nothing makes another in its place; the stop says what init found (a home whose board is on another backing, say).
 const stopStart = (why: string): never => {
   console.error(`start: ${why}; startup stopped`);
   ending = true;
@@ -557,8 +556,6 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
   try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
   if (init.exitCode !== 0 || !answer) {
     const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
-    const quote = (arg: string) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`);
-    if (/ is kept by the sqlite backing/.test(why)) stopStart(`the board ${home} keeps on SQLite is not the one its repository declares (${boardSetup.document}, ztrack); bring it over with: supercode workflow migrate --root ${quote(home)} ${declares.map(quote).join(' ')}`);
     stopStart(`the board its repository declares cannot be made: ${why}`);
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
