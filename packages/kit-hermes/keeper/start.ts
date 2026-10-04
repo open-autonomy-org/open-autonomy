@@ -604,6 +604,35 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
     '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
+// A mail agent's other channels (company RFC 0026 decision 3): an engagement's Slack channels and its client's Jira
+// ticket comments, carried to the same mailbox by the same bridge (supercode agent-channel --platform slack|jira). Their
+// credentials stay in custody: <secrets>/slack.env (SLACK_BOT_TOKEN, SLACK_APP_TOKEN, and SLACK_CHANNELS where the
+// agent.json names no channel ids) and <secrets>/jira.env (JIRA_EMAIL and JIRA_API_TOKEN, or JIRA_TOKEN), read here and
+// given to that one process.
+const custodyEnv = (file: string): Record<string, string> => {
+  if (!existsSync(file)) return {};
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(file, 'utf8').split('\n')) { const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line); if (m) out[m[1]!] = m[2]!.replace(/^(['"])(.*)\1$/, '$2'); }
+  return out;
+};
+for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
+  const slack = mailAgent.channel?.slack;
+  if (slack) {
+    const creds = custodyEnv(resolve(secrets, 'slack.env'));
+    const channels = slack.channels?.length ? slack.channels : (creds.SLACK_CHANNELS ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+    if (!creds.SLACK_BOT_TOKEN || !creds.SLACK_APP_TOKEN || !channels.length) say(`channel ${name} slack: ${resolve(secrets, 'slack.env')} needs SLACK_BOT_TOKEN, SLACK_APP_TOKEN and the channels (agent.json or SLACK_CHANNELS); not carried`);
+    else spawn(`channel ${name} slack`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
+      '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  }
+  const jira = mailAgent.channel?.jira;
+  if (jira) {
+    const creds = custodyEnv(resolve(secrets, 'jira.env'));
+    const auth = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
+    if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
+    else spawn(`channel ${name} jira`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
+      '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  }
+}
 // The restart this keeper performs on request: the stack drains and starts again, onto whatever the checkout then
 // holds, whatever the board holds (sessions run in their own panes and outlive the stack). Whether to move is not this
 // keeper's to decide: `maintain.ts restart` (run by whoever deploys: a person, a PM's pass, a keep job) fetches main,
