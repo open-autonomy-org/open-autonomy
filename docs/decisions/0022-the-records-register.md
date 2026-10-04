@@ -35,7 +35,8 @@ had none of it.
 5. **The auditor counts what is unregistered every round.** `create-open-autonomy records estate <record repository>`
    walks the roots `records.json` declares (every repository checkout, home and state directory of the install). For
    each root it gives its record count and every record with no entry or a stub. A root of the install missing from
-   the list is itself a finding.
+   the list is itself a finding. The roots are one machine's paths: `estate.machine` names that machine, and the
+   estate run anywhere else refuses (exit 2) instead of reading every root as missing.
 6. **The manager reconciles.** A record's owner keeps its entry. The manager sends each unregistered record to an arc
    that registers it or retires it as a duplicate or orphan, and adds a new root when one appears. These are rules in
    the skew's manager and auditor profiles and in the home's shared rules.

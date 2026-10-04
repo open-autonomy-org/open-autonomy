@@ -14,7 +14,7 @@
 // An entry with a field still `TBD` is a stub, which the check writes for the writer to complete and does not accept.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
 const STUB = 'TBD';
@@ -124,6 +124,12 @@ function estate(json) {
   const list = entries(root);
   const roots = (config.estate?.roots ?? []).map(home);
   if (roots.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
+  // The roots are paths on the machine where the install and its checkouts live; elsewhere they would all read as missing.
+  const machine = config.estate?.machine;
+  if (machine && hostname().replace(/\.local$/, '') !== machine) {
+    console.error(`records: the estate's roots are ${machine}'s (records.json estate.machine); this is ${hostname()}, so run the estate there`);
+    return 2;
+  }
   const report = [];
   for (const dir of roots) {
     if (!existsSync(dir)) { report.push({ root: dir, missing: true, records: 0, unregistered: [] }); continue; }

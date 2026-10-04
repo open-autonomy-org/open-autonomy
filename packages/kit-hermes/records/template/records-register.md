@@ -14,7 +14,7 @@ auditor counts what is unregistered each round. Work and findings belong on the 
 
 `tools/records-check.mjs` holds the rule: the record repository's pre-commit refuses a commit that adds a record with no
 entry, and stubs the entry (fields `TBD`) for the writer to complete. `records.json` says which files are records here
-and which roots make up the estate the auditor counts. Both are written by `create-open-autonomy records init`.
+and which roots make up the estate the auditor counts (`estate.machine` names the machine they are on). Both are written by `create-open-autonomy records init`.
 
 ## Volumes
 
