@@ -13,7 +13,6 @@
 // once its message is sent, or nack to be sent again on the inbox's schedule. Hookline delivers each event exactly once
 // and in order. A replay (X-Hookline-Replay) or a re-send of an event already told is acknowledged and not told again:
 // the event ids already told are kept in --state. Events that are not about a pull request are acknowledged and left.
-import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
@@ -63,10 +62,34 @@ export function describe(headers: Headers, body: string): string | undefined {
   return undefined;
 }
 
-function tell(event: string, line: string): boolean {
-  const sent = spawnSync(supercode, ['message', 'send', mailTo, '--subject', line.split('\n')[0]!.slice(0, 120)], { input: `${line}\n\n(hookline event ${event})`, encoding: 'utf8', timeout: 60_000 });
-  if (sent.status !== 0) { say(`telling ${mailTo} about ${event} failed: ${(sent.stderr || sent.error?.message || '').trim().split('\n').at(-1)}`); return false; }
-  return true;
+/** The session to tell: an address (`sc:<machine>:<harness>:<id>`) names one session; any other name is an agent, whose
+ *  main session the agent mailbox finds (`manager`). */
+const locator = /^sc:[^:]+:([^:]+):(.+)$/.exec(mailTo) ? { harness: mailTo.split(':')[2]!, session_id: mailTo.split(':').slice(3).join(':') } : { harness: 'agent', session_id: mailTo.replace(/^sc:[^:]+:agent:/, '') };
+
+/** One request to supercode's session service from a named sender (`hookline`), as the skew's no-model jobs send: a
+ *  service is no session, so `message send` (which answers from the calling session) cannot carry it. */
+async function tell(event: string, line: string): Promise<boolean> {
+  const serve = Bun.spawn({ cmd: [supercode, 'harness', 'serve'], stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  const request = { jsonrpc: '2.0', id: 1, method: 'harness.v1.sessions.message', params: { locator, text: `${line}\n\n(hookline event ${event})`, from_name: 'hookline', subject: line.split('\n')[0]!.slice(0, 120) } };
+  serve.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'harness.v1.capabilities', params: {} })}\n${JSON.stringify(request)}\n`);
+  serve.stdin.flush();
+  let answer: { result?: { delivered_to_bus?: boolean; refusal?: { message?: string } }; error?: { message?: string } } | undefined;
+  const reader = serve.stdout.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const deadline = setTimeout(() => serve.kill(), 60_000);
+  try {
+    while (!answer) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value);
+      for (const row of buffer.split('\n')) { try { const parsed = JSON.parse(row); if (parsed.id === 1) answer = parsed; } catch { /* a partial line */ } }
+      buffer = buffer.slice(buffer.lastIndexOf('\n') + 1);
+    }
+  } finally { clearTimeout(deadline); serve.kill(); }
+  if (answer?.result?.delivered_to_bus === true) return true;
+  say(`telling ${mailTo} about ${event} failed: ${answer?.error?.message ?? answer?.result?.refusal?.message ?? 'no answer from supercode harness serve'}`);
+  return false;
 }
 
 let socket: WebSocket | undefined;
@@ -74,7 +97,7 @@ const attach = (): void => {
   const ws = new WebSocket(`${inbox}/targets/${encodeURIComponent(target)}/socket?token=${encodeURIComponent(token)}`);
   socket = ws;
   ws.onopen = () => say(`attached to ${inbox} as ${JSON.stringify(target)}; telling ${mailTo}`);
-  ws.onmessage = (message) => {
+  ws.onmessage = async (message) => {
     if (typeof message.data !== 'string') return;
     let f: { delivery?: number; attempt?: number; event?: string; headers?: Headers; body?: string };
     try { f = JSON.parse(message.data); } catch { say('a frame is not JSON; ignored'); return; }
@@ -86,7 +109,7 @@ const attach = (): void => {
       try { body = new TextDecoder().decode(Uint8Array.from(atob(f.body), (c) => c.charCodeAt(0))); } catch { /* not text */ }
       const line = describe(f.headers, body);
       if (line) {
-        ok = tell(f.event, line);
+        ok = await tell(f.event, line);
         status = ok ? 200 : 502;
         if (ok) say(`${f.event}: told ${mailTo}: ${line.split('\n')[0]}`);
       }
