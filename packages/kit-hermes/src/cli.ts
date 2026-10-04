@@ -11,15 +11,30 @@
 //   create-open-autonomy runtime <dir> [--runtime <dir>] [--secrets <dir>] [--valve <port>] [--provider colima:<p>] [--docker-host <url>]
 //   create-open-autonomy fleet <runtime-dir> --name <fleet> --image <image> --project owner/repo=<origin> … [--provider colima:<p>] [--prepare-volumes]
 //                                      [--prepare-volumes]        # the host runtime, from the checkout (runtime.ts)
+//   create-open-autonomy records init <record-repo>     # the records register in the organization's record repository (records.ts)
+//   create-open-autonomy records estate <record-repo> [--json]  # every record of the estate without an entry (exit 0 at zero)
 import { resolve } from 'node:path';
 import { KIT, adopt, check, create, upgrade, validateParams, validateSkew } from './kit.ts';
 import { setup, type Door } from './setup.ts';
 import { runtime } from './runtime.ts';
 import { fleet, upgradeFleet } from './fleet.ts';
+import { estateRecords, initRecords } from './records.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-const verbs = new Set(['create', 'adopt', 'check', 'upgrade', 'setup', 'runtime', 'fleet']);
+const verbs = new Set(['create', 'adopt', 'check', 'upgrade', 'setup', 'runtime', 'fleet', 'records']);
+if (argv[0] === 'records') {
+  const act = argv[1];
+  const repo = argv.slice(2).find((a) => !a.startsWith('--'));
+  if ((act !== 'init' && act !== 'estate') || !repo) { console.error('usage: create-open-autonomy records init|estate <record-repo> [--json]'); process.exit(2); }
+  try {
+    if (act === 'estate') process.exit(estateRecords(resolve(repo), argv.includes('--json')));
+    const out = initRecords(resolve(repo));
+    console.log(`records: ${resolve(repo)}: ${out.written.length} written (${out.written.join(', ')})${out.kept.length ? `, ${out.kept.length} kept as the repository's (${out.kept.join(', ')})` : ''}`);
+    for (const note of out.notes) console.log(`  note: ${note}`);
+    process.exit(0);
+  } catch (e) { console.error(`create-open-autonomy: ${(e as Error).message}`); process.exit(1); }
+}
 const verb = verbs.has(argv[0]) ? argv[0] : 'create';
 if (verb === 'upgrade' && flag('--fleet')) {
   try { process.exit((await upgradeFleet(flag('--fleet')!)) ? 0 : 2); } catch (e) { console.error(`create-open-autonomy: ${(e as Error).message}`); process.exit(1); }
