@@ -58,6 +58,8 @@ and deployments can share code and storage.
   [Workplace integration](docs/decisions/0018-the-workplace-integration.md) publishes books, book conditions
   and controls to external RH2 Workplace by consent. Supercode's integration owns native runtime conditions
   and resource access; Workplace itself remains external. The OA dashboard retains owner controls and books.
+  The [canonical Workplace mapping](docs/workplace-mapping.md) explains project, organization, native work,
+  agent/session and authority associations, with current implementation limits.
 
 Every spend remains on public books; the ledger's settled cents are the authoritative cost. This map changes
 neither the constitution nor deployment audiences, and code in the repository is not proof of release.

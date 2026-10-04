@@ -107,6 +107,8 @@ and book conditions belong to OA's integration; native runs, workflow and their 
 Their integrations use public contracts and consented grants. Sharing a deployment or package does not merge
 those responsibilities. Existing dashboard code is not authority to build a second workplace product.
 [ADR 0018](0018-the-workplace-integration.md) governs the current linkage, controls and team-role adoption.
+The [canonical Workplace mapping](../workplace-mapping.md) consolidates those associations with external
+native arc/card/agent/session contracts and records current namespace and verification limits.
 
 The core and discovery/funding app can share one Worker and storage infrastructure. Their logical ownership remains
 separate: funding-provider subscriptions, checkout and discovery are application state; balances, holds and settled
