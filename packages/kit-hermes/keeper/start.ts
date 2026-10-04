@@ -43,7 +43,7 @@
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -499,6 +499,67 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
 const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
+// The orchestrator that serves this home, and the supercode it drives, are the ones this install runs, named in the home
+// (orchestrator.json) when they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell,
+// the connector's board follower, the board door) runs that orchestrator driving that supercode, never what the machine
+// has installed globally.
+{
+  const named = (bin: string) => {
+    const entry = existsSync(bin) ? realpathSync(bin) : bin;
+    let version: string | null = null;
+    try { version = JSON.parse(readFileSync(resolve(dirname(entry), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
+    return { entry, version };
+  };
+  const orchestrator = named(orchestratorBin);
+  writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
+}
+// The board the repository declares (`board:` in .open-autonomy/config.yaml; company RFC 0025 decisions 3 and 4): its
+// document at the repository's root, in the board's own checkout beside the home (a clone of the project's origin, on
+// main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one this
+// install declares. Made here, from the repository, before any dispatcher or reporter opens the board, so a new machine
+// needs no step by hand; the same board again changes nothing. A start that cannot make it stops and says why, as it
+// does when it cannot fetch the project: nothing serves a home whose board is not the one its repository declares, so
+// nothing makes another in its place; the stop says what init found (a home whose board is on another backing, say).
+const stopStart = (why: string): never => {
+  console.error(`start: ${why}; startup stopped`);
+  ending = true;
+  for (const c of children) c.proc.kill();
+  process.exit(1);
+};
+const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
+if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
+  const checkout = resolve(home, '..', 'board');
+  if (!existsSync(resolve(checkout, '.git'))) {
+    // The origin as the project configures it (`get-url` would hand over an insteadOf rewrite's target instead).
+    const from = Bun.spawnSync({ cmd: drop(['git', 'config', '--get', 'remote.origin.url']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+    if (!from) stopStart(`the board's checkout ${checkout} cannot be made: ${project} names no origin`);
+    // Something already at the checkout's path that is not a checkout is never this start's to remove.
+    if (existsSync(checkout)) stopStart(`the board's checkout ${checkout} cannot be made: ${checkout} is there and is not a checkout of ${from}`);
+    const clone = await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 });
+    if (clone.exitCode !== 0) {
+      rmSync(checkout, { recursive: true, force: true }); // what this start's own clone left
+      stopStart(`the board's checkout ${checkout} cannot be made: ${clone.stderr.trim().split('\n').at(-1) || 'the clone ran past its bound'}`);
+    }
+    say(`board: cloned ${from} on main → ${checkout}`);
+  }
+  const archive = boardSetup.archive ?? {};
+  // The board's manager is the one this install declares: of the managers the home's workflow names, the address of one
+  // of this install's own mail agents (agent.json); else the workflow's one manager, or the orchestrator asks which.
+  const managers = [(Bun.YAML.parse(readFileSync(resolve(home, 'workflow.yaml'), 'utf8')) as { params?: { managers?: unknown } } | null)?.params?.managers ?? []].flat().filter((m): m is string => typeof m === 'string');
+  const ours = managers.filter((m) => Object.keys(agentSetup.agents ?? {}).some((name) => m.endsWith(`:agent:${name}`)));
+  const declares = ['--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit',
+    ...(ours.length === 1 ? ['--manager', ours[0]] : []),
+    ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])];
+  const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
+    cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  let answer: { kept?: boolean; path?: string } | undefined;
+  try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
+  if (init.exitCode !== 0 || !answer) {
+    const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
+    stopStart(`the board its repository declares cannot be made: ${why}`);
+  }
+  say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
+}
 spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
