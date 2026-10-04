@@ -7,7 +7,7 @@ asset directory and schedules. It hosts the backend, not project compute.
 
 The bare mount has no funding-provider checkout, giving-page sign-in or patronage application. An operator
 mints budgets, and the shared front lists projects admitted by their visibility. To add application services,
-use the backend's existing extensions. [ADR 0022](../../docs/decisions/0022-ecosystem-target-architecture.md)
+use the backend's existing extensions. [ADR 0024](../../docs/decisions/0024-ecosystem-target-architecture.md)
 records the responsibility map and acceptance status; self-host participation in official discovery/funding,
 replication and treasury federation remain undecided. Keys and funds belong to this deployment.
 

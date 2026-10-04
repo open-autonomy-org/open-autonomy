@@ -5,7 +5,7 @@ with its discovery/funding application. The core accepts the SDK, retains publis
 enforces policy and owns treasury settlement. The surrounding app offers listings, sponsorship, checkout,
 giving and human account connections. It operates the API and site; owners operate their project's compute.
 
-The [ecosystem architecture](../../docs/decisions/0022-ecosystem-target-architecture.md) defines these logical
+The [ecosystem architecture](../../docs/decisions/0024-ecosystem-target-architecture.md) defines these logical
 boundaries and records its acceptance status. They can share one Worker and Durable Object. Application
 funding records identify provider receipts; core balances, reservations and settled cents remain the one
 monetary authority. Nothing is estimated client-side.

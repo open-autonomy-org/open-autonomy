@@ -3,7 +3,7 @@
 This is OA's canonical integration map, consolidating existing contracts rather than defining another
 ontology. The company [work ontology](https://github.com/volter-ai/volter/blob/main/contracts/ontology.md)
 owns shared meaning; [OA ADR 0018](decisions/0018-the-workplace-integration.md) owns OA's consented
-Workplace connection, and [ADR 0022](decisions/0022-ecosystem-target-architecture.md) owns ecosystem
+Workplace connection, and [ADR 0024](decisions/0024-ecosystem-target-architecture.md) owns ecosystem
 responsibilities and records its acceptance status. Product decisions and public interfaces remain
 authoritative for implementation.
 
@@ -94,7 +94,7 @@ still uses the raw card ID. RH2's [Cards → Tasks map](https://github.com/volte
 uses a source-qualified card ID, but the [Room keys](https://github.com/volter-ai/runhuman-2/blob/main/bots/arcs-rooms/main.mjs)
 and [agent/Room associations](https://github.com/volter-ai/runhuman-2/blob/main/bots/agents-rooms/main.mjs) derive
 normalized, truncated keys from raw IDs. Same-ID records from different sources/boards can therefore collide
-in these narrower projections. [Proposed ADR 0023](decisions/0023-source-qualified-associations-and-replay.md) describes
+in these narrower projections. [Proposed ADR 0025](decisions/0025-source-qualified-associations-and-replay.md) describes
 preserving existing associations and replay identities; migration remains pending its owning contract reviews
 and implementation evidence before source-qualified mappings can be claimed throughout.
 Upstream [Teams publication](https://github.com/volter-ai/supercode/blob/main/sdk/teams/board-events.mjs) also

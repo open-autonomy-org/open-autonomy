@@ -23,7 +23,7 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
 ## Implementer checklist
 
 The SDK is the protocol a project implements, not a required TypeScript dependency or runtime. The
-[ecosystem target](../../docs/decisions/0022-ecosystem-target-architecture.md) assigns native execution to the
+[ecosystem target](../../docs/decisions/0024-ecosystem-target-architecture.md) assigns native execution to the
 running system and publication and treasury enforcement to its selected OA server. This checklist consolidates
 the existing wire below; the server does not issue a conformance certificate or negotiate a capability set.
 

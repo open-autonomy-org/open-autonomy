@@ -1,4 +1,4 @@
-# ADR 0022: Open Autonomy ecosystem target architecture
+# ADR 0024: Open Autonomy ecosystem target architecture
 
 Status: Proposed for repository acceptance. The owner approved this target in the coding conversation on
 2026-10-04; acceptance requires independent constitution review and merge. This record establishes responsibilities
@@ -61,7 +61,9 @@ orchestrator. Software authorship, service operation and ownership of an instanc
 | Core server | Authorized intake, publication history, revisions, streams, policy enforcement, treasury accounts, reservations, settled metering and spending rails | Deployment operator owns infrastructure operation and protected service credentials; vendors provide paid services |
 | Templates and cookbooks | Instructions, skills, operating configurations and complete example projects | The owner chooses and operates the resulting system; the harness and orchestrator remain external |
 | Creators and upgrades | Rendering, adoption, setup, lineage metadata and merging supplied-file changes | Project policy and owner-authored changes remain the project's; creation is not proof of runtime operation |
+| Company records tooling | Generic register template, initialization/check and estate inventory; supplied manager/auditor rules | The organization owns its record repository, entries, classification, retention and declared machine roots; this is not an OA core record store |
 | Runtime connection | Publisher, publication receipts, owner-control adapter, host credential handoffs and connection tooling, process keeper | Native scheduler/dispatcher owns work; host custodian owns credentials; external lifecycle and machine services own their resources |
+| Hookline connection | Keeper-launched adapter from configured pull-request events to native agent/session messages | Hookline owns inbox delivery and Supercode owns mailbox/session access; receiving an event grants no new execution authority |
 | Official hosted service | Deployment and operation of core server plus public application services and account connections | Cloud, identity and payment providers supply infrastructure and provider behavior; OA does not host project compute under this decision |
 | Self-hosting product | Deployable core server and documented configuration | Operator chooses infrastructure, integrations and service operation, including storage, recovery and upgrades |
 | Discovery/funding application | Listings, project presentation, sponsorship/giving flows, provider adapters and application-specific durable records | Payment providers process payments; treasury owns credited funds, reservations and settled spend |
@@ -153,7 +155,8 @@ immediate-charge route. Credit conversion, work closing and payout remain explic
 
 ## Existing implementation and remaining scope
 
-Source baseline: repository main `e2330342`, inspected on 2026-10-04. Code presence below is not deployment evidence.
+Source baseline: repository main `be55319f` plus this architecture proposal, inspected on 2026-10-04. Code presence
+below is not deployment evidence; the newly landed records keep their own review/evidence boundaries.
 
 - The SDK and server are in [packages/sdk](../../packages/sdk/README.md) and
   [packages/backend](../../packages/backend/README.md). The backend currently also packages rendering and widgets;
@@ -162,6 +165,15 @@ Source baseline: repository main `e2330342`, inspected on 2026-10-04. Code prese
   machinery and host keeper. [ADR 0017](0017-the-ir-native-kit.md) and
   [ADR 0020](0020-the-company-skew-runs-lanes.md) govern the IR/company instantiation. Its directory name
   packages/kit-hermes does not mean every system is Hermes.
+- Kit `3.24.0` adds the company [records register](0022-the-records-register.md): generic tooling lives in
+  [packages/kit-hermes/records](../../packages/kit-hermes/records/), while the organization's record repository holds
+  its register and entries. [Hookline](../../packages/kit-hermes/base/.open-autonomy/hookline.ts) supplies the configured
+  pull-request message adapter. The [company World](../../packages/kit-hermes/skews/company/world/README.md) supplies
+  rehearsal configuration/opening data around the install's own start and selected external services. It is distinct
+  from OA's cookbook scenario; neither rehearsal's source asserts that a live install is configured or verified.
+- [ADR 0021](0021-the-pay-boundary.md) owns the paying runtime's treasurer executor and host-valve custody boundary.
+  Bare mode supplies no pay port except a synthetic World rehearsal; a fleet supplies none. OA maintains this kit
+  composition around native Hermes dispatch, without moving treasury authority or generic orchestration into it.
 - [apps/platform](../../apps/platform/README.md) mounts the public application around the backend;
   [apps/self-host](../../apps/self-host/README.md) mounts the reusable backend. The Workplace integration, retained
   publisher and partner reservation code are present in this baseline. End-to-end coverage remains feature-specific.

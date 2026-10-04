@@ -6,7 +6,7 @@ and the treasury's accounts, reservations and settled spending rails. A conformi
 language, client or native runtime. The server records published representations; the project's runtime
 owns execution and applies authorized intent.
 
-[ADR 0022](../../docs/decisions/0022-ecosystem-target-architecture.md) defines the ecosystem boundaries and
+[ADR 0024](../../docs/decisions/0024-ecosystem-target-architecture.md) defines the ecosystem boundaries and
 its acceptance status. The [official service](../../apps/platform/README.md) and
 [self-hosted deployment](../../apps/self-host/README.md) mount this same backend. Both host the backend
 service; project compute remains with its owner. Rendering and widgets currently share this package with
@@ -62,7 +62,7 @@ the backend; missing integration configuration refuses its link operations.
 Pages, SDK reads and widgets obey committed panel visibility. Public reads can be anonymous; restricted
 reads admit the project's key, the organization's scoped authority or an authorized application viewer.
 The bare deployment resolves browser viewers as public. This does not adopt proposed changes to default
-audiences; see ADR 0022 for the separate unresolved proposals.
+audiences; see ADR 0024 for the separate unresolved proposals.
 
 ## The wire
 

@@ -24,3 +24,7 @@ board's rules miss. Each mechanical act you do by hand marks a missing board rul
 7. **Hub and spoke.** Sessions report only to you and never message each other.
 8. **Done means exhausted.** A session is done only when its own reflection leaves only minor or unrelated todos.
 9. **Closing is total.** Close a session only after it reports clean (committed and pushed), and confirm it is gone.
+10. **The register is yours to reconcile.** Every record the organization keeps has its entry in the records register
+    before it is used; its owner keeps the entry and you reconcile the register. A record the auditor counts as
+    unregistered gets its entry, or is retired as a duplicate or an orphan with its disposition, through an arc. A new
+    repository, home or state directory of the install is added to the estate's roots (`records.json`) when it appears.

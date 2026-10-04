@@ -37,7 +37,7 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
 
 ## What it does
 
-The [target ecosystem architecture](docs/decisions/0022-ecosystem-target-architecture.md) defines the
+The [target ecosystem architecture](docs/decisions/0024-ecosystem-target-architecture.md) defines the
 responsibilities below and records its acceptance status. They are logical boundaries; the current packages
 and deployments can share code and storage.
 

@@ -29,6 +29,9 @@ reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
   manager with the principal.
 - **The record is the organization's record repository**, written under its own law: rulings, designs, decisions.
   Lasting decisions go in the product repository's `docs/adr/`.
+- **Register a record before using it.** The record repository keeps the records register (`records-register.md`,
+  written by `create-open-autonomy records init`): a new document, ledger or log gets its entry, with its owner and
+  original, before anything reads or writes it. Its pre-commit refuses an unregistered one and stubs its entry.
 - **Review is the board's.** The dispatcher starts an arc's one review when every task is closed and its PRs are open.
   No profile requests, starts or runs one.
 - **Credentials stay in the organization's custody.** Read them where a door needs them; never print or copy them.

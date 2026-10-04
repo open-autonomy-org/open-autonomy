@@ -1,4 +1,4 @@
-# ADR 0023: Source-qualified associations and replay
+# ADR 0025: Source-qualified associations and replay
 
 Status: Proposed. Design only; independent architecture and constitution review and merge are required before
 acceptance. No migration implementation, activation, production adoption or release is authorized by this record.
@@ -8,7 +8,7 @@ acceptance. No migration implementation, activation, production adoption or rele
 The owner clarified on 2026-10-04 that Workplace is OA's UI layer with access involved: without a person pressing
 authorized controls, the project continues normally. This is runtime invariance, not a request to remove the existing
 RH2 Task, agent or books projections. [ADR 0018](0018-the-workplace-integration.md) retains its consented controls and
-team-role adoption; [ADR 0022](0022-ecosystem-target-architecture.md) retains product ownership. The
+team-role adoption; [ADR 0024](0024-ecosystem-target-architecture.md) retains product ownership. The
 [canonical mapping](../workplace-mapping.md) describes current associations and capability limits. This proposal
 supersedes neither record and changes no native execution, treasury, audience, federation or organization policy.
 

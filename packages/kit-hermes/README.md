@@ -4,7 +4,7 @@
 historical directory name does not limit it to Hermes: it supplies the `hermes` and `ir` kits. Choose the
 project slug, its platform account and a skew; the skew selects the kit. There is no separate `--kit` flag.
 
-The [ecosystem architecture](../../docs/decisions/0022-ecosystem-target-architecture.md) distinguishes this
+The [ecosystem architecture](../../docs/decisions/0024-ecosystem-target-architecture.md) distinguishes this
 **template-rendering engine** (`src/kit.ts`) from OA's autonomous running composition. OA owns the templates,
 creator/upgrade machinery and connection adapters. Supercode owns the operational IR, codecs, orchestrator
 and native interfaces; the selected external harness runs the work. Rendering a repository does not prove
@@ -19,8 +19,8 @@ and supplies its native home from the company skew.
 | `hermes` | `self-build` (default) | Stock Hermes by default; `hermes/` | Project fleet, develop/review lanes, strategy, community and hourly PM scrum |
 | `hermes` | `manage-project` | Stock Hermes by default; `hermes/` | Daily PM plan and record for human executors; no board dispatch |
 | `hermes` | `manage-organization` | Stock Hermes by default; `hermes/` | Daily organization cycle; requests sent to its projects |
-| `hermes` | `soc2` | Self-build runtime; `hermes/` plus compliance records | Self-build with declared human seams and release gates ([ADR 0008](../../docs/decisions/0008-human-seams.md)) |
-| `ir` | `company` | Supercode orchestrator, Claude Code default and Codex profiles; [home/](skews/company/home/) | One lane per install: product or go-to-market, cards tagged by project ([ADR 0017](../../docs/decisions/0017-the-ir-native-kit.md), [ADR 0020](../../docs/decisions/0020-the-company-skew-runs-lanes.md)) |
+| `hermes` | `soc2` | Self-build runtime; `hermes/` plus [compliance records](skews/soc2/records/README.md) and [Evidence Desk program](skews/soc2/COMPLIANCE.md) | Self-build with declared human seams and release gates ([ADR 0008](../../docs/decisions/0008-human-seams.md)) |
+| `ir` | `company` | Supercode orchestrator, Claude Code default and Codex profiles; [home/](skews/company/home/) | Organization layer and a profile per job; one product or go-to-market lane per install, cards tagged by project ([ADR 0017](../../docs/decisions/0017-the-ir-native-kit.md), [ADR 0020](../../docs/decisions/0020-the-company-skew-runs-lanes.md)); records register in the organization's record repository ([ADR 0022](../../docs/decisions/0022-the-records-register.md)) |
 
 The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
 same home through the external orchestrator ([ADR 0009](../../docs/decisions/0009-another-harness-on-the-same-home.md)).
@@ -84,6 +84,13 @@ The IR/company layout adds [home/](skews/company/home/): organization instructio
 the keeper applies that lane's profiles and starts its external board dispatcher. The company template
 also supplies [.open-autonomy/usage.ts](skews/company/.open-autonomy/usage.ts) for the owner's usage statement. See the
 [company template](skews/company/README.md) and its decisions for lane behavior.
+
+Company installs keep their records register in the organization's record repository:
+`create-open-autonomy records init <record-repo>` supplies the template/check without replacing an existing
+register; `create-open-autonomy records estate <record-repo>` reports unregistered records across that machine's
+declared roots. The manager and auditor reconcile those records under [ADR 0022](../../docs/decisions/0022-the-records-register.md).
+The supplied [company World](skews/company/world/README.md) rehearses the install's own start and integrations;
+its operator selects the source trees and owns synthetic opening data, while external World owns lifecycle.
 
 For example, OA owns the reusable `company` skew; a Volter company install is an owner-operated
 organization instance of it, with Volter's agents, lanes, policies and project assignments. Supercode
@@ -172,8 +179,13 @@ mentions the owner there once. The owner's approval and merge of the Release is 
 Beside the vendored SDK, the kit's own host tools run outside the agent's credential boundary, each one file under
 `.open-autonomy/`, run with Bun from the checkout:
 
+Paying container installs use the treasurer's separate executor and host-held key under
+[ADR 0021](../../docs/decisions/0021-the-pay-boundary.md). A bare start opens a pay port only for a synthetic
+World with `--rehearsal`; fleets open none. This kit custody boundary does not change the platform's treasury rules.
+
 - **The valve** (`.open-autonomy/valve.ts`) holds the project's key: `--key <file>:<port>`, one port per key file
-  (the developer's on 8787, the treasurer's on 8788), each file re-read when it changes so a rotated key needs no
+  (the developer's on 8787, the treasurer's on 8788 with `--caller`, served in container mode to the treasurer's own
+  executor alone and in a bare start only for a rehearsal: the pay boundary, docs/decisions/0021), each file re-read when it changes so a rotated key needs no
   restart, `/healthz` naming the key's expiry. The agent is pointed at the valve with the literal word `valve` as its
   key and never sees the credential. It forwards the model routes, the narration route (`/v1/agent/events`), the
   rails and public reads of the account, and refuses the rest. `--codex <port>` forwards the host's current Codex
@@ -186,6 +198,9 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
   are outside every Git checkout; `checkCredentialDirectory` is shared with `mint-key.ts` and the kit's setup.
 - **The Volter Harness adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
   reporter uses to read native Hermes through Volter Harness's harness SDK and publish through the Open Autonomy SDK.
+- **The Hookline adapter** ([hookline.ts](base/.open-autonomy/hookline.ts)): when the host's Hookline connection is
+  configured, the keeper forwards pull-request events to the named native agent/session and retains delivery IDs.
+  Hookline owns inbox delivery; Supercode owns the mailbox/session door. This adapter grants no execution authority.
 
 The publisher serves both layouts and uses the external native contracts: retained board events and the
 live session index, plus Volter Harness session discovery and paginated transcripts,
@@ -222,7 +237,9 @@ for a listed partner within a bound. Both leave records on the public audit trai
 A rehearsal is an ordinary World scenario: opening state through vendor APIs, file handlers for model
 judgment and faults, and the unmodified application running inside World. The kit includes World tooling;
 each project owns its scenario beside its application. It does not receive OA's scenario or a separate
-rehearsal engine. OA's [World guide](../../world/README.md) demonstrates this with the cookbook, the real
+rehearsal engine. The company skew also supplies its own generalized [World scenario template](skews/company/world/README.md);
+each adopter owns its resulting source-tree selections, synthetic opening data and model handlers.
+OA's [World guide](../../world/README.md) demonstrates its separate scenario with the cookbook, the real
 platform, synthetic vendors and manual actions. World owns resources, processes, readiness and cleanup.
 
 ## Nothing in the agent's reach is a secret that matters
