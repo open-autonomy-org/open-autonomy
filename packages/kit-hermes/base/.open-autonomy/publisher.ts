@@ -5,8 +5,11 @@
 // - source-events.ts caches cards by <board>:<card.id>; timeline items retain card.id.
 //   Archived cards are omitted; ordinary installs select the default assignee, organization
 //   installs select project tags/tenant. No removed card supplies a session end.
-// - The done lane projects to past/done; running/review to present/active;
-//   blocked/scheduled to present/proposed; remaining lanes to present/planned.
+// - board() uses the source's normalized card.status as lane, not its raw lane.
+//   done projects to past/done; running/review to present/active; any supplied
+//   blocked/scheduled status to present/proposed; remaining statuses to present/planned.
+//   Supercode normalizes raw blocked/scheduled lanes to todo, so those project as
+//   planned here; the raw lane and its more specific standing are not exported.
 //   First attempt start, last handoff/attempt author, native completion time and a
 //   validated handoff commit provide the available item timestamps, attribution and proof.
 // - Attempt IDs are not OA session keys. Native session_id is the initial key; an

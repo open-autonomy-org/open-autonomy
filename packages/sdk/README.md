@@ -193,10 +193,15 @@ the same way: `{ ok, status, error? }`, the platform's error code when refused, 
 
 Intake refuses an invalid, expired or revoked credential with 401 `auth_failed`, and missing narration
 scope with 403 `scope_required`. A top-level refusal uses `{ error: { code, ... } }`; an operation's result
-can instead carry an error string. Read failures throw `ReadError(status, code)` in the reference client.
+can instead carry an error string. Reader-backed methods throw `ReadError(status, code)` for HTTP read failures.
 A closed panel returns 404 `not_open`, not proof that the native record is absent; `session()` returns
 `undefined` for other 404 responses and throws for `not_open` and other failed reads. `update()` returns
 the acknowledged update or `undefined`; session open, turns and end reject failed acknowledgements.
+The current `state()` helper is an exception: it sends an unauthenticated read and returns `undefined`
+for every non-OK HTTP response. It cannot distinguish a closed overview or an outage from absent control,
+and does not use the configured key to read a closed panel. Implementers needing that distinction must
+read the documented state route with the appropriate authorization and inspect the response; do not
+treat the helper's `undefined` as evidence that no request exists.
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
