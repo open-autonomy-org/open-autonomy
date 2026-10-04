@@ -77,8 +77,10 @@ OA's link, shared installation, books, alerts, roster and freeze-control code is
 configuration refuses with `workplace_not_configured`; missing or expired installation consent reports a
 failed sync and requires relinking. Local unlink removes OA's association; the RH2 admin separately uninstalls
 the app there. Registered app IDs in source do not prove a released deployment or synced service credentials.
-RH2's three native mapping apps are implemented in source; reliable replay and actual Teams/RH2/native
-integration still require their independent review and World evidence.
+RH2's three native mapping apps are implemented in source. Independent scoped World, UI and lifecycle evidence
+review passed for [PR 313](https://github.com/volter-ai/runhuman-2/pull/313) at `1f010ad8`.
+This does not establish formal approval, release, deployment or source-qualified migration; that correction
+remains pending below.
 Current apps also create RH2 Task, agent-principal and books-snapshot projections, beyond embedded views;
 these copies do not acquire native execution or treasury authority.
 
