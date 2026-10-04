@@ -571,6 +571,10 @@ for (const p of projectReporters) {
   own(config);
   spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
+// Pull request events through hookline (company RFC 0026 decision 4): where custody holds <secrets>/hookline.env (the
+// inbox, its read token, this install's socket target), hookline.ts attaches and tells the manager of each event once.
+// It reads that file itself, so the token is in no other process's environment.
+if (existsSync(resolve(secrets, 'hookline.env'))) spawn('hookline', ['bun', resolve(host, 'hookline.ts'), '--env', resolve(secrets, 'hookline.env'), '--state', resolve(home, 'hookline-told.json')], { env: { ...env, SUPERCODE_BIN: supercodeBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
