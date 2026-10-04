@@ -40,6 +40,11 @@ captures and settled costs. RH2 owns its organization, people, Rooms, Conversati
 work-contract acceptance. Its mirror is not another treasury, and an OA payment receipt is not work acceptance
 or seller payout. Live session/resource access is enforced by the owning service under the consented grants.
 
+Read-only rendering, explicit control requests and delegation of team authority are separate capabilities.
+Rendering alone grants neither control nor roster authority. The full consented link in ADR 0018 currently
+includes books controls and adoption of the linked team roster. Native execution and OA treasury semantics
+do not depend on the visualizer being available; its loss impairs the integration's views and requests.
+
 The current OA integration accepts only Workplace `freeze`/`unfreeze` books controls naming the linked
 project. A freeze refuses new spending reservations on the account's rails; it does not pause native work.
 OA's separate [operating-state contract](decisions/0003-operating-state-through-the-sdk.md) records desired
@@ -71,6 +76,8 @@ failed sync and requires relinking. Local unlink removes OA's association; the R
 the app there. Registered app IDs in source do not prove a released deployment or synced service credentials.
 RH2's three native mapping apps are implemented in source; reliable replay and actual Teams/RH2/native
 integration still require their independent review and World evidence.
+Current apps also create RH2 Task, agent-principal and books-snapshot records, beyond embedded views. Whether
+the target keeps Task mirrors or displays native tasks directly remains unresolved; this map selects neither.
 
 Source namespaces are not yet preserved everywhere. OA's [native event cache](../packages/kit-hermes/base/.open-autonomy/source-events.ts)
 uses `board:card.id`, while its [published item adapter](../packages/kit-hermes/base/.open-autonomy/publisher.ts)
