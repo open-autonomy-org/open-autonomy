@@ -115,7 +115,8 @@ Not covered:
   and the treasurer's volume. The release carries the treasurer's persona.
 - `container.ts` seats the treasurer, and `container-treasurer.ts` holds its home and dispatcher. The agent's home
   is prepared without the treasurer.
-- `start.ts` serves no pay port without `--rehearsal`.
+- The bare start's keeper (the kit package's `keeper/start.ts`, which a project's `.open-autonomy/start.ts` runs) serves
+  no pay port without `--rehearsal`. The kit owns `container-treasurer.ts`, so an upgrade delivers it.
 - Amends [ADR 0001](0001-runtime-boundary.md) (one executor per installation becomes two for a paying project) and
   the container guide. Supersedes nothing.
 
