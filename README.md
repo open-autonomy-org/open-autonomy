@@ -37,18 +37,30 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
 
 ## What it does
 
-The [target ecosystem architecture](docs/decisions/0022-ecosystem-target-architecture.md) records ownership of the
-reusable core, templates, hosted and self-hosted backends, Workplace integration, funding application and external
-dependencies. Its status records whether repository acceptance is complete.
+The [target ecosystem architecture](docs/decisions/0022-ecosystem-target-architecture.md) defines the
+responsibilities below and records its acceptance status. They are logical boundaries; the current packages
+and deployments can share code and storage.
 
-- **The kit** (`create-open-autonomy`): a repository that runs itself. An agent with planning, development,
-  community and outreach skills, a task board, and a landing workflow where every change is reviewed before it
-  merges.
-- **The platform** ([open-autonomy.org](https://open-autonomy.org)): each project's page and its books. Model calls
-  are metered today; single-use cards and partner services are next. People back a project through GitHub Sponsors
-  or grant credits.
-- **The SDK and `oa`**: a project reports its sessions and roadmap from any language; `oa` reads a project's status,
-  sessions and books, and pauses or resumes it.
+- **Autonomous running:** OA composes external runtime capabilities with its publication, policy and host
+  adapters. The [SDK](packages/sdk/README.md) is the project protocol specification, with optional client code;
+  the [core server](packages/backend/README.md) accepts it, retains published history and meters spending.
+  Any conforming system can connect, in any language or harness. Supercode owns its IR, codecs and generic
+  orchestration; OA owns its composition and additions.
+- **Templates and creators:** [create-open-autonomy](packages/kit-hermes/README.md) supplies four Hermes skews
+  and the IR/company kit, with create, adopt, check and upgrade. [Cookbooks](cookbooks/todo-cli/README.md) are
+  complete examples. Owners choose and operate the generated systems; OA does not host project compute.
+- **Hosted and self-hosted services:** the [official Worker](apps/platform/README.md) mounts discovery and
+  funding around the reusable backend. [Self-hosting](apps/self-host/README.md) deploys that backend in an
+  operator's Cloudflare account. Cross-deployment discovery, replication and treasury federation remain undecided.
+- **Presentation and integrations:** the official site offers project discovery, sponsorship and giving;
+  shared views and widgets show progress and settled costs from their selected server, and
+  [`oa`](packages/cli/README.md) provides operational reads and owner controls. OA's
+  [Workplace integration](docs/decisions/0018-the-workplace-integration.md) publishes books, book conditions
+  and controls to external RH2 Workplace by consent. Supercode's integration owns native runtime conditions
+  and resource access; Workplace itself remains external. The OA dashboard retains owner controls and books.
+
+Every spend remains on public books; the ledger's settled cents are the authoritative cost. This map changes
+neither the constitution nor deployment audiences, and code in the repository is not proof of release.
 
 ## Get help
 
@@ -71,13 +83,15 @@ accounts are the `team` section of [project configuration](.open-autonomy/config
 page.
 
 ```text
-apps/platform        the worker: the books, the rails, the development stream, the site, the widgets
-packages/sdk         @open-autonomy/sdk: the roadmap codec, the stream client, the key helpers, the wire
-packages/kit-hermes  create-open-autonomy: the Hermes kit (create / adopt / check / upgrade)
-packages/cli         @open-autonomy/cli: `oa`, a project's word, money and sessions; the owner's pause and resume; keys
-cookbooks/todo-cli   the reference project: CLI, community scenarios, and a focused HTTP example
-world/               OA's scenario: opening data, model handlers and ordinary World configuration
-hermes/ .open-autonomy/ container/   our own install: the kit applied to this repository (create-open-autonomy check .)
+packages/backend     reusable SDK server: publication, policy, treasury, rails, shared views/widgets, OA Workplace integration
+packages/sdk         @open-autonomy/sdk: project protocol, clients, publication codecs and tracker drivers
+packages/kit-hermes  create-open-autonomy: Hermes and IR/company templates, creator/upgrade tooling, host adapters and keeper
+apps/platform        official hosted core plus discovery/funding application and provider/account connections
+apps/self-host       operator deployment of the reusable backend
+packages/cli         @open-autonomy/cli: `oa`, project status, money, sessions, owner controls and keys
+cookbooks/todo-cli   complete reference project and its manual scenarios
+world/               OA opening data, model handlers and scenario configuration; external World/twins own runtime/routing
+hermes/ .open-autonomy/ container/   this repository's own kit install
 ```
 
 ```bash

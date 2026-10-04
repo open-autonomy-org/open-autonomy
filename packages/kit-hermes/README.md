@@ -1,30 +1,43 @@
-# The Hermes kit
+# The Open Autonomy starter kits
 
-The default Open Autonomy starter kit: a complete repository that runs its own Hermes agent against the
-platform, with the SDK wired in. One command scaffolds it from two identity parameters, the project's name
-and its platform account, and one choice, the skew; everything else is boilerplate the kit fills in.
+`create-open-autonomy` renders complete repositories and keeps their supplied files current. The package's
+historical directory name does not limit it to Hermes: it supplies the `hermes` and `ir` kits. Choose the
+project slug, its platform account and a skew; the skew selects the kit. There is no separate `--kit` flag.
 
-The kit is a lineage ([ADR 0006](../../docs/decisions/0006-the-kit-is-a-lineage.md)): `base/` is what
-every subject runs (the reporter, the valve, the container stack, the host tools, the communications
-skill), and one skew is laid over it, whole files. A skew is what its PM does and to whom, and a PM knows
-only its own skew:
+The [ecosystem architecture](../../docs/decisions/0022-ecosystem-target-architecture.md) distinguishes this
+**template-rendering engine** (`src/kit.ts`) from OA's autonomous running composition. OA owns the templates,
+creator/upgrade machinery and connection adapters. Supercode owns the operational IR, codecs, orchestrator
+and native interfaces; the selected external harness runs the work. Rendering a repository does not prove
+that its runtime is configured or operating.
 
-| Skew | Its PM |
-|---|---|
-| `self-build` (the default) | executes through the project's own fleet: kanban, seats, develop and review lanes, strategy, the community desk; an hourly scrum |
-| `manage-project` | keeps the plan and the record for a project people build; reconciles what landed against what was asked, names what is stalled, asks people, proposes releases; one scrum a day; no board, no dispatch |
-| `manage-organization` | an organization whose executors are its projects: gathers every project daily, posts the memo with the agenda in the organization's channel, records the meeting's outcomes, files each outcome down as a request in the project's intake; one cycle a day |
-| `company` (kit `ir`) | a company's one install (ADR 0017): `home/` in Supercode's native folder, the organization's layer at its root and a profile per job (account manager, manager, coders, reviewer, auditor, box maintainer), one board for the organization's work, cards tagged by project |
-| `soc2` | self-build's PM, with the SOC 2 layer laid over self-build ([ADR 0008](../../docs/decisions/0008-human-seams.md)): the seams declared in `config.yaml`, release approval by gate rather than reply, a records folder for people's acts ([`skews/soc2/records/`](skews/soc2/records/README.md)) and [`skews/soc2/COMPLIANCE.md`](skews/soc2/COMPLIANCE.md) for the Evidence Desk program |
+A kit is a lineage ([ADR 0006](../../docs/decisions/0006-the-kit-is-a-lineage.md)): shared `base/` files are
+overlaid by a skew, whole files. `soc2` overlays `self-build`. The IR render omits the base's Hermes content
+and supplies its native home from the company skew.
+
+| Kit | Skew | Runtime and generated content | Operating role |
+| --- | --- | --- | --- |
+| `hermes` | `self-build` (default) | Stock Hermes by default; `hermes/` | Project fleet, develop/review lanes, strategy, community and hourly PM scrum |
+| `hermes` | `manage-project` | Stock Hermes by default; `hermes/` | Daily PM plan and record for human executors; no board dispatch |
+| `hermes` | `manage-organization` | Stock Hermes by default; `hermes/` | Daily organization cycle; requests sent to its projects |
+| `hermes` | `soc2` | Self-build runtime; `hermes/` plus compliance records | Self-build with declared human seams and release gates ([ADR 0008](../../docs/decisions/0008-human-seams.md)) |
+| `ir` | `company` | Supercode orchestrator, Claude Code default and Codex profiles; [home/](skews/company/home/) | One lane per install: product or go-to-market, cards tagged by project ([ADR 0017](../../docs/decisions/0017-the-ir-native-kit.md), [ADR 0020](../../docs/decisions/0020-the-company-skew-runs-lanes.md)) |
+
+The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
+same home through the external orchestrator ([ADR 0009](../../docs/decisions/0009-another-harness-on-the-same-home.md)).
 
 ```bash
-bun create open-autonomy my-project --project my-project --account owner/my-project [--skew manage-project]
+bun create open-autonomy my-project --project my-project --account owner/my-project
+bun create open-autonomy my-company --project my-company --account owner/company --skew company
 create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
 create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
 create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
 create-open-autonomy upgrade --fleet <fleet.json>   # every project of a fleet: cloned fresh, upgraded, landed as that repository lands
 create-open-autonomy setup .     # the guided walk: what this project's situation calls for, and the pages only you can click
 ```
+
+`create` writes a new or empty directory; `adopt` writes only missing files in an existing one. `check`
+reports version, local divergence, declaration problems and unresolved merges. `upgrade` uses the recorded
+version as the ancestor of a three-way merge; conflicts remain for the project to resolve. These lineage commands do not start an agent.
 
 ## Several projects together: a fleet
 
@@ -53,27 +66,32 @@ open-autonomy` from it against the npm registry twin (the [World operator guide]
 
 ## What a generated repository contains
 
+Shared files connect either layout to the selected backend:
+
 ```text
-README.md            the project's front page, with the account's four widgets
-CONSTITUTION.md      what the project is and must remain; its first paragraph leads the page, its invariants bind every task
-CONTRIBUTING.md      how code is written here, the bar every diff is reviewed against
-ROADMAP.md           (manage-project, self-build) notable intentions and outstanding outcomes; PM-maintained
-CHANGELOG.md         (manage-project, self-build) what shipped
-AGENTS.md            the agent's rules for this repository
-LICENSE              Apache-2.0, seeded; the project's own
-package.json        the project's own check (`bun run check`), starting with a pinned TypeScript compiler
-hermes/              the agent's content: SOUL.md, its three skills (develop, pm, community; a project's own skills live beside them, in hermes/skills/<project>/, and are the project's), profiles/treasurer (the second profile's persona: the one that pays), kanban.seed.json (historical migration input),
-                     scripts/community-monitor.sh (the community desk's monitor source: every five minutes it reads when the newest issue or discussion last changed, and the agent wakes only when that changed)
-.open-autonomy/      agent.json (the agent's setup, docs/decisions/0007: each profile's model, Hermes settings and jobs — the PM, the community desk — rendered into the Hermes home by Volter Harness's applier at every start, through agent.ts); the platform connection (PRODUCTION.md: how a project ships — the one Release pull request the owner approves and merges into prod): config.yaml (account, publish policy, the model and rail bounds the platform holds the project's funds to), publisher.ts (the publisher:
-                     sessions, the board, the setup), mint-key.ts (the key, the adopter way), start.ts (the entry that runs the kit package's keeper, which only starts and stops the install's processes: bare, or --container for the host sidecar), enroll.ts (the install's mail agents and workspace on this machine, run by the deployer pass `maintain.ts restart`), the vendored SDK, kit.json (which kit, version and parameters made this repository)
-container/           the World executor definition and pinned native Hermes image; credentials and SDK reporting stay on the host
-.github/workflows/   land.yml (the landing convention; developers manually verify their feature before pushing)
+README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
+.open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
+                     publisher.ts, source-events.ts, host valve and credential tools, start.ts,
+                     enroll.ts, vendored SDK, kit.json (kit, skew, version and identity)
+container/           supplied executor/image tooling; its use depends on the selected runtime
+.github/workflows/   supplied landing workflow where the skew includes it
 ```
+
+The Hermes layout adds `hermes/`: persona, skills, profiles and historical board seed. `self-build` and
+`manage-project` also seed [ROADMAP.md](skews/self-build/ROADMAP.md) and [CHANGELOG.md](skews/self-build/CHANGELOG.md); the other skews use their chosen native records.
+The IR/company layout adds [home/](skews/company/home/): organization instructions, profiles, skills, role prompts,
+[lanes.yaml](skews/company/home/lanes.yaml), [workflow.yaml](skews/company/home/workflow.yaml) and [workflow.gtm.yaml](skews/company/home/workflow.gtm.yaml). `lane:` in the connection config selects one lane;
+the keeper applies that lane's profiles and starts its external board dispatcher. The company template
+also supplies [.open-autonomy/usage.ts](skews/company/.open-autonomy/usage.ts) for the owner's usage statement. See the
+[company template](skews/company/README.md) and its decisions for lane behavior.
+
+Both layouts use the same creator and recorded lineage. Native homes retain execution state; the
+publisher sends OA projections through the SDK. A published view is not a lossless native home backup.
 
 ## The guided setup
 
-Understand the project first, then choose the starter. Two kits share one engine: `hermes`, and `ir` with its `company` skew (ADR 0017); the cookbooks
-are working applications of it. Start a fresh repository with `create`, or preserve an existing one
+Understand the project first, then choose the starter. Both kits share the template renderer; the cookbooks
+are complete applications of the project contract. Start a fresh repository with `create`, or preserve an existing one
 with `adopt`. The generated [setup guide](base/.open-autonomy/SETUP.md) is the setup agent's
 procedure and is kept current by kit upgrades, including in this repository and every cookbook.
 
@@ -110,7 +128,9 @@ release automation is not yet implemented; `--with release` refuses before mutat
 publication procedure. Other live application connections are established at deployment or customer
 activation.
 
-**Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: `hermes/` (except `config.yaml` and `kanban.seed.json`), the reporter,
+**Kit-owned** files are kept current by `upgrade`, from the base and the recorded skew: supplied runtime content
+under `hermes/` or [home/](skews/company/home/) (excluding project skills outside the OA namespace and the Hermes board/webhook seeds),
+`agent.json`, the publisher,
 the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
 (ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the version it last
 took (fetched once from the registry into the kit cache, `OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory) as the ancestor. A file only the project changed keeps the project's; a file
@@ -119,7 +139,7 @@ for an agent in the project's own session to resolve before landing. `check` rep
 merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 
-## How the repository runs itself
+## How a Hermes self-build repository runs itself
 
 The agent is stock Hermes in a container, its home the committed `hermes/`, its checkout the repository,
 its model calls forwarded by the key valve beside it (which alone holds the project's key) to the platform,
@@ -130,8 +150,9 @@ The native kanban holds execution tasks; the gateway's dispatcher pulls them dow
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its
 exact head against the constitution, scope and manual evidence, submits a GitHub review and confirms the
-merge before completing the task. GitHub requires approval and dismisses stale approvals on changed diffs; once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill). Every
-session shows on the project's page with its cost.
+merge before completing the task. GitHub requires approval and dismisses stale approvals on changed diffs.
+Once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill).
+Sessions admitted by the publication policy appear on the selected server with their settled costs.
 
 The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
 worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
@@ -160,11 +181,15 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
 - **The Volter Harness adapter** (`.open-autonomy/reporting.ts`): the publication policy and the transcript publisher the
   reporter uses to read native Hermes through Volter Harness's harness SDK and publish through the Open Autonomy SDK.
 
-The reporter is an SDK-to-SDK publisher. Volter Harness supplies session discovery and paginated transcripts,
+The publisher serves both layouts and uses the external native contracts: retained board events and the
+live session index, plus Volter Harness session discovery and paginated transcripts,
 native start/end records, run outcomes, live jobs, profiles, skills and workflow state. Open Autonomy's
 SDK batches and acknowledges delivery. Silence never ends a session, and a task's lane never invents
 a review verdict. The reporter reads repository-owned documents from committed main and applies the
-YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files.
+YAML publication policy in `.open-autonomy/config.yaml`; it does not parse Hermes's storage files. Native
+source identity, replay and projection requirements belong to the [SDK contract](../sdk/README.md) and
+[ADR 0016](../../docs/decisions/0016-retained-source-publication.md). The board adapter saves source cursors
+only after its publication callback resolves; that callback checkpoint is not a receipt for every OA write.
 
 Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
 history-change events reconcile against Volter Harness and the destination's receipt. An upload failure stays
@@ -173,7 +198,7 @@ stops for that session with an explicit reconciliation error rather than skippin
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
 default, with private session/job exceptions and optional chat publication controlled by project policy.
 
-The reporter is also where the owner's one word of control lands. `POST /v1/agent/state {"state":"paused"}` on a
+For Hermes, the publisher is also where the owner's one word of control lands. `POST /v1/agent/state {"state":"paused"}` on a
 `steer`-scoped key (`bun .open-autonomy/mint-key.ts --scopes steer --out ~/.config/open-autonomy/steer.env` mints one,
 which spends nothing) records the request on the platform; the reporter reads it back through the valve and applies it
 through Hermes's own schedule: every enabled job paused and remembered, a run in flight left to finish, conversations on
@@ -199,12 +224,12 @@ platform, synthetic vendors and manual actions. World owns resources, processes,
 The agent's `.env` says `OPEN_AUTONOMY_KEY=valve`. Managed deployments sign pushes through an ssh-agent
 loaded with one repository-scoped deploy key. Local Codex uses the project GitHub App through the host
 valve; startup checks its Git routes and Contents write grant before starting Hermes. The gateway
-holds neither credential. Delivery uses at most a Discord bot token. Every session's turns
-are published; the platform redacts secret-shaped text at intake as the second wall.
+holds neither credential. Delivery uses the configured channel connection; publication follows the
+project's audience policy, and the platform redacts secret-shaped text at intake as the second wall.
 
 ## Roadmap scrum upgrades
 
-Version 2.8 introduces sourced `ROADMAP.md` planning. Upgrade creates a missing roadmap from the project's
+Version 2.8 introduces sourced [ROADMAP.md](skews/self-build/ROADMAP.md) planning. Upgrade creates a missing roadmap from the project's
 historical seed, preserving holds and acceptance as intentions to reconcile, and never overwrites existing
 notes. Startup stops replaying the seed into kanban. Existing tasks and owner schedules stay intact;
 existing PM/community cron jobs load the new skills even if their old prompts describe filing tasks.
