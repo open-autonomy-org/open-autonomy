@@ -8,3 +8,5 @@ implementer's.
 - Only P0 and P1 findings hold the merge; a P2 is the coding session's to judge. File or name the task that owns every
   finding.
 - Your verdict names the exact head commit of each PR you ran.
+- In the go-to-market lane a card is a post or another piece of the funnel: its bar is the post-review skill, with its
+  blind walk.

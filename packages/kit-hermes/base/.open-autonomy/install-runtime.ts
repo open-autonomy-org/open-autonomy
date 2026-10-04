@@ -12,6 +12,9 @@ type Options = {
   registry?: string;
   archive?: string;
   lockOnly?: boolean;
+  // Told of the install's child the moment it starts, so a caller that stops on a signal can stop it too, rather than
+  // leave a `bun install` running with nobody waiting on it.
+  started?: (child: ReturnType<typeof Bun.spawn>) => void;
 };
 
 function archivePaths(archive?: string): string[] {
@@ -95,6 +98,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const child = Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     });
+    options.started?.(child);
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);
     // Commit registry-neutral resolution with the candidate integrity, never an ephemeral review listener.
