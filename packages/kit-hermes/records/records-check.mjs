@@ -110,7 +110,8 @@ function walk(dir, out, base) {
     let stat;
     try { stat = statSync(path); } catch { continue; }
     const rel = relative(base, path);
-    if (stat.isDirectory()) { if (!excluded(`${rel}/x`)) walk(path, out, base); }
+    // A nested repository is a root of its own, counted by its repository's volume, never as loose files here.
+    if (stat.isDirectory()) { if (!excluded(`${rel}/x`) && !existsSync(join(path, '.git'))) walk(path, out, base); }
     else if (isRecord(rel)) out.push(path);
   }
 }
