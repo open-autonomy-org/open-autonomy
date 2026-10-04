@@ -29,8 +29,11 @@ export function initRecords(target: string): { written: string[]; kept: string[]
     written.push(rel);
   };
   const template = (rel: string) => readFileSync(join(KIT_RECORDS, 'template', rel), 'utf8');
+  // The record repository's identity, from its origin on GitHub: the check keys its own volume by it in any clone.
+  const origin = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(git(target, ['remote', 'get-url', 'origin']));
   if (existsSync(join(target, 'records.json'))) kept.push('records.json');
-  else place('records.json', template('records.json'));
+  else place('records.json', template('records.json').replace('{\n', `{\n  "repository": ${JSON.stringify(origin ? `${origin[1]}/${origin[2]}` : '')},\n`));
+  if (!JSON.parse(readFileSync(join(target, 'records.json'), 'utf8')).repository) notes.push('records.json names no "repository" (owner/repo): the pre-commit checks nothing until it does');
   const config = JSON.parse(readFileSync(join(target, 'records.json'), 'utf8')) as { register?: string };
   const register = config.register ?? 'records-register.md';
   if (existsSync(join(target, register))) kept.push(register);

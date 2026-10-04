@@ -82,7 +82,8 @@ const FORMATS = { '.md': 'Markdown', '.mdx': 'MDX', '.yaml': 'YAML', '.yml': 'YA
 const stubRow = (path) => `| \`${path}\` | ${STUB} | ${STUB} | ${STUB} | Original; no copies | ${FORMATS[extname(path)] ?? STUB} | ${STUB} | ${STUB} | ${STUB} | ${STUB} | ${STUB} |`;
 
 function staged() {
-  const repository = repositoryOf(root) ?? config.repository;
+  // The record repository's identity is its records.json's (`records init` writes it): a clone from a mirror or a local path is still it.
+  const repository = config.repository ?? repositoryOf(root);
   if (!repository) { console.error('records: this repository names no origin on GitHub and records.json no "repository"; nothing is checked'); return 0; }
   const registerFiles = (path) => path === config.register || path.startsWith(`${config.volumes}/`) || path === 'records.json';
   const added = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=AR', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
@@ -126,7 +127,7 @@ function estate(json) {
   const report = [];
   for (const dir of roots) {
     if (!existsSync(dir)) { report.push({ root: dir, missing: true, records: 0, unregistered: [] }); continue; }
-    const repository = existsSync(join(dir, '.git')) ? repositoryOf(dir) : null;
+    const repository = existsSync(join(dir, '.git')) ? (resolve(dir) === resolve(root) && config.repository ? config.repository : repositoryOf(dir)) : null;
     let paths;
     if (repository) {
       paths = execFileSync('git', ['-C', dir, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean).filter(isRecord);
