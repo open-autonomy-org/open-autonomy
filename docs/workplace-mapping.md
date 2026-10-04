@@ -28,9 +28,12 @@ distinguishes OA's reusable skew from an owner's running organization instance. 
 kit is required for every conforming OA project.
 
 IDs are opaque and local to their owning product. The integrations keep association maps and replay state;
-core products do not interpret another product's IDs. Preserve the issuer/deployment, team/source/board and
-stable local ID needed to distinguish records. A display name, matching account spelling or shared session
-label proves neither identity nor authority.
+core products do not interpret another product's IDs. Preserve the issuer/deployment, owning source context and
+stable local ID needed to distinguish records. [Supercode ADR 0015](https://github.com/volter-ai/supercode/blob/main/docs/adr/0015-tasks-carry-creator-sponsor-and-tags.md)
+defines newly created boards as saved tag views over the organization's one task store: the same task in several
+views retains one identity. View membership is presentation metadata, not another native task namespace. Existing
+independent stores remain readable under Supercode's contract. A display name, matching account spelling or shared
+session label proves neither identity nor authority.
 
 ## Authority and controls
 
@@ -79,8 +82,7 @@ failed sync and requires relinking. Local unlink removes OA's association; the R
 the app there. Registered app IDs in source do not prove a released deployment or synced service credentials.
 RH2's three native mapping apps are implemented in source. Independent scoped World, UI and lifecycle evidence
 review passed for [PR 313](https://github.com/volter-ai/runhuman-2/pull/313) at `1f010ad8`.
-This does not establish formal approval, release, deployment or source-qualified migration; that correction
-remains pending below.
+This does not establish formal approval, release, deployment or completion of the deferred migration work below.
 Current apps also create RH2 Task, agent-principal and books-snapshot projections, beyond embedded views;
 these copies do not acquire native execution or treasury authority.
 
@@ -88,18 +90,23 @@ Agent/session binding requires native attribution. [Supercode ADR 0013](https://
 records that Hermes's current own loop records no launch agent, so its sessions remain unbound. OA publication
 or a Workplace Room does not establish that attribution or imply a main-session binding.
 
-Source namespaces are not yet preserved everywhere. OA's [native event cache](../packages/kit-hermes/base/.open-autonomy/source-events.ts)
+OA's [native event cache](../packages/kit-hermes/base/.open-autonomy/source-events.ts)
 uses `board:card.id`, while its [published item adapter](../packages/kit-hermes/base/.open-autonomy/publisher.ts)
 still uses the raw card ID. RH2's [Cards → Tasks map](https://github.com/volter-ai/runhuman-2/blob/main/bots/cards-tasks/main.mjs)
 uses a source-qualified card ID, but the [Room keys](https://github.com/volter-ai/runhuman-2/blob/main/bots/arcs-rooms/main.mjs)
 and [agent/Room associations](https://github.com/volter-ai/runhuman-2/blob/main/bots/agents-rooms/main.mjs) derive
-normalized, truncated keys from raw IDs. Same-ID records from different sources/boards can therefore collide
-in these narrower projections. [Proposed ADR 0025](decisions/0025-source-qualified-associations-and-replay.md) describes
-preserving existing associations and replay identities; migration remains pending its owning contract reviews
-and implementation evidence before source-qualified mappings can be claimed throughout.
+normalized, truncated keys from raw IDs. Those representation differences do not make the same task in several
+saved views distinct. Genuinely distinct records from separate owning sources or retained independent stores need
+the provenance supplied by their native contract; names or view slugs cannot resolve ambiguity.
+Raw item/note collisions for genuinely distinct records published to one OA account remain an OA-owned projection
+follow-up, with existing IDs and receipts preserved; this architecture correction does not implement that follow-up.
 Upstream [Teams publication](https://github.com/volter-ai/supercode/blob/main/sdk/teams/board-events.mjs) also
-allocates a source per board home and publishes `source:card.id`; board metadata downstream cannot recover a
-same-ID head already overwritten or refused at that upstream boundary.
+allocates a source per board home and publishes `source:card.id`. Native ID generation, import policy, store
+provenance and correction of any upstream head loss belong to Supercode; OA does not fix them by redefining view
+membership as task identity. The broader native/RH2 migration drafts are preserved and deferred to their owning
+products, outside this OA architecture delivery. [Proposed ADR 0025](decisions/0025-source-qualified-associations-and-replay.md)
+retains OA's responsibility for truthful SDK item/session/note associations, acknowledged publication and retries;
+no new resolver or cross-product migration is claimed implemented here.
 
 This map adds no audience default, cross-organization sharing rule, account federation or treasury replication
 decision. Current public-books policy and the OA dashboard's owner controls and books remain as decided.
