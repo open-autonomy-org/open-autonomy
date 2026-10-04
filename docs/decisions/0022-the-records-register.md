@@ -45,7 +45,8 @@ had none of it.
 - A company install upgraded to this kit carries the rules. Its record repository gets the register on one
   `records init`. The estate reads zero only when every record is registered or retired.
 - Which files count as records is a pattern list (`include`/`exclude` in `records.json`): documents, data and ledgers
-  by extension, without code, dependency locks and build output. An organization widens or narrows it there.
+  by extension (Markdown and text, JSON Lines, CSV and TSV, logs, SQLite), without code, configuration (a repository's
+  JSON and YAML), dependency locks and build output. An organization widens or narrows it there.
 - The check reads every volume on each commit. That is a few hundred Markdown files for Volter, so it stays fast and
   has no dependency beyond Node and git.
 - The register's classification, retention codes and ownership law are the frame Volter adopted (its manager decision

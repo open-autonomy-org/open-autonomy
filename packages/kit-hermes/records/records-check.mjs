@@ -22,7 +22,9 @@ const COLUMNS = ['Asset / original path', 'Purpose', 'Owner', 'Writers', 'Copies
 const DEFAULTS = {
   register: 'records-register.md',
   volumes: 'records-register',
-  include: ['**/*.md', '**/*.mdx', '**/*.yaml', '**/*.yml', '**/*.json', '**/*.jsonl', '**/*.csv', '**/*.tsv', '**/*.txt', '**/*.log', '**/*.db', '**/*.sqlite'],
+  // Documents, ledgers and logs. A repository's JSON and YAML are its configuration, not records; an organization whose
+  // ledgers are JSON adds them (or registers their folder as a series).
+  include: ['**/*.md', '**/*.mdx', '**/*.txt', '**/*.jsonl', '**/*.csv', '**/*.tsv', '**/*.log', '**/*.db', '**/*.sqlite'],
   exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/vendor/**', '**/fixtures/**', '**/__snapshots__/**',
     '**/package.json', '**/package-lock.json', '**/bun.lock', '**/tsconfig*.json', '**/*.schema.json', '.github/**', '**/.githooks/**'],
   estate: { roots: [] }
