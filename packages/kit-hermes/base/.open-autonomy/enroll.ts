@@ -5,6 +5,9 @@
 // and stops processes. By hand: `bun .open-autonomy/enroll.ts` after a first start (SETUP.md).
 //   - The checkout in this machine's workspace map, so the board's cards on the install's own repository
 //     (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
+//   - Each mail agent's profile folder, a sync root of this machine's Teams connector with its rule (`teams connect --cwd
+//     FOLDER --add-root`), so the sessions it runs there reach Teams wherever the install's layout puts its home: its
+//     Room reads the agent's session from there (supercode docs/guides/teams.md).
 //   - Each mail agent of .open-autonomy/agent.json (supercode docs/adr/0008): declared, its main session opened once in a
 //     pane on this machine and kept across runs (`agent declare --open`).
 //   - An agent with `every_machine` (the box maintainer): its instance on each other machine Teams reports online, opened
@@ -54,6 +57,15 @@ if (agentHarness(setup) !== 'hermes') {
 for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
   const folder = resolve(home, 'profiles', mailAgent.profile);
   if (!existsSync(folder)) { say(`agent ${name}: no ${folder}; the start renders the home first (a lane that does not run ${mailAgent.profile} has none)`); continue; }
+  if (agentHarness(setup) !== 'hermes') {
+    // The folder is this install's own layout, so it is registered from here on every run (idempotent): a home that
+    // moves takes its root along at the next enrollment, and none is ever left to be added by hand.
+    const harness = (mailAgent.program ?? 'claude') === 'codex' ? 'codex' : 'claude-code';
+    const rooted = await run([supercodeBin, 'teams', 'connect', '--cwd', folder, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], folder);
+    const rule = rooted.ok ? (JSON.parse(rooted.out || '{}').data?.rule?.id ?? 'no rule (a machine context)') : '';
+    say(rooted.ok ? `agent ${name}: ${folder} is a Teams sync root of this machine (${harness}; ${rule})` : `agent ${name}: ${folder} is not a Teams sync root, so its sessions do not reach Teams: ${last(rooted.err)}`);
+    if (!rooted.ok) failed++;
+  }
   const declared = await run([supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
     '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
     ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
