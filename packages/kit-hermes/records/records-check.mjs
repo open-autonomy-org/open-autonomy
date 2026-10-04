@@ -125,9 +125,12 @@ function estate(json) {
   const roots = (config.estate?.roots ?? []).map(home);
   if (roots.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
   // The roots are paths on the machine where the install and its checkouts live; elsewhere they would all read as missing.
+  // A machine is named as the fleet names it: macOS's LocalHostName (its hostname() is often just "Mac"), else the host
+  // name, lowercased and without ".local".
   const machine = config.estate?.machine;
-  if (machine && hostname().replace(/\.local$/, '') !== machine) {
-    console.error(`records: the estate's roots are ${machine}'s (records.json estate.machine); this is ${hostname()}, so run the estate there`);
+  const here = (() => { try { return execFileSync('scutil', ['--get', 'LocalHostName'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return hostname(); } })().replace(/\.local$/, '').toLowerCase();
+  if (machine && here !== machine.toLowerCase()) {
+    console.error(`records: the estate's roots are ${machine}'s (records.json estate.machine); this is ${here}, so run the estate there`);
     return 2;
   }
   const report = [];
