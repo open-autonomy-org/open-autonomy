@@ -17,9 +17,9 @@
 //
 //   bun .open-autonomy/enroll.ts [--project <dir>] [--home <dir>]
 // OPEN_AUTONOMY_SUPERCODE_BIN names another supercode build (a review or a World), as it does for the start.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, resolve } from 'node:path';
+import { basename, relative, resolve, sep } from 'node:path';
 import { agentHarness, readAgent } from './agent.ts';
 
 const argv = process.argv.slice(2);
@@ -61,10 +61,24 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
     // The folder is this install's own layout, so it is registered from here on every run (idempotent): a home that
     // moves takes its root along at the next enrollment, and none is ever left to be added by hand.
     const harness = (mailAgent.program ?? 'claude') === 'codex' ? 'codex' : 'claude-code';
-    const rooted = await run([supercodeBin, 'teams', 'connect', '--cwd', folder, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], folder);
-    const rule = rooted.ok ? (JSON.parse(rooted.out || '{}').data?.rule?.id ?? 'no rule (a machine context)') : '';
-    say(rooted.ok ? `agent ${name}: ${folder} is a Teams sync root of this machine (${harness}; ${rule})` : `agent ${name}: ${folder} is not a Teams sync root, so its sessions do not reach Teams: ${last(rooted.err)}`);
-    if (!rooted.ok) failed++;
+    // The root is the folder's real path, and only one inside this home's profiles folder: a profile that is a link to
+    // somewhere else would make that other folder, and every session ever recorded there, this machine's to share.
+    const profiles = realpathSync(resolve(home, 'profiles'));
+    const real = realpathSync(folder);
+    const inside = relative(profiles, real);
+    if (!inside || inside.startsWith('..') || inside.startsWith(sep) || resolve(profiles, inside) !== real) {
+      say(`agent ${name}: ${folder} is not registered as a Teams sync root: its real path ${real} is not inside ${profiles}`);
+      failed++;
+    } else {
+      const rooted = await run([supercodeBin, 'teams', 'connect', '--cwd', real, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], folder);
+      const rule = rooted.ok ? JSON.parse(rooted.out || '{}').data?.rule?.id : undefined;
+      // No rule is no capture (a machine context adds none; its custodian does): a failure, said and counted, so a run
+      // never reads as enrolled while the agent's sessions stay off Teams.
+      say(rule ? `agent ${name}: ${real} is a Teams sync root of this machine (${harness}; ${rule})`
+        : rooted.ok ? `agent ${name}: ${real} is a root of this machine, but no sync rule selects it, so its sessions do not reach Teams (a machine context: its custodian adds the rule)`
+        : `agent ${name}: ${real} is not a Teams sync root, so its sessions do not reach Teams: ${last(rooted.err)}`);
+      if (!rule) failed++;
+    }
   }
   const declared = await run([supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
     '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
