@@ -37,6 +37,10 @@ connections with you, verifies who you are, and starts the agent. Its sessions a
 
 ## What it does
 
+The [target ecosystem architecture](docs/decisions/0022-ecosystem-target-architecture.md) records ownership of the
+reusable core, templates, hosted and self-hosted backends, Workplace integration, funding application and external
+dependencies. Its status records whether repository acceptance is complete.
+
 - **The kit** (`create-open-autonomy`): a repository that runs itself. An agent with planning, development,
   community and outreach skills, a task board, and a landing workflow where every change is reviewed before it
   merges.
