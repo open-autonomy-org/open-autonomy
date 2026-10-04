@@ -17,6 +17,12 @@ MAX_GLOBAL_DAILY_USD_CENTS = "5000"
 DEFAULT_FUNDING_ACCOUNT = "open-autonomy-org/open-autonomy"
 # GitHub Sponsors is one listing per org, so its money lands on the org's grants account and is given on from there.
 DEFAULT_SPONSOR_ACCOUNT = "open-autonomy-org/grants"
+# The Workplace app (packages/backend/src/workplace.ts, ADR 0018): Open Autonomy's app in Volter Workplace's production
+# (pilot.runhuman.com), registered by organization open-autonomy from workplace-app.json. Its client secret is the
+# production environment's WORKPLACE_CLIENT_SECRET, installed by admin.yml → sync-secrets.
+WORKPLACE_URL = "https://pilot.runhuman.com"
+WORKPLACE_APP_ID = "app_b64bdd31e304723a"
+WORKPLACE_CLIENT_ID = "app_b64bdd31e304723a"
 
 # Monthly sponsorship accrual (credits active recurring sponsors; idempotent per month) and the docs sync; every quarter
 # hour, each linked Workplace's alerts brought in step with the books (packages/backend/src/workplace.ts).
