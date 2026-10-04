@@ -58,8 +58,9 @@ through the doors that already exist.
 - **Work no integration reaches goes to "the team member who handles it"** (`front-door`, `project-communications`).
   Every member is a volunteer: that person may not exist, or may be away.
 - **One project runs on one machine.** The board is Hermes's local store in the one home the one runtime serves,
-  behind one dispatcher lock (Hermes's `_acquire_singleton_lock`, which Supercode's orchestrator holds the same
-  way). No record designs a second member's machine working the same
+  behind one runtime (Hermes's `_acquire_singleton_lock`, whose gateway lock Supercode's orchestrator holds the same
+  way). Its board has one dispatcher because of what the start runs, not a lock: the install's `workflow serve`,
+  with the orchestrator started told not to dispatch (ADR 0017). No record designs a second member's machine working the same
   project; ADR 0008's seams (roster, reviews, release, deploy) name no member running the agent.
 
 ## Decision

@@ -68,7 +68,7 @@ verbs:
       validate: [{ expr: "event.reason != null && event.reason != ''", message: A block must name what is missing. }]
       actions:
         - relation: { add: "{{event.on ?? event.waiting_on}}", reason: "{{event.reason}}" }
-        - wait_run: true
+        - end_run: { outcome: blocked }
         - count: block_recurrences
         - record: { kind: "{{card.counters.block_recurrences >= params.block_recurrence_limit ? 'recurring_block' : 'blocked'}}" }
     # A draft (RFC 0020 decision 14): its creator files it blocked by its own message to the manager, before it has
@@ -88,7 +88,6 @@ verbs:
       validate: [{ expr: "event.reason != null && event.reason != ''", message: Unblock must say what arrived. }]
       actions:
         - relation: { remove: "{{event.hermes ? 'messages' : (event.on ?? '*')}}", reason: "{{event.reason}}" }
-        - wait_run: "{{card.blocked_by.size() > 0}}"
         - reset: [failures]
         - every: "{{card.every}}"
         - record: unblocked
@@ -103,14 +102,14 @@ verbs:
       guard: "card.dispatch_hold && card.current_run_id == null && card.blocked_by.size() == 1 && card.blocked_by.exists(b, b.kind == 'message')"
       actions: [{ relation: { remove: "{{event.on}}", reason: "{{event.reason}}" } }, { reset: [failures] }, { record: unblocked }, { record: dispatch_released }]
     - by: [platform]
-      actions: [{ relation: { remove: "{{event.on}}", reason: "{{event.reason}}" } }, { wait_run: "{{card.blocked_by.size() > 0}}" }, { reset: [failures] }, { every: "{{card.every}}" }, { record: unblocked }]
+      actions: [{ relation: { remove: "{{event.on}}", reason: "{{event.reason}}" } }, { reset: [failures] }, { every: "{{card.every}}" }, { record: unblocked }]
   dependency_cancelled:
     - by: [platform]
       actions:
         - relation: { remove: "{{event.on}}", reason: "{{event.reason}}" }
         - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} was blocked by {{event.on}}, which was cancelled. What replaces it?" }
         - relation: { add: "{{asked}}", reason: "blocking card cancelled" }
-        - wait_run: true
+        - end_run: { outcome: blocked }
         - record: dependency_cancelled
   block_aged:
     - by: [platform]
@@ -268,8 +267,8 @@ verbs:
       actions: [{ forget_session: '*' }, { assign: { field: machine, value: "{{event.machine}}" } }, { reset: [failures] }, { record: machine_set }]
     - by: [manager, owner]
       actions: [{ record: machine_set }]
-  link: [{ by: [manager], actions: [{ relation: { add: "{{event.parent}}" } }, { wait_run: true }, { record: linked }] }]
-  unlink: [{ by: [manager, owner, arc], actions: [{ relation: { remove: "{{event.parent}}", reason: "dependency removed by manager" } }, { wait_run: "{{card.blocked_by.size() > 0}}" }, { record: unlinked }] }]
+  link: [{ by: [manager], actions: [{ relation: { add: "{{event.parent}}" } }, { end_run: { outcome: blocked } }, { record: linked }] }]
+  unlink: [{ by: [manager, owner, arc], actions: [{ relation: { remove: "{{event.parent}}", reason: "dependency removed by manager" } }, { record: unlinked }] }]
   specify:
     - by: [implementer, reviewer, auditor, arc, manager, owner]
       validate:

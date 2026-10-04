@@ -397,6 +397,8 @@ async function docs(): Promise<void> {
   // A project's reporter publishes its cards and sessions; its page's documents are its own repository's.
   if (tenant) return;
   const d = { about_md: typeof cfg.about === 'string' && cfg.about ? mainFile(cfg.about) : undefined };
+  // No document named (or none committed): nothing to publish. The platform refuses an empty one (invalid_docs).
+  if (d.about_md === undefined) return;
   const digest = JSON.stringify(d);
   if(digest!==docsDigest){const result=await oa.docs(d);if(!result.ok)throw new Error(`Document publication refused: ${result.status}`);docsDigest=digest;}
 }

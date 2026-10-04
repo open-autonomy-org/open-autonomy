@@ -473,8 +473,8 @@ let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
 // What the agent IS is what main says, and main moves while it runs: a landed change of any kind (its config, its
 // seeds, the kit) reaches the running stack without anyone on the host. Every ten minutes the checkout's main is
-// fetched; when it moved and the board is quiet, the stack drains and restarts onto it, the same path a kit
-// upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
+// fetched; when it moved, the stack drains and restarts onto it at once, whatever the board holds (sessions run in
+// their own panes and outlive the stack), the same path a kit upgrade takes. A checkout with tracked changes is a killed attempt's and is left alone.
 // Moved means origin/main is no longer what this stack started on. HEAD is not the measure: a developer run checks
 // out its own task branch in this checkout, and that is work in progress, not a reason to restart under it.
 let startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
@@ -501,12 +501,6 @@ setInterval(() => {
     mainMoved = startedMain && main && main !== startedMain ? main.slice(0, 8) : undefined;
   }
   if (!request && !mainMoved) return;
-  const board = Bun.spawnSync({ cmd: drop(boardDeclared ? [Bun.which('node')!, orchestratorBin, 'workflow', '--root', home, 'list', '--json'] : ['hermes', 'kanban', 'list', '--json']), cwd: project, env, stdout: 'pipe', stderr: 'pipe' });
-  if (board.exitCode !== 0) { say('cannot read the board; kit restart waits'); return; }
-  try {
-    const tasks = JSON.parse(board.stdout.toString());
-    if (!Array.isArray(tasks) || tasks.some((task: { status: string }) => ['running', 'review'].includes(task.status))) return;
-  } catch { say('cannot decode the board; kit restart waits'); return; }
   restarting = true;
   rmSync(restartRequest, { force: true });
   const runtime = harness === 'hermes' ? 'Hermes' : 'the orchestrator';

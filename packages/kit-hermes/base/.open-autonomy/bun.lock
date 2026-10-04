@@ -1,14 +1,15 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "open-autonomy-host",
       "dependencies": {
         "@chat-adapter/discord": "4.39.0",
         "@chat-adapter/state-memory": "4.39.0",
-        "@volter/supercode": "0.5.94",
-        "@volter/supercode-harness-sdk": "^0.3.45",
-        "@volter/supercode-orchestrator": "0.5.1",
+        "@volter/supercode": "0.5.141",
+        "@volter/supercode-harness-sdk": "^0.3.62",
+        "@volter/supercode-orchestrator": "0.5.47",
         "@volter/twin-discord": "^2.0.5",
         "@volter/twin-github": "^2.0.6",
         "@volter/twin-jira": "^2.0.5",
@@ -65,23 +66,23 @@
 
     "@volter/identity": ["@volter/identity@0.4.1", "", { "dependencies": { "jose": "^6.2.12" }, "bin": { "volter": "dist/cli.js" } }, "sha512-cxqE9QONWD/9lzVxXNf73lF7vM1YO1ftp2u/p1cWAH5PCVFLhjIT+twEfJQoJxCb9hH+qdHGfaX1iOQLwxsIuA=="],
 
-    "@volter/supercode": ["@volter/supercode@0.5.94", "", { "optionalDependencies": { "@volter/supercode-cli-darwin-arm64": "0.5.94", "@volter/supercode-cli-darwin-x64": "0.5.94", "@volter/supercode-cli-linux-arm64": "0.5.94", "@volter/supercode-cli-linux-x64": "0.5.94", "@volter/supercode-cli-win32-x64": "0.5.94" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-Tzo9TsyyX7frKJuKKYR9dFFl7SIuvZwm9cRaxvVsvyD1EcK5E63zOTAGtm9YLn9gwF3z/gYPpi3lzoTAdAKsAw=="],
+    "@volter/supercode": ["@volter/supercode@0.5.141", "", { "optionalDependencies": { "@volter/supercode-cli-darwin-arm64": "0.5.141", "@volter/supercode-cli-darwin-x64": "0.5.141", "@volter/supercode-cli-linux-arm64": "0.5.141", "@volter/supercode-cli-linux-x64": "0.5.141", "@volter/supercode-cli-win32-x64": "0.5.141" }, "bin": { "supercode": "bin/supercode.js" } }, "sha512-6l2WjSSZcPnvIABNcsejfh0hKXSJ2KyxpKOpWuY/08/fAx537cDOVSQHk2lG8xpX7RaIx/K5Bff/nzFQ2swn3g=="],
 
-    "@volter/supercode-cli-darwin-arm64": ["@volter/supercode-cli-darwin-arm64@0.5.94", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Ha6QbDtpKdx8ZWBeUDkZvVijzXkb/W1BXPrwkWGoWA1Ic5ue3xgOyTlaP3t5/XpmV/lpSogRF2J7bhIis39EYQ=="],
+    "@volter/supercode-cli-darwin-arm64": ["@volter/supercode-cli-darwin-arm64@0.5.141", "", { "os": "darwin", "cpu": "arm64" }, "sha512-ZYAT0xquXCSL/RAbmG8VoBHesBWs5dtOYmt26Rrbqc8JWaS44BWUNN3i7eM2+qDm0T7tFAOLxpCsoimbHcrJUw=="],
 
-    "@volter/supercode-cli-darwin-x64": ["@volter/supercode-cli-darwin-x64@0.5.94", "", { "os": "darwin", "cpu": "x64" }, "sha512-Srgqqyeplw/eNnqyfsKpCijq/KlfrQQYY/kBH7/tWVoE2cNQbk7zg2m1GQwxctFv1BMKf7j5i9YmUO8ptnsE6g=="],
+    "@volter/supercode-cli-darwin-x64": ["@volter/supercode-cli-darwin-x64@0.5.141", "", { "os": "darwin", "cpu": "x64" }, "sha512-kuzt0CkPu+CEhe1SRQXUQq/I37CkkOKevqLxLqVAPpZR57UTbfTZLRLCF3Tgzx/Z26NEJUJDI8rQQHWblqe3dA=="],
 
-    "@volter/supercode-cli-linux-arm64": ["@volter/supercode-cli-linux-arm64@0.5.94", "", { "os": "linux", "cpu": "arm64" }, "sha512-+9zcDLjPZZT7j96djuTMxT+2M++pQUCojRiMhhocHaO48/iXEpMP4zig8Xr4n/snrg+v3PCLn9ft63RAwiw9ug=="],
+    "@volter/supercode-cli-linux-arm64": ["@volter/supercode-cli-linux-arm64@0.5.141", "", { "os": "linux", "cpu": "arm64" }, "sha512-4U7GIOquvYRmqufXuuk4mnE9fNyt9TDP6ZkqQr+0AIPRnncjA+78qPdNJ/eVvwTKWMuSt9e6UCEfg1HVnrxMjA=="],
 
-    "@volter/supercode-cli-linux-x64": ["@volter/supercode-cli-linux-x64@0.5.94", "", { "os": "linux", "cpu": "x64" }, "sha512-6sHW1QD8EMWJn0KLSH85STSYNlgKu2h4KsSOvmiiI7wOaO7xCMEWsVaSQIEfqwKzn6rnMgPIZxLsyAZ2kztSsg=="],
+    "@volter/supercode-cli-linux-x64": ["@volter/supercode-cli-linux-x64@0.5.141", "", { "os": "linux", "cpu": "x64" }, "sha512-HMySGW3jp70uVpf6Mua39r3E3sxafVEBbssZVG7czvfekJYcFQFW96b6b9A2oXyAlc9ETOP+jfbwCjPTCVNv6A=="],
 
-    "@volter/supercode-cli-win32-x64": ["@volter/supercode-cli-win32-x64@0.5.94", "", { "os": "win32", "cpu": "x64" }, "sha512-6gINlHHyayoUvdGo85T7PAN+l6vyM9CYNYlTZA9UeruXpTarwvN2y96njwO1AhBSowrbPpmUfLcFZWGqqcwPJg=="],
+    "@volter/supercode-cli-win32-x64": ["@volter/supercode-cli-win32-x64@0.5.141", "", { "os": "win32", "cpu": "x64" }, "sha512-slCSJTS7kws68ktbI1HI+BgUDW5p+LMRedQ413PEIBSfE0++ZBM2bSNG5PA65cIdau3H3X+DRhI1pctgBxKOaw=="],
 
-    "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.55", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-kf3dwV9Ofo/UT8lvSTkLPc67A5OCvdqlC9/qwFqRK0JT2J4/yEg7+BpxQxjHN3xBEMbSjLS5xDJRRsKBMbiRiQ=="],
+    "@volter/supercode-harness-sdk": ["@volter/supercode-harness-sdk@0.3.64", "", { "dependencies": { "yaml": "^2.9.0" } }, "sha512-NAfWKEsvlqBvRO6T8x+lCwzYkTk2u+HlsM43bQx/I1Qi9lO6OrY+O5UKNwre2X0wSi4IONACA+mqgDtXrUptxg=="],
 
-    "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.5.1", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.41", "@volter/teams": "0.2.0", "@volter/ztrack": "^2.4.21", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-pWE7g6FRwJfFkifQLtZ1vO4oVfeCm7WpJ3xPjXtbEc+50scR1BfjTSIxFD6pbJslXq/7oqkLqT4ZnG27gBDBSw=="],
+    "@volter/supercode-orchestrator": ["@volter/supercode-orchestrator@0.5.47", "", { "dependencies": { "@volter/supercode-harness-sdk": "^0.3.60", "@volter/teams": "0.2.18", "@volter/ztrack": "^2.4.23", "yaml": "^2.9.0" }, "bin": { "supercode-orchestrator": "bin/orchestrator.mjs" } }, "sha512-AxNPmCrrypoTRa+leR0wunkma64scQQ31h/clgxO+UXYIOyaUzu4fPEFo+pHbCo1ufTePWJF6wA/1lV9jwFuxQ=="],
 
-    "@volter/teams": ["@volter/teams@0.2.0", "", { "dependencies": { "@volter/identity": "^0.4.1", "ws": "^8.21.0" } }, "sha512-NuB1GR8r1Rbw2tR/iLenJtPWHKIYCwYCgxgg+HuSWnHf+CbUFEKP3VNeH7+slFu6zC+wF2cS+33jyCUzuTL+0w=="],
+    "@volter/teams": ["@volter/teams@0.2.18", "", { "dependencies": { "@volter/identity": "^0.4.1", "ws": "^8.21.0" } }, "sha512-MAv9kkVprvGxhVzVa3qVzT6rRa9bdQ9V80SPBYBDBCb7G/U1QCYyoK+R3vuBvKvgorIftkM9+xHCAza6j3tQ3A=="],
 
     "@volter/twin-discord": ["@volter/twin-discord@2.0.15", "", { "dependencies": { "@volter/world-ui": "0.1.15", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.15" }, "bin": { "world-discord": "dist/src/cli.js" } }, "sha512-8rBv9+NWKFxk9z585hQnbKdyCrM8rLpOeAJZNc3u3wpYbqQiy4z2pmNTwN8RGzOg2QfKHBeP76ZerwCYlVzJ5w=="],
 
