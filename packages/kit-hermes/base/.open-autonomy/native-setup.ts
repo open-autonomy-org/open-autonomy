@@ -4,6 +4,7 @@ import { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import type { Package, Setup } from './agent.ts';
 import { profileHarness } from './agent.ts';
 import { NativeRuntime, type NativeProfile } from './native-runtime.ts';
+import { redactSecrets } from './sdk/redaction.ts';
 
 type Unit = Record<string, unknown>;
 type ConfigUnit = { values?: Unit; error?: string };
@@ -113,13 +114,41 @@ function effective(profile: NativeProfile, spec: Package, units: Array<{ values?
   }
 }
 
+async function validateNativeJob(profile: NativeProfile, args: Record<string, unknown>, workspace: string): Promise<void> {
+  // The owning public export imports node:sqlite. Keep it on Node, never reimplement its validation in Bun.
+  const moduleUrl = import.meta.resolve('@volter/supercode-orchestrator');
+  const program = `import { readFileSync } from 'node:fs';
+try { const { buildJob } = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8'));
+buildJob(request.profile, request.args, request.now); process.stdout.write(JSON.stringify({ok:true})); }
+catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(error.message).slice(0,2048)})); process.exitCode=1; }`;
+  const child = Bun.spawn({ cmd: ['node', '--input-type=module', '-e', program, moduleUrl], cwd: workspace,
+    stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  let interrupted = false, expired = false, settled = false, killTimer: ReturnType<typeof setTimeout> | undefined;
+  const terminate = () => {
+    try { child.kill('SIGTERM'); } catch { /* already exited */ }
+    killTimer ??= setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already exited */ } }, 5000);
+  };
+  const interrupt = () => { interrupted = true; terminate(); };
+  const timeout = setTimeout(() => { expired = true; terminate(); }, 60_000);
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, interrupt);
+  try {
+    child.stdin.write(JSON.stringify({ profile, args, now: new Date().toISOString() })); child.stdin.end();
+    const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    settled = true;
+    if (interrupted || expired) throw new Error(`Native job validation ${expired ? 'timed out' : 'was cancelled'}; no setup effects applied`);
+    let reply: { ok?: boolean; message?: string };
+    try { reply = JSON.parse(stdout); } catch { throw new Error(`Native job validator exited ${code} without its success/error response`); }
+    if (code !== 0 || reply.ok !== true) throw new Error(`Owning native job validation refused: ${redactSecrets(reply.message ?? `exit ${code}`)}`);
+  } finally {
+    if (!settled) { terminate(); await child.exited; }
+    clearTimeout(timeout); clearTimeout(killTimer);
+    for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.off(signal, interrupt);
+  }
+}
+
 export async function applyNative(options: { setup: Setup; root: string; homeId: string; stateRoot: string; workspace: string; asAgent?: string[] }): Promise<string[]> {
   const applier = await import('@volter/supercode-orchestrator/apply');
   const { orchestratorDoor } = await import('@volter/supercode-orchestrator/apply/doors');
-  // The owning package publicly exports buildJob; its 0.5.47 declaration file omits it.
-  const { buildJob } = await import('@volter/supercode-orchestrator') as unknown as {
-    buildJob(profile: NativeProfile, args: Record<string, unknown>, now: string): unknown;
-  };
   const command = [...(options.asAgent ?? []), process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode'), 'harness', 'serve'];
   const sc = new SupercodeHarnessClient({ command: command[0], args: command.slice(1) });
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);
@@ -152,7 +181,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       patch(preview, Object.assign({}, ...units.map(unit => unit.values ?? {})));
       for (const [key, job] of Object.entries(spec.jobs ?? {})) {
         const args = door.fields(job, spec.inference);
-        buildJob(preview, { ...args, name: key }, new Date().toISOString()); // pure owning validation, no config/job effects
+        await validateNativeJob(preview, { ...args, name: key }, options.workspace); // pure owning validation before any config/job effect
       }
       const bad = first.rows.filter((row: Row) => ['refused', 'conflict', 'not-applied'].includes(row.action));
       if (bad.length) throw new Error(`${name}: native setup preflight refused: ${bad.map((r: Row) => `${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`).join('; ')}`);
