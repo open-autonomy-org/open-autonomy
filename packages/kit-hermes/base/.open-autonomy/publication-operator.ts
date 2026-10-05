@@ -40,11 +40,21 @@ try {
     const custodyName = `publication-private/${basename(configFile)}.custody.json`, custodyFile = resolve(base, custodyName);
     if (existsSync(custodyFile)) throw new Error('Custody declaration already exists; retain it and reconcile incomplete enrollment explicitly');
     const custody = { version: 1, generation: 1, account: cfg.account, apiBase, sourceContext, stores, nativeRuntime: selected, operator: need('--operator'), statement: need('--statement'), evidence: need('--evidence') };
-    savePublicationFile(custodyFile, custody);
-    // JSON flow mapping is YAML: append only the new declaration, preserving existing comments/data.
     const publication = { source_context: sourceContext, stores, custody: custodyName };
-    const appended = `${text}${text.endsWith('\n') ? '' : '\n'}\npublication: ${JSON.stringify(publication)}\n`;
-    savePublicationBytes(configFile, appended);
+    const declared = { ...cfg, publication };
+    // Block mappings support an append that retains comments. A complete flow
+    // mapping cannot accept another top-level block: serialize its existing data.
+    let prepared = `${text}${text.endsWith('\n') ? '' : '\n'}\npublication: ${JSON.stringify(publication)}\n`;
+    try { if (JSON.stringify(Bun.YAML.parse(prepared)) !== JSON.stringify(declared)) prepared = Bun.YAML.stringify(declared) + '\n'; }
+    catch { prepared = Bun.YAML.stringify(declared) + '\n'; }
+    if (JSON.stringify(Bun.YAML.parse(prepared)) !== JSON.stringify(declared)) throw new Error('Prepared publication configuration does not preserve the existing parsed data');
+    // Keep original bytes before either enrollment write. A partial operation
+    // retains these and the exact declaration; it never creates replacement IDs.
+    const beforeFile = resolve(privateDirectory, `${basename(configFile)}.before-enrollment.yaml`);
+    if (existsSync(beforeFile)) throw new Error('Original enrollment configuration already retained; reconcile the prior operation explicitly');
+    savePublicationBytes(beforeFile, text);
+    savePublicationFile(custodyFile, custody);
+    savePublicationBytes(configFile, prepared);
     console.log(JSON.stringify({ account: cfg.account, publication, ...(command === 'prepare-adoption' ? { reporterDigest: retainedDigest(stateFile), cacheDigest: retainedDigest(cacheFile), next: 'Supply explicit reviewed items/notes/sessions provenance in adoption JSON; adopt does not infer it.' } : { next: 'Review/commit the association configuration; native execution is unchanged.' }) }, null, 2));
   } else if (command === 'adopt') {
     if (!cfg.publication) throw new Error('Run prepare-adoption and review its explicit source declaration first');

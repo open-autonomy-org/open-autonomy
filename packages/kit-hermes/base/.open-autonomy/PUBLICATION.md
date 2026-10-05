@@ -26,8 +26,11 @@ bun .open-autonomy/publication-operator.ts enroll \
 ```
 
 Repeat `--backing-board` for every approved independent backing store. The door allocates random OA contexts,
-writes private `publication-private/<config-name>.custody.json`, and appends the `publication` declaration without replacing existing
-configuration data. Review/commit that declaration. The root is an adapter location, not authenticated native
+writes private `publication-private/<config-name>.custody.json`, and adds the `publication` declaration without replacing existing
+configuration data. A block mapping retains its comments; a flow mapping is serialized from its parsed data and may
+lose comments. Original bytes are retained privately as `<config-name>.before-enrollment.yaml` before either
+enrollment write. The resulting YAML is validated before configuration/custody writes. Review/commit that declaration.
+The root is an adapter location, not authenticated native
 identity. Fresh enrollment refuses existing state/custody/ownership instead of overwriting it. If a stopped
 operation wrote custody but not configuration, preserve it and reconcile that exact declaration explicitly;
 do not delete it and allocate replacement contexts.
