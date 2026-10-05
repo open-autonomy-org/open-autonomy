@@ -8,6 +8,12 @@ without enrollment or when narrative initialization/delivery is refused. Missing
 operation; a declared malformed or conflicting enrollment remains an explicit narrative failure. Source reads,
 notes, transcripts, setup and document publication require valid enrollment. Controls use their own queue;
 a pending narrative request cannot delay supported native job pause/resume.
+Narrative initialization retries failed stages in place; completed enrollment and discovery stages are retained.
+HTTP requests have a bounded deadline and stop aborts in-flight narrative reads and delivery before draining the
+publication queue. A lost response retains the exact pending publication request for receipt reconciliation.
+Hermes pause does not defer queued paid board work: its public doors cannot safely pause and resume that work.
+Retained `paused_tasks` from older 3.24 installs therefore remain pending; this adapter does not promote them.
+The owner must resolve board dispatch through its owning runtime; OA reports that missing capability explicitly.
 
 Use `publication-operator.ts` in this rendered host. It is separate from `enroll.ts`, which enrolls mail agents.
 Run the door inside the owning World/executor, with the publisher stopped before enrollment, adoption or custody
@@ -89,10 +95,18 @@ sequence/digest/end receipts, continuation counters and paused native IDs. Chang
 One publisher owns a state directory and account timeline. Its owner controller holds the same private
 `<reporter-state>.lock` in both control-only and narrative modes. The narrative store reuses an explicit verified
 lease and cannot release it. Shutdown drains both queues and the native source before releasing ownership;
-uncertain source retirement retains the lock for explicit reconciliation. Local ownership does not fence another host;
+uncertain source retirement retains ownership and diagnostic evidence. The writer recovery below proves only that
+the prior writer is dead; it does not prove an orphaned source reader retired. Reconcile retained source evidence
+through the owning lifecycle. Local ownership does not fence another host;
 never run a copied active state as another publisher. Stop the owner through its ordinary lifecycle door.
-`release-lock --config FILE --nonce NONCE --same-executor-stopped` only releases a recorded process proven absent
-in that same executor/PID namespace; running or uncertain owners refuse. Age is not ownership evidence.
+New local leases record the host, boot, process namespace and process start identity. A same-host successor can
+recover a positively dead recorded owner under the kernel guard; a recycled PID cannot supply the prior identity.
+Running, foreign, legacy or malformed ownership remains a refusal requiring explicit operator reconciliation.
+`release-lock --config FILE --nonce NONCE --same-executor-stopped` uses the same recorded-identity proof;
+the flag alone cannot establish an unknown executor or release a live owner. Age is not ownership evidence.
+Keep the private guard, staged lock and retired lock evidence ignored alongside the canonical control sidecar.
+Local lease recovery requires Bun FFI and readable public process identity on macOS or glibc Linux. An unsupported
+host or unreadable identity refuses ownership; choose a supported host rather than treating uncertainty as absence.
 
 Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
 and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
@@ -104,10 +118,19 @@ reporter state and source-cache bytes, without enrollment or adoption. Narrative
 fields without turning them into another live ownership store. Keep this sidecar private when configuring a
 state path outside the generated `.open-autonomy` directory.
 
+Control state version 2 also records `pending_effects` before each native pause/resume call. Only that same call's
+positive acknowledgement followed by matching native readback clears its phase. A crash, abort or unknown response
+leaves that job pending; a later inventory alone cannot prove the old accepted call finished. Other jobs can still
+be controlled. Version-1 sidecar jobs and reporter-seeded owned jobs migrate as unresolved historical phases:
+ownership is retained, but historical acknowledgement is not invented. Affected jobs cannot be retried or given an
+opposite command, or establish observed pause, until actual settlement or explicit evidence reconciliation exists.
+This adapter supplies no native fence or reconciliation bypass; the missing settlement door is an external gap.
+
 Controls use fresh native schedule, configuration/binding and run readbacks. Active work may finish. The pinned
 native and Hermes adapters lack a safe board pause/resume contract, so queued board intent stays pending;
 controls never schedule/promote board tasks or infer dispatcher quiescence from empty inventory. Supported job
-resume applies only to owned intent and forgets it after authoritative readback. It never lifts an unrelated pause.
+resume applies only to owned intent without an unresolved phase and forgets it after the current acknowledged call
+and authoritative readback. It never lifts an unrelated pause.
 
 For an explicitly reviewed move/rebinding, retain account/API/source/store context IDs and every association.
 Increment custody `generation` by one, naming exact stopped prior `previous:{custodyDigest,reporterDigest,cacheDigest}`

@@ -57,6 +57,10 @@ hermes/.skills_prompt_snapshot.json
 .open-autonomy/reporter-state.json
 .open-autonomy/*.control.json
 .open-autonomy/*.control.json.*.tmp
+.open-autonomy/*.lock.guard
+.open-autonomy/*.lock/
+.open-autonomy/*.lock.pending-*/
+.open-autonomy/*.lock.retired-*/
 .open-autonomy/reporter-state.json.lock/
 .open-autonomy/node_modules/
 
@@ -67,6 +71,10 @@ cookbooks/*/hermes/state.db*
 cookbooks/*/.open-autonomy/reporter-state.json
 cookbooks/*/.open-autonomy/*.control.json
 cookbooks/*/.open-autonomy/*.control.json.*.tmp
+cookbooks/*/.open-autonomy/*.lock.guard
+cookbooks/*/.open-autonomy/*.lock/
+cookbooks/*/.open-autonomy/*.lock.pending-*/
+cookbooks/*/.open-autonomy/*.lock.retired-*/
 cookbooks/*/.open-autonomy/reporter-state.json.lock/
 cookbooks/*/.open-autonomy/node_modules/
 

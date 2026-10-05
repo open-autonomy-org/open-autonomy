@@ -35,6 +35,14 @@ It pauses/resumes only owned scheduled-job intent, with fresh native readback. T
 adapters supply no safe board pause/resume contract: board intent stays pending and uncertain dispatcher
 quiescence cannot become observed pause. Active attempts may finish; unrelated pauses remain owned by their
 original actor. Unsupported setup fields and conflicting native overrides refuse before setup effects.
+Hermes pause does not defer queued paid board work. Older 3.24 `paused_tasks` cannot safely be promoted through
+the available public door and remain pending for operator reconciliation. Narrative startup retries failed
+stages without restarting owner controls; bounded requests and abortable committed Git reads allow clean stop.
+Control state version 2 retains unresolved native pause/resume calls per job. Only the current call's positive
+acknowledgement and matching readback clear that phase; a later inventory cannot settle an old unknown response.
+Older sidecar or reporter-owned jobs migrate as unresolved historical intent, preserving ownership without inventing
+acknowledgement. Affected jobs remain pending while other controls continue; no native settlement bypass is supplied.
+Local lease recovery requires Bun FFI and public process identity on macOS or glibc Linux; unsupported hosts refuse.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project
@@ -247,9 +255,10 @@ The publisher's independent controller receives the owner's word for either nati
 `POST /v1/agent/state {"state":"paused"}` on a `steer`-scoped key records the request on the platform. The controller
 reads it through the valve and applies supported public job controls, remembering ownership before mutation and
 checking native readback. A run in flight may finish; channel conversations still answer. `{"state":"running"}`
-resumes only owned jobs after readback; independently disabled jobs stay disabled. Board pause/resume remains
+resumes only owned jobs without an unresolved effect, after the current call is acknowledged and native readback
+matches; independently disabled jobs stay disabled. Board pause/resume remains
 pending because the pinned adapters lack a safe owning door. It reports `paused` only when authoritative native
-reads establish no enabled job, live funded run or unknown dispatcher; otherwise the page retains "pause requested
+reads establish no enabled job, unresolved native execution/effect or unknown dispatcher; otherwise the page retains "pause requested
 · still running" with the cause.
 
 Private `<reporter-state>.control.json` holds canonical pause ownership, separate from narrative receipts and
