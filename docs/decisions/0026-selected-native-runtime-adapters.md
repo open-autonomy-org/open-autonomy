@@ -172,11 +172,17 @@ Every control pass freshly reads the owning public native schedule, configuratio
 native mutation and again as needed for readback. Unreadable or ambiguous authority retains the request as pending;
 cached transcript discovery or an empty narrative board cannot establish observed pause. Active funded work may
 finish and is never ended to satisfy the request. For Hermes, the existing public board CLI supplies validated
-execution-control inventory and mutation readback independently of narrative enrollment. This is a bounded
+execution-control inventory independently of narrative enrollment. This is a bounded
 owner-control exception to ADR 0016's cached-board-candidate choice: it supplies no publication identity, narrative
-polling, lifecycle inference or fallback source stream. A missing/unreadable board remains pending. The native
-dispatcher capability restriction above is unchanged. Resume forgets owned intent only after authoritative
-readback proves resume or removal, and never resumes an independently paused job or task.
+polling, lifecycle inference or fallback source stream. A missing/unreadable board remains pending. The pinned
+Hermes `schedule_task` can end a task that becomes active after inventory was read, and its `promote_task` does not
+accept a scheduled task. These public doors cannot implement the required safe pause/resume round trip. This
+adapter therefore never schedules or promotes board tasks: it retains legacy `paused_tasks` ownership and reports
+the missing capability as pending while applying supported job controls. It cannot infer dispatcher quiescence
+from empty inventory or claim observed pause when dispatcher authority is unknown. The native dispatcher
+capability restriction above is unchanged. Job resume forgets owned intent only after authoritative readback
+proves resume or removal, and never resumes an independently paused job. Future board control for either adapter
+requires independent review of a safe owning contract; no native board engine is changed here.
 
 ## Alternatives and consequences
 
