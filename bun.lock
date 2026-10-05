@@ -22,7 +22,7 @@
       "version": "2.0.0",
       "dependencies": {
         "@open-autonomy/backend": "workspace:*",
-        "@open-autonomy/sdk": "4.0.1",
+        "@open-autonomy/sdk": "workspace:*",
         "@volter/identity": "^0.1.0",
         "hono": "^4.13.4",
       },
@@ -60,7 +60,7 @@
         "open-autonomy-dash-assets": "scripts/build-dash.ts",
       },
       "dependencies": {
-        "@open-autonomy/sdk": "4.0.1",
+        "@open-autonomy/sdk": "workspace:*",
         "@volter/supercode-ui": "^0.1.105",
         "hono": "^4.13.4",
         "preact": "^10",
@@ -80,7 +80,7 @@
       },
       "dependencies": {
         "@clack/prompts": "^1.8.0",
-        "@open-autonomy/sdk": "4.0.1",
+        "@open-autonomy/sdk": "workspace:*",
         "commander": "^15.0.0",
         "picocolors": "^1.1.1",
       },
