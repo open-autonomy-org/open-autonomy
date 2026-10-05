@@ -1,0 +1,162 @@
+# ADR 0026: Setup, publication and owner control use the selected native runtime
+
+Status: Proposed. Implementation waits for independent architecture and constitution review; acceptance requires
+that review, manual World evidence and merge. This record amends the Hermes-dependent setup and observation choices
+in [ADR 0009](0009-another-harness-on-the-same-home.md) for the native path in
+[ADR 0017](0017-the-ir-native-kit.md), preserving the explicit Hermes path.
+
+## Context and evidence
+
+The owner asked on 2026-10-05 to complete OA's native-kit decoupling and its publication identity follow-up. The
+[ecosystem target](0024-ecosystem-target-architecture.md) makes an SDK-conforming runtime sufficient. Today a company
+install selects a Claude/Codex worker but `agent.ts` still calls `hermesDoor`/`locateHermes`; `publisher.ts` loads
+Hermes flavor, inventories Hermes jobs/profiles, and invokes `hermes kanban` for board control. Changing the gateway
+alone leaves setup, observation and control coupled. This proposal fixes OA's adapter, not native codecs or engines.
+
+The rendered host lock, rather than the older repository development lock, supplies the verification candidate:
+
+| Published package | Exact version | Source Git head |
+| --- | --- | --- |
+| `@volter/supercode` | `0.5.141` | `a36daada0d3fe5af522dd535108ab92896e516d9` |
+| `@volter/supercode-orchestrator` | `0.5.47` | `45fdfe5965dd7c64eb757892b72b208af74eacd6` |
+| `@volter/supercode-harness-sdk` | `0.3.64` | `1e874224eaf40117405fd93b2121d5c3be6f1382` |
+
+Registry artifact integrity was checked read-only. No installation or runtime verification has occurred for this
+proposal. Pin the SDK exactly and align the kit's development dependency with the rendered candidate before code
+checks; no broad dependency upgrade is proposed. The published orchestrator's
+[applier door](https://github.com/volter-ai/supercode/blob/45fdfe5965dd7c64eb757892b72b208af74eacd6/sdk/orchestrator/apply/doors.mjs)
+supports native jobs but has no inference read/write door. Its
+[worker route](https://github.com/volter-ai/supercode/blob/45fdfe5965dd7c64eb757892b72b208af74eacd6/sdk/orchestrator/worker-route.mjs)
+and [activation](https://github.com/volter-ai/supercode/blob/45fdfe5965dd7c64eb757892b72b208af74eacd6/sdk/orchestrator/activation.mjs)
+consume specific native profile fields. Their historical Hermes names do not require a Hermes executable.
+
+## Decision
+
+### Explicit runtime selection and custody
+
+Keeper chooses one runtime before setup and passes the same selection to every reporter, including tenant reporters.
+The generated reporter configuration is `native_runtime: {kind: hermes | orchestrator, root: <absolute path>}`.
+Worker harness is a separate choice: an orchestrator profile can run Claude Code or Codex. A kit record with `kit: ir`
+selects orchestrator; existing Hermes layouts retain their declared gateway selection. Conflicting configuration
+refuses startup. Standalone reporters with legacy `hermes_home`/`HERMES_HOME` retain the explicit Hermes adapter;
+neither installed binaries nor a failed read select another runtime.
+
+Hermes setup continues through its public applier door. Native setup uses the public `orchestratorDoor` for jobs and
+the harness SDK's `orchestrationLoad({root, flavor: 'orchestrator'})`/`orchestrationSave` for configuration. It never
+imports a Hermes home to make native setup work. Keeper retains process ownership; the native daemon, workflow
+dispatcher, codecs, session capture and transports remain external. No new daemon or native scheduler is added.
+
+### Native setup mapping and preflight
+
+OA adds a narrow configuration adapter to the existing external applier. The applier keeps its per-home/profile/job
+identity, adoption and three-way base/conflict rules. OA does not replace them with unconditional writes. Configuration
+reads and writes load the owning public model, patch only the declared unit, save through the owning codec and read
+back. All other profiles, typed worker fields, native residue, bindings, jobs and custody references remain intact;
+the adapter never reads or returns vault contents and omits a vault replacement when saving.
+
+The native declaration supports these exact mappings; arbitrary dotted configuration is refused:
+
+| Declaration | Native model field / runtime use |
+| --- | --- |
+| Selected worker harness | `profile.worker.harness`; preserve existing worker fields; create a missing worker through the owning typed model |
+| `inference.default` named model | `profile.residue.config.model.{default,provider,base_url,api_key,api_mode}` consumed by the native worker route |
+| Endpoint / credential names | Literal `${NAME}` references in `base_url` / `api_key`; never resolve or publish their values |
+| `agent.max_turns` | `profile.residue.config.agent.max_turns`; Claude launch limit or native Codex round-trip limit |
+| `approvals.mode` | `profile.residue.config.approvals.mode`; native worker launch policy, `off` or `manual` |
+| Declared jobs | Owning native job door, retaining its native IDs and update capability restrictions |
+
+The native settings live under `extensions.orchestrator.config`. For existing native declarations only,
+`extensions.hermes.config` can supply the same enumerated `worker.harness`, `agent.max_turns`, and `approvals.mode`
+keys; conflicting duplicate declarations refuse. This is a bounded declaration compatibility mapping, not a generic
+Hermes config parser. Native templates remove `memory.memory_enabled`: this candidate does not implement that
+Hermes memory setting. An explicit unsupported setting refuses rather than being retained and called applied.
+
+Default model route, named job model routes and an `unattended` pointer must use the same provider, endpoint,
+credential reference and API mode for a profile; model names may differ. An unattended pointer equal to the default
+is satisfied by the native profile route; a differing model is materialized as each otherwise-default job's explicit
+model. No unused `cron.model` field is called applied. Delegation/fallback pointers or differing routes refuse.
+The native worker route gives typed `worker.model` precedence over the profile default. A preserved unmanaged
+`worker.model` that differs from the declared default therefore refuses preflight; equivalent values are allowed,
+and the adapter never clears an unmanaged override to make a declaration appear effective. `worker.permission` is
+a separate typed permission-prompt policy and remains preserved; `approvals.mode` names only the native launch
+policy above. Conflicting declared launch policy and existing typed permission policy refuse rather than silently
+changing that policy or claiming it was applied. Creation uses the owning model's documented defaults.
+Claude supports the published custom/Anthropic routes; Codex supports its published custom/OpenAI/Codex-forward
+routes. A declared route or turn limit unsupported by another worker refuses; OA does not infer support from a
+binary's presence. Existing host-login and valve custody restrictions remain unchanged.
+
+Before any profile configuration or job mutation, validate every profile, resolved parameter, config unit, model
+route and planned job operation. In particular, native per-job toolsets refuse; updates to skills, repeat or
+context_from refuse when the owning door cannot update them. Unknown declarations, malformed values, conflicting
+live ownership and unsupported fields block startup before the gateway/dispatcher starts. Existing applier adoption
+is limited to the declared matching jobs under its current contract; unmanaged records remain unmanaged. Public
+load/save refusal or an uncertain mutation leaves startup failed and the retained applier base available for a
+normal restart/reconciliation; no fallback door, invented harness or silent partial-success claim is allowed.
+
+### Observation and authorized controls
+
+One kit-local runtime adapter holds setup/observation/control selection. The native adapter loads native flavor and
+reads native profiles/jobs/runs through public SDK doors; its setup names the actual runtime and selected worker,
+and reads `home/README.md`. Skills use the public Agent Skills/selected-worker query with profile context, never
+Hermes inventory as a substitute. Transcript observation uses the owning SDK's captured worker sessions and native
+bindings/attempts. Missing attribution or verdict stays missing. Session keys, turn replay, publication audience,
+account selection and treasury semantics do not change.
+
+The pinned binary supports `runs.list` for orchestrator, while SDK `0.3.64`'s exported `RunHarnessId` union is stale
+(even published `0.3.75` has that union). A single documented type bridge at the runtime adapter may pass the
+verified native selector to the existing SDK method; it neither invents an RPC nor retries a different harness.
+An unreadable or unsupported response remains a publication failure.
+
+The filesystem-custody workflow stream remains the board source under
+[ADR 0016](0016-retained-source-publication.md); Teams and RH2 are not prerequisites. Native saved-view membership
+does not redefine task identity. OA association and receipt changes are independently specified in ADR 0027; this
+adapter supplies selected runtime context and opaque native records without claiming native home/log attribution.
+
+Owner pause/resume uses the native job SDK mutation door followed by native readback. Persist owned intent before
+mutation, retain it on uncertain outcomes, and forget it only after readback proves resume or authoritative removal.
+Resume applies only to jobs this adapter paused; independently disabled jobs remain disabled. Active attempts finish.
+
+The shipped workflow does not expose a safe board-control round trip for this adapter. Per-card pause requires a real
+manager session and closes a run that can become active between read and call. Global pause overwrites `root/ESTOP`;
+global resume removes both that sentinel and `HOME/.hermes/ESTOP`, without owned-token or root-only removal. The
+publisher does not impersonate a manager, change workflow roles, override caller context, create/edit pause files,
+or invoke these unsafe controls. This is an external public-door gap, handed to the native manager, not permission
+to implement another dispatcher in OA. Existing native pauses, permissions and attempts stay untouched.
+
+For an install with a native workflow dispatcher, a requested pause applies supported job controls but remains
+pending with an explicit board-control capability reason. The adapter never reports observed `paused` for that
+request merely because the queue is empty or all scheduled jobs stopped. A job-only native install can report
+`paused` after readable native readback shows no enabled jobs or live funded runs. A resume re-enables only its
+owned jobs; it does not lift any board pause or claim that an unrelated native pause was lifted. Failed or uncertain
+readback retains pending intent. Future safe board control requires review of an actual owning public contract.
+Board IDs remain native IDs, separate from OA projection IDs; ambiguity is a refusal, never a guessed view match.
+Hermes control remains its own adapter with the same truthful desired/observed rule. Merely viewing a Workplace
+projection does not invoke any of these doors or grant execution authority.
+
+## Alternatives and consequences
+
+A launcher-only change leaves inference and observation broken. Installing Hermes for every native instance retains
+the dependency being removed. Implementing another codec/scheduler or relaxing native decoding would move external
+authority into OA. This decision instead composes declared fields into public owning APIs, with an explicit bounded
+capability surface. Unsupported declarations may now fail earlier; template upgrades explain the native declaration
+change, preserve owner edits, and never claim unsupported settings were applied.
+
+## Constitution review and manual acceptance
+
+Independent review must confirm the mapping and public doors before implementation. “Only the SDK is real” requires
+all native observations and OA projections to cross their owning SDKs; “the platform shows; it does not steer” leaves
+authorized intent application in the owner-run adapter. “Authority comes from the repository” preserves declared
+routes, bounds and controls; “Every spend is metered on public books” keeps the existing valves/SDK receipts. The kit
+implements no harness or workflow compiler. No constitution amendment, native migration, RH2 feature, deploy or
+release is authorized here.
+
+Manual evidence uses fresh caller-owned rendered IR/company and explicit Hermes instances, pinned published
+dependencies, synthetic selected model/payment vendors and the real local OA platform in a World. Before installing
+or running, review the selected vendors, pin the World CLI and assign lifecycle ownership. Prove no-Hermes native
+startup; model/worker/job public readback and stable job IDs across restart; actual job/card execution and published
+SDK sessions/settled receipts where the selected model twin supports them; native job pause/resume with unrelated
+pauses preserved, and board-pause capability refusal with the original attempt and native pauses unchanged; desired
+versus observed while an attempt is active. Exercise unsupported config/job
+preflight, public mutation failure and retained restart recovery. Verify explicit Hermes still selects its own door.
+Report actual failures and missing attribution/model coverage rather than fabricate runs or claims. Stop registered
+consumers and tear down only the owned World. No automated tests or permanent proof harnesses are added or run.

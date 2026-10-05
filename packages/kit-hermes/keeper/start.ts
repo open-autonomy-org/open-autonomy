@@ -274,7 +274,7 @@ if (!existsSync(resolve(project, '.git'))) {
     const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
     if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); process.exit(1); }
     committedFrom = resolve(dir, content);
-    say(`checkout ${project} has uncommitted changes; preserved, using Hermes configuration from origin/main`);
+    say(`checkout ${project} has uncommitted changes; preserved, using ${content} configuration from origin/main`);
   } else {
     if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); process.exit(1); }
     say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
@@ -309,7 +309,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
       await installHostRuntime({ ...runtimeOptions, environment: agentEnv(), command: drop, frozen: !!lock, started: (child) => { install = child; helpers.add(child); } });
     } catch (error) {
       await halted();
-      throw error;
+      throw new Error(`${(error as Error).message}. Resolve the adopter's exact host manifest before activation: run bun .open-autonomy/install-runtime.ts --update-lock from the project inside its World, review/commit .open-autonomy/bun.lock, then retry. Startup does not unfreeze a committed lock.`);
     } finally { if (install) helpers.delete(install); }
     await halted();
     writeFileSync(stamp, `${want}\n`);
@@ -348,20 +348,26 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) if (!ag
 // The harness the owner picks (the constitution's words): Hermes runs itself; any other runs as the orchestrator's
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
+const kitSelection = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
+const nativeSelection = { kind: kitSelection.kit === 'ir' || harness !== 'hermes' ? 'orchestrator' : 'hermes', root: home };
+const onNative = nativeSelection.kind === 'orchestrator';
+const nativeSelectionEnv = JSON.stringify(nativeSelection);
+const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
+const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
 // so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
 // declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
 // user and reads that login, so the declaration names the route the host already has rather than opening one.
 const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
 if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
-if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (onNative && !Bun.which('node')) { console.error(`start: the selected native runtime needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
   // The workers' forms before anything of Hermes's runs here: the persona as AGENTS.md (SOUL.md its link), each skill
   // under .agents/skills/; a Hermes call first would write a default SOUL.md beside the rendered persona.
-  if (harness !== 'hermes') for (const line of renderWorkerForms(committed, home)) say(line);
-  const workerForm = (src: string) => harness !== 'hermes' && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
+  if (onNative) for (const line of renderWorkerForms(committed, home)) say(line);
+  const workerForm = (src: string) => onNative && /^(profiles\/[^/]+\/)?(SOUL\.md|skills)$/.test(relative(committed, src));
   // force: with a filter, Bun's cpSync leaves an existing file alone unless told to overwrite.
   cpSync(committed, home, { recursive: true, force: true, filter: (src) => basename(src) !== '.env' && !workerForm(src) });
   if (lane) {
@@ -470,34 +476,36 @@ for (const record of githubRecords) keys.push('--github-app', `${record.file}:${
 // own custody, <secrets>/projects/<owner>/<repo>/agent.env, placed there once the project's own install has retired
 // (it never publishes beside one). Each such project gets its key on its own port and its own reporter; a project
 // without one stays on the organization's page.
-const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown; tag?: unknown }> } } & Record<string, unknown>;
+const orgConfig = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { organization?: { projects?: Array<{ account?: unknown; tag?: unknown; reporter_config?: unknown }> } } & Record<string, unknown>;
+const { nativeRuntime }: typeof import('../base/.open-autonomy/native-runtime.ts') = await import(resolve(host, 'native-runtime.ts'));
+nativeRuntime({ native_runtime: orgConfig.native_runtime, hermes_home: orgConfig.hermes_home }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
 // A project's cards carry its tag: its short name (`tag`, e.g. rh2), else its account or repository name.
-const projectReporters: Array<{ account: string; tag: string; port: number }> = [];
-if (harness !== 'hermes') (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
+const projectReporters: Array<{ account: string; tag: string; port: number; reporterConfig?: string }> = [];
+if (onNative) (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
   const projectAccount = typeof entry?.account === 'string' && /^[\w.-]+\/[\w.-]+$/.test(entry.account) ? entry.account : undefined;
   if (!projectAccount) return;
   const keyFile = resolve(secrets, 'projects', ...projectAccount.split('/'), 'agent.env');
   if (!existsSync(keyFile)) { say(`${projectAccount}: no key in this install's custody (${keyFile}); its cards publish on the organization's page`); return; }
   const port = valvePort + 4 * (i + 1);
   keys.push('--key', `${keyFile}:${port}`);
-  projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port });
+  projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port,
+    ...(typeof entry.reporter_config === 'string' ? { reporterConfig: entry.reporter_config } : {}) });
 });
 spawn('valve', ['bun', resolve(host, 'valve.ts'), '--loopback', ...keys], { env: valveEnv });
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
-// 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
-//    Hermes's own functions (Volter Harness's applier), owned by their Hermes ids against a base beside the home. A setup
-//    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
-//    The applier runs as a child the start waits on, tracked like any command: it drives Hermes synchronously, profile
+// 6. Apply each profile through the selected runtime's public setup adapter and external applier ownership.
+//    A refused declaration stops startup before any gateway runs on unintended defaults.
+//    The applier runs as a child the start waits on, tracked like any command: it applies synchronously, profile
 //    after profile, and in this process would hold every signal handler until it finished (a stop mid-startup waited
 //    for the whole setup, then started the services before stopping them).
 {
-  const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [] });
+  const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, runtime: nativeSelection, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [] });
   const applier = `const r = JSON.parse(process.argv[1]); const { applyAgent } = await import(r.agent); const { resolve } = await import('node:path');
-const lines = await applyAgent({ setup: r.setup, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
+const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
-  const applied = await command(['bun', '-e', applier, request], { cwd: project, env: process.env as Record<string, string>, boundMs: 600_000 });
+  const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string>, boundMs: 600_000 });
   if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied: ${applied.stderr.trim().split('\n').at(-1)}. No gateway was started.`); process.exit(1); }
   for (const line of JSON.parse(applied.stdout.trim().split('\n').at(-1) ?? '[]') as string[]) say(`agent: ${line}`);
 }
@@ -505,8 +513,6 @@ process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
-const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
 // The orchestrator that serves this home, and the supercode it drives, are the ones this install runs, named in the home
 // (orchestrator.json) when they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell,
 // the connector's board follower, the board door) runs that orchestrator driving that supercode, never what the machine
@@ -535,7 +541,7 @@ const stopStart = (why: string): never => {
   process.exit(1);
 };
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
-if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'))) {
+if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(home, 'workflow.yaml'))) {
   const checkout = resolve(home, '..', 'board');
   if (!existsSync(resolve(checkout, '.git'))) {
     // The origin as the project configures it (`get-url` would hand over an insteadOf rewrite's target instead).
@@ -568,16 +574,21 @@ if (typeof boardSetup?.document === 'string' && harness !== 'hermes' && existsSy
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
 }
-spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
-// Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
+if (!orgConfig.publication) say('publication pending: reporter enrollment is required; the native brain keeps running');
+else spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+// Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
 // and their sessions only, through the project's own key.
 for (const p of projectReporters) {
-  const dir = resolve(home, '..', 'reporters', ...p.account.split('/'));
-  mkdirSync(dir, { recursive: true }); own(dir);
-  const config = resolve(dir, 'config.yaml');
-  writeFileSync(config, `${JSON.stringify({ ...orgConfig, account: p.account, tenant: p.tag, state_file: 'reporter-state.json' }, null, 2)}\n`);
-  own(config);
-  spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  try {
+    if (!p.reporterConfig || p.reporterConfig.startsWith('/')) throw new Error('declare an owner-relative reporter_config with this account\'s own publication custody');
+    const config = resolve(project, p.reporterConfig);
+    if (relative(project, config).startsWith('..') || !existsSync(config) || relative(project, realpathSync(config)).startsWith('..')) throw new Error('reporter_config must resolve inside the project');
+    const tenantConfig = Bun.YAML.parse(readFileSync(config, 'utf8')) as Record<string, unknown>;
+    if (tenantConfig.account !== p.account || tenantConfig.tenant !== p.tag || !tenantConfig.publication) throw new Error('reporter_config requires the exact account, tenant tag and independently enrolled publication block');
+    if (tenantConfig.platform !== orgConfig.platform) throw new Error('reporter_config must name the selected logical platform; the valve is transport only');
+    nativeRuntime({ native_runtime: tenantConfig.native_runtime }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
+    spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  } catch (error) { say(`publication ${p.account} pending: ${(error as Error).message}; the native brain keeps running`); }
 }
 // Pull request events through hookline (company RFC 0026 decision 4): where custody holds <secrets>/hookline.env (the
 // inbox, its read token, this install's socket target), hookline.ts attaches and tells the manager of each event once.
@@ -585,11 +596,11 @@ for (const p of projectReporters) {
 if (existsSync(resolve(secrets, 'hookline.env'))) spawn('hookline', ['bun', resolve(host, 'hookline.ts'), '--env', resolve(secrets, 'hookline.env'), '--state', resolve(home, 'hookline-told.json')], { env: { ...env, SUPERCODE_BIN: supercodeBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
-const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
+const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). The board's one
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
-const gateway = harness === 'hermes'
+const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
@@ -635,7 +646,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const jira = mailAgent.channel?.jira;
   if (jira) {
     const creds = custodyEnv(resolve(secrets, 'jira.env'));
-    const auth = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
+    const auth: Record<string, string> | undefined = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
     if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
     else spawn(`channel ${name} jira`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
       '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
@@ -657,14 +668,14 @@ setInterval(() => {
   const moved = !!request?.revision && request.revision !== startedRevision;
   if (!moved && (!request?.version || request.version === runningKit.version)) return;
   restarting = true;
-  const runtime = harness === 'hermes' ? 'Hermes' : 'the orchestrator';
+  const runtime = onNative ? 'the orchestrator' : 'Hermes';
   say(moved ? `restart asked for main at ${request!.revision!.slice(0, 8)}; asking ${runtime} to drain before restarting the stack onto it` : `kit ${request!.version} landed; asking ${runtime} to drain before restarting the stack`);
   restartAsked = true;
   // Hermes drains on SIGUSR1; the orchestrator stops on SIGTERM, recording each conversation's session to resume.
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
-  process.kill(gateway.pid, harness === 'hermes' ? constants.signals.SIGUSR1 : constants.signals.SIGTERM);
+  process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1);
 }, 5000);
-say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
+say(`${onNative ? `orchestrator (worker ${harness})` : 'gateway'} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

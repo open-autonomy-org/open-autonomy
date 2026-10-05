@@ -129,6 +129,18 @@ the account, not an event field. Secret-shaped text is redacted at intake; publi
 exclude material that should not be sent. Read access follows the existing panel policy below; intake
 does not provide a per-event audience field or safe custody for private transcripts or credentials.
 
+The SDK exports the shared pure `redactSecrets`/`redactDeep` policy from `redaction` and
+`normalizeRoadmap` from `roadmap`. The backend uses those same implementations: redact event data first, then
+apply existing text bounds or timeline normalization. A publisher can prepare the expected stored representation
+before a write; these helpers add no authority or server negotiation.
+
+`send()` preserves HTTP/top-level and per-event outcomes. An accepted update result includes its full
+`id`, `account`, `item_id`, `ts`, `text` and optional `session`. Update IDs are account-wide first-write-wins:
+replay returns the original record without checking a changed payload. Verify the returned normalized record,
+not just `idempotent`. Persist a prepared request/time before sending and its checked receipt before acknowledging
+the source. `update()` can return `undefined` on refusal; this is not an acknowledgement. There is no read-by-ID
+update door, and the latest hundred notes returned by `item()` do not establish absence of older history.
+
 ```json
 [{ "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "2026-09-04T00:20:11Z",
    "type": "org.open-autonomy.session.started", "subject": "<session key>",

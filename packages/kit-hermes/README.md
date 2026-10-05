@@ -24,10 +24,16 @@ and supplies its native home from the company skew.
 
 The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
 same home through the external orchestrator ([ADR 0009](../../docs/decisions/0009-another-harness-on-the-same-home.md)).
-Current company/IR startup and publication still require Hermes support even when the workers are Claude Code or
-Codex: bare startup without a Hermes launcher fails before the gateway starts. Removing that coupling is an
-OA-owned follow-up in the [architecture's current gaps](../../docs/decisions/0024-ecosystem-target-architecture.md#existing-implementation-and-remaining-scope),
-not completed runtime independence implied by the SDK's universal target or the `ir` kit name.
+The source candidate `create-open-autonomy` 3.25.0 selects the native runtime separately from its workers
+([ADR 0026](../../docs/decisions/0026-selected-native-runtime-adapters.md)): company/IR bare startup uses the
+orchestrator's public setup, inventory and job doors without locating Hermes. Hermes installs keep their explicit
+Hermes adapter. This candidate requires SDK 4.0.1 for the shared publication normalizers; these source versions do
+not claim an npm release or upgrade any running install.
+
+Native owner control pauses/resumes only the schedules this reporter owns, with native readback. The pinned
+native API supplies no safe authorized noninterrupting board-dispatcher control: a requested board pause stays
+pending and observed state stays running. The reporter neither interrupts active attempts nor lifts another
+actor's pause. Unsupported setup fields and conflicting native overrides refuse before setup effects.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project
@@ -42,6 +48,9 @@ create-open-autonomy setup .     # the guided walk: what this project's situatio
 `create` writes a new or empty directory; `adopt` writes only missing files in an existing one. `check`
 reports version, local divergence, declaration problems and unresolved merges. `upgrade` uses the recorded
 version as the ancestor of a three-way merge; conflicts remain for the project to resolve. These lineage commands do not start an agent.
+Before activation, resolve the rendered host's exact manifest with `bun .open-autonomy/install-runtime.ts --update-lock`
+inside its World and review/commit the adopter-owned lock. A template cannot include its own containing kit archive's
+integrity; a committed unresolved template lock refuses at startup instead of silently becoming unfrozen.
 
 ## Several projects together: a fleet
 
@@ -76,7 +85,7 @@ Shared files connect either layout to the selected backend:
 README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
 .open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
                      publisher.ts, source-events.ts, host valve and credential tools, start.ts,
-                     enroll.ts, vendored SDK, kit.json (kit, skew, version and identity)
+                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version and identity)
 container/           supplied executor/image tooling; its use depends on the selected runtime
 .github/workflows/   supplied landing workflow where the skew includes it
 ```
@@ -104,6 +113,13 @@ the instance, rather than Volter-specific behavior in OA's core.
 
 Both layouts use the same creator and recorded lineage. Native homes retain execution state; the
 publisher sends OA projections through the SDK. A published view is not a lossless native home backup.
+
+Publication requires explicit source enrollment or retained-state adoption through the generated
+[publication front door](base/.open-autonomy/PUBLICATION.md). Missing enrollment leaves reporter delivery
+pending while native execution continues. Each tenant declares an owner-relative `reporter_config` with its
+own account/API-bound custody, policy and private state; organization enrollment is never copied into it.
+Standalone reporters declare `native_runtime: {kind: orchestrator, root: /absolute/native/home}` (or explicit
+`hermes`); the keeper supplies and checks that selection for its reporters.
 
 ## The guided setup
 

@@ -671,6 +671,19 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
 
+Before activation, finalize the adopter-owned host lock through the existing installer in that project's World:
+`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/bun.lock` against the
+exact declared host manifest, then use frozen installation for startup. The template's native dependency lock
+cannot contain the integrity of the kit archive that contains it. An unresolved committed template lock refuses;
+startup never silently unfreezes it. Unpublished candidates require explicitly supplied reviewed package artifacts
+through a disposable review registry; this is not an npm release.
+
+For bare company/IR installs, the selected runtime is the orchestrator, independent of the worker harness.
+The bounded declaration and refusal rules are in ADR 0026; Hermes-specific settings are not native guarantees.
+The reporter needs explicit source enrollment or retained-state adoption through `PUBLICATION.md`; without it,
+publication stays pending and the native engine keeps running. An organization's project reporter declares a
+relative `reporter_config` with that tenant's own account, policy, logical platform and publication custody.
+
 The model choice does not change the fleet architecture. For the managed setup, World owns one executor
 and the host runs `start.ts --container`: credential valves and SDK reporting stay outside, native Hermes
 runs inside. Follow `container/README.md` for preparation, activation and supervision. The bare start

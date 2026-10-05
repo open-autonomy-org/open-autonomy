@@ -7,8 +7,6 @@ import { ACCOUNT, NAME, ROOT, SCENARIO, STATE } from './lib.ts';
 const required = (name: string): string => { const v = process.env[name]; if (!v) throw new Error(`Set ${name} (world/README.md)`); return resolve(v); };
 if (!/^[a-z0-9][a-z0-9-]*$/.test(NAME)) throw new Error('VO_WORLD_NAME must be a lowercase World name');
 if (STATE === ROOT || STATE.startsWith(`${ROOT}/`)) throw new Error('WORLD_STATE_ROOT must be outside this checkout');
-const hermes = required('WORLD_HERMES_BIN');
-if (!existsSync(resolve(hermes, 'hermes'))) throw new Error('WORLD_HERMES_BIN must hold the hermes binary the applier drives');
 // Open Autonomy at main (the platform) and supercode built from main or the branch under review (README: What it runs).
 const oaTree = required('OA_TREE');
 if (!existsSync(resolve(oaTree, 'apps/platform/world.ts'))) throw new Error(`OA_TREE has no apps/platform/world.ts: ${oaTree}`);
@@ -67,7 +65,7 @@ const config = JSON.parse(readFileSync(resolve(SCENARIO, 'world.config.json'), '
   .replaceAll('${SCENARIO_DIR}', SCENARIO).replaceAll('${OA_TREE}', oaTree).replaceAll('${HANDLERS_ANTHROPIC}', anthropicHandlers).replaceAll('${HANDLERS}', handlers));
 config.metadata.id = NAME;
 Object.assign(config.runtime.environment.values, {
-  VO_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, WORLD_HERMES_BIN: hermes, VO_SCENARIO_DIR: SCENARIO,
+  VO_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, VO_SCENARIO_DIR: SCENARIO,
   VO_AGENT_PROJECT: resolve(STACK, 'project'), VO_AGENT_HOME: home, VO_SECRETS: resolve(DATA, 'secrets'), VO_ACCOUNT: ACCOUNT,
   VO_MERGE_HANDLERS: mergeHandlers, VO_REALTIME_HANDLERS: realtimeHandlers, WORLD_MERGE_CLI: resolve(mergeCli), WORLD_OPENAI_CLI: resolve(openaiCli),
   VO_SUPERCODE_BIN: supercodeBin, VO_ORCHESTRATOR_BIN: orchestratorBin, VO_SUPERCODE_SDK: resolve(supercodeTree, 'sdk/typescript/client.mjs'),
@@ -78,7 +76,7 @@ Object.assign(config.runtime.environment.values, {
   ...Object.fromEntries(['VO_RH2_URL', 'VO_RH2_ORGANIZATION', 'VO_RH2_OWNER', 'VO_RH2_OWNER_TOKEN', 'VO_RH2_ROOT'].filter((k) => process.env[k]).map((k) => [k, process.env[k]!])),
   // Codex is the host's install; the World's HOME has none (the orchestrator's default is $HOME/.local/bin/codex).
   SUPERCODE_CODEX_BIN: Bun.which('codex') ?? '',
-  HOME: home, HERMES_HOME: home, PATH: `${hermes}:${binDir}:${resolve(supercodeBin, '..')}:${process.env.PATH}`,
+  HOME: home, HERMES_HOME: home, PATH: `${binDir}:${resolve(supercodeBin, '..')}:${process.env.PATH}`,
 });
 config.services.find((service: { id: string }) => service.id === 'agent').endpoint.port = valve;
 // The second machine's own supercode, when VO_MACHINE_B_SUPERCODE_BIN names a built binary (a machine on another release,
