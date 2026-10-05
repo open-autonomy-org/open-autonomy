@@ -1,6 +1,6 @@
 // Selected native runtime observation, through its public SDK (ADR 0026). Worker harness is not home flavor.
 import { isAbsolute, resolve } from 'node:path';
-import type { SupercodeHarnessClient, RunsQuery, SessionDescriptor } from '@volter/supercode-harness-sdk';
+import type { SupercodeHarnessClient, RunsQuery, SessionDescriptor, RequestOptions } from '@volter/supercode-harness-sdk';
 
 export type NativeRuntimeSelection = { kind: 'hermes' | 'orchestrator'; root: string };
 export type NativeProfile = {
@@ -31,21 +31,21 @@ export class NativeRuntime {
     return this.native ? { orchestrator: this.root } : { hermes: resolve(this.root, 'state.db') };
   }
   get scheduler() { return { harness: this.selected.kind, homes: this.homes }; }
-  async load() {
-    const result = await this.sc.orchestrationLoad({ root: this.root, flavor: this.selected.kind }, { timeoutMs: 60_000 });
+  async load(options?: RequestOptions) {
+    const result = await this.sc.orchestrationLoad({ root: this.root, flavor: this.selected.kind }, { timeoutMs: 60_000, ...options });
     const profiles = result.orchestration.profiles as Record<string, NativeProfile>;
     if (!profiles?.default) throw new Error('Native profile state unavailable');
     return { orchestration: result.orchestration, profiles };
   }
-  async runs() {
+  async runs(options?: RequestOptions) {
     // Published binary 0.5.141 supports orchestrator runs.list. SDK 0.3.64's RunHarnessId union is stale (ADR 0026).
     const harness = this.selected.kind as RunsQuery['harness'];
-    const result = await this.sc.listRuns({ harness, homes: this.homes, limit: 500 }, { timeoutMs: 60_000 });
+    const result = await this.sc.listRuns({ harness, homes: this.homes, limit: 500 }, { timeoutMs: 60_000, ...options });
     if (result.sources.some(s => s.state === 'unreadable')) throw new Error('Native run ledger unreadable');
     return result;
   }
-  async jobs() {
-    const result = await this.sc.listJobs(this.scheduler);
+  async jobs(options?: RequestOptions) {
+    const result = await this.sc.listJobs(this.scheduler, options);
     if (result.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
     return result;
   }

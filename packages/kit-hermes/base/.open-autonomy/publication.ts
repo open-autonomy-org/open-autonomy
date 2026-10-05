@@ -20,7 +20,8 @@ export interface SessionBinding { platformKey: string; nativeSessionId: string; 
 interface Pending { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire: string; wireDigest: string; expected: any; sourceObservation?: SourceSnapshot }
 interface Receipt extends Omit<Pending, 'sourceObservation'> { result: any }
 interface PublicationData { enrollment: { version: 1; account: string; apiBase: string; sourceContext: string; stores: StoreContext[]; selectedRuntime: NativeRuntimeSelection; custody: Custody; custodyDigest: string; adoptionDigest?: string }; associations: Association[]; noteAliases: NoteAlias[]; sessionBindings: SessionBinding[]; pending: Pending[]; receipts: Receipt[]; requiresSnapshot?: boolean }
-export interface PublicationOptions { configFile: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection }
+export interface PublicationOwnerLease { readonly stateFile: string; readonly nonce: string; assert(stateFile: string): void }
+export interface PublicationOptions { configFile: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
 export interface NoteInput { board: string; cardId: string; kind: NoteKind; effectId: string | number; text: string; at?: string; session?: string; legacyKey?: string }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const itemId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
@@ -87,11 +88,14 @@ export class PublicationStore {
   private observation?: SourceSnapshot;
   constructor(private readonly options: PublicationOptions) {
     this.config = checkConfig(options.publication); this.sourceContextId = this.config.source_context;
-    this.lock = `${options.stateFile}.lock`;
-    try { mkdirSync(this.lock, { mode: 0o700 }); }
-    catch { throw new Error(`Publication writer ownership is held/unknown at ${this.lock}; stop its owner and explicitly release it before starting`); }
+    this.lock = `${resolve(options.stateFile)}.lock`;
+    if (options.owner) this.assertOwner();
+    else {
+      try { mkdirSync(this.lock, { mode: 0o700 }); }
+      catch { throw new Error(`Publication writer ownership is held/unknown at ${this.lock}; stop its owner and explicitly release it before starting`); }
+    }
     try {
-      savePublicationFile(resolve(this.lock, 'owner.json'), { pid: process.pid, nonce: this.nonce, startedAt: new Date().toISOString() });
+      if (!options.owner) savePublicationFile(resolve(this.lock, 'owner.json'), { pid: process.pid, nonce: this.nonce, startedAt: new Date().toISOString() });
       const prior = existsSync(options.stateFile) ? privateJSON(options.stateFile) : undefined;
       const cache = existsSync(options.cacheFile) ? privateJSON(options.cacheFile) : undefined;
       const custodyFile = localJSON(options.configFile, this.config.custody);
@@ -113,7 +117,14 @@ export class PublicationStore {
         else if (this.config.adoption) throw new Error('Legacy adoption was supplied without retained state');
       }
       this.save();
-    } catch (error) { rmSync(this.lock, { recursive: true }); throw error; }
+    } catch (error) { if (!options.owner) rmSync(this.lock, { recursive: true }); throw error; }
+  }
+  private assertOwner(): void {
+    const lease = this.options.owner;
+    if (lease && (resolve(lease.stateFile) !== resolve(this.options.stateFile) || !nonempty(lease.nonce))) throw new Error('Publication external lease path or nonce differs');
+    lease?.assert(this.options.stateFile);
+    const owner = privateJSON(resolve(this.lock, 'owner.json'));
+    if (owner.pid !== process.pid || owner.nonce !== (lease?.nonce ?? this.nonce)) throw new Error('Publication lock process or nonce changed');
   }
   private checkCustody(c: Custody): void {
     if (!c || c.version !== 1 || !Number.isSafeInteger(c.generation) || c.generation < 1 || c.account !== this.options.account || c.apiBase !== this.options.apiBase || c.sourceContext !== this.sourceContextId || !eq(c.stores, this.config.stores) || !eq(c.nativeRuntime, this.options.nativeRuntime) || !nonempty(c.operator) || !nonempty(c.statement) || !nonempty(c.evidence)) throw new Error('Publication custody declaration does not match selected account/API/source/stores/runtime or lacks operator evidence');
@@ -216,10 +227,10 @@ export class PublicationStore {
   }
   run<T>(work: () => Promise<T>): Promise<T> {
     if (this.closed || this.closing) return Promise.reject(new Error('Publication writer closing/closed'));
-    const result = this.tail.then(work); this.tail = result.catch(() => {}); return result;
+    const result = this.tail.then(() => { if (this.closed || this.closing) throw new Error('Publication writer closing/closed'); this.assertOwner(); return work(); }); this.tail = result.catch(() => {}); return result;
   }
   saveRuntime(patch: Record<string, unknown>): void { Object.assign(this.runtime, patch); this.save(); }
-  private save(): void { if (this.closed) throw new Error('Publication writer closed'); savePublicationFile(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }); }
+  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); savePublicationFile(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }); }
   resolveCards(rows: readonly SourceCard[]): void {
     const additions: Association[] = [], seen = new Set<string>();
     for (const row of rows) {
@@ -265,6 +276,7 @@ export class PublicationStore {
     }
   }
   private async deliver(p: Pending, oa: OpenAutonomy): Promise<any> {
+    this.assertOwner();
     const event = this.checkedEvent(p), result = await oa.send(event), first = result.results[0];
     if (!result.ok || result.results.length !== 1 || first?.ok !== true || first.id !== event.id) throw new Error(`Publication ${p.obligationId} pending: ${result.status} ${first?.error ?? result.error ?? 'missing successful receipt'}`);
     this.checkedResult(p, event, first);
@@ -352,8 +364,8 @@ export class PublicationStore {
     this.closing = true;
     await this.tail;
     if (this.closed) return;
-    const owner = privateJSON(resolve(this.lock, 'owner.json'));
-    if (owner.nonce !== this.nonce) throw new Error('Publication lock ownership changed; cannot release it');
-    this.closed = true; rmSync(this.lock, { recursive: true });
+    this.assertOwner();
+    this.closed = true;
+    if (!this.options.owner) rmSync(this.lock, { recursive: true });
   }
 }

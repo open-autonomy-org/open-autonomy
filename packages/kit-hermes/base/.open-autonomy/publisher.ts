@@ -40,13 +40,13 @@ import { BoardEventSource } from './source-events.ts';
 import { fileURLToPath } from 'node:url';
 import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
+import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
 const cfg = Bun.YAML.parse(readFileSync(configPath, 'utf8')) as any;
 if (!cfg || typeof cfg.account !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(cfg.account)) throw new Error('Reporter configuration must name the project account');
-const policy = publicationPolicy(cfg.publish);
 // An organization's install (docs/decisions/0017): one board for every project, each card tagged with its primary project
 // (its tenant). A project's reporter (`tenant:` in the config the start writes for it) publishes that project's cards and
 // their sessions under the project's account; the organization's reporter publishes the rest. Its timeline is the board:
@@ -72,7 +72,10 @@ if (container && selectedRuntime.kind === 'orchestrator') throw new Error('This 
 const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
 const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
-const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve' });
+const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve', fetch: ((input, init) => {
+  if (quitting) throw new Error('Narrative stopping; publication intent retained');
+  ownerState.assert(stateFile); return fetch(input, init);
+}) as typeof fetch });
 const log = (message: string) => console.log(`publisher: ${message}`);
 // What runs the agent, as the start script says (mode, kit, executor, host): published with the setup, never a credential.
 const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONOMY_RUNTIME ?? ''); return r && (r.mode === 'container' || r.mode === 'bare') ? r : undefined; } catch { return undefined; } })();
@@ -80,33 +83,62 @@ const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONO
 // database, config, jobs file or skill directory is parsed by the reporter.
 // HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
 const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
-const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
+const run = (cmd: string[], env = process.env) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, env, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
 const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : { SUPERCODE_HOME: home }) } as Record<string, string>;
 const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
+const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
+let quitting = false;
+const controlAbort = new AbortController();
+const ownerOa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve', fetch: ((input, init) => {
+  ownerState.assert(stateFile);
+  return fetch(input, { ...init, signal: AbortSignal.any([controlAbort.signal, AbortSignal.timeout(20_000), ...(init?.signal ? [init.signal] : [])]) });
+}) as typeof fetch });
+const controller = new OwnerController({ state: ownerState, runtime, sc, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log,
+  board: (...args) => { const answer = run(['hermes', 'kanban', ...args], nativeEnvironment); if (answer.exitCode !== 0) throw new Error(`Hermes board control read refused: ${answer.stderr.toString().trim().slice(-300)}`); return answer.stdout.toString(); } });
+let activePublication: PublicationStore | undefined, activeSource: BoardEventSource | undefined;
+let stopNarrative = () => {};
+let shutdownWork: Promise<void> | undefined;
+function shutdown(code: number): Promise<void> {
+  if (shutdownWork) return shutdownWork;
+  quitting = true; activeSource?.close(); stopNarrative();
+  shutdownWork = (async () => {
+    await controller.stop();
+    try { await activeSource?.stop(); await activePublication?.close(); }
+    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); await sc.close(); process.exit(1); }
+    await sc.close(); ownerState.close(); process.exit(code);
+  })();
+  return shutdownWork;
+}
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { void shutdown(0); });
+sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); void shutdown(1); } });
+await sc.start(); controller.start();
+process.send?.({ type: 'reporter-ready' });
+const configWatch = watchFiles(configPath, () => { log('configuration changed; restart required'); void shutdown(1); });
+stopNarrative = () => configWatch.close();
+if (!Object.hasOwn(cfg, 'publication')) { log('control-only: publication enrollment required; owner controls remain active'); }
+else void narrate().catch(error => { log(`narrative publication pending: ${(error as Error).message}; owner controls remain active`); });
+async function narrate(): Promise<void> {
+if (quitting) return;
+const policy = publicationPolicy(cfg.publish);
 // The owner's pause and resume reach the runtime that holds the schedule: Hermes's own file under Hermes; under the
 // orchestrator (another harness picked), its running daemon's door, which a write to the file would be lost under.
 const onOrchestrator = runtime.native;
 const scheduler = runtime.scheduler;
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
-const publication = new PublicationStore({ configFile: configPath, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
-  account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
+const publication = activePublication = new PublicationStore({ configFile: configPath, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
+  account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime, owner: ownerState });
 const saved = publication.runtime;
 const checkpoints: Record<string, PublicationCheckpoint> = saved.published ?? {};
 // A session whose source was rewritten continues on the platform as `<id>~<n>`: n per native session id.
 const continuations: Record<string, number> = saved.continuations ?? {};
 const platformKey = (id: string): string => (continuations[id] ? `${id}~${continuations[id]}` : id);
 const nativeId = (key: string): string => key.replace(/~\d+$/, '');
-// The jobs this reporter paused on the owner's word, so `running` resumes exactly those and nothing the owner disabled on their own.
-const pausedJobs = new Set<string>(Array.isArray(saved.paused_jobs) ? saved.paused_jobs.filter((id: unknown) => typeof id === 'string') : []);
-// The board's review verdicts and handoffs already published as notes on their items: an update is append-only, so a restart must not repeat one.
-// The board tasks this reporter deferred on the owner's word, so `running` promotes exactly those.
-const pausedTasks = new Set<string>(Array.isArray(saved.paused_tasks) ? saved.paused_tasks.filter((id: unknown) => typeof id === 'string') : []);
 const noted = new Set<string>(Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
 function saveState(): void {
-  publication.saveRuntime({ published: checkpoints, continuations, paused_jobs: [...pausedJobs], paused_tasks: [...pausedTasks], noted: [...noted] });
+  publication.saveRuntime({ published: checkpoints, continuations, noted: [...noted] });
 }
 
 type Binding = { worker: { session_id?: string }; started_at?: string; ended_at?: string; end_reason?: string };
@@ -154,7 +186,6 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
 }
 // Read native declarations on startup and source changes; never on an observation timer.
 let nativeOk = false;
-let nativeBoardControlMissing = false;
 async function nativeState(): Promise<void> {
   if (nativeOk) return;
   nativeOk = false;
@@ -169,7 +200,6 @@ async function nativeState(): Promise<void> {
   const next = orchestration.profiles as Record<string, Profile>;
   if (!next || !next.default) throw new Error('Native profile state unavailable');
   profiles = next;
-  nativeBoardControlMissing = onOrchestrator && !!orchestration.orchestration.workflow;
   bindings = new Map(Object.values(profiles).flatMap(p => Object.values(p.bindings).filter(b => b.worker.session_id).map(b => [b.worker.session_id!, b] as const)));
   runs = new Map(history.runs.filter(r => r.session_id).map(r => [r.session_id!, r]));
   jobNames.clear();
@@ -454,77 +484,9 @@ async function setup(): Promise<void> {
   const digest = JSON.stringify(s);
   if(digest!==setupDigest){const result=await oa.setup(s);if(!result.ok)throw new Error(`Setup publication refused: ${result.status}`);setupDigest=digest;}
 }
-// The owner's word on the operating state, read from the platform and applied through the harness's own schedule.
-// `paused` here means the scheduled runs (the funded work) stop: every enabled job is paused and remembered; a run in
-// flight finishes; conversations on a channel still answer. `running` resumes the jobs this reporter paused. What is
-// reported back is what is true: `paused` only once no job is enabled and no run is live, never an echo of the request.
-let reportedState = '', controlUnreadable = false;
-// the board is the runtime's: in the executor for a container install, on this host for a bare one
-const kanban = (...args: string[]): string => { const r = run(['hermes', 'kanban', ...args]); if (r.exitCode !== 0) log(`board: hermes kanban ${args[0]} ${args[1] ?? ''} failed (${r.stderr.toString().trim().slice(0, 120)})`); return r.stdout.toString(); };
-const boardTasks = (): Array<{id:string;status:string}> => [...source.cards.values()].filter(card=>card.board==='default').map(card=>({id:card.id,status:card.status}));
-const liveRun = (): boolean => [...descriptors.values()].some(d => kindOf(d) === 'run' && !completionOf(d) && !stopped.has(d.locator.session_id));
-async function control(): Promise<void> {
-  // The owner's word on the organization's operating state is the organization reporter's to apply.
-  if (tenant) return;
-  const c = await oa.state(cfg.account);
-  if (!c) { if (!controlUnreadable) { controlUnreadable = true; log(`operating state unreadable through ${baseUrl}; the owner's word waits`); } return; }
-  controlUnreadable = false;
-  const desired = c.desired?.state ?? 'running';
-  let jobs = await runtime.jobs();
-  if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
-  if (new Set(jobs.jobs.map(job => job.id)).size !== jobs.jobs.length) throw new Error('Native job identity is ambiguous across profiles; owner control remains pending');
-  let changed = false;
-  if (desired === 'paused') {
-    // Ownership is written before the harness is touched: a crash or a thrown call after Hermes applied the pause
-    // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
-    // which resume simply forgets.
-    for (const j of jobs.jobs) if (j.enabled) {
-      pausedJobs.add(j.id); saveState();
-      await sc.pauseJob({ ...scheduler, id: j.id, profile: j.profile ?? undefined });
-      const readback = await runtime.jobs();
-      if (!readback.jobs.some(job => job.id === j.id && job.profile === j.profile && !job.enabled)) throw new Error(`Native job ${j.id} pause not observed`);
-      changed = true;
-    }
-    // The board is funded work too: its dispatcher would keep starting queued tasks. Each one waiting to be picked up is
-    // deferred (a run in flight still finishes) and remembered, so `running` promotes exactly those.
-    if (!onOrchestrator) for (const t of boardTasks()) if (t.status === 'todo' && !pausedTasks.has(t.id)) { pausedTasks.add(t.id); saveState(); kanban('schedule', t.id, 'paused by the owner'); }
-  } else {
-    // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
-    for (const id of [...pausedJobs]) {
-      const j = jobs.jobs.find(x => x.id === id);
-      if (j && !j.enabled) {
-        await sc.resumeJob({ ...scheduler, id, profile: j.profile ?? undefined });
-        const readback = await runtime.jobs();
-        if (!readback.jobs.some(job => job.id === id && job.profile === j.profile && job.enabled)) throw new Error(`Native job ${id} resume not observed`);
-        changed = true;
-      }
-      pausedJobs.delete(id); saveState();
-    }
-    if (!onOrchestrator) for (const id of [...pausedTasks]) { if (boardTasks().some(t => t.id === id && t.status === 'scheduled')) kanban('promote', id, 'resumed by the owner'); pausedTasks.delete(id); saveState(); }
-  }
-  if (changed) jobs = await runtime.jobs();
-  const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
-  const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
-  const running = liveRun();
-  const boardPending = desired === 'paused' && onOrchestrator && (nativeBoardControlMissing || source.cards.size > 0);
-  const state = desired === 'paused' && !enabled.length && !running && !boardPending ? 'paused' : 'running';
-  const deferred = pausedTasks.size ? `; ${pausedTasks.size} board task${pausedTasks.size === 1 ? '' : 's'} deferred` : '';
-  const note = state === 'paused' ? `scheduled runs paused: ${paused.join(', ') || 'none were enabled'}${deferred}` : desired === 'paused' ? `pausing: ${boardPending ? 'native dispatcher has no safe authorized pause/resume door; board intent remains pending' : running ? 'a run is live' : `still enabled: ${enabled.join(', ')}`}` : undefined;
-  const digest = `${state}|${note ?? ''}`;
-  if (digest !== reportedState && (await oa.reportState(state, note)).ok) { reportedState = digest; log(`operating state ${state}${note ? ` (${note})` : ''}`); }
-}
-let work: Promise<void>|null=null, dirty=false, quitting=false, documentsDirty=true, boardReady=false;
-let controlTimer: ReturnType<typeof setInterval>|undefined;
+let work: Promise<void>|null=null, dirty=false, documentsDirty=true, boardReady=false;
 const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
-let shutdownWork: Promise<void> | undefined;
-function shutdown(code: number): Promise<void> {
-  if (shutdownWork) return shutdownWork;
-  quitting = true; source.close(); clearInterval(controlTimer); clearTimeout(retry);
-  for (const watcher of documentWatchers) watcher.close();
-  shutdownWork = source.stop().catch(error=>log(`source stop retains pending evidence: ${error.message}`))
-    .then(()=>publication.close()).then(()=>sc.close()).then(()=>process.exit(code));
-  return shutdownWork;
-}
+stopNarrative = () => { configWatch.close(); clearTimeout(retry); for (const watcher of documentWatchers) watcher.close(); };
 function tick(): Promise<void> {
   dirty=true;
   if(!boardReady)return Promise.resolve();
@@ -561,12 +523,11 @@ const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
   // The orchestrator the start runs (a review World's branch build), else the installed one.
   : ['node',process.env.SUPERCODE_ORCHESTRATOR_ENTRY||fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
-const source=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
+const source=activeSource=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:nativeEnvironment,
   sourceContextId:publication.sourceContextId,storeContext:board=>publication.storeContext(board),allowLegacyUpgrade:publication.legacyAdopted,forceSnapshot:publication.requiresSnapshot,
   changed:snapshot=>publication.run(async()=>{publication.observe(snapshot);boardReady=true;nativeOk=false;await publication.retry(oa);await tick();publication.snapshotAcknowledged();}),log});
-sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); void shutdown(1); } });
-await sc.start();
+
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
 const discovery = await runtime.queries(cfg.seats);
@@ -585,7 +546,6 @@ for (let attempt = 1; ; attempt++) {
   try { await nativeState(); break; }
   catch (e) { if (attempt >= 20) throw e; log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
 }
-process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
 for (const query of queries) {
   let cursor: string | undefined;
@@ -595,17 +555,11 @@ for (const query of queries) {
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
 }
-for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {
-  void shutdown(0);
-});
+if (quitting) return;
 await source.start();
-// The platform's separate owner-control door currently has no subscription.
-// Its timer reads only that command and native schedule authority, never the board.
-controlTimer=setInterval(()=>{void publication.run(()=>control()).catch(error=>log(`owner control pending: ${error.message}`));},10_000);
-for(const path of [resolve(projectDir,'.git'),resolve(projectDir,'.open-autonomy','config.yaml')]){
+for(const path of [resolve(projectDir,'.git')]){
   if(!existsSync(path))continue;
   try{const watcher=watchFiles(path,{recursive:true},(_event,name)=>{
-      if(path.endsWith('config.yaml')){log('publication configuration changed; restart required');void shutdown(1);return;}
       const file=String(name??'').replaceAll('\\','/');
       if(name!=null&&!['HEAD','packed-refs','refs/remotes/origin/main'].includes(file))return;
       documentsDirty=true;requestTick();
@@ -614,3 +568,5 @@ for(const path of [resolve(projectDir,'.git'),resolve(projectDir,'.open-autonomy
 }
 
 log(`watching ${home} for ${cfg.account}`);
+
+}
