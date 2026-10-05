@@ -14,6 +14,59 @@ interface SourceOptions {
   changed: (snapshot: SourceSnapshot) => Promise<void>; log: (message: string) => void;
 }
 interface CacheState { version: 2; sourceContextId: string; cursor?: string; cards: SourceCard[]; pending?: SourceSnapshot; legacyCursor?: string }
+interface StreamChild { child: ChildProcess; retire: (destroyPipe?: boolean) => Promise<void> }
+// The public native CLI can launch a Node stream reader. Retire that private
+// command group, rather than treating the wrapper's exit as reader completion.
+function streamChild(command: string[], env: Record<string, string>, log: (message: string) => void): StreamChild {
+  const grouped = process.platform !== 'win32';
+  const child = spawn(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'inherit'] });
+  let closed = false, stopping = false, escalated = false, settled = false;
+  let deadline = 0, timer: ReturnType<typeof setInterval> | undefined;
+  let resolveRetired!: () => void, rejectRetired!: (error: Error) => void;
+  const retired = new Promise<void>((resolve, reject) => { resolveRetired = resolve; rejectRetired = reject; });
+  void retired.catch(() => {}); // follow()/stop() owns the eventual refusal
+  const alive = (): boolean => {
+    if (!child.pid) return false;
+    if (!grouped) return !closed;
+    try { process.kill(-child.pid, 0); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+  };
+  const signal = (value: NodeJS.Signals): void => {
+    if (!child.pid) return;
+    try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+  };
+  const finish = (error?: Error): void => {
+    settled = true; if (timer) clearInterval(timer); child.stdout?.destroy();
+    if (error) rejectRetired(error); else resolveRetired();
+  };
+  const check = (): void => {
+    if (settled) return;
+    try {
+      if (closed && !alive()) { finish(); return; }
+      if (Date.now() >= deadline) {
+        if (!escalated) {
+          escalated = true; signal('SIGKILL'); child.stdout?.destroy(); deadline = Date.now() + 1000;
+        } else finish(new Error('Native stream retirement could not be confirmed; stop/reconnect refused'));
+      }
+    } catch (error) { finish(new Error(`Native stream retirement failed: ${(error as Error).message}`)); }
+  };
+  const retire = (destroyPipe = false): Promise<void> => {
+    if (destroyPipe) child.stdout?.destroy();
+    if (!stopping && !settled) {
+      stopping = true; deadline = Date.now() + 5000;
+      try { signal('SIGTERM'); } catch (error) { finish(new Error(`Native stream retirement failed: ${(error as Error).message}`)); }
+      if (!settled) { timer = setInterval(check, 25); check(); }
+    }
+    return retired;
+  };
+  child.once('error', error => { log(`event source unavailable: ${error.message}`); void retire(); });
+  // Keep the fallback armed even after the direct wrapper has exited. Do not
+  // destroy buffered output on natural exit before readline has consumed it.
+  child.once('exit', () => { void retire(); });
+  child.once('close', () => { closed = true; if (stopping) check(); });
+  return { child, retire };
+}
 const freeze = <T>(value: T): T => {
   if (value && typeof value === 'object') { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
   return value;
@@ -23,7 +76,7 @@ export class BoardEventSource {
   private cursor?: string;
   private legacyCursor?: string;
   private pending?: SourceSnapshot;
-  private child?: ChildProcess;
+  private child?: StreamChild;
   private closed = false;
   private started = false;
   private followTask?: Promise<void>;
@@ -82,7 +135,7 @@ export class BoardEventSource {
     void this.followTask.catch(error => { this.options.log(`native source stopped: ${(error as Error).message}`); this.refuseReady(error); });
     return ready;
   }
-  close(): void { this.closed = true; this.child?.kill('SIGTERM'); this.wake?.(); }
+  close(): void { this.closed = true; void this.child?.retire(true); this.wake?.(); }
   async stop(): Promise<void> { this.close(); await this.followTask; }
   private delay(): Promise<void> {
     return new Promise(resolve => {
@@ -114,9 +167,8 @@ export class BoardEventSource {
       if (this.pending) await this.publish();
       this.save();
       const command = [...this.options.command, ...(this.cursor ? ['--after', this.cursor] : [])];
-      const child = spawn(command[0], command.slice(1), { env: this.options.env, stdio: ['ignore', 'pipe', 'inherit'] }); this.child = child;
-      const exited = new Promise<void>(resolve => { child.once('error', error => { this.options.log(`event source unavailable: ${error.message}`); resolve(); }); child.once('exit', () => resolve()); });
-      const lines = createInterface({ input: child.stdout! });
+      const stream = streamChild(command, this.options.env, this.options.log); this.child = stream;
+      const lines = createInterface({ input: stream.child.stdout! });
       let staged: Map<string, SourceCard> | undefined, snapshotKeys: Set<string> | undefined;
       try {
         for await (const line of lines) {
@@ -142,7 +194,7 @@ export class BoardEventSource {
           lines.resume();
         }
       } catch (error) { if (!this.closed) this.options.log(`native source interrupted: ${(error as Error).message}`); }
-      finally { lines.close(); child.kill('SIGTERM'); await exited; this.child = undefined; }
+      finally { lines.close(); await stream.retire(true); this.child = undefined; }
       if (!this.closed) await this.delay();
     }
     this.refuseReady(new Error('Native source stopped before readiness'));
