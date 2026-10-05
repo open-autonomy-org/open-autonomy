@@ -1,7 +1,8 @@
 # ADR 0026: Setup, publication and owner control use the selected native runtime
 
-Status: Proposed. Implementation waits for independent architecture and constitution review; acceptance requires
-that review, manual World evidence and merge. This record amends the Hermes-dependent setup and observation choices
+Status: Accepted upon independent review and merge of the implementing PR; Proposed until those gates pass.
+Independent architecture/constitution review, exact source review and scoped manual World evidence are required.
+This record amends the Hermes-dependent setup and observation choices
 in [ADR 0009](0009-another-harness-on-the-same-home.md) for the native path in
 [ADR 0017](0017-the-ir-native-kit.md), preserving the explicit Hermes path.
 
@@ -21,9 +22,10 @@ The rendered host lock, rather than the older repository development lock, suppl
 | `@volter/supercode-orchestrator` | `0.5.47` | `45fdfe5965dd7c64eb757892b72b208af74eacd6` |
 | `@volter/supercode-harness-sdk` | `0.3.64` | `1e874224eaf40117405fd93b2121d5c3be6f1382` |
 
-Registry artifact integrity was checked read-only. No installation or runtime verification has occurred for this
-proposal. Pin the SDK exactly and align the kit's development dependency with the rendered candidate before code
-checks; no broad dependency upgrade is proposed. The published orchestrator's
+At proposal time, evidence was limited to read-only registry artifact inspection. Implementation verification now
+uses exact packed candidates and manual World observations; the implementing PR supplies their hashes, outcomes
+and remaining limits. This is scoped evidence, not acceptance of every runtime path. Pin the SDK exactly and align
+the kit's development dependency with the rendered candidate; no broad dependency upgrade is proposed. The published orchestrator's
 [applier door](https://github.com/volter-ai/supercode/blob/45fdfe5965dd7c64eb757892b72b208af74eacd6/sdk/orchestrator/apply/doors.mjs)
 supports native jobs but has no inference read/write door. Its
 [worker route](https://github.com/volter-ai/supercode/blob/45fdfe5965dd7c64eb757892b72b208af74eacd6/sdk/orchestrator/worker-route.mjs)

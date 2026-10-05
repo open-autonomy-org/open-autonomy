@@ -1,7 +1,8 @@
 # ADR 0027: OA source associations and publication recovery
 
-Status: Proposed. Independent constitution/design review precedes implementation; exact source review,
-manual World evidence and merge precede acceptance. This record grants no migration or runtime acceptance.
+Status: Accepted upon independent review and merge of the implementing PR; Proposed until those gates pass.
+Independent constitution/design review, exact source review and scoped manual World evidence precede acceptance.
+This record grants no external migration or unverified runtime acceptance.
 
 ## Context and evidence
 
@@ -291,5 +292,6 @@ Different reviewers assess the proposed contract and exact source/manual evidenc
   intact; no duplicate treasury, charge estimate or spend route is introduced.
 - **Repository authority and audience:** committed enrollment declares a projection context, not a grant;
   filesystem custody and publication privacy remain existing boundaries. Private state contains no new credentials.
-- **No automated tests; nothing develops against a real API:** this proposal is documentation only. Subsequent
-  claims require manual real-path use inside the World and independent review, never a retained test harness.
+- **No automated tests; nothing develops against a real API:** the initial proposal was documentation only.
+  Implementation claims use manual real-path observations inside the World and independent review, with exact
+  candidate hashes, outcomes and limits supplied in the implementing PR; no retained test harness is added.
