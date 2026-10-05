@@ -48,7 +48,8 @@ create-open-autonomy setup .     # the guided walk: what this project's situatio
 
 `create` writes a new or empty directory; `adopt` writes only missing files in an existing one. `check`
 reports version, local divergence, declaration problems and unresolved merges. `upgrade` uses the recorded
-version as the ancestor of a three-way merge; conflicts remain for the project to resolve. These lineage commands do not start an agent.
+version as the ancestor of a three-way merge; conflicts remain for the project to resolve. Generated `.gitignore`
+private-state rules use that same merge, preserving owner edits and reporting conflicts. These lineage commands do not start an agent.
 Before activation, resolve the rendered host's exact manifest with `bun .open-autonomy/install-runtime.ts --update-lock`
 inside its World and review/commit the adopter-owned lock. A template cannot include its own containing kit archive's
 integrity; a committed unresolved template lock refuses at startup instead of silently becoming unfrozen.
