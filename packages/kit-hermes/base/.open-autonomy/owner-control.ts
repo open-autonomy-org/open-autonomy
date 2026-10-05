@@ -44,7 +44,7 @@ export class OwnerControlState implements PublicationOwnerLease {
         if (prior && ![2, 3].includes(prior.version)) throw new Error('Unsupported retained reporter state for owner control seed');
         if (prior?.version === 3) {
           const enrollment = prior.publication?.enrollment;
-          if (!enrollment || enrollment.account !== scope.account || enrollment.apiBase !== scope.apiBase || !same(enrollment.selectedRuntime, scope.nativeRuntime))
+          if (!enrollment || enrollment.version !== 1 || enrollment.account !== scope.account || enrollment.apiBase !== scope.apiBase || !same(enrollment.selectedRuntime, scope.nativeRuntime))
             throw new Error('Retained reporter enrollment conflicts with owner control scope');
         }
         this.data = { version: 1, ...scope, paused_jobs: prior ? ids(prior.paused_jobs === undefined ? [] : prior.paused_jobs) : [], paused_tasks: prior ? ids(prior.paused_tasks === undefined ? [] : prior.paused_tasks) : [],
