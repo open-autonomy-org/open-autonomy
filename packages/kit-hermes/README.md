@@ -42,11 +42,16 @@ original actor. Unsupported setup fields and conflicting native overrides refuse
 Hermes pause does not defer queued paid board work. Older 3.24 `paused_tasks` cannot safely be promoted through
 the available public door and remain pending for operator reconciliation. Narrative startup retries failed
 stages without restarting owner controls; bounded requests and abortable committed Git reads allow clean stop.
-Control state version 2 retains unresolved native pause/resume calls per job. Only the current call's positive
-acknowledgement and matching readback clear that phase; a later inventory cannot settle an old unknown response.
-Older sidecar or reporter-owned jobs migrate as unresolved historical intent, preserving ownership without inventing
-acknowledgement. Affected jobs remain pending while other controls continue; no native settlement bypass is supplied.
-Local lease recovery requires Bun FFI and public process identity on macOS or glibc Linux; unsupported hosts refuse.
+Control state version 3 saves preparation, invocation and the current call's positive acknowledgement separately.
+Acknowledged calls retry readback without another mutation; an unknown invoked call stays pending. Older effects
+and reporter-owned jobs retain historical uncertainty. The private publication operator supports explicit offline
+reconciliation with exact scope/state/native snapshots and the owner's concrete prior-domain retirement evidence;
+its audit records that owner assertion rather than claiming a native fence. Other job controls continue independently.
+An explicit handoff-only command can recover a supported retained lease when the canonical sidecar is absent,
+without creating ownership or acknowledgement; later publisher startup seeds conservatively.
+Local leases require a single-executor local home, Bun FFI and public process/filesystem metadata. Darwin ARM64/APFS
+is exercised and supported; other Darwin architectures, unsupported Linux interfaces/filesystems, cross-namespace
+handoff, network/shared homes and ambiguous identities refuse.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project

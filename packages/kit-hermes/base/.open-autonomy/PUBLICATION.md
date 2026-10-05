@@ -22,8 +22,10 @@ The owner must resolve board dispatch through its owning runtime; OA reports tha
 Use `publication-operator.ts` in this rendered host. It is separate from `enroll.ts`, which enrolls mail agents.
 Run the door inside the owning World/executor, with the publisher stopped before enrollment, adoption or custody
 changes. In an operator World the command prefix is `volter-world attach <world> --root <twins-checkout> --`.
-The command reads only its named configuration/publication files; it calls no native or OA service, reads no
-credentials, and cannot prove native continuity for the operator.
+Enrollment/adoption reads only its named configuration/publication files and calls no native or OA service.
+The control recovery commands additionally read the selected native runtime through its public SDK; they never
+mutate native jobs or call OA services. No command can prove native continuity or prior-domain retirement for
+the operator.
 
 ## Fresh enrollment
 
@@ -103,14 +105,20 @@ uncertain source retirement retains ownership and diagnostic evidence. The write
 the prior writer is dead; it does not prove an orphaned source reader retired. Reconcile retained source evidence
 through the owning lifecycle. Local ownership does not fence another host;
 never run a copied active state as another publisher. Stop the owner through its ordinary lifecycle door.
-New local leases record the host, boot, process namespace and process start identity. A same-host successor can
-recover a positively dead recorded owner under the kernel guard; a recycled PID cannot supply the prior identity.
+New local leases record the host, boot, process namespace and process start identity. A successor on the same
+host, boot and process namespace can recover a positively dead recorded owner under the kernel guard; a recycled
+PID cannot supply the prior identity. A different boot remains unknown and requires the explicit attested handoff
+below. Machine IDs alone cannot distinguish a physical host from a clone.
 Running, foreign, legacy or malformed ownership remains a refusal requiring explicit operator reconciliation.
 `release-lock --config FILE --nonce NONCE --same-executor-stopped` uses the same recorded-identity proof;
 the flag alone cannot establish an unknown executor or release a live owner. Age is not ownership evidence.
 Keep the private guard, staged lock and retired lock evidence ignored alongside the canonical control sidecar.
-Local lease recovery requires Bun FFI and readable public process identity on macOS or glibc Linux. An unsupported
-host or unreadable identity refuses ownership; choose a supported host rather than treating uncertainty as absence.
+Local leases require one executor's local home, Bun FFI, readable public process identity and a supported local
+filesystem established through OS metadata. Darwin ARM64/APFS is exercised and supported; other Darwin architectures
+currently refuse. Linux requires supported glibc, machine-ID,
+boot/process-namespace and process metadata interfaces; unexercised filesystems, musl and missing identity are
+unsupported. Shared/network homes and VM clones sharing a home are unsupported. Choose a supported host rather
+than treating uncertainty or signal-permission failure as absence.
 
 Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
 and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
@@ -122,13 +130,125 @@ reporter state and source-cache bytes, without enrollment or adoption. Narrative
 fields without turning them into another live ownership store. Keep this sidecar private when configuring a
 state path outside the generated `.open-autonomy` directory.
 
-Control state version 2 also records `pending_effects` before each native pause/resume call. Only that same call's
-positive acknowledgement followed by matching native readback clears its phase. A crash, abort or unknown response
-leaves that job pending; a later inventory alone cannot prove the old accepted call finished. Other jobs can still
-be controlled. Version-1 sidecar jobs and reporter-seeded owned jobs migrate as unresolved historical phases:
-ownership is retained, but historical acknowledgement is not invented. Affected jobs cannot be retried or given an
-opposite command, or establish observed pause, until actual settlement or explicit evidence reconciliation exists.
-This adapter supplies no native fence or reconciliation bypass; the missing settlement door is an external gap.
+Control state version 3 records `pending_effects` as prepared, invoked or acknowledged, retaining historical
+uncertainty. Preparation is saved before invocation; a prepared phase can be cancelled after restart because no
+call could have started. The current call's exact positive SDK completion is saved before readback. An acknowledged
+phase retries fresh matching observation without reissuing the mutation, so a temporary read failure does not lose
+completion. Exact correlated pre-execution InvalidParams may retract a refused call; error sentences and generic
+unsupported errors never supply that evidence. An invoked call with an unknown response stays pending.
+
+Version-2 unknown effects and older sidecar/reporter-owned jobs migrate without invented acknowledgement. The old
+reporter saved pause membership before issuing its call, so membership alone cannot prove completion. Inventory,
+age, direct SDK child exit and native stopped output cannot settle an old accepted daemon event or cold child.
+Affected jobs cannot be retried or given an opposite command, or establish observed pause, until current positive
+completion/readback or explicit evidence-backed owner reconciliation applies; other jobs continue independently.
+Stop blocks new effects and aborts reads promptly, retaining the lease for at most ten seconds of already-issued
+call completion/receipt persistence before SDK close. This drain is not a native settlement fence.
+
+## Offline control reconciliation
+
+Use this door only after stopping every publisher for this state and retiring the prior native effect writers or
+conclusively settling their effects through the owning lifecycle. Evidence must cover publishers, SDK services,
+CLI wrappers and cold/Hermes children, and the selected daemon/execution domain across prior generations. A
+publisher stop, direct-child exit, `stopped` message, lease absence or current disabled row alone is insufficient.
+The operator verifies scope and evidence bytes; full-domain retirement remains your explicit local-owner assertion,
+which the canonical audit labels as such. It cannot fence an old accepted native action for you.
+
+Read the fresh public SDK snapshot and exact phase/configuration/control digests while publishers are stopped:
+
+```sh
+bun .open-autonomy/publication-operator.ts control-status \
+  --config .open-autonomy/config.yaml --kind orchestrator --root /actual/native/home
+```
+
+Status makes no state changes. It accepts existing version-1/2/3 control sidecars: old v2 operation IDs stay unchanged;
+old v1 ownership receives deterministic local phase IDs bound to exact retained bytes, scope and job ID, without
+inventing native identity or acknowledgement. Reconciliation saves the v3 migration and its audit together against
+the original file digest, so an old-boot lease does not require a controller restart before handoff.
+Status reports job IDs/profiles/enabled state, not job prompts or transcripts. Its complete
+snapshot combines public orchestration, profile and job inventory with source/root coverage. Filtered, truncated,
+unreadable or inconsistent inventory refuses; `absent_store` with a loader error cannot prove absence. Use the same
+`--state-file FILE` override as the publisher where applicable.
+
+Prepare a private version-1 JSON manifest under `.open-autonomy/publication-private/control-recovery/`. That directory,
+its children and evidence files must belong to the operator, have no group/other permissions, and contain no symlinks.
+Paths in `evidence` and each action's evidence references resolve relative to the manifest; all stay under that private
+directory. Record concrete prior actor identities, lifecycle actions and retained receipts, without credentials.
+The manifest has these exact fields:
+
+```json
+{
+  "version": 1,
+  "mode": "reconcile",
+  "operator": "owner",
+  "statement": "Describe the completed owning-domain retirement and exclusive local custody.",
+  "scope": {"account": "owner/project", "apiBase": "https://open-autonomy.org/v1", "nativeRuntime": {"kind": "orchestrator", "root": "/actual/native/home"}},
+  "configDigest": "<control-status configDigest>",
+  "controlDigest": "<control-status controlDigest>",
+  "inventoryDigest": "<control-status inventoryDigest>",
+  "custody": {"exclusiveLocalHome": true, "priorEffectWriters": "retired-or-settled"},
+  "selections": [{"operation": "<phase UUID>", "effectDigest": "<phase digest>", "id": "<native job ID>", "profile": null, "disposition": "retain-owned"}],
+  "evidence": [{"path": "evidence/retirement.json", "digest": "<exact file SHA-256>"}],
+  "actions": [{"id": "owning-retirement", "door": "<actual owning lifecycle door>", "action": "<actual actions and actor/domain identities>", "evidence": ["evidence/retirement.json"]}],
+  "coverage": {"publishers": ["owning-retirement"], "sdkServices": ["owning-retirement"], "nativeCliChildren": ["owning-retirement"], "executionDomain": ["owning-retirement"]}
+}
+```
+
+One action may cover multiple groups only if its retained evidence actually covers each one. The custody fields are
+assertions supported by those concrete actions and receipts, not a risk-acceptance flag. Keep each selected native
+ID/profile exactly as status reports it: RPC origin with null profile means the known default profile, while
+retained-ownership origin with null profile is historical unknown identity. Only the latter may use one unique ID
+across complete all-profile inventory under the owner assertion. `retain-owned` accepts one exact
+currently disabled job as present OA-owned intent. `relinquish` drops ownership for one existing job; it does not resume
+that job. `relinquish-absent` requires complete all-profile SDK inventory without that exact known ID/profile; an
+unknown historical profile requires the ID absent across every profile. A different-profile caller job is unchanged.
+Unselected phases,
+ownership and all retained board tasks remain unchanged. This door cannot reconcile `paused_tasks` through unsafe
+promotion or invent native acknowledgements for legacy intent.
+
+```sh
+bun .open-autonomy/publication-operator.ts reconcile-controls \
+  --config .open-autonomy/config.yaml --kind orchestrator --root /actual/native/home \
+  --manifest .open-autonomy/publication-private/control-recovery/reviewed.json
+```
+
+The entire plan, evidence and snapshot must pass before lease acquisition/handoff; the operator checks them again
+under the writer lease. Duplicate/unknown phases, changed digests, ambiguous native rows, incomplete scope or a live
+writer refuse. It never calls native mutation verbs. Exact original control bytes and the manifest are backed up
+privately; an atomically saved canonical reconciliation record is the applied boundary. A prepared audit or backup
+alone is not applied. Success requires the canonical write's durable acknowledgement. If that write throws after
+publication, output reports an unconfirmed attempt: canonical bytes/audit may already have changed. Preserve its
+original backup and inspect the actual file before retry; never assume rejection means unchanged state. Review the
+canonical audit before restarting the publisher to apply ordinary current intent.
+
+If a supported old lease remains from another boot, additionally include
+`"leaseHandoff":{"nonce":"<old nonce>","ownerDigest":"<exact owner.json SHA-256>","stateFile":"/absolute/reporter-state.json"}`.
+The same full-domain retirement and exclusive-local-home evidence is required. Under the kernel guard this preserves
+the exact old record in quarantine and publishes a new verified writer identity; a same-boot live owner still refuses.
+Malformed/foreign/unsupported records and homes have no override; cross-namespace handoff is unsupported. The operator
+rechecks all inputs after handoff.
+If custody transfers but later reconciliation fails, output distinguishes that handoff from unapplied control changes;
+retain its private audit and rerun status against the actual retained state. Never delete a lock to make it pass.
+
+If the retained supported lease exists but its canonical control sidecar was never created, status reports an explicit
+`controlAbsence:{"kind":"absent-control","file":"/absolute/reporter-state.json.control.json"}` token and a null
+control digest. This is missing state, not fresh ownership or historical acknowledgement. To recover only custody,
+use the same full scope/snapshot/retirement-evidence manifest with `mode:"lease-handoff-only"`, `controlDigest:null`,
+that exact `controlAbsence` token, `selections:[]` and mandatory `leaseHandoff`:
+
+```sh
+bun .open-autonomy/publication-operator.ts handoff-controls \
+  --config .open-autonomy/config.yaml --kind orchestrator --root /actual/native/home \
+  --manifest .open-autonomy/publication-private/control-recovery/reviewed-handoff.json
+```
+
+The guard must prove actual ENOENT for the named sidecar; a dangling symlink or unreadable path refuses. The operator
+rechecks absence and every scope/evidence/snapshot input after handoff, writes a durable private performed-handoff
+audit, and reports custody-only completion. It creates no control sidecar, ownership, native acknowledgement or
+narrative state. A later ordinary publisher seeds conservatively under its existing retained-intent rules. If a
+post-handoff check fails, custody may already have changed; the diagnostic distinguishes that from unapplied controls.
+
+## Continued observation and delivery
 
 Controls use fresh native schedule, configuration/binding and run readbacks. Active work may finish. The pinned
 native and Hermes adapters lack a safe board pause/resume contract, so queued board intent stays pending;
