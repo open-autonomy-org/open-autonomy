@@ -1,5 +1,12 @@
 // App-owned cache and acknowledgement of the public native workflow stream.
 // No board database, internal package path or periodic board read belongs here.
+// Cache identities are <board>:<card.id>; a retained frame cursor is a source position,
+// not an OA event ID or transcript offset. Snapshot inventory replaces the cache at
+// snapshot_end; removed cards disappear without a fabricated completion. Source resync
+// clears the cursor and asks for a new snapshot. Cards and cursor are saved together
+// after changed() resolves; callback rejection retries without advancing that cursor.
+// The caller can handle some effects separately (publisher.ts retries session failures),
+// so this acknowledgement covers the callback, not every OA publication or native stream.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';

@@ -1,6 +1,34 @@
 #!/usr/bin/env bun
 // Volter Harness SDK in, Open Autonomy SDK out. Native state belongs to Volter Harness;
 // publication policy, repository documents and acknowledged delivery belong here.
+// Projection contract for this adapter (not a second native execution model):
+// - source-events.ts caches cards by <board>:<card.id>; timeline items retain card.id.
+//   Archived cards are omitted; ordinary installs select the default assignee, organization
+//   installs select project tags/tenant. No removed card supplies a session end.
+// - board() uses the source's normalized card.status as lane, not its raw lane.
+//   done projects to past/done; running/review to present/active; any supplied
+//   blocked/scheduled status to present/proposed; remaining statuses to present/planned.
+//   Supercode normalizes raw blocked/scheduled lanes to todo, so those project as
+//   planned here; the raw lane and its more specific standing are not exported.
+//   First attempt start, last handoff/attempt author, native completion time and a
+//   validated handoff commit provide the available item timestamps, attribution and proof.
+// - Attempt IDs are not OA session keys. Native session_id is the initial key; an
+//   attempt's session reference binds a worker to its card, else a unique workspace match
+//   can supply item_id. Ambiguous association leaves item_id absent. Organization sessions
+//   go to the card's primary project; an unassigned session stays on the organization.
+// - completionOf maps recorded completed/failed runs, ended attempts and bindings;
+//   absent verdicts stay absent. reporting.ts may close an old OA transcript projection
+//   on detected source rewrite and continue <native-id>~<n>; that boundary is not native
+//   task completion. Silence and source disappearance supply no completion evidence.
+// - Review notes use <card.id>:review:<index>:<time>:<verdict>; handoff notes use
+//   <card.id>:handoff:<attempt.id>. Acknowledged update IDs are persisted in noted.
+//   Full attempt topology, native control records and source-only fields are not exported.
+//   reporting.ts also applies audience exclusions, selects supported text/tool turns,
+//   clips content and omits reconstructed Hermes messages without a stored native row.
+// - Transcript receipts are separate persisted seq/digest/end checkpoints, verified
+//   against source windows and the server's retained tail. Session failures retry separately;
+//   a saved board-source cursor does not attest that every transcript was delivered.
+//   Native events/index/transcripts, OA publications and owner control have separate ordering.
 import { existsSync, readdirSync, readFileSync, writeFileSync, renameSync, watch as watchFiles } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
