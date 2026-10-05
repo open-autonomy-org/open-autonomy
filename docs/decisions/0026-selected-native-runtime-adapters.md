@@ -164,17 +164,20 @@ them another live ownership store.
 The controller owns the existing `<reporter-state>.lock` directory. A narrative `PublicationStore` in that same
 process may reuse an explicit lease whose state path, process identity and nonce match the lock; a boolean bypass
 is insufficient. The store cannot release that external lease. Shutdown drains both queues and the native source
-before the controller releases it. Existing standalone publication/adoption operators keep their ordinary lock
-behavior and therefore refuse a concurrent controller. Verified stopped-local-owner release remains explicit;
-there is no age-based takeover or cross-host fencing.
+before the controller releases it. Standalone publication/adoption operators use the same lease protocol and refuse a concurrent live controller.
+The same-executor kernel identity, crash-safe transition guard and proven-dead writer recovery are specified in
+ADR 0027; uncertain or legacy ownership still requires operator reconciliation. There is no age-based takeover
+or cross-host fencing, and recovery does not claim retirement of orphan read-only Source processes.
 
 Every control pass freshly reads the owning public native schedule, configuration/bindings and run ledger before
 native mutation and again as needed for readback. Unreadable or ambiguous authority retains the request as pending;
 cached transcript discovery or an empty narrative board cannot establish observed pause. Active funded work may
-finish and is never ended to satisfy the request. For Hermes, the existing public board CLI supplies validated
-execution-control inventory independently of narrative enrollment. This is a bounded
-owner-control exception to ADR 0016's cached-board-candidate choice: it supplies no publication identity, narrative
-polling, lifecycle inference or fallback source stream. A missing/unreadable board remains pending. The pinned
+finish and is never ended to satisfy the request. Hermes has no safe owner-authorized dispatcher pause/resume or quiescence readback door. Owner controls therefore
+use only the selected runtime's public SDK configuration, jobs, runs and bindings; they do not poll its board CLI.
+Their desired pause remains visibly pending when dispatcher authority is unavailable, and retained legacy task
+ownership is not silently cleared. Removing board polling changes no supported mutation or observed operating-state
+outcome and prevents that synchronous subprocess from blocking signal/control handling. Narrative Source inventory
+retains its separate authorization and lifecycle. The pinned
 Hermes `schedule_task` can end a task that becomes active after inventory was read, and its `promote_task` does not
 accept a scheduled task. These public doors cannot implement the required safe pause/resume round trip. This
 adapter therefore never schedules or promotes board tasks: it retains legacy `paused_tasks` ownership and reports
@@ -183,6 +186,10 @@ from empty inventory or claim observed pause when dispatcher authority is unknow
 capability restriction above is unchanged. Job resume forgets owned intent only after authoritative readback
 proves resume or removal, and never resumes an independently paused job. Future board control for either adapter
 requires independent review of a safe owning contract; no native board engine is changed here.
+
+An unfinished or stale execution record without authoritative completion stays unresolved. Its presence is
+described as pending native execution readback, not as proof that a funded process is currently live; OA does not
+manufacture finished_at or native completion.
 
 ## Alternatives and consequences
 
