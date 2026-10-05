@@ -114,39 +114,70 @@ function effective(profile: NativeProfile, spec: Package, units: Array<{ values?
   }
 }
 
-async function validateNativeJob(profile: NativeProfile, args: Record<string, unknown>, workspace: string): Promise<void> {
-  // The owning public export imports node:sqlite. Keep it on Node, never reimplement its validation in Bun.
+type NodeRequest = { operation: 'validate'; profile: NativeProfile; args: Unit; now: string }
+  | { operation: 'create' | 'update' | 'pause' | 'remove'; root: string; profile: string; args: unknown[] };
+type NativeSafety = { blocked?: string };
+function requireEffects(safety: NativeSafety): void { if (safety.blocked) throw new Error(safety.blocked); }
+async function nativeNodeCall(request: NodeRequest, workspace: string, safety: NativeSafety, prefix: string[] = []): Promise<unknown> {
+  requireEffects(safety);
+  // The owning exports/cold job CLI require Node. Keep their validation, effects and readback on that runtime.
   const moduleUrl = import.meta.resolve('@volter/supercode-orchestrator');
+  const sdkUrl = import.meta.resolve('@volter/supercode-harness-sdk');
   const program = `import { readFileSync } from 'node:fs';
-try { const { buildJob } = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8'));
-buildJob(request.profile, request.args, request.now); process.stdout.write(JSON.stringify({ok:true})); }
-catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(error.message).slice(0,2048)})); process.exitCode=1; }`;
-  const child = Bun.spawn({ cmd: ['node', '--input-type=module', '-e', program, moduleUrl], cwd: workspace,
-    stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
-  let interrupted = false, expired = false, settled = false, killTimer: ReturnType<typeof setTimeout> | undefined;
-  const terminate = () => {
-    try { child.kill('SIGTERM'); } catch { /* already exited */ }
-    killTimer ??= setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already exited */ } }, 5000);
+let client;
+try { const owner = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8')); let result;
+if(request.operation === 'validate') owner.buildJob(request.profile, request.args, request.now);
+else { if(!['create','update','pause','remove'].includes(request.operation)) throw Error('Unsupported native job operation');
+const { SupercodeHarnessClient } = await import(process.argv[2]);
+client = new SupercodeHarnessClient({command:process.env.SUPERCODE_BIN,args:['harness','serve']});
+const door = await owner.orchestratorDoor({root:request.root,profile:request.profile,
+load:async()=>({state:(await client.orchestrationLoad({root:request.root,flavor:'orchestrator'})).orchestration})});
+result = await door[request.operation](...request.args); }
+process.stdout.write(JSON.stringify({ok:true,result})); }
+catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(error.message).slice(0,2048)})); process.exitCode=1; }
+finally { await client?.close(); }`;
+  const child = (() => {
+    try { return Bun.spawn({ cmd: [...prefix, 'node', '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
+      env: { ...process.env, SUPERCODE_BIN: process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode') },
+      detached: true, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }); }
+    catch (error) { if (request.operation !== 'validate') safety.blocked = 'Native job transport unavailable; no further effects allowed'; throw error; }
+  })();
+  let interrupted = false, expired = false, settled = false, terminating = false, killTimer: ReturnType<typeof setTimeout> | undefined;
+  const signalOwned = (signal: 'SIGTERM' | 'SIGKILL') => {
+    try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } }
   };
-  const interrupt = () => { interrupted = true; terminate(); };
-  const timeout = setTimeout(() => { expired = true; terminate(); }, 60_000);
+  const terminate = () => {
+    terminating = true;
+    signalOwned('SIGTERM');
+    killTimer ??= setTimeout(() => signalOwned('SIGKILL'), 5000);
+  };
+  const interrupt = () => { interrupted = true; safety.blocked = 'Native setup cancelled; no further effects allowed; retained intents require owning readback'; terminate(); };
+  const timeout = setTimeout(() => { expired = true; safety.blocked = 'Native setup timed out; no further effects allowed; retained intents require owning readback'; terminate(); }, 60_000);
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, interrupt);
+  const outcome = request.operation === 'validate' ? 'no setup effects applied' : 'job outcome may be uncertain; retained applier intent/state requires owning readback';
   try {
-    child.stdin.write(JSON.stringify({ profile, args, now: new Date().toISOString() })); child.stdin.end();
+    child.stdin.write(JSON.stringify(request)); child.stdin.end();
     const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     settled = true;
-    if (interrupted || expired) throw new Error(`Native job validation ${expired ? 'timed out' : 'was cancelled'}; no setup effects applied`);
-    let reply: { ok?: boolean; message?: string };
-    try { reply = JSON.parse(stdout); } catch { throw new Error(`Native job validator exited ${code} without its success/error response`); }
-    if (code !== 0 || reply.ok !== true) throw new Error(`Owning native job validation refused: ${redactSecrets(reply.message ?? `exit ${code}`)}`);
+    if (interrupted || expired) throw new Error(`Native job ${request.operation} ${expired ? 'timed out' : 'was cancelled'}; ${outcome}`);
+    let reply: { ok?: boolean; result?: unknown; message?: string };
+    try { reply = JSON.parse(stdout); } catch { throw new Error(`Native job ${request.operation} exited ${code} without its response; ${outcome}`); }
+    if (code !== 0 || reply.ok !== true) throw new Error(`Owning native job ${request.operation} refused: ${redactSecrets(reply.message ?? `exit ${code}`)}; ${outcome}`);
+    return reply.result;
+  } catch (error) {
+    if (request.operation !== 'validate') safety.blocked ??= 'Native job outcome uncertain/refused; no further effects allowed; retained intents require owning readback';
+    throw error;
   } finally {
     if (!settled) { terminate(); await child.exited; }
+    // A direct Node exit does not prove its SDK/CLI descendants exited; finish the owned group before disarming cleanup.
+    if (terminating) signalOwned('SIGKILL');
     clearTimeout(timeout); clearTimeout(killTimer);
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.off(signal, interrupt);
   }
 }
 
 export async function applyNative(options: { setup: Setup; root: string; homeId: string; stateRoot: string; workspace: string; asAgent?: string[] }): Promise<string[]> {
+  const safety: NativeSafety = {};
   const applier = await import('@volter/supercode-orchestrator/apply');
   const { orchestratorDoor } = await import('@volter/supercode-orchestrator/apply/doors');
   const command = [...(options.asAgent ?? []), process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode'), 'harness', 'serve'];
@@ -168,9 +199,15 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       };
       effective((await get()).profile, spec, units, name);
       const door = Object.assign(await orchestratorDoor({ root: options.root, profile: name, load: async () => ({ state: (await runtime.load()).orchestration }) }) as NativeJobDoor, {
+        create: (key: string, want: Unit) => nativeNodeCall({ operation: 'create', root: options.root, profile: name, args: [key, want] }, options.workspace, safety, options.asAgent),
+        update: (id: string, values: Unit) => nativeNodeCall({ operation: 'update', root: options.root, profile: name, args: [id, values] }, options.workspace, safety, options.asAgent),
+        pause: (id: string) => nativeNodeCall({ operation: 'pause', root: options.root, profile: name, args: [id] }, options.workspace, safety, options.asAgent),
+        remove: (id: string) => nativeNodeCall({ operation: 'remove', root: options.root, profile: name, args: [id] }, options.workspace, safety, options.asAgent),
         readInference: async (keys: string[]) => { const { profile } = await get(); return Object.fromEntries(keys.map(key => [key, read(profile, key)])); },
         writeInference: async (values: Unit) => {
-          const loaded = await get(); effective(loaded.profile, spec, units, name); patch(loaded.profile, values);
+          requireEffects(safety);
+          const loaded = await get(); requireEffects(safety); effective(loaded.profile, spec, units, name); patch(loaded.profile, values);
+          requireEffects(safety);
           await sc.orchestrationSave({ root: options.root, orchestration: loaded.orchestration });
         },
       });
@@ -181,7 +218,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       patch(preview, Object.assign({}, ...units.map(unit => unit.values ?? {})));
       for (const [key, job] of Object.entries(spec.jobs ?? {})) {
         const args = door.fields(job, spec.inference);
-        await validateNativeJob(preview, { ...args, name: key }, options.workspace); // pure owning validation before any config/job effect
+        await nativeNodeCall({ operation: 'validate', profile: preview, args: { ...args, name: key }, now: new Date().toISOString() }, options.workspace, safety); // pure owning validation before any config/job effect
       }
       const bad = first.rows.filter((row: Row) => ['refused', 'conflict', 'not-applied'].includes(row.action));
       if (bad.length) throw new Error(`${name}: native setup preflight refused: ${bad.map((r: Row) => `${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`).join('; ')}`);
