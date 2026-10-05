@@ -156,13 +156,15 @@ export class BoardEventSource {
       try {
         this.save(); // also retries uncertain pending-state persistence before any effect
         await this.options.changed(observation);
+        if (this.closed) return;
         const state: CacheState = { version: 2, sourceContextId: this.options.sourceContextId, cards: [...observation.cards], cursor: observation.proposedCursor, ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) };
         savePublicationFile(this.options.stateFile, state);
         this.rows = this.inventory(observation.cards); this.cursor = observation.proposedCursor; this.pending = undefined;
         this.ready(); return;
       } catch (error) { this.options.log(`native event delivery pending: ${(error as Error).message}`); await this.delay(); }
     }
-    throw new Error('Publisher stopped before acknowledgement; pending observation retained');
+    // Intentional close cancels delivery, preserving pending bytes. Readiness is
+    // still refused by follow(); stop() separately proves reader retirement.
   }
   private async stage(rows: Map<string, SourceCard>, cursor: unknown): Promise<void> {
     this.pending = this.snapshot([...rows.values()], cursor); await this.publish();
@@ -171,6 +173,7 @@ export class BoardEventSource {
     while (!this.closed) {
       // Recovery does not depend on native log retention: pending observation is local.
       if (this.pending) await this.publish();
+      if (this.closed) break;
       this.save();
       const command = [...this.options.command, ...(this.cursor ? ['--after', this.cursor] : [])];
       let reader: ReturnType<typeof createInterface> | undefined;

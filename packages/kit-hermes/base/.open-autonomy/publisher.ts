@@ -31,6 +31,7 @@
 //   a saved board-source cursor does not attest that every transcript was delivered.
 //   Native events/index/transcripts, OA publications and owner control have separate ordering.
 import { existsSync, readFileSync, watch as watchFiles } from 'node:fs';
+import { spawn as spawnCommand } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
@@ -72,9 +73,15 @@ if (container && selectedRuntime.kind === 'orchestrator') throw new Error('This 
 const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
 const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
+const narrativeAbort = new AbortController();
+const narrativeRead = { signal: narrativeAbort.signal, timeoutMs: 10_000 };
+const narrativeTimers = new Set<ReturnType<typeof setTimeout>>();
+const commands = new Set<Promise<unknown>>();
+const commandFailures = new Set<Error>();
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve', fetch: ((input, init) => {
   if (quitting) throw new Error('Narrative stopping; publication intent retained');
-  ownerState.assert(stateFile); return fetch(input, init);
+  ownerState.assert(stateFile);
+  return fetch(input, { ...init, signal: AbortSignal.any([narrativeAbort.signal, AbortSignal.timeout(10_000), ...(init?.signal ? [init.signal] : [])]) });
 }) as typeof fetch });
 const log = (message: string) => console.log(`publisher: ${message}`);
 // What runs the agent, as the start script says (mode, kit, executor, host): published with the setup, never a credential.
@@ -83,7 +90,72 @@ const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONO
 // database, config, jobs file or skill directory is parsed by the reporter.
 // HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
 const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
-const run = (cmd: string[], env = process.env) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, env, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
+// A private command group keeps committed Git reads from blocking owner controls or
+// signal handlers. Retirement includes descendants; uncertainty retains the lease.
+function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): Promise<{ exitCode: number | null; stdout: string; stderr: string; exitedDueToTimeout: boolean }> {
+  if (signal.aborted || quitting) return Promise.reject(new Error('Publisher stopping; command not started'));
+  ownerState.assert(stateFile);
+  const command = container ? inContainer(cmd) : cmd;
+  const grouped = process.platform !== 'win32';
+  const child = spawnCommand(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'pipe'] });
+  let timedOut = false, stdout = '', stderr = '', closed = false;
+  let retirement: Promise<void> | undefined;
+  const alive = (): boolean => {
+    if (!child.pid) return !closed;
+    if (!grouped) return !closed;
+    try { process.kill(-child.pid, 0); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+  };
+  const kill = (value: NodeJS.Signals): void => {
+    if (!child.pid) return;
+    try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+  };
+  const retire = (): Promise<void> => retirement ??= (async () => {
+    const gone = async (duration: number): Promise<boolean> => {
+      const end = Date.now() + duration;
+      while (Date.now() < end) {
+        try { if (!alive()) return true; }
+        catch (error) {
+          // macOS can report EPERM for a just-terminated, unreaped private
+          // child. That is unknown, never absence or authority to escalate.
+          if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+        }
+        await Bun.sleep(25);
+      }
+      return !alive(); // unknown at the deadline still refuses retirement
+    };
+    kill('SIGTERM');
+    if (await gone(1000)) return;
+    kill('SIGKILL'); // the preceding probe positively observed a live group
+    if (!await gone(1000)) { const error = new Error('Publisher command retirement is uncertain; local ownership retained'); commandFailures.add(error); throw error; }
+  })();
+  const abort = () => { void retire().catch(error => { commandFailures.add(error); child.stdout?.destroy(); child.stderr?.destroy(); }); };
+  signal.addEventListener('abort', abort, { once: true });
+  const bound = setTimeout(() => { timedOut = true; abort(); }, 20_000);
+  child.stdout!.setEncoding('utf8'); child.stderr!.setEncoding('utf8');
+  child.stdout!.on('data', data => { stdout += data; }); child.stderr!.on('data', data => { stderr += data; });
+  const drainError = (error: Error) => { commandFailures.add(new Error(`Publisher command output drain failed: ${error.message}`)); abort(); };
+  child.stdout!.on('error', drainError); child.stderr!.on('error', drainError);
+  child.once('exit', abort);
+  const work = (async () => {
+    try {
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject); child.once('close', code => { closed = true; resolve(code); });
+      });
+      await retire();
+      if (container && (timedOut || signal.aborted)) {
+        const error = new Error('Container Git command cancellation cannot prove executor retirement; local ownership retained');
+        commandFailures.add(error); throw error;
+      }
+      if (signal.aborted) throw new Error('Publisher command stopped; intent retained');
+      return { exitCode, stdout, stderr, exitedDueToTimeout: timedOut };
+    } catch (error) { await retire(); throw error; }
+    finally { clearTimeout(bound); signal.removeEventListener('abort', abort); }
+  })();
+  commands.add(work); void work.then(() => commands.delete(work), () => commands.delete(work));
+  return work;
+}
 const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : { SUPERCODE_HOME: home }) } as Record<string, string>;
@@ -96,40 +168,66 @@ const ownerOa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?
   ownerState.assert(stateFile);
   return fetch(input, { ...init, signal: AbortSignal.any([controlAbort.signal, AbortSignal.timeout(20_000), ...(init?.signal ? [init.signal] : [])]) });
 }) as typeof fetch });
-const controller = new OwnerController({ state: ownerState, runtime, sc, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log,
-  board: (...args) => { const answer = run(['hermes', 'kanban', ...args], nativeEnvironment); if (answer.exitCode !== 0) throw new Error(`Hermes board control read refused: ${answer.stderr.toString().trim().slice(-300)}`); return answer.stdout.toString(); } });
+const controller = new OwnerController({ state: ownerState, runtime, sc, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log });
 let activePublication: PublicationStore | undefined, activeSource: BoardEventSource | undefined;
 let stopNarrative = () => {};
 let shutdownWork: Promise<void> | undefined;
+let narrativeWork: Promise<void> | undefined;
 function shutdown(code: number): Promise<void> {
   if (shutdownWork) return shutdownWork;
-  quitting = true; activeSource?.close(); stopNarrative();
+  quitting = true; narrativeAbort.abort(); controlAbort.abort();
+  for (const timer of narrativeTimers) clearTimeout(timer); narrativeTimers.clear();
+  activeSource?.close(); stopNarrative();
   shutdownWork = (async () => {
-    await controller.stop();
-    try { await activeSource?.stop(); await activePublication?.close(); }
+    try {
+      await Promise.all([controller.stop(), activeSource?.stop(), narrativeWork]);
+      await activePublication?.close();
+      await Promise.allSettled(commands);
+      if (commandFailures.size) throw [...commandFailures][0];
+    }
     catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); await sc.close(); process.exit(1); }
     await sc.close(); ownerState.close(); process.exit(code);
   })();
   return shutdownWork;
 }
-for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { void shutdown(0); });
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { void shutdown(0); });
 sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); void shutdown(1); } });
 await sc.start(); controller.start();
 process.send?.({ type: 'reporter-ready' });
 const configWatch = watchFiles(configPath, () => { log('configuration changed; restart required'); void shutdown(1); });
 stopNarrative = () => configWatch.close();
 if (!Object.hasOwn(cfg, 'publication')) { log('control-only: publication enrollment required; owner controls remain active'); }
-else void narrate().catch(error => { log(`narrative publication pending: ${(error as Error).message}; owner controls remain active`); });
+else narrativeWork = narrate().catch(error => { if (!quitting) log(`narrative publication pending: ${(error as Error).message}; owner controls remain active`); });
+function later(work: () => void, delay: number): ReturnType<typeof setTimeout> | undefined {
+  if (quitting) return undefined;
+  const timer = setTimeout(() => { narrativeTimers.delete(timer); if (!quitting) work(); }, delay);
+  narrativeTimers.add(timer);
+  return timer;
+}
+async function retryStartup<T>(stage: string, work: () => T | Promise<T>): Promise<T> {
+  for (;;) {
+    if (quitting) throw new Error('Narrative initialization stopped');
+    try { return await work(); }
+    catch (error) {
+      if (quitting) throw error;
+      log(`narrative ${stage} pending: ${(error as Error).message}; retrying in 5 s; owner controls remain active`);
+      await new Promise<void>(resolve => {
+        const done = () => { clearTimeout(timer); narrativeAbort.signal.removeEventListener('abort', done); resolve(); };
+        const timer = setTimeout(done, 5000); narrativeAbort.signal.addEventListener('abort', done, { once: true });
+      });
+    }
+  }
+}
 async function narrate(): Promise<void> {
 if (quitting) return;
-const policy = publicationPolicy(cfg.publish);
+const policy = await retryStartup('policy', () => publicationPolicy(cfg.publish));
 // The owner's pause and resume reach the runtime that holds the schedule: Hermes's own file under Hermes; under the
 // orchestrator (another harness picked), its running daemon's door, which a write to the file would be lost under.
 const onOrchestrator = runtime.native;
 const scheduler = runtime.scheduler;
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
-const publication = activePublication = new PublicationStore({ configFile: configPath, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
-  account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime, owner: ownerState });
+const publication = activePublication = await retryStartup('enrollment', () => new PublicationStore({ configFile: configPath, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
+  account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime, owner: ownerState }));
 const saved = publication.runtime;
 const checkpoints: Record<string, PublicationCheckpoint> = saved.published ?? {};
 // A session whose source was rewritten continues on the platform as `<id>~<n>`: n per native session id.
@@ -190,7 +288,7 @@ async function nativeState(): Promise<void> {
   if (nativeOk) return;
   nativeOk = false;
   const read = () => Promise.all([
-    runtime.load(), runtime.runs(),
+    runtime.load(narrativeRead), runtime.runs(narrativeRead),
   ]);
   let result: Awaited<ReturnType<typeof read>>;
   try { result = await read(); }
@@ -207,11 +305,12 @@ async function nativeState(): Promise<void> {
   nativeOk = true;
 }
 async function watch(d: SessionDescriptor): Promise<void> {
+  if (quitting) return;
   const key = d.locator.session_id;
   if (watching.has(key)) return;
   watching.add(key);
   try {
-    for await (const ev of sc.session(d.locator).follow({ view: { tailMessages: 1, maxMessageChars: 1, includeSubagents: false, displayHistory: true } })) {
+    for await (const ev of sc.session(d.locator).follow({ signal: narrativeAbort.signal, view: { tailMessages: 1, maxMessageChars: 1, includeSubagents: false, displayHistory: true } })) {
       if (stopped.has(key)) break;
       if (ev.type === 'watch_error') log(`${key}: ${ev.message}`);
       // Snapshots (including history_rewritten/sequence_gap_recovered) and appends
@@ -219,7 +318,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
       nativeOk=false;requestTick();
     }
   } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
-  finally { watching.delete(key);if(!quitting&&!stopped.has(key))setTimeout(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
+  finally { watching.delete(key);if(!stopped.has(key))later(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
 // A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
 // from Volter Harness, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
@@ -227,6 +326,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
 const retryAt = new Map<string, number>();
 async function sessions(only?: string): Promise<void> {
   for (const [key, d] of descriptors) {
+    if (quitting) return;
     if (only && key !== only) continue;
     if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     const pkey = platformKey(key);
@@ -248,7 +348,7 @@ async function sessions(only?: string): Promise<void> {
       const completion = completionOf(d);
       let publisher = publishers.get(key);
       if (!publisher || publisherItems.get(key) !== item) {
-        publisher = new TranscriptPublisher(sc, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
+        publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sc.loadWindow(locator, options, narrativeRead) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
           modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
         publishers.set(key, publisher);
         publisherItems.set(key, item);
@@ -259,7 +359,7 @@ async function sessions(only?: string): Promise<void> {
       else void watch(d);
     } catch (e) {
       if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); dirty = true; continue; }
-      setTimeout(()=>{retryAt.delete(key);void publication.run(()=>sessions(key)).catch(error=>log(`session retry pending: ${error.message}`));},60_000);
+      later(()=>{retryAt.delete(key);void publication.run(()=>sessions(key)).catch(error=>{if(!quitting)log(`session retry pending: ${error.message}`);});},60_000);
       retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`);
     }
   }
@@ -430,24 +530,25 @@ function fold(tasks: RoadmapItem[], shipped: RoadmapItem[], intentions: RoadmapI
 // Repository-owned planning and constitution are read only from the committed main
 // snapshot. A failed Git read never substitutes an agent's working tree.
 let mainRevision = '';
-function refreshMain(): void {
-  const fetch = run(['git', '-C', projectDir, 'fetch', '-q', 'origin', 'main']);
-  if (fetch.exitCode !== 0) {
-    const why = fetch.exitedDueToTimeout ? 'git fetch passed its 20 s limit' : fetch.stderr.toString().trim().slice(-300) || `git fetch exited ${fetch.exitCode}`;
+async function refreshMain(): Promise<void> {
+  const fetch = await run(['git', '-C', projectDir, 'fetch', '-q', 'origin', 'main']);
+  if (fetch.exitCode !== 0 || fetch.exitedDueToTimeout) {
+    const why = fetch.exitedDueToTimeout ? 'git fetch passed its 20 s limit' : fetch.stderr.trim().slice(-300) || `git fetch exited ${fetch.exitCode}`;
     throw new Error(`Cannot refresh committed project documents: ${why}`);
   }
-  const rev = run(['git', '-C', projectDir, 'rev-parse', 'origin/main']);
-  if (rev.exitCode !== 0) throw new Error('Committed main unavailable');
+  const rev = await run(['git', '-C', projectDir, 'rev-parse', 'origin/main']);
+  if (rev.exitCode !== 0 || rev.exitedDueToTimeout) throw new Error('Committed main unavailable');
   mainRevision = rev.stdout.toString().trim();
 }
 // A document the project keeps is read from committed main; one it does not keep is simply absent (an organization
 // keeps no changelog; a project may keep no constitution yet). Any other failure to read is an error, never silence.
-function mainFile(name: string): string | undefined {
+async function mainFile(name: string): Promise<string | undefined> {
   if (!mainRevision) return undefined;
-  const exists = run(['git', '-C', projectDir, 'cat-file', '-e', `${mainRevision}:${name}`]);
+  const exists = await run(['git', '-C', projectDir, 'cat-file', '-e', `${mainRevision}:${name}`]);
+  if (exists.exitedDueToTimeout) throw new Error(`Committed ${name} lookup passed its 20 s limit`);
   if (exists.exitCode !== 0) return undefined;
-  const r = run(['git', '-C', projectDir, 'show', `${mainRevision}:${name}`]);
-  if (r.exitCode !== 0) throw new Error(`Cannot read committed ${name}`);
+  const r = await run(['git', '-C', projectDir, 'show', `${mainRevision}:${name}`]);
+  if (r.exitCode !== 0 || r.exitedDueToTimeout) throw new Error(`Cannot read committed ${name}`);
   return r.stdout.toString();
 }
 // `timeline: none` in the config: the project's own driver (or, for an organization, its projects) owns the timeline;
@@ -455,7 +556,7 @@ function mainFile(name: string): string | undefined {
 async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   if (cfg.timeline === 'none') return;
   if (!present) return;
-  const items = organization ? present : fold(present, changelogItems(mainFile('CHANGELOG.md'), cfg.account), roadmapItems(mainFile('ROADMAP.md')));
+  const items = organization ? present : fold(present, changelogItems(await mainFile('CHANGELOG.md'), cfg.account), roadmapItems(await mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest) return;
   await publication.timeline({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter', oa);
@@ -466,7 +567,7 @@ let docsDigest = '', setupDigest = '';
 async function docs(): Promise<void> {
   // A project's reporter publishes its cards and sessions; its page's documents are its own repository's.
   if (tenant) return;
-  const d = { about_md: typeof cfg.about === 'string' && cfg.about ? mainFile(cfg.about) : undefined };
+  const d = { about_md: typeof cfg.about === 'string' && cfg.about ? await mainFile(cfg.about) : undefined };
   // No document named (or none committed): nothing to publish. The platform refuses an empty one (invalid_docs).
   if (d.about_md === undefined) return;
   const digest = JSON.stringify(d);
@@ -475,12 +576,12 @@ async function docs(): Promise<void> {
 async function setup(): Promise<void> {
   if (tenant) return;
   const [jobs, skills, inventory] = await Promise.all([
-    runtime.jobs(), runtime.skills(), runtime.profiles(),
+    runtime.jobs(narrativeRead), runtime.skills(narrativeRead), runtime.profiles(narrativeRead),
   ]);
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   const s = { harness: onOrchestrator ? profiles.default.worker?.harness ?? 'orchestrator' : 'hermes', persona: profiles.default.persona?.text, model: inventory.find(p => p.name === 'default')?.model ?? undefined,
     provider: providerOf(), schedule: jobs.jobs.map(j => ({ name: jobNames.get(j.id) ?? j.id, schedule: j.enabled ? j.schedule.display : `${j.schedule.display} (${j.state})`, description: j.payload.text ?? undefined })),
-    skills: [...new Set(skills.filter(s => s.enabled !== false).map(s => s.name))].sort(), setup_md: mainFile(onOrchestrator ? 'home/README.md' : 'hermes/README.md'), ...(runtimeFacts ? { runtime: { ...runtimeFacts, native: selectedRuntime.kind } } : {}) };
+    skills: [...new Set(skills.filter(s => s.enabled !== false).map(s => s.name))].sort(), setup_md: await mainFile(onOrchestrator ? 'home/README.md' : 'hermes/README.md'), ...(runtimeFacts ? { runtime: { ...runtimeFacts, native: selectedRuntime.kind } } : {}) };
   const digest = JSON.stringify(s);
   if(digest!==setupDigest){const result=await oa.setup(s);if(!result.ok)throw new Error(`Setup publication refused: ${result.status}`);setupDigest=digest;}
 }
@@ -498,7 +599,7 @@ function tick(): Promise<void> {
       await nativeState();
       const present=await board();
       await sessions();
-      if(documentsDirty){refreshMain();await docs();await setup();documentsDirty=false;}
+      if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
       await timeline(present);
     }
   })().finally(()=>{work=null;});
@@ -506,12 +607,14 @@ function tick(): Promise<void> {
 }
 let retry: ReturnType<typeof setTimeout>|undefined;
 function requestTick(): void {
+  if(quitting)return;
   void publication.run(()=>tick()).catch(error=>{
     log(`publication pending (${error.message}); retaining acknowledgement`);
-    clearTimeout(retry);retry=setTimeout(requestTick,5000);
+    if(!quitting){clearTimeout(retry);if(retry)narrativeTimers.delete(retry);retry=later(requestTick,5000);}
   });
 }
 sc.on('sessionIndexEvent', ev => {
+  if(quitting)return;
   if ('error' in ev) { log(`index unavailable: ${ev.error.message}`); return; }
   for (const c of ev.changes) if (c.kind === 'removed') descriptors.delete(c.key.session_id); else {
     descriptors.set(c.descriptor.locator.session_id, c.descriptor);
@@ -523,34 +626,31 @@ const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
   // The orchestrator the start runs (a review World's branch build), else the installed one.
   : ['node',process.env.SUPERCODE_ORCHESTRATOR_ENTRY||fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
-const source=activeSource=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
+const source=activeSource=await retryStartup('source cache',()=>new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:nativeEnvironment,
   sourceContextId:publication.sourceContextId,storeContext:board=>publication.storeContext(board),allowLegacyUpgrade:publication.legacyAdopted,forceSnapshot:publication.requiresSnapshot,
-  changed:snapshot=>publication.run(async()=>{publication.observe(snapshot);boardReady=true;nativeOk=false;await publication.retry(oa);await tick();publication.snapshotAcknowledged();}),log});
+  changed:snapshot=>publication.run(async()=>{publication.observe(snapshot);boardReady=true;nativeOk=false;await publication.retry(oa);await tick();publication.snapshotAcknowledged();}),log}));
 
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
-const discovery = await runtime.queries(cfg.seats);
+const discovery = await retryStartup('profile discovery',()=>runtime.queries(cfg.seats,narrativeRead));
 const named = discovery.profiles.filter(p => !p.default && p.home);
 // The treasurer's sessions hold the cards it mints, so a home with a treasurer that `publish.private` does not name is
 // refused rather than published: a project's config is its own, and an upgrade does not rewrite it.
-if (named.some(p => p.name === 'treasurer') && !policy.private.includes('treasurer')) throw new Error('publish.private in .open-autonomy/config.yaml must name treasurer: its sessions hold the cards it mints, and they would be published');
+await retryStartup('private profile policy',()=>{if (named.some(p => p.name === 'treasurer') && !policy.private.includes('treasurer')) throw new Error('publish.private in .open-autonomy/config.yaml must name treasurer: its sessions hold the cards it mints, and they would be published');});
 // Under the orchestrator each profile's worker keeps its sessions in the profile's own config home, one folder per
 // harness (`<profile>/claude-code`, `<profile>/codex`; the root profile's in the home itself), made at its first launch.
 const queries = discovery.queries;
-for (const query of queries) for (const d of (await sc.subscribeSessionIndex(query)).initial) descriptors.set(d.locator.session_id, d);
+for (const query of queries) for (const d of (await retryStartup('session index subscription',()=>sc.subscribeSessionIndex(query,narrativeRead))).initial) descriptors.set(d.locator.session_id, d);
 // Discovery and native state can be readable before historical delivery finishes.
 // Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
 // gateway that just drained (a restart onto a moved main) reads as unreadable for a moment: that is a wait, not a death.
-for (let attempt = 1; ; attempt++) {
-  try { await nativeState(); break; }
-  catch (e) { if (attempt >= 20) throw e; log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
-}
+await retryStartup('native state',nativeState);
 // Discovery has its own pagination; the retained live index is not all history.
 for (const query of queries) {
   let cursor: string | undefined;
   do {
-    const page = await sc.discover({ ...query, cursor, limit: 500 });
+    const page = await retryStartup('session history page',()=>sc.discover({ ...query, cursor, limit: 500 },narrativeRead));
     for (const d of page.sessions) if (!descriptors.has(d.locator.session_id)) descriptors.set(d.locator.session_id, d);
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
