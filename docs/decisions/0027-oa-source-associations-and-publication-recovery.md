@@ -33,8 +33,11 @@ distinct stores reuse IDs. This proposal changes OA associations and delivery, n
 The owner's reporter configuration gains this block, required for the corrected reporter association format.
 If it is absent, this reporter refuses publication with an explicit enrollment-required cause; it does not fall
 back to raw-card identities, generate fresh contexts or adopt retained history silently. This publication-only
-refusal does not prevent keeper/native execution from continuing under its existing authorization. These are
-OA-issued association identifiers, not native identifiers or grants:
+refusal does not prevent keeper/native execution or independently authorized owner SDK pause/resume controls.
+The existing publisher's explicit control-only mode and scoped durable pause ownership are specified in
+[ADR 0026](0026-selected-native-runtime-adapters.md#owner-controls-without-narrative-enrollment). They supply no
+publication association or inferred custody. These are OA-issued association identifiers, not native identifiers
+or grants:
 
 ```yaml
 publication:
@@ -171,8 +174,11 @@ are persisted before the cache commits cards/cursor and clears the pending obser
 window recovers by receipt/obligation identity. Resync preserves pending obligations and mappings while obtaining
 the next full snapshot; source absence does not fabricate a task or session end.
 
-One publisher owns the state and selected account timeline. State writes, source callbacks, retry delivery and
-session-binding changes run through one serial queue. Private files/directories use modes 0600/0700; durable saves
+One publisher owns the state and selected account timeline. Narrative state writes, source callbacks, retry delivery
+and session-binding changes run through one serial queue. Owner controls use the independent queue and canonical
+control file specified in ADR 0026; narrative failure never blocks that queue. The same verified local lease fences
+both modes. A control-only or refused-narrative instance preserves reporter/cache bytes without format adoption;
+declared enrollment remains necessary for all narrative effects. Private files/directories use modes 0600/0700; durable saves
 write and fsync a temporary file, rename it, then fsync its parent before acknowledgement. A local exclusive lock
 directory contains an owner nonce and process identity; another owner refuses. No age-based lock theft occurs.
 Uncertain ownership needs verified teardown and explicit operator release. This fences one local state directory,

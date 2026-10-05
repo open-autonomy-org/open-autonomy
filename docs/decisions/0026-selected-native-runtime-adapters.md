@@ -135,6 +135,49 @@ Board IDs remain native IDs, separate from OA projection IDs; ambiguity is a ref
 Hermes control remains its own adapter with the same truthful desired/observed rule. Merely viewing a Workplace
 projection does not invoke any of these doors or grant execution authority.
 
+### Owner controls without narrative enrollment
+
+Keeper always launches the existing publisher process for the organization's owner controls. Missing publication
+enrollment selects an explicit control-only mode: no source stream, board projection, notes, transcripts, setup or
+documents are published. Declared but refused enrollment, adoption, source discovery or delivery remains a visible
+narrative failure; it neither changes mode by guessing fresh custody nor disables owner controls. The control loop
+starts before narrative initialization and uses its own serial queue, so an awaited source callback, historical
+discovery or receipt retry cannot delay an owner's pause or resume. No new daemon is introduced.
+
+Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 1, account,
+logical API base, selected native runtime, `paused_jobs` and `paused_tasks`. On its first creation only, an existing
+reporter version 2 or 3 may supply its validated native pause arrays. A version-3 seed must match the selected
+account, logical API and runtime in its retained enrollment. Version 2 has no account/API/runtime provenance:
+its seed relies on the owner's existing committed configuration and custody of that retained local state file
+and selected root. This is an operator continuity assertion, not authenticated historical scope or detection of
+unknown copies. Known conflicting or uncertain continuity refuses native effects pending explicit operator
+reconciliation; copying a file alone supplies no authority. The seed records this basis and the retained reporter
+digest; a fresh file records that no prior reporter existed. Once the control file exists, its sets are authoritative,
+including empty sets: legacy arrays never re-seed cleared ownership. Initial-seed unknown versions, malformed
+pause arrays, contradictory scope or uncertain ownership refuse native effects; they are never treated as absent
+state. A valid scoped control file continues serving controls when independent narrative state is corrupt or
+refused; a malformed or mismatched control file itself refuses native effects. Durable saves use the same private permissions and fsync/rename discipline as
+publication state. Control-only operation never rewrites or upgrades reporter state, receipts, checkpoints,
+enrollment, adoption or source-cache bytes. Narrative saves retain those historical pause fields without making
+them another live ownership store.
+
+The controller owns the existing `<reporter-state>.lock` directory. A narrative `PublicationStore` in that same
+process may reuse an explicit lease whose state path, process identity and nonce match the lock; a boolean bypass
+is insufficient. The store cannot release that external lease. Shutdown drains both queues and the native source
+before the controller releases it. Existing standalone publication/adoption operators keep their ordinary lock
+behavior and therefore refuse a concurrent controller. Verified stopped-local-owner release remains explicit;
+there is no age-based takeover or cross-host fencing.
+
+Every control pass freshly reads the owning public native schedule, configuration/bindings and run ledger before
+native mutation and again as needed for readback. Unreadable or ambiguous authority retains the request as pending;
+cached transcript discovery or an empty narrative board cannot establish observed pause. Active funded work may
+finish and is never ended to satisfy the request. For Hermes, the existing public board CLI supplies validated
+execution-control inventory and mutation readback independently of narrative enrollment. This is a bounded
+owner-control exception to ADR 0016's cached-board-candidate choice: it supplies no publication identity, narrative
+polling, lifecycle inference or fallback source stream. A missing/unreadable board remains pending. The native
+dispatcher capability restriction above is unchanged. Resume forgets owned intent only after authoritative
+readback proves resume or removal, and never resumes an independently paused job or task.
+
 ## Alternatives and consequences
 
 A launcher-only change leaves inference and observation broken. Installing Hermes for every native instance retains
