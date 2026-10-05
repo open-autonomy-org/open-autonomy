@@ -3,7 +3,11 @@
 The reporter publishes through OA's SDK; native execution remains native. Missing enrollment or uncertain
 association leaves publication pending with its cause. It does not pause native work or silently select another
 runtime. [ADR 0027](https://github.com/open-autonomy-org/open-autonomy/blob/main/docs/decisions/0027-oa-source-associations-and-publication-recovery.md)
-owns the association/recovery contract.
+owns the association/recovery contract. The organization publisher stays running for owner SDK controls even
+without enrollment or when narrative initialization/delivery is refused. Missing enrollment selects control-only
+operation; a declared malformed or conflicting enrollment remains an explicit narrative failure. Source reads,
+notes, transcripts, setup and document publication require valid enrollment. Controls use their own queue;
+a pending narrative request cannot delay supported native job pause/resume.
 
 Use `publication-operator.ts` in this rendered host. It is separate from `enroll.ts`, which enrolls mail agents.
 Run the door inside the owning World/executor, with the publisher stopped before enrollment, adoption or custody
@@ -82,10 +86,28 @@ sequence/digest/end receipts, continuation counters and paused native IDs. Chang
 
 ## Ownership, moves and retries
 
-One publisher owns a state directory and account timeline. Local lock ownership does not fence another host;
+One publisher owns a state directory and account timeline. Its owner controller holds the same private
+`<reporter-state>.lock` in both control-only and narrative modes. The narrative store reuses an explicit verified
+lease and cannot release it. Shutdown drains both queues and the native source before releasing ownership;
+uncertain source retirement retains the lock for explicit reconciliation. Local ownership does not fence another host;
 never run a copied active state as another publisher. Stop the owner through its ordinary lifecycle door.
 `release-lock --config FILE --nonce NONCE --same-executor-stopped` only releases a recorded process proven absent
 in that same executor/PID namespace; running or uncertain owners refuse. Age is not ownership evidence.
+
+Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
+and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
+version 3 must match retained enrollment. The exact reporter digest and the available custody basis are recorded.
+Legacy version 2 has no historical account/runtime provenance, so its seed records that limitation. Once present,
+the control file is authoritative even when its ownership arrays are empty; old reporter arrays never re-seed it.
+Malformed control ownership or contradictory scope refuses native effects. Control-only operation preserves
+reporter state and source-cache bytes, without enrollment or adoption. Narrative saves retain historical pause
+fields without turning them into another live ownership store. Keep this sidecar private when configuring a
+state path outside the generated `.open-autonomy` directory.
+
+Controls use fresh native schedule, configuration/binding and run readbacks. Active work may finish. The pinned
+native and Hermes adapters lack a safe board pause/resume contract, so queued board intent stays pending;
+controls never schedule/promote board tasks or infer dispatcher quiescence from empty inventory. Supported job
+resume applies only to owned intent and forgets it after authoritative readback. It never lifts an unrelated pause.
 
 For an explicitly reviewed move/rebinding, retain account/API/source/store context IDs and every association.
 Increment custody `generation` by one, naming exact stopped prior `previous:{custodyDigest,reporterDigest,cacheDigest}`
@@ -95,5 +117,6 @@ contexts/state; unknown replacement never automatically adopts the original sour
 Pending source observations and exact redacted requests are durable before effects. Notes retry their original
 identity/content/time and verify the returned full receipt; conflicting content under an old ID refuses. Timeline
 delivery follows its note receipts. The source cursor commits only afterward. Session attribution is frozen before
-publishing; current workspace uniqueness cannot adopt unknown historical association. Transcript keys and per-batch
+publishing; current workspace uniqueness cannot adopt unknown historical association. A rejected weak late
+candidate leaves an existing unbound session unbound while its transcript continues. Transcript keys and per-batch
 receipts remain separate from board cursor acknowledgement. Source absence supplies no completion or session end.

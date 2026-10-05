@@ -30,10 +30,11 @@ orchestrator's public setup, inventory and job doors without locating Hermes. He
 Hermes adapter. This candidate requires SDK 4.0.1 for the shared publication normalizers; these source versions do
 not claim an npm release or upgrade any running install.
 
-Native owner control pauses/resumes only the schedules this reporter owns, with native readback. The pinned
-native API supplies no safe authorized noninterrupting board-dispatcher control: a requested board pause stays
-pending and observed state stays running. The reporter neither interrupts active attempts nor lifts another
-actor's pause. Unsupported setup fields and conflicting native overrides refuse before setup effects.
+The organization publisher always serves owner controls, independently of narrative enrollment and delivery.
+It pauses/resumes only owned scheduled-job intent, with fresh native readback. The pinned native and Hermes
+adapters supply no safe board pause/resume contract: board intent stays pending and uncertain dispatcher
+quiescence cannot become observed pause. Active attempts may finish; unrelated pauses remain owned by their
+original actor. Unsupported setup fields and conflicting native overrides refuse before setup effects.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project
@@ -84,7 +85,7 @@ Shared files connect either layout to the selected backend:
 ```text
 README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
 .open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
-                     publisher.ts, source-events.ts, host valve and credential tools, start.ts,
+                     publisher.ts, source-events.ts, owner-control.ts, host valve and credential tools, start.ts,
                      enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version and identity)
 container/           supplied executor/image tooling; its use depends on the selected runtime
 .github/workflows/   supplied landing workflow where the skew includes it
@@ -116,8 +117,10 @@ publisher sends OA projections through the SDK. A published view is not a lossle
 
 Publication requires explicit source enrollment or retained-state adoption through the generated
 [publication front door](base/.open-autonomy/PUBLICATION.md). Missing enrollment leaves reporter delivery
-pending while native execution continues. Each tenant declares an owner-relative `reporter_config` with its
-own account/API-bound custody, policy and private state; organization enrollment is never copied into it.
+pending while native execution and organization owner controls continue. The always-running publisher selects
+control-only mode when enrollment is absent; declared/refused narrative initialization remains visible without
+blocking its independent control queue. Each tenant declares an owner-relative `reporter_config` with its own
+account/API-bound custody, policy and private state; organization enrollment is never copied into it.
 Standalone reporters declare `native_runtime: {kind: orchestrator, root: /absolute/native/home}` (or explicit
 `hermes`); the keeper supplies and checks that selection for its reporters.
 
@@ -239,13 +242,21 @@ stops for that session with an explicit reconciliation error rather than skippin
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
 default, with private session/job exceptions and optional chat publication controlled by project policy.
 
-For Hermes, the publisher is also where the owner's one word of control lands. `POST /v1/agent/state {"state":"paused"}` on a
-`steer`-scoped key (`bun .open-autonomy/mint-key.ts --scopes steer --out ~/.config/open-autonomy/steer.env` mints one,
-which spends nothing) records the request on the platform; the reporter reads it back through the valve and applies it
-through Hermes's own schedule: every enabled job paused and remembered, a run in flight left to finish, conversations on
-a channel still answered. It reports `paused` only once no job is enabled and no run is live, so the page shows "pause
-requested · still running" until then. `{"state":"running"}` resumes exactly the jobs it paused; a job the owner
-disabled on their own stays disabled. Stopping the service is the operator's other lever and stays invisible to the page.
+The publisher's independent controller receives the owner's word for either native runtime.
+`POST /v1/agent/state {"state":"paused"}` on a `steer`-scoped key records the request on the platform. The controller
+reads it through the valve and applies supported public job controls, remembering ownership before mutation and
+checking native readback. A run in flight may finish; channel conversations still answer. `{"state":"running"}`
+resumes only owned jobs after readback; independently disabled jobs stay disabled. Board pause/resume remains
+pending because the pinned adapters lack a safe owning door. It reports `paused` only when authoritative native
+reads establish no enabled job, live funded run or unknown dispatcher; otherwise the page retains "pause requested
+· still running" with the cause.
+
+Private `<reporter-state>.control.json` holds canonical pause ownership, separate from narrative receipts and
+checkpoints. Its first seed may copy validated retained pause arrays, recording their source digest and custody
+limitations. Once present, even empty sets remain authoritative. Missing/refused publication enrollment and
+narrative delivery cannot disable this control loop; malformed control state or conflicting account/API/runtime
+scope refuses native effects. Both modes use one verified local lock, released only after queues and source drain.
+The [publication front door](base/.open-autonomy/PUBLICATION.md) documents the private state and operator recovery.
 
 **Rails.** The agent's model calls need no configuration beyond the key. `rails:` in
 `.open-autonomy/config.yaml` opens the two others, off by default: a single-use card minted against the

@@ -574,8 +574,9 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
 }
-if (!orgConfig.publication) say('publication pending: reporter enrollment is required; the native brain keeps running');
-else spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+// Owner controls stay available before and independently of narrative enrollment.
+if (!Object.hasOwn(orgConfig, 'publication')) say('publication pending: reporter enrollment is required; owner controls and the native brain keep running');
+spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
 // and their sessions only, through the project's own key.
 for (const p of projectReporters) {

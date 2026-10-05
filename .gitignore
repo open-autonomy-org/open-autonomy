@@ -55,6 +55,9 @@ hermes/.skills_prompt_snapshot.json
 
 # The reporter's own cursor
 .open-autonomy/reporter-state.json
+.open-autonomy/*.control.json
+.open-autonomy/*.control.json.*.tmp
+.open-autonomy/reporter-state.json.lock/
 .open-autonomy/node_modules/
 
 # A cookbook's runtime state
@@ -62,6 +65,9 @@ cookbooks/*/hermes/.env
 cookbooks/*/hermes/logs/
 cookbooks/*/hermes/state.db*
 cookbooks/*/.open-autonomy/reporter-state.json
+cookbooks/*/.open-autonomy/*.control.json
+cookbooks/*/.open-autonomy/*.control.json.*.tmp
+cookbooks/*/.open-autonomy/reporter-state.json.lock/
 cookbooks/*/.open-autonomy/node_modules/
 
 # Hermes scrum runtime
