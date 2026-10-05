@@ -94,6 +94,7 @@ const historicalEffects = (jobs: string[]): PendingEffect[] => jobs.map(id => ({
 export function validateRecoveryControlSnapshot(value:any,scope:ControlScope,retainedDigest?:string):ControlDataV3 {
   if(value?.version===3)return validateControlSnapshot(value,scope);
   if(![1,2].includes(value?.version))throw new Error('Unsupported retained owner control version');
+  if(Object.hasOwn(value,'reconciliations'))throw new Error('Legacy control version cannot declare reconciliation history');
   const jobs=ids(value.paused_jobs);
   if(value.version===1&&Object.hasOwn(value,'pending_effects'))throw new Error('Version1 cannot declare effect phases');
   if(value.version===1&&!digest.test(retainedDigest??''))throw new Error('Version1 recovery requires exact retained byte digest');
