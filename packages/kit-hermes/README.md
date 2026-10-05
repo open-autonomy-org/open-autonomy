@@ -24,6 +24,10 @@ and supplies its native home from the company skew.
 
 The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
 same home through the external orchestrator ([ADR 0009](../../docs/decisions/0009-another-harness-on-the-same-home.md)).
+Current company/IR startup and publication still require Hermes support even when the workers are Claude Code or
+Codex: bare startup without a Hermes launcher fails before the gateway starts. Removing that coupling is an
+OA-owned follow-up in the [architecture's current gaps](../../docs/decisions/0024-ecosystem-target-architecture.md#existing-implementation-and-remaining-scope),
+not completed runtime independence implied by the SDK's universal target or the `ir` kit name.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project

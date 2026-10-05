@@ -80,6 +80,8 @@ Conformance includes authority, truthful publication and metered spending, not m
 Supercode's operational IR is external. OA consumes it and adds only OA responsibilities. A template for Supercode's
 orchestrator and its creator belong to OA; the orchestrator and its IR do not. OA must not duplicate upstream codecs,
 generic scheduling, workflow dispatch or harness capability detection to make an instantiation work.
+The native IR composition must apply and observe the selected runtime through its own model and public doors;
+Hermes compatibility is an explicit boundary choice, not a permanent requirement to install Hermes for that path.
 
 The SDK is the project's protocol contract, with client code as an optional implementation. Published OA views are
 projections of native/IR records, not a second execution model. Mappings must name stable source identities,
@@ -165,6 +167,16 @@ below is not deployment evidence; the newly landed records keep their own review
   machinery and host keeper. [ADR 0017](0017-the-ir-native-kit.md) and
   [ADR 0020](0020-the-company-skew-runs-lanes.md) govern the IR/company instantiation. Its directory name
   packages/kit-hermes does not mean every system is Hermes.
+- **Current native-kit coupling:** the universal SDK target is not yet the company/IR kit's runtime behavior.
+  The [keeper](../../packages/kit-hermes/keeper/start.ts) always invokes
+  [applyAgent](../../packages/kit-hermes/base/.open-autonomy/agent.ts), which constructs Hermes extensions and uses
+  `hermesDoor`; bare startup resolves `locateHermes` even for Claude Code/Codex profiles. Without Hermes it fails
+  before a gateway starts. The [publisher](../../packages/kit-hermes/base/.open-autonomy/publisher.ts) still requires
+  `hermes_home`/`HERMES_HOME`, loads `flavor: 'hermes'` and queries Hermes profiles/runs/session inventory alongside
+  native worker sessions. OA owns the follow-up to remove this setup/publication coupling from its native IR path,
+  using Supercode's owning model/doors and the selected runtime's inventory while preserving SDK receipts, policy
+  and controls. [Supercode PR 1074](https://github.com/volter-ai/supercode/pull/1074) fixes Hermes codec fidelity;
+  it does not remove this dependency. No decoupling implementation or runtime acceptance is claimed here.
 - Kit `3.24.0` adds the company [records register](0022-the-records-register.md): generic tooling lives in
   [packages/kit-hermes/records](../../packages/kit-hermes/records/), while the organization's record repository holds
   its register and entries. [Hookline](../../packages/kit-hermes/base/.open-autonomy/hookline.ts) supplies the configured
