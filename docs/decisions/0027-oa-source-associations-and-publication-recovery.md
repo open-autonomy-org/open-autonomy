@@ -204,6 +204,13 @@ applied; if lease custody changed but later reconciliation refuses, report the c
 control dispositions separately. No blanket release, arbitrary orphan cleanup or publication-state adoption is offered. This is the supported
 operator route for reboot with a retained supported lease; release-lock's automatic path retains same-boot rules.
 
+For ADR 0026's explicit handoff-only mode, the lease proof binds controlDigest null plus a mandatory
+`{kind:'absent-control',file:<absolute canonical control path>}` token, never a null-as-fresh fallback. Under the
+kernel guard, lstat must prove ENOENT for that exact path; a dangling symlink, unreadable path or permission error
+refuses. Recheck absence after custody transfer. The operator preserves a durable performed-handoff audit and
+reports custody-only completion; no control sidecar, narrative state, Source cache or ownership/ACK is created.
+Changed post-handoff inputs remain a visible partial custody result, never a claim of control reconciliation.
+
 ### Prepared requests and concrete receipt checks
 
 For a new note, redact the full source note text first, then apply the kit's existing `slice(0,2000)` text bound.

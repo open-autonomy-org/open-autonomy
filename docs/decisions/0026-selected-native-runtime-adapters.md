@@ -267,6 +267,24 @@ recovery cannot acquire it. Historical/unknown effects thus have a product recov
 settlement protocol. Without positive completion or that evidence-backed owner reconciliation, the affected job stays
 pending while other controls and narration continue; any unknown phase forbids observed paused.
 
+The operator also provides explicit handoff-controls for a supported retained lease with no canonical control
+sidecar. Its manifest mode is lease-handoff-only, with controlDigest null, selections empty and the structured
+controlAbsence token `{kind:'absent-control',file:<absolute canonical control path>}`. Normal reconciliation instead
+uses mode reconcile, a retained control digest and nonempty phase selections; null is never interpreted as fresh
+ownership. Both modes require exact configuration/runtime/state-path and complete public SDK snapshot bindings
+and the same concrete full-domain retirement/exclusive-local-home owner assertion. Prior lease nonce/digest are
+mandatory for handoff-only or an explicitly requested normal-reconciliation handoff; normal reconciliation may
+instead acquire a fresh lease without a prior record.
+
+Absence must be actual lstat ENOENT for that exact sidecar path, rechecked under the lease transition guard and
+after handoff. Dangling symlinks, permission errors and unknown paths refuse. Handoff-only never constructs a
+control store, migrates or seeds sidecar state, adopts ownership, clears a phase, invents acknowledgement or calls
+a native mutation. Preserve a private durable performed-handoff record after the canonical new writer is verified;
+the prepared record alone is not success. Recheck configuration, evidence, complete native snapshot and absence
+before reporting custody-only completion. If custody changed but a later check fails, report that change separately
+from unapplied control state. A later ordinary publisher may conservatively seed control state through its existing
+rules. This supplies a reboot recovery door without treating missing state as positive effect evidence.
+
 An unfinished or stale execution record without authoritative completion stays unresolved. Its presence is
 described as pending native execution readback, not as proof that a funded process is currently live; OA does not
 manufacture finished_at or native completion.
