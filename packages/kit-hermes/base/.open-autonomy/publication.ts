@@ -340,7 +340,9 @@ export class PublicationStore {
       const proof = this.observation?.cards.find(row => a && this.storeContext(row.board) === a.tuple[3] && row.card.id === a.tuple[4]);
       const attemptId = binding.evidence.startsWith('native-attempt:') ? binding.evidence.slice('native-attempt:'.length) : undefined;
       const attempt = attemptId && proof?.card.attempts?.find((attempt: any) => String(attempt.id) === attemptId && (attempt.session?.session_id ?? attempt.session?.id) === binding.nativeSessionId);
-      if (!attempt) throw new Error('Unknown historical session item requires positive retained native-attempt attribution; workspace/current uniqueness is insufficient');
+      // A later weak candidate cannot relink frozen unbound history. Keep its
+      // existing unbound publisher progressing; only exact native proof may adopt.
+      if (!attempt) return undefined;
     }
     const next = { ...old, ...binding, ...(proposed ? { itemId: proposed } : {}), ...(!binding.associationKey && old?.associationKey ? { associationKey: old.associationKey, evidence: old.evidence } : {}) };
     if (!eq(old, next)) { this.data.sessionBindings = [...this.data.sessionBindings.filter(b => b.platformKey !== binding.platformKey), next]; this.save(); }
