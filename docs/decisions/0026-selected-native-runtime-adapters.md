@@ -144,7 +144,7 @@ narrative failure; it neither changes mode by guessing fresh custody nor disable
 starts before narrative initialization and uses its own serial queue, so an awaited source callback, historical
 discovery or receipt retry cannot delay an owner's pause or resume. No new daemon is introduced.
 
-Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 1, account,
+Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 2, account,
 logical API base, selected native runtime, `paused_jobs` and `paused_tasks`. On its first creation only, an existing
 reporter version 2 or 3 may supply its validated native pause arrays. A version-3 seed must match the selected
 account, logical API and runtime in its retained enrollment. Version 2 has no account/API/runtime provenance:
@@ -183,9 +183,19 @@ accept a scheduled task. These public doors cannot implement the required safe p
 adapter therefore never schedules or promotes board tasks: it retains legacy `paused_tasks` ownership and reports
 the missing capability as pending while applying supported job controls. It cannot infer dispatcher quiescence
 from empty inventory or claim observed pause when dispatcher authority is unknown. The native dispatcher
-capability restriction above is unchanged. Job resume forgets owned intent only after authoritative readback
-proves resume or removal, and never resumes an independently paused job. Future board control for either adapter
+capability restriction above is unchanged. Job resume forgets owned intent only after the current acknowledged effect and authoritative readback
+prove resume; an unresolved earlier effect is never settled by an enabled or missing row, and an independently paused job is never resumed. Future board control for either adapter
 requires independent review of a safe owning contract; no native board engine is changed here.
+
+Native SDK job calls may remain accepted in a child after the OA publisher dies. A fresh enabled/disabled inventory is observation, not a barrier proving an older accepted opposite mutation finished. OA will not add a native fence, kill uncertain children, infer settlement from age, or invent a completed result.
+
+The canonical owner-control sidecar becomes version 2, retaining its account/API/runtime scope, seed, paused_jobs and paused_tasks and adding pending_effects. Each entry contains a unique native job ID, optional native profile (null when unknown), action pause or resume, operation UUID and origin rpc or retained-ownership. One unresolved effect per job is allowed. Unknown versions, malformed phases or conflicting ownership refuse effects. Narrative checkpoints remain byte-for-byte independent.
+
+Before each public job RPC, the controller durably records its rpc phase; a pause also records owned-job membership in that same save. Only the same currently executing call's positive SDK completion followed by authoritative matching public readback may clear that phase. A successful resume removes both the phase and owned-job membership in the same durable save. A failed/aborted call, mismatched or unreadable readback, crash, or save failure leaves the phase unresolved. Later passes and restarted processes never interpret inventory alone as settlement, retry that job's mutation, or submit the opposite action. They retain its ownership, continue supported controls for unrelated jobs and report the unresolved native effect explicitly. Observed paused is forbidden while any such phase remains.
+
+Existing version-1 sidecars are validated with their original scope/seed rules, then migrated once to version 2. Each retained owned job is represented by an unresolved pause entry with origin retained-ownership, unknown profile and a new local operation identifier; this records uncertainty, not a historical RPC acknowledgement. A first seed from reporter v2/v3 follows the same rule for its retained paused_jobs. Empty ownership migrates with an empty phase set. The canonical version-2 file is thereafter authoritative, including empty sets; legacy narrative arrays cannot re-seed it. Retained paused_tasks remains independently pending under the missing safe board-control contract. A valid existing control sidecar remains independent of corrupt narrative.
+
+Resolving an uncertain accepted job mutation requires an actual owning native settlement/barrier contract or explicit owner reconciliation with evidence. This change introduces neither a reconciliation bypass nor a new native protocol. Until that external capability exists, the affected job can remain pending while OA observation, controls for other jobs and narrative delivery continue.
 
 An unfinished or stale execution record without authoritative completion stays unresolved. Its presence is
 described as pending native execution readback, not as proof that a funded process is currently live; OA does not
