@@ -148,12 +148,12 @@ The selected native orchestrator public CLI emits a structured newline-delimited
 
 For its own bare native gateway child, keeper forwards stdout unchanged while parsing complete JSON lines. The pinned CLI can re-execute a direct daemon child under its required argv0. Keeper binds the public loaded event to its exact selected root and daemon PID, verifying through a bounded public OS parent-process query that this PID is either the directly owned gateway process or its one direct re-executed child. Only a non-once ready event for that same loaded root/PID, with the public daemon-ready fields and a fresh owning parent binding, permits it to launch the existing organization and enrolled tenant reporters. Unknown process metadata refuses readiness; this checks the owning launch chain rather than assuming numeric PID equality or accepting arbitrary descendants. Each stack gets a fresh readiness latch. Gateway exit or stack shutdown clears/refuses the latch; existing gateway lifecycle teardown still stops reporters. A malformed, foreign, mismatched, once-mode or absent event never enables the latch. There is no age, output substring, file read, inventory-empty or time-delay fallback. Other startup services and native brain lifecycle keep their existing ownership; Hermes startup ordering is unchanged. No new daemon, native codec or native readiness protocol is introduced.
 
-The reporter's control loop still starts independently before its narrative enrollment, discovery and delivery; keeper delays launching that process only until its own native public mutation door has advertised availability. The event does not prove settlement of a previously accepted job effect or make the next mutation infallible. Durable version-2 per-job phases remain mandatory, and a later refusal/timeout stays unresolved. Native startup that cannot produce its ready contract remains visibly pending at keeper; adapters can delay that event under the owning runtime's startup contract. Standalone publishers do not own that child's event stream and must be started by their operator against an available selected runtime; they gain no inferred readiness or exception to unresolved-effect rules. OA does not classify native failure sentences as authoritative no-effect acknowledgements.
+The reporter's control loop still starts independently before its narrative enrollment, discovery and delivery; keeper delays launching that process only until its own native public mutation door has advertised availability. The event does not prove settlement of a previously accepted job effect or make the next mutation infallible. Durable per-job phases remain mandatory; timeout and refusals without the exact pre-execution evidence below stay unresolved. Native startup that cannot produce its ready contract remains visibly pending at keeper; adapters can delay that event under the owning runtime's startup contract. Standalone publishers do not own that child's event stream and must be started by their operator against an available selected runtime; they gain no inferred readiness or exception to unresolved-effect rules. OA does not classify native failure sentences as authoritative no-effect acknowledgements.
 
 Manual acceptance must use the actual pinned owning CLI and installed keeper: owner desired paused before native startup, event root/PID readback, supported job pause through the SDK with positive completion and matching readback, no premature mutation phase, unchanged unrelated pause/books, normal shutdown and crash-recovery latch reset. Recovered pre-existing unresolved phases remain untouched; a fresh task-owned future job can prove the newly ordered startup without falsely reconciling earlier uncertainty.
 
 
-Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 2, account,
+Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 3, account,
 logical API base, selected native runtime, `paused_jobs` and `paused_tasks`. On its first creation only, an existing
 reporter version 2 or 3 may supply its validated native pause arrays. A version-3 seed must match the selected
 account, logical API and runtime in its retained enrollment. Version 2 has no account/API/runtime provenance:
@@ -198,13 +198,74 @@ requires independent review of a safe owning contract; no native board engine is
 
 Native SDK job calls may remain accepted in a child after the OA publisher dies. A fresh enabled/disabled inventory is observation, not a barrier proving an older accepted opposite mutation finished. OA will not add a native fence, kill uncertain children, infer settlement from age, or invent a completed result.
 
-The canonical owner-control sidecar becomes version 2, retaining its account/API/runtime scope, seed, paused_jobs and paused_tasks and adding pending_effects. Each entry contains a unique native job ID, optional native profile (null when unknown), action pause or resume, operation UUID and origin rpc or retained-ownership. One unresolved effect per job is allowed. Unknown versions, malformed phases or conflicting ownership refuse effects. Narrative checkpoints remain byte-for-byte independent.
+Pinned SDK 0.3.64 abandons timed-out job waiters without cancelling native execution. CLI job handlers are
+synchronous, but a failed live socket can lead to a cold fallback while the original daemon event remains queued.
+SDK direct-child close, a later FIFO read, native stopped output and exit zero therefore do not prove full-domain
+settlement. The registry-referenced CLI source's [job route](https://github.com/volter-ai/supercode/blob/a36daada0d3fe5af522dd535108ab92896e516d9/crates/harness/src/harness_service.rs)
+and [orchestrator door](https://github.com/volter-ai/supercode/blob/a36daada0d3fe5af522dd535108ab92896e516d9/crates/harness/src/orchestrator_door.rs)
+corroborate that contract; registry source metadata is not proof of the installed binary's build provenance.
+The former OA paused_jobs protocol saved membership before issuing pause, so historical membership is intent,
+not an acknowledged effect. Manual evidence must distinguish that history from current positive completions.
 
-Before each public job RPC, the controller durably records its rpc phase; a pause also records owned-job membership in that same save. Only the same currently executing call's positive SDK completion followed by authoritative matching public readback may clear that phase. A successful resume removes both the phase and owned-job membership in the same durable save. A failed/aborted call, mismatched or unreadable readback, crash, or save failure leaves the phase unresolved. Later passes and restarted processes never interpret inventory alone as settlement, retry that job's mutation, or submit the opposite action. They retain its ownership, continue supported controls for unrelated jobs and report the unresolved native effect explicitly. Observed paused is forbidden while any such phase remains.
+The canonical owner-control sidecar advances to version 3, retaining account/API/runtime scope, seed,
+paused_jobs and paused_tasks. Each pending_effect retains its unique job ID/profile, pause/resume action,
+operation UUID and origin, adding prepared, invoked, acknowledged or historical stage and prior-membership
+provenance. Existing version-2 effects migrate as unknown invoked effects without invented receipts; older
+sidecar/reporter owned jobs migrate as historical uncertainty. Empty sets remain authoritative. Unknown versions,
+malformed stages, receipts or membership refuse effects; narrative state is never rewritten or re-seeded.
 
-Existing version-1 sidecars are validated with their original scope/seed rules, then migrated once to version 2. Each retained owned job is represented by an unresolved pause entry with origin retained-ownership, unknown profile and a new local operation identifier; this records uncertainty, not a historical RPC acknowledgement. A first seed from reporter v2/v3 follows the same rule for its retained paused_jobs. Empty ownership migrates with an empty phase set. The canonical version-2 file is thereafter authoritative, including empty sets; legacy narrative arrays cannot re-seed it. Retained paused_tasks remains independently pending under the missing safe board-control contract. A valid existing control sidecar remains independent of corrupt narrative.
+A new effect is durably prepared, then durably marked invoked before its SDK call may start. Prepared proves no
+invocation and can be retracted after restart. The current process may retract an invoked phase only if it never
+issued that call, or the same current SDK call returns code -32602, sdkCode invalid_argument, the exact
+sdkOperation jobs_pause/jobs_resume and matching harness.v1.jobs.pause/resume method. This audited pre-execution
+route is not a string classifier. Generic unsupported_action/-32020 is excluded because the shared SDK mapper
+can derive it from a post-effect execution failure. Timeout, abort, execution error and malformed/transport
+answers stay unknown. Retraction removes only membership newly claimed by that unissued/refused action.
 
-Resolving an uncertain accepted job mutation requires an actual owning native settlement/barrier contract or explicit owner reconciliation with evidence. This change introduces neither a reconciliation bypass nor a new native protocol. Until that external capability exists, the affected job can remain pending while OA observation, controls for other jobs and narrative delivery continue.
+After validating the current original call's positive completion envelope (matching harness, verb, id and
+nonempty ran), durably save its acknowledged stage/receipt BEFORE another readback. A slow or failed readback
+then retries observation without losing completion or issuing another mutation. Fresh authoritative same-ID/profile
+inventory reconciles acknowledged phases with current native facts and the existing desired-state policy.
+Completed resumes relinquish their ownership so a later caller pause is not repeatedly resumed; completed pauses
+retain their owned membership until desired running or current enabled readback. Missing/unreadable identity
+remains pending reconciliation, never invented completion. Save acknowledgement precedes RAM changes.
+
+Stop immediately blocks new effects and aborts read-only/native readback, HTTP and narrative work. Only already
+issued mutation calls receive a separate bounded ten-second grace, with the live lease retained for receipt
+persistence; that persistence cannot issue another native action. After the bound, existing SDK abort/close
+retains unknown intent. Read-only sixty-second defaults do not extend this grace; cleanup must fit keeper's
+fifteen-second deadline. Direct-child exit is not declared a native effect fence.
+
+The existing publication-operator provides control-status and reconcile-controls for a stopped owner. Status
+shows exact configuration/control/phase digests and fresh public SDK inventory for the selected account/API/runtime.
+A required version-1 private manifest binds those scope/digests, selected operation UUIDs/effect digests/job IDs
+and profiles, operator identity, exact expected public snapshot and each selected disposition. Retain-owned requires
+one exact currently disabled row; relinquish removes that job's OA membership. Relinquish-absent requires a fresh
+successful COMPLETE all-relevant-profile inventory proving that exact retained ID/profile absent. It never adopts
+or mutates a missing job. A historical null profile cannot be guessed: exact job identity must be unambiguous
+across the complete relevant profile inventory. The entire plan, evidence, selected phases and public snapshot
+are validated before any lease handoff or canonical control write. Changed bytes, live ownership, duplicate or
+unknown/unselected operations, unknown/malformed state, ambiguous rows, incomplete or unreadable inventory and
+scope conflicts refuse. Unselected phases and ownership remain unchanged.
+
+The manifest describes concrete actions through the native owner's lifecycle doors, retained evidence-file digests,
+and explicit coverage of all prior publishers, SDK services, native CLI wrappers/cold/Hermes children AND the selected
+execution domain/daemon queue across generations. Its owner statement attests those writers/domains were retired
+or their effects conclusively settled under exclusive local-home custody. Bare assume/accept-risk flags, inventory,
+age, publisher-only stop and direct-child exit are insufficient. The product checks coverage and evidence bytes;
+full-domain retirement remains the LOCAL OWNER'S ASSERTION, not a machine-proven native fence or fabricated SDK ACK.
+The evidence must be truthful for delayed-accepted safety; the product does not silently infer it.
+
+Reconciliation takes the same guarded writer lease. Preserve exact original control bytes and manifest/evidence
+digests in private publication-private/control-recovery, then atomically persist canonical state INCLUDING the
+owner-asserted reconciliation audit: selected old phases, dispositions, original digest/backup and fresh SDK snapshot.
+Prepared backup/manifest alone is never labelled applied. Interrupted writes retain originals and visible evidence.
+Success is reported only after the canonical write acknowledges; the backup and manifest are not another commit.
+No native job mutation, narrative checkpoint, enrollment, custody or Source-cache rewrite occurs. Normal owner intent
+is applied after publisher restart. ADR 0027 provides explicit attested prior-lease handoff when automatic same-boot
+recovery cannot acquire it. Historical/unknown effects thus have a product recovery door without inventing a native
+settlement protocol. Without positive completion or that evidence-backed owner reconciliation, the affected job stays
+pending while other controls and narration continue; any unknown phase forbids observed paused.
 
 An unfinished or stale execution record without authoritative completion stays unresolved. Its presence is
 described as pending native execution readback, not as proof that a funded process is currently live; OA does not
@@ -227,6 +288,11 @@ routes, bounds and controls; “Every spend is metered on public books” keeps 
 implements no harness or workflow compiler. No constitution amendment, native migration, RH2 feature, deploy or
 release is authorized here.
 
+Recovery preserves those boundaries: public SDK inventory supplies current native facts, while the local owner
+explicitly asserts prior-domain retirement through retained lifecycle evidence. The product labels that assertion
+and audit as owner authority, never native completion. Reconciliation spends nothing and mutates no native job;
+ordinary owner intent remains applied by the adapter through its SDK after restart.
+
 Manual evidence uses fresh caller-owned rendered IR/company and explicit Hermes instances, pinned published
 dependencies, synthetic selected model/payment vendors and the real local OA platform in a World. Before installing
 or running, review the selected vendors, pin the World CLI and assign lifecycle ownership. Prove no-Hermes native
@@ -237,3 +303,9 @@ versus observed while an attempt is active. Exercise unsupported config/job
 preflight, public mutation failure and retained restart recovery. Verify explicit Hermes still selects its own door.
 Report actual failures and missing attribution/model coverage rather than fabricate runs or claims. Stop registered
 consumers and tear down only the owned World. No automated tests or permanent proof harnesses are added or run.
+
+Recovery acceptance additionally covers acknowledged completion followed by failed readback/restart, exact
+pre-execution refusal, prepared cancellation, bounded mutation drain, historical/unknown offline reconciliation
+after genuine owning-domain retirement, live-writer/stale-scope/snapshot refusal, unrelated/caller pause preservation,
+and exact original backup plus canonical audit bytes. A labelled delayed-accepted boundary must show reconciliation
+occurs only after the old effect or domain has actually settled or retired. Unsupported authority stays pending.
