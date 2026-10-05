@@ -49,26 +49,26 @@ export class NativeRuntime {
     if (result.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
     return result;
   }
-  async skills() {
-    if (!this.native) return this.sc.listSkills({ harness: 'hermes', homes: { hermes: this.root } });
-    const { profiles } = await this.load();
+  async skills(options?: RequestOptions) {
+    if (!this.native) return this.sc.listSkills({ harness: 'hermes', homes: { hermes: this.root } }, options);
+    const { profiles } = await this.load(options);
     const rows = await Promise.all(Object.entries(profiles).map(([name, profile]) => {
       if (!profile.worker) return Promise.resolve([]);
       const dir = profile.dir ?? (name === 'default' ? this.root : resolve(this.root, 'profiles', name));
       return this.sc.listSkills({ harness: profile.worker.harness, cwd: dir,
-        homes: { agents: resolve(dir, '.agents'), claude_code: resolve(dir, 'claude-code'), codex: resolve(dir, 'codex') } });
+        homes: { agents: resolve(dir, '.agents'), claude_code: resolve(dir, 'claude-code'), codex: resolve(dir, 'codex') } }, options);
     }));
     return rows.flat();
   }
-  async profiles() { return (await this.sc.listProfiles({ harness: this.selected.kind, homes: this.homes })).profiles; }
-  async queries(seats?: string) {
-    const profiles = await this.profiles();
+  async profiles(options?: RequestOptions) { return (await this.sc.listProfiles({ harness: this.selected.kind, homes: this.homes }, options)).profiles; }
+  async queries(seats?: string, options?: RequestOptions) {
+    const profiles = await this.profiles(options);
     if (!this.native) return {
       profiles,
       queries: [{ harnesses: seats ? ['hermes', 'claude-code'] : ['hermes'], homes: { ...this.homes, ...(seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude', 'projects') } : {}) } },
         ...profiles.filter(p => !p.default && p.home).map(p => ({ harnesses: ['hermes'], homes: { hermes: resolve(p.home!, 'state.db') } }))],
     };
-    const { profiles: model } = await this.load();
+    const { profiles: model } = await this.load(options);
     const queries: Array<{ harnesses: string[]; homes: { claude_code?: string; codex?: string } }> = Object.entries(model).map(([name, profile]) => {
       const dir = profile.dir ?? (name === 'default' ? this.root : resolve(this.root, 'profiles', name));
       return { harnesses: ['claude-code', 'codex'], homes: { claude_code: resolve(dir, 'claude-code', 'projects'), codex: resolve(dir, 'codex') } };

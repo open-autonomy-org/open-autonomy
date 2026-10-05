@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
-import { PublicationStore, retainedDigest, savePublicationBytes, savePublicationFile, type NativeRuntimeSelection } from './publication.ts';
+import { PublicationStore, releaseAbandonedPublicationLease, retainedDigest, savePublicationBytes, savePublicationFile, type NativeRuntimeSelection } from './publication.ts';
 const args = process.argv.slice(2), command = args.shift();
 const all = (key: string): string[] => args.flatMap((value, i) => value === key ? [args[i + 1] ?? ''] : []);
 const one = (key: string): string | undefined => { const values = all(key); if (values.length > 1) throw new Error(`Repeated ${key}`); return values[0]; };
@@ -62,10 +62,7 @@ try {
     await store.close(); console.log('Explicit adoption saved; original bytes retained. Next publisher start requires a genuine full native snapshot.');
   } else if (command === 'release-lock') {
     if (!args.includes('--same-executor-stopped')) throw new Error('Release requires verified teardown in the same executor/process namespace');
-    const lock = `${stateFile}.lock`, owner = readJSON(resolve(lock, 'owner.json'));
-    if (owner.nonce !== need('--nonce') || !Number.isSafeInteger(owner.pid) || owner.pid <= 0) throw new Error('Lock owner nonce/process identity differs');
-    try { process.kill(owner.pid, 0); throw new Error('Publication owner process still exists; release refused'); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
-    rmSync(lock, { recursive: true }); console.log('Verified stopped local publisher lock released; publication state retained.');
+    releaseAbandonedPublicationLease(stateFile, need('--nonce'));
+    console.log('Proven-dead local writer lease retained in quarantine; publication state retained. Source retirement is not inferred.');
   } else throw new Error('Use status, enroll, prepare-adoption, adopt or release-lock with --config FILE; run this door inside the owning World/executor.');
 } catch (error) { console.error(`publication: ${(error as Error).message}`); process.exitCode = 1; }

@@ -1,7 +1,8 @@
 // OA-owned source associations and exact pending publications. Native IDs stay opaque;
 // custody is an operator assertion, never an inferred native identity or execution grant.
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, constants } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync, constants } from 'node:fs';
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type CloudEvent, type UpdateRecord } from './sdk/client.ts';
 import { normalizeRoadmap, type Roadmap } from './sdk/roadmap.ts';
@@ -39,6 +40,126 @@ export function savePublicationBytes(file: string, bytes: string | Buffer): void
   const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
 }
 export function savePublicationFile(file: string, value: unknown): void { savePublicationBytes(file, JSON.stringify(value) + '\n'); }
+type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; boot: string; namespace: string };
+type WriterIdentity = ExecutorIdentity & { start: string };
+interface LeaseRecord { version: 1; stateFile: string; pid: number; nonce: string; identity: WriterIdentity; startedAt: string }
+export interface LocalPublicationLease extends PublicationOwnerLease { close(): void }
+// The persistent guard is a kernel lock, not another crash-prone directory lease.
+// Only fixed public OS interfaces are used; unknown identity never grants recovery.
+let leaseOS: { libc: any; proc?: any } | undefined;
+function systemLease() {
+  if (leaseOS) return leaseOS;
+  const base = { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 }, fcntl: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 } } as const;
+  if (process.platform === 'darwin') leaseOS = {
+    libc: dlopen('/usr/lib/libSystem.B.dylib', { ...base,
+      gethostuuid: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+      sysctlbyname: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i32 } }).symbols,
+    proc: dlopen('/usr/lib/libproc.dylib', { proc_pidinfo: { args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32], returns: FFIType.i32 } }).symbols
+  };
+  else if (process.platform === 'linux') leaseOS = { libc: dlopen('libc.so.6', base).symbols };
+  else throw new Error('Publication lease identity/recovery is unsupported on this operating system');
+  return leaseOS;
+}
+function executorIdentity(): ExecutorIdentity {
+  const { libc } = systemLease();
+  if (process.platform === 'darwin') {
+    const host = Buffer.alloc(16), wait = Buffer.alloc(16); wait.writeBigInt64LE(100_000_000n, 8);
+    if (libc.gethostuuid(ptr(host), ptr(wait)) !== 0 || host.every(byte => byte === 0)) throw new Error('Local host lease identity unavailable');
+    const boot = Buffer.alloc(128), size = Buffer.alloc(8); size.writeBigUInt64LE(128n);
+    const name = Buffer.from('kern.bootsessionuuid\0');
+    if (libc.sysctlbyname(ptr(name), ptr(boot), ptr(size), null, 0) !== 0) throw new Error('Kernel boot lease identity unavailable');
+    const value = boot.subarray(0, Number(size.readBigUInt64LE())).toString().replace(/\0.*$/, '').toLowerCase();
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value)) throw new Error('Kernel boot lease identity malformed');
+    return { platform: 'darwin', host: publicationHash(host), boot: value, namespace: 'native' };
+  }
+  const machine = readFileSync('/etc/machine-id', 'utf8').trim(), boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+  const namespace = readlinkSync('/proc/self/ns/pid');
+  if (!/^[0-9a-f]{32}$/.test(machine) || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(boot) || !/^pid:\[\d+\]$/.test(namespace)) throw new Error('Linux executor lease identity malformed');
+  return { platform: 'linux', host: publicationHash(machine), boot, namespace };
+}
+function processStart(pid: number): string | undefined {
+  // ESRCH is the only absence proof. Permission or native-read failures refuse.
+  try { process.kill(pid, 0); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return undefined; throw error; }
+  if (process.platform === 'darwin') {
+    const bytes = Buffer.alloc(136);
+    if (systemLease().proc.proc_pidinfo(pid, 3, 0, ptr(bytes), bytes.length) !== 136 || bytes.readUInt32LE(12) !== pid)
+      throw new Error('Kernel process start identity unreadable');
+    const seconds = bytes.readBigUInt64LE(120), micros = bytes.readBigUInt64LE(128);
+    if (!seconds || micros >= 1_000_000n) throw new Error('Kernel process start identity malformed');
+    return `${seconds}:${micros}`;
+  }
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'), end = stat.lastIndexOf(') ');
+  const fields = end < 0 ? [] : stat.slice(end + 2).trim().split(/\s+/);
+  if (!stat.startsWith(`${pid} (`) || !/^\d+$/.test(fields[19] ?? '')) throw new Error('Kernel process start identity malformed');
+  return fields[19];
+}
+function leaseRecord(stateFile: string): LeaseRecord {
+  const lock = `${stateFile}.lock`, directory = lstatSync(lock), file = resolve(lock, 'owner.json'), stat = lstatSync(file);
+  if (!directory.isDirectory() || directory.isSymbolicLink() || !stat.isFile() || stat.isSymbolicLink() || (directory.mode & 0o777) !== 0o700 || (stat.mode & 0o777) !== 0o600 || stat.nlink !== 1 || (typeof process.getuid === 'function' && (directory.uid !== process.getuid() || stat.uid !== process.getuid()))) throw new Error('Publication lease ownership is not a private regular local record');
+  const owner = privateJSON(file) as LeaseRecord, id = owner?.identity;
+  if (owner?.version !== 1 || owner.stateFile !== stateFile || !Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.nonce !== 'string' || !uuid.test(owner.nonce) || !id || !['darwin', 'linux'].includes(id.platform) || typeof id.host !== 'string' || !/^[0-9a-f]{64}$/.test(id.host) || typeof id.boot !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id.boot) || typeof id.namespace !== 'string' || typeof id.start !== 'string' || !(id.platform === 'darwin' ? id.namespace === 'native' && /^[1-9]\d*:\d{1,6}$/.test(id.start) && BigInt(id.start.split(':')[1]) < 1_000_000n : /^pid:\[\d+\]$/.test(id.namespace) && /^[1-9]\d*$/.test(id.start)))
+    throw new Error('Legacy/malformed publication lease lacks proven executor/start identity; operator reconciliation required');
+  return owner;
+}
+function syncDirectory(path: string): void { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
+function guardedLease<T>(stateFile: string, work: () => T): T {
+  const { libc } = systemLease();
+  // Bun's fs.openSync does not add CLOEXEC. Set it atomically, then verify it;
+  // no descriptor may leak into Source, SDK or repository subprocesses.
+  const closeOnExec = process.platform === 'darwin' ? 0x01000000 : 0x80000;
+  const path = `${stateFile}.lock.guard`, fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK | closeOnExec, 0o600);
+  let held = false;
+  try {
+    const descriptor = fstatSync(fd), named = lstatSync(path);
+    const flags = libc.fcntl(fd, 1, 0);
+    if (!descriptor.isFile() || !named.isFile() || named.isSymbolicLink() || descriptor.nlink !== 1 || descriptor.ino !== named.ino || descriptor.dev !== named.dev || (descriptor.mode & 0o777) !== 0o600 || (typeof process.getuid === 'function' && descriptor.uid !== process.getuid()) || flags < 0 || !(flags & 1))
+      throw new Error('Publication lease guard identity, permissions or close-on-exec differs');
+    if (libc.flock(fd, 6) !== 0) throw new Error('Publication lease transition is held/unknown; retry after its owner');
+    held = true;
+    const current = lstatSync(path);
+    if (current.isSymbolicLink() || current.ino !== descriptor.ino || current.dev !== descriptor.dev) throw new Error('Publication lease guard inode changed');
+    return work();
+  } finally { if (held) libc.flock(fd, 8); closeSync(fd); }
+}
+function assertRecord(stateFile: string, expected: LeaseRecord): void {
+  const actual = leaseRecord(stateFile);
+  if (actual.pid !== process.pid || actual.nonce !== expected.nonce || !eq(actual.identity, expected.identity) || processStart(process.pid) !== expected.identity.start)
+    throw new Error('Publication lease process, start identity or nonce changed');
+}
+function deadWriter(owner: LeaseRecord, executor: ExecutorIdentity): void {
+  if (owner.identity.platform !== executor.platform || owner.identity.host !== executor.host) throw new Error('Publication lease belongs to another/unknown host');
+  if (owner.identity.boot !== executor.boot) return;
+  if (owner.identity.namespace !== executor.namespace) throw new Error('Publication lease belongs to another/unknown process namespace');
+  const start = processStart(owner.pid);
+  if (start !== undefined && start === owner.identity.start) throw new Error('Publication writer is still live; lease recovery refused');
+}
+export function acquirePublicationLease(path: string, nonce = randomUUID()): LocalPublicationLease {
+  const stateFile = resolve(path), lock = `${stateFile}.lock`, executor = executorIdentity(), start = processStart(process.pid);
+  if (!start) throw new Error('Current publication process identity unavailable');
+  const owner: LeaseRecord = { version: 1, stateFile, pid: process.pid, nonce, identity: { ...executor, start }, startedAt: new Date().toISOString() };
+  guardedLease(stateFile, () => {
+    if (existsSync(lock)) {
+      const before = lstatSync(lock), prior = leaseRecord(stateFile); deadWriter(prior, executor);
+      const now = lstatSync(lock);
+      if (before.ino !== now.ino || before.dev !== now.dev || !eq(prior, leaseRecord(stateFile))) throw new Error('Publication lease changed during recovery');
+      renameSync(lock, `${lock}.retired-${prior.nonce}-${randomUUID()}`); syncDirectory(dirname(lock));
+    }
+    const pending = `${lock}.pending-${nonce}`; mkdirSync(pending, { mode: 0o700 });
+    savePublicationFile(resolve(pending, 'owner.json'), owner); syncDirectory(dirname(lock));
+    renameSync(pending, lock); syncDirectory(dirname(lock));
+  });
+  return { stateFile, nonce, assert: file => { if (resolve(file) !== stateFile) throw new Error('Publication lease state path differs'); assertRecord(stateFile, owner); },
+    close: () => guardedLease(stateFile, () => { assertRecord(stateFile, owner); rmSync(lock, { recursive: true }); syncDirectory(dirname(lock)); }) };
+}
+export function releaseAbandonedPublicationLease(path: string, nonce: string): void {
+  const stateFile = resolve(path), executor = executorIdentity();
+  guardedLease(stateFile, () => {
+    const owner = leaseRecord(stateFile); if (owner.nonce !== nonce) throw new Error('Publication lease nonce differs');
+    deadWriter(owner, executor);
+    renameSync(`${stateFile}.lock`, `${stateFile}.lock.retired-${owner.nonce}-${randomUUID()}`); syncDirectory(dirname(stateFile));
+  });
+}
 function privateJSON(file: string): any {
   if (lstatSync(file).isSymbolicLink()) throw new Error(`Publication file must not be a symlink: ${file}`);
   return JSON.parse(readFileSync(file, 'utf8'));
@@ -82,6 +203,7 @@ export class PublicationStore {
   private readonly data: PublicationData;
   private readonly lock: string;
   private readonly nonce = randomUUID();
+  private readonly localLease?: LocalPublicationLease;
   private tail: Promise<unknown> = Promise.resolve();
   private closed = false;
   private closing = false;
@@ -90,12 +212,8 @@ export class PublicationStore {
     this.config = checkConfig(options.publication); this.sourceContextId = this.config.source_context;
     this.lock = `${resolve(options.stateFile)}.lock`;
     if (options.owner) this.assertOwner();
-    else {
-      try { mkdirSync(this.lock, { mode: 0o700 }); }
-      catch { throw new Error(`Publication writer ownership is held/unknown at ${this.lock}; stop its owner and explicitly release it before starting`); }
-    }
+    else this.localLease = acquirePublicationLease(options.stateFile, this.nonce);
     try {
-      if (!options.owner) savePublicationFile(resolve(this.lock, 'owner.json'), { pid: process.pid, nonce: this.nonce, startedAt: new Date().toISOString() });
       const prior = existsSync(options.stateFile) ? privateJSON(options.stateFile) : undefined;
       const cache = existsSync(options.cacheFile) ? privateJSON(options.cacheFile) : undefined;
       const custodyFile = localJSON(options.configFile, this.config.custody);
@@ -117,10 +235,10 @@ export class PublicationStore {
         else if (this.config.adoption) throw new Error('Legacy adoption was supplied without retained state');
       }
       this.save();
-    } catch (error) { if (!options.owner) rmSync(this.lock, { recursive: true }); throw error; }
+    } catch (error) { if (!options.owner) this.localLease?.close(); throw error; }
   }
   private assertOwner(): void {
-    const lease = this.options.owner;
+    const lease = this.options.owner ?? this.localLease;
     if (lease && (resolve(lease.stateFile) !== resolve(this.options.stateFile) || !nonempty(lease.nonce))) throw new Error('Publication external lease path or nonce differs');
     lease?.assert(this.options.stateFile);
     const owner = privateJSON(resolve(this.lock, 'owner.json'));
@@ -366,6 +484,6 @@ export class PublicationStore {
     if (this.closed) return;
     this.assertOwner();
     this.closed = true;
-    if (!this.options.owner) rmSync(this.lock, { recursive: true });
+    if (!this.options.owner) this.localLease?.close();
   }
 }
