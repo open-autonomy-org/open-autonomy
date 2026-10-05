@@ -8,6 +8,10 @@ without enrollment or when narrative initialization/delivery is refused. Missing
 operation; a declared malformed or conflicting enrollment remains an explicit narrative failure. Source reads,
 notes, transcripts, setup and document publication require valid enrollment. Controls use their own queue;
 a pending narrative request cannot delay supported native job pause/resume.
+On orchestrator installs, keeper launches publishers only after its own selected daemon reports structured
+readiness. A standalone publisher requires the selected runtime's owning public door to be available already.
+This orders startup; it does not prove due-job or dispatcher quiescence, fence accepted native effects, or settle
+a previously refused or unknown call. Retained effect phases remain pending under the ownership rules below.
 Narrative initialization retries failed stages in place; completed enrollment and discovery stages are retained.
 HTTP requests have a bounded deadline and stop aborts in-flight narrative reads and delivery before draining the
 publication queue. A lost response retains the exact pending publication request for receipt reconciliation.

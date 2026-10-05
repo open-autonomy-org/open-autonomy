@@ -31,6 +31,10 @@ Hermes adapter. This candidate requires SDK 4.0.1 for the shared publication nor
 not claim an npm release or upgrade any running install.
 
 The organization publisher always serves owner controls, independently of narrative enrollment and delivery.
+On orchestrator installs, keeper waits for its own selected daemon's structured readiness before launching
+publishers. Standalone publishers require the selected runtime's owning public door to be available already.
+Readiness does not establish due-job or dispatcher quiescence, fence accepted native effects, or settle earlier
+refused or unknown calls; retained effect phases remain pending.
 It pauses/resumes only owned scheduled-job intent, with fresh native readback. The pinned native and Hermes
 adapters supply no safe board pause/resume contract: board intent stays pending and uncertain dispatcher
 quiescence cannot become observed pause. Active attempts may finish; unrelated pauses remain owned by their

@@ -36,7 +36,7 @@
 //               one that pays) on :8788 only with --rehearsal, a World's twin keys: bare mode is no pay boundary
 //               (docs/decisions/0021); --valve moves both (the second is the next port) for a second agent on one
 //               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
-//   reporter    keyless, publishing the home's sessions and board through the valve
+//   reporter    keyless, publishing through the valve; native waits for its owned gateway's public ready event
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
 //               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
@@ -158,13 +158,14 @@ const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
 // no command — and only waits for what it already started to exit.
 let ending = false;
+let nativeGatewayReady = false;
 let restartAsked = false;
 process.on('exit', () => {
   for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
 });
-function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean }) {
+function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
-  const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' });
+  const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' });
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
@@ -181,7 +182,10 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       // ten seconds.
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
-      setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
+      setTimeout(() => {
+        if (!ending && (opts.allowRestart?.() ?? true)) spawn(name, cmd, opts);
+        else if (!ending) say(`${name} pending: owning native gateway readiness is unavailable; no restart started`);
+      }, 10_000);
       return;
     }
     ending = true;
@@ -574,23 +578,31 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
 }
-// Owner controls stay available before and independently of narrative enrollment.
-if (!Object.hasOwn(orgConfig, 'publication')) say('publication pending: reporter enrollment is required; owner controls and the native brain keep running');
-spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
-// Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
-// and their sessions only, through the project's own key.
-for (const p of projectReporters) {
-  try {
-    if (!p.reporterConfig || p.reporterConfig.startsWith('/')) throw new Error('declare an owner-relative reporter_config with this account\'s own publication custody');
-    const config = resolve(project, p.reporterConfig);
-    if (relative(project, config).startsWith('..') || !existsSync(config) || relative(project, realpathSync(config)).startsWith('..')) throw new Error('reporter_config must resolve inside the project');
-    const tenantConfig = Bun.YAML.parse(readFileSync(config, 'utf8')) as Record<string, unknown>;
-    if (tenantConfig.account !== p.account || tenantConfig.tenant !== p.tag || !tenantConfig.publication) throw new Error('reporter_config requires the exact account, tenant tag and independently enrolled publication block');
-    if (tenantConfig.platform !== orgConfig.platform) throw new Error('reporter_config must name the selected logical platform; the valve is transport only');
-    nativeRuntime({ native_runtime: tenantConfig.native_runtime }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
-    spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
-  } catch (error) { say(`publication ${p.account} pending: ${(error as Error).message}; the native brain keeps running`); }
+let reportersStarted = false;
+function startReporters(): void {
+  if (ending || reportersStarted || (onNative && !nativeGatewayReady)) return;
+  reportersStarted = true;
+  // Owner controls remain independent of narrative enrollment. Native gateway
+  // readiness is its public mutation-door contract, not a narrative prerequisite.
+  if (!Object.hasOwn(orgConfig, 'publication')) say('publication pending: reporter enrollment is required; owner controls and the native brain keep running');
+  spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+  // Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
+  // and their sessions only, through the project's own key.
+  for (const p of projectReporters) {
+    try {
+      if (!p.reporterConfig || p.reporterConfig.startsWith('/')) throw new Error('declare an owner-relative reporter_config with this account\'s own publication custody');
+      const config = resolve(project, p.reporterConfig);
+      if (relative(project, config).startsWith('..') || !existsSync(config) || relative(project, realpathSync(config)).startsWith('..')) throw new Error('reporter_config must resolve inside the project');
+      const tenantConfig = Bun.YAML.parse(readFileSync(config, 'utf8')) as Record<string, unknown>;
+      if (tenantConfig.account !== p.account || tenantConfig.tenant !== p.tag || !tenantConfig.publication) throw new Error('reporter_config requires the exact account, tenant tag and independently enrolled publication block');
+      if (tenantConfig.platform !== orgConfig.platform) throw new Error('reporter_config must name the selected logical platform; the valve is transport only');
+      nativeRuntime({ native_runtime: tenantConfig.native_runtime }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
+      spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+    } catch (error) { say(`publication ${p.account} pending: ${(error as Error).message}; the native brain keeps running`); }
+  }
 }
+if (!onNative) startReporters();
+else say('publication pending: waiting for the owned native gateway public readiness event');
 // Pull request events through hookline (company RFC 0026 decision 4): where custody holds <secrets>/hookline.env (the
 // inbox, its read token, this install's socket target), hookline.ts attaches and tells the manager of each event once.
 // It reads that file itself, so the token is in no other process's environment.
@@ -603,8 +615,50 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
+if (onNative) {
+  gateway.exited.then(() => { nativeGatewayReady = false; });
+  void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
+}
 if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+// The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
+// its loaded and ready events to that exact owned launch chain, never another
+// home, once-mode output, an arbitrary descendant or a prose log sentence.
+async function nativeReadiness(): Promise<void> {
+  let loadedPid: number | undefined, buffer = '', discarding = false;
+  const decoder = new TextDecoder(), maxLine = 64 * 1024;
+  const owned = async (pid: number): Promise<boolean> => {
+    if (ending || gateway.exitCode !== null || !Number.isSafeInteger(pid) || pid <= 0) return false;
+    if (!['darwin', 'linux'].includes(process.platform)) return false;
+    const observed = await command(['/bin/ps', '-p', String(pid), '-o', 'ppid='], { cwd: project, env: inherited(), boundMs: 2000 });
+    if (ending || gateway.exitCode !== null || observed.exitCode !== 0 || !/^\s*\d+\s*$/.test(observed.stdout)) return false;
+    const parent = Number(observed.stdout.trim());
+    return pid === gateway.pid ? parent === process.pid : parent === gateway.pid;
+  };
+  const line = async (value: string): Promise<void> => {
+    if (ending || value.length > maxLine) return;
+    let event: any; try { event = JSON.parse(value); } catch { return; }
+    if (!event || event.root !== home || !Number.isSafeInteger(event.pid) || event.pid <= 0) return;
+    if (event.event === 'loaded' && typeof event.version === 'string' && event.version && typeof event.started_at === 'string' && event.started_at) {
+      if (await owned(event.pid)) loadedPid = event.pid;
+    } else if (event.event === 'ready' && event.once === undefined && event.pid === loadedPid && Array.isArray(event.connected) && event.connected.every((name: unknown) => typeof name === 'string') && Array.isArray(event.down) && event.down.every((name: unknown) => typeof name === 'string') && Number.isSafeInteger(event.webhook_port) && event.webhook_port >= 0 && event.webhook_port <= 65535 && Number.isSafeInteger(event.tick_ms) && event.tick_ms > 0 && typeof event.restarted === 'boolean') {
+      if (!await owned(event.pid) || ending) return;
+      nativeGatewayReady = true;
+      startReporters();
+    }
+  };
+  try {
+    for await (const chunk of gateway.stdout!) {
+      process.stdout.write(chunk); // retain the public child's stdout byte-for-byte
+      let text = decoder.decode(chunk, { stream: true });
+      if (discarding) { const at = text.indexOf('\n'); if (at < 0) continue; text = text.slice(at + 1); discarding = false; }
+      buffer += text;
+      let at: number;
+      while ((at = buffer.indexOf('\n')) >= 0) { const value = buffer.slice(0, at); buffer = buffer.slice(at + 1); await line(value); }
+      if (buffer.length > maxLine) { buffer = ''; discarding = true; }
+    }
+  } finally { nativeGatewayReady = false; if (!ending && !reportersStarted) say('publication pending: native gateway ended its event stream before verified readiness'); }
+}
 // The home's declared agents (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md §2.10),
 // rendered from the setup like the rest of the home, so an export names each one it folds into its profile. Declaring
 // them to Teams and opening their sessions is not this keeper's (enroll.ts, above).
