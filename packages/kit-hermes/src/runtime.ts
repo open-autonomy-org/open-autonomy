@@ -100,7 +100,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   {
     const build = worldConfig({ id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down keeps the image.',
       env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
-      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
+      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --build-arg SUPERCODE_VERSION="$(supercode --version | cut -d' ' -f2)" --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
     say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-out=${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }

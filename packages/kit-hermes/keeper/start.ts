@@ -44,6 +44,7 @@
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
+import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -356,8 +357,18 @@ const kitSelection = JSON.parse(readFileSync(resolve(project, '.open-autonomy/ki
 const nativeSelection = { kind: kitSelection.kit === 'ir' || harness !== 'hermes' ? 'orchestrator' : 'hermes', root: home };
 const onNative = nativeSelection.kind === 'orchestrator';
 const nativeSelectionEnv = JSON.stringify(nativeSelection);
-const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
+// One supercode per machine, one release per install (D215, D217; base/.open-autonomy/machine-supercode.ts): supercode,
+// its orchestrator, its harness SDK and its Teams package are the machine's, checked here to be one release before any
+// service starts, and refused with the one command that installs them. The checked ones are handed to every child
+// (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN, OPEN_AUTONOMY_HARNESS_SDK), as a review or a World names
+// unreleased builds.
+const machine = (() => {
+  try { return machineSupercode(); }
+  catch (error) { console.error(`start: ${(error as Error).message}. Nothing was started.`); process.exit(1); }
+})();
+Object.assign(process.env, { OPEN_AUTONOMY_SUPERCODE_BIN: machine.bin, OPEN_AUTONOMY_ORCHESTRATOR_BIN: machine.orchestratorEntry, OPEN_AUTONOMY_HARNESS_SDK: machine.harnessSdk });
+const supercodeBin = machine.bin;
+const orchestratorBin = machine.orchestratorEntry;
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
 // so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
 // declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
@@ -515,12 +526,12 @@ process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-// The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
+// The machine's builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
-// The orchestrator that serves this home, and the supercode it drives, are the ones this install runs, named in the home
-// (orchestrator.json) when they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell,
-// the connector's board follower, the board door) runs that orchestrator driving that supercode, never what the machine
-// has installed globally.
+// The orchestrator that serves this home, and the supercode it drives, are named in the home (orchestrator.json) when
+// they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the connector's board
+// follower, the board door) runs that orchestrator driving that supercode, the ones the machine has installed (D215,
+// reversing D152 row 11: an install's own copy was stranded by a daemon a release ahead of it).
 {
   const named = (bin: string) => {
     const entry = existsSync(bin) ? realpathSync(bin) : bin;

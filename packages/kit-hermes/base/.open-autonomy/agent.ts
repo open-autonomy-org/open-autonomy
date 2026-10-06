@@ -150,8 +150,10 @@ export async function applyAgent(options: {
     const { applyNative } = await import('./native-setup.ts');
     return applyNative({ ...options, root: options.runtime.root });
   }
-  const applier = await import('@volter/supercode-orchestrator/apply');
-  const doors = await import('@volter/supercode-orchestrator/apply/doors');
+  // the machine's orchestrator (machine-supercode.ts)
+  const { orchestratorModule } = await import('./machine-supercode.ts');
+  const applier = await import(orchestratorModule('./apply'));
+  const doors = await import(orchestratorModule('./apply/doors'));
   const lines: string[] = [];
   const harness = agentHarness(options.setup);
   for (const [profile, declared] of Object.entries(options.setup.profiles)) {

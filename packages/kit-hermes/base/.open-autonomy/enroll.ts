@@ -21,13 +21,15 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { agentHarness, readAgent } from './agent.ts';
+import { supercodeBin as machineSupercode } from './machine-supercode.ts';
 
 const argv = process.argv.slice(2);
 const arg = (name: string): string | undefined => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const project = resolve(arg('--project') ?? resolve(import.meta.dir, '..'));
 const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
 const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
+// the machine's supercode, or an unreleased build a review or a World names (machine-supercode.ts)
+const supercodeBin = machineSupercode();
 const say = (m: string) => console.log(`enroll: ${m}`);
 const setup = readAgent(project);
 if (!setup) { console.error('enroll: no .open-autonomy/agent.json; nothing to enroll'); process.exit(1); }

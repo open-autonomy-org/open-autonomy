@@ -4,7 +4,9 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
+import { harnessSdkModule, supercodeBin } from './machine-supercode.ts';
+// the machine's harness SDK (machine-supercode.ts)
+const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
 import { PublicationStore, acquirePublicationLease, acquireAttestedPublicationLease, releaseAbandonedPublicationLease, retainedDigest, publicationHash, savePublicationBytes, savePublicationFile, type NativeRuntimeSelection, type LocalPublicationLease, type LeaseHandoffAcknowledgement } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, validateRecoveryControlSnapshot, effectDigest, type ControlScope, type ControlDataV3, type ControlSelection, type ControlReconciliationAudit, type ControlRecoveryAction, type ControlRecoveryEvidence } from './owner-control.ts';
@@ -144,8 +146,8 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
   let retained = current(), control = retained.control;
   const initialConfigDigest = retainedDigest(configFile), initialControlDigest = retained.controlDigest;
   const selected = scope.nativeRuntime as NativeRuntimeSelection;
-  const bin = process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode');
-  const sc = new SupercodeHarnessClient({ command: bin, args: ['harness', 'serve'], startTimeoutMs: 10_000, requestTimeoutMs: 10_000, env: { ...process.env, ...(selected.kind === 'hermes' ? { HERMES_HOME: selected.root } : { SUPERCODE_HOME: selected.root }) } as Record<string, string> });
+  const bin = supercodeBin();
+  const sc = new HarnessClient({ command: bin, args: ['harness', 'serve'], startTimeoutMs: 10_000, requestTimeoutMs: 10_000, env: { ...process.env, ...(selected.kind === 'hermes' ? { HERMES_HOME: selected.root } : { SUPERCODE_HOME: selected.root }) } as Record<string, string> });
   const runtime = new NativeRuntime(selected, sc), abort = new AbortController();
   let closeWork: Promise<void> | undefined;
   const close = () => closeWork ??= sc.close();

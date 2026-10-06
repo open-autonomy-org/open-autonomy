@@ -4,7 +4,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OpenAutonomy } from './sdk/client.ts';
-import { SupercodeRpcError, type SupercodeHarnessClient, type JobMutationOutcome } from '@volter/supercode-harness-sdk';
+import type { SupercodeHarnessClient, JobMutationOutcome } from '@volter/supercode-harness-sdk';
+import { harnessSdkModule } from './machine-supercode.ts';
+// the machine's harness SDK (machine-supercode.ts)
+const { SupercodeRpcError: RpcError } = await import(harnessSdkModule());
 import { acquirePublicationLease, savePublicationFile, type PublicationOwnerLease, type LocalPublicationLease } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
 export type ControlScope = { account: string; apiBase: string; nativeRuntime: { kind: string; root: string } };
@@ -247,7 +250,7 @@ export class OwnerController {
         if (!current) throw new Error('Acknowledged native job identity awaits readback');
         this.allowed(); this.options.state.settle(effect, current.enabled); this.blockedJobs.delete(job.id);
       } catch (error) {
-        const rejectedBeforeEffect = error instanceof SupercodeRpcError && error.code === -32602 && error.sdkCode === 'invalid_argument' && error.sdkOperation === (action === 'pause' ? 'jobs_pause' : 'jobs_resume') && error.method === `harness.v1.jobs.${action}`;
+        const rejectedBeforeEffect = error instanceof RpcError && error.code === -32602 && error.sdkCode === 'invalid_argument' && error.sdkOperation === (action === 'pause' ? 'jobs_pause' : 'jobs_resume') && error.method === `harness.v1.jobs.${action}`;
         if (effect && (!issued || rejectedBeforeEffect)) {
           try { this.options.state.retract(effect); this.blockedJobs.delete(job.id); }
           catch (persistence) { this.options.log(`owner control no-effect persistence remains pending: ${(persistence as Error).message}`); }
