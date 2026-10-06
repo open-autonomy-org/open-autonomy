@@ -267,23 +267,33 @@ recovery cannot acquire it. Historical/unknown effects thus have a product recov
 settlement protocol. Without positive completion or that evidence-backed owner reconciliation, the affected job stays
 pending while other controls and narration continue; any unknown phase forbids observed paused.
 
-The operator also provides explicit handoff-controls for a supported retained lease with no canonical control
-sidecar. Its manifest mode is lease-handoff-only, with controlDigest null, selections empty and the structured
-controlAbsence token `{kind:'absent-control',file:<absolute canonical control path>}`. Normal reconciliation instead
-uses mode reconcile, a retained control digest and nonempty phase selections; null is never interpreted as fresh
-ownership. Both modes require exact configuration/runtime/state-path and complete public SDK snapshot bindings
-and the same concrete full-domain retirement/exclusive-local-home owner assertion. Prior lease nonce/digest are
-mandatory for handoff-only or an explicitly requested normal-reconciliation handoff; normal reconciliation may
-instead acquire a fresh lease without a prior record.
+The operator also provides explicit handoff-controls for a supported retained lease when custody alone needs
+recovery. Its manifest mode is lease-handoff-only and selections are empty. It supports two distinct proofs:
+actual absent control state binds controlDigest null plus the structured controlAbsence token
+`{kind:'absent-control',file:<absolute canonical control path>}`; valid present control state binds its exact byte
+SHA-256, forbids controlAbsence and requires zero pending effects in the shared scoped pure recovery view.
+The latter may retain paused-job ownership and reconciliation history: an empty phase list never means empty
+ownership. Unsupported or invalid retained shapes, including legacy declarations of reconciliation history,
+refuse. Nonempty pending phases require the existing reconciliation route. Normal reconciliation uses mode
+reconcile, a retained control digest and nonempty phase selections; null is never interpreted as fresh ownership.
+Both modes require exact configuration/runtime/state-path and complete public SDK snapshot bindings and the same
+concrete full-domain retirement/exclusive-local-home owner assertion. Prior lease nonce/digest are mandatory for
+handoff-only or an explicitly requested normal-reconciliation handoff; normal reconciliation may instead acquire
+a fresh lease without a prior record.
 
 Absence must be actual lstat ENOENT for that exact sidecar path, rechecked under the lease transition guard and
-after handoff. Dangling symlinks, permission errors and unknown paths refuse. Handoff-only never constructs a
-control store, migrates or seeds sidecar state, adopts ownership, clears a phase, invents acknowledgement or calls
-a native mutation. Preserve a private durable performed-handoff record after the canonical new writer is verified;
-the prepared record alone is not success. Recheck configuration, evidence, complete native snapshot and absence
-before reporting custody-only completion. If custody changed but a later check fails, report that change separately
-from unapplied control state. A later ordinary publisher may conservatively seed control state through its existing
-rules. This supplies a reboot recovery door without treating missing state as positive effect evidence.
+after handoff. Dangling symlinks, permission errors and unknown paths refuse. For present controls, the whole plan
+is validated before transfer, exact original bytes are retained in a private backup, and the digest is checked
+under the lease guard. Recheck the digest and scoped zero-phase view after handoff; preserve every original byte,
+paused membership and audit. Handoff-only never constructs a control store, migrates or seeds sidecar state,
+adopts ownership, clears a phase, invents acknowledgement or calls a native mutation. Preserve a private durable
+performed-handoff record after the canonical new writer is verified; for present state it binds the original
+digest and exact backup. The prepared record alone is not success. Recheck configuration, evidence, complete
+native snapshot and the selected absence or present-state proof before reporting custody-only completion.
+If custody changed but a later check fails, report that change separately from unapplied control state and any
+unconfirmed performed-audit write. A later ordinary publisher may conservatively seed missing state or load
+unchanged existing state through its existing rules. This supplies a reboot custody recovery door without treating
+missing state, an empty phase list or retained pause ownership as positive native effect evidence.
 
 An unfinished or stale execution record without authoritative completion stays unresolved. Its presence is
 described as pending native execution readback, not as proof that a funded process is currently live; OA does not

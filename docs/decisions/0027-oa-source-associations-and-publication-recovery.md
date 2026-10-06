@@ -204,12 +204,17 @@ applied; if lease custody changed but later reconciliation refuses, report the c
 control dispositions separately. No blanket release, arbitrary orphan cleanup or publication-state adoption is offered. This is the supported
 operator route for reboot with a retained supported lease; release-lock's automatic path retains same-boot rules.
 
-For ADR 0026's explicit handoff-only mode, the lease proof binds controlDigest null plus a mandatory
+For ADR 0026's explicit handoff-only mode, the lease proof binds either actual absent controls or valid present
+controls with zero pending phases. Absence requires controlDigest null plus the mandatory
 `{kind:'absent-control',file:<absolute canonical control path>}` token, never a null-as-fresh fallback. Under the
 kernel guard, lstat must prove ENOENT for that exact path; a dangling symlink, unreadable path or permission error
-refuses. Recheck absence after custody transfer. The operator preserves a durable performed-handoff audit and
-reports custody-only completion; no control sidecar, narrative state, Source cache or ownership/ACK is created.
-Changed post-handoff inputs remain a visible partial custody result, never a claim of control reconciliation.
+refuses. Present controls instead require their exact raw-file digest, no absence token and the shared scoped pure
+validation, including zero pending phases, before and after transfer. Preserve an exact private backup before
+transfer, every canonical byte, paused ownership and reconciliation audit; no migration or invented phase occurs.
+The operator preserves a durable performed-handoff audit binding the selected proof and present-state backup,
+and reports custody-only completion; no control sidecar, narrative state, Source cache or ownership/ACK is created
+or changed. Changed post-handoff inputs or an unconfirmed performed-audit write remain a visible partial custody
+result, never a claim of control reconciliation. Nonempty phase state uses the existing reconciliation door.
 
 ### Prepared requests and concrete receipt checks
 
