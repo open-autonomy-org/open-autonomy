@@ -1,7 +1,7 @@
 // The project's agent setup (docs/decisions/0007): `.open-autonomy/agent.json` declares each profile's
-// Inference, jobs and Hermes-only settings; Volter Harness's applier renders them into the Hermes home before
-// the gateway starts, through Hermes's own functions, owning each record by its Hermes id against a base
-// kept beside the home. Content (the persona, skills, plugins, scripts) is copied from hermes/ as before.
+// inference, jobs and selected runtime settings. Hermes uses its explicit external door;
+// native-setup.ts maps the bounded orchestrator declaration through public owning model/job doors.
+// The external applier owns record IDs and base comparisons. Content is rendered separately.
 //
 //   readAgent(project)          the package, or null for a project still on the committed config
 //   parseAgent(text, where)     the same checks over a setup read anywhere else
@@ -14,8 +14,8 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 
-type Model = { provider?: string; model?: string; endpoint?: string; base_url?: string; credential?: string; placeholder_key?: string };
-type Package = { schema_version: 1; inference?: { models?: Record<string, Model>; default?: string }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
+export type Model = { provider?: string; model?: string; endpoint?: string; base_url?: string; credential?: string; placeholder_key?: string; api_mode?: string };
+export type Package = { schema_version: 1; inference?: { models?: Record<string, Model>; default?: string; unattended?: string }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
 /**
  * An agent with a mailbox (supercode docs/adr/0008-agent-mailbox.md): its main session runs `profile` in a pane the
  * start opens once (`program`, `claude` or `codex`), declared with supercode so roots addressed to the agent reach it.
@@ -30,7 +30,7 @@ export type MailAgent = {
   owners_account_manager?: boolean;
   /** One instance on every machine enrolled in this machine's Teams context, pinned there (RFC 0022: the box maintainer). */
   every_machine?: boolean;
-  channel?: { rh2?: { principal?: string; room?: string; room_key?: string; room_name?: string } };
+  channel?: { rh2?: { principal?: string; room?: string; room_key?: string; room_name?: string }; slack?: { channels?: string[] }; jira?: { site?: string; jql?: string } };
 };
 export type Setup = { harness?: string; profiles: Record<string, Package>; agents?: Record<string, MailAgent> };
 
@@ -45,7 +45,7 @@ export function readAgent(project: string): Setup | null {
 export function parseAgent(text: string, where: string): Setup {
   const setup = JSON.parse(text) as Setup;
   if (!setup?.profiles?.default) throw new Error(`${where}: a setup declares at least the default profile`);
-  for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${where}: ${name} is not a Hermes profile name`);
+  for (const name of Object.keys(setup.profiles)) if (!PROFILE.test(name)) throw new Error(`${where}: ${name} is not a valid profile name`);
   if (setup.harness !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(String(setup.harness))) throw new Error(`${where}: harness ${JSON.stringify(setup.harness)} is not a harness id`);
   for (const [name, agent] of Object.entries(setup.agents ?? {})) {
     if (!PROFILE.test(name)) throw new Error(`${where}: agent ${name} is not an agent name`);
@@ -63,7 +63,10 @@ export function agentHarness(setup: Setup | null): string {
 
 /** The worker one profile runs: its own `worker.harness` where it names one (docs/decisions/0017), else the setup's. */
 export function profileHarness(setup: Setup | null, profile: string): string {
-  const own = setup?.profiles?.[profile]?.extensions?.hermes?.config?.['worker.harness'];
+  const native = setup?.profiles?.[profile]?.extensions?.orchestrator?.config?.['worker.harness'];
+  const legacy = setup?.profiles?.[profile]?.extensions?.hermes?.config?.['worker.harness'];
+  if (native !== undefined && legacy !== undefined && native !== legacy) throw new Error(`${profile}: conflicting native and legacy worker harness`);
+  const own = native ?? legacy;
   return typeof own === 'string' && own ? own : agentHarness(setup);
 }
 
@@ -140,7 +143,13 @@ export async function applyAgent(options: {
   setup: Setup; homeOf: (profile: string) => string; homeId: string; stateRoot: string; workspace: string; container?: string;
   /** Bare mode's privilege drop (setpriv): what Hermes writes into the home stays the agent's. */
   asAgent?: string[];
+  runtime?: { kind: 'hermes' | 'orchestrator'; root: string };
 }): Promise<string[]> {
+  if (options.runtime?.kind === 'orchestrator') {
+    if (options.container) throw new Error('Native setup has no reviewed container model door; use the bare native keeper');
+    const { applyNative } = await import('./native-setup.ts');
+    return applyNative({ ...options, root: options.runtime.root });
+  }
   const applier = await import('@volter/supercode-orchestrator/apply');
   const doors = await import('@volter/supercode-orchestrator/apply/doors');
   const lines: string[] = [];

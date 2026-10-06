@@ -64,7 +64,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       for (const [name, artifact] of artifacts) {
         const tarPath = `/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
-        if (pathname === tarPath) return new Response(request.method === 'HEAD' ? null : artifact.bytes,
+        if (pathname === tarPath) return new Response(request.method === 'HEAD' ? null : new Uint8Array(artifact.bytes),
           { headers: { 'content-type': 'application/octet-stream' } });
         if (pathname === `/${name}` || pathname === `/${name}/${artifact.manifest.version}`) {
           const version = { ...artifact.manifest, dist: { tarball: `http://127.0.0.1:${server.port}${tarPath}`, integrity: artifact.integrity } };

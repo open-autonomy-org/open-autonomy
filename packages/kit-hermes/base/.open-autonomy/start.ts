@@ -32,7 +32,7 @@ if (!existsSync(keeper)) {
     await installHostRuntime({ ...options, environment: process.env as Record<string, string>, frozen: lock, started: (child) => { install = child; if (stopped) child.kill('SIGTERM'); } });
   } catch (error) {
     if (stopped) process.exit(0);
-    console.error(`start: ${(error as Error).message}. Nothing was started.`);
+    console.error(`start: ${(error as Error).message}. Finalize the adopter-owned host lock inside its World with bun .open-autonomy/install-runtime.ts --update-lock, review/commit it, then retry. A committed lock stays frozen. Nothing was started.`);
     process.exit(1);
   }
   if (stopped) process.exit(0);

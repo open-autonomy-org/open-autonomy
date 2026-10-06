@@ -628,6 +628,16 @@ provider's existing apps before deciding what to retry. The receiver does not ov
 The setup agent handles recovery using provider evidence. No manifest generation, browser navigation,
 installation, Git operation, policy decision or runtime configuration belongs in the credential saver.
 
+### Pull request events through hookline
+
+Where the install's manager should hear of pull request events (opened, pushed, reviewed, commented, merged) as they
+happen, point the repository's GitHub webhook at a [hookline](https://github.com/open-autonomy-org/hookline) inbox
+(`https://<inbox>/in/github`) and attach this install as a socket target there
+(`PUT /targets/<name>` with `{"url": "hookline-socket:<name>"}`). Then write the protected `hookline.env` beside the
+install's other credentials: `HOOKLINE_INBOX=wss://<inbox>`, `HOOKLINE_READ_TOKEN`, `HOOKLINE_TARGET=<name>`, and
+optionally `HOOKLINE_MAIL_TO` (default `manager`). The keeper then runs `.open-autonomy/hookline.ts`. It needs no
+tunnel and no inbound port, and tells the manager of each event once: a replay is acknowledged and not told again.
+
 ### Displayed credentials
 
 When the agreed integration displays its new credential on a page, use the standalone helper's capture
@@ -660,6 +670,19 @@ and credential receiver on the same host. For a remote runtime, use the manual r
 authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
+
+Before activation, finalize the adopter-owned host lock through the existing installer in that project's World:
+`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/bun.lock` against the
+exact declared host manifest, then use frozen installation for startup. The template's native dependency lock
+cannot contain the integrity of the kit archive that contains it. An unresolved committed template lock refuses;
+startup never silently unfreezes it. Unpublished candidates require explicitly supplied reviewed package artifacts
+through a disposable review registry; this is not an npm release.
+
+For bare company/IR installs, the selected runtime is the orchestrator, independent of the worker harness.
+The bounded declaration and refusal rules are in ADR 0026; Hermes-specific settings are not native guarantees.
+The reporter needs explicit source enrollment or retained-state adoption through `PUBLICATION.md`; without it,
+publication stays pending and the native engine keeps running. An organization's project reporter declares a
+relative `reporter_config` with that tenant's own account, policy, logical platform and publication custody.
 
 The model choice does not change the fleet architecture. For the managed setup, World owns one executor
 and the host runs `start.ts --container`: credential valves and SDK reporting stay outside, native Hermes

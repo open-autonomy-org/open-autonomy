@@ -21,10 +21,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -49,10 +48,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -91,10 +89,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -130,10 +127,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -169,10 +165,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -194,10 +189,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -223,10 +217,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "claude-code"
           }
@@ -252,10 +245,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -277,10 +269,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -314,10 +305,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -354,10 +344,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -382,10 +371,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -410,10 +398,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }

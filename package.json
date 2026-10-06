@@ -32,7 +32,7 @@
     "@volter/twin-polar": "^2.0.6",
     "@volter/twin-stripe": "^2.0.6",
     "@volter/world-runtime": "^2.0.8",
-    "@volter/supercode-harness-sdk": "^0.3.45",
-    "@volter/supercode-orchestrator": "^0.4.5"
+    "@volter/supercode-harness-sdk": "0.3.64",
+    "@volter/supercode-orchestrator": "0.5.47"
   }
 }
