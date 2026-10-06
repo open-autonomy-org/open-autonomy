@@ -44,11 +44,12 @@
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
+import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
-import { basename, delimiter, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 
 // The host directory: the project's .open-autonomy, whose start.ts is the entry that imported this keeper.
 if (Bun.main === import.meta.path) { console.error('start: the keeper runs through a project\'s .open-autonomy/start.ts, not on its own. Nothing was started.'); process.exit(1); }
@@ -356,23 +357,18 @@ const kitSelection = JSON.parse(readFileSync(resolve(project, '.open-autonomy/ki
 const nativeSelection = { kind: kitSelection.kit === 'ir' || harness !== 'hermes' ? 'orchestrator' : 'hermes', root: home };
 const onNative = nativeSelection.kind === 'orchestrator';
 const nativeSelectionEnv = JSON.stringify(nativeSelection);
-// One supercode per machine (D215): supercode and its orchestrator are the ones installed on the machine, which its
-// machine daemon runs too, found on the service's PATH outside this install. The dispatcher's client and the daemon are
-// then always one release, and no install carries a copy a release can strand (a pinned supercode older than the
-// daemon's claims was refused by it, t_be880329). A machine without them is refused here, saying how to install them;
-// a review or a World names unreleased builds instead (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN).
-const machineBin = (name: string, pkg: string): string => {
-  const own = resolve(host, 'node_modules', '.bin');
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (!dir || resolve(dir) === own) continue;
-    for (const file of process.platform === 'win32' ? [`${name}.cmd`, `${name}.exe`] : [name]) if (existsSync(join(dir, file))) return join(dir, file);
-  }
-  console.error(`start: no ${name} is installed on this machine (none on PATH outside this install); install it: npm install -g ${pkg}. Nothing was started.`);
-  process.exit(1);
-};
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || machineBin('supercode', '@volter/supercode');
-// the orchestrator's entry (run with node), not its bin link: the link's target
-const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || realpathSync(machineBin('supercode-orchestrator', '@volter/supercode-orchestrator'));
+// One supercode per machine, one release per install (D215, D217; base/.open-autonomy/machine-supercode.ts): supercode,
+// its orchestrator, its harness SDK and its Teams package are the machine's, checked here to be one release before any
+// service starts, and refused with the one command that installs them. The checked ones are handed to every child
+// (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN, OPEN_AUTONOMY_HARNESS_SDK), as a review or a World names
+// unreleased builds.
+const machine = (() => {
+  try { return machineSupercode(); }
+  catch (error) { console.error(`start: ${(error as Error).message}. Nothing was started.`); process.exit(1); }
+})();
+Object.assign(process.env, { OPEN_AUTONOMY_SUPERCODE_BIN: machine.bin, OPEN_AUTONOMY_ORCHESTRATOR_BIN: machine.orchestratorEntry, OPEN_AUTONOMY_HARNESS_SDK: machine.harnessSdk });
+const supercodeBin = machine.bin;
+const orchestratorBin = machine.orchestratorEntry;
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
 // so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
 // declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that

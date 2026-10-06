@@ -745,11 +745,12 @@ If a completed credential step has missing files in the selected directory, setu
 its record or issuing replacements. Reconcile the intended host/directory and restore credentials or
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
-a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine,
-once, beside its machine daemon: `npm install -g @volter/supercode @volter/supercode-orchestrator
-@volter/supercode-harness-sdk @volter/supercode-teams`, upgraded together. The install carries no copy of its own
-(machine-supercode.ts): the dispatcher, the reporter and the setup run the machine's, so they are always the release
-its daemon runs. Startup refuses a machine without them and names the command.
+a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
+one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch @volter/supercode`,
+which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
+alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
+the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
+command.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.
