@@ -50,11 +50,11 @@ function manifestAt(file: string, privateRoot: string, scope: ControlScope, cont
   shape(value.custody, ['exclusiveLocalHome', 'priorEffectWriters']);
   if (value.version !== 1 || !nonempty(value.operator) || !nonempty(value.statement) || canonical(value.scope) !== canonical(scope) || value.custody.exclusiveLocalHome !== true || value.custody.priorEffectWriters !== 'retired-or-settled' || [value.configDigest, value.inventoryDigest].some(d => typeof d !== 'string' || !hash.test(d))) throw new Error('Recovery manifest version, authority, scope or digests conflict');
   const custodyOnly = command === 'handoff-controls';
-  if (value.mode !== (custodyOnly ? 'lease-handoff-only' : 'reconcile') || !Array.isArray(value.selections) || (custodyOnly ? value.selections.length !== 0 || value.controlDigest !== null || !value.leaseHandoff : !value.selections.length || typeof value.controlDigest !== 'string' || !hash.test(value.controlDigest) || Object.hasOwn(value, 'controlAbsence'))) throw new Error('Recovery mode, control proof or selections conflict');
-  if (custodyOnly) {
+  if (value.mode !== (custodyOnly ? 'lease-handoff-only' : 'reconcile') || !Array.isArray(value.selections) || (custodyOnly ? value.selections.length !== 0 || !value.leaseHandoff || (value.controlDigest !== null && (typeof value.controlDigest !== 'string' || !hash.test(value.controlDigest))) : !value.selections.length || typeof value.controlDigest !== 'string' || !hash.test(value.controlDigest) || Object.hasOwn(value, 'controlAbsence'))) throw new Error('Recovery mode, control proof or selections conflict');
+  if (custodyOnly && value.controlDigest === null) {
     shape(value.controlAbsence, ['kind', 'file']);
     if (value.controlAbsence.kind !== 'absent-control' || value.controlAbsence.file !== controlFile) throw new Error('Handoff-only requires the exact structured canonical control absence token');
-  }
+  } else if (custodyOnly && Object.hasOwn(value, 'controlAbsence')) throw new Error('Present-state custody handoff forbids a control absence token');
   const operations = new Set<string>();
   for (const item of value.selections) {
     shape(item, ['operation', 'effectDigest', 'id', 'profile', 'disposition']);
@@ -111,7 +111,7 @@ async function inventory(runtime: NativeRuntime, signal: AbortSignal): Promise<I
 function preflight(manifest: RecoveryManifest, control: ControlDataV3 | null, native: Inventory, configDigest: string, controlDigest: string | null): void {
   if (manifest.configDigest !== configDigest || manifest.controlDigest !== controlDigest || manifest.inventoryDigest !== digest(native)) throw new Error('Recovery configuration/control/native snapshot changed');
   if (manifest.mode === 'lease-handoff-only') {
-    if (control !== null || controlDigest !== null) throw new Error('Handoff-only requires actual missing canonical control state');
+    if (controlDigest === null ? control !== null : !control || control.pending_effects.length !== 0) throw new Error('Custody-only handoff requires actual absent controls or valid present controls with zero pending phases');
     return;
   }
   if (!control) throw new Error('Reconciliation requires retained canonical controls; missing state is not fresh ownership');
@@ -155,6 +155,7 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
   let handoff: LeaseHandoffAcknowledgement | undefined;
   let handoffAttempt: { priorOwnerDigest: string; priorNonce: string; preparedAudit: string } | undefined;
   let canonicalWriteAttempt: { reconciliation: string; preparedAudit: string; originalDigest: string } | undefined;
+  let performedAuditAttempt: string | undefined;
   let applied = false, result: unknown, failure: unknown;
   try {
     if (abort.signal.aborted) throw abort.signal.reason;
@@ -182,11 +183,20 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
         } else mkdirSync(path, { mode: 0o700 });
       }
       mkdirSync(directory, { mode: 0o700 });
+      // Custody-only present state is never rewritten, even for format migration.
+      let preservedControl: { file: string; digest: string; backup: string } | undefined;
+      if (loaded.manifest.mode === 'lease-handoff-only' && loaded.manifest.controlDigest !== null) {
+        const original = readFileSync(controlFile), backup = resolve(directory, 'control.before.json');
+        if (publicationHash(original) !== loaded.manifest.controlDigest) throw new Error('Canonical controls changed before custody-only backup');
+        savePublicationBytes(backup, original);
+        savePublicationBytes(resolve(directory, 'manifest.json'), loaded.bytes);
+        preservedControl = { file: controlFile, digest: loaded.manifest.controlDigest, backup };
+      }
       if (loaded.manifest.leaseHandoff) {
         const requested = loaded.manifest.leaseHandoff;
         const auditFile = resolve(directory, 'lease-handoff.json');
         const packet = { nonce: requested.nonce, ownerDigest: requested.ownerDigest, manifestDigest, operator: loaded.manifest.operator, evidenceDigest: digest(loaded.evidence), configFile, configDigest: loaded.manifest.configDigest, controlDigest: loaded.manifest.controlDigest, ...(loaded.manifest.controlAbsence ? { controlAbsence: loaded.manifest.controlAbsence } : {}), auditFile };
-        savePublicationFile(auditFile, { version: 1, stage: 'prepared', authority: 'local-owner-assertion', ...packet, scope, statement: loaded.manifest.statement, actions: loaded.manifest.actions, evidence: loaded.evidence, coverage: loaded.manifest.coverage, inventoryDigest: loaded.manifest.inventoryDigest });
+        savePublicationFile(auditFile, { version: 1, stage: 'prepared', authority: 'local-owner-assertion', ...packet, scope, ...(preservedControl ? { preservedControl } : {}), statement: loaded.manifest.statement, actions: loaded.manifest.actions, evidence: loaded.evidence, coverage: loaded.manifest.coverage, inventoryDigest: loaded.manifest.inventoryDigest });
         handoffAttempt = { priorOwnerDigest: requested.ownerDigest, priorNonce: requested.nonce, preparedAudit: auditFile };
         const acquired = acquireAttestedPublicationLease(stateFile, packet);
         handoff = acquired.handoff;
@@ -201,11 +211,13 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
       preflight(loaded.manifest, control, native, retainedDigest(configFile), retained.controlDigest);
       if (abort.signal.aborted) throw abort.signal.reason;
       if (loaded.manifest.mode === 'lease-handoff-only') {
-        if (!handoff || current().controlDigest !== null || retainedDigest(configFile) !== loaded.manifest.configDigest || publicationHash(readFileSync(manifestFile)) !== manifestDigest || loaded.evidence.some(item => retainedDigest(item.path) !== item.digest)) throw new Error('Handoff-only inputs changed; control state was not created');
+        if (!handoff || current().controlDigest !== loaded.manifest.controlDigest || (preservedControl && retainedDigest(preservedControl.backup) !== preservedControl.digest) || retainedDigest(configFile) !== loaded.manifest.configDigest || publicationHash(readFileSync(manifestFile)) !== manifestDigest || loaded.evidence.some(item => retainedDigest(item.path) !== item.digest)) throw new Error('Handoff-only inputs changed; control state was not created');
         lease.assert(stateFile);
         const performedFile = resolve(directory, 'handoff-performed.json');
-        savePublicationFile(performedFile, { version: 1, stage: 'performed', authority: 'local-owner-assertion', mode: 'lease-handoff-only', scope, controlAbsence: loaded.manifest.controlAbsence, manifestDigest, configDigest: loaded.manifest.configDigest, inventoryDigest: loaded.manifest.inventoryDigest, operator: loaded.manifest.operator, statement: loaded.manifest.statement, evidence: loaded.evidence, actions: loaded.manifest.actions, coverage: loaded.manifest.coverage, handoff, canonicalControlsCreated: false });
-        result = { custodyTransferred: true, canonicalReconciliationApplied: false, authority: 'local-owner-assertion', leaseHandoff: handoff, performedAudit: performedFile, controlAbsence: loaded.manifest.controlAbsence, nativeJobsMutated: false, next: 'Review custody audit, then ordinary publisher startup may conservatively seed state; no prior native completion is asserted.' };
+        performedAuditAttempt = performedFile;
+        savePublicationFile(performedFile, { version: 1, stage: 'performed', authority: 'local-owner-assertion', mode: 'lease-handoff-only', scope, controlDigest: loaded.manifest.controlDigest, controlAbsence: loaded.manifest.controlAbsence, ...(preservedControl ? { preservedControl } : {}), manifestDigest, configDigest: loaded.manifest.configDigest, inventoryDigest: loaded.manifest.inventoryDigest, operator: loaded.manifest.operator, statement: loaded.manifest.statement, evidence: loaded.evidence, actions: loaded.manifest.actions, coverage: loaded.manifest.coverage, handoff, canonicalControlsCreated: false, canonicalControlsChanged: false });
+        performedAuditAttempt = undefined;
+        result = { custodyTransferred: true, canonicalReconciliationApplied: false, authority: 'local-owner-assertion', leaseHandoff: handoff, performedAudit: performedFile, controlDigest: loaded.manifest.controlDigest, controlAbsence: loaded.manifest.controlAbsence, ...(preservedControl ? { preservedControl } : {}), canonicalControlsChanged: false, nativeJobsMutated: false, next: 'Review custody audit, then ordinary publisher startup may load unchanged controls or conservatively seed missing state; no prior native completion is asserted.' };
       } else {
         if (loaded.manifest.controlDigest === null) throw new Error('Reconciliation cannot apply a null control digest');
         const original = readFileSync(controlFile), backup = resolve(directory, 'control.before.json');
@@ -236,7 +248,7 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
     else if (lease) console.error('Control operator SDK retirement is uncertain; local writer evidence retained.');
   }
   if (failure) {
-    if (handoffAttempt || canonicalWriteAttempt || applied) console.error(JSON.stringify({ leaseHandoff: handoff ?? null, ...(handoffAttempt && !handoff ? { handoffAttempt, handoffCompletion: 'not acknowledged; inspect retained lease/quarantine/staging evidence' } : {}), canonicalReconciliationApplied: applied ? true : canonicalWriteAttempt ? 'unconfirmed' : false, ...(canonicalWriteAttempt && !applied ? { canonicalWriteAttempt, canonicalPublication: 'not acknowledged; canonical bytes/audit may have changed; inspect before retry' } : {}), cause: (failure as Error).message }));
+    if (handoffAttempt || canonicalWriteAttempt || applied) console.error(JSON.stringify({ leaseHandoff: handoff ?? null, ...(handoffAttempt && !handoff ? { handoffAttempt, handoffCompletion: 'not acknowledged; inspect retained lease/quarantine/staging evidence' } : {}), ...(performedAuditAttempt ? { performedAuditAttempt, performedAuditPublication: 'not acknowledged; performed audit may be visible; inspect before retry' } : {}), canonicalReconciliationApplied: applied ? true : canonicalWriteAttempt ? 'unconfirmed' : false, ...(canonicalWriteAttempt && !applied ? { canonicalWriteAttempt, canonicalPublication: 'not acknowledged; canonical bytes/audit may have changed; inspect before retry' } : {}), cause: (failure as Error).message }));
     throw failure;
   }
   console.log(JSON.stringify(result, null, 2));
