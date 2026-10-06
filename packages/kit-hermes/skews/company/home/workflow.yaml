@@ -260,10 +260,10 @@ verbs:
         - assign: { field: assignee, value: "{{event.assignee}}" }
         - reset: [failures]
         - record: assigned
-  move:
+  set_machine:
     - by: [manager, owner]
       guard: event.machine != card.machine
-      validate: [{ expr: card.current_run_id == null, message: End the current run before moving its card. }]
+      validate: [{ expr: card.current_run_id == null, message: End the current run before setting its card's machine. }]
       actions: [{ forget_session: '*' }, { assign: { field: machine, value: "{{event.machine}}" } }, { reset: [failures] }, { record: machine_set }]
     - by: [manager, owner]
       actions: [{ record: machine_set }]
