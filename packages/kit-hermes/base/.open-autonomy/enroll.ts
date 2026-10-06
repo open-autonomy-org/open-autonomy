@@ -12,6 +12,9 @@
 //     pane on this machine and kept across runs (`agent declare --open`).
 //   - An agent with `every_machine` (the box maintainer): its instance on each other machine Teams reports online, opened
 //     once by its launch key; that session declares itself its machine's agent of that name.
+//   - An agent with `health_alarms` (the manager): subscribed, by its agent address on this machine, to the machine-health
+//     alarms of this machine and of each other machine Teams reports online (`teams health subscribe --machine`), so a
+//     failure a machine's own records show reaches it as well as that machine's maintainer (supercode sdk/health).
 // Every one of these acts is Teams' or the daemon's to own (the board's decision record, D137 and D138 step 5: the daemon
 // binds sessions to agents from the launch environment; Teams reconciles the machines). This tool goes when they do.
 //
@@ -94,7 +97,7 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
     ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])], real);
   if (!declared.ok) { say(`agent ${name} not declared: ${declared.err}`); failed++; continue; }
   say(declared.out);
-  if (!mailAgent.every_machine) continue;
+  if (!mailAgent.every_machine && !mailAgent.health_alarms) continue;
   const listed = await run([supercodeBin, 'teams', 'machines', 'list', '--json'], real);
   // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
   const here = /sc:([^:\s]+):agent:/.exec(declared.out)?.[1];
@@ -105,8 +108,21 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
   const same = (machine: string) => machine.toLowerCase().replace(/\.local$/, '') === String(here ?? '').toLowerCase().replace(/\.local$/, '');
   const machines = enrolled.filter((m) => m.connection === 'online').map((m) => m.name).filter((m): m is string => !!m && !same(m));
   const offline = enrolled.filter((m) => m.connection !== 'online' && m.name && !same(m.name)).map((m) => m.name);
-  if (offline.length) say(`agent ${name}: not opened on ${offline.length} offline machine(s) (${offline.join(', ')}); each gets its instance at a run that finds it online`);
-  if (!listed.ok) { say(`agent ${name}: no enrolled machines read (${last(listed.err)}); its instance is this machine's only`); failed++; }
+  if (offline.length) say(`agent ${name}: not reached on ${offline.length} offline machine(s) (${offline.join(', ')}); each is reached at a run that finds it online`);
+  if (!listed.ok) { say(`agent ${name}: no enrolled machines read (${last(listed.err)}); this machine's is the only one reached`); failed++; }
+  if (mailAgent.health_alarms) {
+    // The agent's address by this machine's name, which its mailbox resolves to its main session wherever the alarm is
+    // filed: mail filed for another machine waits there until the mail watch carries it here. Idempotent: a subscription
+    // already held is held once.
+    const address = here ? `sc:${here}:agent:${name}` : null;
+    if (!address) { say(`agent ${name}: its declaration named no machine, so it is subscribed to no machine's health alarms`); failed++; }
+    else for (const machine of [null, ...machines]) {
+      const subscribed = await run([supercodeBin, 'teams', 'health', 'subscribe', address, ...(machine ? ['--machine', machine] : [])], real);
+      say(subscribed.ok ? `agent ${name}: subscribed to ${machine ?? 'this machine'}'s health alarms` : `agent ${name}: not subscribed to ${machine ?? 'this machine'}'s health alarms: ${last(subscribed.err)}`);
+      if (!subscribed.ok) failed++;
+    }
+  }
+  if (!mailAgent.every_machine) continue;
   for (const machine of machines) {
     const opened = await run([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', real, '--detach',
       '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(real, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${real}.`], real);
