@@ -177,13 +177,12 @@ export async function startContainer(options: {
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    // the orchestrator and Volter Harness are the image's own (its .open-autonomy, installed for Linux)
-    const kitDir = '/opt/agent/.open-autonomy';
+    // the orchestrator and Volter Harness are the image's own, installed globally there: the container's machine (D215)
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
-      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+      : startContainerProcess({ container, cwd: workspace, command: ['supercode-orchestrator', '--root', home],
         // the executor is the boundary: a gated Codex worker keeps the kit's sandbox setting there (supercode activation.mjs)
-        env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode`, SUPERCODE_CODEX_SANDBOX: 'executor' } });
+        env: { ...env, SUPERCODE_BIN: 'supercode', SUPERCODE_CODEX_SANDBOX: 'executor' } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
     const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;
     console.log(`host: ${runtimeName} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);

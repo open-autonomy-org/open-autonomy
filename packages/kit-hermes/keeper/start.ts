@@ -48,7 +48,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
-import { basename, dirname, relative, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, relative, resolve } from 'node:path';
 
 // The host directory: the project's .open-autonomy, whose start.ts is the entry that imported this keeper.
 if (Bun.main === import.meta.path) { console.error('start: the keeper runs through a project\'s .open-autonomy/start.ts, not on its own. Nothing was started.'); process.exit(1); }
@@ -356,8 +356,23 @@ const kitSelection = JSON.parse(readFileSync(resolve(project, '.open-autonomy/ki
 const nativeSelection = { kind: kitSelection.kit === 'ir' || harness !== 'hermes' ? 'orchestrator' : 'hermes', root: home };
 const onNative = nativeSelection.kind === 'orchestrator';
 const nativeSelectionEnv = JSON.stringify(nativeSelection);
-const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(host, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(host, 'node_modules', '.bin', 'supercode');
+// One supercode per machine (D215): supercode and its orchestrator are the ones installed on the machine, which its
+// machine daemon runs too, found on the service's PATH outside this install. The dispatcher's client and the daemon are
+// then always one release, and no install carries a copy a release can strand (a pinned supercode older than the
+// daemon's claims was refused by it, t_be880329). A machine without them is refused here, saying how to install them;
+// a review or a World names unreleased builds instead (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN).
+const machineBin = (name: string, pkg: string): string => {
+  const own = resolve(host, 'node_modules', '.bin');
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (!dir || resolve(dir) === own) continue;
+    for (const file of process.platform === 'win32' ? [`${name}.cmd`, `${name}.exe`] : [name]) if (existsSync(join(dir, file))) return join(dir, file);
+  }
+  console.error(`start: no ${name} is installed on this machine (none on PATH outside this install); install it: npm install -g ${pkg}. Nothing was started.`);
+  process.exit(1);
+};
+const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || machineBin('supercode', '@volter/supercode');
+// the orchestrator's entry (run with node), not its bin link: the link's target
+const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || realpathSync(machineBin('supercode-orchestrator', '@volter/supercode-orchestrator'));
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
 // so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
 // declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
@@ -515,12 +530,12 @@ process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-// The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
+// The machine's builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
-// The orchestrator that serves this home, and the supercode it drives, are the ones this install runs, named in the home
-// (orchestrator.json) when they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell,
-// the connector's board follower, the board door) runs that orchestrator driving that supercode, never what the machine
-// has installed globally.
+// The orchestrator that serves this home, and the supercode it drives, are named in the home (orchestrator.json) when
+// they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the connector's board
+// follower, the board door) runs that orchestrator driving that supercode, the ones the machine has installed (D215,
+// reversing D152 row 11: an install's own copy was stranded by a daemon a release ahead of it).
 {
   const named = (bin: string) => {
     const entry = existsSync(bin) ? realpathSync(bin) : bin;

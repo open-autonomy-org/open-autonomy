@@ -5,6 +5,7 @@
 set -eu
 export SUPERCODE_HOME="$HOME/.config/supercode"
 export OPEN_AUTONOMY_SUPERCODE_BIN="$VO_SUPERCODE_BIN" SUPERCODE_ORCHESTRATOR_ENTRY="$VO_ORCHESTRATOR_BIN"
+export OPEN_AUTONOMY_HARNESS_SDK="$(dirname "$VO_SUPERCODE_SDK")"
 until bun "$VO_SCENARIO_DIR/ready.ts"; do sleep 2; done
 bun "$VO_AGENT_PROJECT/.open-autonomy/enroll.ts" --project "$VO_AGENT_PROJECT" --home "$VO_AGENT_HOME" || echo "enroll: some acts failed; see above"
 echo "enroll: done"

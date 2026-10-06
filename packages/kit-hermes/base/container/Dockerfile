@@ -13,6 +13,13 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${B
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
+# Volter Harness, its orchestrator and its harness SDK: one copy, the image's own, installed globally as on a bare
+# machine (D215, D217), never a copy in .open-autonomy.
+ARG SUPERCODE_VERSION=0.5.219
+ARG SUPERCODE_ORCHESTRATOR_VERSION=0.5.89
+ARG SUPERCODE_HARNESS_SDK_VERSION=0.3.76
+RUN npm install -g "@volter/supercode@${SUPERCODE_VERSION}" "@volter/supercode-orchestrator@${SUPERCODE_ORCHESTRATOR_VERSION}" \
+    "@volter/supercode-harness-sdk@${SUPERCODE_HARNESS_SDK_VERSION}" && npm cache clean --force && supercode --version
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 ARG RUNTIME_REGISTRY=https://registry.npmjs.org

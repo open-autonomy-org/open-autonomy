@@ -1,6 +1,8 @@
 // The bounded native setup mapping in ADR 0026. Native codecs/jobs and applier ownership remain external.
-import { resolve } from 'node:path';
-import { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
+import type { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
+import { harnessSdkModule, orchestratorModule, supercodeBin } from './machine-supercode.ts';
+// the machine's harness SDK (machine-supercode.ts)
+const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
 import type { Package, Setup } from './agent.ts';
 import { profileHarness } from './agent.ts';
 import { NativeRuntime, type NativeProfile } from './native-runtime.ts';
@@ -121,8 +123,8 @@ function requireEffects(safety: NativeSafety): void { if (safety.blocked) throw 
 async function nativeNodeCall(request: NodeRequest, workspace: string, safety: NativeSafety, prefix: string[] = []): Promise<unknown> {
   requireEffects(safety);
   // The owning exports/cold job CLI require Node. Keep their validation, effects and readback on that runtime.
-  const moduleUrl = import.meta.resolve('@volter/supercode-orchestrator');
-  const sdkUrl = import.meta.resolve('@volter/supercode-harness-sdk');
+  const moduleUrl = orchestratorModule();
+  const sdkUrl = harnessSdkModule();
   const program = `import { readFileSync } from 'node:fs';
 let client;
 try { const owner = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8')); let result;
@@ -138,7 +140,7 @@ catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(erro
 finally { await client?.close(); }`;
   const child = (() => {
     try { return Bun.spawn({ cmd: [...prefix, 'node', '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
-      env: { ...process.env, SUPERCODE_BIN: process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode') },
+      env: { ...process.env, SUPERCODE_BIN: supercodeBin() },
       detached: true, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }); }
     catch (error) { if (request.operation !== 'validate') safety.blocked = 'Native job transport unavailable; no further effects allowed'; throw error; }
   })();
@@ -178,10 +180,10 @@ finally { await client?.close(); }`;
 
 export async function applyNative(options: { setup: Setup; root: string; homeId: string; stateRoot: string; workspace: string; asAgent?: string[] }): Promise<string[]> {
   const safety: NativeSafety = {};
-  const applier = await import('@volter/supercode-orchestrator/apply');
-  const { orchestratorDoor } = await import('@volter/supercode-orchestrator/apply/doors');
-  const command = [...(options.asAgent ?? []), process.env.SUPERCODE_BIN ?? resolve(import.meta.dir, 'node_modules/.bin/supercode'), 'harness', 'serve'];
-  const sc = new SupercodeHarnessClient({ command: command[0], args: command.slice(1) });
+  const applier = await import(orchestratorModule('./apply'));
+  const { orchestratorDoor } = await import(orchestratorModule('./apply/doors'));
+  const command = [...(options.asAgent ?? []), supercodeBin(), 'harness', 'serve'];
+  const sc = new HarnessClient({ command: command[0], args: command.slice(1) });
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);
   type Row = { key: string; action: string; detail?: string; differs?: string[]; patch?: Unit };
   try {

@@ -34,11 +34,13 @@ import { existsSync, readFileSync, watch as watchFiles } from 'node:fs';
 import { spawn as spawnCommand } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
+import type { SupercodeHarnessClient, SessionDescriptor, HarnessRun } from '@volter/supercode-harness-sdk';
+import { harnessSdkModule, orchestratorEntry, supercodeBin } from './machine-supercode.ts';
+// the machine's harness SDK (machine-supercode.ts)
+const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
-import { fileURLToPath } from 'node:url';
 import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
@@ -156,10 +158,10 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   commands.add(work); void work.then(() => commands.delete(work), () => commands.delete(work));
   return work;
 }
-const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
+const supercode = container ? (process.env.SUPERCODE_BIN ?? 'supercode') : supercodeBin();
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : { SUPERCODE_HOME: home }) } as Record<string, string>;
-const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
+const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
 const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
 let quitting = false;
@@ -624,8 +626,8 @@ sc.on('sessionIndexEvent', ev => {
 });
 const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
-  // The orchestrator the start runs (a review World's branch build), else the installed one.
-  : ['node',process.env.SUPERCODE_ORCHESTRATOR_ENTRY||fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
+  // The orchestrator the start runs (a review World's branch build), else the machine's.
+  : ['node',orchestratorEntry(),'workflow','events','--root',home,'--json'];
 const source=activeSource=await retryStartup('source cache',()=>new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:nativeEnvironment,
   sourceContextId:publication.sourceContextId,storeContext:board=>publication.storeContext(board),allowLegacyUpgrade:publication.legacyAdopted,forceSnapshot:publication.requiresSnapshot,
