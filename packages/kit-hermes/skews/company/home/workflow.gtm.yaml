@@ -256,8 +256,7 @@ verbs:
       target: todo
       actions: [{ flag: { name: archived, value: false } }, { record: reopened }]
   comment: [{ by: [implementer, reviewer, auditor, arc, manager, owner], actions: [{ record: commented }] }]
-  # One door sets a card's properties (`supercode workflow set <card> <field> <value>`): each field's rule is the one its
-  # own act had (assign, move, set_every), now one verb.
+  # One door sets a card's properties (`supercode workflow set <card> <field> <value>`), a rule per field.
   set:
     - by: [manager, owner]
       guard: "event.field == 'assignee'"
