@@ -24,10 +24,40 @@ and supplies its native home from the company skew.
 
 The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
 same home through the external orchestrator ([ADR 0009](../../docs/decisions/0009-another-harness-on-the-same-home.md)).
-Current company/IR startup and publication still require Hermes support even when the workers are Claude Code or
-Codex: bare startup without a Hermes launcher fails before the gateway starts. Removing that coupling is an
-OA-owned follow-up in the [architecture's current gaps](../../docs/decisions/0024-ecosystem-target-architecture.md#existing-implementation-and-remaining-scope),
-not completed runtime independence implied by the SDK's universal target or the `ir` kit name.
+The source candidate `create-open-autonomy` 3.25.0 selects the native runtime separately from its workers
+([ADR 0026](../../docs/decisions/0026-selected-native-runtime-adapters.md)): company/IR bare startup uses the
+orchestrator's public setup, inventory and job doors without locating Hermes. Hermes installs keep their explicit
+Hermes adapter. This candidate requires SDK 4.0.1 for the shared publication normalizers; these source versions do
+not claim an npm release or upgrade any running install.
+
+The organization publisher always serves owner controls, independently of narrative enrollment and delivery.
+On orchestrator installs, keeper waits for its own selected daemon's structured readiness before launching
+publishers. Standalone publishers require the selected runtime's owning public door to be available already.
+Readiness does not establish due-job or dispatcher quiescence, fence accepted native effects, or settle earlier
+refused or unknown calls; retained effect phases remain pending.
+It pauses/resumes only owned scheduled-job intent, with fresh native readback. The pinned native and Hermes
+adapters supply no safe board pause/resume contract: board intent stays pending and uncertain dispatcher
+quiescence cannot become observed pause. Active attempts may finish; unrelated pauses remain owned by their
+original actor. Unsupported setup fields and conflicting native overrides refuse before setup effects.
+Hermes pause does not defer queued paid board work. Older 3.24 `paused_tasks` cannot safely be promoted through
+the available public door and remain pending for operator reconciliation. Narrative startup retries failed
+stages without restarting owner controls; bounded requests and abortable committed Git reads allow clean stop.
+Control state version 3 saves preparation, invocation and the current call's positive acknowledgement separately.
+Acknowledged calls retry readback without another mutation; an unknown invoked call stays pending. Older effects
+and reporter-owned jobs retain historical uncertainty. The private publication operator supports explicit offline
+reconciliation with exact scope/state/native snapshots and the owner's concrete prior-domain retirement evidence;
+its audit records that owner assertion rather than claiming a native fence. Other job controls continue independently.
+An explicit handoff-only command can recover a supported retained lease when canonical controls are absent or valid
+with zero pending phases. For present state it preserves exact bytes, owned pauses and audits with a private backup;
+for missing state it creates no sidecar. It never creates ownership or acknowledgement. Later publisher startup
+loads unchanged controls or seeds missing state conservatively; nonempty phases use explicit reconciliation.
+Local leases require an exclusively owned single-executor local home, Bun FFI and valid public kernel identity,
+locking and durability interfaces. Darwin arm64/x86_64 use documented public ABIs on local mounts; Linux supports
+trusted glibc/musl providers and recognized local filesystem types, including ZFS and OverlayFS. Linux machine-id
+is optional; exact kernel boot/PID-namespace/start identity remains mandatory. Different-boot recovery still requires
+the explicit evidence-backed handoff, preserving paused ownership and audits. Network/shared homes, unknown
+filesystems, unsafe providers, cross-namespace handoff and ambiguous mandatory identity refuse. Darwin arm64/APFS
+runtime evidence, public x86_64/Linux contract proof and actual additional OS execution remain separately identified.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project
@@ -41,7 +71,11 @@ create-open-autonomy setup .     # the guided walk: what this project's situatio
 
 `create` writes a new or empty directory; `adopt` writes only missing files in an existing one. `check`
 reports version, local divergence, declaration problems and unresolved merges. `upgrade` uses the recorded
-version as the ancestor of a three-way merge; conflicts remain for the project to resolve. These lineage commands do not start an agent.
+version as the ancestor of a three-way merge; conflicts remain for the project to resolve. Generated `.gitignore`
+private-state rules use that same merge, preserving owner edits and reporting conflicts. These lineage commands do not start an agent.
+Before activation, resolve the rendered host's exact manifest with `bun .open-autonomy/install-runtime.ts --update-lock`
+inside its World and review/commit the adopter-owned lock. A template cannot include its own containing kit archive's
+integrity; a committed unresolved template lock refuses at startup instead of silently becoming unfrozen.
 
 ## Several projects together: a fleet
 
@@ -75,8 +109,8 @@ Shared files connect either layout to the selected backend:
 ```text
 README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
 .open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
-                     publisher.ts, source-events.ts, host valve and credential tools, start.ts,
-                     enroll.ts, vendored SDK, kit.json (kit, skew, version and identity)
+                     publisher.ts, source-events.ts, owner-control.ts, host valve and credential tools, start.ts,
+                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version and identity)
 container/           supplied executor/image tooling; its use depends on the selected runtime
 .github/workflows/   supplied landing workflow where the skew includes it
 ```
@@ -104,6 +138,15 @@ the instance, rather than Volter-specific behavior in OA's core.
 
 Both layouts use the same creator and recorded lineage. Native homes retain execution state; the
 publisher sends OA projections through the SDK. A published view is not a lossless native home backup.
+
+Publication requires explicit source enrollment or retained-state adoption through the generated
+[publication front door](base/.open-autonomy/PUBLICATION.md). Missing enrollment leaves reporter delivery
+pending while native execution and organization owner controls continue. The always-running publisher selects
+control-only mode when enrollment is absent; declared/refused narrative initialization remains visible without
+blocking its independent control queue. Each tenant declares an owner-relative `reporter_config` with its own
+account/API-bound custody, policy and private state; organization enrollment is never copied into it.
+Standalone reporters declare `native_runtime: {kind: orchestrator, root: /absolute/native/home}` (or explicit
+`hermes`); the keeper supplies and checks that selection for its reporters.
 
 ## The guided setup
 
@@ -223,13 +266,22 @@ stops for that session with an explicit reconciliation error rather than skippin
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
 default, with private session/job exceptions and optional chat publication controlled by project policy.
 
-For Hermes, the publisher is also where the owner's one word of control lands. `POST /v1/agent/state {"state":"paused"}` on a
-`steer`-scoped key (`bun .open-autonomy/mint-key.ts --scopes steer --out ~/.config/open-autonomy/steer.env` mints one,
-which spends nothing) records the request on the platform; the reporter reads it back through the valve and applies it
-through Hermes's own schedule: every enabled job paused and remembered, a run in flight left to finish, conversations on
-a channel still answered. It reports `paused` only once no job is enabled and no run is live, so the page shows "pause
-requested · still running" until then. `{"state":"running"}` resumes exactly the jobs it paused; a job the owner
-disabled on their own stays disabled. Stopping the service is the operator's other lever and stays invisible to the page.
+The publisher's independent controller receives the owner's word for either native runtime.
+`POST /v1/agent/state {"state":"paused"}` on a `steer`-scoped key records the request on the platform. The controller
+reads it through the valve and applies supported public job controls, remembering ownership before mutation and
+checking native readback. A run in flight may finish; channel conversations still answer. `{"state":"running"}`
+resumes only owned jobs without an unresolved effect, after the current call is acknowledged and native readback
+matches; independently disabled jobs stay disabled. Board pause/resume remains
+pending because the pinned adapters lack a safe owning door. It reports `paused` only when authoritative native
+reads establish no enabled job, unresolved native execution/effect or unknown dispatcher; otherwise the page retains "pause requested
+· still running" with the cause.
+
+Private `<reporter-state>.control.json` holds canonical pause ownership, separate from narrative receipts and
+checkpoints. Its first seed may copy validated retained pause arrays, recording their source digest and custody
+limitations. Once present, even empty sets remain authoritative. Missing/refused publication enrollment and
+narrative delivery cannot disable this control loop; malformed control state or conflicting account/API/runtime
+scope refuses native effects. Both modes use one verified local lock, released only after queues and source drain.
+The [publication front door](base/.open-autonomy/PUBLICATION.md) documents the private state and operator recovery.
 
 **Rails.** The agent's model calls need no configuration beyond the key. `rails:` in
 `.open-autonomy/config.yaml` opens the two others, off by default: a single-use card minted against the

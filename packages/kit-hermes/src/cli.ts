@@ -49,6 +49,7 @@ try {
     const out = (verb === 'create' ? create : adopt)(target, params, skew);
     console.log(`${verb}: ${params.project} (${params.account}), ${skew} → ${target}: ${out.written.length} file(s) written${out.skipped.length ? `, ${out.skipped.length} kept` : ''}`);
     console.log(`next: have the setup agent follow .open-autonomy/SETUP.md, then run \`create-open-autonomy setup ${dir} --plan\` with the agreed development connections. Complete the guided setup before starting the agent.`);
+    console.log('before activation: in the project\'s World, run `bun .open-autonomy/install-runtime.ts --update-lock`; review/commit the adopter-owned host lock. A scaffold cannot lock the integrity of the kit archive containing itself.');
   } else if (verb === 'setup') {
     const doors = (name: string): Door[] => (flag(name) ?? '').split(',').map((d) => d.trim()).filter(Boolean) as Door[];
     await setup(target, { plan: argv.includes('--plan'), yes: argv.includes('--yes'), with: doors('--with'), without: doors('--without'), secrets: flag('--secrets') ? resolve(flag('--secrets')!) : undefined, bare: argv.includes('--bare'), accountId: flag('--account-id') });

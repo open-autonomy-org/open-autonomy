@@ -28,14 +28,17 @@ model, Codex profiles on the OpenAI twin), funds the account and mints its keys 
 
 ```bash
 export WORLD_STATE_ROOT=/fast/disk/vorg      # outside this checkout
-export WORLD_HERMES_BIN=/path/to/pinned-hermes/.venv/bin   # the applier drives Hermes's door
 export OA_TREE=/path/to/open-autonomy        # at main
 export SUPERCODE_TREE=/path/to/supercode     # at main, after: cargo build -p supercode-cli
 export TWINS_ROOT=/path/to/twin
 bun world/prepare.ts                          # prints the World commands
 ```
 
-Install `.open-autonomy`'s dependencies through a tooling World first; boot downloads nothing.
+Install `.open-autonomy`'s dependencies through a tooling World first; boot downloads nothing. Native setup uses
+the selected Supercode public model and job doors, so this IR scenario requires no Hermes executable or home.
+`HERMES_HOME` remains a compatibility environment name for the selected instance root, not a runtime selector.
+Native owner controls currently support scheduled jobs; a declared dispatcher pause remains pending because the
+shipped public board controls cannot preserve active attempts and unrelated pauses. See OA ADR 0026.
 `VO_MACHINE_B_SUPERCODE_BIN=/path/to/supercode` gives the second machine (`machine-b`) a supercode of its own, as a box
 on another release has, with the Teams package that supercode finds beside itself (its checkout's `sdk/teams`, or its
 install's); unset, it runs `SUPERCODE_TREE`'s. `VO_MACHINE_B_CUSTODIAN=<name>` has a member of that name (invited by the

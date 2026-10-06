@@ -1,6 +1,6 @@
 import { parseModelsBound, parseRailsConfig, parseSpendLimits, type SpendLimit } from './config.js';
 import { CONFORMANCE, diffRoadmaps, sameRoadmap, type RoadmapChange, type RoadmapSource } from '@open-autonomy/sdk/drivers';
-import { LINK_KINDS, ROADMAP_SCHEMA, ROADMAP_STATUSES, tenseOf, type LinkKind, type Roadmap, type RoadmapItem } from '@open-autonomy/sdk/roadmap';
+import { normalizeRoadmap, type Roadmap } from '@open-autonomy/sdk/roadmap';
 import { checkStatement, MAX_STATEMENTS, statementChanges, storedStatement, today, type Statement, type StatementRevision } from '@open-autonomy/sdk/statements';
 import { redactDeep } from './redact.js';
 import { json } from './http.js';
@@ -1781,33 +1781,6 @@ export interface RoadmapRevision {
   changes: RoadmapChange[];
   conformance: string[];
 }
-// A timeline as pushed or pulled, checked to the model's shape: short ids, known statuses and tenses, real
-// timestamps, bounded text. A tense the substrate did not name follows from the status.
-const isoOrNone = (v: unknown): string | undefined => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
-const shortOrNone = (v: unknown, n: number): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : undefined);
-function normalizeRoadmap(r: unknown): Roadmap | undefined {
-  if (!r || typeof r !== 'object' || !Array.isArray((r as Roadmap).items)) return undefined;
-  const items: RoadmapItem[] = [];
-  const seen = new Set<string>();
-  for (const it of (r as Roadmap).items.slice(0, 2000)) {
-    if (!it || typeof it !== 'object' || typeof it.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(it.id) || seen.has(it.id) || typeof it.title !== 'string') return undefined;
-    seen.add(it.id);
-    const status = (ROADMAP_STATUSES as readonly string[]).includes(it.status) ? it.status : 'planned';
-    const optional: Partial<RoadmapItem> = {
-      home: shortOrNone(it.home, 40), phase: shortOrNone(it.phase, 20), priority: shortOrNone(it.priority, 20), release: shortOrNone(it.release, 80),
-      proposed_at: isoOrNone(it.proposed_at), started_at: isoOrNone(it.started_at), done_at: isoOrNone(it.done_at),
-      by: shortOrNone(it.by, 80), commit: typeof it.commit === 'string' && /^[0-9a-f]{7,40}$/.test(it.commit) ? it.commit : undefined,
-      links: Array.isArray(it.links) ? (it.links as unknown[]).filter((l): l is { kind?: unknown; url: string; label?: unknown } => !!l && typeof l === 'object' && typeof (l as { url?: unknown }).url === 'string' && /^https:\/\/[^\s]{1,400}$/.test((l as { url: string }).url)).slice(0, 20).map((l) => ({ kind: (typeof l.kind === 'string' && (LINK_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'other') as LinkKind, url: l.url, ...(typeof l.label === 'string' && l.label.trim() ? { label: l.label.trim().slice(0, 120) } : {}) })) : undefined,
-    };
-    items.push({
-      id: it.id, title: it.title.slice(0, 200), tense: tenseOf({ status, tense: it.tense }), status,
-      ...Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined)),
-      acceptance: Array.isArray(it.acceptance) ? it.acceptance.filter((l): l is string => typeof l === 'string').slice(0, 40).map((l) => l.slice(0, 1000)) : [],
-    });
-  }
-  return { schema: typeof (r as Roadmap).schema === 'string' ? (r as Roadmap).schema : ROADMAP_SCHEMA, items };
-}
-
 // `state` is `<desired>/<observed>`, the observed half empty until the automation has reported.
 export interface Pulse { balance_usd_cents: number; consumed_usd_cents: number; granted_in_usd_cents: number; live: string[]; roadmap_revision: number; state: string }
 export interface SpendBound { window: string; usd_cents?: number; calls?: number; tokens?: number; model?: string; used: { usd_cents: number; calls: number; tokens: number } }
