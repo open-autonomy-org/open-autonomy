@@ -99,7 +99,7 @@ RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force &
 # the host machine's own supercode release (the kit's build passes it), so the image and the host keeper are one release.
 ARG SUPERCODE_VERSION
 RUN test -n "$SUPERCODE_VERSION" || { echo "build with --build-arg SUPERCODE_VERSION=<a supercode release>" >&2; exit 1; }
-RUN npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch "@volter/supercode@${SUPERCODE_VERSION}" \
+RUN npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode "@volter/supercode@${SUPERCODE_VERSION}" \
     && npm cache clean --force && supercode --version \
     && ln -s "$(npm root -g)/@volter/supercode/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs" /usr/local/bin/supercode-orchestrator
 COPY .open-autonomy /opt/agent/.open-autonomy

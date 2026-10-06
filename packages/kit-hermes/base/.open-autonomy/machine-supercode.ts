@@ -8,12 +8,13 @@
 // daemon or serve was refused by it, and an orchestrator released apart from its native refused its board verbs.
 // A review or a World runs unreleased builds instead, named together: OPEN_AUTONOMY_SUPERCODE_BIN, its
 // OPEN_AUTONOMY_ORCHESTRATOR_BIN and its OPEN_AUTONOMY_HARNESS_SDK (a harness SDK package folder, sdk/typescript).
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** The one command that installs, or upgrades, the four at one release. */
-export const INSTALL = 'npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch @volter/supercode';
+export const INSTALL = 'npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode @volter/supercode';
 
 /** What a machine's supercode is made of: its command, and its release's orchestrator entry and harness SDK folder. */
 export type MachineSupercode = { bin: string; orchestratorEntry: string; harnessSdk: string; release: string | null };
@@ -54,6 +55,12 @@ export function machineSupercode(): MachineSupercode {
     return found === pins[name] ? [] : [`${name} is ${found ?? 'missing'} where supercode ${manifest.version} pins ${pins[name]}`];
   });
   if (wrong.length) refuse(`supercode ${manifest.version} at ${pkg} is not one release: ${wrong.join('; ')}`);
+  // The machine daemon too: its connector unit must run this release's Teams package. A unit written before one-release
+  // installs names a separately installed one; supercode's install or upgrade moves it (its postinstall,
+  // lib/release.mjs), and a unit still naming another release is refused here.
+  const teams = join(pkg, 'node_modules', '@volter/supercode-teams', 'bin', 'teams.mjs');
+  const stale = daemonEntries().filter((entry) => resolve(entry) !== teams);
+  if (stale.length) refuse(`the machine daemon runs ${[...new Set(stale)].join(', ')}, not supercode ${manifest.version}'s Teams package (${teams}); reinstall its service: supercode teams connect --install`);
   return {
     bin,
     orchestratorEntry: join(pkg, 'node_modules', '@volter/supercode-orchestrator', 'bin', 'orchestrator.mjs'),
@@ -62,14 +69,24 @@ export function machineSupercode(): MachineSupercode {
   };
 }
 
+/** The Teams entries this machine's installed connector units run (`<teams home>/service`, teams.rs). */
+function daemonEntries(): string[] {
+  const home = process.env.SUPERCODE_HOME || (process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'supercode') : join(homedir(), '.config', 'supercode'));
+  const service = join(process.env.SUPERCODE_TEAMS_HOME || join(home, 'teams'), 'service');
+  let names: string[] = [];
+  try { names = readdirSync(service); } catch { return []; }
+  return names.filter((name) => /^dev\.volter\.supercode-teams-connector-[0-9a-f]{16}\.(plist|service|xml)$/.test(name))
+    .flatMap((name) => readFileSync(join(service, name), 'utf8').match(/[^\s<>"']*[\\/]@volter[\\/]supercode-teams[\\/]bin[\\/]teams\.mjs/g) ?? []);
+}
+
 let checked: MachineSupercode | null = null;
 const machine = () => (checked ??= machineSupercode());
 
-/** The machine's supercode command: the one the keeper handed its children (SUPERCODE_BIN), else the checked one. */
-export const supercodeBin = (): string => process.env.SUPERCODE_BIN || machine().bin;
+/** The machine's supercode command, checked (the keeper's children take the checked one it hands them). */
+export const supercodeBin = (): string => machine().bin;
 
-/** The orchestrator's entry, run with node: the one the keeper handed its children, else the checked one's. */
-export const orchestratorEntry = (): string => process.env.SUPERCODE_ORCHESTRATOR_ENTRY || machine().orchestratorEntry;
+/** The orchestrator's entry, run with node, checked. */
+export const orchestratorEntry = (): string => machine().orchestratorEntry;
 
 /** The URL of the module a package folder exports at `subpath` ('.', './apply', …), as its package.json names it. */
 function exported(dir: string, subpath: string): string {
@@ -82,6 +99,5 @@ function exported(dir: string, subpath: string): string {
 /** A module of the orchestrator package (`.`, `./apply`, `./apply/doors`), for a dynamic import. */
 export const orchestratorModule = (subpath = '.'): string => exported(resolve(dirname(orchestratorEntry()), '..'), subpath);
 
-/** A module of the harness SDK package (`.`, `./core`, …), for a dynamic import: the keeper hands the folder it checked
- *  to its children (OPEN_AUTONOMY_HARNESS_SDK), else the machine's is checked here. */
-export const harnessSdkModule = (subpath = '.'): string => exported(process.env.OPEN_AUTONOMY_HARNESS_SDK || machine().harnessSdk, subpath);
+/** A module of the harness SDK package (`.`, `./core`, …), for a dynamic import, checked. */
+export const harnessSdkModule = (subpath = '.'): string => exported(machine().harnessSdk, subpath);

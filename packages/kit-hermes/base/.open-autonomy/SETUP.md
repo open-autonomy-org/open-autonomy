@@ -746,7 +746,7 @@ its record or issuing replacements. Reconcile the intended host/directory and re
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
 a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
-one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch @volter/supercode`,
+one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode @volter/supercode`,
 which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
 alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
 the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
