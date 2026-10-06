@@ -252,21 +252,27 @@ verbs:
       target: todo
       actions: [{ flag: { name: archived, value: false } }, { record: reopened }]
   comment: [{ by: [implementer, reviewer, auditor, arc, manager, owner], actions: [{ record: commented }] }]
-  assign:
+  # One door sets a card's properties (`supercode workflow set <card> <field> <value>`): each field's rule is the one its
+  # own act had (assign, move, set_every), now one verb.
+  set:
     - by: [manager, owner]
+      guard: "event.field == 'assignee'"
       validate: [{ expr: card.current_run_id == null, message: End the current run before assigning another lane. }]
       actions:
-        - forget_session: { slot: "{{card.status == 'review' ? 'reviewer' : (card.every != null ? 'auditor' : 'worker')}}", assignee: "{{event.assignee}}" }
-        - assign: { field: assignee, value: "{{event.assignee}}" }
+        - forget_session: { slot: "{{card.status == 'review' ? 'reviewer' : (card.every != null ? 'auditor' : 'worker')}}", assignee: "{{event.value}}" }
+        - assign: { field: assignee, value: "{{event.value}}" }
         - reset: [failures]
         - record: assigned
-  set_machine:
     - by: [manager, owner]
-      guard: event.machine != card.machine
+      guard: "event.field == 'machine' && event.value != card.machine"
       validate: [{ expr: card.current_run_id == null, message: End the current run before setting its card's machine. }]
-      actions: [{ forget_session: '*' }, { assign: { field: machine, value: "{{event.machine}}" } }, { reset: [failures] }, { record: machine_set }]
+      actions: [{ forget_session: '*' }, { assign: { field: machine, value: "{{event.value}}" } }, { reset: [failures] }, { record: machine_set }]
     - by: [manager, owner]
+      guard: "event.field == 'machine'"
       actions: [{ record: machine_set }]
+    - by: [manager, owner]
+      guard: "event.field == 'every'"
+      actions: [{ every: "{{event.value}}" }, { record: recurrence_changed }]
   link: [{ by: [manager], actions: [{ relation: { add: "{{event.parent}}" } }, { end_run: { outcome: blocked } }, { record: linked }] }]
   unlink: [{ by: [manager, owner, arc], actions: [{ relation: { remove: "{{event.parent}}", reason: "dependency removed by manager" } }, { record: unlinked }] }]
   specify:
@@ -276,7 +282,6 @@ verbs:
         - { expr: "event.review_only == null || sender.exists(role, role in params.review_only_by)", message: Only the manager declares a review-only card. }
       target: "{{event.review_only == true ? 'review' : (event.review_only == false && card.review_only ? 'todo' : card.status)}}"
       actions: [{ specify: "{{event}}" }, { record: specified }]
-  set_every: [{ by: [manager, owner], actions: [{ every: "{{event.every}}" }, { record: recurrence_changed }] }]
 run:
   initial: active
   recurring_role: auditor
