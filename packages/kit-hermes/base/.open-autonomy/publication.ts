@@ -1,7 +1,7 @@
 // OA-owned source associations and exact pending publications. Native IDs stay opaque;
 // custody is an operator assertion, never an inferred native identity or execution grant.
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, renameSync, rmSync, statfsSync, writeFileSync, constants } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statfsSync, writeFileSync, constants } from 'node:fs';
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type CloudEvent, type UpdateRecord } from './sdk/client.ts';
@@ -40,7 +40,7 @@ export function savePublicationBytes(file: string, bytes: string | Buffer): void
   const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
 }
 export function savePublicationFile(file: string, value: unknown): void { savePublicationBytes(file, JSON.stringify(value) + '\n'); }
-type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; boot: string; namespace: string };
+type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; hostBasis?: 'machine' | 'boot'; boot: string; namespace: string };
 type WriterIdentity = ExecutorIdentity & { start: string };
 export type ControlAbsence = { kind: 'absent-control'; file: string };
 export type LeaseHandoffAcknowledgement = { priorOwnerDigest:string; priorNonce:string; auditFile:string; newOwnerDigest:string; durability:'published-unconfirmed'|'durable' };
@@ -56,17 +56,55 @@ export interface LocalPublicationLease extends PublicationOwnerLease { close(): 
 // The persistent guard is a kernel lock, not another crash-prone directory lease.
 // Only fixed public OS interfaces are used; unknown identity never grants recovery.
 let leaseOS: { libc: any; proc?: any } | undefined;
+function linuxLibcProvider(base: Parameters<typeof dlopen>[1]): any {
+  const arch = process.arch === 'x64' ? 'x86_64' : process.arch === 'arm64' ? 'aarch64' : undefined;
+  if (!arch) throw new Error('Publication lease requires a supported Bun Linux architecture');
+  const conventional = new RegExp(`^/(?:usr/)?lib(?:64)?/(?:${arch}-linux-gnu/)?(?:libc(?:-[0-9.]+)?\\.so(?:\\.6)?|libc\\.musl-${arch}\\.so\\.1|ld-musl-${arch}\\.so\\.1)$`);
+  // Preserve the complete pathname, including spaces; deleted/non-library mappings
+  // cannot choose a provider. No caller library path or PATH lookup is accepted.
+  const mapped = readFileSync('/proc/self/maps', 'utf8').split('\n').flatMap(line => {
+    const match = /^[0-9a-f]+-[0-9a-f]+\s+[rwxps-]{4}\s+[0-9a-f]+\s+[0-9a-f]+:[0-9a-f]+\s+\d+(?:\s+(.*))?$/.exec(line);
+    return match?.[1] && conventional.test(match[1]) ? [match[1]] : [];
+  });
+  const fixed = [`/lib/ld-musl-${arch}.so.1`, `/lib/libc.musl-${arch}.so.1`,
+    `/lib/${arch}-linux-gnu/libc.so.6`, `/usr/lib/${arch}-linux-gnu/libc.so.6`,
+    '/lib64/libc.so.6', '/usr/lib64/libc.so.6', '/lib/libc.so.6', '/usr/lib/libc.so.6'];
+  const seen = new Set<string>(), failures: string[] = [];
+  for (const candidate of new Set([...mapped, ...fixed])) {
+    try {
+      const file = realpathSync(candidate);
+      if (!conventional.test(file)) throw new Error('Library target is not a conventional architecture-compatible system libc');
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const info = lstatSync(file);
+      if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022)) throw new Error('System libc must be a root-owned non-writable regular file');
+      let parent = dirname(file);
+      for (;;) {
+        const directory = lstatSync(parent);
+        if (!directory.isDirectory() || directory.isSymbolicLink() || directory.uid !== 0 || (directory.mode & 0o022)) throw new Error('System libc parent custody is writable or unknown');
+        if (parent === '/') break;
+        parent = dirname(parent);
+      }
+      return dlopen(file, base).symbols;
+    } catch (error) { failures.push(`${candidate}: ${(error as Error).message}`); }
+  }
+  throw new Error(`Public glibc/musl publication lease interfaces unavailable: ${failures.join('; ')}`);
+}
 function systemLease() {
   if (leaseOS) return leaseOS;
   const base = { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 }, fcntl: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 } } as const;
-  if (process.platform === 'darwin') leaseOS = {
-    libc: dlopen('/usr/lib/libSystem.B.dylib', { ...base,
-      fstatfs: { args: [FFIType.i32, FFIType.ptr], returns: FFIType.i32 },
+  if (process.platform === 'darwin') {
+    if (!['arm64', 'x64'].includes(process.arch)) throw new Error('Publication lease requires a supported Bun Darwin architecture');
+    // sys/cdefs.h maps x86_64's 64-bit-inode statfs to this versioned
+    // public symbol; its unversioned symbol has a different legacy layout.
+    const mountSymbol = process.arch === 'x64' ? 'fstatfs$INODE64' : 'fstatfs';
+    const symbols = dlopen('/usr/lib/libSystem.B.dylib', { ...base,
+      [mountSymbol]: { args: [FFIType.i32, FFIType.ptr], returns: FFIType.i32 },
       gethostuuid: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-      sysctlbyname: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i32 } }).symbols,
-    proc: dlopen('/usr/lib/libproc.dylib', { proc_pidinfo: { args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32], returns: FFIType.i32 } }).symbols
-  };
-  else if (process.platform === 'linux') leaseOS = { libc: dlopen('libc.so.6', base).symbols };
+      sysctlbyname: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i32 } }).symbols;
+    leaseOS = { libc: { ...symbols, fstatfs: Reflect.get(symbols, mountSymbol) },
+      proc: dlopen('/usr/lib/libproc.dylib', { proc_pidinfo: { args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32], returns: FFIType.i32 } }).symbols };
+  } else if (process.platform === 'linux') leaseOS = { libc: linuxLibcProvider(base) };
   else throw new Error('Publication lease identity/recovery is unsupported on this operating system');
   return leaseOS;
 }
@@ -82,10 +120,16 @@ function executorIdentity(): ExecutorIdentity {
     if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value)) throw new Error('Kernel boot lease identity malformed');
     return { platform: 'darwin', host: publicationHash(host), boot: value, namespace: 'native' };
   }
-  const machine = readFileSync('/etc/machine-id', 'utf8').trim(), boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+  const boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
   const namespace = readlinkSync('/proc/self/ns/pid');
-  if (!/^[0-9a-f]{32}$/.test(machine) || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(boot) || !/^pid:\[\d+\]$/.test(namespace)) throw new Error('Linux executor lease identity malformed');
-  return { platform: 'linux', host: publicationHash(machine), boot, namespace };
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(boot) || !/^pid:\[\d+\]$/.test(namespace)) throw new Error('Linux executor lease identity malformed');
+  let machine: string | undefined;
+  try { const value = readFileSync('/etc/machine-id', 'utf8').trim(); if (/^[0-9a-f]{32}$/.test(value)) machine = value; } catch { /* Optional diagnostic identity; kernel boot/namespace remain mandatory. */ }
+  return { platform: 'linux', host: machine ? publicationHash(machine) : bootHost(boot), hostBasis: machine ? 'machine' : 'boot', boot, namespace };
+}
+function bootHost(boot: string): string { return publicationHash(`oa-linux-kernel-boot-host-v1:${boot}`); }
+function compatibleHost(a: ExecutorIdentity, b: ExecutorIdentity): boolean {
+  return a.platform === b.platform && (a.host === b.host || (a.platform === 'linux' && (a.hostBasis === 'boot' || b.hostBasis === 'boot')));
 }
 function processStart(pid: number): string | undefined {
   // Kernel metadata can establish a reused PID even when signal permission is absent.
@@ -110,16 +154,20 @@ function processStart(pid: number): string | undefined {
 }
 function localLeaseFilesystem(fd: number): void {
   if (process.platform === 'darwin') {
-    if (process.arch !== 'arm64') throw new Error('Local publication filesystem ABI is supported only on Darwin arm64');
-    // Darwin arm64 statfs is the public64-bit inode ABI: 2168 bytes,
-    // f_flags offset64, f_fstypename offset72. sys/mount.h defines MNT_LOCAL.
+    // Both supported Darwin public 64-bit-inode ABIs have this layout.
+    // sys/mount.h defines f_flags offset64 and MNT_LOCAL; names do not
+    // establish exclusive-home custody and are not an APFS-only gate.
     const bytes = Buffer.alloc(2168);
-    if (systemLease().libc.fstatfs(fd, ptr(bytes)) !== 0 || !(bytes.readUInt32LE(64) & 0x1000) || bytes.subarray(72,88).toString().replace(/\0.*$/, '') !== 'apfs') throw new Error('Publication lease requires a supported local APFS filesystem; shared/network/unknown mounts refuse');
+    if (systemLease().libc.fstatfs(fd, ptr(bytes)) !== 0 || !(bytes.readUInt32LE(64) & 0x1000)) throw new Error('Publication lease requires a readable local filesystem mount; shared/network/unknown mounts refuse');
     return;
   }
   const type = statfsSync(`/proc/self/fd/${fd}`, { bigint: true }).type;
-  // Known local Linux filesystems only; overlay/network/unknown ancestry refuses.
-  if (![0xef53n,0x58465342n,0x9123683en,0x01021994n,0x858458f6n].includes(type)) throw new Error('Publication lease filesystem is unsupported or shared/network; Linux requires a known local filesystem');
+  // Public Linux magic.h / OpenZFS zfs.h types: ext, XFS, Btrfs, tmpfs,
+  // ramfs, ZFS, OverlayFS, F2FS, NILFS2, JFFS2, ReiserFS and Bcachefs.
+  // O_RDWR guard open completes overlay copy-up before the inode checks.
+  // Mount type is not proof of physical/exclusive storage custody; actual
+  // flock/rename/fsync failures still refuse, including lower-dir EXDEV.
+  if (![0xef53n,0x58465342n,0x9123683en,0x01021994n,0x858458f6n,0x2fc12fc1n,0x794c7630n,0xf2f52010n,0x3434n,0x72b6n,0x52654973n,0xca451a4en].includes(type)) throw new Error('Publication lease filesystem is unsupported or shared/network; Linux requires a known local filesystem');
 }
 function leaseRecord(stateFile: string): LeaseRecord {
   const lock = `${stateFile}.lock`, directory = lstatSync(lock), file = resolve(lock, 'owner.json'), stat = lstatSync(file);
@@ -127,6 +175,7 @@ function leaseRecord(stateFile: string): LeaseRecord {
   const owner = privateJSON(file) as LeaseRecord, id = owner?.identity;
   if (owner?.version !== 1 || owner.stateFile !== stateFile || !Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.nonce !== 'string' || !uuid.test(owner.nonce) || !id || !['darwin', 'linux'].includes(id.platform) || typeof id.host !== 'string' || !/^[0-9a-f]{64}$/.test(id.host) || typeof id.boot !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id.boot) || typeof id.namespace !== 'string' || typeof id.start !== 'string' || !(id.platform === 'darwin' ? id.namespace === 'native' && /^[1-9]\d*:\d{1,6}$/.test(id.start) && BigInt(id.start.split(':')[1]) < 1_000_000n : /^pid:\[\d+\]$/.test(id.namespace) && /^[1-9]\d*$/.test(id.start)))
     throw new Error('Legacy/malformed publication lease lacks proven executor/start identity; operator reconciliation required');
+  if ((id.platform === 'darwin' && id.hostBasis !== undefined) || (id.platform === 'linux' && id.hostBasis !== undefined && !['machine','boot'].includes(id.hostBasis)) || (id.hostBasis === 'boot' && id.host !== bootHost(id.boot))) throw new Error('Publication lease host identity basis is malformed');
   if (owner.handoff && (!/^[0-9a-f]{64}$/.test(owner.handoff.priorOwnerDigest) || !uuid.test(owner.handoff.priorNonce) || !/^[0-9a-f]{64}$/.test(owner.handoff.manifestDigest) || !/^[0-9a-f]{64}$/.test(owner.handoff.evidenceDigest) || !nonempty(owner.handoff.operator) || !nonempty(owner.handoff.auditFile))) throw new Error('Publication handoff provenance malformed');
   return owner;
 }
@@ -157,7 +206,7 @@ function assertRecord(stateFile: string, expected: LeaseRecord): void {
     throw new Error('Publication lease process, start identity or nonce changed');
 }
 function deadWriter(owner: LeaseRecord, executor: ExecutorIdentity): void {
-  if (owner.identity.platform !== executor.platform || owner.identity.host !== executor.host) throw new Error('Publication lease belongs to another/unknown host');
+  if (!compatibleHost(owner.identity, executor)) throw new Error('Publication lease belongs to another/unknown host');
   if (owner.identity.boot !== executor.boot) throw new Error('Prior boot is unknown; explicit owner-attested lease handoff is required');
   if (owner.identity.namespace !== executor.namespace) throw new Error('Publication lease belongs to another/unknown process namespace');
   const start = processStart(owner.pid);
@@ -177,7 +226,7 @@ function acquireLocalPublicationLease(path: string, nonce: string, handoff?: Att
         if (!uuid.test(handoff.nonce) || ![handoff.ownerDigest,handoff.manifestDigest,handoff.evidenceDigest,handoff.configDigest].every(v => typeof v === 'string' && d.test(v)) || !nonempty(handoff.operator) || prior.nonce !== handoff.nonce || retainedDigest(resolve(lock,'owner.json')) !== handoff.ownerDigest || retainedDigest(handoff.configFile) !== handoff.configDigest) throw new Error('Attested lease handoff nonce, scope or exact input digest changed');
         if(handoff.controlDigest===null)assertControlAbsent(stateFile,handoff.controlAbsence!);
         else if(handoff.controlAbsence!==undefined||!d.test(handoff.controlDigest)||retainedDigest(`${stateFile}.control.json`)!==handoff.controlDigest)throw new Error('Attested control digest or absence token conflicts');
-        if (prior.identity.platform !== executor.platform || prior.identity.host !== executor.host || prior.identity.namespace !== executor.namespace) throw new Error('Attested lease handoff host/namespace is foreign or unknown');
+        if (!compatibleHost(prior.identity, executor) || prior.identity.namespace !== executor.namespace) throw new Error('Attested lease handoff host/namespace is foreign or unknown');
         if (prior.identity.boot === executor.boot && processStart(prior.pid) === prior.identity.start) throw new Error('Publication writer is still live; owner attestation cannot hand it off');
         const auditFile = localJSON(handoff.configFile, relative(dirname(handoff.configFile),resolve(handoff.auditFile)));
         const privateRoot = resolve(dirname(handoff.configFile),'publication-private','control-recovery');
