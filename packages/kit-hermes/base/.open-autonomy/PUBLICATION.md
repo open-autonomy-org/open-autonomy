@@ -106,19 +106,28 @@ the prior writer is dead; it does not prove an orphaned source reader retired. R
 through the owning lifecycle. Local ownership does not fence another host;
 never run a copied active state as another publisher. Stop the owner through its ordinary lifecycle door.
 New local leases record the host, boot, process namespace and process start identity. A successor on the same
-host, boot and process namespace can recover a positively dead recorded owner under the kernel guard; a recycled
-PID cannot supply the prior identity. A different boot remains unknown and requires the explicit attested handoff
+boot and process namespace can recover a positively dead recorded owner under the kernel guard, with the required
+identity-basis comparison; a recycled PID cannot supply the prior identity. Linux machine-id is optional: a valid
+read preserves machine-basis identity, otherwise a deterministic boot-basis diagnostic hash is used. Both
+machine-basis records must match host hashes; boot-basis recovery uses exact kernel boot/namespace identity
+within the exclusively owned local home. Neither basis establishes physical-host uniqueness. A different boot remains unknown and requires the explicit attested handoff
 below. Machine IDs alone cannot distinguish a physical host from a clone.
 Running, foreign, legacy or malformed ownership remains a refusal requiring explicit operator reconciliation.
 `release-lock --config FILE --nonce NONCE --same-executor-stopped` uses the same recorded-identity proof;
 the flag alone cannot establish an unknown executor or release a live owner. Age is not ownership evidence.
 Keep the private guard, staged lock and retired lock evidence ignored alongside the canonical control sidecar.
-Local leases require one executor's local home, Bun FFI, readable public process identity and a supported local
-filesystem established through OS metadata. Darwin ARM64/APFS is exercised and supported; other Darwin architectures
-currently refuse. Linux requires supported glibc, machine-ID,
-boot/process-namespace and process metadata interfaces; unexercised filesystems, musl and missing identity are
-unsupported. Shared/network homes and VM clones sharing a home are unsupported. Choose a supported host rather
-than treating uncertainty or signal-permission failure as absence.
+Local leases require one executor's exclusively owned local home, Bun FFI, mandatory public boot/process identity
+and successful kernel locking/file durability interfaces. Darwin arm64 and x86_64 use their documented public
+symbol/ABI pairs and require a local mount; APFS is exercised, not required by name. Linux supports trusted public
+glibc or musl providers, including conventional fixed providers for statically linked Bun; unreadable symbols or
+unsafe library/parent ownership refuses. Machine-id is optional, kernel boot/PID-namespace/start metadata is not.
+Recognized Linux local types are ext, XFS, Btrfs, tmpfs, ramfs, ZFS, OverlayFS, F2FS, NILFS2, JFFS2, ReiserFS
+and bcachefs. OverlayFS read/write copy-up is included before guard inode comparison; real EXDEV or durability
+failure refuses without a fallback copy. Filesystem type is not physical-local or exclusive-home proof.
+Network/distributed/clustered filesystems, unknown FUSE types, shared homes and VM clones sharing one home remain
+unsupported. Darwin arm64/APFS runtime evidence is distinguished from public x86_64/Linux source proofs and
+labelled components; actual OS execution is recorded separately, never inferred from source compatibility.
+Signal-permission failure alone supplies no dead-writer proof.
 
 Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
 and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
@@ -225,7 +234,9 @@ If a supported old lease remains from another boot, additionally include
 `"leaseHandoff":{"nonce":"<old nonce>","ownerDigest":"<exact owner.json SHA-256>","stateFile":"/absolute/reporter-state.json"}`.
 The same full-domain retirement and exclusive-local-home evidence is required. Under the kernel guard this preserves
 the exact old record in quarantine and publishes a new verified writer identity; a same-boot live owner still refuses.
-Malformed/foreign/unsupported records and homes have no override; cross-namespace handoff is unsupported. The operator
+Explicit owner-evidenced Linux handoff can bridge machine-id availability/basis changes or two boot-derived identities
+across boots; it retains the same full-domain evidence and exact record/config/control packet. Foreign machine-basis
+identities, malformed/unsupported records or homes have no override; cross-namespace handoff is unsupported. The operator
 rechecks all inputs after handoff.
 If custody transfers but later reconciliation fails, output distinguishes that handoff from unapplied control changes;
 retain its private audit and rerun status against the actual retained state. Never delete a lock to make it pass.
@@ -234,7 +245,15 @@ If the retained supported lease exists but its canonical control sidecar was nev
 `controlAbsence:{"kind":"absent-control","file":"/absolute/reporter-state.json.control.json"}` token and a null
 control digest. This is missing state, not fresh ownership or historical acknowledgement. To recover only custody,
 use the same full scope/snapshot/retirement-evidence manifest with `mode:"lease-handoff-only"`, `controlDigest:null`,
-that exact `controlAbsence` token, `selections:[]` and mandatory `leaseHandoff`:
+that exact `controlAbsence` token, `selections:[]` and mandatory `leaseHandoff`.
+
+The same custody-only mode also supports VALID PRESENT canonical controls with zero pending phases. Use the exact
+`controlDigest` SHA from status, omit `controlAbsence`, and keep `selections:[]` plus mandatory `leaseHandoff`.
+Retained paused ownership and existing audits stay unchanged: no pending phases does not mean no owned jobs.
+The shared scoped parser must accept the retained state; legacy declarations of reconciliation history, malformed
+state or nonempty phases refuse custody-only handoff. Nonempty phases use `reconcile-controls` instead.
+The operator retains an exact private control backup before transfer and binds its digest/path in the performed audit.
+No constructor, migration, synthetic phase or control write occurs. Both variants use this command:
 
 ```sh
 bun .open-autonomy/publication-operator.ts handoff-controls \
@@ -242,11 +261,14 @@ bun .open-autonomy/publication-operator.ts handoff-controls \
   --manifest .open-autonomy/publication-private/control-recovery/reviewed-handoff.json
 ```
 
-The guard must prove actual ENOENT for the named sidecar; a dangling symlink or unreadable path refuses. The operator
-rechecks absence and every scope/evidence/snapshot input after handoff, writes a durable private performed-handoff
-audit, and reports custody-only completion. It creates no control sidecar, ownership, native acknowledgement or
-narrative state. A later ordinary publisher seeds conservatively under its existing retained-intent rules. If a
-post-handoff check fails, custody may already have changed; the diagnostic distinguishes that from unapplied controls.
+For the absence variant, the guard must prove actual ENOENT for the named sidecar; a dangling symlink or unreadable
+path refuses. For present controls it verifies the exact retained digest. The operator
+rechecks the selected absence or exact present digest/zero-phase proof and every scope/evidence/snapshot input after
+handoff, writes a durable private performed-handoff audit, and reports custody-only completion. It creates no control sidecar, ownership, native acknowledgement or
+narrative state; present control bytes, pause memberships and audits remain byte-identical. A later ordinary publisher
+loads unchanged existing controls or seeds missing state conservatively under its existing retained-intent rules.
+If a post-handoff check or performed-audit write fails, custody may already have changed; the diagnostic distinguishes
+that from unapplied controls and labels any performed-audit publication without a durable acknowledgment as unconfirmed.
 
 ## Continued observation and delivery
 

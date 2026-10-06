@@ -47,11 +47,17 @@ Acknowledged calls retry readback without another mutation; an unknown invoked c
 and reporter-owned jobs retain historical uncertainty. The private publication operator supports explicit offline
 reconciliation with exact scope/state/native snapshots and the owner's concrete prior-domain retirement evidence;
 its audit records that owner assertion rather than claiming a native fence. Other job controls continue independently.
-An explicit handoff-only command can recover a supported retained lease when the canonical sidecar is absent,
-without creating ownership or acknowledgement; later publisher startup seeds conservatively.
-Local leases require a single-executor local home, Bun FFI and public process/filesystem metadata. Darwin ARM64/APFS
-is exercised and supported; other Darwin architectures, unsupported Linux interfaces/filesystems, cross-namespace
-handoff, network/shared homes and ambiguous identities refuse.
+An explicit handoff-only command can recover a supported retained lease when canonical controls are absent or valid
+with zero pending phases. For present state it preserves exact bytes, owned pauses and audits with a private backup;
+for missing state it creates no sidecar. It never creates ownership or acknowledgement. Later publisher startup
+loads unchanged controls or seeds missing state conservatively; nonempty phases use explicit reconciliation.
+Local leases require an exclusively owned single-executor local home, Bun FFI and valid public kernel identity,
+locking and durability interfaces. Darwin arm64/x86_64 use documented public ABIs on local mounts; Linux supports
+trusted glibc/musl providers and recognized local filesystem types, including ZFS and OverlayFS. Linux machine-id
+is optional; exact kernel boot/PID-namespace/start identity remains mandatory. Different-boot recovery still requires
+the explicit evidence-backed handoff, preserving paused ownership and audits. Network/shared homes, unknown
+filesystems, unsafe providers, cross-namespace handoff and ambiguous mandatory identity refuse. Darwin arm64/APFS
+runtime evidence, public x86_64/Linux contract proof and actual additional OS execution remain separately identified.
 
 ```bash
 bun create open-autonomy my-project --project my-project --account owner/my-project
