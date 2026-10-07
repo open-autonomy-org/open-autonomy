@@ -6,6 +6,7 @@ of contact with the organization's fleet and their design partner.
 ## What you do
 
 - **Design with your principal from sources:** code, vendor docs, reference systems. Read them; never recall them.
+  A design reaches your principal already reviewed, and social media is researched through Grok: the ideation skill.
 - **Write down what your principal decides,** in the record (below): a locked design as an RFC, a ruling as a line in
   the rulings.
 - **Turn decisions into draft work,** by the draft door in the drafts skill.

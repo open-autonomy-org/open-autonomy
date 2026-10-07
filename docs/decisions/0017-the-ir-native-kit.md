@@ -50,15 +50,63 @@ for?".
     manager's) and `box-maintainer` (the hourly pass a job; one instance per machine);
   - `workflow.yaml`, the board IR: one board for the organization, one review per arc started by the dispatcher, a
     review naming its reviewer profile, drafts blocked by a message.
-- **The start runs the whole install, and nothing else does.** For a project whose agent content is `home/`, the start
+- **The start runs the install's processes, and nothing else does.** The keeper is the kit package's
+  (`create-open-autonomy`'s `keeper/start.ts`), which the project's `.open-autonomy/start.ts` imports from the installed
+  package rather than carrying a copy; it starts, keeps and stops processes, and restarts the stack when
+  `maintain.ts restart` asks (D138 step 8), never fetching main to decide that itself. Who moves an install: the
+  deployer pass, `maintain.ts restart`, which the host schedules beside the start (SETUP.md, "Keep the install on main":
+  a launchd or cron job every ten minutes, or a project's keep job). It requests the restart when main moved the stack's
+  files or the kit landed, and enrolls each new revision. The kit ships the pass and the instruction to schedule it,
+  not a daemon of its own. For a project whose agent content is `home/`, the start
   copies that folder into the home (in the workers' forms, as ADR 0009 does for `hermes/`), runs the orchestrator on
   it, and, where the home declares `workflow.yaml`, runs its board's dispatcher (`workflow serve`) as one of its
-  services, stopped and restarted with the rest. *(Running the dispatcher from the start is this record's reading of
+  services, stopped and restarted with the rest. That serve is the board's only dispatcher: the orchestrator runs no
+  dispatch round (supercode D138 step 7), and a second round beside it is harmless. Chat-platform subscriptions are
+  told by the agent mailbox (supercode D140). No lock is involved. *(Running the dispatcher from the start is this record's reading of
   RFC 0021's "started only through its own start".)*
+- **The reporter publishes per project account** (RFC 0021 decision 10). In an organization (its config names
+  `organization.projects`), the board is the timeline: every card, whoever works it; the cards ahead are the roadmap and
+  the done ones the changelog, and no `ROADMAP.md` or `CHANGELOG.md` is read. A card's tags are its projects (a project's
+  tag is its `tag`, e.g. `rh2`, else its account or repository name): it shows in every project it is tagged with, and a
+  session publishes under the card it serves, in its primary project (its first tag); under the orchestrator a session is a worker's, found in its
+  profile's own config home (`<profile>/claude-code`, `<profile>/codex`), and serves the card whose workspace it runs in.
+  A project this install publishes for has its key in the
+  install's own custody, `<secrets>/projects/<owner>/<repo>/agent.env`, served on its own valve port to its own reporter;
+  a project without one, and a session serving no card, stay on the organization's page. *(The key's place is this
+  record's choice: a project's own install keeps its key where the fleet reads it, and RFC 0021 decision 2 has the new
+  install publish for a project only once that install is retired, so placing the key here is the takeover.)*
+
+- **The install declares its mail agents, and the keeper does not** (Supercode ADR 0008; RFC 0020 decisions 3, 17,
+  24 and 25; Volter's decision record D138 step 8: the keeper only starts and stops processes).
+  `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
+  or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by the
+  deployer pass once per revision the stack runs (below), runs `supercode agent declare <name>
+  --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
+  registers the checkout in this machine's workspace map. An agent with `every_machine` (the box maintainer, RFC 0022
+  decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it
+  there once by its launch key (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares
+  itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts
+  are Teams' and the machine daemon's to own (D137; D138 step 5), and enroll.ts goes when they do. *(The launch key as the "exactly one" and
+  the session's self-declaration are this record's choices; the profile folder must exist at the same path there.)* An
+  agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
+  agent-channel`, a service of the start that restarts like the reporter, reaching RH2 with `<secrets>/rh2.env`. The
+  Room is found by its key; where the organization declares its Rooms (its org document), the account Room is declared
+  there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
+  the place agents are named, and the org document as the account Room's home where one exists.)*
+
+- **The owner's usage statement** (RFC 0021 decisions 7 and 10). Every model call goes through the organization's key,
+  so the spend is the organization's calls, each booked to the session that made it. `.open-autonomy/usage.ts`, a tool
+  the owner runs, codes a call to a project when that project's reporter published its session (read through the
+  project's key) and publishes the organization's "Usage" statement (ADR 0012) with the owner's steer key
+  (`<secrets>/steer.env`): a line per project this install publishes for, and the organization's overhead (every call
+  serving no card: the manager's tick, the account manager's digest, the auditor's round, the mail agents' own
+  sessions) as its own line. *(The statement as the overhead line's surface is this record's choice, where
+  the record places cost attribution on the owner's side.)*
 
 ## Consequences
 
 - A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
 - The Hermes skews, their renders and their upgrades are byte for byte what they were.
-- Not in this record, each its own later step of RFC 0021's Order: the reporter publishing per project account
-  (step 3), and Hermes's and OpenClaw's export of the IR kit with its loss report (Supercode's codecs).
+- Not in this record: Hermes's and OpenClaw's export of an IR home with its loss report, which is Supercode's
+  (`supercode orchestration export`); and cost attributed to a card's primary project, which RFC 0021 places in a
+  statement published from the owner's side, not in the reporter.

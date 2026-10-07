@@ -21,10 +21,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -49,10 +48,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -69,6 +67,44 @@
           "skills": [
             "manager"
           ]
+        }
+      }
+    },
+    "gtm-manager": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "orchestrator": {
+          "config": {
+            "agent.max_turns": 400,
+            "approvals.mode": "off"
+          }
+        }
+      },
+      "jobs": {
+        "clock": {
+          "schedule": {
+            "kind": "interval",
+            "minutes": 30
+          },
+          "script": "clock.sh",
+          "no_agent": true,
+          "prompt": "GTM MANAGER CLOCK: the clock.sh script wakes the GTM manager's own session with its tick; no model turn."
         }
       }
     },
@@ -91,10 +127,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -130,10 +165,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -155,10 +189,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -184,10 +217,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "claude-code"
           }
@@ -213,10 +245,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -238,10 +269,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -275,10 +305,9 @@
         "unattended": "project"
       },
       "extensions": {
-        "hermes": {
+        "orchestrator": {
           "config": {
             "agent.max_turns": 400,
-            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -293,6 +322,101 @@
           "prompt": "HOURLY PASS. Read this machine's disk, what runs and the ledger against its machine file; act only as your profile says.",
           "model": "project",
           "workdir": "{{workspace}}"
+        }
+      }
+    },
+    "gtm-auditor": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "orchestrator": {
+          "config": {
+            "agent.max_turns": 400,
+            "approvals.mode": "off"
+          }
+        }
+      }
+    },
+    "walker": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "orchestrator": {
+          "config": {
+            "agent.max_turns": 400,
+            "approvals.mode": "off"
+          }
+        }
+      }
+    },
+    "strategy": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "orchestrator": {
+          "config": {
+            "agent.max_turns": 400,
+            "approvals.mode": "off"
+          }
+        }
+      },
+      "jobs": {
+        "report": {
+          "schedule": {
+            "kind": "cron",
+            "expr": "30 0 * * *"
+          },
+          "prompt": "STRATEGIC REPORT. The day has ended: run the strategy skill exactly, asking nobody.",
+          "model": "project",
+          "workdir": "{{workspace}}",
+          "skills": [
+            "strategy"
+          ]
         }
       }
     }

@@ -13,6 +13,15 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${B
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
+# Volter Harness: one install, the image's own, as on a bare machine (D215, D217), never a copy in .open-autonomy.
+# @volter/supercode brings its orchestrator, harness SDK and Teams package at its one release (supercode RELEASING.md);
+# its orchestrator's daemon entry is the image's supercode-orchestrator, which container.ts runs. SUPERCODE_VERSION is
+# the host machine's own supercode release (the kit's build passes it), so the image and the host keeper are one release.
+ARG SUPERCODE_VERSION
+RUN test -n "$SUPERCODE_VERSION" || { echo "build with --build-arg SUPERCODE_VERSION=<a supercode release>" >&2; exit 1; }
+RUN npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode "@volter/supercode@${SUPERCODE_VERSION}" \
+    && npm cache clean --force && supercode --version \
+    && ln -s "$(npm root -g)/@volter/supercode/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs" /usr/local/bin/supercode-orchestrator
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 ARG RUNTIME_REGISTRY=https://registry.npmjs.org

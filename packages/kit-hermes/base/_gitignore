@@ -60,7 +60,19 @@ hermes/.clean_shutdown
 hermes/.skills_prompt_snapshot.json
 
 # The reporter's own cursor (which sessions it has published how far).
-.open-autonomy/reporter-state.json
+.open-autonomy/reporter-state.json*
+# Canonical owner-control state can use a configured reporter basename.
+.open-autonomy/*.control.json
+.open-autonomy/*.lock.guard
+.open-autonomy/*.lock.pending-*/
+.open-autonomy/*.lock.retired-*/
+# Source observations, custody/adoption evidence, byte-preserved backups and owner locks are private.
+.open-autonomy/publication-private/
+.open-autonomy/*adoption*.json
+.open-autonomy/*.legacy.json
+.open-autonomy/*.custody-*.json
+.open-autonomy/*.lock/
+.open-autonomy/*.tmp
 .open-autonomy/bun.lock
 
 # PM runtime notes, cursors and preserved planning worktree (when the home is in the repo)

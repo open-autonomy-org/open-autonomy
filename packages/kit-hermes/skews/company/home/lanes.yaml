@@ -1,0 +1,13 @@
+# The company skew's lanes (docs/decisions/0020 in Open Autonomy). An install runs one lane, named by `lane:` in its
+# .open-autonomy/config.yaml (the first, product, when it names none). The start renders and applies only the lane's
+# profiles and serves its board file as the home's workflow.yaml. One lane per install: a home has one board and one
+# manager address, so an organization that runs both lanes runs two installs, and they meet in the calendar.
+product:
+  # Builds the products: the board of arcs, one review per arc, from recordings.
+  workflow: workflow.yaml
+  profiles: [account-manager, manager, coder, coder-codex, coder-claude, reviewer, auditor, box-maintainer, strategy]
+gtm:
+  # Moves people through the funnel: post cards reviewed on the media World's changeset and walked blind, the daily
+  # rounds before the meeting, the calendar's slots filled. Its manager's account manager is the product install's.
+  workflow: workflow.gtm.yaml
+  profiles: [gtm-manager, coder, coder-codex, coder-claude, reviewer, gtm-auditor, walker]
