@@ -28,8 +28,8 @@
     "access": "public"
   },
   "scripts": {
-    "typecheck": "bunx tsc --noEmit",
-    "check": "bunx tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@open-autonomy/sdk": "4.0.1"
