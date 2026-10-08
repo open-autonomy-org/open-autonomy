@@ -32,7 +32,14 @@ From an Evidence Desk checkout (`bun install` once):
 5. For each observation period, collect the acts recorded under `records/` and the roster's history:
    `bun src/cli.ts collect ~/__PROJECT__-soc2 seam-records --repo <this checkout> --period <start>..<end> --by <your roster id>`
    and the same with `roster-history`.
-6. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
+6. Acts whose seam names a routine (`policy-approval`, `onboarding`) are done in the workspace's linked Runhuman
+   workspace instead: Evidence Desk files each as a run of that routine, sponsored by the person who owes it, who answers
+   it signed in with their Volter identity (a roster member records it once: they sign in at the platform's
+   `/team/volter` and an owner puts the link it shows on their Team entry). `bun src/cli.ts collect ~/__PROJECT__-soc2
+   rh2-tasks --by <your roster id>` takes the answers back as evidence. Acts the owner owes are held, never sent on their
+   own: Evidence Desk lists them on the open Release pull request once its release is requested, so the owner meets them
+   in the one contact a release already is, and does them there.
+7. `bun src/cli.ts gaps ~/__PROJECT__-soc2` lists what is left; what remains after the steps above is what no
    repository can hold.
 
 Keep `.open-autonomy/config.yaml`'s `vendor_accounts` complete: every account whose administrators could act outside
