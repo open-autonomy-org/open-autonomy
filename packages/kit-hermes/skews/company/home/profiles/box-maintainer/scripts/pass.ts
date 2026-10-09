@@ -62,7 +62,7 @@ async function finish(ok: boolean, why: string, receipt?: { message_id: string; 
     const prior = readStatus();
     if (!prior || prior.updated_at_ms <= startedAt) {
       const incident: Incident = prior?.incident?.kind === kind ? prior.incident : {
-        key: `box-maintainer-pass-incident-${new Date().toISOString().slice(0, 13)}-${kind}`,
+        key: `box-maintainer-pass-incident-${startedAt}-${kind}`,
         kind, text: `Fleet pass ${kind}. Native main handoff is unconfirmed; this is not a confirmed session outage. ${why}`,
         notified: false,
       };
