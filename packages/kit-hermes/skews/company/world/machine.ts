@@ -40,7 +40,7 @@ if (teams) {
   // The owner's bootstrap credential, which the server wrote under the first machine's home.
   const owner = JSON.parse(readFileSync(`${firstHome}/.config/supercode/teams/server/bootstrap-credential.json`, 'utf8')).token as string;
   run([bin, 'teams', 'login', teams, '--team', 'Volter', '--as', 'volter', '--token-stdin'], owner);
-  run([bin, 'context', 'use', 'volter']);
+  run([bin, 'teams', 'context', 'use', 'volter']);
   // A second machine may be enrolled by a custodian of its own (VO_MACHINE_CUSTODIAN, a member the owner invites), as a
   // box someone else runs: the install then reaches it only through the grants that custodian's team gives it.
   const custodian = second ? process.env.VO_MACHINE_CUSTODIAN : undefined;
@@ -50,7 +50,7 @@ if (teams) {
     run([bin, 'teams', 'members', 'invite', custodian, '--out', invitation, '--context', 'volter']);
     run([bin, 'teams', 'login', teams, '--team', 'Volter', '--as', custodian, '--invite-stdin'], JSON.parse(readFileSync(invitation, 'utf8')).enrollment_code);
     rmSync(invitation, { force: true });
-    run([bin, 'context', 'use', custodian]);
+    run([bin, 'teams', 'context', 'use', custodian]);
   }
   // The workplace a Room's DM reads a session from (the rehearsal RH2), trusted as the team admin trusts one: registered
   // with its exact issuer as a session integration and installed (supercode docs/guides/teams-apps.md).
