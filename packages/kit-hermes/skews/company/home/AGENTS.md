@@ -13,7 +13,7 @@ ever assigned to it; every job has its own profile under `profiles/` (docs/decis
 | `coder` (`coder-codex`, `coder-claude`) | works one card's arc; the children differ only in harness |
 | `reviewer` | the arc's one independent review, started by the board |
 | `auditor` | finds process drift every hour, and never fixes it |
-| `box-maintainer` | keeps one machine healthy; one instance per machine |
+| `box-maintainer` | one resource manager across all machines; disk, hangs and working-session outages |
 | `strategy` | the daily strategic report over both lanes; asks nobody |
 | `gtm-manager` | the go-to-market lane's manager: the calendar, the rounds, posts held for their slot |
 | `gtm-auditor` | the go-to-market lane's rounds: the funnel audit, the report, research and collection |
