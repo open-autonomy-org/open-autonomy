@@ -96,8 +96,23 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
       // The folder is this install's own layout, so it is registered from here on every run (idempotent): a home that
       // moves takes its root along at the next enrollment, and none is ever left to be added by hand.
       const harness = (mailAgent.program ?? 'claude') === 'codex' ? 'codex' : 'claude-code';
-      const rooted = await run([supercodeBin, 'teams', 'connect', '--cwd', real, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], real);
-      const rule = rooted.ok ? JSON.parse(rooted.out || '{}').data?.rule?.id : undefined;
+      // A foreground connector can already own this exact root and rule. Read those native records first: adding a
+      // root is an installed-connector door; an existing root needs no service installation or restart.
+      const roots = await run([supercodeBin, 'teams', 'roots', '--json'], real);
+      let rootId: string | undefined;
+      try { rootId = JSON.parse(roots.out).data?.items?.find((r: { path?: string; harnesses?: string[] }) => r.path === real && r.harnesses?.includes(harness))?.id; } catch { /* Use the owning add-root door. */ }
+      let rule: string | undefined;
+      if (rootId) {
+        const rules = await run([supercodeBin, 'teams', 'sync', 'list', '--json'], real);
+        try {
+          rule = JSON.parse(rules.out).items?.find((r: { id?: string; state?: string; selector?: { root_id?: string; harnesses?: string[] }; backfill?: { mode?: string } }) =>
+            r.state === 'active' && r.selector?.root_id === rootId && r.selector?.harnesses?.length === 1
+            && r.selector.harnesses[0] === harness && r.backfill?.mode === 'all')?.id;
+        } catch { /* An unreadable rule is not capture. */ }
+      }
+      const rooted = rule ? { ok: true, out: '', err: '' }
+        : await run([supercodeBin, 'teams', 'connect', '--cwd', real, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], real);
+      if (!rule && rooted.ok) { try { rule = JSON.parse(rooted.out).data?.rule?.id; } catch { /* No native rule receipt. */ } }
       // No rule is no capture (a machine context adds none; its custodian does): a failure, said and counted, so a run
       // never reads as enrolled while the agent's sessions stay off Teams.
       say(rule ? `agent ${name}: ${real} is a Teams sync root of this machine (${harness}; ${rule})`
