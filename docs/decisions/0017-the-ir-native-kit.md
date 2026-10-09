@@ -47,7 +47,7 @@ for?".
   - named profiles, each its job: `manager` (its tick a job), `account-manager` (its digest a job; its owner instance a
     named profile until agents are their own layer), a `coder` parent with `coder-codex` and `coder-claude` children
     differing only in harness, `reviewer`, `auditor` (a job `every: 1h`, read-only, a model family apart from the
-    manager's) and `box-maintainer` (the hourly pass a job; one instance per machine);
+    manager's) and `box-maintainer` (the hourly pass a job; one main session across enrolled machines);
   - `workflow.yaml`, the board IR: one board for the organization, one review per arc started by the dispatcher, a
     review naming its reviewer profile, drafts blocked by a message.
 - **The start runs the install's processes, and nothing else does.** The keeper is the kit package's

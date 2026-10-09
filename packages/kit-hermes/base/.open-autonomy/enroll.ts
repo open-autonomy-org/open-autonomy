@@ -100,15 +100,36 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
       // root is an installed-connector door; an existing root needs no service installation or restart.
       const roots = await run([supercodeBin, 'teams', 'roots', '--json'], real);
       let rootId: string | undefined;
-      try { rootId = JSON.parse(roots.out).data?.items?.find((r: { path?: string; harnesses?: string[] }) => r.path === real && r.harnesses?.includes(harness))?.id; } catch { /* Use the owning add-root door. */ }
       let rule: string | undefined;
-      if (rootId) {
-        const rules = await run([supercodeBin, 'teams', 'sync', 'list', '--json'], real);
-        try {
-          rule = JSON.parse(rules.out).items?.find((r: { id?: string; state?: string; selector?: { root_id?: string; harnesses?: string[] }; backfill?: { mode?: string } }) =>
-            r.state === 'active' && r.selector?.root_id === rootId && r.selector?.harnesses?.length === 1
-            && r.selector.harnesses[0] === harness && r.backfill?.mode === 'all')?.id;
-        } catch { /* An unreadable rule is not capture. */ }
+      try {
+        if (!roots.ok) throw new Error(`roots door failed: ${last(roots.err)}`);
+        const items = JSON.parse(roots.out).data?.items;
+        if (!Array.isArray(items) || !items.every((r) => r && typeof r.id === 'string' && r.id
+          && typeof r.path === 'string' && r.path && Array.isArray(r.harnesses)
+          && r.harnesses.every((h: unknown) => typeof h === 'string')))
+          throw new Error('unsupported roots response; expected data.items with native root records');
+        rootId = items.find((r) => r.path === real && r.harnesses.includes(harness))?.id;
+        if (rootId) {
+          const rules = await run([supercodeBin, 'teams', 'sync', 'list', '--json'], real);
+          if (!rules.ok) throw new Error(`sync list door failed: ${last(rules.err)}`);
+          const items = JSON.parse(rules.out).items;
+          if (!Array.isArray(items) || !items.every((r) => r && typeof r.id === 'string' && r.id
+            && typeof r.state === 'string' && r.selector && typeof r.selector === 'object'
+            && !Array.isArray(r.selector) && (r.backfill === undefined || (r.backfill
+              && typeof r.backfill === 'object' && !Array.isArray(r.backfill) && typeof r.backfill.mode === 'string'))
+            && (r.selector.root_id === undefined || typeof r.selector.root_id === 'string')
+            && (r.selector.harnesses === undefined || (Array.isArray(r.selector.harnesses)
+              && r.selector.harnesses.every((h: unknown) => typeof h === 'string')))))
+            throw new Error('unsupported sync response; expected items with native sync records');
+          rule = items.find((r) => r.state === 'active' && r.selector.root_id === rootId
+            && r.selector.harnesses?.length === 1 && r.selector.harnesses[0] === harness
+            && r.backfill?.mode === 'all')?.id;
+        }
+      } catch (error) {
+        // Unknown is not absent. Do not mutate roots, add a sync rule or open an agent on an unread capture state.
+        say(`agent ${name}: sync capture is unknown (${String(error)}); no add-root or declaration attempted`);
+        failed++;
+        continue;
       }
       const rooted = rule ? { ok: true, out: '', err: '' }
         : await run([supercodeBin, 'teams', 'connect', '--cwd', real, '--add-root', '--harness', harness, '--backfill', 'all', '--json'], real);

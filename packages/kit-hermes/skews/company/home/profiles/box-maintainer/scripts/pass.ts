@@ -13,7 +13,7 @@ const service = Bun.spawn([process.env.SUPERCODE_BIN || 'supercode', 'teams', 'r
   stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
 });
 let done = false;
-async function finish(ok: boolean, why: string, receipt?: { message_id: string; delivery?: { how?: string } }) {
+async function finish(ok: boolean, why: string, receipt?: { message_id: string; delivered_to_bus?: boolean; delivery?: { how?: string } }) {
   if (done) return;
   done = true;
   clearTimeout(bound);
@@ -23,9 +23,12 @@ async function finish(ok: boolean, why: string, receipt?: { message_id: string; 
   await Promise.race([service.exited, Bun.sleep(500)]);
   if (service.exitCode === null) service.kill('SIGKILL');
   const elapsedMs = Math.round(performance.now() - started);
-  if (ok) console.log(JSON.stringify({ filed: true, message_id: receipt!.message_id,
-    delivery: receipt?.delivery?.how, elapsed_ms: elapsedMs }));
-  else console.error(`fleet pass unconfirmed (${elapsedMs} ms): ${why}`);
+  const filed = receipt?.delivered_to_bus === true && typeof receipt.message_id === 'string'
+    && receipt.message_id.startsWith('m-');
+  if (filed) console.log(JSON.stringify({ filed: true, handoff_confirmed: ok, message_id: receipt!.message_id,
+    delivery: receipt?.delivery?.how, elapsed_ms: elapsedMs,
+    ...(ok ? {} : { recovery: 'not confirmed; native mailbox retains the pass' }) }));
+  if (!ok) console.error(`fleet pass ${filed ? 'recovery not confirmed' : 'unconfirmed'} (${elapsedMs} ms): ${why}`);
   process.exit(ok ? 0 : 1);
 }
 const bound = setTimeout(() => void finish(false,
@@ -39,8 +42,14 @@ void (async () => {
     ]);
     let receipt;
     try { receipt = JSON.parse(out); } catch { /* No native receipt is a failure, including plain error output. */ }
-    const ok = code === 0 && receipt?.delivered_to_bus === true && typeof receipt?.message_id === 'string'
+    const filed = code === 0 && receipt?.delivered_to_bus === true && typeof receipt?.message_id === 'string'
       && receipt.message_id.startsWith('m-');
-    await finish(ok, receipt?.refusal?.message || err.trim().slice(-1000) || 'native mailbox did not confirm filing', receipt);
+    // The agent door's v1 receipt uses native delivery text. Filing can succeed while its main is stopped or
+    // queued: only an explicit handoff reads as a successful scheduler fire. Unsupported text stays unconfirmed.
+    const how = typeof receipt?.delivery?.how === 'string' ? receipt.delivery.how : '';
+    const handedOver = /^sent to (?!no one woken\b)/i.test(how)
+      && !/not delivered to:|not resumed|stopped|waits? (?:unread |in )|filed on its machine/i.test(how);
+    await finish(filed && handedOver, receipt?.refusal?.message || err.trim().slice(-1000)
+      || (filed ? how || 'native receipt confirms filing but no handoff' : 'native mailbox did not confirm filing'), receipt);
   } catch (error) { await finish(false, String(error)); }
 })();

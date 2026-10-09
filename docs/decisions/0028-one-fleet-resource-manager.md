@@ -21,11 +21,17 @@ or agent per fire. Filing requires a native message receipt and uses an hourly i
 eight-second budget to stay below the script limit; this is not a delivery deadline. The existing machine daemon
 owns the request and its native wait, so caller timeout cannot kill a stopped session's delivery. An unconfirmed
 fire exits nonzero, and a retry uses the same hourly key. No failed or pending delivery is called a successful wake.
+The receipt distinguishes durable filing from a confirmed handoff: a stopped main, a queued pass or an unsupported
+delivery response exits nonzero even when its message id is retained. Recovery remains the native mailbox's to own;
+this caller starts no replacement agent and adds no restart loop. A receipt proves handoff, not the model's response.
 
 The main session holds the shared memory and reads the existing machine records. Each machine keeps its probe,
 thresholds, volumes and service definitions. Its alarms target the one retained maintainer address. The existing
 maintenance pass retries health subscriptions at an unchanged revision, reading native main-session addresses
 without opening another session. Fleet inspection and actions use published Supercode machine doors and the existing delegation; there is no credential fallback.
+Enrollment reads native roots and sync rules before adding capture. A failed, unread or unsupported response leaves
+capture unknown: it exits nonzero and attempts neither add-root nor that agent's declaration. Only a supported
+response that shows the exact root or active rule absent permits the existing add-root door.
 
 Disk clearing comes first. Once immediate reclamation is done, the maintainer inspects resource readings and exact
 stalled operations, compares board assignments with native session/child activity, and reports confirmed outages
@@ -39,6 +45,8 @@ Unique work and credentials are preserved. Worlds retain their own lifecycle and
 
 Disk loss that exceeds observed writes or pagefile reclamation remains unexplained when the available door
 cannot see the writer. Native counters retain their visibility limits; a large-file scan is incomplete evidence.
+Windows readings include committed bytes against the commit limit and remaining commit headroom; physical free
+memory alone cannot establish that headroom. Missing counters remain unknown.
 A cache that its consumer re-downloads is active and must not be repeatedly reclaimed. Host capacity readings
 must use native host counters without starting a guest. Virtual-disk allocation and guest restart loops are
 traced to their owning VM and session start commands before a repeated stop. These observations do not
