@@ -31,10 +31,6 @@ const handlers = [
     { id: `card-reviewer${i ? '-native' : ''}`, on: { userTextIncludes: card.REVIEWER_PROMPT, anyTextIncludes: title }, respond: bash(card.reviewer(process.env.VO_AGENT_HOME!), 'Record the review') },
     { id: `card-coder${i ? '-native' : ''}`, on: { anyTextIncludes: title }, respond: bash(card.coder(process.env.VO_AGENT_HOME!), 'Work the card') },
   ]),
-  // RFC 0022 row 6: the box maintainer's instance the install opened on another enrolled machine declares itself that
-  // machine's box-maintainer, as its first message asks.
-  { id: 'maintainer-declares', on: { userTextIncludes: "First declare yourself this machine's box-maintainer" }, respond: bash(
-    `"\${SUPERCODE_BIN:-supercode}" agent declare box-maintainer --main "sc:machine-b:claude-code:$CLAUDE_CODE_SESSION_ID" --folder "$PWD"`, 'Declare this machine\'s box maintainer') },
   // Row 9: a plain DM reaches main as a root; main answers it in place.
   { id: 'dm-answer', on: { userTextIncludes: 'state of the billing design' }, respond: bash(`supercode message reply ${idOf('state of the billing design')} "Billing: the design is locked in the record; the draft for its first slice is with the manager."`, 'Answer the DM') },
   // Rows 1 and 7: a design dialogue is moved to a thread at once.
@@ -72,9 +68,10 @@ const handlers = [
   // Row 5: a thread session asks the manager; the manager's reply lands back in that exchange.
   { id: 'thread-asks-manager', on: { userTextIncludes: 'ask the manager when export can start' }, respond: bash(`supercode message send sc:${MACHINE}:agent:manager --subject "export start" "When can the export work start?"`, 'Ask the manager') },
   { id: 'manager-answers-thread', on: { userTextIncludes: 'When can the export work start?' }, respond: bash(`supercode message reply ${idOf('When can the export work start?')} "After the billing slice lands."`, 'Answer the thread') },
-  // RFC 0022 rows 4-5: the machine-health pack's alarm wakes the maintainer with the reading; it reads and decides, and
-  // kills a runaway by its exact PID, only the World's own marked one.
-  { id: 'health-alarm', on: { userTextIncludes: '[Machine health]' }, respond: bash(`body=$(supercode message inbox --json --all | jq -r '[.[].envelope | select(.body | startswith("[Machine health]"))] | sort_by(.created_at_ms) | last.body'); said="Read: the reading stands (top -l 1: $(top -l 1 -n 0 | grep PhysMem | cut -c1-60)); nothing here is mine to kill"; pid=$(printf '%s\\n' "$body" | grep 'process.cpu' | grep -o 'pid [0-9]*' | head -1 | cut -d' ' -f2); if [ -n "$pid" ]; then cmd=$(ps -p "$pid" -o command= 2>/dev/null); case "$cmd" in *vorg-runaway*) kill "$pid" && said="Killed pid $pid ($cmd) by its exact PID: the World's runaway";; *) said="$said; pid $pid ($cmd) is not this machine's runaway: left it";; esac; fi; supercode message reply ${idOf('[Machine health]')} "$said."`, 'Read and decide') },
+  // Native alarm and pass receipts establish routing only. The labelled stub sends no routine reply and
+  // exercises no deletion, process intervention or resource judgment.
+  { id: 'health-alarm', on: { userTextIncludes: '[Machine health]' }, respond: { text: 'World stub: health alarm received; no outgoing report.' } },
+  { id: 'fleet-pass', on: { userTextIncludes: 'FLEET PASS.' }, respond: { text: 'World stub: fleet pass received; no outgoing report.' } },
   // Row 18: in a thread, the owner asks about a decided matter from another topic; the thread answers from the record (the
   // agent's threads, which every session of it reads: decision 23) without asking main.
   { id: 'thread-from-record', on: { userTextIncludes: 'what did we decide on billing' }, respond: bash(`said=$(supercode message threads --agent account-manager --json | jq -r '[.[] | select((.root // "") | tostring | contains("billing"))] | first.id') && answer=$(supercode message thread "$said" --json | jq -r '[.[].envelope | select((.body // "") | startswith("Billing:"))] | last.body') && supercode message reply ${idOf('what did we decide on billing')} "From the billing thread ($said): $answer"`, 'Answer from the record') },

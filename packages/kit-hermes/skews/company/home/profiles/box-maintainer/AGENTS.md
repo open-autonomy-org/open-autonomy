@@ -89,7 +89,9 @@ is primary. You also notice unnecessary hangs and report working-session outages
   Keep disk and memory ahead of them while they work; never ask a session to clean up, slow down or wait.
 - **Instruments.** Use the machine-health pack and that platform's native volume/memory/writer counters.
   On macOS, `df`, not `du`, and kernel pressure/pageout counters, not RSS or swap used alone; on Windows,
-  retain C: free space, pagefile changes and native per-process write observations with their visibility limits.
+  retain C: free space, committed bytes against the commit limit and remaining commit headroom, pagefile
+  allocation/changes, and native per-process write observations with their visibility limits. Free physical memory
+  alone does not establish commit headroom; record an unavailable commit counter as unknown.
   CPU comes from consecutive samples. Keep each machine's observations and lessons in its existing machine record;
   one main session reads all of them before acting on the same kind of candidate again.
 
