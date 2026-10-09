@@ -1,13 +1,15 @@
 import { readFileSync, mkdirSync, writeFileSync, renameSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
 
 // The scheduled caller waits below ten seconds. Delivery belongs to the native machine daemon: disconnecting this
 // caller leaves its request running under the native door's deadline, including a cold session's startup. A timeout
 // is unconfirmed, never a wake receipt; the hourly key makes a retry the same mail.
 const started = performance.now();
 const startedAt = Date.now();
-const statusPath = join(process.env.SUPERCODE_HOME || join(homedir(), ".config", "supercode"), "maintenance", "box-maintainer-pass.json");
+const installHome = resolve(process.env.HERMES_HOME || resolve(import.meta.dir, "../../.."));
+const statusPath = join(installHome, "maintenance", "box-maintainer-pass.json");
+const installId = createHash("sha256").update(installHome).digest("hex").slice(0, 20);
 type Incident = { key: string; kind: string; text: string; notified: boolean };
 type Status = { updated_at_ms: number; incident: Incident | null };
 function readStatus(): Status | null {
@@ -68,7 +70,13 @@ async function finish(ok: boolean, why: string, receipt?: { message_id: string; 
       };
       if (!incident.notified) {
         let kept = false;
-        try { saveStatus(incident); kept = true; } catch { /* A native idempotency key still protects this fire. */ }
+        try { saveStatus(incident); kept = true; } catch {
+          // With no writable local record there is no durable episode boundary. Use one native key for this install
+          // and failure kind across fires, rather than mailing a new notice every hour. A later episode cannot be
+          // distinguished while persistence stays unavailable; report that limit instead of inventing a boundary.
+          incident.key = `box-maintainer-pass-incident-${installId}-${kind}-state-unavailable`;
+          console.error('pass incident state unavailable; native notice key remains stable, episode boundary unknown');
+        }
         let notice: ReturnType<typeof Bun.spawn> | undefined;
         let confirmed = false;
         try {

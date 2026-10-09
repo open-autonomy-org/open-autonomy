@@ -84,3 +84,5 @@ new privilege is introduced. “Only the SDK is real”: the platform's publicat
 settled-cost invariants are unchanged; the scheduler starts no inference. “No automated tests” and “Nothing here
 develops against a real API”: manual isolated product-door evidence is required, and no test harness is added.
 The board's independent review judges this proposal and implementation together; this status confers no approval.
+
+The scheduled caller keeps its helper incident under the install home, not the native daemon's home. If that record cannot be written, it uses one native idempotency key per install and failure kind across fires. This prevents repeated notices but cannot distinguish separate episodes until persistence is available again; the caller reports that limit. Native mailbox filing remains the authority for notice receipts.
