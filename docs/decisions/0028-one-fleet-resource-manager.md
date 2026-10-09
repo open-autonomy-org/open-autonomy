@@ -9,7 +9,9 @@ His line `956a9f3e` at 09:08:56Z on 2026-10-09 adds resource extremes, unnecessa
 expected to work. Lines `7dedf21f`, `17c74abd` and `b6d1ccf2` precede that choice; their ids were supplied on
 the card by the manager from account-manager message `m-69c02481` and owner-rulings commit `8bad20df`.
 The owner also keeps disk clearing primary (2026-10-07), immediate and silent (`u-3210e9e0`); incidents go only
-to the manager. The latest owner line on the card calls the dispatcher a mechanical “jira bot”.
+to the manager. Owner line `0d902b48`, 09:12:39Z, calls the dispatcher a “jira bot” that coordinates actions “in a dumb way”
+(manager correction from `m-b78bc6f8`, owner-rulings `4bffcf8b`). The duty split below is this proposal
+and the manager's interpretation, not additional quoted words from the owner.
 
 This proposes replacing the topology of company RFC 0022 decisions 7–8. Its threshold probes remain per machine.
 The existing `health_alarms` enrollment option already subscribes one host agent address across the fleet.
