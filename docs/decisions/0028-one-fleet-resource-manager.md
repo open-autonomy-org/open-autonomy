@@ -36,7 +36,9 @@ Unique work and credentials are preserved. Worlds retain their own lifecycle and
 
 Disk loss that exceeds observed writes or pagefile reclamation remains unexplained when the available door
 cannot see the writer. Native counters retain their visibility limits; a large-file scan is incomplete evidence.
-A cache that its consumer re-downloads is active and must not be repeatedly reclaimed. These observations do not
+A cache that its consumer re-downloads is active and must not be repeatedly reclaimed. Host capacity readings
+must use native host counters without starting a guest. Virtual-disk allocation and guest restart loops are
+traced to their owning VM and session start commands before a repeated stop. These observations do not
 authorize a credential or privilege fallback.
 
 ## Alternatives and consequences

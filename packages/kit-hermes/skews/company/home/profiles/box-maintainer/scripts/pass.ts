@@ -23,7 +23,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const)
 service.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'harness.v1.capabilities', params: {} }) + '\n');
 service.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'harness.v1.sessions.message', params: {
   locator: { harness: 'agent', session_id: 'box-maintainer' },
-  text: 'FLEET PASS. Read df on every enrolled machine and reclaim immediately where needed. Then inspect resources, hangs and stopped working sessions through native doors. Read your current persona; send no routine report or acknowledgement.',
+  text: 'FLEET PASS. Read each enrolled host\'s native volume capacity without starting a guest, and reclaim immediately where needed. Then inspect resources, hangs and stopped working sessions through native doors. Read your current persona; send no routine report or acknowledgement.',
   from_name: 'box-maintainer-pass', subject: 'hourly fleet pass',
   idempotency_key: `box-maintainer-pass-${new Date().toISOString().slice(0, 13)}`,
 } }) + '\n');
