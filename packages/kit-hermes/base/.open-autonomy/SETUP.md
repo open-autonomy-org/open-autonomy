@@ -729,7 +729,9 @@ The start only starts and stops the install's processes. Two things it does not 
   release landed, the pass asks the start for a drained restart, whatever the board holds.
 - **Enrolling the install on this machine.** Once the stack runs a revision not yet enrolled, the pass runs
   `.open-autonomy/enroll.ts`: each mail agent of `agent.json` declared with its main session opened, an `every_machine`
-  agent's instance on each other online machine, and the checkout in the machine's workspace map.
+  agent's instance on each other online machine, and the checkout in the machine's workspace map. Later passes run
+  `enroll.ts --health-only`: native declarations supply the host addresses subscribed on every online machine,
+  including machines that became reachable after the revision was enrolled. This opens no additional sessions.
 
 After the first start has rendered the home, run the pass once by hand, then schedule it every ten minutes beside the
 start: a launchd job with `StartInterval` 600 (or a cron line) running that command in the checkout, with the start's

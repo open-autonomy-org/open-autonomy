@@ -18,7 +18,8 @@
   ],
   "overrides": {
     "undici": "^7.29.0",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2"
   },
   "scripts": {
     "check": "bun scripts/check.ts"

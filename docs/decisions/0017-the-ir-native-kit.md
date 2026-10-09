@@ -82,7 +82,7 @@ for?".
   or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by the
   deployer pass once per revision the stack runs (below), runs `supercode agent declare <name>
   --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
-  registers the checkout in this machine's workspace map. An agent with `every_machine` (the box maintainer, RFC 0022
+  registers the checkout in this machine's workspace map. An agent explicitly requesting `every_machine` (RFC 0022
   decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it
   there once by its launch key (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares
   itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts
