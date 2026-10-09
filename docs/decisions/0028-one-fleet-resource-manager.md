@@ -17,14 +17,15 @@ confirmed outages without creating a second reminder timer.
 
 The company skew declares one standing `box-maintainer` main session on the install host, with `health_alarms`
 enabled and no `every_machine` launch. Its hourly job files a fleet pass to that same mailbox; it starts no model
-or agent per fire. Filing requires a native message receipt, uses an hourly idempotency key, and fails within
-ten seconds if the mailbox does not answer. No failed delivery is called a successful wake.
+or agent per fire. Filing requires a native message receipt and uses an hourly idempotency key. The caller has an
+eight-second budget to stay below the script limit; this is not a delivery deadline. The existing machine daemon
+owns the request and its native wait, so caller timeout cannot kill a stopped session's delivery. An unconfirmed
+fire exits nonzero, and a retry uses the same hourly key. No failed or pending delivery is called a successful wake.
 
 The main session holds the shared memory and reads the existing machine records. Each machine keeps its probe,
 thresholds, volumes and service definitions. Its alarms target the one retained maintainer address. The existing
 maintenance pass retries health subscriptions at an unchanged revision, reading native main-session addresses
-without opening another session. Fleet inspection
-and actions use published Supercode machine doors and the existing delegation; there is no credential fallback.
+without opening another session. Fleet inspection and actions use published Supercode machine doors and the existing delegation; there is no credential fallback.
 
 Disk clearing comes first. Once immediate reclamation is done, the maintainer inspects resource readings and exact
 stalled operations, compares board assignments with native session/child activity, and reports confirmed outages
