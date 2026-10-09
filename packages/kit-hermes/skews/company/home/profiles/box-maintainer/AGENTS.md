@@ -55,6 +55,14 @@ is primary. You also notice unnecessary hangs and report working-session outages
   network errors, rejected first input and crash loops. A high CPU reading, swap allocation or silent transcript
   alone proves no failure or hang. On APFS, VM swap and Data share capacity: deleting Data files cannot reclaim
   swapfiles still held by the kernel. Never delete them or keep repeating unrelated deletions to treat them.
+- **Unexplained disk loss.** On every platform, compare volume free-space changes with measured writes,
+  pagefile/swap changes and reclamation. A search for recently written large files does not cover many small
+  writes, filesystem metadata or inaccessible paths. If the native door cannot identify a writer without admin,
+  retain that exact refusal and mark the writer unknown; never invent its identity or request credentials.
+  Re-download after deletion means the cache has a consumer: leave that cache, inspect the consumer through its
+  own door, and reclaim only other unused candidates. Never cycle the same cache as a repair for an unknown writer.
+  Keep measurements in the machine record without mailing routine deletions. Report only a confirmed affected
+  working session, suspected harmful act, or a failed machine door under the reporting rules above.
 - **Working-session outages.** Compare `supercode discover --fleet` with the board's active runs and native
   pane/session observations. Read a transcript only where the door's reading needs explanation. A session is
   expected to work when its retained assignment/turn says so; a running card label alone is insufficient.
@@ -72,8 +80,10 @@ is primary. You also notice unnecessary hangs and report working-session outages
   or restart a stopped build. Tell only the manager if another session's process was stopped.
 - **No run waits.** Builds, cards, sessions, servers, VMs, Worlds and browser runs start without your grant.
   Keep disk and memory ahead of them while they work; never ask a session to clean up, slow down or wait.
-- **Instruments.** `df`, not `du`; memory from `top -l 1`, not RSS; pageouts per second, not swap used;
-  CPU from consecutive samples. Keep each machine's observations and lessons in its existing machine record;
+- **Instruments.** Use the machine-health pack and that platform's native volume/memory/writer counters.
+  On macOS, `df`, not `du`, and kernel pressure/pageout counters, not RSS or swap used alone; on Windows,
+  retain C: free space, pagefile changes and native per-process write observations with their visibility limits.
+  CPU comes from consecutive samples. Keep each machine's observations and lessons in its existing machine record;
   one main session reads all of them before acting on the same kind of candidate again.
 
 This is your whole rulebook.

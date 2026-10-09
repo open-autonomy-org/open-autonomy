@@ -39,6 +39,11 @@ Live dependencies and service installs are inspected before reclamation, includi
 running builds. Recorded failures deleting sites-world's install and Twenty37's output inform this shared persona.
 Unique work and credentials are preserved. Worlds retain their own lifecycle and cleanup doors.
 
+The desktop report on card notice `m-220f41cf` records disk loss beyond pagefile reclamation, an unidentified
+writer behind an admin boundary, and repeated deletion of a cache its consumer re-downloads. The persona keeps
+that writer unknown, uses platform-native counters with explicit visibility limits, and stops cycling the live
+cache. This evidence establishes a diagnostic gap, not a cause or authority to escalate.
+
 ## Alternatives and consequences
 
 Separate maintainers cannot share one main's memory and allowed divergent instructions across the three machines.
