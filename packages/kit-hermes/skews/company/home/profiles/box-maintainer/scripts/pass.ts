@@ -75,6 +75,8 @@ async function finish(ok: boolean, why: string, receipt?: { message_id: string; 
           // and failure kind across fires, rather than mailing a new notice every hour. A later episode cannot be
           // distinguished while persistence stays unavailable; report that limit instead of inventing a boundary.
           incident.key = `box-maintainer-pass-incident-${installId}-${kind}-state-unavailable`;
+          // The native key also requires the same payload. The varying pass id/reason stays in the failed job output.
+          incident.text = `Fleet pass ${kind}. Native main handoff is unconfirmed; this is not a confirmed session outage. Incident state cannot be written, so repeated fires share this notice and separate episode boundaries are unknown until persistence returns. The failed job retains its current native delivery reason.`;
           console.error('pass incident state unavailable; native notice key remains stable, episode boundary unknown');
         }
         let notice: ReturnType<typeof Bun.spawn> | undefined;
