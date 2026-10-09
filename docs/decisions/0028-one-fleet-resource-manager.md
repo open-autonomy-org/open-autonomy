@@ -21,7 +21,9 @@ or agent per fire. Filing requires a native message receipt, uses an hourly idem
 ten seconds if the mailbox does not answer. No failed delivery is called a successful wake.
 
 The main session holds the shared memory and reads the existing machine records. Each machine keeps its probe,
-thresholds, volumes and service definitions. Its alarms target the one retained maintainer address. Fleet inspection
+thresholds, volumes and service definitions. Its alarms target the one retained maintainer address. The existing
+maintenance pass retries health subscriptions at an unchanged revision, reading native main-session addresses
+without opening another session. Fleet inspection
 and actions use published Supercode machine doors and the existing delegation; there is no credential fallback.
 
 Disk clearing comes first. Once immediate reclamation is done, the maintainer inspects resource readings and exact
