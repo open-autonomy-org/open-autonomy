@@ -1,27 +1,50 @@
+import { readFileSync, mkdirSync, writeFileSync, renameSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+
 // The scheduled caller waits below ten seconds. Delivery belongs to the native machine daemon: disconnecting this
 // caller leaves its request running under the native door's deadline, including a cold session's startup. A timeout
 // is unconfirmed, never a wake receipt; the hourly key makes a retry the same mail.
 const started = performance.now();
+const startedAt = Date.now();
+const statusPath = join(process.env.SUPERCODE_HOME || join(homedir(), ".config", "supercode"), "maintenance", "box-maintainer-pass.json");
+type Incident = { key: string; kind: string; text: string; notified: boolean };
+type Status = { updated_at_ms: number; incident: Incident | null };
+function readStatus(): Status | null {
+  try {
+    const value = JSON.parse(readFileSync(statusPath, "utf8"));
+    return typeof value.updated_at_ms === "number" && (value.incident === null ||
+      typeof value.incident?.key === "string" && typeof value.incident?.kind === "string"
+      && typeof value.incident?.text === "string" && typeof value.incident?.notified === "boolean") ? value : null;
+  } catch { return null; }
+}
+function saveStatus(incident: Incident | null) {
+  if ((readStatus()?.updated_at_ms ?? 0) > startedAt) return;
+  mkdirSync(dirname(statusPath), { recursive: true });
+  const temporary = `${statusPath}.${process.pid}.tmp`;
+  writeFileSync(temporary, JSON.stringify({ updated_at_ms: startedAt, incident }));
+  renameSync(temporary, statusPath);
+}
+
 const params = {
   locator: { harness: 'agent', session_id: 'box-maintainer' },
   text: 'FLEET PASS. Read each enrolled host\'s native volume capacity without starting a guest, and reclaim immediately where needed. Then inspect resources, hangs and stopped working sessions through native doors. Read your current persona; send no routine report or acknowledgement.',
   from_name: 'box-maintainer-pass', subject: 'hourly fleet pass',
   idempotency_key: `box-maintainer-pass-${new Date().toISOString().slice(0, 13)}`,
 };
-const service = Bun.spawn([process.env.SUPERCODE_BIN || 'supercode', 'teams', 'rpc',
-  'harness.v1.sessions.message', JSON.stringify(params)], {
-  stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
-});
+let service: ReturnType<typeof Bun.spawn> | undefined;
 let done = false;
-async function finish(ok: boolean, why: string, receipt?: { message_id: string; delivered_to_bus?: boolean; delivery?: { how?: string } }) {
+async function finish(ok: boolean, why: string, receipt?: { message_id: string; delivered_to_bus?: boolean; delivery?: { how?: string; handoff_confirmed?: boolean } }) {
   if (done) return;
   done = true;
   clearTimeout(bound);
   // Stop only the CLI this fire started. The daemon owns harness serve and the outstanding delivery, so it survives
   // a caller timeout; this script never launches or kills a private serve process.
-  if (service.exitCode === null) service.kill('SIGTERM');
-  await Promise.race([service.exited, Bun.sleep(500)]);
-  if (service.exitCode === null) service.kill('SIGKILL');
+  if (service) {
+    if (service.exitCode === null) service.kill('SIGTERM');
+    await Promise.race([service.exited, Bun.sleep(500)]);
+    if (service.exitCode === null) service.kill('SIGKILL');
+  }
   const elapsedMs = Math.round(performance.now() - started);
   const filed = receipt?.delivered_to_bus === true && typeof receipt.message_id === 'string'
     && receipt.message_id.startsWith('m-');
@@ -29,6 +52,51 @@ async function finish(ok: boolean, why: string, receipt?: { message_id: string; 
     delivery: receipt?.delivery?.how, elapsed_ms: elapsedMs,
     ...(ok ? {} : { recovery: 'not confirmed; native mailbox retains the pass' }) }));
   if (!ok) console.error(`fleet pass ${filed ? 'recovery not confirmed' : 'unconfirmed'} (${elapsedMs} ms): ${why}`);
+  if (ok) {
+    try { saveStatus(null); } catch { /* Native handoff is still confirmed; the helper cache has no authority. */ }
+  } else {
+    // The hourly scheduler is the observer when its sole maintainer cannot take a pass. One retained native notice
+    // per incident, cleared by a later confirmed handoff; it starts no model and adds no restart/watch loop.
+    const kind = filed ? typeof receipt?.delivery?.handoff_confirmed === 'boolean'
+      ? 'handoff_unconfirmed' : 'receipt_capability_unknown' : 'filing_unconfirmed';
+    const prior = readStatus();
+    if (!prior || prior.updated_at_ms <= startedAt) {
+      const incident: Incident = prior?.incident?.kind === kind ? prior.incident : {
+        key: `box-maintainer-pass-incident-${new Date().toISOString().slice(0, 13)}-${kind}`,
+        kind, text: `Fleet pass ${kind}. Native main handoff is unconfirmed; this is not a confirmed session outage. ${why}`,
+        notified: false,
+      };
+      if (!incident.notified) {
+        let kept = false;
+        try { saveStatus(incident); kept = true; } catch { /* A native idempotency key still protects this fire. */ }
+        let notice: ReturnType<typeof Bun.spawn> | undefined;
+        let confirmed = false;
+        try {
+          notice = Bun.spawn([process.env.SUPERCODE_BIN || 'supercode', 'teams', 'rpc',
+            'harness.v1.sessions.message', JSON.stringify({ locator: { harness: 'agent', session_id: 'manager' },
+              from_name: 'box-maintainer-pass-status', subject: 'fleet pass handoff unconfirmed',
+              text: incident.text, idempotency_key: incident.key })], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+          const result = await Promise.race([
+            Promise.all([new Response(notice.stdout).text(), new Response(notice.stderr).text(), notice.exited]),
+            Bun.sleep(700).then(() => null),
+          ]);
+          if (result?.[2] === 0) {
+            try { const answer = JSON.parse(result[0]); confirmed = answer.delivered_to_bus === true
+              && typeof answer.message_id === 'string' && answer.message_id.startsWith('m-'); } catch { /* unknown */ }
+          }
+        } catch (error) { console.error(`manager notice caller failed: ${String(error)}`); }
+        finally {
+          if (notice) {
+            if (notice.exitCode === null) notice.kill('SIGTERM');
+            await Promise.race([notice.exited, Bun.sleep(100)]);
+            if (notice.exitCode === null) notice.kill('SIGKILL');
+          }
+        }
+        if (confirmed && kept) { incident.notified = true; try { saveStatus(incident); } catch { /* Retry the same key. */ } }
+        console.error(`manager notice ${confirmed ? 'filed' : 'unconfirmed; the native request may still finish'}`);
+      }
+    }
+  }
   process.exit(ok ? 0 : 1);
 }
 const bound = setTimeout(() => void finish(false,
@@ -37,6 +105,8 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const)
   process.on(signal, () => void finish(false, `interrupted by ${signal}; native delivery may still finish`));
 void (async () => {
   try {
+    service = Bun.spawn([process.env.SUPERCODE_BIN || 'supercode', 'teams', 'rpc',
+      'harness.v1.sessions.message', JSON.stringify(params)], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
     const [out, err, code] = await Promise.all([
       new Response(service.stdout).text(), new Response(service.stderr).text(), service.exited,
     ]);
@@ -44,12 +114,15 @@ void (async () => {
     try { receipt = JSON.parse(out); } catch { /* No native receipt is a failure, including plain error output. */ }
     const filed = code === 0 && receipt?.delivered_to_bus === true && typeof receipt?.message_id === 'string'
       && receipt.message_id.startsWith('m-');
-    // The agent door's v1 receipt uses native delivery text. Filing can succeed while its main is stopped or
-    // queued: only an explicit handoff reads as a successful scheduler fire. Unsupported text stays unconfirmed.
+    // The daemon owns this fact; display wording is not a protocol. An older daemon without the field gives an
+    // unknown handoff, with its capability named in the failure rather than inferring a successful fire.
     const how = typeof receipt?.delivery?.how === 'string' ? receipt.delivery.how : '';
-    const handedOver = /^sent to (?!no one woken\b)/i.test(how)
-      && !/not delivered to:|not resumed|stopped|waits? (?:unread |in )|filed on its machine/i.test(how);
-    await finish(filed && handedOver, receipt?.refusal?.message || err.trim().slice(-1000)
-      || (filed ? how || 'native receipt confirms filing but no handoff' : 'native mailbox did not confirm filing'), receipt);
+    const handedOver = receipt?.delivery?.handoff_confirmed === true;
+    const reason = receipt?.refusal?.message || (filed
+      ? typeof receipt?.delivery?.handoff_confirmed === 'boolean'
+        ? how || 'native receipt confirms filing but no handoff'
+        : `native receipt omitted delivery.handoff_confirmed; handoff is unknown. ${how}`
+      : err.trim().slice(-1000) || 'native mailbox did not confirm filing');
+    await finish(filed && handedOver, reason, receipt);
   } catch (error) { await finish(false, String(error)); }
 })();
