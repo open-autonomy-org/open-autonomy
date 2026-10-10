@@ -231,10 +231,15 @@ export async function syncWorkplaceAlerts(ledger: LedgerClient, stored: Workplac
   const v = await ledger.project(link.account);
   if (!v.found) return { ...link, lastTick: { at, ok: false, note: 'the project is not on the books' } };
   const [funding, statements] = await Promise.all([ledger.funding(link.account), ledger.statements(link.account)]);
-  // Its givers, by the Volter identity they gave under, so the workspace can seat them in its `giver` role.
+  // OA decides who qualifies; Workplace grants the declared role through its authority door.
   const funders = [...new Set((v.feed ?? []).filter((flow) => flow.to === link.account && flow.kind === 'grant' && flow.from?.startsWith('@')).map((flow) => flow.from!))];
   const { givers } = await ledger.call<{ givers: Array<{ funder: string; issuer: string; subject: string }> }>('workplace_givers', { funders });
-  const model = { ...workplaceBooksOf(v, funding, statements.statements ?? [], link.origin), givers: givers.map((giver) => ({ key: giver.funder, issuer: giver.issuer, subject: giver.subject })) };
+  for (const giver of givers) {
+    const grant = await workplaceCall<{ granted: boolean; principalId: string | null }>(link, '/role-grants', { role: 'giver', identity: { issuer: giver.issuer, subject: giver.subject }, reason: 'Gave to an Open Autonomy project linked to this organization' });
+    if (!grant.ok) failures.push(`giver role: ${grant.code ?? grant.status}`);
+    // An identity not yet proved in Workplace is retried on the next tick; a books snapshot never grants authority.
+  }
+  const model = workplaceBooksOf(v, funding, statements.statements ?? [], link.origin);
   const published = await workplaceCall(link, `/books/${source}`, { name: link.account, system: 'Open Autonomy', link: `${link.origin}/${link.account}/dashboard/books`, observedAt: at, model }, 'PUT');
   if (!published.ok) failures.push(`books: ${published.code ?? published.status}`);
   // The team, declared once in the workspace: its seats read back as this project's roster.

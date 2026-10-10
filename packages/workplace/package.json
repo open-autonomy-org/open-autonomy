@@ -1,0 +1,35 @@
+{
+  "name": "@open-autonomy/workplace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workplace": {
+    "client": "./client.tsx",
+    "server": "./server.ts",
+    "mobile": "./mobile.tsx"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/open-autonomy-org/open-autonomy.git",
+    "directory": "packages/workplace"
+  },
+  "peerDependencies": {
+    "@runhuman/workplace": "0.0.0",
+    "react": "^19",
+    "react-native": ">=0.83"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "peerDependenciesMeta": {
+    "@runhuman/workplace": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  }
+}
