@@ -55,8 +55,8 @@ integration (RFC 0024 C8), not here.
 
 A linked project's page is the workspace's Overview (RFC 0025 decision 8): `/<owner>/<project>` redirects there, and the
 dashboard stays the owner's controls and the books' depths. A person who gives signed in with Volter is recorded against
-their funder name (`@login` → the Volter issuer and subject), and the books snapshot lists the project's givers by that
-identity, so the workspace seats them in its `giver` role without a second sign-up. A giver who gave with a GitHub
+their funder name (`@login` → the Volter issuer and subject), and the integration requests the workspace's `giver` role through its explicit grant door
+([proposed replacement](0029-workplace-contribution-and-explicit-giver-grants.md)); Books snapshots convey no authority. A giver who gave with a GitHub
 sign-in or a funder key is not named; they give as before.
 
 A linked project's team is declared once, in the workspace (RFC 0024 D10): every quarter hour the integration reads the

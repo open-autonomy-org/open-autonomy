@@ -110,3 +110,5 @@ no new resolver or cross-product migration is claimed implemented here.
 
 This map adds no audience default, cross-organization sharing rule, account federation or treasury replication
 decision. Current public-books policy and the OA dashboard's owner controls and books remain as decided.
+
+The proposed [contribution and role-grant boundary](decisions/0029-workplace-contribution-and-explicit-giver-grants.md) moves the funding views to `packages/workplace` and replaces snapshot-derived giver authority with explicit requests through Workplace's role door.
