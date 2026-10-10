@@ -23,9 +23,10 @@ export function UsageFunding({ context }: { context: Record<string, unknown> }) 
     const controller = new AbortController();
     if (organizationId) void door<{ sources: Array<{ sourceKey: string; name: string; system: string; link: string | null; model: { daily?: { key: string; usdCents: number }[]; limits?: CostLimit[]; summary?: CostSource['summary'] } }> }>(`/api/v3/organizations/${encodeURIComponent(organizationId)}/books`, { signal: controller.signal })
       .then(value => {
+        if (controller.signal.aborted) return;
         setMetered(value.sources.map(source => ({ days: source.model.daily ?? [], link: source.link, name: source.name, sourceKey: source.sourceKey, system: source.system })));
         setCostSources(value.sources.map(source => ({ days: source.model.daily ?? [], limits: source.model.limits ?? [], link: source.link, name: source.name, sourceKey: source.sourceKey, ...(source.model.summary ? { summary: source.model.summary } : {}), system: source.system })));
-      }, () => { setMetered([]); setCostSources([]); });
+      }, () => { if (!controller.signal.aborted) { setMetered([]); setCostSources([]); } });
     return () => controller.abort();
   }, [organizationId, refresh]);
   return <><CostControl now={new Date().toISOString()} sources={costSources} calls={monthCalls} /><MeteredSpend sources={metered} weekStart={new Date(week).toISOString()} /></>;

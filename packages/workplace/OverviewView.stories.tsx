@@ -19,7 +19,7 @@ const meta = {
   args: { loadWidget: async (index: number) => widgets[index], overview: { organization: { name: 'Volter', organizationId: 'volter' }, parts: page, viewer }, signInHref: '/login?next=/o/volter' },
   component: OverviewView,
   parameters: { docs: { description: { component: 'GITHUB-PROFILE-README with GRAFANA-DASHBOARD panels. The organization\'s Overview: its Markdown page from its repository, widgets drawn as live panels, each shown only to a viewer who holds its read action, and Join as the policy allows.' } } },
-  title: 'Pages/Overview'
+  title: 'Contributions/Books/Overview'
 } satisfies Meta<typeof OverviewView>;
 export default meta;
 type Story = StoryObj<typeof meta>;
