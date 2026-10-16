@@ -149,6 +149,15 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
   }
   if (!declared.ok) { say(`agent ${name} not declared: ${declared.err}`); failed++; continue; }
   say(declared.out);
+  // The mailbox's main session is its profile's agent's main session in Teams (supercode ADR 0041 decision 1: whose session
+  // it is reaches Teams through the machine), so a Workplace mirrors it as that agent rather than as a plain session
+  // beside it. The profile's agent is the home's: `<home's account name>/<profile>`.
+  const main = /roots go to sc:[^:\s]+:(\S+?)\.?$/m.exec(declared.out)?.[1];
+  const profileAgent = `${basename(resolve(home, '..'))}/${mailAgent.profile}`;
+  if (main) {
+    const recorded = await run([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main'], real);
+    say(recorded.ok ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${last(recorded.err)}`);
+  }
   if (!mailAgent.every_machine && !mailAgent.health_alarms) continue;
   const listed = await run([supercodeBin, 'teams', 'machines', 'list', '--json'], real);
   // this machine, as the declaration just named it (sc:<machine>:agent:<name>)

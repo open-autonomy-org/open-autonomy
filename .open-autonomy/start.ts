@@ -447,6 +447,15 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
   say(declared.stdout.toString().trim());
+  // The mailbox's main session is its profile's agent's main session in Teams (supercode ADR 0041 decision 1: whose session
+  // it is reaches Teams through the machine), so a Workplace mirrors it as that agent rather than as a plain session
+  // beside it. The profile's agent is the home's: `<home's account name>/<profile>`.
+  const main = /roots go to sc:[^:\s]+:(\S+?)\.?$/m.exec(declared.stdout.toString())?.[1];
+  const profileAgent = `${basename(resolve(home, '..'))}/${mailAgent.profile}`;
+  if (main) {
+    const recorded = Bun.spawnSync({ cmd: drop([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    say(recorded.exitCode === 0 ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${recorded.stderr.toString().trim().split('\n').at(-1)}`);
+  }
   // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
   // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
   if (mailAgent.every_machine) {
