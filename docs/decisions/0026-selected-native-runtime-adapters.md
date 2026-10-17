@@ -56,7 +56,9 @@ reads and writes load the owning public model, patch only the declared unit, sav
 back. All other profiles, typed worker fields, native residue, bindings, jobs and custody references remain intact;
 the adapter never reads or returns vault contents and omits a vault replacement when saving.
 
-The native declaration supports these exact mappings; arbitrary dotted configuration is refused:
+The native declaration supports these exact mappings; arbitrary dotted configuration is refused
+([ADR 0030](0030-native-setup-maps-what-existing-homes-declare.md) adds the typed worker fields, the memory switch
+and the harness-login route existing homes declare):
 
 | Declaration | Native model field / runtime use |
 | --- | --- |

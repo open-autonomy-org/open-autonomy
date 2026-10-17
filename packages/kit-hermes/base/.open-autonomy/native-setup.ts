@@ -17,7 +17,15 @@ type NativeJobDoor = {
   fields(spec: unknown, inference: unknown): Record<string, unknown>;
   differs(want: Record<string, unknown>, live: Record<string, unknown>): string[];
 };
-const SETTINGS = new Set(['worker.harness', 'agent.max_turns', 'approvals.mode']);
+// The typed worker fields the native runtime reads (supercode interchange WorkerSpec; ADR 0030): harness, cwd (activation
+// cwd), home (user: the user's own Claude home), surface (the board's pane sessions) and reasoning_effort (Codex lanes).
+const WORKER = new Set(['worker.harness', 'worker.cwd', 'worker.home', 'worker.surface', 'worker.reasoning_effort']);
+// The codec omits a typed field at its default when it saves, so a field read back absent is that default.
+const WORKER_DEFAULT: Record<string, unknown> = { 'worker.cwd': '.', 'worker.home': 'profile', 'worker.surface': 'headless' };
+// memory.memory_enabled is config residue: the agent home's config.yaml, read by the memory snapshot and memory tool.
+const SETTINGS = new Set([...WORKER, 'agent.max_turns', 'approvals.mode', 'memory.memory_enabled']);
+// Settings whose native consumer is reviewed only for the Claude Code and Codex workers.
+const WORKER_ONLY = ['agent.max_turns', 'approvals.mode', 'worker.home', 'worker.surface', 'worker.reasoning_effort'];
 // The pinned applier can pause a new create, but lacks complete reviewed declarative enabled reconciliation.
 const JOB_FIELDS = new Set(['schedule', 'prompt', 'skills', 'deliver', 'attach_to_session', 'model', 'workdir', 'repeat', 'script', 'no_agent', 'monitor_script', 'monitor_url', 'context_from']);
 const UPDATABLE = new Set(['schedule', 'prompt', 'deliver', 'attach_to_session', 'model', 'workdir', 'script', 'no_agent', 'monitor_script', 'monitor_url']);
@@ -33,20 +41,23 @@ function checkJobNames(spec: Package, name: string): void {
 }
 const read = (profile: NativeProfile, key: string): unknown => {
   if (!CONFIG.has(key)) throw new Error(`Native setting ${key} has no supported mapping`);
-  if (key === 'worker.harness') return profile.worker?.harness ?? null;
+  if (WORKER.has(key)) return profile.worker ? (profile.worker as Record<string, unknown>)[key.slice('worker.'.length)] ?? WORKER_DEFAULT[key] ?? null : null;
   const [parent, child] = key.split('.');
   const value = profile.residue?.config?.[parent];
   if (value !== undefined && !object(value)) throw new Error(`Native ${parent} is not an object; refusing to replace unmanaged residue`);
   return value?.[child] ?? null;
 };
-function patch(profile: NativeProfile, values: Unit): void {
+/** `harness` is the profile's declared worker: a missing worker is created as that harness's, never as another's. */
+function patch(profile: NativeProfile, values: Unit, harness: string): void {
   profile.residue ??= { config: {} };
   profile.residue.config ??= {};
-  for (const [key, value] of Object.entries(values)) {
+  // the harness first, so a worker field never makes a worker of the wrong harness
+  for (const [key, value] of Object.entries(values).sort(([a], [b]) => Number(b === 'worker.harness') - Number(a === 'worker.harness'))) {
     read(profile, key); // validates the exact mapping and existing container before changing anything
-    if (key === 'worker.harness') {
-      if (!profile.worker) profile.worker = { harness: String(value) };
-      else profile.worker.harness = String(value);
+    if (WORKER.has(key)) {
+      profile.worker ??= { harness };
+      if (key === 'worker.harness') profile.worker.harness = String(value);
+      else (profile.worker as Record<string, unknown>)[key.slice('worker.'.length)] = value;
     } else {
       const [parent, child] = key.split('.');
       profile.residue.config[parent] ??= {};
@@ -62,24 +73,41 @@ function nativeSpec(setup: Setup, name: string, raw: Package): Package {
   for (const ext of Object.keys(spec.extensions ?? {})) if (!['hermes', 'orchestrator'].includes(ext)) throw new Error(`${name}: unsupported native extension ${ext}`);
   const old = spec.extensions?.hermes?.config ?? {};
   const native = spec.extensions?.orchestrator?.config ?? {};
-  const settings = { ...old, ...native, 'worker.harness': profileHarness(setup, name) };
+  const settings: Unit = { ...old, ...native, 'worker.harness': profileHarness(setup, name) };
   for (const [key, value] of Object.entries(old)) if (key in native && !same(value, native[key])) throw new Error(`${name}: conflicting native and legacy declaration for ${key}`);
   for (const [key, value] of Object.entries(settings)) {
     if (!SETTINGS.has(key)) throw new Error(`${name}: native runtime does not implement ${key}`);
     if (key === 'agent.max_turns' && !(typeof value === 'number' && Number.isSafeInteger(value) && value > 0)) throw new Error(`${name}: agent.max_turns must be a positive safe integer`);
     if (key === 'approvals.mode' && !['off', 'manual'].includes(String(value))) throw new Error(`${name}: approvals.mode is off or manual`);
     if (key === 'worker.harness' && !/^[a-z][a-z0-9-]{0,31}$/.test(String(value))) throw new Error(`${name}: invalid native worker harness`);
+    if (key === 'worker.cwd' && !(typeof value === 'string' && value.trim())) throw new Error(`${name}: worker.cwd is a folder path (relative to the profile folder, or absolute)`);
+    if (key === 'worker.home' && !['profile', 'user'].includes(String(value))) throw new Error(`${name}: worker.home is profile or user`);
+    if (key === 'worker.surface' && !['headless', 'pane'].includes(String(value))) throw new Error(`${name}: worker.surface is headless or pane`);
+    if (key === 'worker.reasoning_effort' && !(typeof value === 'string' && /^[a-z]{1,16}$/.test(value))) throw new Error(`${name}: worker.reasoning_effort is one lowercase effort word (high, xhigh, ...)`);
+    if (key === 'memory.memory_enabled' && typeof value !== 'boolean') throw new Error(`${name}: memory.memory_enabled is true or false`);
   }
   const harness = String(settings['worker.harness']);
-  if (!['claude-code', 'codex'].includes(harness) && ('agent.max_turns' in settings || 'approvals.mode' in settings || spec.inference)) throw new Error(`${name}: ${harness} has no reviewed route/limit/policy mapping in this native adapter`);
+  const reviewed = WORKER_ONLY.filter(key => key in settings);
+  if (!['claude-code', 'codex'].includes(harness) && (reviewed.length || spec.inference)) throw new Error(`${name}: ${harness} has no reviewed route/limit/policy mapping in this native adapter${reviewed.length ? ` (${reviewed.join(', ')})` : ''}`);
+  // The native runtime runs only Claude Code in the user's own home (activation USER_HOME_HARNESSES) and passes an effort
+  // only to Codex (board dispatch `model_reasoning_effort`): a declaration another worker would ignore or refuse at launch.
+  if (settings['worker.home'] === 'user' && harness !== 'claude-code') throw new Error(`${name}: worker.home user runs only a Claude Code worker natively, not ${harness}`);
+  if ('worker.reasoning_effort' in settings && harness !== 'codex') throw new Error(`${name}: worker.reasoning_effort reaches only a Codex worker natively, not ${harness}`);
   const inference = spec.inference;
   if (inference) {
     for (const key of Object.keys(inference)) if (!['models', 'default', 'unattended'].includes(key)) throw new Error(`${name}: native inference does not implement ${key}`);
     if (!inference.default || !inference.models?.[inference.default]) throw new Error(`${name}: native inference requires a named default model`);
     const baseline = inference.models[inference.default];
     if (!baseline.model || typeof baseline.model !== 'string') throw new Error(`${name}: model must be a nonempty string`);
+    // A Claude Code model naming no provider, no endpoint and the harness's own login (ADR 0009, `credential:
+    // harness-login`) is the anthropic route on that login, derived here (ADR 0030). Natively that login is the user's
+    // home with no provider (worker.home user, as the applier writes it) or, in the profile's home, provider anthropic
+    // (worker-route ownLogin); the declaration is materialized as the one its worker home needs.
+    const login = (m: any) => harness === 'claude-code' && m.provider === undefined && m.credential === 'harness-login' && !m.endpoint && !m.base_url && !m.placeholder_key;
+    if (login(baseline) && settings['worker.home'] !== 'user') for (const model of Object.values(inference.models ?? {}) as any[]) if (login(model)) model.provider = 'anthropic';
+    const provider = baseline.provider ?? (login(baseline) ? 'anthropic' : undefined);
     const providers = harness === 'claude-code' ? ['custom', 'anthropic'] : ['custom', 'openai', 'openai-codex'];
-    if (!providers.includes(baseline.provider ?? '')) throw new Error(`${name}: unsupported ${harness} provider ${baseline.provider}`);
+    if (!providers.includes(provider ?? '')) throw new Error(`${name}: unsupported ${harness} provider ${provider}${provider === undefined && harness === 'claude-code' ? ' (a Claude Code model names provider custom with its endpoint, provider anthropic, or the harness\'s own login: credential harness-login and no endpoint)' : ''}`);
     if (baseline.api_mode && baseline.api_mode !== (harness === 'claude-code' ? 'anthropic_messages' : 'responses')) throw new Error(`${name}: ${harness} does not implement declared API mode ${baseline.api_mode}`);
     const route = (m: any) => [m.provider ?? '', m.endpoint ?? null, m.base_url ?? null, m.credential ?? null, m.placeholder_key ?? null, m.api_mode ?? null];
     for (const [key, model] of Object.entries(inference.models ?? {})) {
@@ -106,6 +134,12 @@ function effective(profile: NativeProfile, spec: Package, units: Array<{ values?
   for (const unit of units) if (unit.error) throw new Error(`${name}: ${unit.error}`);
   const want = Object.assign({}, ...units.map(u => u.values ?? {}));
   for (const key of Object.keys(want)) read(profile, key);
+  // The native Claude Code route refuses provider anthropic without an endpoint for a worker in the user's home
+  // (worker-route claudeRoute): that worker already runs on the user's own login, declared with no provider.
+  const home = want['worker.home'] ?? read(profile, 'worker.home');
+  const harness = want['worker.harness'] ?? read(profile, 'worker.harness');
+  if (('model.provider' in want || 'worker.home' in want) && harness === 'claude-code' && home === 'user' && (want['model.provider'] ?? read(profile, 'model.provider')) === 'anthropic' && !(want['model.base_url'] ?? read(profile, 'model.base_url')))
+    throw new Error(`${name}: a Claude Code worker in the user's home (worker.home user) runs on that user's own login with no provider; the native route refuses provider anthropic without an endpoint there (a harness-login model with worker.home user declared is written with none)`);
   const defaultModel = want['model.default'];
   if (defaultModel !== undefined && profile.worker?.model && profile.worker.model !== defaultModel) throw new Error(`${name}: unmanaged worker.model overrides the declared default model`);
   if (spec.inference) for (const key of ['model.base_url', 'model.api_key', 'model.api_mode']) if (!(key in want) && read(profile, key) !== null) throw new Error(`${name}: unmanaged ${key} changes the declared native route`);
@@ -208,7 +242,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
         readInference: async (keys: string[]) => { const { profile } = await get(); return Object.fromEntries(keys.map(key => [key, read(profile, key)])); },
         writeInference: async (values: Unit) => {
           requireEffects(safety);
-          const loaded = await get(); requireEffects(safety); effective(loaded.profile, spec, units, name); patch(loaded.profile, values);
+          const loaded = await get(); requireEffects(safety); effective(loaded.profile, spec, units, name); patch(loaded.profile, values, profileHarness(options.setup, name));
           requireEffects(safety);
           await sc.orchestrationSave({ root: options.root, orchestration: loaded.orchestration });
         },
@@ -217,7 +251,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       const common = { door, homeId, root: options.stateRoot, spec: spec as never };
       const first = await applier.plan(common);
       const preview = structuredClone((await get()).profile);
-      patch(preview, Object.assign({}, ...units.map(unit => unit.values ?? {})));
+      patch(preview, Object.assign({}, ...units.map(unit => unit.values ?? {})), profileHarness(options.setup, name));
       for (const [key, job] of Object.entries(spec.jobs ?? {})) {
         const args = door.fields(job, spec.inference);
         await nativeNodeCall({ operation: 'validate', profile: preview, args: { ...args, name: key }, now: new Date().toISOString() }, options.workspace, safety); // pure owning validation before any config/job effect
