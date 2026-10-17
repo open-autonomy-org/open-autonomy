@@ -9,6 +9,10 @@
     "skipLibCheck": true,
     "types": [
       "bun"
+    ],
+    "rootDirs": [
+      "base/.open-autonomy/sdk",
+      "../sdk/src"
     ]
   },
   "include": [
