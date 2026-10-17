@@ -12,4 +12,12 @@ export const contribution: ServerContribution = { id: '@open-autonomy/workplace'
     }
   } },
 widgets: {runway: { action: 'books.read', kind: 'books', fields: ['summary', 'daily', 'statements'] }, books: { action: 'books.read', kind: 'books', fields: ['summary', 'daily', 'statements'] }, statement: { action: 'books.read', kind: 'books', fields: ['summary', 'daily', 'statements'] }},
-defaultWidgets: ['runway', 'books', 'statement'], pages: [{ path: '/console/books', handler: 'readBooks' }] };
+defaultWidgets: ['runway', 'books', 'statement'], pages: [{ path: '/console/books', handler: 'readBooks' }],
+// Office is this integration's view of the shared Rooms, using Workplace's ordinary view vocabulary.
+// Retain the floor key so saved routes and organization view settings continue to resolve.
+views: { floor: {
+  name: 'Office', icon: 'layout-grid', source: 'rooms', scope: 'floors', visibility: 'public',
+  groupings: [{ key: 'category', label: 'Category', by: 'category' }], order: 'position',
+  row: { marks: ['unread', 'mentions', 'in-call'], children: ['conversations', 'call'] },
+  actions: ['open'],
+} } };
