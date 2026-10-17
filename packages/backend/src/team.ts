@@ -3,7 +3,10 @@
 import { TEAM_DAYS, parseTeamConfig, replaceTeamConfig, teamOwner, validateTeam, validateTeamMember, type Team, type TeamMember, type TeamWindow } from '@open-autonomy/sdk/team';
 import type { Env } from './types.js';
 
-export interface TeamEdit { account: string; sha: string; member: TeamMember; remove: boolean; resolveGithub?: boolean }
+// `volterProof`: the token the member was given when they signed in with Volter on this deployment (`/team/volter`); the
+// deployment verifies it into `volter` (their GitHub ID and Volter subject, as Volter's identity token named them) before
+// the edit is proposed. A Volter identity is never typed into a roster: only their own sign-in records it.
+export interface TeamEdit { account: string; sha: string; member: TeamMember; remove: boolean; resolveGithub?: boolean; volterProof?: string; volter?: { githubId: string; subject: string } }
 export interface TeamFile { team: Team; text: string; sha: string; head: string; branch: string }
 export const validTeamAccount = (account: string): boolean => /^[a-z\d][a-z\d-]{0,38}\/[a-z\d_.-]{1,100}$/i.test(account) && !['.', '..'].includes(account.split('/')[1]);
 const path = '.open-autonomy/config.yaml';
@@ -67,9 +70,11 @@ export function readTeamEdit(account: string, form: FormData): TeamEdit {
     ...(field('availability') ? { availability: readAvailability(field('availability')) } : {}),
   };
   validateTeamMember(member);
+  const proof = field('volter_proof');
+  if (proof.length > 1200) throw new Error('That Volter link is not one this page gave.');
   if (field('attest') !== 'yes') throw new Error('Confirm the identity links and authority source before continuing.');
   // The placeholder ID in a new-account form is never committed: the callback resolves it first.
-  return { account, sha: field('sha'), member, remove: field('operation') === 'remove', resolveGithub: !field('github_id') };
+  return { account, sha: field('sha'), member, remove: field('operation') === 'remove', resolveGithub: !field('github_id'), ...(proof ? { volterProof: proof } : {}) };
 }
 
 export async function proposeTeamEdit(env: Env, edit: TeamEdit, token: string, actor: { id: string; login: string }, nonce: string): Promise<string> {
@@ -86,6 +91,12 @@ export async function proposeTeamEdit(env: Env, edit: TeamEdit, token: string, a
     if (!edit.resolveGithub && member.github.id !== String(user.id)) throw new Error('That GitHub login does not match the recorded ID. Clear the ID only when explicitly linking a different account.');
     member.github = { id: String(user.id), login: user.login };
   }
+  // Their Volter identity: from their own sign-in (the verified proof), else kept from the roster while the GitHub
+  // account it was proven with stays theirs.
+  if (!edit.remove && edit.volter) {
+    if (member.github?.id !== edit.volter.githubId) throw new Error('That Volter link was made by a different GitHub account than this teammate\'s.');
+    member.volter = { subject: edit.volter.subject };
+  } else if (!edit.remove && previous?.volter && previous.github?.id === member.github?.id) member.volter = previous.volter;
   const members = current.team.members.filter(m => m.id !== member.id);
   if (!edit.remove) members.splice(previous ? current.team.members.indexOf(previous) : members.length, 0, member);
   const team = validateTeam({ members });

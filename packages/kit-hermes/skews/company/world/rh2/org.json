@@ -1,0 +1,144 @@
+{
+  "name": "Volter",
+  "roles": {
+    "admin": {
+      "actions": [
+        "*"
+      ]
+    },
+    "worker": {
+      "actions": [
+        "artifact.*",
+        "assignment.*",
+        "automation.*",
+        "conversation.*",
+        "human-self.*",
+        "job.read",
+        "media-publication.create",
+        "organization.read",
+        "room.read",
+        "surface.read"
+      ]
+    }
+  },
+  "presets": {
+    "studio": {
+      "name": "Studio",
+      "roles": [
+        {
+          "key": "manager",
+          "name": "Manager",
+          "actions": [
+            "room.manage",
+            "room.read",
+            "members.manage",
+            "roles.manage",
+            "conversations.create",
+            "conversations.manage",
+            "conversations.route",
+            "tasks.create",
+            "tasks.update",
+            "tasks.complete",
+            "results.submit",
+            "artifacts.create",
+            "artifacts.attach",
+            "surfaces.create",
+            "surfaces.manage",
+            "surfaces.view",
+            "surfaces.interact",
+            "assignments.launch",
+            "assignments.message",
+            "files.read",
+            "files.attach"
+          ],
+          "conversationKeys": [
+            "desk",
+            "work"
+          ]
+        },
+        {
+          "key": "member",
+          "name": "Member",
+          "actions": [
+            "room.read",
+            "tasks.update",
+            "results.submit",
+            "artifacts.create",
+            "artifacts.attach",
+            "surfaces.view",
+            "surfaces.interact",
+            "assignments.message",
+            "files.read"
+          ],
+          "conversationKeys": [
+            "work",
+            "desk"
+          ]
+        }
+      ],
+      "conversations": [
+        {
+          "key": "desk",
+          "name": "Desk",
+          "topic": "The Room's front desk: people and managers talk here. Mention an agent by name (@\u2026) to bring it in; it reads the rest.",
+          "authority": "administrative"
+        },
+        {
+          "key": "work",
+          "name": "Work",
+          "topic": "The working channel: the Room's agent answers every line here.",
+          "authority": "collaboration"
+        }
+      ]
+    }
+  },
+  "members": [
+    {
+      "address": "human:aaron@volter.ai",
+      "name": "Aaron",
+      "role": "admin"
+    },
+    {
+      "address": "agent:account-manager",
+      "name": "Account manager",
+      "role": "worker",
+      "agent": {
+        "model": "claude-opus-5-5",
+        "provider": "anthropic",
+        "source": "managed",
+        "assumptionPolicy": {
+          "allowedRepresentationModes": [
+            "automation"
+          ],
+          "allowedSessionKinds": [
+            "api-credential"
+          ],
+          "maximumSessionSeconds": 31536000
+        }
+      }
+    }
+  ],
+  "rooms": [
+    {
+      "key": "account",
+      "preset": "studio",
+      "name": "Account manager",
+      "members": [
+        {
+          "address": "human:aaron@volter.ai",
+          "roleKeys": [
+            "manager"
+          ]
+        },
+        {
+          "address": "agent:account-manager",
+          "roleKeys": [
+            "member"
+          ]
+        }
+      ],
+      "defaultConversation": "work",
+      "conversations": []
+    }
+  ]
+}

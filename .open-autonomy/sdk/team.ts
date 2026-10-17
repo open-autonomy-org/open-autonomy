@@ -11,6 +11,9 @@ export interface TeamMember {
   name: string;
   github?: { id: string; login: string };
   discord?: { id: string; name: string };
+  /** Their Volter identity (`id.volter.ai`'s subject), recorded from their own sign-in on the project's Team page: how
+   *  the work they do in a Volter workspace (a Task they answer) is matched to them. */
+  volter?: { subject: string };
   /** Authority: what the member may decide. */
   scopes: TeamScope[];
   source: string;
@@ -31,7 +34,7 @@ const zone = (v: unknown): v is string => {
   if (typeof v !== 'string' || !/^[A-Za-z0-9_+\-/]{1,64}$/.test(v)) return false;
   try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; }
 };
-const MEMBER_KEYS = ['id', 'name', 'github', 'discord', 'scopes', 'source', 'roles', 'contributes', 'availability'];
+const MEMBER_KEYS = ['id', 'name', 'github', 'discord', 'volter', 'scopes', 'source', 'roles', 'contributes', 'availability'];
 
 function validateContribution(m: Record<string, unknown>): Pick<TeamMember, 'roles' | 'contributes' | 'availability'> {
   const out: Pick<TeamMember, 'roles' | 'contributes' | 'availability'> = {};
@@ -64,11 +67,13 @@ export function validateTeamMember(value: unknown): TeamMember {
     if (account !== undefined && (!record(account) || !id(account.id) || !label(account[platform === 'github' ? 'login' : 'name'], 80) || Object.keys(account).some(k => !['id', platform === 'github' ? 'login' : 'name'].includes(k)))) throw new Error(`Invalid ${platform} account: IDs must be decimal strings, with a readable name.`);
     if (platform === 'github' && record(account) && !/^[a-z\d][a-z\d-]{0,38}$/i.test(String(account.login))) throw new Error('Invalid GitHub login.');
   }
+  if (m.volter !== undefined && (!record(m.volter) || Object.keys(m.volter).some(k => k !== 'subject') || !label(m.volter.subject, 256) || /\s/.test(String(m.volter.subject)))) throw new Error('A Volter identity is its subject alone, as their sign-in named it.');
   if (!m.github && !m.discord) throw new Error('Each member needs at least one verified platform account.');
   if (m.scopes.includes('owner') && !m.github) throw new Error('An owner needs a verified GitHub account to manage the roster.');
   return { id: m.id, name: m.name,
     ...(m.github ? { github: { id: String((m.github as Record<string, unknown>).id), login: String((m.github as Record<string, unknown>).login) } } : {}),
     ...(m.discord ? { discord: { id: String((m.discord as Record<string, unknown>).id), name: String((m.discord as Record<string, unknown>).name) } } : {}),
+    ...(m.volter ? { volter: { subject: String((m.volter as Record<string, unknown>).subject) } } : {}),
     scopes: TEAM_SCOPES.filter(s => (m.scopes as string[]).includes(s)), source: m.source, ...validateContribution(m) };
 }
 

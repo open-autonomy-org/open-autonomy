@@ -20,8 +20,9 @@ async function python(container: string, script: string, input: unknown, bound =
   } finally { clearTimeout(timer); }
 }
 
-/** Always load configuration from fetched main, including after an interrupted task. */
-export async function prepareContainerHome(options: { container: string; home: string; workspace: string }): Promise<{ revision: string; dirty: boolean; config: string; agent: string }> {
+/** Always load configuration from fetched main, including after an interrupted task. A profile named in `without` is
+ *  left out of the home, and taken out of it if an earlier start put it there (the treasurer, docs/decisions/0021). */
+export async function prepareContainerHome(options: { container: string; home: string; workspace: string; without?: string[] }): Promise<{ revision: string; dirty: boolean; config: string; agent: string }> {
   const output = await python(options.container, String.raw`
 import io,json,os,pathlib,shutil,subprocess,sys,tarfile,tempfile,yaml
 s=json.load(sys.stdin)
@@ -57,6 +58,11 @@ with tempfile.TemporaryDirectory(prefix='oa-home-') as temp:
         if link.is_symlink() and not link.exists(): link.unlink()
     # State databases, cron execution state and native .env files belong to the runtime.
     shutil.copytree(source,home,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.env'))
+    for name in s.get('without') or []:
+        assert name and '/' not in name and name not in ('.','..')
+        target=home/'profiles'/name
+        if target.is_symlink() or target.is_file(): target.unlink()
+        elif target.exists(): shutil.rmtree(target)
 print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agent}))
 `, options);
   return JSON.parse(output);

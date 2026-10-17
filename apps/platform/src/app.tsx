@@ -4,7 +4,7 @@
 // project, the doors to buy credits or sponsor on a name's page. Everything here is tried before the core's
 // routes; what it does not answer, the backend does.
 import { recordGiverIdentity, LOGIN, LedgerClient, REPO, RESERVED, accountAt, authedClaims, configurePage, configureSync, error, hasScope, html, json, methodNotAllowed, parseJson, renderMessage, type App, type RouteTools, type Sponsor, type TeamEdit } from '@open-autonomy/backend';
-import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, type GiveSession } from './give-auth.ts';
+import { beginGiveLogin, endGiveLogin, finishGiveLogin, giveSession, volterLink, type GiveSession } from './give-auth.ts';
 import { Patronage } from './patronage.ts';
 import { patronCheckout, polarConfigured, polarWebhook, thanksPage } from './polar.ts';
 import { accountSlots, directorySlots, whoNav } from './page/patronage.tsx';
@@ -27,6 +27,15 @@ export const app: App = {
     if (path === '/give/login') { if (get()) return get()!; return beginGiveLogin(req, env, undefined, url.searchParams.get('next') ?? undefined); }
     if (path === '/give/callback') { if (get()) return get()!; return finishGiveLogin(req, env); }
     if (path === '/give/logout') { if (get()) return get()!; return endGiveLogin(req); }
+    // A teammate's Volter link (OA ADR 0019): signed in with Volter, they are shown a token an owner pastes on their
+    // roster entry, so the work they do in a Volter workspace is matched to them.
+    if (path === '/team/volter') {
+      if (get()) return get()!;
+      const session = await giveSession(req, env);
+      if (!session?.volter) return beginGiveLogin(req, env, undefined, '/team/volter');
+      const link = await volterLink(env, session);
+      return privateHtml(renderMessage(session.login, Boolean(link), link ? 'Your Volter link' : 'No Volter link', link ? `Send this to a project owner to put on your Team entry (it names @${session.login} and your Volter identity, and lives a day): ${link}` : 'Your Volter sign-in named no GitHub account; link one at id.volter.ai first.'));
+    }
     if (path === '/give') {
       const session = await giveSession(req, env);
       // `?to=` names the project a page sent the giver from: the sign-in returns here, and the form starts on it.

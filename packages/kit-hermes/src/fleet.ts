@@ -105,6 +105,6 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   // never from the kit's template: the organization's own checkout is the natural one.
   const start = '<a rendered project>/.open-autonomy/start.ts';
   say(`fleet ${opts.name}: ${runtimeDir}\n  definition: ${join(runtimeDir, 'fleet.json')} (${projects.map((p) => p.account).join(', ')})\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} on ${opts.image}; ${mounts.length} volumes)\n` +
-    `  up:    bun <world-runtime cli> up ${join(runtimeDir, 'world.json')} --env-file ${join(runtimeDir, 'world.env')} --root <world root>\n` +
+    `  up:    bun <world-runtime cli> up ${join(runtimeDir, 'world.json')} --env-out=${join(runtimeDir, 'world.env')} --root <world root>\n` +
     `  start: bun ${start} --fleet ${join(runtimeDir, 'fleet.json')} --valve 8787\n  down:  the World's down; nothing starts this fleet but these two commands`);
 }

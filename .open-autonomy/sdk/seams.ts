@@ -2,14 +2,22 @@
 // person's act takes effect: the roster scope that may act there, the door the act goes through, and where the act
 // is recorded; and the vendor accounts whose administrators are people in scope. Only three doors exist: a commit by a
 // roster member to a declared file, a code host's gate with a named reviewer, and a platform door that needs a key no
-// agent holds. Chat is never a door.
+// agent holds. Chat is never a door. A seam may name the routine its act runs through (runhuman-2 ADR 0038 §11:
+// "possible, not necessarily mandated"): `routine:<org>/<name>`, or a bare `<name>` of the project's own linked
+// workspace. The door and the record stay required; Open Autonomy still declares and runs nothing: whoever files the
+// act (Evidence Desk) runs it.
 import { TEAM_SCOPES, configSection, type TeamScope } from './team.ts';
 
 export const SEAM_DOORS = ['commit', 'code-host-gate', 'platform-key'] as const;
 // Moderation acts through a chat platform's own permissions and grants no decision authority, so it holds no seam.
-export const SEAM_SCOPES = TEAM_SCOPES.filter((s) => s !== 'moderation');
+// `member` is every roster member, each for their own act (acknowledging the policies on joining): it decides nothing
+// for anyone else.
+export const SEAM_SCOPES = [...TEAM_SCOPES.filter((s) => s !== 'moderation'), 'member'] as const;
+export type SeamScope = Exclude<TeamScope, 'moderation'> | 'member';
 export type SeamDoor = typeof SEAM_DOORS[number];
-export interface Seam { id: string; scope: TeamScope; door: SeamDoor; record: string }
+export interface Seam { id: string; scope: SeamScope; door: SeamDoor; record: string; routine?: string }
+/** A routine a seam names: its workspace's (`routine:<org>/<name>`) or the project's own linked workspace's (`<name>`). */
+export const SEAM_ROUTINE = /^(?:routine:[a-z0-9][a-z0-9-]{0,127}\/)?[a-z0-9][a-z0-9-]{0,63}$/;
 export interface VendorAccount { id: string; vendor: string; account: string }
 export interface Seams { seams: Seam[]; vendor_accounts: VendorAccount[] }
 
@@ -28,14 +36,15 @@ export function validateSeams(value: unknown): Seams {
   const ids = new Set<string>();
   const seams = value.seams.map((s, i): Seam => {
     if (!record(s)) throw new Error(`Seam ${i + 1} must be an object.`);
-    only(s, ['id', 'scope', 'door', 'record'], `Seam ${String(s.id ?? i + 1)}`);
+    only(s, ['id', 'scope', 'door', 'record', 'routine'], `Seam ${String(s.id ?? i + 1)}`);
     if (!ident(s.id)) throw new Error(`Seam ${i + 1} needs an id of lowercase letters, digits and dashes.`);
     if (ids.has(s.id)) throw new Error(`Seam ${s.id} is declared twice.`);
     ids.add(s.id);
-    if (!(SEAM_SCOPES as readonly unknown[]).includes(s.scope)) throw new Error(`Seam ${s.id} names scope ${JSON.stringify(s.scope)}; a seam is held by a roster scope with decision authority: ${SEAM_SCOPES.join(', ')}. Moderation grants none.`);
+    if (!(SEAM_SCOPES as readonly unknown[]).includes(s.scope)) throw new Error(`Seam ${s.id} names scope ${JSON.stringify(s.scope)}; a seam is held by a roster scope with decision authority, or by each member for their own act: ${SEAM_SCOPES.join(', ')}. Moderation grants none.`);
     if (!(SEAM_DOORS as readonly unknown[]).includes(s.door)) throw new Error(`Seam ${s.id} acts through ${JSON.stringify(s.door)}; the only doors are ${SEAM_DOORS.join(', ')} (ADR 0008). Chat carries requests, never the record of an act.`);
     if (!label(s.record, 300)) throw new Error(`Seam ${s.id} must say where its acts are recorded.`);
-    return { id: s.id, scope: s.scope as TeamScope, door: s.door as SeamDoor, record: s.record };
+    if (s.routine !== undefined && (typeof s.routine !== 'string' || !SEAM_ROUTINE.test(s.routine))) throw new Error(`Seam ${s.id} names routine ${JSON.stringify(s.routine)}; a routine is routine:<org>/<name>, or the name of one of the project's linked workspace.`);
+    return { id: s.id, scope: s.scope as SeamScope, door: s.door as SeamDoor, record: s.record, ...(s.routine === undefined ? {} : { routine: s.routine as string }) };
   });
   const accounts = (value.vendor_accounts === undefined ? [] : value.vendor_accounts) as unknown[];
   if (!Array.isArray(accounts)) throw new Error('vendor_accounts must be a list.');

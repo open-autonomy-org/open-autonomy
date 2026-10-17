@@ -50,4 +50,7 @@ const path = resolve(dir, 'world.config.json');
 writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 const world = `bun ${quote(cli('world'))}`;
-console.log(`Prepared ${path}\n\n${world} up ${quote(path)} --env-file ${quote(resolve(dir, 'world.env'))} --root ${quote(STATE)}\n${world} app-url ${NAME} --root ${quote(STATE)} --set "$(${world} url ${NAME} platform --root ${quote(STATE)})"\n${world} attach ${NAME} --root ${quote(STATE)} -- bun ${quote(resolve(SCENARIO, 'operator.ts'))} hermes kanban list\n${world} down ${NAME} --root ${quote(STATE)} --purge`);
+// up writes this output; each preparation must choose a new path, never a credential input.
+const envOut = resolve(dir, `world.${Date.now()}.${process.pid}.env`);
+const owner = process.env.OA_WORLD_OWNER ?? `oa-scenario-${NAME}`;
+console.log(`Prepared ${path}\n\n${world} resources --root ${quote(STATE)}\n${world} up ${quote(path)} --env-out ${quote(envOut)} --owner ${quote(owner)} --root ${quote(STATE)}\n${world} doctor ${NAME} --root ${quote(STATE)}\n${world} tail ${NAME} --root ${quote(STATE)} --no-follow\n${world} covers ${NAME} --repo ${quote(ROOT)} --root ${quote(STATE)}\n${world} app-url ${NAME} --root ${quote(STATE)} --set "$(${world} url ${NAME} platform --root ${quote(STATE)})"\n${world} attach ${NAME} --owner ${quote(owner)} --root ${quote(STATE)} -- bun ${quote(resolve(SCENARIO, 'operator.ts'))} hermes kanban list\n${world} down ${NAME} --root ${quote(STATE)} --purge`);

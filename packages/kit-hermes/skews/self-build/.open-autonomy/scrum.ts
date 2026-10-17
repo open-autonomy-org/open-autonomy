@@ -142,15 +142,16 @@ if (command === 'note') {
   // One task per outcome, whatever its size. A workstream holds every piece of context its outcome needs and hands
   // over a finished outcome; every split costs the next worker a context it has to rebuild. An outcome that already
   // has a task gets that task back (a retry, a duplicate, a "phase two"), never a second one; only a cancelled task
-  // makes room. Distinct workstreams are distinct outcomes in ROADMAP.md.
+  // makes room. Distinct workstreams are distinct outcomes in ROADMAP.md; a project that keeps no roadmap (none at
+  // main) plans on the card, whose body carries its source and acceptance.
   const [outcome, title, body] = args;
   if (!outcome || !validId(outcome) || !title || !body) throw new Error('queue requires outcome-id, title and acceptance body');
   git('fetch', '-q', 'origin', 'main');
   const commit = git('rev-parse', 'origin/main');
-  const roadmap = git('show', `${commit}:ROADMAP.md`);
-  const section = roadmap.split(/^## /m).find((s) => s.startsWith(`${outcome}: `));
+  const roadmap = (() => { try { return git('show', `${commit}:ROADMAP.md`); } catch { return undefined; } })();
+  const section = roadmap === undefined ? body : roadmap.split(/^## /m).find((s) => s.startsWith(`${outcome}: `));
   if (!section) throw new Error(`landed ROADMAP.md has no outcome ${outcome}`);
-  if (!/^Dispatch: fleet\s*$/m.test(section)) throw new Error(`${outcome} is not marked Dispatch: fleet; unresolved and human work must not dispatch`);
+  if (roadmap !== undefined && !/^Dispatch: fleet\s*$/m.test(section)) throw new Error(`${outcome} is not marked Dispatch: fleet; unresolved and human work must not dispatch`);
   if (!/\[[^\]]+\]\((?:https:\/\/[^)\s]+|hermes:[^)\s]+|[^)\s]+\.(?:md|json)(?:#[^)]*)?)\)/.test(section)) throw new Error(`${outcome} has no source link; source the plan before dispatch`);
   const tasks = JSON.parse(run(['hermes', 'kanban', 'list', '--archived', '--json'])) as Array<{ id: string; status: string; body?: string; idempotency_key?: string }>;
   const marker = `<!-- roadmap:${outcome} -->`;
@@ -159,5 +160,5 @@ if (command === 'note') {
     .find((t) => t.status !== 'cancelled');
   if (existing) { console.log(JSON.stringify(existing)); process.exit(0); }
   const config = Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8')) as { account: string };
-  console.log(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\nRoadmap: https://github.com/${config.account}/blob/${commit}/ROADMAP.md (${outcome})\n${body}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--skill', 'develop', '--created-by', 'pm', '--idempotency-key', key, '--json']));
+  console.log(run(['hermes', 'kanban', 'create', title, '--body', `${marker}\n${roadmap === undefined ? '' : `Roadmap: https://github.com/${config.account}/blob/${commit}/ROADMAP.md (${outcome})\n`}${body}`, '--assignee', 'default', '--workspace', `dir:${project}`, '--skill', 'develop', '--created-by', 'pm', '--idempotency-key', key, '--json']));
 } else throw new Error('usage: scrum.ts prepare | changes [offset] | sessions [offset] | session <id> [offset] | finish <snapshot-id> [main] [sessions] [note:<id>] | note <source> <author> <text> | queue <outcome-id> <title> <body>');

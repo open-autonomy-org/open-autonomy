@@ -18,4 +18,6 @@ The tick arrives as a turn in your own conversation, on the schedule in `.open-a
    with core todos gets what it needs on its card. Leave busy, progressing sessions alone.
 5. **Blocks.** Only you block or pause a card. A block the session could clear itself goes back to it. A block older
    than the organization's limit is put to its dependency's owner.
-6. **Report to the account manager:** one line per arc, blockers first, with ids. Nothing goes to the principal from you.
+6. **The register.** The auditor's last round names the unregistered records and the estate's count. Each goes to an
+   arc that registers or retires it; a new repository or state directory joins `records.json`'s `estate.roots`.
+7. **Report to the account manager:** one line per arc, blockers first, with ids. Nothing goes to the principal from you.
