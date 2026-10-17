@@ -5,7 +5,11 @@ import type { SupercodeHarnessClient, RunsQuery, SessionDescriptor, RequestOptio
 export type NativeRuntimeSelection = { kind: 'hermes' | 'orchestrator'; root: string };
 export type NativeProfile = {
   name?: string; dir?: string; persona?: { text?: string };
-  worker?: { harness: string; model?: string | null; permission?: Record<string, unknown> } | null;
+  // supercode interchange WorkerSpec; the codec omits a field at its default (home profile, surface headless, no effort)
+  worker?: {
+    harness: string; model?: string | null; permission?: Record<string, unknown>;
+    cwd?: string; home?: 'profile' | 'user'; surface?: 'headless' | 'pane'; reasoning_effort?: string | null;
+  } | null;
   jobs: Record<string, { residue?: { name?: string } }>;
   bindings: Record<string, { worker: { session_id?: string }; started_at?: string; ended_at?: string; end_reason?: string }>;
   residue?: { config?: Record<string, any> };
