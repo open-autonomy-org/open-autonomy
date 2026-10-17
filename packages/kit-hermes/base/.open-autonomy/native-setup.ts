@@ -6,7 +6,7 @@ const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule(
 import type { Package, Setup } from './agent.ts';
 import { profileHarness } from './agent.ts';
 import { NativeRuntime, type NativeProfile } from './native-runtime.ts';
-import { redactSecrets } from '@open-autonomy/sdk/redaction';
+import { redactSecrets } from './sdk/redaction.ts';
 
 type Unit = Record<string, unknown>;
 type ConfigUnit = { values?: Unit; error?: string };
