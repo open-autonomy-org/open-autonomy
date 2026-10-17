@@ -37,24 +37,42 @@ declarations, `extensions.hermes.config` (ADR 0026's duplicate and conflict rule
 
 | Declaration | Native model field |
 | --- | --- |
-| `worker.cwd` | `profile.worker.cwd`, a nonempty path |
+| `worker.cwd` | `profile.worker.cwd`, a relative path inside the profile (no leading `/`, no `..` segment, as `decode_worker` reads it) |
 | `worker.home` | `profile.worker.home`, `profile` or `user`; `user` refuses for a worker other than Claude Code |
 | `worker.surface` | `profile.worker.surface`, `headless` or `pane` |
 | `worker.reasoning_effort` | `profile.worker.reasoning_effort`, one lowercase word; refuses for a worker other than Codex |
 | `memory.memory_enabled` | `profile.residue.config.memory.memory_enabled`, a boolean |
 
-A typed worker field read back absent is its codec default (`.`, `profile`, `headless`), since the codec omits a default
+A worker field is applied only where this machine's supercode saves it. The harness service answers
+`capabilities().orchestration.worker_fields` (supercode d9c92add1 and later); an older service, which omits the
+answer, writes every typed field but `reasoning_effort` (its `encode_config` never wrote it, though `decode_worker`
+reads it, so a save dropped it). A declared field the service does not save is withheld from the applier: never
+written, never stamped as applied, and said in the start output ("worker.reasoning_effort xhigh is declared for
+coder-codex; this machine's supercode does not save it yet, so it is not applied; update supercode"). The start does
+not fail on it; under kit 3.20 it never took effect either. A typed worker field read back absent is its codec default (`.`, `profile`, `headless`), since the codec omits a default
 on save. A missing worker is created as the profile's declared harness. The settings stay in the applier's existing
 `setting.<key>` units, so a home's retained applier base carries over unchanged.
 
 A Claude Code model with no provider, no endpoint, base URL or placeholder key, and `credential: harness-login` is the
 anthropic route on the harness's own login, derived rather than required. Where the profile declares `worker.home:
 user` the declaration goes to the applier unchanged (no provider, the user's own login in the user's home); otherwise
-its models are given provider anthropic (the native own-login route in the profile's home). Preflight refuses a Claude
+its models are given provider anthropic (the native own-login route in the profile's home). A kit 3.20 harness-login
+Claude Code profile that declares no `worker.home` therefore moves from the `model.provider: ''` kit 3.20 wrote to
+`anthropic`: its `inference.default` unit acts on the first start. That is a fix: with `''` in the profile's home the
+worker's `CLAUDE_CONFIG_DIR` is the profile's own, where it is not logged in (`activationEnv`). Preflight refuses a Claude
 Code worker in the user's home whose route is provider anthropic with no endpoint, since the native route would refuse
 it at launch. A provider-less Claude Code model that names an endpoint still refuses: it names provider custom.
 
 Unknown settings, malformed values and other routes still refuse before any native effect, as ADR 0026 decides.
+A live worker the declaration does not govern and the runtime refuses at launch (a Codex worker with `worker.home:
+user` left in its `config.yaml`) is named as a warning in the start output, not refused: the start did not fail on it
+before, and it is not this declaration's to change.
+
+The applier writes one unit at a time, `inference.default` before the settings, so a profile can briefly hold a route
+and worker home its end state does not (provider anthropic before `worker.home` leaves `user`). No launch reads it in
+between: the keeper applies the setup before it starts this start's gateway, board and channel processes, the
+preflight checks the declared end state of every unit, and a start that stops between units fails before any of them,
+the next start's plan completing the remaining units first.
 
 ## Alternatives and consequences
 

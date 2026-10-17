@@ -73,7 +73,7 @@ The native settings live under `extensions.orchestrator.config`. For existing na
 `extensions.hermes.config` can supply the same enumerated `worker.harness`, `agent.max_turns`, and `approvals.mode`
 keys; conflicting duplicate declarations refuse. This is a bounded declaration compatibility mapping, not a generic
 Hermes config parser. Native templates remove `memory.memory_enabled`: this candidate does not implement that
-Hermes memory setting. An explicit unsupported setting refuses rather than being retained and called applied.
+Hermes memory setting (the current runtime does: [ADR 0030](0030-native-setup-maps-what-existing-homes-declare.md)). An explicit unsupported setting refuses rather than being retained and called applied.
 
 Default model route, named job model routes and an `unattended` pointer must use the same provider, endpoint,
 credential reference and API mode for a profile; model names may differ. An unattended pointer equal to the default

@@ -24,6 +24,9 @@ const WORKER = new Set(['worker.harness', 'worker.cwd', 'worker.home', 'worker.s
 const WORKER_DEFAULT: Record<string, unknown> = { 'worker.cwd': '.', 'worker.home': 'profile', 'worker.surface': 'headless' };
 // memory.memory_enabled is config residue: the agent home's config.yaml, read by the memory snapshot and memory tool.
 const SETTINGS = new Set([...WORKER, 'agent.max_turns', 'approvals.mode', 'memory.memory_enabled']);
+// The worker fields a harness service that does not advertise `orchestration.worker_fields` writes on a save (supercode
+// encode_config before it wrote reasoning_effort, d9c92add1): a field outside them reads back absent after a save.
+const UNADVERTISED_WORKER_FIELDS = ['harness', 'model', 'preset', 'cwd', 'home', 'surface', 'capacity', 'env', 'permission'];
 // Settings whose native consumer is reviewed only for the Claude Code and Codex workers.
 const WORKER_ONLY = ['agent.max_turns', 'approvals.mode', 'worker.home', 'worker.surface', 'worker.reasoning_effort'];
 // The pinned applier can pause a new create, but lacks complete reviewed declarative enabled reconciliation.
@@ -66,7 +69,9 @@ function patch(profile: NativeProfile, values: Unit, harness: string): void {
   }
 }
 
-function nativeSpec(setup: Setup, name: string, raw: Package): Package {
+/** `written` is the worker fields this machine's supercode saves; a declared worker field outside them is withheld from
+ *  the applier (never applied, never stamped) and pushed onto `withheld`, for the start to say. */
+function nativeSpec(setup: Setup, name: string, raw: Package, written: Set<string>, withheld: Array<[string, unknown]>): Package {
   for (const key of Object.keys(raw)) if (!['schema_version', 'parameters', 'inference', 'jobs', 'extensions', 'moved', 'removed'].includes(key)) throw new Error(`${name}: unsupported native declaration ${key}`);
   const spec = structuredClone(raw);
   checkJobNames(spec, name);
@@ -80,7 +85,8 @@ function nativeSpec(setup: Setup, name: string, raw: Package): Package {
     if (key === 'agent.max_turns' && !(typeof value === 'number' && Number.isSafeInteger(value) && value > 0)) throw new Error(`${name}: agent.max_turns must be a positive safe integer`);
     if (key === 'approvals.mode' && !['off', 'manual'].includes(String(value))) throw new Error(`${name}: approvals.mode is off or manual`);
     if (key === 'worker.harness' && !/^[a-z][a-z0-9-]{0,31}$/.test(String(value))) throw new Error(`${name}: invalid native worker harness`);
-    if (key === 'worker.cwd' && !(typeof value === 'string' && value.trim())) throw new Error(`${name}: worker.cwd is a folder path (relative to the profile folder, or absolute)`);
+    // as the codec decodes it (decode_worker): a relative path inside the profile, no leading / and no .. segment
+    if (key === 'worker.cwd' && !(typeof value === 'string' && value.trim() && !value.startsWith('/') && !value.split('/').includes('..'))) throw new Error(`${name}: worker.cwd must be a relative path inside the profile folder (no leading / and no .. segment), not ${JSON.stringify(value)}`);
     if (key === 'worker.home' && !['profile', 'user'].includes(String(value))) throw new Error(`${name}: worker.home is profile or user`);
     if (key === 'worker.surface' && !['headless', 'pane'].includes(String(value))) throw new Error(`${name}: worker.surface is headless or pane`);
     if (key === 'worker.reasoning_effort' && !(typeof value === 'string' && /^[a-z]{1,16}$/.test(value))) throw new Error(`${name}: worker.reasoning_effort is one lowercase effort word (high, xhigh, ...)`);
@@ -126,6 +132,7 @@ function nativeSpec(setup: Setup, name: string, raw: Package): Package {
     for (const field of Object.keys(job)) if (!JOB_FIELDS.has(field)) throw new Error(`${name}: native job ${key} does not implement ${field}`);
   }
   // The external applier owns its unit/base comparison; only these reviewed mappings enter its config units.
+  for (const key of Object.keys(settings)) if (WORKER.has(key) && !written.has(key.slice('worker.'.length))) { withheld.push([key, settings[key]]); delete settings[key]; }
   spec.extensions = { hermes: { config: settings } };
   return spec;
 }
@@ -148,6 +155,15 @@ function effective(profile: NativeProfile, spec: Package, units: Array<{ values?
     // This adapter does not own custom prompt timeouts/defaults or unattended authority.
     if ((permission.timeout_seconds ?? 300) !== 300 || (permission.default ?? 'deny') !== 'deny' || (permission.unattended ?? 'deny') !== 'deny') throw new Error(`${name}: custom worker.permission conflicts with the adapter's launch-policy mapping`);
   }
+}
+
+/** What the live profile holds, undeclared, that the native runtime refuses at launch: said, never refused here (the
+ *  start did not fail on it before, and it is not this declaration's to change). */
+function liveWarnings(profile: NativeProfile, units: ConfigUnit[], name: string): string[] {
+  const want = Object.assign({}, ...units.map(u => u.values ?? {}));
+  const harness = want['worker.harness'] ?? read(profile, 'worker.harness');
+  if ('worker.home' in want || read(profile, 'worker.home') !== 'user' || harness === 'claude-code') return [];
+  return [`warning: ${name}'s live worker is ${harness} with worker.home user, which agent.json does not declare; the native runtime runs only Claude Code in the user's home, so its conversation and headless launches will refuse it (clear worker.home in that profile's config.yaml)`];
 }
 
 type NodeRequest = { operation: 'validate'; profile: NativeProfile; args: Unit; now: string }
@@ -218,13 +234,19 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
   const { orchestratorDoor } = await import(orchestratorModule('./apply/doors'));
   const command = [...(options.asAgent ?? []), supercodeBin(), 'harness', 'serve'];
   const sc = new HarnessClient({ command: command[0], args: command.slice(1) });
+  const notices: string[] = [];
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);
   type Row = { key: string; action: string; detail?: string; differs?: string[]; patch?: Unit };
   try {
+    // Which worker fields this machine's supercode saves: its harness service's own answer (`orchestration.worker_fields`,
+    // supercode d9c92add1 and later), else what every earlier service writes.
+    const advertised = ((await sc.capabilities()) as { orchestration?: { worker_fields?: unknown } }).orchestration?.worker_fields;
+    const written = new Set(Array.isArray(advertised) ? advertised.map(String) : UNADVERTISED_WORKER_FIELDS);
     const prepared = [];
     // Every profile and operation is preflighted before any native write or job effect.
     for (const [name, raw] of Object.entries(options.setup.profiles)) {
-      const spec = applier.validate(applier.resolveParameters(nativeSpec(options.setup, name, raw) as never, { workspace: options.workspace })) as Package;
+      const withheld: Array<[string, unknown]> = [];
+      const spec = applier.validate(applier.resolveParameters(nativeSpec(options.setup, name, raw, written, withheld) as never, { workspace: options.workspace })) as Package;
       checkJobNames(spec, name); // aliases in moved/removed must be checked after owning parameter resolution, too
       const units = applier.hermesConfig(spec as never) as unknown as ConfigUnit[];
       const get = async () => {
@@ -233,7 +255,12 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
         if (!profile) throw new Error(`${name}: native profile is missing; give it content under home/profiles/${name}`);
         return { ...result, profile };
       };
-      effective((await get()).profile, spec, units, name);
+      const current = (await get()).profile;
+      effective(current, spec, units, name);
+      for (const [key, value] of withheld) notices.push(same(read(current, key), value)
+        ? `${key} ${value} is declared for ${name} and is in its config.yaml, but this machine's supercode does not save it yet, so it is left as it is, not applied here, and the next save of this profile drops it; update supercode`
+        : `${key} ${value} is declared for ${name}; this machine's supercode does not save it yet, so it is not applied; update supercode`);
+      notices.push(...liveWarnings(current, units, name));
       const door = Object.assign(await orchestratorDoor({ root: options.root, profile: name, load: async () => ({ state: (await runtime.load()).orchestration }) }) as NativeJobDoor, {
         create: (key: string, want: Unit) => nativeNodeCall({ operation: 'create', root: options.root, profile: name, args: [key, want] }, options.workspace, safety, options.asAgent),
         update: (id: string, values: Unit) => nativeNodeCall({ operation: 'update', root: options.root, profile: name, args: [id, values] }, options.workspace, safety, options.asAgent),
@@ -287,6 +314,6 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       if (refused.length) throw new Error(`${name}: native setup did not apply: ${refused.map(row => `${row.key} ${row.action}${row.detail ? ` (${row.detail})` : ''}`).join('; ')}`);
       for (const row of done.applied) lines.push(`${name}: ${row.key} ${row.action}`);
     }
-    return lines;
+    return [...notices, ...lines];
   } finally { await sc.close(); }
 }
