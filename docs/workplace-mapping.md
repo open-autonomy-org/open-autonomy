@@ -11,6 +11,14 @@ Source inspection: 2026-10-04, OA `26783a7e` and RH2 integration candidate `1f01
 means code is present; it does not establish a release, a live installation or completed World acceptance.
 The company ontology specifies a target and explicitly distinguishes it from shipped behavior.
 
+## Workplace directories
+
+The Workplace package supplies **Office**, a declared view of the organization's shared Rooms grouped by category
+and floor. It uses the same view renderer and Room interactions as every other directory. Supercode supplies
+Sessions and People; the Workplace core supplies the view vocabulary and permission checks, not these presets.
+Office retains the `floor` preset key so existing organization settings and saved links keep working. Selecting or
+uninstalling an integration determines which default views it contributes; the organization can override its views.
+
 ## Associations, not shared identities
 
 | Source object | Workplace association | Contract and implementation owner |
