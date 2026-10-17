@@ -21,6 +21,7 @@
 //   bun .open-autonomy/enroll.ts [--project <dir>] [--home <dir>] [--health-only]
 // --health-only reads existing native declarations and retries fleet subscriptions; it opens no sessions or sync roots.
 // OPEN_AUTONOMY_SUPERCODE_BIN names another supercode build (a review or a World), as it does for the start.
+import { Database } from 'bun:sqlite';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -54,6 +55,27 @@ async function run(cmd: string[], cwd: string, boundMs = 120_000): Promise<{ ok:
   return { ok: code === 0, out: out.trim(), err: (proc.signalCode ? `${err}\nno answer within ${boundMs / 1000} s` : err).trim() };
 }
 const last = (text: string) => text.split('\n').at(-1) ?? '';
+/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
+ * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
+ * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
+async function homeAgent(name: string, profile: string, cwd: string): Promise<string | null> {
+  const shown = await run([supercodeBin, 'teams', 'context', 'show', '--json'], cwd);
+  let context: { origin?: string; team_id?: string };
+  try { context = JSON.parse(shown.out); } catch { return null; }
+  const file = resolve(home, 'agent-state.sqlite');
+  if (!context.origin || !context.team_id || !existsSync(file)) return null;
+  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
+  let db: Database;
+  try { db = new Database(file, { readonly: true }); } catch { return null; }
+  try {
+    const at = (key: string): string | null => {
+      const stable = `${context.origin}/${context.team_id}/${key}`;
+      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
+        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
+    };
+    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
+  } catch { return null; } finally { db.close(); }
+}
 /** `target` is strictly inside `base` (both real paths): a relative path with no leading `..`, and not absolute (another
  *  drive on Windows). */
 const within = (base: string, target: string): boolean => { const rel = relative(base, target); return rel !== '' && rel.split(sep)[0] !== '..' && !isAbsolute(rel); };
@@ -149,6 +171,17 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
   }
   if (!declared.ok) { say(`agent ${name} not declared: ${declared.err}`); failed++; continue; }
   say(declared.out);
+  // The mailbox's main session is its profile's agent's main session in Teams (supercode ADR 0041 decision 1: whose session
+  // it is reaches Teams through the machine), so a Workplace mirrors it as that agent rather than as a plain session
+  // beside it. The address is the declaration's own (`roots go to sc:<machine>:<harness>:<id>.`, whatever follows it).
+  const main = /roots go to sc:[^:\s]+:([a-z][a-z-]*:[^\s]+?)\.(?=\s|$)/.exec(declared.out)?.[1];
+  const profileAgent = await homeAgent(name, mailAgent.profile, real);
+  if (!main) say(`agent ${name}: its declaration named no main session, so none is recorded as its agent's in Teams`);
+  else if (!profileAgent) say(`agent ${name}: this home declared no Teams agent for it or its profile ${mailAgent.profile}, so its main session ${main} is not recorded as one's`);
+  else {
+    const recorded = await run([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main'], real);
+    say(recorded.ok ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${last(recorded.err)}`);
+  }
   if (!mailAgent.every_machine && !mailAgent.health_alarms) continue;
   const listed = await run([supercodeBin, 'teams', 'machines', 'list', '--json'], real);
   // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
