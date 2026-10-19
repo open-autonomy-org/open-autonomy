@@ -41,7 +41,7 @@ const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule(
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
-import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
+import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
@@ -322,10 +322,21 @@ async function watch(d: SessionDescriptor): Promise<void> {
   } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
   finally { watching.delete(key);if(!stopped.has(key))later(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
-// A publication that failed waits a minute before the next attempt: every attempt reloads the session's whole history
-// from Volter Harness, and a live session whose earlier turns Hermes has since rewritten (compression) cannot be appended to
-// until it ends, so trying every tick would reload it every ten seconds for as long as it runs.
-const retryAt = new Map<string, number>();
+// A publication that failed waits before the next attempt, a minute after its first failure and twice as long after each
+// failure since, up to half an hour: every attempt reads the session's source again, and a source the reader cannot read
+// (one larger than it can hold) fails the same way each time. One timer per session carries its retry; a tick that
+// shares the failing attempt adds neither a failure nor a timer.
+const retryAt = new Map<string, number>(), failures = new Map<string, number>(), retryTimers = new Set<string>();
+function retryLater(key: string, delay: number): void {
+  if (retryTimers.has(key)) return;
+  retryTimers.add(key);
+  later(() => {
+    retryTimers.delete(key);
+    const wait = (retryAt.get(key) ?? 0) - Date.now();
+    if (wait > 0) { retryLater(key, wait); return; }
+    void publication.run(() => sessions(key)).catch(error => { if (!quitting) log(`session retry pending: ${error.message}`); });
+  }, delay);
+}
 async function sessions(only?: string): Promise<void> {
   for (const [key, d] of descriptors) {
     if (quitting) return;
@@ -356,13 +367,15 @@ async function sessions(only?: string): Promise<void> {
         publisherItems.set(key, item);
       }
       const receipt = await publisher.publish(completion);
-      retryAt.delete(key);
+      retryAt.delete(key); failures.delete(key);
       if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
       else void watch(d);
     } catch (e) {
       if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); dirty = true; continue; }
-      later(()=>{retryAt.delete(key);void publication.run(()=>sessions(key)).catch(error=>{if(!quitting)log(`session retry pending: ${error.message}`);});},60_000);
-      retryAt.set(key, Date.now() + 60_000); log(`${key}: publication incomplete (${(e as Error).message}); next attempt in a minute`);
+      if ((retryAt.get(key) ?? 0) > Date.now()) continue; // this attempt's failure is already counted and its retry armed
+      const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
+      failures.set(key, failed); retryAt.set(key, Date.now() + delay); retryLater(key, delay);
+      log(`${key}: publication incomplete (${(e as Error).message}); failure ${failed}, next attempt in ${delay / 60_000} min`);
     }
   }
 }
@@ -670,5 +683,12 @@ for(const path of [resolve(projectDir,'.git')]){
 }
 
 log(`watching ${home} for ${cfg.account}`);
+// Every ten minutes, what transcript reconciliation read from the sources and what the publisher holds per session.
+const readings = (): void => {
+  const v = takeReadVolume();
+  log(`last 10 min: ${v.reconciled} transcripts reconciled (${v.windows} source windows, ${v.messages} messages), ${v.unchanged} unchanged; holding ${descriptors.size} sessions, ${publishers.size} transcript publishers, ${watching.size} followed, ${retryTimers.size} awaiting retry`);
+  later(readings, 600_000);
+};
+later(readings, 600_000);
 
 }
