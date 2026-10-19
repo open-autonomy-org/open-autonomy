@@ -84,6 +84,9 @@ export class BoardEventSource {
   private ready!: () => void;
   private refuseReady!: (error: Error) => void;
   private wake?: () => void;
+  // Frames applied since the last delivery: the cards as they now stand and the last frame's cursor.
+  private applied?: { rows: Map<string, SourceCard>; cursor: unknown };
+  private delivering?: Promise<void>;
   constructor(private readonly options: SourceOptions) {
     if (!options.sourceContextId || !options.command.length) throw new Error('Native stream needs explicit OA source context and command');
     if (existsSync(options.stateFile)) {
@@ -169,6 +172,29 @@ export class BoardEventSource {
   private async stage(rows: Map<string, SourceCard>, cursor: unknown): Promise<void> {
     this.pending = this.snapshot([...rows.values()], cursor); await this.publish();
   }
+  // The cards as every frame read so far leaves them: the frames not yet delivered, else the delivery in flight, else
+  // what was delivered last.
+  private working(): Map<string, SourceCard> {
+    if (this.applied) return this.applied.rows;
+    return this.pending ? new Map(this.pending.cards.map(row => [this.key(row), row])) : new Map(this.rows);
+  }
+  // Deliver what has been read, one batch at a time: every frame applied since the last delivery goes out as one
+  // observation, and frames read meanwhile go out in the next.
+  private deliver(): void {
+    if (this.delivering || this.closed) return;
+    this.delivering = (async () => {
+      while (this.applied && !this.closed) { const { rows, cursor } = this.applied; this.applied = undefined; await this.stage(rows, cursor); }
+    })().catch(error => { if (!this.closed) this.options.log(`native event delivery stopped: ${(error as Error).message}`); })
+      .finally(() => { this.delivering = undefined; });
+  }
+  private async drain(): Promise<void> {
+    while (this.delivering) await this.delivering;
+    if (this.applied && !this.closed) { this.deliver(); while (this.delivering) await this.delivering; }
+  }
+  // Frames are applied as they arrive and delivered in batches. Bun keeps reading a child's output whatever readline's
+  // pause says, so a reader that took one frame per publication pass left the rest of the stream in memory: a board
+  // writes each changed card whole (some are 2 MB) dozens of times a minute, and a host's 1,001-event backlog held
+  // 1.1 GB. Applied frames hold only the cards. A reader that ends delivers what it read before the next one starts.
   private async follow(): Promise<void> {
     while (!this.closed) {
       // Recovery does not depend on native log retention: pending observation is local.
@@ -179,32 +205,36 @@ export class BoardEventSource {
       let reader: ReturnType<typeof createInterface> | undefined;
       const stream = streamChild(command, this.options.env, this.options.log, () => reader?.close()); this.child = stream;
       const lines = createInterface({ input: stream.child.stdout! }); reader = lines; this.lines = lines;
-      let staged: Map<string, SourceCard> | undefined, snapshotKeys: Set<string> | undefined;
-      try {
-        for await (const line of lines) {
-          if (this.closed) break;
-          lines.pause(); const frame = JSON.parse(line);
-          if (frame.type === 'resync_required') { this.legacyCursor ??= this.cursor; this.cursor = undefined; this.save(); this.options.log(`native source requests full snapshot: ${frame.reason}`); break; }
+      const ended = new Promise<void>(resolve => lines.once('close', resolve));
+      let staged: Map<string, SourceCard> | undefined, snapshotKeys: Set<string> | undefined, stopped = false, resync: string | undefined;
+      const stop = (error?: Error): void => { stopped = true; if (error && !this.closed) this.options.log(`native source interrupted: ${error.message}`); lines.close(); };
+      lines.on('line', line => {
+        if (this.closed || stopped) return;
+        try {
+          const frame = JSON.parse(line);
+          if (frame.type === 'resync_required') { resync = String(frame.reason); stop(); return; }
           if (frame.type === 'snapshot_begin') { if (staged) throw new Error('Nested native snapshot'); staged = new Map(); snapshotKeys = new Set(); }
           else if (frame.type === 'snapshot_item' || frame.type === 'event') {
             if (frame.type === 'snapshot_item' && !staged) throw new Error('Native snapshot item outside snapshot');
             if (frame.type === 'event' && staged) throw new Error('Native live event inside snapshot');
             const row = this.row({ publicationId: frame.id, sequence: frame.sequence, board: frame.data?.board, card: frame.data?.card }), key = this.key(row);
             if (snapshotKeys?.has(key)) throw new Error('Duplicate card in native snapshot'); snapshotKeys?.add(key);
-            const next = staged ?? new Map(this.rows);
+            const next = staged ?? this.working();
             if (row.card.removed) next.delete(key); else next.set(key, row);
-            if (frame.type === 'event') await this.stage(next, frame.cursor);
+            if (frame.type === 'event') { this.applied = { rows: next, cursor: frame.cursor }; this.deliver(); }
           } else if (frame.type === 'snapshot_end') {
             if (!staged) throw new Error('Snapshot ended without its inventory');
-            await this.stage(staged, frame.cursor); staged = undefined; snapshotKeys = undefined;
+            this.applied = { rows: staged, cursor: frame.cursor }; staged = undefined; snapshotKeys = undefined; this.deliver();
           } else if (frame.type === 'checkpoint') {
             if (staged) throw new Error('Checkpoint inside native snapshot');
-            await this.stage(this.rows, frame.cursor);
-          } else if (frame.type !== 'snapshot_begin') throw new Error(`Unsupported native stream frame ${frame.type}`);
-          lines.resume();
-        }
-      } catch (error) { if (!this.closed) this.options.log(`native source interrupted: ${(error as Error).message}`); }
-      finally { lines.close(); this.lines = undefined; stream.child.stdout?.resume(); await stream.retire(); this.child = undefined; }
+            this.applied = { rows: this.working(), cursor: frame.cursor }; this.deliver();
+          } else throw new Error(`Unsupported native stream frame ${frame.type}`);
+        } catch (error) { stop(error as Error); }
+      });
+      try { await ended; }
+      finally { this.lines = undefined; stream.child.stdout?.resume(); await stream.retire(); this.child = undefined; }
+      await this.drain();
+      if (resync !== undefined && !this.closed) { this.legacyCursor ??= this.cursor; this.cursor = undefined; this.save(); this.options.log(`native source requests full snapshot: ${resync}`); }
       if (!this.closed) await this.delay();
     }
     this.refuseReady(new Error('Native source stopped before readiness'));

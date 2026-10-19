@@ -621,9 +621,16 @@ function tick(): Promise<void> {
   return work;
 }
 let retry: ReturnType<typeof setTimeout>|undefined;
+// Requests coalesce: at most one pass waits in the publication queue, and it reads everything requested before it
+// starts. Session-index and follow events arrive every second or so and a pass takes ten or more, so one queued pass
+// per request grew the queue without bound and put the board's delivery (queued behind it) ever further back, while
+// the event stream it had not read yet piled up in memory.
+let tickQueued=false;
 function requestTick(): void {
-  if(quitting)return;
-  void publication.run(()=>tick()).catch(error=>{
+  if(quitting||tickQueued)return;
+  tickQueued=true;
+  void publication.run(()=>{tickQueued=false;return tick();}).catch(error=>{
+    tickQueued=false;
     log(`publication pending (${error.message}); retaining acknowledgement`);
     if(!quitting){clearTimeout(retry);if(retry)narrativeTimers.delete(retry);retry=later(requestTick,5000);}
   });
