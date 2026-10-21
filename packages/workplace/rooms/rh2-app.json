@@ -1,6 +1,6 @@
 {
   "name": "Project Rooms",
-  "description": "The organization's Office Floor as its board works: one Room per project, the project's lead and its live cards' agents seated (Open Autonomy)",
+  "description": "The organization's Office Floor as its board works: one Room per project, the project's lead and its live cards' agents seated, and the Office view with its strip (Open Autonomy)",
   "actions": [
     "organization.read",
     "room.create",
@@ -14,6 +14,9 @@
     "conversations.manage",
     "principals.resolve",
     "task.read"
+  ],
+  "contributions": [
+    "@open-autonomy/workplace"
   ],
   "redirectUrls": [
     "http://127.0.0.1:8977/project-rooms/installed"
