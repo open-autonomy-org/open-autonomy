@@ -13,10 +13,9 @@ The company ontology specifies a target and explicitly distinguishes it from shi
 
 ## Workplace directories
 
-The Workplace package supplies **Office**, a declared view of the organization's shared Rooms grouped by category
-and floor. It uses the same view renderer and Room interactions as every other directory. Supercode supplies
+The Workplace package supplies **Office**, a declared view of the organization's shared Rooms, with its Management and Work section labels and order declared as value groups in org-as-code. It uses the same view renderer and Room interactions as every other directory. Supercode supplies
 Sessions and People; the Workplace core supplies the view vocabulary and permission checks, not these presets.
-Office retains the `floor` preset key so existing organization settings and saved links keep working. Selecting or
+Room members use the same voice-channel rows and avatar presence as Sessions and People; Office has no row renderer of its own. Its header contribution uses the generic `view:floor:header` slot. Office retains the `floor` preset key so existing organization settings and saved links keep working. Selecting or
 uninstalling an integration determines which default views it contributes; the organization can override its views.
 
 ## Associations, not shared identities

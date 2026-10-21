@@ -26,7 +26,7 @@ export function waitingKinds(inbox: readonly Asked[], tasks: readonly Card[]): {
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /**
- * The Office's strip (the Floor's `floors:strip` slot; the owner's layout, "Waiting on you: 2 grants · 1 decision"): what
+ * The Office's strip (the Floor's `view:floor:header` slot; the owner's layout, "Waiting on you: 2 grants · 1 decision"): what
  * waits on the viewer by kind (waitingKinds), the asks opening their Inbox and the blocked cards the Tasks page, then how
  * many of the organization's machines are up (supercode's Machines registration's `linked`, a revoked machine not
  * counted), opening Machines. Read-only: it counts what the Workplace's reads already hold and keeps no copy.
