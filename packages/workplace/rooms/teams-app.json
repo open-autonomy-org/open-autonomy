@@ -1,6 +1,6 @@
 {
   "name": "Project Rooms",
-  "description": "Reads the board's cards and agents on the team's event stream to keep each project's Room and seat its agents",
+  "description": "Reads the board's cards and agents on the team's event stream to keep each project's Room and join its agents to it",
   "actions": ["teams.read", "events.read"],
   "event_kinds": [],
   "redirect_urls": ["http://127.0.0.1:8977/project-rooms/installed"]
