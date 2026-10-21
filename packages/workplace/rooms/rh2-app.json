@@ -1,0 +1,21 @@
+{
+  "name": "Project Rooms",
+  "description": "The organization's Office Floor as its board works: one Room per project, the project's lead and its live cards' agents seated (Open Autonomy)",
+  "actions": [
+    "organization.read",
+    "room.create",
+    "room.read",
+    "room.manage",
+    "conversation.read",
+    "floor.create",
+    "floor.read",
+    "floor.update",
+    "members.manage",
+    "conversations.manage",
+    "principals.resolve",
+    "task.read"
+  ],
+  "redirectUrls": [
+    "http://127.0.0.1:8977/project-rooms/installed"
+  ]
+}
