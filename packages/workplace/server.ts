@@ -17,7 +17,7 @@ defaultWidgets: ['runway', 'books', 'statement'], pages: [{ path: '/console/book
 // Retain the floor key so saved routes and organization view settings continue to resolve.
 views: { floor: {
   name: 'Office', icon: 'layout-grid', source: 'rooms', scope: 'floors', visibility: 'public',
-  // Its two sections, Management above the divider and Work below (runhuman-2 ADR 0055); under each Room, who is seated in
+  // Its two sections, Management above the divider and Work below (runhuman-2 ADR 0056); under each Room, who is seated in
   // it (its lead first, then its cards' sessions) and who is in its call.
   groupings: [{ key: 'section', label: 'Section', by: 'section' }], order: 'position',
   row: { marks: ['unread', 'mentions', 'in-call'], children: ['conversations', 'call', 'seats'] },
