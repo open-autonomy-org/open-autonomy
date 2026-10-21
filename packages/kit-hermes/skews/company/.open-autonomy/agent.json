@@ -226,6 +226,34 @@
         }
       }
     },
+    "lead": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "project": {
+            "provider": "custom",
+            "model": "anthropic/claude-opus-5-5",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "anthropic_messages"
+          }
+        },
+        "default": "project",
+        "unattended": "project"
+      },
+      "extensions": {
+        "orchestrator": {
+          "config": {
+            "agent.max_turns": 400,
+            "approvals.mode": "off",
+            "worker.harness": "claude-code"
+          }
+        }
+      }
+    },
     "reviewer": {
       "schema_version": 1,
       "parameters": {
