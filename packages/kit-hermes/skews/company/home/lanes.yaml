@@ -5,7 +5,7 @@
 product:
   # Builds the products: the board of arcs, one review per arc, from recordings.
   workflow: workflow.yaml
-  profiles: [account-manager, manager, coder, coder-codex, coder-claude, reviewer, auditor, box-maintainer, strategy]
+  profiles: [account-manager, manager, coder, coder-codex, coder-claude, lead, reviewer, auditor, box-maintainer, strategy]
 gtm:
   # Moves people through the funnel: post cards reviewed on the media World's changeset and walked blind, the daily
   # rounds before the meeting, the calendar's slots filled. Its manager's account manager is the product install's.

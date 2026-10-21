@@ -11,6 +11,7 @@ ever assigned to it; every job has its own profile under `profiles/` (docs/decis
 | `account-manager` | the principal's single point of contact and design partner; files draft work; watches the manager |
 | `manager` | sequences and promotes drafts, keeps each arc moving, reports to the account manager |
 | `coder` (`coder-codex`, `coder-claude`) | works one card's arc; the children differ only in harness |
+| `lead` | leads one project: holds its Room's conversation, answers there, turns asks into draft cards |
 | `reviewer` | the arc's one independent review, started by the board |
 | `auditor` | finds process drift every hour, and never fixes it |
 | `box-maintainer` | one resource manager across all machines; disk, hangs and working-session outages |
@@ -26,7 +27,8 @@ reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
 ## What every profile keeps
 
 - **Hub and spoke.** Workers talk only to the manager, the manager only to the account manager, and only the account
-  manager with the principal.
+  manager with the principal, except that a project's lead answers whoever talks to it in its project's Room, the
+  principal among them.
 - **The record is the organization's record repository**, written under its own law: rulings, designs, decisions.
   Lasting decisions go in the product repository's `docs/adr/`.
 - **Register a record before using it.** The record repository keeps the records register (`records-register.md`,
