@@ -4,6 +4,9 @@ export const contribution: ServerContribution = { id: '@open-autonomy/workplace'
     // Legacy giver identities remain a private accepted field during publisher upgrades; they confer no authority.
     privateFields: ["givers"], lists: { daily: 400, envelopes: 200, flows: 500, givers: 1000, limits: 100, statements: 100 }, objects: ["summary"],
     read: "books.read", actions: ["freeze", "unfreeze"],
+    // What an admin reads on a Workplace install page for these actions (runhuman-2 ADR 0055 decision 1).
+    noun: "books, statements and runway",
+    descriptions: { "books.read": "Read published books, statements and runway", "books.publish": "Publish books, statements and runway", "books.control": "Freeze and unfreeze book accounts, and retire published books" },
     publish: "books.publish", control: "books.control",
     allows(model, targetKey, action) {
       const summary = (model.summary ?? {}) as { account?: unknown; canFreeze?: unknown; freeze?: unknown };
