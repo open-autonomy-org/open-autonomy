@@ -15,7 +15,7 @@
     "@open-autonomy/backend": "workspace:*",
     "@open-autonomy/sdk": "workspace:*",
     "@volter/identity": "^0.1.0",
-    "hono": "^4.13.4"
+    "hono": "^4.13.11"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",

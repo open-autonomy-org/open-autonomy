@@ -36,7 +36,7 @@
   "dependencies": {
     "@open-autonomy/sdk": "workspace:*",
     "@volter/supercode-ui": "^0.1.105",
-    "hono": "^4.13.4",
+    "hono": "^4.13.11",
     "preact": "^10",
     "preact-render-to-string": "^6"
   },
