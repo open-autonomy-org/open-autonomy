@@ -12,7 +12,7 @@ export const NATIVE_TITLE = 'Rehearsal card: an adopted session notes the rehear
 export const ADOPT_PHRASE = 'Adopt the outside session';
 const sc = '"${SUPERCODE_BIN:-supercode}"';
 const github = (method: string, path: string, body?: string) =>
-  `curl -s -X ${method} -H 'authorization: Bearer world-bot' -H 'content-type: application/json' "\${GITHUB_TWIN_URL:-$GITHUB_API_URL}/repos/${ACCOUNT}${path}"${body ? ` -d "${body}"` : ''}`;
+  `curl -s -X ${method} -H "authorization: Bearer \${GH_TOKEN:?World GH_TOKEN is required}" -H 'content-type: application/json' "\${GITHUB_TWIN_URL:-$GITHUB_API_URL}/repos/${ACCOUNT}${path}"${body ? ` -d "${body}"` : ''}`;
 const card = 'card="${HERMES_KANBAN_TASK:-$(printf %s "$SUPERCODE_AGENT_ASSIGNMENTS" | jq -r \'[.[] | select(.kind == "card")][0].target // empty\')}" && card="${card:-$(git branch --show-current | sed -n \'s|^wt/\\(t_[0-9a-f]*\\)$|\\1|p\')}" && [ -n "$card" ]';
 // The card's PR: the open or merged one whose head is the card's branch.
 const pr = `branch=$(git branch --show-current) && pr=$(${github('GET', '/pulls?state=all&per_page=100')} | jq -c --arg b "$branch" --arg w "wt/$card" '[.[] | select(.head.ref == $b or .head.ref == $w)][0] // empty')`;

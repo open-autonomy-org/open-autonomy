@@ -23,7 +23,8 @@
         "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
         "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
         "MODEL_GATEWAY_API_KEY": "world-gateway-key",
-        "OPEN_AUTONOMY_MODEL": "gpt-6-astra"
+        "OPEN_AUTONOMY_MODEL": "gpt-6-astra",
+        "GH_TOKEN": "world-bot"
       },
       "strip": [
         "*"
