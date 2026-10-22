@@ -30,8 +30,9 @@
 // base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
 // program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
 // live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
-// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite or call). A state write the disk
-// refuses is retried each minute while the program works from memory.
+// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite or call) or it took its seat by
+// acting there (`seatedOnAct`: posting in the Room). A state write the disk refuses is retried each minute while the
+// program works from memory.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -273,8 +274,9 @@ async function peopleOf(view) {
  * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
  * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
  * someone changed it. Any other agent in the Room leaves by the leave command, unless a person brought it in (its seat's
- * `seatedBy` is a person of the organization: their /invite or call) or `mayUnseat` is false. Leaving waits for a whole
- * board reading, and for every wanted agent to be resolved (an unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
+ * `seatedBy` is a person of the organization: their /invite or call), it took its seat by acting there (`seatedOnAct`),
+ * or `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
+ * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
  * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
  * other seat of an agent (one it took by acting, a members write, the organization document's) is access, and the join
  * brings it in.
@@ -301,7 +303,8 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
   }
   if (mayUnseat && !missing.length && state.cleanupReady) {
-    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId));
+    // A seat an agent took by acting in the Room is its own; only seats something brought it in by are this app's to end.
+    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId) && member.seatedOnAct !== true);
     const people = leaving.length ? await peopleOf(view) : new Set();
     for (const member of leaving) {
       if (people.has(member.seatedBy)) continue;
