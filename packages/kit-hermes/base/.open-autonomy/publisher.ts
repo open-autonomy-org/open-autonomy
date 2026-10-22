@@ -45,6 +45,7 @@ import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, Transcri
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
+import { TranscriptQueue } from './transcript-queue.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -175,6 +176,7 @@ let activePublication: PublicationStore | undefined, activeSource: BoardEventSou
 let stopNarrative = () => {};
 let shutdownWork: Promise<void> | undefined;
 let narrativeWork: Promise<void> | undefined;
+let stopTranscripts = async (): Promise<void> => {};
 function shutdown(code: number): Promise<void> {
   if (shutdownWork) return shutdownWork;
   quitting = true; narrativeAbort.abort(); controlAbort.abort();
@@ -182,7 +184,7 @@ function shutdown(code: number): Promise<void> {
   activeSource?.close(); stopNarrative();
   shutdownWork = (async () => {
     try {
-      await Promise.all([controller.stop(), activeSource?.stop(), narrativeWork]);
+      await Promise.all([controller.stop(), activeSource?.stop(), narrativeWork, stopTranscripts()]);
       await activePublication?.close();
       await Promise.allSettled(commands);
       if (commandFailures.size) throw [...commandFailures][0];
@@ -323,8 +325,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
   finally { watching.delete(key);if(!stopped.has(key))later(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
 // A publication that failed waits before the next attempt, a minute after its first failure and twice as long after each
-// failure since, up to half an hour: every attempt reads the session's source again, and a source the reader cannot read
-// (one larger than it can hold) fails the same way each time. One timer per session carries its retry; a tick that
+// failure since, up to half an hour. One timer per session carries its retry; a tick that
 // shares the failing attempt adds neither a failure nor a timer.
 const retryAt = new Map<string, number>(), failures = new Map<string, number>(), retryTimers = new Set<string>();
 function retryLater(key: string, delay: number): void {
@@ -334,10 +335,16 @@ function retryLater(key: string, delay: number): void {
     retryTimers.delete(key);
     const wait = (retryAt.get(key) ?? 0) - Date.now();
     if (wait > 0) { retryLater(key, wait); return; }
-    void publication.run(() => sessions(key)).catch(error => { if (!quitting) log(`session retry pending: ${error.message}`); });
+    sessions(key);
   }, delay);
 }
-async function sessions(only?: string): Promise<void> {
+const sessionReaders = new Map<string, SupercodeHarnessClient>();
+const transcripts = new TranscriptQueue(4,
+  () => new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment }),
+  publishSession, (key, error) => { if (!quitting) log(`${key}: publication pending (${(error as Error).message})`); },
+  reader => reader.close());
+stopTranscripts = () => transcripts.close();
+function sessions(only?: string): void {
   for (const [key, d] of descriptors) {
     if (quitting) return;
     if (only && key !== only) continue;
@@ -346,38 +353,45 @@ async function sessions(only?: string): Promise<void> {
     if (checkpoints[pkey]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
-    try {
-      const exactAttempt = attemptOf(key);
-      const launched = exactAttempt?.task;
-      const candidates = launched ? [launched] : (organization ? boardTasksAll : nativeTasks).filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
-      if (organization && (candidates.length === 1 ? !ours(candidates[0].tags?.[0] ?? candidates[0].tenant) : Boolean(tenant))) {
-        if (publishers.has(key) || checkpoints[pkey]) throw new Error(`Native session ${key} tenant attribution changed; its retained account/key is not reassigned`);
-        continue;
-      }
-      const candidate = (launched || d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0] : undefined;
-      const association = candidate ? publication.association(candidate.board, candidate.id) : undefined;
-      const item = await publication.sessionItem({ platformKey: pkey, nativeSessionId: key, associationKey: association?.key, itemId: association?.itemId,
-        evidence: exactAttempt ? `native-attempt:${exactAttempt.attempt.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa);
-      const completion = completionOf(d);
-      let publisher = publishers.get(key);
-      if (!publisher || publisherItems.get(key) !== item) {
-        publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sc.loadWindow(locator, options, narrativeRead) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
-          modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
-        publishers.set(key, publisher);
-        publisherItems.set(key, item);
-      }
-      const receipt = await publisher.publish(completion);
-      retryAt.delete(key); failures.delete(key);
-      if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
-      else void watch(d);
-    } catch (e) {
-      if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); dirty = true; continue; }
-      if ((retryAt.get(key) ?? 0) > Date.now()) continue; // this attempt's failure is already counted and its retry armed
-      const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
-      failures.set(key, failed); retryAt.set(key, Date.now() + delay); retryLater(key, delay);
-      log(`${key}: publication incomplete (${(e as Error).message}); failure ${failed}, next attempt in ${delay / 60_000} min`);
-    }
+    transcripts.enqueue(key);
   }
+}
+async function publishSession(key: string, reader: SupercodeHarnessClient): Promise<void> {
+  const d = descriptors.get(key), pkey = platformKey(key);
+  if (quitting || !d || stopped.has(key) || (retryAt.get(key) ?? 0) > Date.now()) return;
+  if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) return;
+  sessionReaders.set(key, reader);
+  try {
+    const exactAttempt = attemptOf(key);
+    const launched = exactAttempt?.task;
+    const candidates = launched ? [launched] : (organization ? boardTasksAll : nativeTasks).filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
+    if (organization && (candidates.length === 1 ? !ours(candidates[0].tags?.[0] ?? candidates[0].tenant) : Boolean(tenant))) {
+      if (publishers.has(key) || checkpoints[pkey]) throw new Error(`Native session ${key} tenant attribution changed; its retained account/key is not reassigned`);
+      return;
+    }
+    const candidate = (launched || d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0] : undefined;
+    const association = candidate ? publication.association(candidate.board, candidate.id) : undefined;
+    const item = await publication.run(() => publication.sessionItem({ platformKey: pkey, nativeSessionId: key, associationKey: association?.key, itemId: association?.itemId,
+      evidence: exactAttempt ? `native-attempt:${exactAttempt.attempt.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa));
+    const completion = completionOf(d);
+    let publisher = publishers.get(key);
+    if (!publisher || publisherItems.get(key) !== item) {
+      publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
+        modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
+      publishers.set(key, publisher);
+      publisherItems.set(key, item);
+    }
+    const receipt = await publisher.publish(completion);
+    retryAt.delete(key); failures.delete(key);
+    if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
+    else void watch(d);
+  } catch (e) {
+    if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); requestTick(); return; }
+    if ((retryAt.get(key) ?? 0) > Date.now()) return; // this attempt's failure is already counted and its retry armed
+    const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
+    failures.set(key, failed); retryAt.set(key, Date.now() + delay); retryLater(key, delay);
+    log(`${key}: publication incomplete (${(e as Error).message}); failure ${failed}, next attempt in ${delay / 60_000} min`);
+  } finally { sessionReaders.delete(key); }
 }
 
 // The timeline, published through the SDK as one document in one language: the past from CHANGELOG.md, the
@@ -617,7 +631,7 @@ function tick(): Promise<void> {
         dirty=false;const pass=++passesStarted;
         await nativeState();
         const present=await board();
-        await sessions();
+        sessions();
         if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
         await timeline(present);
         for(let i=passWaiters.length-1;i>=0;i--)if(passWaiters[i].pass<=pass)passWaiters.splice(i,1)[0].resolve();
