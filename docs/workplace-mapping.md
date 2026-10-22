@@ -23,8 +23,8 @@ uninstalling an integration determines which default views it contributes; the o
 | Source object | Workplace association | Contract and implementation owner |
 | --- | --- | --- |
 | OA project/account, such as `owner/repository`, at a selected backend deployment | One consented RH2 organization; many OA projects may link to the same organization | OA's [Workplace adapter](../packages/backend/src/workplace.ts) keeps each project link. One installation token for that deployment's registered app is stored per Workplace base URL and organization, shared by linked projects; relinking replaces it |
-| Native live arc | RH2 Room, placed on the Floor selected by its first configured floor tag | RH2's installed [Arcs → Rooms app](https://github.com/volter-ai/runhuman-2/blob/main/apps/rh2/docs/adr/0033-arcs-to-rooms-app.md) owns the map and placement. Room access follows RH2 roles and Floor grants |
-| Native card, including an arc card | RH2 Task; a child card links to its arc's Task, and optionally its Room | RH2's installed [Cards → Tasks app](https://github.com/volter-ai/runhuman-2/blob/main/apps/rh2/docs/adr/0035-cards-to-tasks-app.md) owns source-qualified card-to-Task mappings. It can run without the Rooms app. The native board is the writer of mirrored fields; RH2 does not write them back |
+| Native project with a live card | One RH2 Room per project, in the Office's Work section, open while a live card names the project | Open Autonomy's installed [Project Rooms](../packages/workplace/rooms/main.mjs) reads only the board and owns only its `project-*` Rooms: their names, placement and topic, and which of the live cards' agents it brings in with the Workplace's join command (the project's lead hearing every line, the others the lines naming them) or makes leave. Room access follows RH2 roles and Floor grants |
+| Native card, including an arc card | RH2 Task; a child card links to its arc's Task, and optionally its Room | RH2's installed [Cards → Tasks app](https://github.com/volter-ai/runhuman-2/blob/main/apps/rh2/docs/adr/0035-cards-to-tasks-app.md) owns source-qualified card-to-Task mappings. It can run without Project Rooms. The native board is the writer of mirrored fields; RH2 does not write them back |
 | Stable native agent principal | One RH2 agent principal, seated where its work requires | RH2's installed [Agents → Room agents app](https://github.com/volter-ai/runhuman-2/blob/main/apps/rh2/docs/adr/0034-agents-to-room-agents-app.md) owns the association; a new session does not create a new agent identity |
 | Agent's current native main session | The existing RH2 seat is rebound to a resource-owner-issued session view binding | Teams owns the native binding door; RH2 owns the seat and Conversation. Consent with `sessions.access` and the session owner's authority are required; a Room or an OA publication grants no native session access |
 | OA books and book conditions | Project books snapshot, freeze controls and role-targeted alerts in the linked organization | OA's adapter owns publication and condition reconciliation; RH2 owns presentation and control requests. Native run/workflow conditions belong to Supercode's integration |
@@ -99,11 +99,10 @@ or a Workplace Room does not establish that attribution or imply a main-session 
 
 OA's [native event cache](../packages/kit-hermes/base/.open-autonomy/source-events.ts)
 uses `board:card.id`, while its [published item adapter](../packages/kit-hermes/base/.open-autonomy/publisher.ts)
-still uses the raw card ID. RH2's [Cards → Tasks map](https://github.com/volter-ai/runhuman-2/blob/main/bots/cards-tasks/main.mjs)
-uses a source-qualified card ID, but the [Room keys](https://github.com/volter-ai/runhuman-2/blob/main/bots/arcs-rooms/main.mjs)
-and [agent/Room associations](https://github.com/volter-ai/runhuman-2/blob/main/bots/agents-rooms/main.mjs) derive
-normalized, truncated keys from raw IDs. Those representation differences do not make the same task in several
-saved views distinct. Genuinely distinct records from separate owning sources or retained independent stores need
+still uses the raw card ID. Supercode's [Cards → Tasks registration](https://github.com/volter-ai/supercode/blob/main/sdk/teams/workplace/cards.mjs)
+uses a source-qualified card ID, and [Project Rooms](../packages/workplace/rooms/main.mjs) keys its Rooms by
+project, never by card, reading the card's Task under that source-qualified ID. Those representation differences do
+not make the same task in several saved views distinct. Genuinely distinct records from separate owning sources or retained independent stores need
 the provenance supplied by their native contract; names or view slugs cannot resolve ambiguity.
 Raw item/note collisions for genuinely distinct records published to one OA account remain an OA-owned projection
 follow-up, with existing IDs and receipts preserved; this architecture correction does not implement that follow-up.
