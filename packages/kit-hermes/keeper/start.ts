@@ -516,12 +516,14 @@ const env = agentEnv();
 //    after profile, and in this process would hold every signal handler until it finished (a stop mid-startup waited
 //    for the whole setup, then started the services before stopping them).
 {
+  const setupStarted = performance.now();
   const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, runtime: nativeSelection, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [] });
   const applier = `const r = JSON.parse(process.argv[1]); const { applyAgent } = await import(r.agent); const { resolve } = await import('node:path');
 const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
   const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string>, boundMs: 600_000 });
   // the applier's own error and its stack, not only its last line (Bun ends a crash's stderr with its version banner)
+  say(`native setup ${Math.round(performance.now() - setupStarted)} ms (public observation, declaration validation and reconciliation before board ownership)`);
   if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied (exit ${applied.exitCode}):\n${applied.stderr.trim() || applied.stdout.trim() || 'the setup child returned no diagnostic'}\nNo gateway was started.`); process.exit(1); }
   for (const line of JSON.parse(applied.stdout.trim().split('\n').at(-1) ?? '[]') as string[]) say(`agent: ${line}`);
 }

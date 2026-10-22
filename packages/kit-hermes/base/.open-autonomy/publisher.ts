@@ -601,24 +601,31 @@ async function setup(): Promise<void> {
   if(digest!==setupDigest){const result=await oa.setup(s);if(!result.ok)throw new Error(`Setup publication refused: ${result.status}`);setupDigest=digest;}
 }
 let work: Promise<void>|null=null, dirty=false, documentsDirty=true, boardReady=false;
+let passesStarted=0;
+const passWaiters: Array<{pass:number;resolve:()=>void;reject:(error:unknown)=>void}>=[];
 const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
 stopNarrative = () => { configWatch.close(); clearTimeout(retry); for (const watcher of documentWatchers) watcher.close(); };
 function tick(): Promise<void> {
   dirty=true;
-  if(!boardReady)return Promise.resolve();
-  if(work)return work;
-  if(quitting)return Promise.resolve();
-  work=(async()=>{
-    while(dirty&&!quitting){
-      dirty=false;
-      await nativeState();
-      const present=await board();
-      await sessions();
-      if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
-      await timeline(present);
-    }
+  if(!boardReady||quitting)return Promise.resolve();
+  // A caller needs the pass that observes its change, not an indefinitely quiet source. Session-index events can
+  // dirty the reporter during every pass; waiting for the whole loop then starves native cursor acknowledgement.
+  const receipt=new Promise<void>((resolve,reject)=>passWaiters.push({pass:passesStarted+1,resolve,reject}));
+  if(!work)work=(async()=>{
+    try {
+      while(dirty&&!quitting){
+        dirty=false;const pass=++passesStarted;
+        await nativeState();
+        const present=await board();
+        await sessions();
+        if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
+        await timeline(present);
+        for(let i=passWaiters.length-1;i>=0;i--)if(passWaiters[i].pass<=pass)passWaiters.splice(i,1)[0].resolve();
+      }
+    } catch(error) { for(const waiter of passWaiters.splice(0))waiter.reject(error); }
+    finally { if(quitting)for(const waiter of passWaiters.splice(0))waiter.reject(new Error('Publisher stopped before its pass completed')); }
   })().finally(()=>{work=null;});
-  return work;
+  return receipt;
 }
 let retry: ReturnType<typeof setTimeout>|undefined;
 function requestTick(): void {
