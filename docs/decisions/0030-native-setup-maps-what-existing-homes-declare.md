@@ -94,3 +94,20 @@ refuses what it cannot apply. "Nothing in a public agent's reach is a secret tha
 written. "Only the SDK is real" and "The platform shows; it does not steer": publication and the platform are
 untouched. "No automated tests": evidence is source reading, typecheck and the install's manual start; no harness is
 added. This status confers no approval; the independent review judges the record and its implementation together.
+
+
+## VO-3354 restart-cost proposal (2026-10-21)
+
+This addition is proposed by VO-3354 and remains revisable. Setup stays before gateway/board ownership: a rejected
+declaration must not launch defaults. One public native observation serves the complete preflight instead of a full
+home/history read per config key or job. Every mutation clears that observation before and after the owning call;
+application also begins each profile with a fresh observation. Pure buildJob validation is batched into one native
+Node invocation before any effect. Configuration saves preserve the live workflow, whose policy owner is the board.
+The keeper records elapsed setup time and prints the complete failed child's diagnostic (stderr, stdout fallback,
+then an explicit missing-diagnostic message), so a final runtime banner cannot hide the cause. This is neither a
+persisted setup stamp nor permission to skip reconciliation after an outside edit.
+
+The publisher acknowledges the completed pass that includes a caller's change. Continuous later source activity
+must not hold that acknowledgement until the reporter becomes quiet. Failure rejects outstanding pass receipts and
+leaves native publication acknowledgement with its existing durable owner. The install's older coalesced event
+reader is retained for review on VO-3354; it is not copied over ADR 0027's newer attributed publication protocol.
