@@ -166,7 +166,7 @@ function liveWarnings(profile: NativeProfile, units: ConfigUnit[], name: string)
   return [`warning: ${name}'s live worker is ${harness} with worker.home user, which agent.json does not declare; the native runtime runs only Claude Code in the user's home, so its conversation and headless launches will refuse it (clear worker.home in that profile's config.yaml)`];
 }
 
-type NodeRequest = { operation: 'validate'; profile: NativeProfile; args: Unit; now: string }
+type NodeRequest = { operation: 'validate'; jobs: Array<{ profile: NativeProfile; args: Unit }>; now: string }
   | { operation: 'create' | 'update' | 'pause' | 'remove'; root: string; profile: string; args: unknown[] };
 type NativeSafety = { blocked?: string };
 function requireEffects(safety: NativeSafety): void { if (safety.blocked) throw new Error(safety.blocked); }
@@ -178,7 +178,7 @@ async function nativeNodeCall(request: NodeRequest, workspace: string, safety: N
   const program = `import { readFileSync } from 'node:fs';
 let client;
 try { const owner = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8')); let result;
-if(request.operation === 'validate') owner.buildJob(request.profile, request.args, request.now);
+if(request.operation === 'validate') { for(const job of request.jobs) owner.buildJob(job.profile, job.args, request.now); }
 else { if(!['create','update','pause','remove'].includes(request.operation)) throw Error('Unsupported native job operation');
 const { SupercodeHarnessClient } = await import(process.argv[2]);
 client = new SupercodeHarnessClient({command:process.env.SUPERCODE_BIN,args:['harness','serve']});
@@ -236,6 +236,15 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
   const sc = new HarnessClient({ command: command[0], args: command.slice(1) });
   const notices: string[] = [];
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);
+  // Preflight observes one home. Re-reading the complete execution history for each config key/job made a no-change
+  // restart pay for the same native read dozens of times. Every mutation invalidates this observation.
+  let observed: Awaited<ReturnType<NativeRuntime['load']>> | undefined;
+  const observe = async () => observed ??= await runtime.load();
+  const mutate = async (request: NodeRequest) => {
+    observed = undefined;
+    try { return await nativeNodeCall(request, options.workspace, safety, options.asAgent); }
+    finally { observed = undefined; }
+  };
   type Row = { key: string; action: string; detail?: string; differs?: string[]; patch?: Unit };
   try {
     // Which worker fields this machine's supercode saves: its harness service's own answer (`orchestration.worker_fields`,
@@ -243,6 +252,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
     const advertised = ((await sc.capabilities()) as { orchestration?: { worker_fields?: unknown } }).orchestration?.worker_fields;
     const written = new Set(Array.isArray(advertised) ? advertised.map(String) : UNADVERTISED_WORKER_FIELDS);
     const prepared = [];
+    const validations: Array<{ profile: NativeProfile; args: Unit }> = [];
     // Every profile and operation is preflighted before any native write or job effect.
     for (const [name, raw] of Object.entries(options.setup.profiles)) {
       const withheld: Array<[string, unknown]> = [];
@@ -250,7 +260,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       checkJobNames(spec, name); // aliases in moved/removed must be checked after owning parameter resolution, too
       const units = applier.hermesConfig(spec as never) as unknown as ConfigUnit[];
       const get = async () => {
-        const result = await runtime.load();
+        const result = await observe();
         const profile = result.profiles[name];
         if (!profile) throw new Error(`${name}: native profile is missing; give it content under home/profiles/${name}`);
         return { ...result, profile };
@@ -261,17 +271,19 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
         ? `${key} ${value} is declared for ${name} and is in its config.yaml, but this machine's supercode does not save it yet, so it is left as it is, not applied here, and the next save of this profile drops it; update supercode`
         : `${key} ${value} is declared for ${name}; this machine's supercode does not save it yet, so it is not applied; update supercode`);
       notices.push(...liveWarnings(current, units, name));
-      const door = Object.assign(await orchestratorDoor({ root: options.root, profile: name, load: async () => ({ state: (await runtime.load()).orchestration }) }) as NativeJobDoor, {
-        create: (key: string, want: Unit) => nativeNodeCall({ operation: 'create', root: options.root, profile: name, args: [key, want] }, options.workspace, safety, options.asAgent),
-        update: (id: string, values: Unit) => nativeNodeCall({ operation: 'update', root: options.root, profile: name, args: [id, values] }, options.workspace, safety, options.asAgent),
-        pause: (id: string) => nativeNodeCall({ operation: 'pause', root: options.root, profile: name, args: [id] }, options.workspace, safety, options.asAgent),
-        remove: (id: string) => nativeNodeCall({ operation: 'remove', root: options.root, profile: name, args: [id] }, options.workspace, safety, options.asAgent),
+      const door = Object.assign(await orchestratorDoor({ root: options.root, profile: name, load: async () => ({ state: (await observe()).orchestration }) }) as NativeJobDoor, {
+        create: (key: string, want: Unit) => mutate({ operation: 'create', root: options.root, profile: name, args: [key, want] }),
+        update: (id: string, values: Unit) => mutate({ operation: 'update', root: options.root, profile: name, args: [id, values] }),
+        pause: (id: string) => mutate({ operation: 'pause', root: options.root, profile: name, args: [id] }),
+        remove: (id: string) => mutate({ operation: 'remove', root: options.root, profile: name, args: [id] }),
         readInference: async (keys: string[]) => { const { profile } = await get(); return Object.fromEntries(keys.map(key => [key, read(profile, key)])); },
         writeInference: async (values: Unit) => {
           requireEffects(safety);
+          observed = undefined;
           const loaded = await get(); requireEffects(safety); effective(loaded.profile, spec, units, name); patch(loaded.profile, values, profileHarness(options.setup, name));
           requireEffects(safety);
-          await sc.orchestrationSave({ root: options.root, orchestration: loaded.orchestration });
+          try { await sc.orchestrationSave({ root: options.root, orchestration: loaded.orchestration, preserve_workflow: true }); }
+          finally { observed = undefined; }
         },
       });
       const homeId = `${options.homeId}.${name}`.replace(/[^A-Za-z0-9._-]/g, '_');
@@ -281,7 +293,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       patch(preview, Object.assign({}, ...units.map(unit => unit.values ?? {})), profileHarness(options.setup, name));
       for (const [key, job] of Object.entries(spec.jobs ?? {})) {
         const args = door.fields(job, spec.inference);
-        await nativeNodeCall({ operation: 'validate', profile: preview, args: { ...args, name: key }, now: new Date().toISOString() }, options.workspace, safety); // pure owning validation before any config/job effect
+        validations.push({ profile: preview, args: { ...args, name: key } });
       }
       const bad = first.rows.filter((row: Row) => ['refused', 'conflict', 'not-applied'].includes(row.action));
       if (bad.length) throw new Error(`${name}: native setup preflight refused: ${bad.map((r: Row) => `${r.key} ${r.action}${r.detail ? ` (${r.detail})` : ''}`).join('; ')}`);
@@ -301,8 +313,10 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       }
       prepared.push({ name, common, first });
     }
+    if (validations.length) await nativeNodeCall({ operation: 'validate', jobs: validations, now: new Date().toISOString() }, options.workspace, safety);
     const lines: string[] = [];
     for (const { name, common, first } of prepared) {
+      observed = undefined; // application checks current native state after preflight, never a cached earlier profile
       if (first.planOnly) {
         const keys = first.rows.filter((row: Row) => row.action === 'unowned').map((row: Row) => row.key);
         if (keys.length) for (const row of await applier.adopt({ ...common, keys })) lines.push(`${name}: ${row.key} ${row.action}`);
