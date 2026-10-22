@@ -107,7 +107,7 @@ function sourceLocked(): MachineSupercode | null {
   const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
   if (machine?.generation_owner) {
     const source = machine.release?.source;
-    if (machine.generation_owner !== machine.pid || machine.mail_ready !== true || source?.root !== root || source?.commit !== lock.commit || source?.binding !== 'matches')
+    if (machine.generation_owner !== machine.pid || machine.mail_ready !== true || source?.root !== root || source?.commit !== lock.commit || (source?.binding_verdict ?? source?.binding) !== 'matches')
       refuse('is not the serving machine generation; activate the coherent machine selection before this kit');
   } else {
     const stale = daemonEntries().filter((entry) => resolve(entry) !== teams);
