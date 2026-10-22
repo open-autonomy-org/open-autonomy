@@ -3,7 +3,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { agentHarness, readAgent } from './agent.ts';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
@@ -44,6 +43,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   const keeper = resolve(host, 'node_modules/create-open-autonomy/keeper/install-owner.ts');
   if (!existsSync(keeper)) throw new Error('the prepared kit predates serving install handovers');
   const kit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
+  const { agentHarness, readAgent } = await import(resolve(host, 'agent.ts'));
   const setup = readAgent(snapshot);
   if (!setup || (kit.kit !== 'ir' && agentHarness(setup) === 'hermes')) throw new Error('this candidate lacks the native gateway readiness protocol; the serving install was preserved');
   const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
