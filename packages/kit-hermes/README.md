@@ -227,8 +227,8 @@ Beside the vendored SDK, the kit's own host tools run outside the agent's creden
 `.open-autonomy/`, run with Bun from the checkout:
 
 First boot and the keeper's dependency refresh use `install-runtime.ts`. With a Supercode source lock declared in
-the runtime user's Supercode home, Bun installs with its symlink backend, reifying existing dependencies so `file:`
-packages keep resolving into their source trees. The install stamp includes that lock and the backend policy; a pin
+the runtime user's Supercode home, the installer links declared `file:` packages inside the locked tree back to their
+sources after Bun installs normally. The install stamp includes that lock and the linking policy; a pin
 move refreshes the install, and only a successful install gets a new stamp. Supercode still enforces the lock itself.
 
 Paying container installs use the treasurer's separate executor and host-held key under
