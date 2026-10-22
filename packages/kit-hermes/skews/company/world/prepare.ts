@@ -93,8 +93,6 @@ if (process.env.VO_MACHINE_B_CUSTODIAN) config.services.find((service: { id: str
 if (process.env.VO_MACHINE_B_AFTER_ENROLL === '1') config.services.find((service: { id: string }) => service.id === 'machine-b').execution.environment.values.VO_MACHINE_B_AFTER_ENROLL = '1';
 // The account's Slack channel runs only where a rehearsal RH2 is wired, with the owner's session to install the bridge.
 if (!process.env.VO_RH2_URL || !process.env.VO_RH2_OWNER_TOKEN || !process.env.VO_RH2_ROOT) config.services = config.services.filter((service: { id: string }) => !['rh2-agent', 'slack', 'bridge', 'voice'].includes(service.id));
-// RH2's integration apps (the mirrored ontology's bots) run where the RH2 tree under review carries them.
-config.services = config.services.filter((service: { id: string }) => !['arcs-rooms', 'cards-tasks'].includes(service.id) || (process.env.VO_RH2_ROOT && existsSync(resolve(process.env.VO_RH2_ROOT, 'bots', service.id, 'main.mjs'))));
 for (const service of config.services) service.execution.cwd = ROOT;
 // Native probe thresholds deliberately cross so routing is observable after enrollment supplies the one host
 // address. The model's labelled alarm stub makes no resource decisions; this proves neither runaway intervention
