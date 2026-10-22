@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-// VOLTER'S PROJECT ROOMS: the Open Autonomy integration's program that keeps the organization's Office Floor as its board
-// works (runhuman-2 ADR 0056 decision 1; RH2 ADR 0050 decisions 11 and 12: an organization's bespoke Rooms are its
-// integration, written through the Workplace's own doors). Workplace and supercode know nothing of it: it reads the board
-// as supercode publishes it on Teams' event stream (cards with their agents) and shapes Rooms through the Workplace's
-// public commands with its own installation's token, as Terraform shapes a cloud through its API: it makes, names, places
-// and closes its Rooms, and brings agents in and out of them with the join and leave commands (runhuman-2 ADR 0060). It
-// never writes who is in a Room any other way, and never writes back to the board.
+// VOLTER'S PROJECT ROOMS: Open Autonomy's integration that keeps one Room per project in the organization's Office, as its
+// board works (runhuman-2 ADR 0063 decision 3). It reads nothing but the board, as supercode publishes it on Teams' event
+// stream (cards with their agents), and owns exactly its `project-*` Rooms: it makes, names, places and closes them through
+// the Workplace's public commands with its own installation's token, and brings agents in and out of them with the join
+// and leave commands (ADR 0060). It declares nothing the organization's document declares (its Floors, views and
+// standing Rooms), never writes who is in a Room any other way, and never writes back to the board.
 //
 // The board's live cards (started, not a subtask, not scheduled, not archived, not in a closed lane) are worked in their
 // project's Room: one Room per project (`projectOf`, the organization's convention) under the key `project-<name>`,
@@ -14,25 +13,24 @@
 // Its base channel's topic lists the project's live cards and where each stands. A Room is who is in its call (ADR 0060):
 // the program puts no person in it. A ticket's people who hold a seat in the organization are given a seat there (its
 // `person:<email>` tags, company RFC 0026 decision 5), which, like its own manager seat and the Floor's grants, is access:
-// a person is in the Room only while in its call. The Room is open while a live card names its project; when none does it is closed, its
-// history kept, and it reopens with the project's next live card. A card that names no project is worked in no Room. An
-// open Room under a card's key (`arc-…`, one Room per card) is closed by the minute's sweep.
+// a person is in the Room only while in its call. The Room is open while a live card names its project; when none does it
+// is closed, its history kept, and it reopens with the project's next live card. A card that names no project is worked
+// in no Room.
 //
 // One board, named by `teams.source` (its event source id): a Teams team carries every board its machines publish. A
 // whole snapshot is also the list of what the board still carries. The organization's open-Room threshold asks a person
 // to review dormant Rooms; the program never confirms it for them: it closes its own Rooms whose projects have no live
 // card and says the refusal once.
 // Each live card's agents (the board's `card.agents` declarations, active, of an agent Teams has not ended, holding a live
-// assignment on the card's Task) are seated in its project's Room: resolved through the Workplace's resolve door to the
+// assignment on the card's Task) are brought into its project's Room: resolved through the Workplace's resolve door to the
 // principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
 // command (`POST /api/v3/rooms/:roomId/join`) seats it with `agentRoleKeys` (default member), joins it to the Room's base
-// channel and sends its session the Room's seating message (VO-3151). The project's lead, an agent declared under one of
-// `leadProfiles` (default `lead`, Open Autonomy's company
-// profile), holds the conversation: it receives every line of the base channel (`answers: all`); every other card agent
-// receives the lines that name it (`answers: mentions`). The program is the one writer of its seats' receive setting. An
-// agent it joined (or one of `rh2.adoptSeatsOf` did, before) that no live card of the project names any more, or that
-// Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). A state write the disk refuses is retried each minute while the
-// program works from memory.
+// channel and sends its session the Room's seating message. The project's lead, an agent declared under one of
+// `leadProfiles` (default `lead`, Open Autonomy's company profile), holds the conversation: it receives every line of the
+// base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
+// program is the one writer of its seats' receive setting. An agent it joined that no live card of the project names any
+// more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). A state write the disk refuses is retried each
+// minute while the program works from memory.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -40,21 +38,21 @@
 //   "teams": { "server": "https://teams.example", "team": "<team id>", "source": "<the board's event_source_… id>", "tokenEnv": "PROJECT_ROOMS_TEAMS_TOKEN" },
 //   "rh2": { "baseUrl": "https://workplace.example", "organization": "volter", "tokenEnv": "PROJECT_ROOMS_WORKPLACE_TOKEN", "principalId": "<the installation's prn_…>",
 //            "issuer": "<optional: the Workplace's canonical origin>",
-//            "agentsRegistration": "<supercode's Agents → Room agents registration's client id, app_…>", "adoptSeatsOf": ["<prn_… of the app that seated agents before>"],
+//            "agentsRegistration": "<supercode's Agents → Room agents registration's client id, app_…>",
 //            "cardsPrincipalId": "<optional: only Tasks supercode's Cards → Tasks registration made are a card's Task>" },
 //   "agentRoleKeys": ["member"], "postRoleKeys": ["manager"] (optional),
 //   "leadProfiles": ["lead"],
 //   "envFile": "<custody env file of KEY=VALUE lines>", "stateFile": "<the program's id map and cursor>",
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
-//   "projectFloor": "<the Floor the project Rooms sit on; none = the organization's default Floor, Office unless renamed>"
+//   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>"
 // }
 import { createHash } from 'node:crypto';
 import { fstatSync, futimesSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
-// this rule changes: decisions taken under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 3;
+// this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
+const ARC_ROOM_LIFECYCLE_VERSION = 4;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -91,7 +89,7 @@ const [configPath, flag] = process.argv.slice(2);
 if (!configPath) { process.stderr.write('usage: main.mjs <config.json> [--once]\n'); process.exit(1); }
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 // Every key the rh2 section may hold (`issuer` is what a connection's generated config names); any other is refused by name.
-for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization', 'tokenEnv', 'principalId', 'agentsRegistration', 'adoptSeatsOf', 'cardsPrincipalId', 'issuer'].includes(key)) {
+for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization', 'tokenEnv', 'principalId', 'agentsRegistration', 'cardsPrincipalId', 'issuer'].includes(key)) {
   process.stderr.write(`project-rooms: unknown config key rh2.${key}\n`); process.exit(1);
 }
 const shutdown = new AbortController();
@@ -130,8 +128,6 @@ async function door(path, { body, method } = {}) {
 }
 
 // ---- the project and its Room ---------------------------------------------------------------------------------------
-// A card's key in the app's registry (`state.cards`). The app opens no Room under it; one found active is closed (sweepRooms).
-export const cardKeyOf = (cardId) => projectionKey(config, 'arc', cardId);
 // A project's Room key: one Room per project.
 export const projectKeyOf = (project) => projectionKey(config, 'project', project);
 const titleOf = (card) => (String(card.title ?? card.id).trim() || String(card.id)).slice(0, 500);
@@ -157,7 +153,7 @@ const live = (card) => arcRoomExpected(card, closedLanes);
 const LEAD_PROFILES = new Set(config.leadProfiles ?? ['lead']);
 function loadState() {
   try { return JSON.parse(readFileSync(config.stateFile, 'utf8')); }
-  catch (error) { if (error.code === 'ENOENT') return { floors: {}, cursor: null }; throw error; }
+  catch (error) { if (error.code === 'ENOENT') return { cursor: null }; throw error; }
 }
 // The state file is written at most every few seconds, only when what it says changed, and once more on the way out: a
 // snapshot of thousands of cards rewrote a multi-megabyte file on every frame and every settle (68 MB/s on the Mac).
@@ -195,18 +191,18 @@ const registryOf = (card) => {
     name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
-// The Floor the project Rooms sit on, read once per pass (drain): `projectFloor` by name (made when missing), else the
-// organization's default Floor (Office unless renamed).
+// The Floor the project Rooms sit on, read once per pass (drain): `projectFloor` by name, a Floor the organization's
+// document declares, else the organization's default Floor (Office unless renamed). The program makes no Floor: one it
+// is named and cannot find holds its projects until the document's apply makes it.
 let projectFloor;
-async function projectFloorId() {
+function projectFloorId() {
   const name = typeof config.projectFloor === 'string' && config.projectFloor.trim() ? config.projectFloor.trim().slice(0, 120) : null;
-  if (name === null) return projectFloor ??= door('/api/v3/floors').then((read) => read.defaultFloorId ?? null, (error) => { projectFloor = undefined; throw error; });
-  if (state.floors[name]) return state.floors[name];
-  const listed = (await door('/api/v3/floors')).floors.find((floor) => floor.name === name);
-  const floorId = listed?.floorId ?? (await door('/api/v3/floors', { body: { name } })).floorId;
-  state.floors[name] = floorId; saveState();
-  if (!listed) log('floor-made', { floorId, name });
-  return floorId;
+  return projectFloor ??= door('/api/v3/floors').then((read) => {
+    if (name === null) return read.defaultFloorId ?? null;
+    const floor = (read.floors ?? []).find((each) => each.name === name);
+    if (!floor) throw Object.assign(new Error(`the organization has no Floor named ${name}`), { code: 'floor-not-declared' });
+    return floor.floorId;
+  }).catch((error) => { projectFloor = undefined; throw error; });
 }
 
 // Keyed creation serializes the organization's lookup and creation. Each retry asks for the desired active Room;
@@ -222,13 +218,13 @@ async function createRoomOf(project) {
 }
 
 /**
- * Close a Room of this app's, by the one rule every close follows: a Room on no Floor is its members', left rather than
- * closed, and a Room already closed or gone is left. The Room is read first (`view`, when the caller has just read it):
- * RH2's active-Room list carries no placements, so a close judged from it would close a Room it must leave. Its agents
- * leave with it; its history stays (a closed Room's own seats may be removed). Answers whether it closed it.
+ * Close a project Room of this app's: a Room on no Floor is its members', left rather than closed, and a Room already
+ * closed or gone is left. The Room is read first: RH2's active-Room list carries no placements, so a close judged from it
+ * would close a Room it must leave. Its agents leave with it; its history stays (a closed Room's own seats may be
+ * removed). Answers whether it closed it.
  */
-async function closeOwnRoom(roomId, view = null) {
-  view ??= await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch((error) => { if (error.status === 404) return null; throw error; });
+async function closeOwnRoom(roomId) {
+  const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch((error) => { if (error.status === 404) return null; throw error; });
   const room = view?.room ?? null;
   if (!room || (room.placements ?? []).length === 0) return false;
   const closed = room.state === 'active';
@@ -239,8 +235,6 @@ async function closeOwnRoom(roomId, view = null) {
 
 // ---- the arcs' agents (ADR 0050 decision 12) ------------------------------------------------------------------------
 const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
-// Whose agent seats this app keeps: its own, and those the app that seated them before made (taken over at cutover).
-const seaters = new Set([self, ...(config.rh2.adoptSeatsOf ?? [])]);
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
 const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
 /** The ids of the agents a card declares active (the board's `card.agents`), or null when the card publishes none. */
@@ -268,7 +262,7 @@ async function agentPrincipalOf(agentId) {
 /**
  * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
  * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
- * someone changed it. An agent this app (or an adopted seater) joined that is no longer wanted leaves by the leave command,
+ * someone changed it. An agent this app joined that is no longer wanted leaves by the leave command,
  * unless `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
  * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
  * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
@@ -298,7 +292,7 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
   }
   if (mayUnseat && !missing.length && state.cleanupReady) {
     for (const member of view.members ?? []) {
-      if (member.kind !== 'agent' || principals.has(member.principalId) || !seaters.has(member.seatedBy)) continue;
+      if (member.kind !== 'agent' || principals.has(member.principalId) || member.seatedBy !== self) continue;
       await door(`${room}/leave`, { body: { principalId: member.principalId, expectedSeatedBy: member.seatedBy } });
       log('agent-left', { ...label, principalId: member.principalId, roomId });
     }
@@ -410,7 +404,7 @@ async function keepProject(project) {
 // that moved it. A card removed from the board owes the project the registry last read for it.
 function applyCard(card) {
   if (!sourceAdmitted || !state.ready) return false;
-  const project = state.cards[cardKeyOf(card.id)]?.project ?? projectOf(card);
+  const project = state.cards[card.id]?.project ?? projectOf(card);
   if (project) { state.projectsOwed[project] = true; saveState(); }
   return true;
 }
@@ -500,7 +494,7 @@ const state = loadState();
 bindProjectionState(config,state);
 // A project → its Room; the projects owed a pass (keepProject); when each was last kept.
 state.projects ??= {}; state.projectsOwed ??= {}; state.projectsKept ??= {};
-state.floors ??= {}; state.pending ??= {};
+state.pending ??= {};
 state.agents ??= {}; state.agentPrincipals ??= {}; // Teams agent → { ended }; → its Workplace principal (resolve door)
 const source = JSON.stringify([config.teams.server, config.teams.team, config.teams.source ?? null]);
 if (state.source && state.source !== source) throw new Error('this state file belongs to another board source');
@@ -511,52 +505,28 @@ state.source = source;
 // Positive card events may settle after an empty completed list. Only a non-empty baseline authorizes closure.
 state.cleanupReady ??= Boolean(state.ready && state.cursor);
 if (state.arcRoomLifecycleVersion !== ARC_ROOM_LIFECYCLE_VERSION) {
-  // Keep the source-key registry and Room/Floor identities, including absent cards needed by the later sweep.
-  // No old lifecycle decision authorizes a mutation before the ordinary snapshot has completed.
+  // The project Rooms' identities are kept; the card registry is read again from the snapshot, and no old decision
+  // authorizes a mutation before that snapshot has completed (the sweep closes a kept Room whose project has no live card).
   state.cursor = null; state.ready = false; state.cleanupReady = false;
-  state.pending = {}; state.projectsOwed = {};
-  for (const card of Object.values(state.cards)) delete card.live;
+  state.pending = {}; state.projectsOwed = {}; state.cards = {};
   state.arcRoomLifecycleVersion = ARC_ROOM_LIFECYCLE_VERSION;
 }
-delete state.creating; delete state.legacyCreates; delete state.unkept; delete state.rooms; delete state.settled;
+delete state.creating; delete state.legacyCreates; delete state.unkept; delete state.rooms; delete state.settled; delete state.floors;
 saveState();
 let sweepRequested = true;
 /**
- * The minute's sweep over the organization's open Rooms: a Room under this app's card key is closed (the board's arcs are
- * worked in their project's Room), a Room this app opened for a project that has no live arc any more is owed its close,
- * and each project with a live arc is kept again hourly.
+ * The minute's sweep over the organization's open Rooms: a Room this app opened for a project that has no live arc any
+ * more is owed its close, and each project with a live arc is kept again hourly.
  */
 async function sweepRooms() {
   if (!sourceAdmitted || !state.ready || !state.cleanupReady) return;
   const answer = await door('/api/v3/rooms?state=active');
   if (!Array.isArray(answer.rooms)) throw new Error('the active Room list returned no Rooms array');
-  for (const room of answer.rooms) {
-    if (!sourceAdmitted || !state.ready || !state.cleanupReady) return;
-    if (room.state === 'active' && ownCardKey(room.key)) await closeStray(room);
-  }
   const open = new Set(answer.rooms.filter((room) => room.state === 'active').map((room) => room.roomId));
   const liveProjects = new Set(Object.values(state.cards).filter((card) => card.live && card.project).map((card) => card.project));
   for (const [project, roomId] of Object.entries(state.projects)) if (open.has(roomId) && !liveProjects.has(project)) state.projectsOwed[project] = true;
   for (const project of liveProjects) if (Date.now() - (state.projectsKept[project] ?? 0) >= 3_600_000) state.projectsOwed[project] = true;
   saveState();
-}
-// This app's card keys (`cardKeyOf`): `arc-<card id>` without a connection namespace, `arc-<namespace>-<digest>` with
-// one. An open Room under one is the app's to close; a Room of any other key is not its.
-const ownCardKey = (key) => typeof key === 'string' && key.startsWith(config.source?.namespace ? `arc-${config.source.namespace}-` : 'arc-');
-const strayBackoff = new Map();
-async function closeStray(room) {
-  const held = strayBackoff.get(room.roomId);
-  if (held && held.until > Date.now()) return;
-  try {
-    // read first: the active-Room list carries no placements, and a Room on no Floor is its members' (closeOwnRoom)
-    if (await closeOwnRoom(room.roomId)) log('stray-room-closed', { key: room.key, roomId: room.roomId });
-    strayBackoff.delete(room.roomId); standings.delete(`room:${room.roomId}`);
-  } catch (error) {
-    sweepRequested = true;
-    const delay = Math.min(2 * (held?.delay ?? 30_000), 3_600_000);
-    strayBackoff.set(room.roomId, { delay, until: Date.now() + delay });
-    refused(`room:${room.roomId}`, error, delay);
-  }
 }
 let stopping = false, sourceAdmitted = false;
 // The event stream connected now (follow): its own end, when it was last heard, and whether it has ended.
@@ -688,11 +658,11 @@ while (!stopping) {
       const event = frame.data;
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'task' && event.data?.card
         && (!config.teams.source || String(event.resource.id).startsWith(`${config.teams.source}:`))) {
-        const card = kept(event.data.card), key = cardKeyOf(card.id), was = state.cards[key]?.project ?? null;
+        const card = kept(event.data.card), was = state.cards[card.id]?.project ?? null;
         state.pending[card.id] = card;
-        state.cards[key] = registryOf(card);
+        state.cards[card.id] = registryOf(card);
         // A card that moved to another project leaves the one it named before.
-        if (was && was !== state.cards[key].project) state.projectsOwed[was] = true;
+        if (was && was !== state.cards[card.id].project) state.projectsOwed[was] = true;
         named?.add(card.id);
       }
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'agent' && typeof event.data?.id === 'string') {
