@@ -12,8 +12,9 @@
 // named for the project, on the Office Floor (`projectFloor`, else the organization's default Floor) in its Work section,
 // below the Floor's divider. The program is the one writer of its Rooms' placement and section: a hand move is put back.
 // Its base channel's topic lists the project's live cards and where each stands. A Room is who is in its call (ADR 0060):
-// the program puts no person in it (a ticket's people, its own manager seat, the Floor's grants are access, not presence);
-// a person is in it while in its call. The Room is open while a live card names its project; when none does it is closed, its
+// the program puts no person in it. A ticket's people who hold a seat in the organization are given a seat there (its
+// `person:<email>` tags, company RFC 0026 decision 5), which, like its own manager seat and the Floor's grants, is access:
+// a person is in the Room only while in its call. The Room is open while a live card names its project; when none does it is closed, its
 // history kept, and it reopens with the project's next live card. A card that names no project is worked in no Room. An
 // open Room under a card's key (`arc-…`, one Room per card) is closed by the minute's sweep.
 //
@@ -189,8 +190,9 @@ const kept = (card) => Object.fromEntries(KEPT.filter((key) => card[key] !== und
 /** What the project pass reads of a card: kept in the registry for every card of the board's latest reading. */
 const registryOf = (card) => {
   const lane = card.archived ? 'archived' : card.lane ?? card.status;
+  const people = (card.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('person:')).map((tag) => tag.slice(7).toLowerCase());
   return { agents: cardAgentsOf(card), id: card.id, leads: leadAgentsOf(card), live: live({ ...card, lane }),
-    name: nameOf(card), project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
+    name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
 // The Floor the project Rooms sit on, read once per pass (drain): `projectFloor` by name (made when missing), else the
@@ -401,6 +403,23 @@ async function keepProject(project) {
   const asking = placed.length === 0 ? (await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placement-requests`)).request : null;
   if (!placed.includes(floorId) && !asking) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements`, { body: { floorId } }); log('room-placed', { ...label, roomId, floorId }); }
   for (const other of placed.filter((each) => each !== floorId)) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements/remove`, { body: { floorId: other } }); log('room-unplaced', { ...label, roomId, floorId: other }); }
+  // The arcs' people (company RFC 0026 decision 5): a `person:<email>` tag (a Jira ticket's reporter and commenters, kept
+  // on the arc by ztrack's Jira sync) gives that person a seat in the Room, where they hold a seat in the organization: the
+  // Workplace's access to read and speak in it, never presence (ADR 0060: they are in the Room only while in its call, and
+  // are never listed as in it for this seat). A person with no seat is not seated: the organization decides, never a ticket.
+  const people = [...new Set(cards.flatMap((card) => card.people ?? []))];
+  if (people.length) {
+    const organization = await door(orgPath);
+    const seated = new Set((organization.seats ?? []).filter((seat) => (seat.state ?? 'active') === 'active').map((seat) => seat.principalId));
+    const byEmail = new Map((organization.members ?? []).filter((member) => seated.has(member.principalId)).map((member) => [String(member.address ?? '').replace(/^human:/, '').toLowerCase(), member.principalId]));
+    const holding = new Set((view.members ?? []).map((member) => member.principalId ?? member.principal?.principalId));
+    for (const email of people) {
+      const principalId = byEmail.get(email);
+      if (!principalId || holding.has(principalId)) continue;
+      await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/members`, { body: { principalId, roleKeys: ['member'] } });
+      log('room-access-given', { ...label, roomId, principalId });
+    }
+  }
   const { mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
   await keepAgentSeats(view, wanted, label, { mayUnseat, unresolved });
   // Seated what can be; what waits keeps the project owed, tried again on the app's backoff (keepOwedProjects).
