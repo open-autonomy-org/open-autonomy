@@ -32,7 +32,7 @@
 // and GITHUB_TOKEN=valve; every comment it posts is the app's, and the key never enters it.
 import { createPrivateKey, sign, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { codexAccess, type CodexAccess } from './codex-auth.ts';
+import { serveCodex } from './codex-proxy.ts';
 
 // Each key file is served on its own port: `--key <file>:<port>`, repeatable. A file is re-read when it changes,
 // so a rotated key is picked up without a restart.
@@ -125,40 +125,9 @@ for (const { file, port } of keys) Bun.serve({
 for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)} on :${port}${callers.has(port) ? ' for its own agent only' : ''}; forwarding ${[...FORWARDED].join(', ')}`);
 
 // ── The Codex subscription ─────────────────────────────────────────────────────────────────────────────────────
-const CODEX_UPSTREAM = 'https://chatgpt.com/backend-api/codex';
 if (codexArg) {
-  const port = Number(codexArg);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Use --codex <port>; saved project login copies are no longer used.');
-  const forward = async (req: Request, path: string, tokens: CodexAccess, body?: ArrayBuffer): Promise<Response> => {
-    const headers = new Headers(req.headers);
-    for (const h of ['host', 'authorization', 'chatgpt-account-id', 'content-length', 'connection', 'accept-encoding']) headers.delete(h);
-    headers.set('authorization', `Bearer ${tokens.accessToken}`);
-    headers.set('ChatGPT-Account-Id', tokens.accountId);
-    headers.set('originator', 'codex_cli_rs');
-    headers.set('user-agent', 'codex_cli_rs/0.153.2');
-    return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body, redirect: 'manual' });
-  };
-  Bun.serve({
-    hostname: '127.0.0.1', port,
-    // Match the model valve: reasoning streams can be quiet beyond Bun's 10-second default.
-    idleTimeout: 255,
-    async fetch(req) {
-      const u = new URL(req.url);
-      if (u.pathname === '/healthz') { try { await codexAccess(); return new Response('ok · host Codex login\n'); } catch (error) { return new Response(`unavailable: ${error instanceof Error ? error.message : 'host Codex startup or authentication failed'}\n`, { status: 503 }); } }
-      if (!u.pathname.startsWith('/backend-api/codex/')) return new Response('not found: the Codex backend lives under /backend-api/codex/\n', { status: 404 });
-      const path = u.pathname.slice('/backend-api/codex'.length) + u.search;
-      try {
-        // A known-length body avoids chunked uploads rejected by the Codex backend and can be replayed after refresh.
-        const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
-        let tokens = await codexAccess();
-        let res = await forward(req, path, tokens, body);
-        if (res.status === 401) { await res.body?.cancel(); tokens = await codexAccess({ rejectedToken: tokens.accessToken }); res = await forward(req, path, tokens, body); }
-        const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
-        return new Response(res.body, { status: res.status, headers: out });
-      } catch (e) { return new Response(JSON.stringify({ error: { code: 'codex_unavailable', message: (e as Error).message } }), { status: 502, headers: { 'content-type': 'application/json' } }); }
-    },
-  });
-  console.log(`codex: host Codex login → ${CODEX_UPSTREAM} on :${port}`);
+  serveCodex(Number(codexArg));
+  console.log(`codex: host Codex login on :${Number(codexArg)}`);
 }
 
 // ── The GitHub App ─────────────────────────────────────────────────────────────────────────────────────────────

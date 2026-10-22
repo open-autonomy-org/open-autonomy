@@ -45,6 +45,7 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
+import { ensureCodexService } from './codex-service-client.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -406,10 +407,14 @@ const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').fil
 // Keep the host login environment for the valve; only the agent gets an empty Codex home.
 const hostEnvironment = inherited();
 const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex');
-const codexPort = valvePort + 2;
+const codexPort = Number(arg('--codex-proxy-port') ?? valvePort + 2);
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
-if (onCodex && !codexTwin) await codexAccess();
+if (onCodex && !codexTwin) {
+  const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
+  say(`Codex proxy :${codexPort} serving independently (pid ${proxy.pid}); board shutdown leaves it running`);
+  await codexAccess();
+}
 await halted();
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
@@ -484,8 +489,7 @@ if (existsSync(resolve(home, 'profiles', 'treasurer')) && (payKey || existsSync(
   writeFileSync(payEnv, `${[...keptPay, ...(payKey ? [`OPEN_AUTONOMY_PAY_KEY=${payKey}`] : [])].join('\n')}\n`, { mode: 0o600 });
   own(payEnv);
 }
-// Both launch modes use the host Codex login. A model twin never starts real authentication.
-if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
+// Bare mode's Codex proxy has its own lifetime (above); it is never a valve child of this board generation.
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
 // An organization's projects (docs/decisions/0017): a project this install publishes for has its key in this install's
