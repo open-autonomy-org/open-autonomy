@@ -22,13 +22,13 @@ const handlers = [
   // RFC 0021 row 6: the board's review runs the reviewer profile; it records its verdict (request-state done with its
   // evidence), and the card's creator or the manager accepts the arc.
   { id: 'reviewer-verdict', on: { anyTextIncludes: 'You are the independent reviewer of card' }, respond: { toolCalls: { name: 'exec_command', arguments: { cmd:
-    `head=$(curl -s -H 'authorization: Bearer world-bot' "$GITHUB_TWIN_URL/repos/${ACCOUNT}/pulls?state=open" | jq -r '.[0].head.sha') && "\${SUPERCODE_BIN:-supercode}" workflow request-state "$HERMES_KANBAN_TASK" --state done --reason "the review passed" --evidence "verdict: pass by the reviewer profile; PR head read whole against main" --reviewed-sha "$head" --root "${process.env.VO_AGENT_HOME}"`,
+    `head=$(curl -s -H "authorization: Bearer \${GH_TOKEN:?World GH_TOKEN is required}" "$GITHUB_TWIN_URL/repos/${ACCOUNT}/pulls?state=open" | jq -r '.[0].head.sha') && "\${SUPERCODE_BIN:-supercode}" workflow request-state "$HERMES_KANBAN_TASK" --state done --reason "the review passed" --evidence "verdict: pass by the reviewer profile; PR head read whole against main" --reviewed-sha "$head" --root "${process.env.VO_AGENT_HOME}"`,
   } } } },
   { id: 'coder-review-demo', on: { anyTextIncludes: 'Audit export (review demo)' }, respond: { toolCalls: { name: 'exec_command', arguments: { cmd: [
     'cd "$HERMES_KANBAN_WORKSPACE" && git checkout -q -B "$HERMES_KANBAN_BRANCH"',
     'echo "Audit export: CSV first, then the API." > AUDIT.md && git add AUDIT.md && git -c user.name=coder -c user.email=coder@example.test commit -q -m "audit export"',
     'git push -q origin HEAD',
-    `curl -s -X POST -H 'authorization: Bearer world-bot' -H 'content-type: application/json' "$GITHUB_TWIN_URL/repos/${ACCOUNT}/pulls" -d "{\\"title\\":\\"Audit export\\",\\"head\\":\\"$HERMES_KANBAN_BRANCH\\",\\"base\\":\\"main\\"}" | head -c 300`,
+    `curl -s -X POST -H "authorization: Bearer \${GH_TOKEN:?World GH_TOKEN is required}" -H 'content-type: application/json' "$GITHUB_TWIN_URL/repos/${ACCOUNT}/pulls" -d "{\\"title\\":\\"Audit export\\",\\"head\\":\\"$HERMES_KANBAN_BRANCH\\",\\"base\\":\\"main\\"}" | head -c 300`,
   ].join(' && ') } } } },
   { id: 'am-digest', on: { userTextIncludes: 'DIGEST.' }, respond: { text: 'Digest: nothing reached done since the last one; nothing is blocked; nothing needs your word.' } },
   // RFC 0022 rows 1-3: the auditor's round reads the hour's mail in full (here, the account manager's main mailbox) and
