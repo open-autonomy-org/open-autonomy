@@ -21,8 +21,11 @@
 // whole snapshot is also the list of what the board still carries. The organization's open-Room threshold asks a person
 // to review dormant Rooms; the program never confirms it for them: it closes its own Rooms whose projects have no live
 // card and says the refusal once.
-// Each live card's agents (the board's `card.agents` declarations, active, of an agent Teams has not ended, holding a live
-// assignment on the card's Task) are brought into its project's Room: resolved through the Workplace's resolve door to the
+// The agents working a live card right now (the board's `card.agents` declarations, active, of an agent Teams has not
+// ended, holding a live assignment on the card's Task, in the role its card is in now: its implementer while the card is
+// worked (`running`), its reviewer while it is in review, any other role while either; none while the card is paused,
+// blocked or waiting, VO-3602: "a project Room holds only the agents working its cards right now") are brought into its
+// project's Room: resolved through the Workplace's resolve door to the
 // principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
 // command (`POST /api/v3/rooms/:roomId/join`) seats it with `agentRoleKeys` (default member), joins it to the Room's base
 // channel and sends its session the Room's seating message. The project's lead, an agent declared under one of
@@ -31,8 +34,16 @@
 // program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
 // live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
 // brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite or call) or it took its seat by
-// acting there (`seatedOnAct`: posting in the Room). A state write the disk refuses is retried each minute while the
-// program works from memory.
+// acting there (`seatedOnAct`: posting in the Room). An agent whose card pauses, blocks or moves to the other role leaves,
+// and comes back when its work resumes. A state write the disk refuses is retried each minute while the program works
+// from memory.
+//
+// Each project Room's rules carry its guidance (runhuman-2 ADR 0063 decision 7, `guidance`, the rules command): what its
+// agents are told it is for. Each image or video a live card's agent attaches to the card (the card's published
+// `attachments`) is posted once into its project Room's base channel, as this app's own file (ADR 0063 decision 8), with
+// a line naming the card: the card stays the one place an update is put. Its bytes are read through the board's door
+// (`supercode workflow attachment-get … --at <board.at>`); a file attached before the app first read the card's files is
+// not posted, so a backlog never floods a Room.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -46,15 +57,21 @@
 //   "leadProfiles": ["lead"],
 //   "envFile": "<custody env file of KEY=VALUE lines>", "stateFile": "<the program's id map and cursor>",
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
-//   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>"
+//   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>",
+//   "board": { "at": "sc:<machine>:board:<home>", "supercode": "<optional: the supercode CLI, default supercode>" },
+//   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"]
 // }
 import { createHash } from 'node:crypto';
-import { fstatSync, futimesSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { fstatSync, futimesSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 4;
+const ARC_ROOM_LIFECYCLE_VERSION = 5;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -183,13 +200,13 @@ function flushState() {
 }
 function saveState() { flushing ??= setTimeout(flushState, 5_000); }
 // What the app reads of a card, kept while it is owed (a whole card carries its body and history).
-const KEPT = ['id', 'ref', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents'];
+const KEPT = ['id', 'ref', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments'];
 const kept = (card) => Object.fromEntries(KEPT.filter((key) => card[key] !== undefined).map((key) => [key, card[key]]));
 /** What the project pass reads of a card: kept in the registry for every card of the board's latest reading. */
 const registryOf = (card) => {
   const lane = card.archived ? 'archived' : card.lane ?? card.status;
   const people = (card.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('person:')).map((tag) => tag.slice(7).toLowerCase());
-  return { agents: cardAgentsOf(card), id: card.id, leads: leadAgentsOf(card), live: live({ ...card, lane }),
+  return { agents: cardAgentsOf({ ...card, lane }), files: visibleFilesOf(card), id: card.id, leads: leadAgentsOf(card), live: live({ ...card, lane }),
     name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
@@ -239,14 +256,76 @@ async function closeOwnRoom(roomId) {
 const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
 const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
-/** The ids of the agents a card declares active (the board's `card.agents`), or null when the card publishes none. */
+/** Whether an agent of the card works it right now, in its role: its implementer while the card is worked (`running`),
+ * its reviewer while it is in review, any other role while either; none while the card is paused or blocked. */
+const WORKING_LANES = { implementer: ['running'], reviewer: ['review'] };
+const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
+/** The ids of the agents working the card right now (the board's `card.agents`, active, in the role its card is in now),
+ * or null when the card publishes none. */
 function cardAgentsOf(card) {
   const agents = activeAgents(card);
-  return agents === null ? null : [...new Set(agents.map((agent) => agent.id))].sort();
+  return agents === null ? null : [...new Set(agents.filter((agent) => worksNow(card, agent)).map((agent) => agent.id))].sort();
 }
 /** The card's agents declared under a lead profile: the project's lead, which holds its Room's conversation. */
 function leadAgentsOf(card) {
-  return [...new Set((activeAgents(card) ?? []).filter((agent) => LEAD_PROFILES.has(agent.profile)).map((agent) => agent.id))].sort();
+  const lane = card.archived ? 'archived' : card.lane ?? card.status;
+  return [...new Set((activeAgents(card) ?? []).filter((agent) => LEAD_PROFILES.has(agent.profile) && worksNow({ ...card, lane }, agent)).map((agent) => agent.id))].sort();
+}
+
+// ---- the project Room's guidance and its cards' visible updates (runhuman-2 ADR 0063 decisions 7 and 8) -------------
+/** What a project Room's agents are told it is for, unless the app's config says otherwise. */
+export const PROJECT_GUIDANCE = [
+  'This Room is the project\'s: its cards being worked now, and the agents working them.',
+  'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
+];
+const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
+/** A card's images and videos, as its snapshot lists them (`attachments`): what its Room shows of its updates. */
+const VISIBLE = /\.(png|jpe?g|gif|webp|svg|avif|mp4|webm|mov|m4v)$/i;
+const visibleFilesOf = (card) => (Array.isArray(card.attachments) ? card.attachments : [])
+  .filter((file) => file && Number.isSafeInteger(file.id) && typeof file.name === 'string' && (/^(image|video)\//.test(file.content_type ?? '') || VISIBLE.test(file.name)))
+  .map((file) => ({ at: file.at ?? null, by: file.by ?? null, contentType: file.content_type ?? null, id: file.id, name: file.name, size: Number(file.size) || 0 }));
+const typeOf = (file) => file.contentType && /^(image|video)\//.test(file.contentType) ? file.contentType
+  : ({ avif: 'image/avif', gif: 'image/gif', jpeg: 'image/jpeg', jpg: 'image/jpeg', m4v: 'video/mp4', mov: 'video/quicktime', mp4: 'video/mp4', png: 'image/png', svg: 'image/svg+xml', webm: 'video/webm', webp: 'image/webp' })[file.name.split('.').pop().toLowerCase()] ?? 'application/octet-stream';
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const run = promisify(execFile);
+/** A card file's bytes, read through the board's door (attachment-get), never from where the board keeps them. */
+async function cardFileBytes(cardId, file) {
+  if (!config.board?.at) throw Object.assign(new Error('name the board door to read card files through as board.at (sc:<machine>:board:<home>)'), { code: 'board-door-unset' });
+  const directory = mkdtempSync(join(tmpdir(), 'project-rooms-'));
+  try {
+    const out = join(directory, 'file');
+    await run(config.board.supercode ?? 'supercode', ['workflow', 'attachment-get', cardId, String(file.id), '--at', config.board.at, '--out', out], { timeout: 120_000, signal: shutdown.signal });
+    return readFileSync(out);
+  } finally { rmSync(directory, { force: true, recursive: true }); }
+}
+/** Posts each of the card's images and videos its Room has not shown into the Room's base channel, once: as this app's
+ * own file, then a line carrying it that names the card. A file attached before the app first read this card's files is
+ * recorded as shown. */
+async function repostCardFiles(roomId, conversationId, card) {
+  const shown = state.reposted[card.id] ??= { since: Date.now(), ids: [] };
+  for (const file of card.files ?? []) {
+    if (shown.ids.includes(file.id)) continue;
+    const at = file.at ? Date.parse(file.at) : NaN;
+    if (!(at >= shown.since - 60_000) || !(at >= state.repostSince)) { shown.ids.push(file.id); saveState(); continue; }
+    const where = `${card.ref ?? card.id} ${card.name}`;
+    let files = [], body;
+    if (file.size > MAX_FILE_BYTES) body = `${where}: ${file.name} was attached to the card (too large to show here; it is on the card).`;
+    else {
+      const bytes = await cardFileBytes(card.id, file);
+      const response = await fetch(`${base}/api/v3/rooms/${encodeURIComponent(roomId)}/files`, {
+        method: 'POST', body: bytes, signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(60_000)]),
+        headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, 'content-type': typeOf(file), 'x-rh2-artifact-name-uri': encodeURIComponent(file.name) },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { code: payload?.error?.code, status: response.status });
+      files = [payload.data.artifact.artifactId];
+      body = `${where}${file.by ? `, from ${file.by}` : ''}: ${file.name}`;
+    }
+    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      body: { body, correlationId: `card-file:${card.id}:${file.id}`, files, kind: 'automation' } });
+    shown.ids.push(file.id); saveState();
+    log('card-file-posted', { card: card.id, file: file.id, roomId });
+  }
 }
 const agentEnded = (agentId) => state.agents[agentId]?.ended === true;
 /** The Workplace principal the supercode integration provided for a Teams agent (the resolve door, by the Agents → Room
@@ -385,6 +464,11 @@ async function keepProject(project) {
   const baseChannel = view.conversations?.find((item) => item.conversationId === room.defaultConversationId);
   const topic = topicOf(project, cards);
   if (baseChannel && baseChannel.topic !== topic) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(baseChannel.conversationId)}/topic`, { body: { topic }, method: 'PUT' });
+  // Its guidance (ADR 0063 decision 7), set with the rules command whenever it differs.
+  if (JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance)) {
+    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, guidance }, method: 'PUT' });
+    log('room-guidance-set', { ...label, roomId });
+  }
   // Placement has one writer, this app: the Room is on the project Floor alone, and a placement made by hand is taken back.
   const floorId = await projectFloorId();
   if (floorId === null) throw new Error('the organization has no default Floor to place the Room on');
@@ -412,6 +496,8 @@ async function keepProject(project) {
   }
   const { mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
   await keepAgentSeats(view, wanted, label, { mayUnseat, unresolved });
+  // Each card's new images and videos, in the Room's base channel (ADR 0063 decision 8).
+  if (baseChannel) for (const card of cards) await repostCardFiles(roomId, baseChannel.conversationId, card);
   // Seated what can be; what waits keeps the project owed, tried again on the app's backoff (keepOwedProjects).
   if (waiting.length) throw Object.assign(new Error(`waiting for ${waiting.slice(0, 5).join('; ')}`), { code: 'seats-pending' });
 }
@@ -512,6 +598,9 @@ bindProjectionState(config,state);
 state.projects ??= {}; state.projectsOwed ??= {}; state.projectsKept ??= {};
 state.pending ??= {};
 state.agents ??= {}; state.agentPrincipals ??= {}; // Teams agent → { ended }; → its Workplace principal (resolve door)
+// Each card's files its Room has shown (or that predate its first reading of them), and when the app first reposted any:
+// a file attached before then is never posted.
+state.reposted ??= {}; state.repostSince ??= Date.now();
 const source = JSON.stringify([config.teams.server, config.teams.team, config.teams.source ?? null]);
 if (state.source && state.source !== source) throw new Error('this state file belongs to another board source');
 // Registry entries identify keys actually observed from this source, including cards later absent from a snapshot.
