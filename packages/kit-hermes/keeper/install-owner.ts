@@ -1,6 +1,6 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
-import { sourceReceiptProgram, publishedProgram } from '../base/.open-autonomy/source-program.ts';
+import { sourceReceiptProgram, publishedProgram, sourceJson } from '../base/.open-autonomy/source-program.ts';
 import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
 import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -177,10 +177,16 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       if (saved.transaction) {
         const held = saved.transaction;
         const ledger = resolve(process.env.SUPERCODE_HOME || resolve(process.env.XDG_CONFIG_HOME || resolve(process.env.HOME!, '.config'), 'supercode'), 'source-lock.json');
-        const primary = json(ledger), selected = held.selected.source ? json(held.selected.source)?.lock : null;
+        let sourceCommitted = false;
+        if (held.selected.source) {
+          const receiptText = readFileSync(held.selected.source, 'utf8'), identity = JSON.parse(receiptText).lock;
+          const codec = sourceJson(identity.root, identity.binding), selected = codec.parse(receiptText).lock;
+          const primary = codec.parse(readFileSync(ledger, 'utf8'));
+          sourceCommitted = primary.serving_handover?.transaction === held.id
+            && ['root','commit','supercode','binding','graph'].every(key => codec.equal(selected[key] ?? null, primary[key] ?? null));
+        }
         const published = held.selected.release ? json(resolve(dirname(held.selected.release), '../..', 'active-release.json')) : null;
-        const committed = held.selected.release ? published?.transaction === held.id : primary?.serving_handover?.transaction === held.id && selected
-          && ['root','commit','supercode','graph'].every(key => JSON.stringify(selected[key] ?? null) === JSON.stringify(primary[key] ?? null));
+        const committed = held.selected.release ? published?.transaction === held.id : sourceCommitted;
         initial = committed ? held.selected : held.predecessor;
         pending = { ...held, phase: committed ? 'activated' : 'prepared' };
       } else initial = saved.active;
