@@ -1,5 +1,5 @@
-import { ACCOUNT } from '../lib.ts';
 #!/usr/bin/env bun
+import { ACCOUNT } from '../lib.ts';
 // The scripted model for the review World: what the OpenAI twin answers each profile's scheduled wake, so the jobs run
 // and their output can be read. The proof rows' acts (a root, a delegate, a draft, a reply) are the reviewer's, driven
 // through the sessions' panes and supercode's doors; this script does not stand in for them. Handlers key on the
