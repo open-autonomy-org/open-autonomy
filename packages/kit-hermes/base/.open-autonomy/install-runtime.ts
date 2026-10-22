@@ -65,7 +65,7 @@ export function machineSourceReceipt(environment: Record<string, string | undefi
     writeFileSync(temporary, JSON.stringify({ version: 1, kind: 'serving-source-candidate', base_digest: digest, lock }) + '\n', { mode: 0o600 });
     renameSync(temporary, path);
   }
-  return path;
+  return realpathSync(path);
 }
 
 // Published installs use the same complete retained closure as the native machine owner. A replaced global npm
