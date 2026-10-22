@@ -1,5 +1,6 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
+import { sourceReceiptProgram, publishedProgram } from '../base/.open-autonomy/source-program.ts';
 import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
 import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -12,14 +13,8 @@ import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-a
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
 const json = (path: string): any => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; } };
-const sourceNative = (path: string): string => {
-  const receipt = json(path), graph = receipt?.lock?.graph;
-  const instance = graph?.instances?.[graph?.consumers?.[graph.default]?.entry?.instance], output = graph?.receipts?.[instance?.native?.build];
-  if (!instance?.root || !output?.path) throw new Error('prepared source has no complete native build receipt');
-  const native = realpathSync(resolve(instance.root, output.path));
-  if (receipt.native && realpathSync(receipt.native) !== native) throw new Error('prepared source names a different native');
-  return native;
-};
+// The control protocol's native field is a legacy selected-program pathname.
+const sourceProgram = (path: string): string => sourceReceiptProgram(path).program;
 export async function serveInstallOwner({ project, home, argv }: { project: string; home: string; argv: string[] }): Promise<number> {
   if (argv.includes('--as')) throw new Error('prepared kit handovers require the keeper user; --as needs a separately prepared privilege-separated installation');
   if (process.platform === 'win32') throw new Error('prepared kit handovers require Unix owner sockets');
@@ -54,7 +49,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const envFor = (selected: Selection) => { const env = { ...process.env } as Record<string, string>; delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT; delete env.SUPERCODE_RELEASE_VERSION;
     if (selected.release) env.SUPERCODE_RELEASE_RECEIPT = selected.release;
     if (selected.source || selected.release) {
-      if (selected.source) env.SUPERCODE_SOURCE_CANDIDATE = selected.source;
+      if (selected.source) { env.SUPERCODE_SOURCE_CANDIDATE = selected.source; const runtime = sourceReceiptProgram(selected.source).node; if (runtime) env.SUPERCODE_NODE_BIN = runtime; }
       delete env.OPEN_AUTONOMY_SUPERCODE_BIN; delete env.OPEN_AUTONOMY_ORCHESTRATOR_BIN; delete env.OPEN_AUTONOMY_HARNESS_SDK;
     }
     delete env.SUPERCODE_BIN; delete env.SUPERCODE_ORCHESTRATOR_ENTRY; delete env.SUPERCODE_TEAMS_ENTRY;
@@ -64,7 +59,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     const receipt = readInstall(selected.receipt, home);
     if ((receipt.source ?? null) !== selected.source || (receipt.release ?? null) !== (selected.release ?? null)) throw new Error('kit inputs were not prepared against this complete source selection');
     if (selected.source && selected.release) throw new Error('kit inputs require one complete machine selection');
-    const native = selected.source ? sourceNative(selected.source) : selected.release ? machinePublishedBinding(envFor(selected))?.native : null;
+    const native = selected.source ? sourceProgram(selected.source) : selected.release ? machinePublishedBinding(envFor(selected))?.program : null;
     if (native && (!selected.native || realpathSync(selected.native) !== realpathSync(native))) throw new Error('kit native differs from its complete machine selection');
     const identity = runtimeInstallIdentity({ directory: dirname(receipt.entry), environment: envFor(selected),
       registry: receipt.registry, archive: receipt.archive ?? undefined });
@@ -193,7 +188,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const at = argv.indexOf('--prepared-install'), named = argv[at + 1];
       if (!named) throw new Error('--prepared-install needs the complete install receipt');
       const prepared = readInstall(named, home);
-      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceNative(prepared.source) : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceProgram(prepared.source) : prepared.release ? publishedProgram(json(prepared.release)) : process.env.SUPERCODE_BIN ?? null };
       validate(initial);
     } else {
       const head = Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']);
@@ -201,7 +196,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const prepared = await prepareInstall({ project, home, revision: head.stdout.toString().trim(), source: process.env.SUPERCODE_SOURCE_CANDIDATE ?? null,
         registry: argv[argv.indexOf('--runtime-registry') + 1] && argv.includes('--runtime-registry') ? argv[argv.indexOf('--runtime-registry') + 1] : undefined,
         archive: argv[argv.indexOf('--runtime-package') + 1] && argv.includes('--runtime-package') ? argv[argv.indexOf('--runtime-package') + 1] : undefined });
-      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceNative(prepared.source) : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceProgram(prepared.source) : prepared.release ? publishedProgram(json(prepared.release)) : process.env.SUPERCODE_BIN ?? null };
     }
     active = await start(initial); write();
     while (!stopping) {

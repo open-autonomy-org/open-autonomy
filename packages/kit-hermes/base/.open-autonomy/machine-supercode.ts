@@ -12,6 +12,7 @@
 // commit, its `packaging/npm` package linked onto PATH) is one release too: the lock's tree carries the orchestrator,
 // harness SDK and Teams package at that commit (sdk/orchestrator, sdk/typescript, sdk/teams), and the machine daemon
 // runs that tree's Teams package. Its packaging/npm package pins nothing, because the tree is the release.
+import { sourceProgram } from './source-program.ts';
 import { machineSourceBinding, machinePublishedBinding } from './install-runtime.ts';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -101,10 +102,8 @@ function sourceLocked(): MachineSupercode | null {
   const teams = join(root, 'sdk', 'teams', 'bin', 'teams.mjs');
   const missing = [orchestratorEntry, join(harnessSdk, 'package.json'), teams].filter((path) => !existsSync(path));
   if (missing.length) refuse(`has no ${missing.join(', ')}`);
-  const graph = lock.graph, consumer = graph?.consumers?.[graph.default], instance = graph?.instances?.[consumer?.entry?.instance];
-  const output = graph?.receipts?.[instance?.native?.build];
-  if (!instance?.root || !output?.path) refuse('has no complete native build receipt');
-  const bin = resolve(instance.root, output.path);
+  const selected = sourceProgram(lock), bin = selected.program;
+  if (selected.node) process.env.SUPERCODE_NODE_BIN = selected.node;
   const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
   if (machine?.generation_owner) {
     const source = machine.release?.source;

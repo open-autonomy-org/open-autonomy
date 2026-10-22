@@ -66,3 +66,13 @@ secret that matters”: proxy identity discloses no credential, and host Codex r
 “Nothing here develops against a real API”: source inspection and recorded manual use of isolated product doors
 supply implementation evidence. The independent reviewer must judge the complete implementation and its evidence;
 this proposal alone proves no acceptance outcome.
+
+## Node source and published bindings
+
+VO-2160 replaces Supercode's Rust command with Node. Preparation therefore binds `binding: node`, the exact
+`supercode.js` source-file receipt and the graph's Node executable, rather than assuming a native build output.
+Kit readers use the selected source owner's lossless graph codec; snapshots preserve the original declaration text.
+The source transaction restores the exact previous bytes before restarting predecessor products. A retained published
+v4 receipt identifies `program_kind: node` and its selected program; its `native` field remains only the established
+control protocol's pathname alias. A kit selects that complete retained closure. Runtime and program admission do not
+change D215/D217, release authority, privacy grants, custody or the separately permitted first adoption.

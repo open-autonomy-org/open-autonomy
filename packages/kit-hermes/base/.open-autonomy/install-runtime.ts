@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
+import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -37,15 +38,16 @@ function sourceLock(environment: Record<string, string | undefined>): string | u
 // primary. Native activation re-verifies the complete graph before any serving selection changes.
 function selectedSource(file: string, environment: Record<string, string | undefined>): any {
   const primary = readFileSync(file, 'utf8'), current = JSON.parse(primary), named = environment.SUPERCODE_SOURCE_CANDIDATE;
-  if (!named) return current;
+  if (!named) return sourceJson(current.root, current.binding).parse(primary);
   const path = realpathSync(named), base = realpathSync(join(dirname(file), 'source', 'handovers'));
   if (path !== resolve(named) || dirname(dirname(path)) !== base || !path.endsWith('/candidate.json')) throw new Error('candidate source receipt is outside this machine handovers');
   const receipt = JSON.parse(readFileSync(path, 'utf8'));
-  const same = (binding: any) => ['root','commit','supercode','graph'].every(key => JSON.stringify(binding?.[key] ?? null) === JSON.stringify(receipt.lock?.[key] ?? null));
-  if (receipt.version !== 1 || receipt.kind !== 'serving-source-candidate' || (!same(current)
-    && !(current.serving_handover?.previous_receipt === path && same(current.serving_handover.previous))
+  const codec = sourceJson(receipt.lock.root, receipt.lock.binding), candidate = codec.parse(readFileSync(path, 'utf8')), selected = codec.parse(primary);
+  const same = (binding: any) => ['root','commit','supercode','binding','graph'].every(key => codec.equal(binding?.[key] ?? null, candidate.lock?.[key] ?? null));
+  if (receipt.version !== 1 || receipt.kind !== 'serving-source-candidate' || (!same(selected)
+    && !(selected.serving_handover?.previous_receipt === path && same(selected.serving_handover.previous))
     && receipt.base_digest !== createHash('sha256').update(primary).digest('hex'))) throw new Error('candidate source no longer matches its primary');
-  return receipt.lock;
+  return candidate.lock;
 }
 
 export function machineSourceBinding(environment: Record<string, string | undefined> = process.env): any | null {
@@ -58,11 +60,13 @@ export function machineSourceReceipt(environment: Record<string, string | undefi
   if (!file) return null;
   if (environment.SUPERCODE_SOURCE_CANDIDATE) { selectedSource(file, environment); return realpathSync(environment.SUPERCODE_SOURCE_CANDIDATE); }
   const text = readFileSync(file, 'utf8'), lock = JSON.parse(text), digest = createHash('sha256').update(text).digest('hex');
-  const directory = join(dirname(file), 'source/handovers', `snapshot-${digest}`), path = join(directory, 'candidate.json');
+  const selected = sourceProgram(lock);
+  const directory = join(realpathSync(dirname(file)), 'source/handovers', `snapshot-${digest}`), path = join(directory, 'candidate.json');
   if (!existsSync(path)) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ version: 1, kind: 'serving-source-candidate', base_digest: digest, lock }) + '\n', { mode: 0o600 });
+    const fields = JSON.stringify({ version: 1, kind: 'serving-source-candidate', base_digest: digest, ...selected });
+    writeFileSync(temporary, fields.slice(0, -1) + ',"lock":' + text + '}\n', { mode: 0o600 });
     renameSync(temporary, path);
   }
   return realpathSync(path);
@@ -87,7 +91,7 @@ export function machinePublishedBinding(environment: Record<string, string | und
   if (!named) return null;
   const path = realpathSync(named), receipt = JSON.parse(readFileSync(path, 'utf8'));
   if (path !== resolve(named) || dirname(dirname(path)) !== realpathSync(join(service, 'releases'))
-    || path !== join(dirname(path), 'retained-release.json') || receipt.version !== 3 || !receipt.supports_generations
+    || path !== join(dirname(path), 'retained-release.json') || publishedProgram(receipt) === null || !receipt.supports_generations
     || receipt.root !== join(dirname(path), 'package')) throw new Error('published release receipt is outside this machine retained releases');
   const manifest = JSON.parse(readFileSync(join(receipt.root, 'package.json'), 'utf8'));
   if (manifest.name !== '@volter/supercode' || manifest.version !== receipt.release) throw new Error('retained machine release manifest changed');
@@ -95,8 +99,9 @@ export function machinePublishedBinding(environment: Record<string, string | und
     if (!manifest.dependencies?.[name] || JSON.parse(readFileSync(join(receipt.root, 'node_modules', name, 'package.json'), 'utf8')).version !== manifest.dependencies[name])
       throw new Error(`retained machine release has no exact ${name}`);
   }
-  if (!realpathSync(receipt.native).startsWith(receipt.root + sep)) throw new Error('retained machine native escapes its release');
-  return { ...receipt, receipt: path };
+  const program = publishedProgram(receipt)!;
+  for (const input of [program, receipt.entry, receipt.supervised]) if (typeof input !== 'string' || !realpathSync(input).startsWith(receipt.root + sep)) throw new Error('retained machine input escapes its release');
+  return { ...receipt, program, receipt: path };
 }
 
 // Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
@@ -141,7 +146,9 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   const lock = sourceLock(options.environment ?? process.env);
   // A pin move, or adopting the linked-install policy, invalidates stamps made for copies too.
   if (lock) { const selected = selectedSource(lock, options.environment ?? process.env);
-    hash.update('source-lock:file-links-v2').update(JSON.stringify(Object.fromEntries(['root','commit','supercode','graph'].map(key => [key, selected[key] ?? null]))));
+    const codec = sourceJson(selected.root, selected.binding);
+    hash.update('source-lock:file-links-v3');
+    for (const key of ['root','commit','supercode','binding','graph']) hash.update(key).update(codec.stringify(selected[key] ?? null));
   }
   const published = machinePublishedBinding(options.environment ?? process.env);
   if (published) hash.update('retained-release-v3').update(readFileSync(published.receipt));
