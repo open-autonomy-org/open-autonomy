@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
-import { runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
+import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
@@ -63,6 +63,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const validate = (selected: Selection): InstallReceipt => {
     const receipt = readInstall(selected.receipt, home);
     if ((receipt.source ?? null) !== selected.source || (receipt.release ?? null) !== (selected.release ?? null)) throw new Error('kit inputs were not prepared against this complete source selection');
+    if (selected.source && selected.release) throw new Error('kit inputs require one complete machine selection');
+    const native = selected.source ? sourceNative(selected.source) : selected.release ? machinePublishedBinding(envFor(selected))?.native : null;
+    if (native && (!selected.native || realpathSync(selected.native) !== realpathSync(native))) throw new Error('kit native differs from its complete machine selection');
     const identity = runtimeInstallIdentity({ directory: dirname(receipt.entry), environment: envFor(selected),
       registry: receipt.registry, archive: receipt.archive ?? undefined });
     if (identity !== receipt.runtimeIdentity || readFileSync(resolve(dirname(receipt.entry), 'node_modules/.open-autonomy-install'), 'utf8').trim() !== identity)
@@ -118,11 +121,11 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     pending = null; failure = null; write(); wake(); return status();
   };
   const sourceDecision = (id: string, selected: Selection, predecessor: Selection, action: string) => {
-    if (selected.receipt === predecessor.receipt && selected.source === predecessor.source && (selected.release ?? null) === (predecessor.release ?? null)) return;
+    if (selected.receipt === predecessor.receipt && selected.source === predecessor.source && (selected.release ?? null) === (predecessor.release ?? null) && selected.native === predecessor.native) return;
     const journal = selected.release ? json(resolve(dirname(selected.release), '../..', 'release-handover.json'))
       : selected.source ? json(resolve(dirname(selected.source), 'activation.json')) : null;
     const allowed = action === 'finish' ? 'committed' : ['rollback','abort'].includes(action) ? 'restored' : 'prepared';
-    if (journal?.transaction !== id || journal.closed || journal.state !== allowed) throw new Error(`kit ${action} requires its matching ${allowed} source decision`);
+    if (journal?.transaction !== id || journal.candidate !== (selected.release ?? selected.source) || journal.closed || journal.state !== allowed) throw new Error(`kit ${action} requires its matching ${allowed} source decision`);
   };
   const control = async (request: any, progress: (phase: string) => void) => {
     const action = request.action;
