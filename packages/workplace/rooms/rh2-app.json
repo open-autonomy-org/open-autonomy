@@ -1,5 +1,6 @@
 {
   "name": "Project Rooms",
+  "registrationKey": "project-rooms",
   "description": "One Room per project in the organization's Office, from the board: the project's lead and its live cards' agents brought in and out with the Workplace's join and leave commands (Open Autonomy)",
   "actions": [
     "organization.read",

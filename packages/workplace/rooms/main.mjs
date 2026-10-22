@@ -28,9 +28,10 @@
 // channel and sends its session the Room's seating message. The project's lead, an agent declared under one of
 // `leadProfiles` (default `lead`, Open Autonomy's company profile), holds the conversation: it receives every line of the
 // base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
-// program is the one writer of its seats' receive setting. An agent it joined that no live card of the project names any
-// more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). A state write the disk refuses is retried each
-// minute while the program works from memory.
+// program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
+// live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
+// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite or call). A state write the disk
+// refuses is retried each minute while the program works from memory.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -259,12 +260,21 @@ async function agentPrincipalOf(agentId) {
   state.agentPrincipals[agentId] = principalId; saveState();
   return principalId;
 }
+// The organization's people (its principals of kind human), read once per pass with the organization, and the Room's own.
+let passPeople;
+async function peopleOf(view) {
+  passPeople ??= door(orgPath).then((read) => new Set((read?.members ?? []).filter((member) => member.kind === 'human').map((member) => member.principalId)),
+    (error) => { passPeople = undefined; throw error; });
+  const people = new Set(await passPeople);
+  for (const member of view.members ?? []) if (member.kind === 'human') people.add(member.principalId);
+  return people;
+}
 /**
  * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
  * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
- * someone changed it. An agent this app joined that is no longer wanted leaves by the leave command,
- * unless `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
- * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
+ * someone changed it. Any other agent in the Room leaves by the leave command, unless a person brought it in (its seat's
+ * `seatedBy` is a person of the organization: their /invite or call) or `mayUnseat` is false. Leaving waits for a whole
+ * board reading, and for every wanted agent to be resolved (an unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
  * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
  * other seat of an agent (one it took by acting, a members write, the organization document's) is access, and the join
  * brings it in.
@@ -291,10 +301,13 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
   }
   if (mayUnseat && !missing.length && state.cleanupReady) {
-    for (const member of view.members ?? []) {
-      if (member.kind !== 'agent' || principals.has(member.principalId) || member.seatedBy !== self) continue;
-      await door(`${room}/leave`, { body: { principalId: member.principalId, expectedSeatedBy: member.seatedBy } });
-      log('agent-left', { ...label, principalId: member.principalId, roomId });
+    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId));
+    const people = leaving.length ? await peopleOf(view) : new Set();
+    for (const member of leaving) {
+      if (people.has(member.seatedBy)) continue;
+      // Named by who brought it in, so a person who brings it in again meanwhile is not undone.
+      await door(`${room}/leave`, { body: { principalId: member.principalId, ...(member.seatedBy ? { expectedSeatedBy: member.seatedBy } : {}) } });
+      log('agent-left', { ...label, principalId: member.principalId, roomId, seatedBy: member.seatedBy ?? null });
     }
   }
   if (missing.length) throw Object.assign(new Error(`the supercode integration has provided no Workplace agent yet for ${missing.join(', ')}`), { code: 'agent-not-provided' });
@@ -624,7 +637,7 @@ let draining;
 function drain() {
   draining ??= (async () => {
     if (!sourceAdmitted || !state.ready) return;
-    projectFloor = undefined; passTasks = undefined;
+    projectFloor = undefined; passTasks = undefined; passPeople = undefined;
     const tried = new Map();
     for (let next; !stopping && sourceAdmitted && state.ready && (next = Object.entries(state.pending).find(([id, card]) => tried.get(id) !== versionOf(card) && due(id, card)));) {
       tried.set(next[0], versionOf(next[1]));
