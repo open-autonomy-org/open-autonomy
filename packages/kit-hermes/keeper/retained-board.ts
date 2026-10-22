@@ -37,7 +37,7 @@ export async function acquireBoard(options: Options): Promise<void> {
   if (await retainedBoard(options)) return;
   mkdirSync(resolve(options.home, 'logs'), { recursive: true });
   const log = openSync(resolve(options.home, 'logs/board-owner.log'), 'a', 0o600);
-  const command = options.command([Bun.which('node')!, options.entry, 'workflow', 'serve', '--root', options.home]);
+  const command = options.command([options.env.SUPERCODE_NODE_BIN || Bun.which('node')!, options.entry, 'workflow', 'serve', '--root', options.home]);
   const child = spawn(command[0]!, command.slice(1), { cwd: options.home, env: options.env, detached: true, stdio: ['ignore', log, log] });
   closeSync(log);
   let failure: Error | null = null;

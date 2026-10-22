@@ -132,6 +132,18 @@ const machine = () => (checked ??= machineSupercode());
 /** The machine's supercode command, checked (the keeper's children take the checked one it hands them). */
 export const supercodeBin = (): string => machine().bin;
 
+/** The selected Node runtime; Bun must never be substituted for this executable. */
+export function machineNode(): string {
+  const node = process.env.SUPERCODE_NODE_BIN || Bun.which('node');
+  if (!node) throw new Error('the machine selection needs an installed Node runtime');
+  return node;
+}
+/** Literal invocation for either a Node source program or a retained legacy executable. */
+export function supercodeCommand(args: string[], bin = supercodeBin()): string[] {
+  return /\.[cm]?js$/i.test(bin) ? [machineNode(), bin, ...args] : [bin, ...args];
+}
+
+
 /** The orchestrator's entry, run with node, checked. */
 export const orchestratorEntry = (): string => machine().orchestratorEntry;
 

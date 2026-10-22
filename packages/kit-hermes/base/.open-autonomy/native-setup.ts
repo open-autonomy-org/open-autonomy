@@ -1,6 +1,6 @@
 // The bounded native setup mapping in ADR 0026. Native codecs/jobs and applier ownership remain external.
 import type { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
-import { harnessSdkModule, orchestratorModule, supercodeBin } from './machine-supercode.ts';
+import { harnessSdkModule, orchestratorModule, supercodeBin, supercodeCommand } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
 const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
 import type { Package, Setup } from './agent.ts';
@@ -232,7 +232,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
   const safety: NativeSafety = {};
   const applier = await import(orchestratorModule('./apply'));
   const { orchestratorDoor } = await import(orchestratorModule('./apply/doors'));
-  const command = [...(options.asAgent ?? []), supercodeBin(), 'harness', 'serve'];
+  const command = [...(options.asAgent ?? []), ...supercodeCommand(['harness', 'serve'])];
   const sc = new HarnessClient({ command: command[0], args: command.slice(1) });
   const notices: string[] = [];
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);

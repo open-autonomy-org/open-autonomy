@@ -44,7 +44,7 @@
 //   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
+import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
@@ -403,7 +403,7 @@ const orchestratorBin = machine.orchestratorEntry;
 // user and reads that login, so the declaration names the route the host already has rather than opening one.
 const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
 if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
-if (onNative && !Bun.which('node')) { console.error(`start: the selected native runtime needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (onNative && !(process.env.SUPERCODE_NODE_BIN || Bun.which('node'))) { console.error(`start: the selected native runtime needs the selected Node runtime (26.8.1 or later for Node Supercode). No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -621,7 +621,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
       stopStart('the retained board differs from the repository declaration');
     say('board: retained native owner and declared ztrack backing');
   } else {
-  const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
+  const init = Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
     cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   let answer: { kept?: boolean; path?: string } | undefined;
   try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
@@ -669,13 +669,13 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
+  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
 }
 if (boardDeclared && prepared) await acquireBoard(boardOptions);
-else if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
+else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
 // its loaded and ready events to that exact owned launch chain, never another
 // home, once-mode output, an arbitrary descendant or a prose log sentence.
@@ -728,7 +728,7 @@ if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON
 for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const rh2 = mailAgent.channel?.rh2;
   if (!rh2) continue;
-  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
+  spawn(`channel ${name}`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
     ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
     ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
     '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
@@ -750,7 +750,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'slack.env'));
     const channels = slack.channels?.length ? slack.channels : (creds.SLACK_CHANNELS ?? '').split(',').map((c) => c.trim()).filter(Boolean);
     if (!creds.SLACK_BOT_TOKEN || !creds.SLACK_APP_TOKEN || !channels.length) say(`channel ${name} slack: ${resolve(secrets, 'slack.env')} needs SLACK_BOT_TOKEN, SLACK_APP_TOKEN and the channels (agent.json or SLACK_CHANNELS); not carried`);
-    else spawn(`channel ${name} slack`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
+    else spawn(`channel ${name} slack`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
       '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
   const jira = mailAgent.channel?.jira;
@@ -758,7 +758,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'jira.env'));
     const auth: Record<string, string> | undefined = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
     if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
-    else spawn(`channel ${name} jira`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
+    else spawn(`channel ${name} jira`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
       '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
 }
