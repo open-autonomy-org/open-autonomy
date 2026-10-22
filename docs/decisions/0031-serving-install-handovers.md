@@ -21,7 +21,8 @@ receipt binds its exact revision, kit, runtime inputs and complete native source
 validates that receipt rather than fetching or installing during activation. Its stack can stop and restart while the
 native board owner and host Codex proxy remain independently serving. The native machine owner reserves every board,
 connector/mail generation and kit before transferring authority. Only exact activated/serving receipts permit the
-atomic source commit. One writer holds each shared store. A timed-out candidate never gains authority by starting.
+atomic source commit (or the complete retained npm release decision). Published kits bind the same machine-owned
+retained closure instead of a global npm directory that installation can replace. One writer holds each shared store. A timed-out candidate never gains authority by starting.
 
 Before commit, failure restores the previous source ledger before predecessor products restart. Retained databases
 keep all committed rows; rollback never copies old storage over them. Board storage-code changes and mail schema changes

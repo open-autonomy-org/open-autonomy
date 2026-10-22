@@ -53,12 +53,49 @@ export function machineSourceBinding(environment: Record<string, string | undefi
   return file ? selectedSource(file, environment) : null;
 }
 
+// Published installs use the same complete retained closure as the native machine owner. A replaced global npm
+// directory is preparation input, never evidence that the serving release changed.
+export function machinePublishedBinding(environment: Record<string, string | undefined> = process.env): any | null {
+  if (sourceLock(environment)) {
+    if (environment.SUPERCODE_RELEASE_RECEIPT) throw new Error('a source-pinned machine cannot select a separate published release');
+    return null;
+  }
+  const home = environment.SUPERCODE_HOME || join(environment.XDG_CONFIG_HOME || join(environment.HOME || homedir(), '.config'), 'supercode');
+  const service = join(environment.SUPERCODE_TEAMS_HOME || join(home, 'teams'), 'service');
+  const primary = join(service, 'active-release.json');
+  let named = environment.SUPERCODE_RELEASE_RECEIPT;
+  if (!named && existsSync(primary)) {
+    const active = JSON.parse(readFileSync(primary, 'utf8'));
+    if (!active.release?.supports_generations) return null;
+    named = active.release.receipt ?? join(dirname(active.release.root), 'retained-release.json');
+  }
+  if (!named) return null;
+  const path = realpathSync(named), receipt = JSON.parse(readFileSync(path, 'utf8'));
+  if (path !== resolve(named) || dirname(dirname(path)) !== realpathSync(join(service, 'releases'))
+    || path !== join(dirname(path), 'retained-release.json') || receipt.version !== 3 || !receipt.supports_generations
+    || receipt.root !== join(dirname(path), 'package')) throw new Error('published release receipt is outside this machine retained releases');
+  const manifest = JSON.parse(readFileSync(join(receipt.root, 'package.json'), 'utf8'));
+  if (manifest.name !== '@volter/supercode' || manifest.version !== receipt.release) throw new Error('retained machine release manifest changed');
+  for (const name of ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams']) {
+    if (!manifest.dependencies?.[name] || JSON.parse(readFileSync(join(receipt.root, 'node_modules', name, 'package.json'), 'utf8')).version !== manifest.dependencies[name])
+      throw new Error(`retained machine release has no exact ${name}`);
+  }
+  if (!realpathSync(receipt.native).startsWith(receipt.root + sep)) throw new Error('retained machine native escapes its release');
+  return { ...receipt, receipt: path };
+}
+
 // Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
 // on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
   const file = sourceLock(options.environment);
-  if (!file) return [];
+  if (!file) {
+    const published = machinePublishedBinding(options.environment);
+    if (!published) return [];
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
+    return ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams'].filter(name => declarations[name]).map(name => ({ name, target: realpathSync(join(published.root, 'node_modules', name)) }));
+  }
   const lock = selectedSource(file, options.environment);
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
@@ -91,6 +128,8 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   if (lock) { const selected = selectedSource(lock, options.environment ?? process.env);
     hash.update('source-lock:file-links-v2').update(JSON.stringify(Object.fromEntries(['root','commit','supercode','graph'].map(key => [key, selected[key] ?? null]))));
   }
+  const published = machinePublishedBinding(options.environment ?? process.env);
+  if (published) hash.update('retained-release-v3').update(readFileSync(published.receipt));
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }

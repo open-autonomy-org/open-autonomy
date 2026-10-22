@@ -151,12 +151,15 @@ if (command === 'ship') {
     if (!existsSync(resolve(home, 'kit-install.json'))) throw new Error('this install needs its separately authorized first adoption before managed upgrades; no restart was requested');
     const { machineSupercode } = await import('./machine-supercode.ts');
     const machine = machineSupercode();
-    const staged = JSON.parse(run([machine.bin, 'source', 'stage']));
-    if (typeof staged.candidate !== 'string') throw new Error('source preparation returned no candidate; the serving install was preserved');
+    const { machinePublishedBinding } = await import('./install-runtime.ts');
+    const published = machinePublishedBinding();
+    const staged = published ? null : JSON.parse(run([machine.bin, 'source', 'stage']));
+    if (!published && typeof staged?.candidate !== 'string') throw new Error('source preparation returned no candidate; the serving install was preserved');
     const manifest = resolve(home, `kit-upgrade-${main.slice(0, 12)}.json`);
     writeFileSync(manifest, JSON.stringify({ version: 1, kits: [{ home, project, revision: main }] }) + '\n', { mode: 0o600 });
     // Activation is admitted by the retained owner. Ending this maintenance caller cannot stop the transaction.
-    const activated = Bun.spawn({ cmd: [machine.bin, 'source', 'activate', staged.candidate, '--installs', manifest],
+    const activated = Bun.spawn({ cmd: published ? [machine.bin, 'teams', 'machine', 'upgrade', '--action', 'install', '--release', published.receipt, '--installs', manifest]
+      : [machine.bin, 'source', 'activate', staged.candidate, '--installs', manifest],
       cwd: project, env: process.env, stdio: ['ignore', 'inherit', 'inherit'] });
     if (await activated.exited !== 0) throw new Error('the machine upgrade returned no success; read its transaction status before retrying');
     process.exit(0);

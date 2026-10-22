@@ -12,7 +12,7 @@
 // commit, its `packaging/npm` package linked onto PATH) is one release too: the lock's tree carries the orchestrator,
 // harness SDK and Teams package at that commit (sdk/orchestrator, sdk/typescript, sdk/teams), and the machine daemon
 // runs that tree's Teams package. Its packaging/npm package pins nothing, because the tree is the release.
-import { machineSourceBinding } from './install-runtime.ts';
+import { machineSourceBinding, machinePublishedBinding } from './install-runtime.ts';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve, sep } from 'node:path';
@@ -50,6 +50,15 @@ export function machineSupercode(): MachineSupercode {
   const refuse = (why: string): never => { throw new Error(`${why}; install supercode (its orchestrator, harness SDK and Teams package come with it, at one release): ${INSTALL}`); };
   const fromSource = sourceLocked();
   if (fromSource) return fromSource;
+  const retained = machinePublishedBinding();
+  if (retained) {
+    const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
+    if (machine?.generation_owner !== machine?.pid || machine?.mail_ready !== true || machine?.release?.supercode !== retained.release)
+      refuse(`retained supercode ${retained.release} is not the serving machine generation`);
+    return { bin: join(retained.root, 'bin/supercode.js'),
+      orchestratorEntry: join(retained.root, 'node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs'),
+      harnessSdk: join(retained.root, 'node_modules/@volter/supercode-harness-sdk'), release: retained.release };
+  }
   const bin = onPath('supercode') ?? refuse('no supercode is installed on this machine (none on PATH outside an install)');
   // <prefix>/lib/node_modules/@volter/supercode/bin/supercode.js → the package folder
   const pkg = resolve(dirname(realpathSync(bin)), '..');

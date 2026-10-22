@@ -4,20 +4,22 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, wr
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { agentHarness, readAgent } from './agent.ts';
-import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
+import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding } from './install-runtime.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
-  entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; registry: string; archive: string | null; receipt: string };
+  entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string };
 const run = async (cmd: string[], cwd: string): Promise<string> => {
   const child = Bun.spawn({ cmd, cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   if (code !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed (${code}): ${err.trim()}`);
   return out.trim();
 };
-export async function prepareInstall({ project, home, revision, source = null, registry, archive, environment = process.env as Record<string, string> }:
-  { project: string; home: string; revision: string; source?: string | null; registry?: string; archive?: string; environment?: Record<string, string> }): Promise<InstallReceipt> {
+export async function prepareInstall({ project, home, revision, source = null, release = null, registry, archive, environment = process.env as Record<string, string> }:
+  { project: string; home: string; revision: string; source?: string | null; release?: string | null; registry?: string; archive?: string; environment?: Record<string, string> }): Promise<InstallReceipt> {
   project = realpathSync(project); home = realpathSync(home);
+  if (source && release) throw new Error('kit preparation names one complete machine selection');
   if (source) source = realpathSync(source);
+  if (release) release = realpathSync(release);
   registry ??= environment.NPM_REGISTRY_TWIN_URL ?? 'https://registry.npmjs.org';
   archive ??= environment.OPEN_AUTONOMY_RUNTIME_PACKAGE;
   const commit = await run(['git', 'rev-parse', '--verify', `${revision}^{commit}`], project);
@@ -32,8 +34,10 @@ export async function prepareInstall({ project, home, revision, source = null, r
     cpSync(realpathSync(archive), copied, { recursive: true, errorOnExist: true, force: false }); archive = copied;
   }
   const env = { ...environment };
-  delete env.SUPERCODE_SOURCE_CANDIDATE;
+  delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT;
   if (source) env.SUPERCODE_SOURCE_CANDIDATE = realpathSync(source);
+  if (release) env.SUPERCODE_RELEASE_RECEIPT = release;
+  release = machinePublishedBinding(env)?.receipt ?? null;
   await installHostRuntime({ directory: host, environment: env, frozen: existsSync(resolve(host, 'bun.lock')) || existsSync(resolve(host, 'bun.lockb')),
     registry, archive });
   const keeper = resolve(host, 'node_modules/create-open-autonomy/keeper/install-owner.ts');
@@ -44,7 +48,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
-    entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, registry, archive: archive ?? null,
+    entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
     receipt: resolve(directory, 'install.json') };
   writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
   return receipt;
@@ -67,5 +71,5 @@ if (Bun.main === import.meta.path) {
   const args = process.argv.slice(2), value = (name: string) => { const at = args.indexOf(name); return at < 0 ? undefined : args[at + 1]; };
   const project = value('--project'), home = value('--home'), revision = value('--revision');
   if (!project || !home || !revision) throw new Error('prepare-install needs --project, --home and --revision');
-  console.log(JSON.stringify(await prepareInstall({ project, home, revision, source: value('--source') ?? null, registry: value('--runtime-registry'), archive: value('--runtime-package') })));
+  console.log(JSON.stringify(await prepareInstall({ project, home, revision, source: value('--source') ?? null, release: value('--release') ?? null, registry: value('--runtime-registry'), archive: value('--runtime-package') })));
 }

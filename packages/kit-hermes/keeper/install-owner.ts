@@ -9,7 +9,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 
-type Selection = { receipt: string; source: string | null; native: string | null };
+type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
 const json = (path: string): any => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; } };
 export async function serveInstallOwner({ project, home, argv }: { project: string; home: string; argv: string[] }): Promise<number> {
@@ -43,9 +43,10 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const write = () => { const temporary = `${recordPath}.${process.pid}.tmp`; writeFileSync(temporary, JSON.stringify({ version: 1, owner: process.pid,
     active: active?.selected ?? null, previous, transaction: pending, failure }) + '\n', { mode: 0o600 }); const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, recordPath); const dir = openSync(home, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } };
-  const envFor = (selected: Selection) => { const env = { ...process.env } as Record<string, string>; delete env.SUPERCODE_SOURCE_CANDIDATE;
-    if (selected.source) {
-      env.SUPERCODE_SOURCE_CANDIDATE = selected.source;
+  const envFor = (selected: Selection) => { const env = { ...process.env } as Record<string, string>; delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT; delete env.SUPERCODE_RELEASE_VERSION;
+    if (selected.release) env.SUPERCODE_RELEASE_RECEIPT = selected.release;
+    if (selected.source || selected.release) {
+      if (selected.source) env.SUPERCODE_SOURCE_CANDIDATE = selected.source;
       delete env.OPEN_AUTONOMY_SUPERCODE_BIN; delete env.OPEN_AUTONOMY_ORCHESTRATOR_BIN; delete env.OPEN_AUTONOMY_HARNESS_SDK;
     }
     delete env.SUPERCODE_BIN; delete env.SUPERCODE_ORCHESTRATOR_ENTRY; delete env.SUPERCODE_TEAMS_ENTRY;
@@ -53,7 +54,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     return env; };
   const validate = (selected: Selection): InstallReceipt => {
     const receipt = readInstall(selected.receipt, home);
-    if ((receipt.source ?? null) !== selected.source) throw new Error('kit inputs were not prepared against this complete source selection');
+    if ((receipt.source ?? null) !== selected.source || (receipt.release ?? null) !== (selected.release ?? null)) throw new Error('kit inputs were not prepared against this complete source selection');
     const identity = runtimeInstallIdentity({ directory: dirname(receipt.entry), environment: envFor(selected),
       registry: receipt.registry, archive: receipt.archive ?? undefined });
     if (identity !== receipt.runtimeIdentity || readFileSync(resolve(dirname(receipt.entry), 'node_modules/.open-autonomy-install'), 'utf8').trim() !== identity)
@@ -100,8 +101,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     pending = null; failure = null; write(); wake(); return status();
   };
   const sourceDecision = (id: string, selected: Selection, predecessor: Selection, action: string) => {
-    if (!selected.source || selected.source === predecessor.source) return;
-    const journal = json(resolve(dirname(selected.source), 'activation.json'));
+    if (selected.receipt === predecessor.receipt && selected.source === predecessor.source && (selected.release ?? null) === (predecessor.release ?? null)) return;
+    const journal = selected.release ? json(resolve(dirname(selected.release), '../..', 'release-handover.json'))
+      : selected.source ? json(resolve(dirname(selected.source), 'activation.json')) : null;
     const allowed = action === 'finish' ? 'committed' : ['rollback','abort'].includes(action) ? 'restored' : 'prepared';
     if (journal?.transaction !== id || journal.closed || journal.state !== allowed) throw new Error(`kit ${action} requires its matching ${allowed} source decision`);
   };
@@ -111,10 +113,10 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     if (typeof request.transaction !== 'string' || !request.transaction) throw new Error('kit handover needs its transaction id');
     if (action === 'prepare') {
       if (pending) { if (pending.id === request.transaction) {
-        if (pending.selected.receipt !== resolve(request.candidate) || pending.selected.source !== (request.source ? resolve(request.source) : null) || pending.selected.native !== (request.native ? resolve(request.native) : null)) throw new Error('kit transaction already names different inputs');
+        if (pending.selected.receipt !== resolve(request.candidate) || pending.selected.source !== (request.source ? resolve(request.source) : null) || (pending.selected.release ?? null) !== (request.release ? resolve(request.release) : null) || pending.selected.native !== (request.native ? resolve(request.native) : null)) throw new Error('kit transaction already names different inputs');
         return status(); } throw new Error('another kit input is prepared'); }
       if (!active || active.process.exitCode !== null) throw new Error('kit has no serving predecessor');
-      const selected = { receipt: resolve(request.candidate), source: request.source ? resolve(request.source) : null, native: request.native ? resolve(request.native) : null };
+      const selected = { receipt: resolve(request.candidate), source: request.source ? resolve(request.source) : null, release: request.release ? resolve(request.release) : null, native: request.native ? resolve(request.native) : null };
       sourceDecision(request.transaction, selected, active.selected, 'prepare');
       validate(selected); pending = { id: request.transaction, selected, predecessor: active.selected, phase: 'prepared' }; write(); return status();
     }
@@ -161,7 +163,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         const held = saved.transaction;
         const ledger = resolve(process.env.SUPERCODE_HOME || resolve(process.env.XDG_CONFIG_HOME || resolve(process.env.HOME!, '.config'), 'supercode'), 'source-lock.json');
         const primary = json(ledger), selected = held.selected.source ? json(held.selected.source)?.lock : null;
-        const committed = primary?.serving_handover?.transaction === held.id && selected
+        const published = held.selected.release ? json(resolve(dirname(held.selected.release), '../..', 'active-release.json')) : null;
+        const committed = held.selected.release ? published?.transaction === held.id : primary?.serving_handover?.transaction === held.id && selected
           && ['root','commit','supercode','graph'].every(key => JSON.stringify(selected[key] ?? null) === JSON.stringify(primary[key] ?? null));
         initial = committed ? held.selected : held.predecessor;
         pending = { ...held, phase: committed ? 'activated' : 'prepared' };
@@ -170,7 +173,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const at = argv.indexOf('--prepared-install'), named = argv[at + 1];
       if (!named) throw new Error('--prepared-install needs the complete install receipt');
       const prepared = readInstall(named, home);
-      initial = { receipt: prepared.receipt, source: prepared.source, native: prepared.source ? json(prepared.source)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? json(prepared.source)?.native ?? null : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
       validate(initial);
     } else {
       const head = Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']);
@@ -178,7 +181,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const prepared = await prepareInstall({ project, home, revision: head.stdout.toString().trim(), source: process.env.SUPERCODE_SOURCE_CANDIDATE ?? null,
         registry: argv[argv.indexOf('--runtime-registry') + 1] && argv.includes('--runtime-registry') ? argv[argv.indexOf('--runtime-registry') + 1] : undefined,
         archive: argv[argv.indexOf('--runtime-package') + 1] && argv.includes('--runtime-package') ? argv[argv.indexOf('--runtime-package') + 1] : undefined });
-      initial = { receipt: prepared.receipt, source: prepared.source, native: process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? json(prepared.source)?.native ?? null : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
     }
     active = await start(initial); write();
     while (!stopping) {
