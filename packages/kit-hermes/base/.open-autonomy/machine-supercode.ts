@@ -12,6 +12,7 @@
 // commit, its `packaging/npm` package linked onto PATH) is one release too: the lock's tree carries the orchestrator,
 // harness SDK and Teams package at that commit (sdk/orchestrator, sdk/typescript, sdk/teams), and the machine daemon
 // runs that tree's Teams package. Its packaging/npm package pins nothing, because the tree is the release.
+import { machineSourceBinding } from './install-runtime.ts';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve, sep } from 'node:path';
@@ -47,13 +48,13 @@ export function machineSupercode(): MachineSupercode {
     return { bin: named[0]!, orchestratorEntry: named[1]!, harnessSdk: named[2]!, release: null };
   }
   const refuse = (why: string): never => { throw new Error(`${why}; install supercode (its orchestrator, harness SDK and Teams package come with it, at one release): ${INSTALL}`); };
+  const fromSource = sourceLocked();
+  if (fromSource) return fromSource;
   const bin = onPath('supercode') ?? refuse('no supercode is installed on this machine (none on PATH outside an install)');
   // <prefix>/lib/node_modules/@volter/supercode/bin/supercode.js → the package folder
   const pkg = resolve(dirname(realpathSync(bin)), '..');
   const manifest = json(join(pkg, 'package.json'));
   if (manifest?.name !== '@volter/supercode') refuse(`${bin} is not the npm package @volter/supercode`);
-  const locked = sourceLocked(bin, pkg);
-  if (locked) return locked;
   const pins = manifest.dependencies ?? {};
   if (!PINNED.every((name) => pins[name])) refuse(`supercode ${manifest.version} at ${pkg} predates one release per install (it pins no orchestrator, harness SDK and Teams package)`);
   const wrong = PINNED.flatMap((name) => {
@@ -81,19 +82,29 @@ const supercodeHome = () => process.env.SUPERCODE_HOME || (process.env.XDG_CONFI
  * The machine's supercode when it runs from its source lock: the package on PATH is the lock's tree's packaging/npm, and
  * the three come from that tree at its pinned commit. Null when the package on PATH is not a source-locked tree's.
  */
-function sourceLocked(bin: string, pkg: string): MachineSupercode | null {
-  const lock = json(join(supercodeHome(), 'source-lock.json'));
+function sourceLocked(): MachineSupercode | null {
+  const lock = machineSourceBinding();
   if (typeof lock?.root !== 'string' || !existsSync(lock.root)) return null;
   const root = realpathSync(lock.root);
-  if (realpathSync(pkg) !== join(root, 'packaging', 'npm')) return null;
   const refuse = (why: string): never => { throw new Error(`supercode's source lock at ${root} (commit ${String(lock.commit ?? '?').slice(0, 9)}) ${why}; re-pin it, or install a release: ${INSTALL}`); };
   const orchestratorEntry = join(root, 'sdk', 'orchestrator', 'bin', 'orchestrator.mjs');
   const harnessSdk = join(root, 'sdk', 'typescript');
   const teams = join(root, 'sdk', 'teams', 'bin', 'teams.mjs');
   const missing = [orchestratorEntry, join(harnessSdk, 'package.json'), teams].filter((path) => !existsSync(path));
   if (missing.length) refuse(`has no ${missing.join(', ')}`);
-  const stale = daemonEntries().filter((entry) => resolve(entry) !== teams);
-  if (stale.length) refuse(`is not what the machine daemon runs (${[...new Set(stale)].join(', ')}, not ${teams}); reinstall its service: supercode teams connect --install`);
+  const graph = lock.graph, consumer = graph?.consumers?.[graph.default], instance = graph?.instances?.[consumer?.entry?.instance];
+  const output = graph?.receipts?.[instance?.native?.build];
+  if (!instance?.root || !output?.path) refuse('has no complete native build receipt');
+  const bin = resolve(instance.root, output.path);
+  const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
+  if (machine?.generation_owner) {
+    const source = machine.release?.source;
+    if (machine.generation_owner !== machine.pid || machine.mail_ready !== true || source?.root !== root || source?.commit !== lock.commit || source?.binding !== 'matches')
+      refuse('is not the serving machine generation; activate the coherent machine selection before this kit');
+  } else {
+    const stale = daemonEntries().filter((entry) => resolve(entry) !== teams);
+    if (stale.length) refuse(`is not what the machine daemon runs (${[...new Set(stale)].join(', ')}, not ${teams})`);
+  }
   return { bin, orchestratorEntry, harnessSdk, release: typeof lock.supercode === 'string' ? lock.supercode : null };
 }
 

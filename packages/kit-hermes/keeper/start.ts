@@ -45,6 +45,9 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
+import { serveInstallOwner } from './install-owner.ts';
+import { acquireBoard, boardDeclaration, retainedBoard } from './retained-board.ts';
+import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -87,9 +90,15 @@ const loadedKeeper = readFileSync(import.meta.path, 'utf8');
 // layers below handle all three, so none of them takes the default action that ends one process alone and leaves its
 // children running with no one above them.
 const stopSignals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
-// Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
-// kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
-if (!argv.includes('--stack-child')) {
+// The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
+// checkout's directory name: two projects checked out as `project` must not share one home.
+const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
+const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
+const initialSetup = existsSync(resolve(project, '.open-autonomy/agent.json')) ? readAgent(project) : null;
+const initialKit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
+const retainedInstall = !arg('--as') && process.platform !== 'win32' && (initialKit.kit === 'ir' || (initialSetup && agentHarness(initialSetup) !== 'hermes'));
+if (retainedInstall && !argv.includes('--stack-child')) process.exit(await serveInstallOwner({ project, home, argv }));
+if (!retainedInstall && !argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
   // The stack below stops on the same signal and exits once its children have; this process leaves when it does.
@@ -103,10 +112,8 @@ if (!argv.includes('--stack-child')) {
   }
   process.exit(0);
 }
-// The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
-// checkout's directory name: two projects checked out as `project` must not share one home.
-const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
-const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
+const prepared = process.env.OPEN_AUTONOMY_INSTALL_RECEIPT ? readInstall(process.env.OPEN_AUTONOMY_INSTALL_RECEIPT, home) : null;
+if (retainedInstall && (!prepared || prepared.project !== realpathSync(project))) throw new Error('native kit stacks start only from their owned prepared install receipt');
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
 const developerKey = resolve(secrets, 'agent.env');
 if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
@@ -160,7 +167,11 @@ const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
 // no command — and only waits for what it already started to exit.
 let ending = false;
-let nativeGatewayReady = false;
+let nativeGatewayReady = false, stackConfigured = false;
+const publishReady = () => {
+  const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
+  if (!ending && stackConfigured && nativeGatewayReady && file) writeFileSync(file, JSON.stringify({ ready: true, pid: process.pid, receipt: prepared!.receipt }) + '\n', { mode: 0o600 });
+};
 let restartAsked = false;
 process.on('exit', () => {
   for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
@@ -171,10 +182,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    // The board's dispatcher ends cleanly (0) when a newer orchestrator is installed under it, for its keeper to start the
-    // new one (supercode's `workflow serve`): this start is that keeper, so only the dispatcher restarts, not the stack.
     if (name === 'board' && code === 0) {
-      say(`board ended (0) for a newer orchestrator; the rest keeps running, the board returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
@@ -253,6 +261,8 @@ if (existsSync(deployKey)) {
 
 // 2. The checkout.
 let committedFrom: string | undefined;
+if (prepared) say(`prepared project ${project} at ${prepared.revision}`);
+else {
 if (!existsSync(resolve(project, '.git'))) {
   if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
   mkdirSync(project, { recursive: true }); own(project);
@@ -287,6 +297,9 @@ if (!existsSync(resolve(project, '.git'))) {
   }
 }
 
+
+}
+
 // Fetching can replace the entry, and a changed package.json installs another kit release, so another keeper. Load
 // the landed code before claiming its version is running, rather than continuing the previous one with a new record.
 const reload = async () => {
@@ -307,8 +320,12 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: host, environment: agentEnv(), registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
+  if (prepared && (want !== prepared.runtimeIdentity || (existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want)) {
+    throw new Error('prepared runtime identity changed; prepare a new install before activation');
+  }
+  if (!prepared) {
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     let install: ReturnType<typeof Bun.spawn> | undefined;
     rmSync(stamp, { force: true });
@@ -321,6 +338,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
     await halted();
     writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`the host's dependencies installed in ${host}`);
+  }
   }
   const keeper = resolve(host, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');
   if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; for (const c of children) c.proc.kill(); process.exit(1); }
@@ -464,8 +482,8 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 // The revision this stack runs: the main the home was rendered from (a dirty checkout's home comes from origin/main too).
 // `maintain.ts restart` measures a move of main from it.
-const startedRevision = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
-writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version, ...(startedRevision ? { revision: startedRevision } : {}) }));
+const startedRevision = prepared?.revision ?? Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version, revision: startedRevision, receipt: prepared?.receipt, sourceProject: prepared?.sourceProject }));
 const homeReadme = resolve(home, 'README.md');
 // The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
 // Hermes kit's does; the IR kit's home is profiles and a board).
@@ -563,6 +581,8 @@ const stopStart = (why: string): never => {
   for (const c of children) c.proc.kill();
   process.exit(1);
 };
+const boardOptions = { home, entry: orchestratorBin, native: supercodeBin, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, command: drop };
+const servingBoard = prepared && onNative && existsSync(resolve(home, 'workflow.yaml')) ? await retainedBoard(boardOptions) : null;
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(home, 'workflow.yaml'))) {
   const checkout = resolve(home, '..', 'board');
@@ -587,6 +607,12 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   const declares = ['--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit',
     ...(ours.length === 1 ? ['--manager', ours[0]] : []),
     ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])];
+  if (servingBoard) {
+    const observed = await boardDeclaration(boardOptions);
+    if (observed.backing !== 'ztrack' || resolve(observed.declared?.document ?? '/') !== resolve(checkout, boardSetup.document))
+      stopStart('the retained board differs from the repository declaration');
+    say('board: retained native owner and declared ztrack backing');
+  } else {
   const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
     cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   let answer: { kept?: boolean; path?: string } | undefined;
@@ -596,6 +622,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
     stopStart(`the board its repository declares cannot be made: ${why}`);
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
+  }
 }
 let reportersStarted = false;
 function startReporters(): void {
@@ -639,7 +666,8 @@ if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
 }
-if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+if (boardDeclared && prepared) await acquireBoard(boardOptions);
+else if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
 // its loaded and ready events to that exact owned launch chain, never another
 // home, once-mode output, an arbitrary descendant or a prose log sentence.
@@ -663,7 +691,7 @@ async function nativeReadiness(): Promise<void> {
     } else if (event.event === 'ready' && event.once === undefined && event.pid === loadedPid && Array.isArray(event.connected) && event.connected.every((name: unknown) => typeof name === 'string') && Array.isArray(event.down) && event.down.every((name: unknown) => typeof name === 'string') && Number.isSafeInteger(event.webhook_port) && event.webhook_port >= 0 && event.webhook_port <= 65535 && Number.isSafeInteger(event.tick_ms) && event.tick_ms > 0 && typeof event.restarted === 'boolean') {
       if (!await owned(event.pid) || ending) return;
       nativeGatewayReady = true;
-      startReporters();
+      startReporters(); publishReady();
     }
   };
   try {
@@ -726,6 +754,10 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
       '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
 }
+// Native prepared stacks move through the coherent machine door. Other existing runtime modes retain their own
+// lifecycle; they cannot be included in a machine handover without an owned readiness protocol.
+if (prepared) { stackConfigured = true; publishReady(); }
+else {
 // The restart this keeper performs on request: the stack drains and starts again, onto whatever the checkout then
 // holds, whatever the board holds (sessions run in their own panes and outlive the stack). Whether to move is not this
 // keeper's to decide: `maintain.ts restart` (run by whoever deploys: a person, a PM's pass, a keep job) fetches main,
@@ -750,6 +782,8 @@ setInterval(() => {
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1);
 }, 5000);
+
+}
 say(`${onNative ? `orchestrator (worker ${harness})` : 'gateway'} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});

@@ -33,22 +33,44 @@ function sourceLock(environment: Record<string, string | undefined>): string | u
   return existsSync(file) ? file : undefined;
 }
 
+// Select the explicitly staged complete binding while preparing candidate inputs. Ordinary installs read the
+// primary. Native activation re-verifies the complete graph before any serving selection changes.
+function selectedSource(file: string, environment: Record<string, string | undefined>): any {
+  const primary = readFileSync(file, 'utf8'), current = JSON.parse(primary), named = environment.SUPERCODE_SOURCE_CANDIDATE;
+  if (!named) return current;
+  const path = realpathSync(named), base = realpathSync(join(dirname(file), 'source', 'handovers'));
+  if (path !== resolve(named) || dirname(dirname(path)) !== base || !path.endsWith('/candidate.json')) throw new Error('candidate source receipt is outside this machine handovers');
+  const receipt = JSON.parse(readFileSync(path, 'utf8'));
+  const same = (binding: any) => ['root','commit','supercode','graph'].every(key => JSON.stringify(binding?.[key] ?? null) === JSON.stringify(receipt.lock?.[key] ?? null));
+  if (receipt.version !== 1 || receipt.kind !== 'serving-source-candidate' || (!same(current)
+    && !(current.serving_handover?.previous_receipt === path && same(current.serving_handover.previous))
+    && receipt.base_digest !== createHash('sha256').update(primary).digest('hex'))) throw new Error('candidate source no longer matches its primary');
+  return receipt.lock;
+}
+
+export function machineSourceBinding(environment: Record<string, string | undefined> = process.env): any | null {
+  const file = sourceLock(environment);
+  return file ? selectedSource(file, environment) : null;
+}
+
 // Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
 // on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
   const file = sourceLock(options.environment);
   if (!file) return [];
-  const lock = JSON.parse(readFileSync(file, 'utf8'));
+  const lock = selectedSource(file, options.environment);
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
   const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
   const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   return Object.entries(declarations).flatMap(([name, value]) => {
     if (typeof value !== 'string' || !value.startsWith('file:')) return [];
-    const target = realpathSync(resolve(options.directory, value.slice(5)));
+    const matches = Object.values(lock.graph?.instances ?? {}).filter((instance: any) => instance.package === name) as any[];
+    if (matches.length > 1) throw new Error(`Source dependency ${name} needs one exact package instance`);
+    const target = realpathSync(matches.length ? resolve(matches[0].root, matches[0].dir) : resolve(options.directory, value.slice(5)));
     const path = relative(root, target);
-    if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) return [];
+    if (!matches.length && (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path))) return [];
     if (!/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name) || name === '.' || name === '..' ||
         JSON.parse(readFileSync(join(target, 'package.json'), 'utf8')).name !== name) {
       throw new Error(`Source-linked dependency ${name} must name its package at ${target}`);
@@ -66,7 +88,9 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   hash.update(options.registry ?? 'https://registry.npmjs.org');
   const lock = sourceLock(options.environment ?? process.env);
   // A pin move, or adopting the linked-install policy, invalidates stamps made for copies too.
-  if (lock) hash.update('source-lock:file-links-v1').update(readFileSync(lock));
+  if (lock) { const selected = selectedSource(lock, options.environment ?? process.env);
+    hash.update('source-lock:file-links-v2').update(JSON.stringify(Object.fromEntries(['root','commit','supercode','graph'].map(key => [key, selected[key] ?? null]))));
+  }
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }
