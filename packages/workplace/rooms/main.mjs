@@ -271,12 +271,13 @@ async function agentPrincipalOf(agentId) {
  * someone changed it. An agent this app (or an adopted seater) joined that is no longer wanted leaves by the leave command,
  * unless `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
  * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
- * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060): a seat an agent
- * took by acting there (`seatedOnAct`) is not, and the join brings it in.
+ * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
+ * other seat of an agent (one it took by acting, a members write, the organization document's) is access, and the join
+ * brings it in.
  */
 async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true } = {}) {
   const roomId = view.room.roomId, missing = [...unresolved], principals = new Set();
-  const inRoom = new Set((view.members ?? []).filter((member) => !member.seatedOnAct).map((member) => member.principalId));
+  const inRoom = new Set((view.members ?? []).filter((member) => member.broughtIn === true).map((member) => member.principalId));
   const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
   const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
