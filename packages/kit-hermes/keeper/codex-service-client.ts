@@ -1,11 +1,37 @@
 // Acquire the independently serving host proxy. The kernel arbitrates the port; a failed contender owns no listener.
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
 type Identity = { service: string; protocol: number; binding: string; instance: string; pid: number };
+
+// A later npm install may replace the kit's directory. Retain precisely the service's sources, without credentials
+// or the keeper's environment, so its supervisor can restart the listener after the kit that launched it is gone.
+function retainService(directory: string): string {
+  const files = ['keeper/codex-service.ts', 'keeper/codex-supervisor.ts', 'base/.open-autonomy/codex-proxy.ts', 'base/.open-autonomy/codex-auth.ts'];
+  const sources = files.map(file => [file, readFileSync(resolve(import.meta.dir, '..', file))] as const);
+  const digest = createHash('sha256');
+  for (const [file, bytes] of sources) digest.update(file).update('\0').update(bytes).update('\0');
+  const retained = resolve(directory, 'codex-service', digest.digest('hex'));
+  const staging = `${retained}.${randomUUID()}.tmp`;
+  mkdirSync(staging, { recursive: true, mode: 0o700 });
+  try {
+    for (const [file, bytes] of sources) {
+      const target = resolve(staging, file);
+      mkdirSync(resolve(target, '..'), { recursive: true, mode: 0o700 });
+      writeFileSync(target, bytes, { mode: 0o400 });
+    }
+    try { renameSync(staging, retained); }
+    catch (error) {
+      if (!['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      // A concurrent acquisition retained the same content. Verify its bytes before using it.
+      for (const [file, bytes] of sources) if (!readFileSync(resolve(retained, file)).equals(bytes)) throw new Error('Retained Codex service differs from its content identity');
+    }
+  } finally { rmSync(staging, { recursive: true, force: true }); }
+  return resolve(retained, 'keeper/codex-supervisor.ts');
+}
 
 export async function ensureCodexService({ port, directory, environment }: { port: number; directory: string; environment: Record<string, string> }): Promise<Identity> {
   const codexHome = resolve(environment.CODEX_HOME || resolve(environment.HOME || homedir(), '.codex'));
@@ -27,9 +53,10 @@ export async function ensureCodexService({ port, directory, environment }: { por
   const existing = await ready();
   if (existing) return existing;
   mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const entry = retainService(directory);
   const log = openSync(resolve(directory, 'codex-proxy.log'), 'a', 0o600);
   const instance = randomUUID();
-  const child = spawn(process.execPath, [resolve(import.meta.dir, 'codex-service.ts'), String(port), binding, instance], {
+  const child = spawn(process.execPath, [entry, String(port), binding, instance], {
     env: environment, cwd: directory, detached: true, stdio: ['ignore', log, log],
   });
   closeSync(log);
