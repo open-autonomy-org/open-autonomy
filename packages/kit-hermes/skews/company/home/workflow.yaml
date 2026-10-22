@@ -197,6 +197,19 @@ verbs:
         - end_run: { outcome: changes_requested }
         - assign: { field: assignee, value: "{{card.implementer}}" }
         - record: changes_requested
+  finish:
+    - from: [running]
+      by: [implementer]
+      guard: "card.subtask_of == null && card.every == null && card.current_run_id != null"
+      description: 'Report completed work: finish <id> --result "<what was done and its evidence>". This ends your attempt, retains your role session and leaves the card for the board to select its independent review, including a no-code disposition with no PR.'
+      validate:
+        - { expr: "event.result != null && event.result != ''", message: Finish names the work done and its evidence with --result. }
+        - { expr: "card.acceptance_complete()", message: Tick every Acceptance outcome with a pointer before finishing. }
+        - { expr: "card.subtasks.all(t, t.status in ['done', 'cancelled'])", message: Close or drop every subtask before finishing. }
+        - { expr: "card.blocked_by.size() == 0 && card.paused == null", message: A blocked or paused card cannot finish. }
+      actions:
+        - end_run: { outcome: completed, summary: "{{event.result}}", close_session: false }
+        - record: work_completed
   complete:
     - from: [todo, running, review]
       by: [arc, implementer, reviewer]
