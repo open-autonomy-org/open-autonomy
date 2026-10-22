@@ -16,17 +16,23 @@ and coordinates native lifecycle doors; it does not implement a second scheduler
 
 ## Decision
 
-Preparation never edits the serving generation. A successor gets its own immutable kit/source inputs and private
-runtime doors. Preparation, dependency installation and declaration validation finish while the predecessor serves.
-Only a readiness receipt from the running successor permits a route change. One native writer holds each shared
-store; a warm successor does not gain write authority by starting. An interrupted transition retains its predecessor
-and its source inputs. A failed or unread readiness check never permits stopping the serving predecessor.
+Preparation never edits the serving generation. Kit dependencies install in a new detached project worktree and a
+receipt binds its exact revision, kit, runtime inputs and complete native source selection. The retained kit owner
+validates that receipt rather than fetching or installing during activation. Its stack can stop and restart while the
+native board owner and host Codex proxy remain independently serving. The native machine owner reserves every board,
+connector/mail generation and kit before transferring authority. Only exact activated/serving receipts permit the
+atomic source commit. One writer holds each shared store. A timed-out candidate never gains authority by starting.
+
+Before commit, failure restores the previous source ledger before predecessor products restart. Retained databases
+keep all committed rows; rollback never copies old storage over them. Board storage-code changes and mail schema changes
+refuse before transfer until a compatible protocol is qualified. Finalization after commit is idempotent cleanup of
+that completed selection, retained in the recovery journal when incomplete.
 
 The Codex proxy is a host service with a lifetime independent of the board and keeper generations. Bare keepers
 acquire its existing listener, identified by protocol, instance and a digest of the host Codex-home path. A missing
 listener is started in a detached service process. A listener with an unread or different identity is preserved and
-startup refuses; it is never killed to free the port. Initial adoption from a legacy stack-owned listener stages a
-separate `--codex-proxy-port`, with the old generation retained for callers still using it. Board stop and restart
+startup refuses; it is never killed to free the port. A legacy stack-owned listener is never silently adopted. First-adoption preparation can stage a separate
+`--codex-proxy-port`; changing a live model endpoint belongs to that separately permitted adoption. Board stop and restart
 signals do not stop the host proxy. Its implementation comes from the kit package, and its authentication still
 uses the installed Codex's transient app-server door. No login is copied, refreshed outside Codex or printed.
 
@@ -42,7 +48,12 @@ Stopping first leaves no serving route when any startup step fails, as the sourc
 that eventually restarts the predecessor still leaves an outage. Keeping the proxy as a board child makes its model
 endpoint share that outage. An independently identified listener preserves in-flight model streams across board
 restarts; later proxy implementation upgrades require their own host-service handover, rather than incidental
-replacement by a board upgrade. An unsupported predecessor must be adopted without stopping its only serving route.
+replacement by a board upgrade. A predecessor without this protocol needs one separately permitted stop/start. Its complete candidate inputs are
+prepared before stopping anything; refusal preserves the legacy services. The operator retains the exact legacy
+commands, restores the source before restarting them on failure, and records the interruption. The MacBook continuity
+proof comes afterward, between two released pins both carrying the protocol. Hermes, privilege-separated `--as` and
+Windows kit stacks retain their existing startup path and refuse inclusion in the native kit handover without their
+own readiness protocol.
 
 ## Constitution compatibility for independent review
 

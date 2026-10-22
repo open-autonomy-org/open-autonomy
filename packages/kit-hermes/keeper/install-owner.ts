@@ -1,10 +1,11 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
+import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { constants } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 
@@ -15,7 +16,15 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   if (argv.includes('--as')) throw new Error('prepared kit handovers require the keeper user; --as needs a separately prepared privilege-separated installation');
   if (process.platform === 'win32') throw new Error('prepared kit handovers require Unix owner sockets');
   mkdirSync(home, { recursive: true, mode: 0o700 });
-  const socketPath = resolve(home, 'kit-owner.sock'), recordPath = resolve(home, 'kit-install.json');
+  home = realpathSync(home);
+  const lifetime = new Database(resolve(home, 'kit-owner.sqlite'), { create: true });
+  try { lifetime.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); } catch (error) { lifetime.close(); throw new Error(`another kit owner holds this home: ${(error as Error).message}`); }
+  const inside = resolve(home, 'kit-owner.sock'), uid = process.getuid?.() ?? 'user';
+  const socketPath = Buffer.byteLength(inside) <= 100 ? inside : resolve('/tmp', `supercode-machine-${uid}`, `${createHash('sha256').update(inside).digest('hex').slice(0, 24)}.sock`);
+  mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
+  if (socketPath !== inside) { const owned = statSync(dirname(socketPath)); if (owned.uid !== uid || (owned.mode & 0o077) !== 0) { lifetime.close(); throw new Error('kit socket directory must belong only to the keeper user'); } }
+  const recordPath = resolve(home, 'kit-install.json');
+  try {
   // No occupied listener is unlinked. A stale path is removed only after connect proves it is not serving.
   if (existsSync(socketPath)) {
     const { createConnection } = await import('node:net');
@@ -54,7 +63,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const start = async (selected: Selection): Promise<Stack> => {
     const receipt = validate(selected), ready = resolve(home, `.kit-ready-${randomUUID()}.json`);
     const args = [...argv];
-    for (const flag of ['--project', '--home']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
+    for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
     const child = Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
       env: { ...envFor(selected), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
         OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' });
@@ -82,13 +91,19 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     const bound = setTimeout(() => stack.process.kill('SIGKILL'), 18000);
     try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
   };
-  const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null ? 'serving' : 'transitioning',
+  const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
     selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure });
-  const rollback = async () => {
+  const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;
-    if (held.phase !== 'prepared') { await stopStack(active); active = await start(held.predecessor); }
+    if (held.phase !== 'prepared') { progress('stopping-predecessor'); await stopStack(active); progress('starting-predecessor'); active = await start(held.predecessor); }
     pending = null; failure = null; write(); wake(); return status();
+  };
+  const sourceDecision = (id: string, selected: Selection, predecessor: Selection, action: string) => {
+    if (!selected.source || selected.source === predecessor.source) return;
+    const journal = json(resolve(dirname(selected.source), 'activation.json'));
+    const allowed = action === 'finish' ? 'committed' : ['rollback','abort'].includes(action) ? 'restored' : 'prepared';
+    if (journal?.transaction !== id || journal.closed || journal.state !== allowed) throw new Error(`kit ${action} requires its matching ${allowed} source decision`);
   };
   const control = async (request: any, progress: (phase: string) => void) => {
     const action = request.action;
@@ -100,20 +115,22 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         return status(); } throw new Error('another kit input is prepared'); }
       if (!active || active.process.exitCode !== null) throw new Error('kit has no serving predecessor');
       const selected = { receipt: resolve(request.candidate), source: request.source ? resolve(request.source) : null, native: request.native ? resolve(request.native) : null };
+      sourceDecision(request.transaction, selected, active.selected, 'prepare');
       validate(selected); pending = { id: request.transaction, selected, predecessor: active.selected, phase: 'prepared' }; write(); return status();
     }
     if (pending?.id !== request.transaction) throw new Error('kit holds no matching handover transaction');
-    if (action === 'rollback' || action === 'abort') return rollback();
+    sourceDecision(request.transaction, pending.selected, pending.predecessor, action);
+    if (action === 'rollback' || action === 'abort') return rollback(progress);
     if (action === 'activate') {
       if (pending.phase === 'activated') return status();
       pending.phase = 'activating'; write();
       progress('stopping-predecessor'); await stopStack(active); active = null; progress('starting-successor');
       try { active = await start(pending.selected); previous = pending.predecessor; pending.phase = 'activated'; failure = null; write(); return status(); }
-      catch (error) { failure = (error as Error).message; await rollback(); throw error; }
+      catch (error) { failure = (error as Error).message; await rollback(progress); throw error; }
     }
     if (action === 'finish') {
       if (pending.phase !== 'activated') throw new Error('kit successor was never activated');
-      if (!active || active.process.exitCode !== null) active = await start(pending.selected);
+      if (!active || active.process.exitCode !== null || active.process.signalCode !== null) { progress('starting-successor'); active = await start(pending.selected); }
       pending = null; failure = null; write(); return status();
     }
     throw new Error('unknown kit handover action');
@@ -149,6 +166,12 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         initial = committed ? held.selected : held.predecessor;
         pending = { ...held, phase: committed ? 'activated' : 'prepared' };
       } else initial = saved.active;
+    } else if (argv.includes('--prepared-install')) {
+      const at = argv.indexOf('--prepared-install'), named = argv[at + 1];
+      if (!named) throw new Error('--prepared-install needs the complete install receipt');
+      const prepared = readInstall(named, home);
+      initial = { receipt: prepared.receipt, source: prepared.source, native: prepared.source ? json(prepared.source)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      validate(initial);
     } else {
       const head = Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']);
       if (head.exitCode !== 0) throw new Error('kit owner needs an existing committed project');
@@ -167,4 +190,5 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     stopping = true; await busy?.catch(() => {}); await stopStack(starting); await stopStack(active); server.close(); rmSync(socketPath, { force: true });
     for (const signal of ['SIGTERM','SIGINT','SIGHUP'] as const) process.off(signal, stop);
   }
+  } finally { lifetime.close(); }
 }
