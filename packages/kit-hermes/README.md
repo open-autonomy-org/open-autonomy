@@ -259,6 +259,11 @@ source identity, replay and projection requirements belong to the [SDK contract]
 [ADR 0016](../../docs/decisions/0016-retained-source-publication.md). The board adapter saves source cursors
 only after its publication callback resolves; that callback checkpoint is not a receipt for every OA write.
 
+Transcript delivery runs in four independent lanes, each with its own harness
+SDK reader. A large transcript occupies one lane while other sessions and
+board acknowledgements continue. Work remains serialized per native session;
+shutdown aborts and joins these readers before releasing publication ownership.
+
 Publication checkpoints record acknowledged offsets and a digest of the published prefix. Restart and
 history-change events reconcile against Volter Harness and the destination's receipt. An upload failure stays
 retryable. If already-published history changes, the append-only destination cannot replace it: reporting

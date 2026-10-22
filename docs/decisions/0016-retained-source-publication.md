@@ -47,3 +47,26 @@ the platform renders published state, and owner control continues through the ex
 native doors. Publication respects the public/team/owner audience policy. Ledger accounting,
 spend authority and release approval are unchanged. Independent review must confirm these
 boundaries and the complete C2 delivery before acceptance; this record claims no observed PASS.
+
+## VO-3454: independent transcript delivery (proposed)
+
+The publisher previously awaited each complete transcript reconciliation in
+the board publication writer. One oversized Codex source therefore held every
+later session and board acknowledgement behind its reconstruction and delivery.
+
+Transcript work now runs in four independent lanes, each with its own public
+harness SDK reader. A native session has at most one active reconciliation;
+source changes retain one later pass for it. Board associations still commit
+through the publication writer, which is released before transcript reads or
+turn delivery. Per-session checkpoints, continuation keys and failure backoff
+keep their existing semantics. Native reads have cancellation through shutdown
+and no transcript-size deadline; another lane continues while a large source
+is read. Shutdown aborts and joins active transcript work and closes every
+reader before releasing publication ownership.
+
+The alternative of concurrent promises through one serialized native reader
+would retain the cross-session wait. Separate SDK readers keep native parsing
+with Supercode and bounded concurrency with this publication adapter. This
+changes no audience, spend authority, credentials or native lifecycle evidence
+and follows the constitution's “The platform shows; it does not steer.” The
+card's independent review judges this amendment; it is not an owner ruling.
