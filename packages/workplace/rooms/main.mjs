@@ -31,8 +31,8 @@
 // profile), holds the conversation: it receives every line of the base channel (`answers: all`); every other card agent
 // receives the lines that name it (`answers: mentions`). The program is the one writer of its seats' receive setting. An
 // agent it joined (or one of `rh2.adoptSeatsOf` did, before) that no live card of the project names any more, or that
-// Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). `standingFile` rows (`{ roomKey, agent, roleKeys }`) join an
-// agent to a standing Room the same way. A state write the disk refuses is retried each minute while the program works from memory.
+// Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). `standingFile` rows (`{ roomKey, agent, roleKeys, answers }`) join an
+// agent to a standing Room the same way, `answers` (`all` or `mentions`) its receive setting there, none the Room's rule. A state write the disk refuses is retried each minute while the program works from memory.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -42,7 +42,7 @@
 //            "issuer": "<optional: the Workplace's canonical origin>",
 //            "agentsRegistration": "<supercode's Agents → Room agents registration's client id, app_…>", "adoptSeatsOf": ["<prn_… of the app that seated agents before>"],
 //            "cardsPrincipalId": "<optional: only Tasks supercode's Cards → Tasks registration made are a card's Task>" },
-//   "agentRoleKeys": ["member"], "postRoleKeys": ["manager"] (optional), "standingFile": "<rows { roomKey, agent, roleKeys }>" (optional),
+//   "agentRoleKeys": ["member"], "postRoleKeys": ["manager"] (optional), "standingFile": "<rows { roomKey, agent, roleKeys, answers }>" (optional),
 //   "leadProfiles": ["lead"],
 //   "envFile": "<custody env file of KEY=VALUE lines>", "stateFile": "<the program's id map and cursor>",
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
@@ -355,7 +355,8 @@ async function keepStandingSeats() {
   for (const row of Array.isArray(rows) ? rows : []) {
     if (typeof row?.roomKey !== 'string' || typeof row.agent !== 'string') continue;
     const wanted = byRoom.get(row.roomKey) ?? new Map();
-    if (!agentEnded(row.agent)) wanted.set(row.agent, { answers: null, roleKeys: Array.isArray(row.roleKeys) ? row.roleKeys : AGENT_ROLE_KEYS });
+    const answers = row.answers === 'all' || row.answers === 'mentions' ? row.answers : null;
+    if (!agentEnded(row.agent)) wanted.set(row.agent, { answers, roleKeys: Array.isArray(row.roleKeys) ? row.roleKeys : AGENT_ROLE_KEYS });
     byRoom.set(row.roomKey, wanted);
   }
   for (const [roomKey, wanted] of byRoom) {
