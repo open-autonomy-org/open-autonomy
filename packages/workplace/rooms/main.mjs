@@ -2,16 +2,19 @@
 // VOLTER'S PROJECT ROOMS: the Open Autonomy integration's program that keeps the organization's Office Floor as its board
 // works (runhuman-2 ADR 0056 decision 1; RH2 ADR 0050 decisions 11 and 12: an organization's bespoke Rooms are its
 // integration, written through the Workplace's own doors). Workplace and supercode know nothing of it: it reads the board
-// as supercode publishes it on Teams' event stream (cards with their agents) and writes Rooms, placements and seats
-// through the Workplace's public doors with its own installation's token. It never writes back to the board.
+// as supercode publishes it on Teams' event stream (cards with their agents) and shapes Rooms through the Workplace's
+// public commands with its own installation's token, as Terraform shapes a cloud through its API: it makes, names, places
+// and closes its Rooms, and brings agents in and out of them with the join and leave commands (runhuman-2 ADR 0060). It
+// never writes who is in a Room any other way, and never writes back to the board.
 //
 // The board's live cards (started, not a subtask, not scheduled, not archived, not in a closed lane) are worked in their
 // project's Room: one Room per project (`projectOf`, the organization's convention) under the key `project-<name>`,
 // named for the project, on the Office Floor (`projectFloor`, else the organization's default Floor) in its Work section,
 // below the Floor's divider. The program is the one writer of its Rooms' placement and section: a hand move is put back.
-// Its base channel's topic lists the project's live cards and where each stands. Who else is in the Room comes from the
-// Room's roles and the Floor's grants, and from the cards' `person:<email>` tags: a ticket's people who hold a seat in
-// the organization are seated. The Room is open while a live card names its project; when none does it is closed, its
+// Its base channel's topic lists the project's live cards and where each stands. A Room is who is in its call (ADR 0060):
+// the program puts no person in it. A ticket's people who hold a seat in the organization are given a seat there (its
+// `person:<email>` tags, company RFC 0026 decision 5), which, like its own manager seat and the Floor's grants, is access:
+// a person is in the Room only while in its call. The Room is open while a live card names its project; when none does it is closed, its
 // history kept, and it reopens with the project's next live card. A card that names no project is worked in no Room. An
 // open Room under a card's key (`arc-…`, one Room per card) is closed by the minute's sweep.
 //
@@ -21,14 +24,15 @@
 // card and says the refusal once.
 // Each live card's agents (the board's `card.agents` declarations, active, of an agent Teams has not ended, holding a live
 // assignment on the card's Task) are seated in its project's Room: resolved through the Workplace's resolve door to the
-// principal supercode's integration declared for that agent (`rh2.agentsRegistration`), with `agentRoleKeys` (default
-// member) and joined to the Room's base channel. Seating is a join, so the Workplace sends the seat its Room's notice
-// (VO-3151). The project's lead, an agent declared under one of `leadProfiles` (default `lead`, Open Autonomy's company
+// principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
+// command (`POST /api/v3/rooms/:roomId/join`) seats it with `agentRoleKeys` (default member), joins it to the Room's base
+// channel and sends its session the Room's seating message (VO-3151). The project's lead, an agent declared under one of
+// `leadProfiles` (default `lead`, Open Autonomy's company
 // profile), holds the conversation: it receives every line of the base channel (`answers: all`); every other card agent
 // receives the lines that name it (`answers: mentions`). The program is the one writer of its seats' receive setting. An
-// agent it seated (or one of `rh2.adoptSeatsOf` did, before) that no live card of the project names any more, or that
-// Teams ended, is unseated. `standingFile` rows (`{ roomKey, agent, roleKeys }`) seat an agent in a standing Room the
-// same way. A state write the disk refuses is retried each minute while the program works from memory.
+// agent it joined (or one of `rh2.adoptSeatsOf` did, before) that no live card of the project names any more, or that
+// Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`). `standingFile` rows (`{ roomKey, agent, roleKeys }`) join an
+// agent to a standing Room the same way. A state write the disk refuses is retried each minute while the program works from memory.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -262,42 +266,41 @@ async function agentPrincipalOf(agentId) {
   return principalId;
 }
 /**
- * Seats `wanted` (agent id → `{ roleKeys, answers }`) in the Room `view` shows and joins each to its base channel, with
- * `answers` its receive setting there (`all` or `mentions`; none, the Room's rule), put back when someone changed it. An
- * agent this app (or an adopted seater) seated that is no longer wanted is unseated, unless `mayUnseat` is false. Unseating
- * waits for a whole board reading, and for every wanted agent to be resolved (an unresolved one may be a seated one). An
- * agent the integration has not provided yet is refused as `agent-not-provided`, so it is tried again on the app's backoff.
+ * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
+ * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
+ * someone changed it. An agent this app (or an adopted seater) joined that is no longer wanted leaves by the leave command,
+ * unless `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
+ * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
+ * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
+ * other seat of an agent (one it took by acting, a members write, the organization document's) is access, and the join
+ * brings it in.
  */
 async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true } = {}) {
   const roomId = view.room.roomId, missing = [...unresolved], principals = new Set();
-  const present = new Set((view.members ?? []).map((member) => member.principalId));
+  const inRoom = new Set((view.members ?? []).filter((member) => member.broughtIn === true).map((member) => member.principalId));
   const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
-  const participants = `/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(view.room.defaultConversationId)}/participants`;
+  const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
   for (const [agentId, { answers, roleKeys }] of wanted) {
     const principalId = await agentPrincipalOf(agentId);
     if (!principalId) { missing.push(agentId); continue; }
     principals.add(principalId);
-    if (!present.has(principalId)) {
-      try {
-        await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/members`, { body: { principalId, roleKeys, ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}) } });
-      } catch (error) {
-        // A principal that no longer stands (ended in the Workplace) is resolved again next time.
-        if (['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.agentPrincipals[agentId];
-        throw error;
-      }
-      if (view.room.defaultConversationId) await door(participants, { body: { principalId, ...(answers ? { answers } : {}) } });
-      log('agent-seated', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
-    } else if (answers && base && receives.get(principalId) !== answers) {
-      await door(participants, { body: { principalId, answers } });
-      log('agent-receives', { ...label, agent: agentId, principalId, roomId, answers });
+    const joined = inRoom.has(principalId);
+    if (joined && (!answers || !base || receives.get(principalId) === answers)) continue;
+    try {
+      await door(`${room}/join`, { body: { principalId, roleKeys, ...(answers ? { answers } : {}), ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}) } });
+    } catch (error) {
+      // A principal that no longer stands (ended in the Workplace) is resolved again next time.
+      if (['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.agentPrincipals[agentId];
+      throw error;
     }
+    log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
   }
   if (mayUnseat && !missing.length && state.cleanupReady) {
     for (const member of view.members ?? []) {
       if (member.kind !== 'agent' || principals.has(member.principalId) || !seaters.has(member.seatedBy)) continue;
-      await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(member.principalId)}/remove`, { body: { expectedSeatedBy: member.seatedBy } });
-      log('agent-unseated', { ...label, principalId: member.principalId, roomId });
+      await door(`${room}/leave`, { body: { principalId: member.principalId, expectedSeatedBy: member.seatedBy } });
+      log('agent-left', { ...label, principalId: member.principalId, roomId });
     }
   }
   if (missing.length) throw Object.assign(new Error(`the supercode integration has provided no Workplace agent yet for ${missing.join(', ')}`), { code: 'agent-not-provided' });
@@ -343,7 +346,7 @@ async function projectAgentsOf(project, cards) {
   }
   return { mayUnseat, unresolved, waiting, wanted };
 }
-/** A standing Room's agents (`standingFile`), seated like an arc's, each minute's sweep. */
+/** A standing Room's agents (`standingFile`), joined like an arc's, each minute's sweep. */
 async function keepStandingSeats() {
   if (!config.standingFile) return;
   let rows;
@@ -367,7 +370,7 @@ async function keepStandingSeats() {
 
 /**
  * One project's Room as its live arcs say: open, named for the project, in the project Floor's Work section,
- * its topic their list, their people and agents seated. With no live arc it is closed (closeOwnRoom), only once the board's
+ * its topic their list, their agents joined. With no live arc it is closed (closeOwnRoom), only once the board's
  * whole list has been read, and only a Room this app opened for the project.
  */
 async function keepProject(project) {
@@ -402,19 +405,20 @@ async function keepProject(project) {
   if (!placed.includes(floorId) && !asking) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements`, { body: { floorId } }); log('room-placed', { ...label, roomId, floorId }); }
   for (const other of placed.filter((each) => each !== floorId)) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements/remove`, { body: { floorId: other } }); log('room-unplaced', { ...label, roomId, floorId: other }); }
   // The arcs' people (company RFC 0026 decision 5): a `person:<email>` tag (a Jira ticket's reporter and commenters, kept
-  // on the arc by ztrack's Jira sync) seats that person in the Room, where they hold a seat in the organization. A person
-  // with no seat is not seated: the organization decides who is in it, never a ticket.
+  // on the arc by ztrack's Jira sync) gives that person a seat in the Room, where they hold a seat in the organization: the
+  // Workplace's access to read and speak in it, never presence (ADR 0060: they are in the Room only while in its call, and
+  // are never listed as in it for this seat). A person with no seat is not seated: the organization decides, never a ticket.
   const people = [...new Set(cards.flatMap((card) => card.people ?? []))];
   if (people.length) {
     const organization = await door(orgPath);
     const seated = new Set((organization.seats ?? []).filter((seat) => (seat.state ?? 'active') === 'active').map((seat) => seat.principalId));
     const byEmail = new Map((organization.members ?? []).filter((member) => seated.has(member.principalId)).map((member) => [String(member.address ?? '').replace(/^human:/, '').toLowerCase(), member.principalId]));
-    const inRoom = new Set((view.members ?? []).map((member) => member.principalId ?? member.principal?.principalId));
+    const holding = new Set((view.members ?? []).map((member) => member.principalId ?? member.principal?.principalId));
     for (const email of people) {
       const principalId = byEmail.get(email);
-      if (!principalId || inRoom.has(principalId)) continue;
+      if (!principalId || holding.has(principalId)) continue;
       await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/members`, { body: { principalId, roleKeys: ['member'] } });
-      log('room-seated', { ...label, roomId, principalId });
+      log('room-access-given', { ...label, roomId, principalId });
     }
   }
   const { mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
