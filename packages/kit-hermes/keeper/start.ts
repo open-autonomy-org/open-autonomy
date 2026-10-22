@@ -268,7 +268,7 @@ if (!existsSync(resolve(project, '.git'))) {
   // changes are a killed attempt's work.
   const status = git('status', '--porcelain', '--untracked-files=no');
   const fetched = status.exitCode === 0 ? await command(drop(['git', 'fetch', '-q', 'origin']), { cwd: project, env: agentEnv(), boundMs: 120_000 }) : undefined;
-  if (!fetched || fetched.exitCode !== 0) { console.error(`start: cannot inspect and fetch the committed configuration${fetched?.stderr.trim() ? ` (${fetched.stderr.trim().split('\n').at(-1)})` : ''}; startup stopped, retry when Git access is restored`); process.exit(1); }
+  if (!fetched || fetched.exitCode !== 0) { console.error(`start: cannot inspect and fetch the committed configuration:\n${fetched?.stderr.trim() || status.stderr.toString().trim() || 'git did not answer'}\nStartup stopped, retry when Git access is restored`); process.exit(1); }
   if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
     // origin/main directly, and the tree is left for the next attempt to carry over.
@@ -522,7 +522,7 @@ const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p)
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
   const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string>, boundMs: 600_000 });
   // the applier's own error and its stack, not only its last line (Bun ends a crash's stderr with its version banner)
-  if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied (exit ${applied.exitCode}):\n${applied.stderr.trim().split('\n').slice(-20).join('\n')}\nNo gateway was started.`); process.exit(1); }
+  if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied (exit ${applied.exitCode}):\n${applied.stderr.trim() || applied.stdout.trim() || 'the setup child returned no diagnostic'}\nNo gateway was started.`); process.exit(1); }
   for (const line of JSON.parse(applied.stdout.trim().split('\n').at(-1) ?? '[]') as string[]) say(`agent: ${line}`);
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
@@ -568,7 +568,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
     const clone = await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 });
     if (clone.exitCode !== 0) {
       rmSync(checkout, { recursive: true, force: true }); // what this start's own clone left
-      stopStart(`the board's checkout ${checkout} cannot be made: ${clone.stderr.trim().split('\n').at(-1) || 'the clone ran past its bound'}`);
+      stopStart(`the board's checkout ${checkout} cannot be made:\n${clone.stderr.trim() || 'the clone ran past its bound'}`);
     }
     say(`board: cloned ${from} on main → ${checkout}`);
   }
@@ -585,7 +585,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   let answer: { kept?: boolean; path?: string } | undefined;
   try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
   if (init.exitCode !== 0 || !answer) {
-    const why = init.stderr.toString().trim().split('\n').filter((line) => !/ExperimentalWarning|trace-warnings/.test(line)).at(-1) ?? `workflow init exited ${init.exitCode}`;
+    const why = init.stderr.toString().trim() || `workflow init exited ${init.exitCode}`;
     stopStart(`the board its repository declares cannot be made: ${why}`);
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
