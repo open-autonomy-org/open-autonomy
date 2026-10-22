@@ -17,7 +17,7 @@ const door = async (path, body) => {
   return text ? JSON.parse(text).data : undefined;
 };
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-// The account manager in the call: its RH2 agent (its Room chat is the Room-chat installation, which media does not admit).
+// The account manager in the call: its RH2 agent.
 const agent = (await door(`/organizations/${organization}/agents`)).agents.find((a) => a.address === 'agent:account-manager' || a.displayName === 'Account manager')?.principalId;
 if (!agent) throw new Error('the organization has no account-manager agent');
 const room = (await door('/rooms')).rooms.map((r) => r.room ?? r).find((r) => r.key === 'account');

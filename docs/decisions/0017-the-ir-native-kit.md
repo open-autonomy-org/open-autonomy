@@ -88,11 +88,9 @@ for?".
   itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts
   are Teams' and the machine daemon's to own (D137; D138 step 5), and enroll.ts goes when they do. *(The launch key as the "exactly one" and
   the session's self-declaration are this record's choices; the profile folder must exist at the same path there.)* An
-  agent with `channel.rh2` has its account Room carried to its mailbox by `supercode-orchestrator
-  agent-channel`, a service of the start that restarts like the reporter, reaching RH2 with `<secrets>/rh2.env`. The
-  Room is found by its key; where the organization declares its Rooms (its org document), the account Room is declared
-  there, and the channel opens one only when given the principal to open it for. *(This record's choices: the setup as
-  the place agents are named, and the org document as the account Room's home where one exists.)*
+  agent hears a Workplace Room's lines once the Workplace's join command brings it in (runhuman-2 ADR 0063: the
+  organization's document for its standing Rooms, Project Rooms for a project's); the start runs no Room channel.
+  *(This record's choice: the setup as the place agents are named.)*
 
 - **The owner's usage statement** (RFC 0021 decisions 7 and 10). Every model call goes through the organization's key,
   so the spend is the organization's calls, each booked to the session that made it. `.open-autonomy/usage.ts`, a tool

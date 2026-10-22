@@ -59,9 +59,6 @@ writeFileSync(boardFile, readFileSync(boardFile, 'utf8').replace(/^  managers: .
 // A thread session ends after one idle minute here, so a review sees the close and the resume (row 3) without waiting.
 for (const agent of Object.values(setup.agents ?? {}) as any[]) {
   agent.idle_minutes = 1;
-  // The account Room is opened on the rehearsal RH2 for the World's owner persona (production declares it in its org
-  // document).
-  if (agent.channel?.rh2 && process.env.VO_RH2_OWNER) agent.channel.rh2.principal = process.env.VO_RH2_OWNER;
 }
 writeFileSync(setupPath, `${JSON.stringify(setup, null, 2)}\n`);
 // The World publishes as its own account (the live install publishes as the organization's).

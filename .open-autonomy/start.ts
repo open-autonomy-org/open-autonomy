@@ -138,9 +138,8 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    if (name.startsWith('reporter') || name.startsWith('channel ')) {
-      // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
-      // ten seconds.
+    if (name.startsWith('reporter')) {
+      // A reporter narrates; it does not decide whether the brain runs. It comes back in ten seconds.
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
@@ -428,10 +427,8 @@ if (harness !== 'hermes') {
   say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
-// and kept across starts (`agent declare --open`), and its account Room carried to its mailbox as a service of this
-// start. RH2 is reached as the agent's own principal where the organization declares it (supercode ADR 0017:
-// `supercode orchestrator apps install rh2-agent … --profile <agent>`), else through a Room-chat installation for it
-// (`apps install room-chat … --profile <agent>`); its channel reads the record from this home.
+// and kept across starts (`agent declare --open`). An agent hears a Workplace Room once the Workplace's join command
+// brings it in (runhuman-2 ADR 0063).
 // They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
 // §2.10), so an export names each one it folds into its profile.
 /** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
@@ -495,12 +492,6 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
       say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
     }
   }
-  const rh2 = mailAgent.channel?.rh2;
-  if (!rh2) continue;
-  spawn(`channel ${name}`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
-    ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
-    ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
-    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 }
 let restarting = false;
 const restartRequest = resolve(home, 'kit-restart.json');
