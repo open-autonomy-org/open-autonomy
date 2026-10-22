@@ -160,8 +160,8 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const packed = Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']);
     if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
     const manifest = JSON.parse(packed.stdout.toString());
-    if (!/^@volter\/[a-z0-9-]+$/.test(manifest.name) || typeof manifest.version !== 'string') {
-      throw new Error('Runtime archive must be a versioned @volter package');
+    if ((manifest.name !== 'create-open-autonomy' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
+      throw new Error('Runtime archive must be a versioned kit or @volter package');
     }
     if (artifacts.has(manifest.name)) throw new Error(`Duplicate candidate package ${manifest.name}`);
     const bytes = readFileSync(path);
@@ -177,7 +177,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       for (const [name, artifact] of artifacts) {
-        const tarPath = `/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
+        const tarPath = `/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
         if (pathname === tarPath) return new Response(request.method === 'HEAD' ? null : new Uint8Array(artifact.bytes),
           { headers: { 'content-type': 'application/octet-stream' } });
         if (pathname === `/${name}` || pathname === `/${name}/${artifact.manifest.version}`) {
@@ -227,7 +227,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       const original = readFileSync(lockPath, 'utf8');
       let normalized = original;
       for (const [name, artifact] of artifacts) {
-        const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
+        const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
         normalized = normalized.replaceAll(JSON.stringify(url), '""');
       }
       if (normalized !== original) writeFileSync(lockPath, normalized);
