@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -51,6 +51,21 @@ function selectedSource(file: string, environment: Record<string, string | undef
 export function machineSourceBinding(environment: Record<string, string | undefined> = process.env): any | null {
   const file = sourceLock(environment);
   return file ? selectedSource(file, environment) : null;
+}
+
+export function machineSourceReceipt(environment: Record<string, string | undefined>): string | null {
+  const file = sourceLock(environment);
+  if (!file) return null;
+  if (environment.SUPERCODE_SOURCE_CANDIDATE) { selectedSource(file, environment); return realpathSync(environment.SUPERCODE_SOURCE_CANDIDATE); }
+  const text = readFileSync(file, 'utf8'), lock = JSON.parse(text), digest = createHash('sha256').update(text).digest('hex');
+  const directory = join(dirname(file), 'source/handovers', `snapshot-${digest}`), path = join(directory, 'candidate.json');
+  if (!existsSync(path)) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ version: 1, kind: 'serving-source-candidate', base_digest: digest, lock }) + '\n', { mode: 0o600 });
+    renameSync(temporary, path);
+  }
+  return path;
 }
 
 // Published installs use the same complete retained closure as the native machine owner. A replaced global npm

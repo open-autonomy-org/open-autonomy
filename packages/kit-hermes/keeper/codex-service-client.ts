@@ -68,7 +68,12 @@ export async function ensureCodexService({ port, directory, environment }: { por
   while (Date.now() < until) {
     if (failed) throw failed;
     const identity = await ready();
-    if (identity) return identity;
+    if (identity) {
+      // Another keeper may have won the port between our absent read and spawn. Retire only our redundant
+      // supervisor; leaving it retrying could take that port later without another acquisition.
+      if (identity.instance !== instance) child.kill('SIGTERM');
+      return identity;
+    }
     if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Codex proxy start ended (${child.exitCode ?? child.signalCode}); inspect ${resolve(directory, 'codex-proxy.log')}. No serving process was stopped.`);
     await Bun.sleep(50);
   }

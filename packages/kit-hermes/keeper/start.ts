@@ -49,7 +49,7 @@ import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -168,10 +168,16 @@ const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // no command — and only waits for what it already started to exit.
 let ending = false;
 let nativeGatewayReady = false, stackConfigured = false;
-const publishReady = () => {
+const publishKit = (value: Record<string, unknown>) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
-  if (!ending && stackConfigured && nativeGatewayReady && file) writeFileSync(file, JSON.stringify({ ready: true, pid: process.pid, receipt: prepared!.receipt }) + '\n', { mode: 0o600 });
+  if (!ending && prepared && file) {
+    const temporary = `${file}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ ...value, pid: process.pid, receipt: prepared.receipt }) + '\n', { mode: 0o600 });
+    renameSync(temporary, file);
+  }
 };
+const publishReady = () => { if (stackConfigured && nativeGatewayReady) publishKit({ ready: true }); };
+publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 let restartAsked = false;
 process.on('exit', () => {
   for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
@@ -233,11 +239,13 @@ async function command(cmd: string[], opts: { cwd: string; env: Record<string, s
   await halted();
   const proc = Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   helpers.add(proc);
+  publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid, deadline_ms: Date.now() + opts.boundMs + 5000 });
   let overran = false;
   const bound = setTimeout(() => { overran = true; proc.kill(constants.signals.SIGTERM); setTimeout(() => proc.kill('SIGKILL'), 5000).unref(); }, opts.boundMs);
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   clearTimeout(bound);
   helpers.delete(proc);
+  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
   await halted();
   return overran ? { exitCode: null, stdout, stderr: `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}${cmd.join(' ')}: no answer within ${opts.boundMs / 1000} s` } : { exitCode, stdout, stderr };
 }

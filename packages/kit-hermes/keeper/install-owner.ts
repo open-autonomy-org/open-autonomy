@@ -12,6 +12,14 @@ import { runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.t
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
 const json = (path: string): any => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; } };
+const sourceNative = (path: string): string => {
+  const receipt = json(path), graph = receipt?.lock?.graph;
+  const instance = graph?.instances?.[graph?.consumers?.[graph.default]?.entry?.instance], output = graph?.receipts?.[instance?.native?.build];
+  if (!instance?.root || !output?.path) throw new Error('prepared source has no complete native build receipt');
+  const native = realpathSync(resolve(instance.root, output.path));
+  if (receipt.native && realpathSync(receipt.native) !== native) throw new Error('prepared source names a different native');
+  return native;
+};
 export async function serveInstallOwner({ project, home, argv }: { project: string; home: string; argv: string[] }): Promise<number> {
   if (argv.includes('--as')) throw new Error('prepared kit handovers require the keeper user; --as needs a separately prepared privilege-separated installation');
   if (process.platform === 'win32') throw new Error('prepared kit handovers require Unix owner sockets');
@@ -61,7 +69,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       throw new Error('kit installation identity changed since preparation');
     return receipt;
   };
-  const start = async (selected: Selection): Promise<Stack> => {
+  const start = async (selected: Selection, progress: (phase: string) => void = () => {}): Promise<Stack> => {
     const receipt = validate(selected), ready = resolve(home, `.kit-ready-${randomUUID()}.json`);
     const args = [...argv];
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
@@ -72,10 +80,19 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
     try {
-      const until = Date.now() + 8000;
+      let until = Date.now() + 8000, observed = 0;
       while (!stopping && Date.now() < until) {
         const proof = json(ready);
-        if (proof?.pid === child.pid && proof.receipt === receipt.receipt && proof.ready === true) return stack;
+        if (proof?.pid === child.pid && proof.receipt === receipt.receipt) {
+          if (proof.ready === true) return stack;
+          if (Number.isSafeInteger(proof.deadline_ms) && proof.deadline_ms > observed && ['starting', 'kit-command'].includes(proof.progress)) {
+            // A running setup/clone command has its own existing work bound. The readiness probe must not terminate
+            // that work after eight seconds; an idle startup still has only eight seconds to answer its next phase.
+            observed = proof.deadline_ms;
+            until = Math.min(proof.deadline_ms, Date.now() + (proof.progress === 'kit-command' ? 605000 : 8000));
+            progress(proof.progress);
+          }
+        }
         if (child.exitCode !== null || child.signalCode !== null) throw new Error(`prepared kit stack ended (${child.exitCode ?? child.signalCode})`);
         await Bun.sleep(25);
       }
@@ -97,7 +114,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;
-    if (held.phase !== 'prepared') { progress('stopping-predecessor'); await stopStack(active); progress('starting-predecessor'); active = await start(held.predecessor); }
+    if (held.phase !== 'prepared') { progress('stopping-predecessor'); await stopStack(active); progress('starting-predecessor'); active = await start(held.predecessor, progress); }
     pending = null; failure = null; write(); wake(); return status();
   };
   const sourceDecision = (id: string, selected: Selection, predecessor: Selection, action: string) => {
@@ -127,12 +144,12 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       if (pending.phase === 'activated') return status();
       pending.phase = 'activating'; write();
       progress('stopping-predecessor'); await stopStack(active); active = null; progress('starting-successor');
-      try { active = await start(pending.selected); previous = pending.predecessor; pending.phase = 'activated'; failure = null; write(); return status(); }
+      try { active = await start(pending.selected, progress); previous = pending.predecessor; pending.phase = 'activated'; failure = null; write(); return status(); }
       catch (error) { failure = (error as Error).message; await rollback(progress); throw error; }
     }
     if (action === 'finish') {
       if (pending.phase !== 'activated') throw new Error('kit successor was never activated');
-      if (!active || active.process.exitCode !== null || active.process.signalCode !== null) { progress('starting-successor'); active = await start(pending.selected); }
+      if (!active || active.process.exitCode !== null || active.process.signalCode !== null) { progress('starting-successor'); active = await start(pending.selected, progress); }
       pending = null; failure = null; write(); return status();
     }
     throw new Error('unknown kit handover action');
@@ -173,7 +190,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const at = argv.indexOf('--prepared-install'), named = argv[at + 1];
       if (!named) throw new Error('--prepared-install needs the complete install receipt');
       const prepared = readInstall(named, home);
-      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? json(prepared.source)?.native ?? null : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceNative(prepared.source) : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
       validate(initial);
     } else {
       const head = Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']);
@@ -181,7 +198,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const prepared = await prepareInstall({ project, home, revision: head.stdout.toString().trim(), source: process.env.SUPERCODE_SOURCE_CANDIDATE ?? null,
         registry: argv[argv.indexOf('--runtime-registry') + 1] && argv.includes('--runtime-registry') ? argv[argv.indexOf('--runtime-registry') + 1] : undefined,
         archive: argv[argv.indexOf('--runtime-package') + 1] && argv.includes('--runtime-package') ? argv[argv.indexOf('--runtime-package') + 1] : undefined });
-      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? json(prepared.source)?.native ?? null : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
+      initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceNative(prepared.source) : prepared.release ? json(prepared.release)?.native ?? null : process.env.SUPERCODE_BIN ?? null };
     }
     active = await start(initial); write();
     while (!stopping) {

@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, wr
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { agentHarness, readAgent } from './agent.ts';
-import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding } from './install-runtime.ts';
+import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
   entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string };
@@ -17,6 +17,7 @@ const run = async (cmd: string[], cwd: string): Promise<string> => {
 export async function prepareInstall({ project, home, revision, source = null, release = null, registry, archive, environment = process.env as Record<string, string> }:
   { project: string; home: string; revision: string; source?: string | null; release?: string | null; registry?: string; archive?: string; environment?: Record<string, string> }): Promise<InstallReceipt> {
   project = realpathSync(project); home = realpathSync(home);
+  source ??= release ? null : machineSourceReceipt(environment);
   if (source && release) throw new Error('kit preparation names one complete machine selection');
   if (source) source = realpathSync(source);
   if (release) release = realpathSync(release);
