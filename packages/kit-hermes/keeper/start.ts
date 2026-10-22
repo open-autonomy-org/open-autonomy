@@ -306,18 +306,19 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: host, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: host, environment: agentEnv(), registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     let install: ReturnType<typeof Bun.spawn> | undefined;
+    rmSync(stamp, { force: true });
     try {
-      await installHostRuntime({ ...runtimeOptions, environment: agentEnv(), command: drop, frozen: !!lock, started: (child) => { install = child; helpers.add(child); } });
+      await installHostRuntime({ ...runtimeOptions, command: drop, frozen: !!lock, started: (child) => { install = child; helpers.add(child); } });
     } catch (error) {
       await halted();
       throw new Error(`${(error as Error).message}. Resolve the adopter's exact host manifest before activation: run bun .open-autonomy/install-runtime.ts --update-lock from the project inside its World, review/commit .open-autonomy/bun.lock, then retry. Startup does not unfreeze a committed lock.`);
     } finally { if (install) helpers.delete(install); }
     await halted();
-    writeFileSync(stamp, `${want}\n`);
+    writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`the host's dependencies installed in ${host}`);
   }
   const keeper = resolve(host, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');

@@ -21,7 +21,7 @@ if (!existsSync(keeper)) {
   // A committed lock pins the install. One git does not track is this host's scratch.
   const tracked = (file: string) => { try { execFileSync('git', ['ls-files', '--error-unmatch', relative(resolve(import.meta.dir, '..'), file)], { cwd: resolve(import.meta.dir, '..'), stdio: 'ignore' }); return true; } catch { return false; } };
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).some((file) => existsSync(file) && tracked(file));
-  const options = { directory: import.meta.dir, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const options = { directory: import.meta.dir, environment: process.env as Record<string, string>, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   // The install is a child this start waits on, so a stop signal reaches it too, and this start exits once it has.
   let install: { kill(signal?: number | NodeJS.Signals): void } | undefined;
   let stopped = false;
@@ -29,7 +29,7 @@ if (!existsSync(keeper)) {
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, stop);
   console.log(`start: the kit's keeper is not installed; installing ${import.meta.dir}'s dependencies`);
   try {
-    await installHostRuntime({ ...options, environment: process.env as Record<string, string>, frozen: lock, started: (child) => { install = child; if (stopped) child.kill('SIGTERM'); } });
+    await installHostRuntime({ ...options, frozen: lock, started: (child) => { install = child; if (stopped) child.kill('SIGTERM'); } });
   } catch (error) {
     if (stopped) process.exit(0);
     console.error(`start: ${(error as Error).message}. Finalize the adopter-owned host lock inside its World with bun .open-autonomy/install-runtime.ts --update-lock, review/commit it, then retry. A committed lock stays frozen. Nothing was started.`);

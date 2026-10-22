@@ -2,6 +2,7 @@
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 type Options = {
@@ -25,13 +26,23 @@ function archivePaths(archive?: string): string[] {
     : [path];
 }
 
-export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'>): string {
+// Match supercode's front door, using the environment of the user who will run it (including --as).
+function sourceLock(environment: Record<string, string | undefined>): string | undefined {
+  const home = environment.SUPERCODE_HOME || join(environment.XDG_CONFIG_HOME || join(environment.HOME || environment.USERPROFILE || homedir(), '.config'), 'supercode');
+  const file = join(home, 'source-lock.json');
+  return existsSync(file) ? file : undefined;
+}
+
+export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
   const hash = createHash('sha256').update(readFileSync(join(options.directory, 'package.json')));
   for (const name of ['bun.lock', 'bun.lockb']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
   }
   hash.update(options.registry ?? 'https://registry.npmjs.org');
+  const lock = sourceLock(options.environment ?? process.env);
+  // A pin move, or adopting the linked-install policy, invalidates stamps made for copies too.
+  if (lock) hash.update('source-lock:symlink-v1').update(readFileSync(lock));
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }
@@ -94,7 +105,10 @@ export async function installHostRuntime(options: Options): Promise<void> {
   try {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
-    const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    // Bun's default backend copies file: packages. A declared source lock requires their files to resolve into the
+    // pinned tree; force reification also repairs existing copies when the manifest/lockfile have not changed.
+    const linked = sourceLock(options.environment);
+    const args = ['bun', 'install', '--registry', endpoint, ...(linked ? ['--backend=symlink', ...(!options.lockOnly ? ['--force'] : [])] : []), ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     });
