@@ -674,7 +674,11 @@ if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
 }
-if (boardDeclared && prepared) await acquireBoard(boardOptions);
+if (boardDeclared && prepared) {
+  publishKit({ progress: 'kit-command', command: 'native-board-start', deadline_ms: Date.now() + 125000 });
+  await acquireBoard(boardOptions);
+  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+}
 else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
 // its loaded and ready events to that exact owned launch chain, never another
