@@ -226,6 +226,11 @@ mentions the owner there once. The owner's approval and merge of the Release is 
 Beside the vendored SDK, the kit's own host tools run outside the agent's credential boundary, each one file under
 `.open-autonomy/`, run with Bun from the checkout:
 
+First boot and the keeper's dependency refresh use `install-runtime.ts`. With a Supercode source lock declared in
+the runtime user's Supercode home, the installer links declared `file:` packages inside the locked tree back to their
+sources after Bun installs normally. The install stamp includes that lock and the linking policy; a pin
+move refreshes the install, and only a successful install gets a new stamp. Supercode still enforces the lock itself.
+
 Paying container installs use the treasurer's separate executor and host-held key under
 [ADR 0021](../../docs/decisions/0021-the-pay-boundary.md). A bare start opens a pay port only for a synthetic
 World with `--rehearsal`; fleets open none. This kit custody boundary does not change the platform's treasury rules.

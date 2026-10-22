@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 type Options = {
   directory: string;
@@ -25,18 +26,53 @@ function archivePaths(archive?: string): string[] {
     : [path];
 }
 
-export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'>): string {
+// Match supercode's front door, using the environment of the user who will run it (including --as).
+function sourceLock(environment: Record<string, string | undefined>): string | undefined {
+  const home = environment.SUPERCODE_HOME || join(environment.XDG_CONFIG_HOME || join(environment.HOME || environment.USERPROFILE || homedir(), '.config'), 'supercode');
+  const file = join(home, 'source-lock.json');
+  return existsSync(file) ? file : undefined;
+}
+
+// Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
+// on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
+// so their scripts and Node imports retain ordinary node_modules resolution.
+function sourceLinks(options: Options): Array<{ name: string; target: string }> {
+  const file = sourceLock(options.environment);
+  if (!file) return [];
+  const lock = JSON.parse(readFileSync(file, 'utf8'));
+  if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
+  const root = realpathSync(lock.root);
+  const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+  const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
+  return Object.entries(declarations).flatMap(([name, value]) => {
+    if (typeof value !== 'string' || !value.startsWith('file:')) return [];
+    const target = realpathSync(resolve(options.directory, value.slice(5)));
+    const path = relative(root, target);
+    if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) return [];
+    if (!/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name) || name === '.' || name === '..' ||
+        JSON.parse(readFileSync(join(target, 'package.json'), 'utf8')).name !== name) {
+      throw new Error(`Source-linked dependency ${name} must name its package at ${target}`);
+    }
+    return [{ name, target }];
+  });
+}
+
+export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
   const hash = createHash('sha256').update(readFileSync(join(options.directory, 'package.json')));
   for (const name of ['bun.lock', 'bun.lockb']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
   }
   hash.update(options.registry ?? 'https://registry.npmjs.org');
+  const lock = sourceLock(options.environment ?? process.env);
+  // A pin move, or adopting the linked-install policy, invalidates stamps made for copies too.
+  if (lock) hash.update('source-lock:file-links-v1').update(readFileSync(lock));
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }
 
 export async function installHostRuntime(options: Options): Promise<void> {
+  const links = sourceLinks(options);
   const registry = new URL(options.registry ?? 'https://registry.npmjs.org');
   if (!['http:', 'https:'].includes(registry.protocol) || registry.username || registry.password) {
     throw new Error('Runtime registry must be an HTTP(S) URL without credentials');
@@ -101,6 +137,13 @@ export async function installHostRuntime(options: Options): Promise<void> {
     options.started?.(child);
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);
+    if (!options.lockOnly) for (const { name, target } of links) {
+      const installed = join(options.directory, 'node_modules', name);
+      rmSync(installed, { recursive: true, force: true });
+      mkdirSync(dirname(installed), { recursive: true });
+      symlinkSync(target, installed, process.platform === 'win32' ? 'junction' : 'dir');
+      console.log(`runtime source link: ${name} -> ${target}`);
+    }
     // Commit registry-neutral resolution with the candidate integrity, never an ephemeral review listener.
     if (server && existsSync(lockPath)) {
       const original = readFileSync(lockPath, 'utf8');
