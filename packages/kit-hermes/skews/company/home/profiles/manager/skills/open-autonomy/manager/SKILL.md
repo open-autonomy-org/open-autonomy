@@ -19,5 +19,6 @@ The tick arrives as a turn in your own conversation, on the schedule in `.open-a
 5. **Blocks.** Only you block or pause a card. A block the session could clear itself goes back to it. A block older
    than the organization's limit is put to its dependency's owner.
 6. **The register.** The auditor's last round names the unregistered records and the estate's count. Each goes to an
-   arc that registers or retires it; a new repository or state directory joins `records.json`'s `estate.roots`.
+   arc that registers or retires it; a new repository or state directory joins `records.json`'s `estate.roots`, unless a
+   declared family root (a pattern such as `~/volter/supercode-v[0-9]*`) already matches it.
 7. **Report to the account manager:** one line per arc, blockers first, with ids. Nothing goes to the principal from you.

@@ -126,7 +126,7 @@ also supplies [.open-autonomy/usage.ts](skews/company/.open-autonomy/usage.ts) f
 Company installs keep their records register in the organization's record repository:
 `create-open-autonomy records init <record-repo>` supplies the template/check without replacing an existing
 register; `create-open-autonomy records estate <record-repo>` reports unregistered records across that machine's
-declared roots. The manager and auditor reconcile those records under [ADR 0022](../../docs/decisions/0022-the-records-register.md).
+declared roots (a root ending in a pattern, such as `~/volter/supercode-v[0-9]*`, names every directory it matches). The manager and auditor reconcile those records under [ADR 0022](../../docs/decisions/0022-the-records-register.md).
 The supplied [company World](skews/company/world/README.md) rehearses the install's own start and integrations;
 its operator selects the source trees and owns synthetic opening data, while external World owns lifecycle.
 
