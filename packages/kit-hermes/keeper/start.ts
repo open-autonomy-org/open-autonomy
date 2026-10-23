@@ -176,7 +176,8 @@ const publishKit = (value: Record<string, unknown>) => {
     renameSync(temporary, file);
   }
 };
-const publishReady = () => { if (stackConfigured && nativeGatewayReady) publishKit({ ready: true }); };
+let kitServed = false;
+const publishReady = () => { if (stackConfigured && nativeGatewayReady) { kitServed = true; publishKit({ ready: true }); } };
 publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 let restartAsked = false;
 process.on('exit', () => {
@@ -543,6 +544,27 @@ spawn('valve', ['bun', resolve(host, 'valve.ts'), '--loopback', ...keys], { env:
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
+// The machine's builds, unless the environment names others: a review or a World runs an unreleased branch's build of
+// supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
+// The orchestrator that serves this home, and the supercode it drives, are named in the home (orchestrator.json) when
+// they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the connector's board
+// follower, the board door) runs that orchestrator driving that supercode, the ones the machine has installed (D215,
+// reversing D152 row 11: an install's own copy was stranded by a daemon a release ahead of it).
+{
+  const named = (bin: string) => {
+    const entry = existsSync(bin) ? realpathSync(bin) : bin;
+    let version: string | null = null;
+    try { version = JSON.parse(readFileSync(resolve(dirname(entry), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
+    return { entry, version };
+  };
+  const orchestrator = named(orchestratorBin), record = resolve(home, 'orchestrator.json');
+  // Named before native setup: setup's job writes hand off through this record, which must name the selection this
+  // kit runs under. A prepared native install (the only start that reports readiness) that ends before it ever served
+  // puts back the record it found, so a predecessor started again (a refused candidate's rollback) meets its own.
+  const found = existsSync(record) ? readFileSync(record) : null;
+  writeFileSync(record, `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
+  if (prepared && onNative) process.on('exit', () => { if (!kitServed) { if (found) writeFileSync(record, found); else rmSync(record, { force: true }); } });
+}
 // 6. Apply each profile through the selected runtime's public setup adapter and external applier ownership.
 //    A refused declaration stops startup before any gateway runs on unintended defaults.
 //    The applier runs as a child the start waits on, tracked like any command: it applies synchronously, profile
@@ -562,22 +584,6 @@ process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
-// The machine's builds, unless the environment names others: a review or a World runs an unreleased branch's build of
-// supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
-// The orchestrator that serves this home, and the supercode it drives, are named in the home (orchestrator.json) when
-// they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the connector's board
-// follower, the board door) runs that orchestrator driving that supercode, the ones the machine has installed (D215,
-// reversing D152 row 11: an install's own copy was stranded by a daemon a release ahead of it).
-{
-  const named = (bin: string) => {
-    const entry = existsSync(bin) ? realpathSync(bin) : bin;
-    let version: string | null = null;
-    try { version = JSON.parse(readFileSync(resolve(dirname(entry), '..', 'package.json'), 'utf8')).version ?? null; } catch { /* named without one */ }
-    return { entry, version };
-  };
-  const orchestrator = named(orchestratorBin);
-  writeFileSync(resolve(home, 'orchestrator.json'), `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
-}
 // The board the repository declares (`board:` in .open-autonomy/config.yaml; company RFC 0025 decisions 3 and 4): its
 // document at the repository's root, in the board's own checkout beside the home (a clone of the project's origin, on
 // main), and the home's store on supercode's ztrack backing, each write committed and pushed, its manager the one this
@@ -635,13 +641,15 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   }
 }
 let reportersStarted = false;
+// A prepared install runs the commit's snapshot; each reporter's state, custody and adoption stay in the source checkout.
+const reporterLocal = (config: string): string[] => prepared ? ['--local-dir', resolve(prepared.sourceProject, relative(project, dirname(config)))] : [];
 function startReporters(): void {
   if (ending || reportersStarted || (onNative && !nativeGatewayReady)) return;
   reportersStarted = true;
   // Owner controls remain independent of narrative enrollment. Native gateway
   // readiness is its public mutation-door contract, not a narrative prerequisite.
   if (!Object.hasOwn(orgConfig, 'publication')) say('publication pending: reporter enrollment is required; owner controls and the native brain keep running');
-  spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+  spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml'), ...reporterLocal(resolve(project, '.open-autonomy', 'config.yaml'))], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
   // Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
   // and their sessions only, through the project's own key.
   for (const p of projectReporters) {
@@ -653,7 +661,7 @@ function startReporters(): void {
       if (tenantConfig.account !== p.account || tenantConfig.tenant !== p.tag || !tenantConfig.publication) throw new Error('reporter_config requires the exact account, tenant tag and independently enrolled publication block');
       if (tenantConfig.platform !== orgConfig.platform) throw new Error('reporter_config must name the selected logical platform; the valve is transport only');
       nativeRuntime({ native_runtime: tenantConfig.native_runtime }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
-      spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+      spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project, ...reporterLocal(config)], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
     } catch (error) { say(`publication ${p.account} pending: ${(error as Error).message}; the native brain keeps running`); }
   }
 }
