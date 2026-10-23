@@ -112,7 +112,12 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;
-    if (held.phase !== 'prepared') { progress('stopping-predecessor'); await stopStack(active); progress('starting-predecessor'); active = await start(held.predecessor, progress); }
+    if (held.phase !== 'prepared' || !active || active.process.exitCode !== null || active.process.signalCode !== null) {
+      held.phase = 'rolling_back'; write();
+      const stopped = active; active = null;
+      progress('stopping-predecessor'); await stopStack(stopped);
+      progress('starting-predecessor'); active = await start(held.predecessor, progress);
+    }
     pending = null; failure = null; write(); wake(); return status();
   };
   const sourceDecision = (id: string, selected: Selection, predecessor: Selection, action: string) => {
@@ -143,7 +148,11 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       pending.phase = 'activating'; write();
       progress('stopping-predecessor'); await stopStack(active); active = null; progress('starting-successor');
       try { active = await start(pending.selected, progress); previous = pending.predecessor; pending.phase = 'activated'; failure = null; write(); return status(); }
-      catch (error) { failure = (error as Error).message; await rollback(progress); throw error; }
+      catch (error) {
+        // Native machine and boards still select the successor. Keep the reservation until the coordinator has
+        // restored/read back their predecessors; an eager local restart would refuse that mixed selection.
+        failure = (error as Error).message; pending.phase = 'activation_failed'; write(); throw error;
+      }
     }
     if (action === 'finish') {
       if (pending.phase !== 'activated') throw new Error('kit successor was never activated');
@@ -171,7 +180,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   try {
     await new Promise<void>((done, reject) => { server.once('error', reject); server.listen(socketPath, done); }); chmodSync(socketPath, 0o600);
     const saved = json(recordPath);
-    let initial: Selection;
+    let initial: Selection | null;
     if (saved?.transaction || saved?.active) {
       previous = saved.previous ?? null;
       if (saved.transaction) {
@@ -187,8 +196,10 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         }
         const published = held.selected.release ? json(resolve(dirname(held.selected.release), '../..', 'active-release.json')) : null;
         const committed = held.selected.release ? published?.transaction === held.id : sourceCommitted;
-        initial = committed ? held.selected : held.predecessor;
-        pending = { ...held, phase: committed ? 'activated' : 'prepared' };
+        // Recovery owns the native ordering after an owner restart too. An uncommitted transaction must not
+        // start its predecessor before the coordinator restores the machine and boards.
+        initial = committed ? held.selected : null;
+        pending = { ...held, phase: committed ? 'activated' : held.phase };
       } else initial = saved.active;
     } else if (argv.includes('--prepared-install')) {
       const at = argv.indexOf('--prepared-install'), named = argv[at + 1];
@@ -204,7 +215,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         archive: argv[argv.indexOf('--runtime-package') + 1] && argv.includes('--runtime-package') ? argv[argv.indexOf('--runtime-package') + 1] : undefined });
       initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceProgram(prepared.source) : prepared.release ? publishedProgram(json(prepared.release)) : process.env.SUPERCODE_BIN ?? null };
     }
-    active = await start(initial); write();
+    if (initial) active = await start(initial);
+    write();
     while (!stopping) {
       await new Promise<void>(done => changes.add(done));
       if (!stopping && !active && !busy && !pending) { try { active = await start(restartSelection!); failure = null; write(); } catch (error) { failure = (error as Error).message; write(); throw error; } }

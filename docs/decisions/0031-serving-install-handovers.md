@@ -24,7 +24,10 @@ connector/mail generation and kit before transferring authority. Only exact acti
 atomic source commit (or the complete retained npm release decision). Published kits bind the same machine-owned
 retained closure instead of a global npm directory that installation can replace. One writer holds each shared store. A timed-out candidate never gains authority by starting.
 
-Before commit, failure restores the previous source ledger before predecessor products restart. Retained databases
+Before commit, failure restores and reads back the previous source ledger, machine and board selections before
+predecessor kits restart. A failed kit candidate retains its reservation for that coordinated rollback, including
+after its owner restarts; it never independently restarts an old kit against successor native inputs. The reservation
+clears only after its predecessor serves. Retained databases
 keep all committed rows; rollback never copies old storage over them. Board storage-code changes and mail schema changes
 refuse before transfer until a compatible protocol is qualified. Finalization after commit is idempotent cleanup of
 that completed selection, retained in the recovery journal when incomplete.
