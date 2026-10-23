@@ -49,9 +49,9 @@ await media.localParticipant.publishTrack(LocalAudioTrack.createAudioTrack('owne
 console.log(`owner: in the account Room's call (${token.identity})`);
 // 3. The agent comes into the call; the owner wakes it.
 let state;
-for (let i = 0; i < 60; i++) { state = await door(call); if (state.agents.find((a) => a.principalId === agent)?.inCall) break; await sleep(2000); }
+for (let i = 0; i < 60; i++) { state = await door(call); if (state.agents.find((a) => a.principalId === agent)?.connected) break; await sleep(2000); }
 const joined = state.agents.find((a) => a.principalId === agent);
-console.log(`call: the account manager ${joined?.inCall ? 'is in the call' : 'never joined'} (voice ${joined?.voiceId}, mode ${joined?.mode}); people ${state.people.map((p) => p.name).join(', ')}`);
+console.log(`call: the account manager ${joined?.connected ? 'is in the call' : 'never connected'} (voice ${joined?.voiceId}, mode ${joined?.mode}); people ${state.people.map((p) => p.name).join(', ')}`);
 await door(`${call}/voice/actions`, { action: 'mode', principalId: agent, mode: 'awake', expectedControlRevision: joined?.controlRevision });
 // 4. The owner speaks to it: the console transcribes its own microphone and publishes the caption on that track.
 await sleep(3000);

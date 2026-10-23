@@ -10,10 +10,10 @@
 // project's Room: one Room per project (`projectOf`, the organization's convention) under the key `project-<name>`,
 // named for the project, on the Office Floor (`projectFloor`, else the organization's default Floor) in its Work section,
 // below the Floor's divider. The program is the one writer of its Rooms' placement and section: a hand move is put back.
-// Its base channel's topic lists the project's live cards and where each stands. A Room is who is in its call (ADR 0060):
-// the program puts no person in it. A ticket's people who hold a seat in the organization are given a seat there (its
-// `person:<email>` tags, company RFC 0026 decision 5), which, like its own manager seat and the Floor's grants, is access:
-// a person is in the Room only while in its call. The Room is open while a live card names its project; when none does it
+// Its base channel's topic lists the project's live cards and where each stands. A Room's roster is who is in its call
+// (RH2 ADR 0063 decision 1): the program puts no person on it, and holds no seat itself. A ticket's people who hold a
+// seat in the organization are given access there (its `person:<email>` tags, company RFC 0026 decision 5), their own
+// Room grant, as the program's own manager role is its own: a person is on the roster only while in the call. The Room is open while a live card names its project; when none does it
 // is closed, its history kept, and it reopens with the project's next live card. A card that names no project is worked
 // in no Room.
 //
@@ -33,8 +33,7 @@
 // base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
 // program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
 // live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
-// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite or call) or it took its seat by
-// acting there (`seatedOnAct`: posting in the Room). An agent whose card pauses, blocks or moves to the other role leaves,
+// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses, blocks or moves to the other role leaves,
 // and comes back when its work resumes. A state write the disk refuses is retried each minute while the program works
 // from memory.
 //
@@ -60,8 +59,7 @@
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
 //   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>",
 //   "board": { "root": "<the board's home on this machine>", "supercode": "<optional: the supercode CLI, default supercode>" },
-//   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"],
-//   "lastPersonLeaves": { "kind": "stay" } (optional: what its agents do when the last person leaves its call; default stay)
+//   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"]
 // }
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -279,10 +277,6 @@ export const PROJECT_GUIDANCE = [
   'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
 ];
 const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
-/** When the last person leaves a project Room's call, its agents stay (VO-3700; owner: "that's the rules for the impromptu
- * calls not for permanent calls"): a project Room is permanent. The app's config may say otherwise (`lastPersonLeaves`). */
-export const PROJECT_LAST_PERSON_LEAVES = { kind: 'stay' };
-const lastPersonLeaves = config.lastPersonLeaves && typeof config.lastPersonLeaves === 'object' ? config.lastPersonLeaves : PROJECT_LAST_PERSON_LEAVES;
 /** A card's images and videos, as its snapshot lists them (`attachments`): what its Room shows of its updates. */
 const VISIBLE = /\.(png|jpe?g|gif|webp|svg|avif|mp4|webm|mov|m4v)$/i;
 const visibleFilesOf = (card) => (Array.isArray(card.attachments) ? card.attachments : [])
@@ -365,16 +359,14 @@ async function peopleOf(view) {
  * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
  * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
  * someone changed it. Any other agent in the Room leaves by the leave command, unless a person brought it in (its seat's
- * `seatedBy` is a person of the organization: their /invite or call), it took its seat by acting there (`seatedOnAct`),
- * or `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
+ * `seatedBy` is a person of the organization: their /invite), or `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
  * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
- * so it is tried again on the app's backoff. Who is in the Room is its members brought in (ADR 0060, `broughtIn`): any
- * other seat of an agent (one it took by acting, a members write, the organization document's) is access, and the join
- * brings it in.
+ * so it is tried again on the app's backoff. Who is in the Room is its roster, the Room read's `members` (RH2 ADR 0063
+ * decision 1).
  */
 async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true } = {}) {
   const roomId = view.room.roomId, missing = [...unresolved], principals = new Set();
-  const inRoom = new Set((view.members ?? []).filter((member) => member.broughtIn === true).map((member) => member.principalId));
+  const inRoom = new Set((view.members ?? []).map((member) => member.principalId));
   const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
   const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
@@ -394,8 +386,7 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
   }
   if (mayUnseat && !missing.length && state.cleanupReady) {
-    // A seat an agent took by acting in the Room is its own; only seats something brought it in by are this app's to end.
-    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId) && member.seatedOnAct !== true);
+    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId));
     const people = leaving.length ? await peopleOf(view) : new Set();
     for (const member of leaving) {
       if (people.has(member.seatedBy)) continue;
@@ -476,13 +467,11 @@ async function keepProject(project) {
   const baseChannel = view.conversations?.find((item) => item.conversationId === room.defaultConversationId);
   const topic = topicOf(project, cards);
   if (baseChannel && baseChannel.topic !== topic) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(baseChannel.conversationId)}/topic`, { body: { topic }, method: 'PUT' });
-  // Its guidance (ADR 0063 decision 7) and what its agents do when the last person leaves its call, set with the rules
-  // command whenever either differs.
-  const guidanceDiffers = JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance);
-  const leavingDiffers = JSON.stringify(room.rules?.lastPersonLeaves ?? null) !== JSON.stringify(lastPersonLeaves);
-  if (guidanceDiffers || leavingDiffers) {
-    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, ...(guidanceDiffers ? { guidance } : {}), ...(leavingDiffers ? { lastPersonLeaves } : {}) }, method: 'PUT' });
-    log(guidanceDiffers ? 'room-guidance-set' : 'room-rules-set', { ...label, roomId });
+  // Its guidance (ADR 0063 decision 7), set with the rules command whenever it differs. A project Room is permanent, so its
+  // agents stay in its call until removed (RH2's own rule for a permanent Room).
+  if (JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance)) {
+    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, guidance }, method: 'PUT' });
+    log('room-guidance-set', { ...label, roomId });
   }
   // Placement has one writer, this app: the Room is on the project Floor alone, and a placement made by hand is taken back.
   const floorId = await projectFloorId();
@@ -493,19 +482,22 @@ async function keepProject(project) {
   if (!placed.includes(floorId) && !asking) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements`, { body: { floorId } }); log('room-placed', { ...label, roomId, floorId }); }
   for (const other of placed.filter((each) => each !== floorId)) { await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/placements/remove`, { body: { floorId: other } }); log('room-unplaced', { ...label, roomId, floorId: other }); }
   // The arcs' people (company RFC 0026 decision 5): a `person:<email>` tag (a Jira ticket's reporter and commenters, kept
-  // on the arc by ztrack's Jira sync) gives that person a seat in the Room, where they hold a seat in the organization: the
-  // Workplace's access to read and speak in it, never presence (ADR 0060: they are in the Room only while in its call, and
-  // are never listed as in it for this seat). A person with no seat is not seated: the organization decides, never a ticket.
+  // on the arc by ztrack's Jira sync) gives that person access to the Room, where they hold a seat in the organization: the
+  // Workplace's grant to read and speak in it, never presence (RH2 ADR 0063 decision 1: they are on its roster only while
+  // in its call). Given once per Room (`state.roomAccess`), so a person a manager removes stays removed. A person with no
+  // organization seat is given nothing: the organization decides, never a ticket.
   const people = [...new Set(cards.flatMap((card) => card.people ?? []))];
   if (people.length) {
     const organization = await door(orgPath);
     const seated = new Set((organization.seats ?? []).filter((seat) => (seat.state ?? 'active') === 'active').map((seat) => seat.principalId));
     const byEmail = new Map((organization.members ?? []).filter((member) => seated.has(member.principalId)).map((member) => [String(member.address ?? '').replace(/^human:/, '').toLowerCase(), member.principalId]));
-    const holding = new Set((view.members ?? []).map((member) => member.principalId ?? member.principal?.principalId));
+    state.roomAccess ??= {};
+    const given = new Set(state.roomAccess[roomId] ?? []);
     for (const email of people) {
       const principalId = byEmail.get(email);
-      if (!principalId || holding.has(principalId)) continue;
+      if (!principalId || given.has(principalId)) continue;
       await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/members`, { body: { principalId, roleKeys: ['member'] } });
+      given.add(principalId); state.roomAccess[roomId] = [...given]; saveState();
       log('room-access-given', { ...label, roomId, principalId });
     }
   }
