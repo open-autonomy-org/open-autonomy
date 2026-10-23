@@ -147,7 +147,7 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
   const initialConfigDigest = retainedDigest(configFile), initialControlDigest = retained.controlDigest;
   const selected = scope.nativeRuntime as NativeRuntimeSelection;
   const [bin, ...args] = supercodeCommand(['harness', 'serve']);
-  const sc = new HarnessClient({ command: bin, args, startTimeoutMs: 10_000, requestTimeoutMs: 10_000, env: { ...process.env, ...(selected.kind === 'hermes' ? { HERMES_HOME: selected.root } : { SUPERCODE_HOME: selected.root }) } as Record<string, string> });
+  const sc = new HarnessClient({ command: bin, args, startTimeoutMs: 10_000, requestTimeoutMs: 10_000, env: { ...process.env, ...(selected.kind === 'hermes' ? { HERMES_HOME: selected.root } : {}) } as Record<string, string> }); // the orchestrator home is the runtime's root, never SUPERCODE_HOME
   const runtime = new NativeRuntime(selected, sc), abort = new AbortController();
   let closeWork: Promise<void> | undefined;
   const close = () => closeWork ??= sc.close();
