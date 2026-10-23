@@ -17,8 +17,11 @@
 //   attempt's session reference binds a worker to its card, else a unique workspace match
 //   can supply item_id. Ambiguous association leaves item_id absent. Organization sessions
 //   go to the card's primary project; an unassigned session stays on the organization.
-// - completionOf maps recorded completed/failed runs, ended attempts and bindings;
-//   absent verdicts stay absent. reporting.ts may close an old OA transcript projection
+// - completionOf maps recorded completed/failed runs, a done card's last ended attempt and
+//   bindings; an open card's ended attempt is a pause the board may resume, never an end.
+//   One card's attempts on a session are one association; a session several cards name is
+//   refused alone and skipped while every other session publishes. Absent verdicts stay
+//   absent. reporting.ts may close an old OA transcript projection
 //   on detected source rewrite and continue <native-id>~<n>; that boundary is not native
 //   task completion. Silence and source disappearance supply no completion evidence.
 // - Review and handoff notes use native effect IDs under the same OA association.
@@ -261,13 +264,16 @@ const stopped = new Set<string>();
 const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-code' && !!cfg.seats && !!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(cfg.seats)}/`);
 // Under the orchestrator a worker is a Claude Code or Codex session the orchestrator opened: a card's, in the card's
 // workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
-// The board's attempt that launched a session names its card and, once the run is over, its end. A session the board
-// resumes across attempts of one card is that card's, and its latest attempt (attempts are in order) holds its end;
-// a session several cards name stays unattributed.
-const attemptOf = (sessionId: string): { task: BoardTask; attempt: NonNullable<BoardTask['attempts']>[number] } | undefined => {
+// The board's attempts on a session name its card. The board may resume a session in later attempts of the same card,
+// so a session is one card's whatever its attempt count: its first attempt launched it (the association's evidence) and
+// its latest (attempts are in order) is the round it serves now or served last. A session several cards name is refused
+// (SessionRefused): it alone stays unpublished, and every other session's publication goes on.
+type BoardAttempt = NonNullable<BoardTask['attempts']>[number];
+class SessionRefused extends Error {}
+const attemptOf = (sessionId: string): { task: BoardTask; first: BoardAttempt; attempt: BoardAttempt } | undefined => {
   const matches = boardTasksAll.flatMap(task => (task.attempts ?? []).filter(attempt => (attempt.session?.session_id ?? attempt.session?.id) === sessionId).map(attempt => ({ task, attempt })));
-  if (new Set(matches.map(match => `${match.task.board}\0${match.task.id}`)).size > 1) throw new Error(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
-  return matches.at(-1);
+  if (new Set(matches.map(match => `${match.task.board}\0${match.task.id}`)).size > 1) throw new SessionRefused(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
+  return matches.length ? { task: matches[0].task, first: matches[0].attempt, attempt: matches.at(-1)!.attempt } : undefined;
 };
 const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
 const isWorker = (d: SessionDescriptor): boolean => onOrchestrator && (d.locator.harness === 'claude-code' || d.locator.harness === 'codex') && !isSeat(d)
@@ -285,8 +291,12 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
     ? { endedAt: native.finished_at, outcome: native.status === 'completed' ? 'done' : native.status === 'failed' ? 'failed' : undefined } : undefined;
   // A session's native end is authoritative even when its old cron fire has left
   // the bounded native run ledger. An absent outcome stays absent.
-  // A worker the board launched ended with its attempt.
-  const launched = isWorker(d) ? attemptOf(d.locator.session_id)?.attempt : undefined;
+  // A worker the board launched ends with its card's last attempt once the card is done, when no resume follows. While
+  // the card is open an attempt's end is a pause: the platform is append-only, so an end published then would cut off
+  // every round the board resumes the session for.
+  const served = isWorker(d) ? attemptOf(d.locator.session_id) : undefined;
+  if (served && served.task.lane !== 'done') return undefined;
+  const launched = served?.attempt;
   if (launched?.ended_at) return { endedAt: launched.ended_at, outcome: launched.outcome === 'completed' ? 'done' : ['crashed', 'failed', 'timed_out', 'spawn_failed'].includes(launched.outcome ?? '') ? 'failed' : undefined };
   const binding = bindings.get(d.locator.session_id);
   if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
@@ -350,11 +360,20 @@ const transcripts = new TranscriptQueue(4,
   publishSession, (key, error) => { if (!quitting) log(`${key}: publication pending (${(error as Error).message})`); },
   reader => reader.close());
 stopTranscripts = () => transcripts.close();
+// A refused session is said once per reason, then skipped on every pass until the board stops refusing it.
+const refused = new Map<string, string>();
+function refuse(key: string, error: SessionRefused): void {
+  if (refused.get(key) !== error.message) log(`${key}: not published (${error.message})`);
+  refused.set(key, error.message);
+}
 function sessions(only?: string): void {
   for (const [key, d] of descriptors) {
     if (quitting) return;
     if (only && key !== only) continue;
-    if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
+    try {
+      if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
+    } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); continue; } throw error; }
+    refused.delete(key);
     const pkey = platformKey(key);
     if (checkpoints[pkey]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
@@ -365,7 +384,9 @@ function sessions(only?: string): void {
 async function publishSession(key: string, reader: SupercodeHarnessClient): Promise<void> {
   const d = descriptors.get(key), pkey = platformKey(key);
   if (quitting || !d || stopped.has(key) || (retryAt.get(key) ?? 0) > Date.now()) return;
-  if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) return;
+  try {
+    if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) return;
+  } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); return; } throw error; }
   sessionReaders.set(key, reader);
   try {
     const exactAttempt = attemptOf(key);
@@ -378,7 +399,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     const candidate = (launched || d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0] : undefined;
     const association = candidate ? publication.association(candidate.board, candidate.id) : undefined;
     const item = await publication.run(() => publication.sessionItem({ platformKey: pkey, nativeSessionId: key, associationKey: association?.key, itemId: association?.itemId,
-      evidence: exactAttempt ? `native-attempt:${exactAttempt.attempt.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa));
+      evidence: exactAttempt ? `native-attempt:${exactAttempt.first.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa));
     const completion = completionOf(d);
     let publisher = publishers.get(key);
     if (!publisher || publisherItems.get(key) !== item) {
@@ -392,6 +413,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
     else void watch(d);
   } catch (e) {
+    if (e instanceof SessionRefused) { refuse(key, e); return; }
     if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); requestTick(); return; }
     if ((retryAt.get(key) ?? 0) > Date.now()) return; // this attempt's failure is already counted and its retry armed
     const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
