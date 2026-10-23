@@ -451,6 +451,12 @@ export class PublicationStore {
   }
   get requiresSnapshot(): boolean { return this.data.requiresSnapshot === true; }
   get legacyAdopted(): boolean { return Boolean(this.data.enrollment.adoptionDigest); }
+  // When the account's current timeline revision was written (its receipt's platform time), or 0 when none was.
+  get lastTimelineAt(): number {
+    const ts = this.data.receipts.filter(r => r.kind === 'timeline' && r.result?.revision).at(-1)?.result.revision.ts;
+    const at = typeof ts === 'string' ? Date.parse(ts) : NaN;
+    return Number.isNaN(at) ? 0 : at;
+  }
   snapshotAcknowledged(): void { if (this.data.requiresSnapshot) { this.data.requiresSnapshot = false; this.save(); } }
   storeContext(board: string): string {
     const store = this.config.stores.find(s => s.backing_board === board);
@@ -516,6 +522,10 @@ export class PublicationStore {
     const receipt: Receipt = { ...prepared, result: first };
     const old = this.data.receipts.find(r => r.obligationId === p.obligationId);
     if (old && old.wireDigest !== p.wireDigest) throw new Error('Publication receipt request binding changed');
+    // A timeline revision supersedes the one before it: only the account's current timeline is compared against
+    // (timeline below), and a superseded timeline obligation is never pending again. Keeping each receipt kept a full
+    // copy of every revision's roadmap in the state file, which every save rewrites.
+    if (p.kind === 'timeline') this.data.receipts = this.data.receipts.filter(r => r.kind !== 'timeline' || r.obligationId === p.obligationId);
     if (!old) this.data.receipts.push(receipt);
     this.data.pending = this.data.pending.filter(other => other.obligationId !== p.obligationId);
     this.save(); return first;
