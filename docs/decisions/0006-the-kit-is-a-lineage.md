@@ -70,8 +70,8 @@ What exists (source audit, same day, `main` at eafe027e):
 - **Identity stays where it is rendered, and never conflicts.** The merge's ancestor and theirs are
   both renders with the project's own parameters, so a `__PROJECT__` or `__ACCOUNT__` substitution is
   identical on both sides and can never be a conflict. Of the nine files that carry a token, eight are
-  seeded once and are the project's; the one kit-owned file that carries one,
-  `.open-autonomy/package.json`, drops it so the host package is the same bytes in every project. Only a
+  seeded once and are the project's; the one kit-owned file that carries one, `.open-autonomy/package.json`,
+  carries `__KIT_VERSION__` alone, so the host package is the same bytes in every project one kit renders. Only a
   plain-git lineage with no engine would need identity out of the files; the engine does not.
 - **A project is a branch off its skew.** `kit.json` records the kit (`hermes`), its `skew` and the kit version. A
   project's edits to kit files are commits, first-class, not drift and not a declaration. `check`'s
