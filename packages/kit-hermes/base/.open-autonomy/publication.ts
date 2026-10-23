@@ -6,6 +6,7 @@ import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type CloudEvent, type UpdateRecord } from './sdk/client.ts';
 import { normalizeRoadmap, type Roadmap } from './sdk/roadmap.ts';
+import { sameRoadmap } from './sdk/drivers.ts';
 import { redactDeep, redactSecrets } from './sdk/redaction.ts';
 
 export interface SourceCard { readonly publicationId: string; readonly sequence: number; readonly board: string; readonly card: Readonly<Record<string, any>> }
@@ -509,8 +510,11 @@ export class PublicationStore {
       const alias = this.data.noteAliases.find(n => n.noteId === p.obligationId);
       if (!alias || alias.associationKey !== p.associationKey) throw new Error('Publication receipt has no matching native note association');
     } else {
+      // The platform answers `unchanged`, with its current revision, for a document it judges the same as that revision
+      // by the SDK's sameRoadmap, which leaves out fields such as an item's `by`. A new revision is the document exactly.
       const r = result.revision;
-      if (!r || !eq(r.roadmap, p.expected.roadmap) || r.source !== p.expected.source || (!result.unchanged && p.expected.by !== undefined && r.by !== p.expected.by)) throw new Error(`Publication ${p.obligationId} conflicts with normalized timeline receipt`);
+      const same = r && (result.unchanged ? sameRoadmap(r.roadmap, p.expected.roadmap) : eq(r.roadmap, p.expected.roadmap));
+      if (!same || r.source !== p.expected.source || (!result.unchanged && p.expected.by !== undefined && r.by !== p.expected.by)) throw new Error(`Publication ${p.obligationId} conflicts with normalized timeline receipt`);
     }
   }
   private async deliver(p: Pending, oa: OpenAutonomy): Promise<any> {
@@ -559,7 +563,7 @@ export class PublicationStore {
     if (!model || model.items.length !== roadmap.items.length || model.items.some((item, i) => item.id !== roadmap.items[i]?.id) || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(source)) throw new Error('Timeline normalization omitted/transformed item identity or source');
     const normalizedBy = by ? redactSecrets(by).slice(0, 80) : undefined;
     const current = this.data.receipts.filter(r => r.result?.revision).at(-1)?.result.revision;
-    if (current?.source === source && eq(current.roadmap, model)) return;
+    if (current?.source === source && sameRoadmap(current.roadmap, model)) return;
     const event: CloudEvent = { specversion: '1.0', id: randomUUID(), source: 'open-autonomy-sdk', type: TIMELINE_EVENT_TYPE, subject: 'project', time: new Date().toISOString(), datacontenttype: 'application/json', data: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) } };
     const wire = JSON.stringify([event]), obligationId = `oat_${publicationHash(wire)}`;
     const p: Pending = { obligationId, kind: 'timeline', wire, wireDigest: publicationHash(wire), expected: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) }, sourceObservation: this.observation };
