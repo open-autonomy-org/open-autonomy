@@ -17,8 +17,8 @@ record.
 - **Relays:** each relayed message against its source.
 - **The records register:** every round runs `create-open-autonomy records estate <the record repository>` and lists
   each record of the estate with no entry (or a stub), with the denominator named: the roots `records.json` declares,
-  each with its record count. A repository, home or state directory of the install missing from those roots is a
-  finding itself.
+  each with its record count (a family root, such as `~/volter/supercode-v[0-9]*`, is listed as the directories it
+  matches). A repository, home or state directory of the install missing from those roots is a finding itself.
 - **All the mail:** every principal request ends in an answer, a draft or card, a recorded ruling, or an explicit
   "not doing, because…" to the principal; one with none of these after its window is a lost request. Replies stay in
   their thread; agents speak to agents through their mains; nothing is sent as the principal.

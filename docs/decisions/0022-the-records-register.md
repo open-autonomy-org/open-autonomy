@@ -33,12 +33,16 @@ had none of it.
    naming a folder is a series and registers every file under it (a log folder, an evidence folder, a mailbox). This is
    the shape Volter's register already has, so it is checked as it stands.
 5. **The auditor counts what is unregistered every round.** `create-open-autonomy records estate <record repository>`
-   walks the roots `records.json` declares (every repository checkout, home and state directory of the install). For
-   each root it gives its record count and every record with no entry or a stub. A root of the install missing from
+   walks the roots `records.json` declares (every repository checkout, home and state directory of the install). A
+   root whose last component is a pattern (`*`, `?`, a `[...]` class) names a family of directories, such as one
+   checkout per release (`~/volter/supercode-v[0-9]*`), and each directory it matches when the estate runs is a root;
+   a directory named twice counts once. For each root it gives its record count and every record with no entry or a
+   stub. A root of the install missing from
    the list is itself a finding. The roots are one machine's paths: `estate.machine` names that machine, and the
    estate run anywhere else refuses (exit 2) instead of reading every root as missing.
 6. **The manager reconciles.** A record's owner keeps its entry. The manager sends each unregistered record to an arc
-   that registers it or retires it as a duplicate or orphan, and adds a new root when one appears. These are rules in
+   that registers it or retires it as a duplicate or orphan, and adds a new root when one appears and no declared
+   family already matches it. These are rules in
    the skew's manager and auditor profiles and in the home's shared rules.
 
 ## Consequences

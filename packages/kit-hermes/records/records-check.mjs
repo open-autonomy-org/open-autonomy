@@ -5,6 +5,7 @@
 //
 //   node tools/records-check.mjs staged                 the pre-commit: every record this commit adds has its entry
 //   node tools/records-check.mjs estate [--json]        every record across the estate's roots without an entry
+//                                                       (a root ending in a `*`/`?`/`[...]` pattern names a family of directories)
 //
 // The register is Markdown: the register file and its volumes under the register directory (records.json). An entry is a
 // table row whose first cell names its path in backticks. A volume named `<owner>--<repo>.md` holds one repository's
@@ -13,7 +14,7 @@
 // file under that folder.
 // An entry with a field still `TBD` is a stub, which the check writes for the writer to complete and does not accept.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
@@ -122,8 +123,8 @@ function walk(dir, out, base) {
 
 function estate(json) {
   const list = entries(root);
-  const roots = (config.estate?.roots ?? []).map(home);
-  if (roots.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
+  const declared = (config.estate?.roots ?? []).map(home);
+  if (declared.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
   // The roots are paths on the machine where the install and its checkouts live; elsewhere they would all read as missing.
   // A machine is named as the fleet names it: macOS's LocalHostName (its hostname() is often just "Mac"), else the host
   // name, lowercased and without ".local".
@@ -133,7 +134,31 @@ function estate(json) {
     console.error(`records: the estate's roots are ${machine}'s (records.json estate.machine); this is ${here}, so run the estate there`);
     return 2;
   }
-  const report = [];
+  const report = [], roots = [];
+  // A root whose last component holds a pattern (`*`, `?`, a `[...]` class) names a family of directories, such as one
+  // checkout per release (`~/volter/supercode-v[0-9]*`): each directory it matches now is a root, so a new member counts
+  // the moment it exists and a removed one drops out. Dot entries match only a pattern that starts with `.`; an entry
+  // that cannot be read (a dangling link) is skipped. A family that matches nothing is reported, not missing. A
+  // directory named twice (a family and a literal root) counts once.
+  const seen = new Set();
+  const add = (dir) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); } };
+  for (const declaredRoot of declared) {
+    const dir = declaredRoot.replace(/\/+$/, '') || declaredRoot;
+    const name = dir.split('/').pop() ?? '';
+    if (!/[*?[]/.test(name)) { add(dir); continue; }
+    const parent = dirname(dir);
+    // A `[` with no closing `]` is literal, as in a shell glob.
+    const source = name.replace(/\[!/g, '[^').split(/(\[[^\]]+\])/).map((part, i) => i % 2 ? part
+      : part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')).join('');
+    const match = new RegExp(`^${source}$`);
+    let entries = [];
+    try { entries = readdirSync(parent); } catch (error) { report.push({ root: dir, family: true, unreadable: error.code ?? String(error), records: 0, unregistered: [] }); continue; }
+    const members = entries.filter((entry) => (name.startsWith('.') || !entry.startsWith('.')) && match.test(entry)).filter((entry) => {
+      try { return statSync(join(parent, entry)).isDirectory(); } catch { return false; }
+    }).sort().map((entry) => join(parent, entry));
+    if (members.length === 0) report.push({ root: dir, family: true, records: 0, unregistered: [] });
+    members.forEach(add);
+  }
   for (const dir of roots) {
     if (!existsSync(dir)) { report.push({ root: dir, missing: true, records: 0, unregistered: [] }); continue; }
     const repository = existsSync(join(dir, '.git')) ? (resolve(dir) === resolve(root) && config.repository ? config.repository : repositoryOf(dir)) : null;
@@ -155,12 +180,12 @@ function estate(json) {
   else {
     console.log(`records: ${total} unregistered of ${denominator} records across ${report.length} roots (records.json estate.roots)`);
     for (const r of report) {
-      console.log(`  ${r.root}${r.repository ? ` (${r.repository})` : ''}: ${r.missing ? 'MISSING ROOT' : `${r.unregistered.length} of ${r.records}`}`);
+      console.log(`  ${r.root}${r.repository ? ` (${r.repository})` : ''}: ${r.missing ? 'MISSING ROOT' : r.family ? (r.unreadable ? `family folder unreadable (${r.unreadable})` : 'no member of this family yet') : `${r.unregistered.length} of ${r.records}`}`);
       for (const path of r.unregistered.slice(0, 50)) console.log(`    ${path}`);
       if (r.unregistered.length > 50) console.log(`    … ${r.unregistered.length - 50} more`);
     }
   }
-  return total === 0 && report.every((r) => !r.missing) ? 0 : 1;
+  return total === 0 && report.every((r) => !r.missing && !r.unreadable) ? 0 : 1;
 }
 
 const verb = process.argv[2];
