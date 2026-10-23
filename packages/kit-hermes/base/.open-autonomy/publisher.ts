@@ -485,7 +485,8 @@ function commitOf(t: BoardTask): string | undefined {
 let nativeTasks: BoardTask[] = [];
 // Every task on the board, whoever publishes it: a session is routed by the card it serves.
 let boardTasksAll: BoardTask[] = [];
-let timelineDigest = '', timelineBounded = -1;
+let timelineDigest = '', timelineBounded = -1, timelineContent = '', timelineDue = false;
+let timelineTimer: ReturnType<typeof setTimeout> | undefined;
 async function board(): Promise<RoadmapItem[] | undefined> {
   // This app's cache is rebuilt only from the retained source stream. An organization's board has no root profile's
   // tasks: every card is a profile's (docs/decisions/0017), and a project's reporter publishes its tenant's.
@@ -660,12 +661,23 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   if (!present) return;
   const items = organization ? present : fold(present, changelogItems(await mainFile('CHANGELOG.md'), cfg.account), roadmapItems(await mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
-  if (digest === timelineDigest) return;
+  if (digest === timelineDigest && !timelineDue) return;
+  timelineDue = false;
   const bounded = timelineWindow(items);
   if (bounded.length < items.length && bounded.length !== timelineBounded) log(`timeline: ${bounded.length} of ${items.length} items (every present and future item, then the most recently done that fit)`);
   timelineBounded = bounded.length;
+  // What the platform would store: the window as normalized. A board change outside the window, or one normalization
+  // drops, is no change to the timeline and writes nothing.
+  const content = JSON.stringify(normalizeRoadmap({ schema: ROADMAP_SCHEMA, items: bounded }));
+  if (content === timelineContent) { timelineDigest = digest; return; }
+  // Each revision is the whole window again (about 900 kB on the platform), and a busy board changes every minute or
+  // so. A changed window waits until TIMELINE_INTERVAL has passed since the account's current revision, then the
+  // latest window is written as one revision.
+  const wait = publication.lastTimelineAt + TIMELINE_INTERVAL - Date.now();
+  if (wait > 0) { timelineDigest = digest; timelineTimer ??= later(() => { timelineTimer = undefined; timelineDue = true; requestTick(); }, wait); return; }
+  timelineDigest = ''; // a write that fails is tried again on the next pass
   await publication.timeline({ schema: ROADMAP_SCHEMA, items: bounded }, 'hermes', 'reporter', oa);
-  timelineDigest = digest;
+  timelineDigest = digest; timelineContent = content;
 }
 // An account holds one timeline, and the platform bounds it. normalizeRoadmap, which the SDK and the platform both apply,
 // keeps at most 2000 items, and the publication refuses a timeline it would cut (publication.ts). The platform stores a
@@ -674,6 +686,7 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
 // bound publishes every present and future item, then its past from the most recently done back as far as fits; older
 // past items stay on the board but not on the account's timeline.
 const TIMELINE_ITEMS = 2000, TIMELINE_BYTES = 900_000;
+const TIMELINE_INTERVAL = 10 * 60_000;
 function timelineWindow(items: RoadmapItem[]): RoadmapItem[] {
   const kept = new Set<RoadmapItem>();
   let bytes = 0;
