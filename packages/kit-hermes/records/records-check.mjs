@@ -14,7 +14,7 @@
 // file under that folder.
 // An entry with a field still `TBD` is a stub, which the check writes for the writer to complete and does not accept.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
@@ -141,14 +141,15 @@ function estate(json) {
   // that cannot be read (a dangling link) is skipped. A family that matches nothing is reported, not missing. A
   // directory named twice (a family and a literal root) counts once.
   const seen = new Set();
-  const add = (dir) => { const key = resolve(dir); if (!seen.has(key)) { seen.add(key); roots.push(dir); } };
+  const add = (dir) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); } };
   for (const declaredRoot of declared) {
     const dir = declaredRoot.replace(/\/+$/, '') || declaredRoot;
     const name = dir.split('/').pop() ?? '';
     if (!/[*?[]/.test(name)) { add(dir); continue; }
     const parent = dirname(dir);
-    const source = name.replace(/\[!/g, '[^').split(/(\[[^\]]*\])/).map((part, i) => i % 2 ? part
-      : part.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')).join('');
+    // A `[` with no closing `]` is literal, as in a shell glob.
+    const source = name.replace(/\[!/g, '[^').split(/(\[[^\]]+\])/).map((part, i) => i % 2 ? part
+      : part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')).join('');
     const match = new RegExp(`^${source}$`);
     let entries = [];
     try { entries = readdirSync(parent); } catch (error) { report.push({ root: dir, family: true, unreadable: error.code ?? String(error), records: 0, unregistered: [] }); continue; }
@@ -184,7 +185,7 @@ function estate(json) {
       if (r.unregistered.length > 50) console.log(`    … ${r.unregistered.length - 50} more`);
     }
   }
-  return total === 0 && report.every((r) => !r.missing) ? 0 : 1;
+  return total === 0 && report.every((r) => !r.missing && !r.unreadable) ? 0 : 1;
 }
 
 const verb = process.argv[2];
