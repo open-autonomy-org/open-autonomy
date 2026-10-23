@@ -41,7 +41,7 @@
 //               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
-//   channel     one per mail agent with an RH2 account Room, carrying it to the agent's mailbox
+//   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
@@ -194,7 +194,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       return;
     }
     if (name.startsWith('reporter') || name.startsWith('channel ')) {
-      // A reporter narrates and a channel carries a Room; neither decides whether the brain runs. Each comes back in
+      // A reporter narrates and a channel carries Slack or Jira; neither decides whether the brain runs. Each comes back in
       // ten seconds.
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
@@ -725,23 +725,12 @@ const agentLayerFile = resolve(home, 'agents.json');
 const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
 agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object.entries(agentSetup.agents ?? {}).map(([name, mailAgent]) => [name, { name, profile: mailAgent.profile }])) };
 if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON.stringify(agentLayer, null, 2)}\n`);
-// Each mail agent with an RH2 account Room has its Room carried to its mailbox by a channel process, a service of this
-// start that restarts like the reporter (supercode docs/adr/0008). RH2 is reached as the agent's own principal where the
-// organization declares it (supercode ADR 0017), else through a Room-chat installation for it; the channel reads the
-// record from this home.
-for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
-  const rh2 = mailAgent.channel?.rh2;
-  if (!rh2) continue;
-  spawn(`channel ${name}`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--root', home,
-    ...(rh2.room ? ['--room', rh2.room] : []), ...(rh2.room_key ? ['--room-key', rh2.room_key] : []),
-    ...(rh2.room_name ? ['--room-name', rh2.room_name] : []), ...(rh2.principal ? ['--principal', rh2.principal] : []),
-    '--state', resolve(home, '..', 'channels', `${name}.json`)], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
-}
-// A mail agent's other channels (company RFC 0026 decision 3): an engagement's Slack channels and its client's Jira
-// ticket comments, carried to the same mailbox by the same bridge (supercode agent-channel --platform slack|jira). Their
-// credentials stay in custody: <secrets>/slack.env (SLACK_BOT_TOKEN, SLACK_APP_TOKEN, and SLACK_CHANNELS where the
-// agent.json names no channel ids) and <secrets>/jira.env (JIRA_EMAIL and JIRA_API_TOKEN, or JIRA_TOKEN), read here and
-// given to that one process.
+// A mail agent's channels (company RFC 0026 decision 3), each a service of this start that restarts like the reporter:
+// an engagement's Slack channels and its client's Jira ticket comments, carried to its mailbox (supercode agent-channel
+// --platform slack|jira). An agent hears a Workplace Room once the Workplace's join command brings it in (runhuman-2
+// ADR 0063), never through a channel. Their credentials stay in custody: <secrets>/slack.env (SLACK_BOT_TOKEN,
+// SLACK_APP_TOKEN, and SLACK_CHANNELS where the agent.json names no channel ids) and <secrets>/jira.env (JIRA_EMAIL and
+// JIRA_API_TOKEN, or JIRA_TOKEN), read here and given to that one process.
 const custodyEnv = (file: string): Record<string, string> => {
   if (!existsSync(file)) return {};
   const out: Record<string, string> = {};

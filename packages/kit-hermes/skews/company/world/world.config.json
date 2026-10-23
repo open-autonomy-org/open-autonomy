@@ -332,60 +332,6 @@
       }
     },
     {
-      "id": "arcs-rooms",
-      "type": "process",
-      "execution": {
-        "process": {
-          "command": "bun",
-          "args": [
-            "${SCENARIO_DIR}/rh2-app.ts"
-          ],
-          "rootArg": false,
-          "portArg": false
-        },
-        "environment": {
-          "values": {
-            "VO_BOT": "arcs-rooms"
-          }
-        }
-      },
-      "endpoint": {
-        "port": "auto",
-        "ready": {
-          "stdoutMatch": "arcs-rooms: installed",
-          "timeoutMs": 300000,
-          "intervalMs": 1000
-        }
-      }
-    },
-    {
-      "id": "cards-tasks",
-      "type": "process",
-      "execution": {
-        "process": {
-          "command": "bun",
-          "args": [
-            "${SCENARIO_DIR}/rh2-app.ts"
-          ],
-          "rootArg": false,
-          "portArg": false
-        },
-        "environment": {
-          "values": {
-            "VO_BOT": "cards-tasks"
-          }
-        }
-      },
-      "endpoint": {
-        "port": "auto",
-        "ready": {
-          "stdoutMatch": "cards-tasks: installed",
-          "timeoutMs": 300000,
-          "intervalMs": 1000
-        }
-      }
-    },
-    {
       "id": "agent",
       "type": "process",
       "execution": {
