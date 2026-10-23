@@ -74,7 +74,9 @@ if (container && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Erro
 if (container && cfg.seats) throw new Error('Host Claude seats require their own reporter');
 if (container && selectedRuntime.kind === 'orchestrator') throw new Error('This adapter supports native orchestrator publication on the bare host; container publication requires its explicit Hermes adapter');
 const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
-const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
+// A prepared install's state, custody and adoption stay in its source checkout (`--local-dir`), never in the snapshot.
+const localDirectory = resolve(arg('--local-dir') ?? dirname(configPath));
+const stateFile = resolve(arg('--state-file') ?? resolve(localDirectory, cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
 const narrativeAbort = new AbortController();
 const narrativeRead = { signal: narrativeAbort.signal, timeoutMs: 10_000 };
@@ -230,7 +232,7 @@ const policy = await retryStartup('policy', () => publicationPolicy(cfg.publish)
 const onOrchestrator = runtime.native;
 const scheduler = runtime.scheduler;
 // Legacy `ended` markers are deliberately ignored: they included timer guesses.
-const publication = activePublication = await retryStartup('enrollment', () => new PublicationStore({ configFile: configPath, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
+const publication = activePublication = await retryStartup('enrollment', () => new PublicationStore({ configFile: configPath, localDirectory, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
   account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime, owner: ownerState }));
 const saved = publication.runtime;
 const checkpoints: Record<string, PublicationCheckpoint> = saved.published ?? {};

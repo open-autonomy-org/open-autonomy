@@ -22,7 +22,7 @@ interface Pending { obligationId: string; kind: 'note' | 'timeline'; association
 interface Receipt extends Omit<Pending, 'sourceObservation'> { result: any }
 interface PublicationData { enrollment: { version: 1; account: string; apiBase: string; sourceContext: string; stores: StoreContext[]; selectedRuntime: NativeRuntimeSelection; custody: Custody; custodyDigest: string; adoptionDigest?: string }; associations: Association[]; noteAliases: NoteAlias[]; sessionBindings: SessionBinding[]; pending: Pending[]; receipts: Receipt[]; requiresSnapshot?: boolean }
 export interface PublicationOwnerLease { readonly stateFile: string; readonly nonce: string; assert(stateFile: string): void }
-export interface PublicationOptions { configFile: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
+export interface PublicationOptions { configFile: string; localDirectory?: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
 export interface NoteInput { board: string; cardId: string; kind: NoteKind; effectId: string | number; text: string; at?: string; session?: string; legacyKey?: string }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const itemId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
@@ -228,7 +228,7 @@ function acquireLocalPublicationLease(path: string, nonce: string, handoff?: Att
         else if(handoff.controlAbsence!==undefined||!d.test(handoff.controlDigest)||retainedDigest(`${stateFile}.control.json`)!==handoff.controlDigest)throw new Error('Attested control digest or absence token conflicts');
         if (!compatibleHost(prior.identity, executor) || prior.identity.namespace !== executor.namespace) throw new Error('Attested lease handoff host/namespace is foreign or unknown');
         if (prior.identity.boot === executor.boot && processStart(prior.pid) === prior.identity.start) throw new Error('Publication writer is still live; owner attestation cannot hand it off');
-        const auditFile = localJSON(handoff.configFile, relative(dirname(handoff.configFile),resolve(handoff.auditFile)));
+        const auditFile = localJSON(dirname(handoff.configFile), relative(dirname(handoff.configFile),resolve(handoff.auditFile)));
         const privateRoot = resolve(dirname(handoff.configFile),'publication-private','control-recovery');
         if (relative(privateRoot,auditFile).startsWith('..') || isAbsolute(relative(privateRoot,auditFile))) throw new Error('Lease handoff audit must stay in private control-recovery');
         for (const directory of [resolve(dirname(handoff.configFile),'publication-private'),privateRoot,dirname(auditFile)]) {
@@ -281,9 +281,12 @@ function retainExactBytes(file: string, backup: string): void {
   const fd = openSync(backup, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
   const parent = openSync(dirname(backup), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
 }
-function localJSON(config: string, path: unknown): string {
+// Custody and adoption are this install's private files, beside its configuration unless a prepared install keeps them in
+// its source checkout (`localDirectory`): a prepared snapshot is the commit's tracked files alone.
+const localDirectory = (options: PublicationOptions): string => options.localDirectory ?? dirname(options.configFile);
+function localJSON(base: string, path: unknown): string {
   if (!nonempty(path) || isAbsolute(path) || !path.endsWith('.json')) throw new Error('Publication custody/adoption must name a relative JSON file');
-  const base = dirname(config), file = resolve(base, path), rel = relative(base, file);
+  const file = resolve(base, path), rel = relative(base, file);
   if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Publication custody/adoption must remain beside its configuration');
   let current = base;
   for (const part of rel.split('/')) { current = resolve(current, part); if (lstatSync(current).isSymbolicLink()) throw new Error(`Publication path must not traverse a symlink: ${current}`); }
@@ -327,7 +330,7 @@ export class PublicationStore {
     try {
       const prior = existsSync(options.stateFile) ? privateJSON(options.stateFile) : undefined;
       const cache = existsSync(options.cacheFile) ? privateJSON(options.cacheFile) : undefined;
-      const custodyFile = localJSON(options.configFile, this.config.custody);
+      const custodyFile = localJSON(localDirectory(options), this.config.custody);
       const custody = privateJSON(custodyFile) as Custody, custodyDigest = retainedDigest(custodyFile);
       this.checkCustody(custody);
       if (prior && prior.version !== 2 && prior.version !== 3) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
@@ -338,7 +341,7 @@ export class PublicationStore {
         this.data = prior.publication;
         this.checkData();
         this.checkContinuity(custody, custodyDigest);
-        if (this.config.adoption && retainedDigest(localJSON(options.configFile, this.config.adoption)) !== this.data.enrollment.adoptionDigest) throw new Error('A changed/second adoption cannot replace retained source/effect aliases');
+        if (this.config.adoption && retainedDigest(localJSON(localDirectory(options), this.config.adoption)) !== this.data.enrollment.adoptionDigest) throw new Error('A changed/second adoption cannot replace retained source/effect aliases');
       } else {
         this.data = { enrollment: { version: 1, account: options.account, apiBase: options.apiBase, sourceContext: this.sourceContextId, stores: this.config.stores, selectedRuntime: options.nativeRuntime, custody, custodyDigest }, associations: [], noteAliases: [], sessionBindings: [], pending: [], receipts: [], requiresSnapshot: Boolean(prior || cache) };
         if (custody.generation !== 1 || custody.previous) throw new Error('Initial publication enrollment requires custody generation 1 without previous');
@@ -409,7 +412,7 @@ export class PublicationStore {
   }
   private adopt(prior: any, cache: any): void {
     if (!prior || prior.version !== 2 || !cache || cache.version !== 1 || !this.config.adoption) throw new Error('Retained legacy source/reporter state needs explicit reviewed adoption of both files');
-    const file = localJSON(this.options.configFile, this.config.adoption), adoption = privateJSON(file);
+    const file = localJSON(localDirectory(this.options), this.config.adoption), adoption = privateJSON(file);
     if (adoption.version !== 1 || adoption.account !== this.options.account || adoption.apiBase !== this.options.apiBase || adoption.sourceContext !== this.sourceContextId || !eq(adoption.stores, this.config.stores) || !nonempty(adoption.operator) || !nonempty(adoption.statement) || !nonempty(adoption.evidence) || adoption.reporterDigest !== retainedDigest(this.options.stateFile) || adoption.cacheDigest !== retainedDigest(this.options.cacheFile) || !Array.isArray(adoption.items) || !Array.isArray(adoption.notes) || !Array.isArray(adoption.sessions)) throw new Error('Legacy adoption context/provenance/digests or exact alias inventory is missing');
     const cached = new Map((cache.cards ?? []).map((entry: any) => [JSON.stringify([entry[1]?.board, entry[1]?.id]), entry[1]]));
     for (const entry of adoption.items) {

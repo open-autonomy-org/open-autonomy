@@ -635,13 +635,15 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   }
 }
 let reportersStarted = false;
+// A prepared install runs the commit's snapshot; each reporter's state, custody and adoption stay in the source checkout.
+const reporterLocal = (config: string): string[] => prepared ? ['--local-dir', resolve(prepared.sourceProject, relative(project, dirname(config)))] : [];
 function startReporters(): void {
   if (ending || reportersStarted || (onNative && !nativeGatewayReady)) return;
   reportersStarted = true;
   // Owner controls remain independent of narrative enrollment. Native gateway
   // readiness is its public mutation-door contract, not a narrative prerequisite.
   if (!Object.hasOwn(orgConfig, 'publication')) say('publication pending: reporter enrollment is required; owner controls and the native brain keep running');
-  spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
+  spawn('reporter', ['bun', resolve(host, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml'), ...reporterLocal(resolve(project, '.open-autonomy', 'config.yaml'))], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
   // Each project's reporter: its own committed policy/custody under its account, its cards (its tenant)
   // and their sessions only, through the project's own key.
   for (const p of projectReporters) {
@@ -653,7 +655,7 @@ function startReporters(): void {
       if (tenantConfig.account !== p.account || tenantConfig.tenant !== p.tag || !tenantConfig.publication) throw new Error('reporter_config requires the exact account, tenant tag and independently enrolled publication block');
       if (tenantConfig.platform !== orgConfig.platform) throw new Error('reporter_config must name the selected logical platform; the valve is transport only');
       nativeRuntime({ native_runtime: tenantConfig.native_runtime }, { ...process.env, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv });
-      spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+      spawn(`reporter ${p.account}`, ['bun', resolve(host, 'publisher.ts'), '--config', config, '--project', project, ...reporterLocal(config)], { asAgent: true, allowRestart: () => !onNative || nativeGatewayReady, env: { ...env, OPEN_AUTONOMY_BASE_URL: `http://127.0.0.1:${p.port}/v1`, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, OPEN_AUTONOMY_NATIVE_RUNTIME: nativeSelectionEnv, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
     } catch (error) { say(`publication ${p.account} pending: ${(error as Error).message}; the native brain keeps running`); }
   }
 }
