@@ -23,6 +23,10 @@ function requireSelection(options: Options, status: any): void {
   if (status.state !== 'serving' || status.selected?.entry !== options.entry || status.selected?.native !== options.native)
     throw new Error('the serving board does not match the selected native release; use the coordinated machine upgrade door');
 }
+// Whether any board owner answers for this home, whatever selection it serves: a handover's board is not a gone one.
+export async function boardOwnerAnswers(options: Options): Promise<boolean> {
+  return await probe(options) !== null;
+}
 export async function retainedBoard(options: Options): Promise<any | null> {
   const status = await probe(options);
   if (status) requireSelection(options, status);

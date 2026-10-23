@@ -36,7 +36,9 @@ that completed selection, retained in the recovery journal when incomplete.
 
 The Codex proxy is a host service with a lifetime independent of the board and keeper generations. Bare keepers
 acquire its existing listener, identified by protocol, instance and a digest of the host Codex-home path. A missing
-listener is started in a detached service process. A listener with an unread or different identity is preserved and
+listener is started in a detached service process. Because the proxy and the native board owner are not keeper
+children, the serving keeper reads both and acquires again whichever has ended (a lost lifetime lock, a crash, a kill),
+still detached; a board owner serving another selection belongs to a coordinated handover and is never replaced. A listener with an unread or different identity is preserved and
 startup refuses; it is never killed to free the port. A legacy stack-owned listener is never silently adopted. First-adoption preparation can stage a separate
 `--codex-proxy-port`; changing a live model endpoint belongs to that separately permitted adoption. Board stop and restart
 signals do not stop the host proxy. Its implementation comes from the kit package, and its authentication still

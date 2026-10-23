@@ -46,7 +46,7 @@
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
-import { acquireBoard, boardDeclaration, retainedBoard } from './retained-board.ts';
+import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -436,8 +436,10 @@ const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex
 const codexPort = Number(arg('--codex-proxy-port') ?? valvePort + 2);
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
+let codexInstance: string | undefined;
 if (onCodex && !codexTwin) {
   const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
+  codexInstance = proxy.instance;
   say(`Codex proxy :${codexPort} serving independently (pid ${proxy.pid}); board shutdown leaves it running`);
   await codexAccess();
 }
@@ -785,6 +787,33 @@ setInterval(() => {
 }, 5000);
 
 }
+// The native board owner and the Codex supervisor serve independently of this stack, so neither is a child whose exit
+// it sees, and neither returns to its child list. Each is read while the stack serves and acquired again once it is
+// gone (a lost lifetime lock, a crash, a kill): a board or proxy never waits on the next stack start. A board serving
+// another selection is a coordinated handover's, and is refused rather than replaced.
+let watching = false, watchRefusal = '';
+setInterval(() => {
+  if (ending || watching) return;
+  watching = true;
+  void (async () => {
+    if (onCodex && !codexTwin) {
+      const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
+      if (proxy.instance !== codexInstance) say(`Codex proxy :${codexPort} had ended; serving again independently (pid ${proxy.pid})`);
+      codexInstance = proxy.instance;
+    }
+    if (boardDeclared && prepared && !ending && !await boardOwnerAnswers(boardOptions)) {
+      say('native board owner had ended; acquiring it again');
+      await acquireBoard(boardOptions);
+      say('native board owner serving again');
+    }
+    watchRefusal = '';
+  })().catch(error => {
+    // A refusal is said once, not every five seconds while it holds.
+    const line = `independent service not reacquired: ${(error as Error).message}`;
+    if (line !== watchRefusal) say(line);
+    watchRefusal = line;
+  }).finally(() => { watching = false; });
+}, 5000);
 say(`${onNative ? `orchestrator (worker ${harness})` : 'gateway'} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
 await new Promise(() => {});
