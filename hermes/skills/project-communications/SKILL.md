@@ -71,7 +71,7 @@ On scheduled runs, put the actual human request in the Discord-delivered report 
 twice. Follow up in the existing conversation, checking replies and delivery evidence first. Use judgment
 about follow-up; there is no fixed reminder interval. A delivery failure remains an unresolved contact gap.
 
-The owner is contacted once per release, when the Release pull request (`main` → `prod`) is ready: `maintain.ts ship`
+The owner is contacted once per release, when the Release pull request (`main` → `publish`) is ready: `maintain.ts ship`
 mentions them there, with its scope, verification, risks and the money or auth diffs to read. Nothing else is routed
 to them. A community reply is not approval, and no reply is: a release is approved by the owners team approving the
 Release, then merging it. Work keeps landing on `main` meanwhile and joins it.

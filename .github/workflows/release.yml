@@ -1,7 +1,7 @@
 name: Release the SDK and the kit
 # Publishes @open-autonomy/sdk, @open-autonomy/backend, create-open-autonomy and @open-autonomy/cli to npm on a push to
 # `publish`, the dedicated publication branch, which moves only on the owner's explicit publication authorization (a
-# merge to `main` never advances it; `prod` publishes nothing): each package whose version is not on the registry yet
+# merge to `main` never advances it): each package whose version is not on the registry yet
 # is published, the rest are left alone, so releases compound on `main` until the owner authorizes publication. A new
 # kit version is recorded as a `release-v<kit version>` tag and GitHub release.
 # Egress is locked to npm, so the publish token cannot leave to any other host. The world proves the same

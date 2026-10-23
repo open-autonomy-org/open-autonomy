@@ -50,11 +50,12 @@ function field(text: string, name: string): string {
 }
 
 if (command === 'ship') {
-  // One pull request titled Release (main → prod) is what ships: whatever has landed on main compounds onto it, and
+  // One pull request titled Release (main → publish) is what ships: whatever has landed on main compounds onto it, and
   // the owner's approval covers the diff it shows (a later push to main dismisses it). PM runs this every pass: it opens
-  // the Release while main is ahead of prod, and when PM has decided the Release is ready, writes PM's package as its
-  // description and mentions the owner there once per release: the only time the owner is contacted. Their merge
-  // deploys and publishes. See PRODUCTION.md.
+  // the Release while main is ahead of publish, and when PM has decided the Release is ready, writes PM's package as its
+  // description and mentions the owner there once per release: the only time the owner is contacted. Merging it is the
+  // owner's explicit publication authorization, and the push to `publish` deploys and publishes. This only opens and
+  // describes the Release: it never merges it and never pushes to `publish`. See PRODUCTION.md.
   const configText = readFileSync(resolve(project, '.open-autonomy/config.yaml'), 'utf8');
   const config = Bun.YAML.parse(configText) as { account: string };
   const api = (process.env.GITHUB_API_URL ?? 'https://api.github.com').replace(/\/$/, '');
@@ -78,14 +79,14 @@ if (command === 'ship') {
     }
   };
   const org = config.account.split('/')[0];
-  let [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=prod&head=${org}:main`);
+  let [open] = await gh<Array<{ number: number; html_url: string }>>('GET', `/pulls?state=open&base=publish&head=${org}:main`);
   if (!open) {
-    const prod = await request('GET', '/branches/prod');
-    if (prod.status === 404) { console.log("No prod branch; setup's production door makes it. Nothing to ship."); process.exit(0); }
-    if (!prod.ok) throw new Error(`GitHub GET /branches/prod answered ${prod.status}`);
+    const publish = await request('GET', '/branches/publish');
+    if (publish.status === 404) { console.log('No publish branch; only the owner creates it, when first authorizing publication. Nothing to ship.'); process.exit(0); }
+    if (!publish.ok) throw new Error(`GitHub GET /branches/publish answered ${publish.status}`);
     // GitHub refuses a pull request with nothing in it (422), which is the answer to whether main has anything new.
-    const made = await request('POST', '/pulls', { title: 'Release', head: 'main', base: 'prod', body: 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it. Read the whole diff first; money and auth changes are the owner\'s to read. Merge with a merge commit.' });
-    if (made.status === 422) { console.log(`prod has everything on main; nothing to ship (${(await made.json() as { message?: string }).message ?? 'GitHub: 422'}).`); process.exit(0); }
+    const made = await request('POST', '/pulls', { title: 'Release', head: 'main', base: 'publish', body: 'Merging publishes `main`: the workflows that run on a push to `publish` deploy and publish it, so it needs the owner\'s explicit publication authorization. Read the whole diff first; money and auth changes are the owner\'s to read. Merge with a merge commit.' });
+    if (made.status === 422) { console.log(`publish has everything on main; nothing to ship (${(await made.json() as { message?: string }).message ?? 'GitHub: 422'}).`); process.exit(0); }
     if (!made.ok) throw new Error(`GitHub POST /pulls answered ${made.status}`);
     open = await made.json() as { number: number; html_url: string };
     console.log(`Opened the Release: ${open.html_url}`);
@@ -108,13 +109,13 @@ if (command === 'ship') {
   // Each Release pull request is one release, told once. A package written before the last Release merged belongs to
   // that one and never announces the next.
   const marker = '<!-- open-autonomy:release-ready -->';
-  const merged = await gh<Array<{ merged_at: string | null }>>('GET', `/pulls?state=closed&base=prod&head=${org}:main&per_page=20`);
+  const merged = await gh<Array<{ merged_at: string | null }>>('GET', `/pulls?state=closed&base=publish&head=${org}:main&per_page=20`);
   const lastShip = Math.max(0, ...merged.map((p) => (p.merged_at ? Date.parse(p.merged_at) : 0)));
   if (Bun.file(packagePath).lastModified <= lastShip) {
     console.log(`The package predates the last Release; write it for ${release} before asking again. Nothing sent.`);
     process.exit(0);
   }
-  const tail = 'Merging ships `main` to production: the workflows that run on a push to `prod` deploy and publish it.';
+  const tail = 'Merging publishes `main`: the workflows that run on a push to `publish` deploy and publish it, so it needs the owner\'s explicit publication authorization.';
   await gh('PATCH', `/issues/${open.number}`, { body: `${marker}\n${review}\n\n${tail}` });
   if ((await comments(open.number)).some((c) => c.startsWith(marker))) {
     console.log(`Release ${release} is on ${open.html_url}; the owner was already told.`);

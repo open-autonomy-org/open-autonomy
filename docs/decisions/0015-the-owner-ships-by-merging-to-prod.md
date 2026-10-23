@@ -1,4 +1,4 @@
-# ADR 0015: The owner ships by merging one pull request from main to prod
+# ADR 0015: The owner ships by merging one pull request from main to publish
 
 Status: Proposed. Accepted only upon independent constitution review and merge of this record with its
 implementation; proposed until both occur.
@@ -17,47 +17,53 @@ The owner reads the change on a compare page no one keeps, and each tag ships on
 
 ## Decision
 
-**One standing pull request from `main` to `prod` is what ships.** A workflow keeps it open; it grows as `main` moves,
-so changes compound until the owner reads the whole diff there and merges it with a merge commit.
+**One standing pull request from `main` to `publish` is what ships.** A workflow keeps it open; it grows as `main`
+moves, so changes compound until the owner reads the whole diff there and merges it with a merge commit. The workflow
+never merges it and never pushes to `publish`.
 
-**The owner's approval ships it.** The `prod` ruleset allows no update to `prod` but a merged pull request approved by
-the `owners` team, whose only member is the owner, with no bypass; stale approvals are dismissed when `main` moves. The
-`production` environment admits `prod` alone and asks for no second approval.
+**The owner's approval ships it.** `publish` is the dedicated publication branch. The `publish-protected` ruleset
+allows no creation of or update to `publish` but a merged pull request approved by the `owners` team, whose only member
+is the owner, and only that team bypasses it; stale approvals are dismissed when `main` moves. The owner's merge is the
+explicit publication authorization. The `production` environment admits `publish` alone and asks for no second
+approval.
 
-**A push to `prod` ships.** The platform deploys and the commit is tagged `deploy-v<date>.<n>`; every package version
-not yet on npm is published, and a new kit version is recorded as a `release-v<version>` tag and GitHub release. The
-tags stay, as the record of what shipped when. `admin.yml` is dispatched from `prod`.
+**Publication runs only from `publish`.** Only a push to `publish` deploys the platform (tagging the commit
+`deploy-v<date>.<n>`), publishes every package version not yet on npm (recording a new kit version as a
+`release-v<version>` tag and GitHub release) and publishes the docs. `main` is never published: a merge to `main`
+never advances `publish` and never triggers publication. The tags stay, as the record of what shipped when.
+`admin.yml` is dispatched from `publish`.
 
 Extrapolation, this author's (the owner named the merge, the compounding pull request and the tags): tags as the record
-rather than a second trigger; the release publishing on the same merge; the admin workflow dispatched from `prod`;
-merge commits only (the repository allows no squash or rebase merge, so `prod`'s history stays `main`'s).
+rather than a second trigger; the release publishing on the same merge; the admin workflow dispatched from `publish`;
+merge commits only (the repository allows no squash or rebase merge, so `publish`'s history stays `main`'s).
 
 ## Alternatives and tradeoffs
 
 - **Keep tags and the environment's approval.** Rejected by the owner: two acts per ship, and nothing to read but a
   compare page.
-- **Restrict updates to `prod` to an org admin.** Tried first and replaced: GitHub shows that merge to the owner as
+- **Restrict updates to `publish` to an org admin.** Tried first and replaced: GitHub shows that merge to the owner as
   "Merge without waiting for requirements to be met (bypass rules)", a ship that reads as breaking a rule (the owner:
   "why would you send this to me like this"). A required reviewer is the ordinary approve-then-merge.
-- **CODEOWNERS for `prod`.** Rejected: it is read from the base branch, and `main`'s would flow into `prod`.
+- **CODEOWNERS for `publish`.** Rejected: it is read from the base branch, and `main`'s would flow into `publish`.
 
 ## Consequences
 
 - `maintain.ts ship`, which PM runs every pass through the project's App, keeps the pull request open. A scheduled
   workflow did at first, and was removed: merges to `main` start no workflow, and GitHub ran its fifteen-minute schedule
-  not once in the two hours after the first ship. `deploy.yml` and `release.yml` run on a push to `prod` and record
-  their tags; `apps/platform/DEPLOY.md`, `CLAUDE.md` and the kit's README say so.
-- Repository settings, applied after this lands: a `prod` branch at the commit last deployed; a `prod-protected`
-  ruleset (deletion, non-fast-forward, and a pull request approved by the `owners` team, merge commits only, no
-  bypass); the `production` environment's deployment branches `prod` alone, its required reviewer removed; the
+  not once in the two hours after the first ship. `deploy.yml`, `release.yml` and `pages.yml` run only on a push to
+  `publish`, and the first two record their tags; `apps/platform/DEPLOY.md` and `CLAUDE.md` say so.
+- Repository settings: a `publish-protected` ruleset (creation, deletion, non-fast-forward, and a pull request
+  approved by the `owners` team, merge commits only; the `owners` team alone bypasses, so only the owner creates
+  `publish`); the `production` and `github-pages` environments' deployment branches `publish` alone, the
+  `production` environment's required reviewer removed; the
   tag ruleset keeps `update` and `deletion` for org admins and no longer restricts `creation`, so the workflows can
   record their tags (GitHub refuses its Actions app as a bypass actor on an organization's ruleset).
 - Without the environment's approval, nothing but the owner's own dispatch may run `admin.yml`: its job runs only when
   `github.triggering_actor` is the owner, so the project's App (whose manifest grants `actions: write`) and a
-  workflow's token, both able to dispatch it, never load the admin token or choose its inputs. A redeploy dispatched
-  from `prod` ships only what the owner already merged. `land.yml` opens and arms pull requests against `main` alone.
+  workflow's token, both able to dispatch it, never load the admin token or choose its inputs. A run dispatched
+  from `publish` runs only what the owner already merged. `land.yml` opens and arms pull requests against `main` alone.
 - The record tags are records, not triggers: anyone who may push may create one, so a record can be forged, but only
-  an org admin may move or delete one once made. Nothing runs on a tag; what shipped is `prod`'s history and the
+  an org admin may move or delete one once made. Nothing runs on a tag; what shipped is `publish`'s history and the
   deploy runs.
 - The kit's production door (`setup.ts`, `PRODUCTION.md`, `maintain.ts ship`) kept tags until this had
   shipped here; kit 3.19.0 carries it to generated projects.
@@ -69,6 +75,7 @@ only in a workflow the owner shipped, never on `main`.
 
 ## Verification
 
-After the settings: `maintain.ts ship` opens the pull request while `main` is ahead of `prod`; an agent's attempt to push to `prod`
-is refused; the owner's merge deploys, tags `deploy-v<date>.<n>` and publishes any new version, and the platform's
+After the settings: `maintain.ts ship` opens the pull request while `main` is ahead of `publish`; an agent's attempt to
+create or push to `publish` is refused; a merge to `main` starts no publication; the owner's merge deploys, tags
+`deploy-v<date>.<n>` and publishes any new version, and the platform's
 `/healthz` answers from the new commit.

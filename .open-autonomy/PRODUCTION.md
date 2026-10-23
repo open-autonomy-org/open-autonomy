@@ -17,8 +17,8 @@ service.
   production credentials may be used, rather than each merge to main.
 - **Production runs only from `publish`, on the owner's explicit publication authorization.** `publish` is the
   dedicated publication branch: it moves only when the owner authorizes publication, a merge to `main` never advances
-  it, and nothing on `main` or `prod` deploys or publishes. One standing pull request from `main` to `prod` gathers
-  what is ready for the owner to read; merging it publishes nothing. A `production` environment admits `publish`
+  it, and nothing on `main` deploys or publishes. One standing pull request from `main` to `publish` gathers what
+  ships; the owner's merge of it is the publication authorization. A `production` environment admits `publish`
   alone, never `main`; its secrets are the deploy credential and nothing more. The deploy workflow fires only on a push
   to `publish` and records each deploy as a `deploy-v<date>.<n>` tag, so the workflow that holds the credential is
   always one the owner authorized.
@@ -31,9 +31,10 @@ service.
 2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (no required approvals: the review precedes the
    author's merge, and no rule waits on it; code-owner review disabled), `non_fast_forward`, `deletion`; no bypass
    actors. Allow the landing workflow to open PRs.
-3. Ruleset `prod-protected` on `refs/heads/prod`: `pull_request` (one approval, required from an `owners` team whose
-   only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`, `deletion`; no bypass.
-   PM's `maintain.ts ship`, run every pass, keeps the `main` → `prod` pull request open.
+3. Ruleset `publish-protected` on `refs/heads/publish`: `creation`, `pull_request` (one approval, required from an
+   `owners` team whose only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`,
+   `deletion`; the `owners` team alone bypasses. PM's `maintain.ts ship`, run every pass, keeps the `main` →
+   `publish` pull request open; it never merges it or pushes to `publish`.
 4. Environment `production`: deployment branches "selected", `publish` alone; the deploy credential as an environment
    secret (never a repository secret); the account id as a repository variable. A workflow that moves money runs
    only on the owner's own dispatch (`if: github.triggering_actor == '<owner>'`).
@@ -45,7 +46,7 @@ service.
 
 Two kinds of pull request, never confused. Pull requests into `main` are the agents' own: written, independently
 reviewed and merged by agents, and never routed to a person. The Release is the one standing pull request titled
-Release, from `main` to `prod`: whatever has landed on `main` compounds onto it, and it is the owner's. There is no
+Release, from `main` to `publish`: whatever has landed on `main` compounds onto it, and it is the owner's. There is no
 other release pull request and no candidate to pin: the owner's approval covers the diff the Release shows, and a
 later push to `main` dismisses it.
 
@@ -66,9 +67,9 @@ Owner does: <what only the owner may do, such as a repository setting, with its 
 and runs `bun .open-autonomy/maintain.ts ship`. It writes that package as the Release's description and mentions the
 owner on it, once per Release pull request (a package written before the last Release merged is refused as stale):
 the only time the owner is contacted, so everything on the Release is finished, verified and reviewed before it. The
-owner reads the Release and merges it into `prod`, which deploys and publishes nothing. Deployment, and publication of
-each package version not yet on npm, run only on a push to `publish`, which moves only on the owner's explicit
-publication authorization (`apps/platform/DEPLOY.md`). PM never deploys, tags, publishes or moves `publish`. After a
+owner reads the Release and merges it into `publish`: that merge is the owner's explicit publication authorization,
+and the push to `publish` deploys the service and publishes each package version not yet on npm
+(`apps/platform/DEPLOY.md`). PM never merges the Release, deploys, tags, publishes or pushes to `publish`. After a
 publication, PM verifies what shipped (the live service reports the shipped commit; the new versions are on npm) and
 only then moves changelog entries out of Unreleased. A project without a live service ships its packages the same way.
 
@@ -89,8 +90,8 @@ discussion; it is never the record of an act. So:
 
 ## Shipping a service
 
-The owner reads the standing `main` → `prod` pull request and merges it with a merge commit; that merge deploys
-nothing. The deploy follows only a push to `publish`, which moves only on the owner's explicit publication
-authorization. Rolling back is a reviewed revert on `main`, shipped the same way.
+The owner reads the standing `main` → `publish` pull request and merges it with a merge commit; that merge is the
+owner's explicit publication authorization, and the deploy follows the push to `publish`. Rolling back is a reviewed
+revert on `main`, shipped the same way.
 Secrets the service itself needs (webhook secrets, keys) are environment secrets the deploy workflow installs, so
 they too are set by a human through the gate and never by the agent.

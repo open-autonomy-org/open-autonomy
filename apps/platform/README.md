@@ -93,7 +93,7 @@ live while a session runs.
 ## Admin
 
 Every admin route takes `x-admin-token` and is reached only through the `admin` GitHub workflow, which runs only on
-the owner's own dispatch from `prod`: `status`, `reset-daily`, `accounts/:id/{mint,grant,accrue,sync,
+the owner's own dispatch from `publish`: `status`, `reset-daily`, `accounts/:id/{mint,grant,accrue,sync,
 profile,moderate,keys}`, `accounts/:id/sessions/:key` (DELETE), `coupons`, `keys/:kid/revoke`.
 
 ## Configuration

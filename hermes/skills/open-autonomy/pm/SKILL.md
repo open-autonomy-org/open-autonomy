@@ -186,7 +186,7 @@ or approve the PR from the authoring session. Preserve the worktree until review
 ## Plan releases deliberately
 
 Pull requests into `main` are the fleet's own and never go to a person. The Release is the one standing pull request
-titled Release, from `main` to `prod`: everything landed on `main` compounds onto it, and the owner's approval and
+titled Release, from `main` to `publish`: everything landed on `main` compounds onto it, and the owner's approval and
 merge of it is what ships (`.open-autonomy/PRODUCTION.md`). It is the last step before the owner is contacted, and
 the only one: never ask the owner to approve, open, tag or wait for anything else.
 
@@ -258,8 +258,9 @@ execution. PM coordinates; it doesn't implement.
   merely to clear a warning. Preserve unresolved failures and contact the owner through the agreed path.
 - Retry explained transient blocks once per scrum. Preserve human, capability and scheduled holds until
   their evidence arrives. Inspect stale running/review tasks; don't blindly release live work.
-- Run `bun .open-autonomy/maintain.ts ship`: it keeps the Release open while `main` is ahead of `prod`, and puts
-  the package on it once the section requests review. After the owner's merge, verify what shipped.
+- Run `bun .open-autonomy/maintain.ts ship`: it keeps the Release open while `main` is ahead of `publish`, and puts
+  the package on it once the section requests review. It never merges the Release or pushes to `publish`. After the
+  owner's merge, verify what shipped.
 - Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
   link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
 - Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for kit maintenance. The upgrade merges the
