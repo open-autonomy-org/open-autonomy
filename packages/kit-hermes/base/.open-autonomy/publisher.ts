@@ -44,7 +44,7 @@ import type { SupercodeHarnessClient, SessionDescriptor, HarnessRun } from '@vol
 import { harnessSdkModule, orchestratorEntry, supercodeBin, supercodeCommand, machineNode } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
 const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
-import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
+import { ROADMAP_SCHEMA, itemTime, linkOf, linksIn, normalizeRoadmap, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
 import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, TranscriptPublisher, turnsOf, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
@@ -485,7 +485,7 @@ function commitOf(t: BoardTask): string | undefined {
 let nativeTasks: BoardTask[] = [];
 // Every task on the board, whoever publishes it: a session is routed by the card it serves.
 let boardTasksAll: BoardTask[] = [];
-let timelineDigest = '';
+let timelineDigest = '', timelineBounded = -1;
 async function board(): Promise<RoadmapItem[] | undefined> {
   // This app's cache is rebuilt only from the retained source stream. An organization's board has no root profile's
   // tasks: every card is a profile's (docs/decisions/0017), and a project's reporter publishes its tenant's.
@@ -661,8 +661,31 @@ async function timeline(present: RoadmapItem[] | undefined): Promise<void> {
   const items = organization ? present : fold(present, changelogItems(await mainFile('CHANGELOG.md'), cfg.account), roadmapItems(await mainFile('ROADMAP.md')));
   const digest = JSON.stringify(items);
   if (digest === timelineDigest) return;
-  await publication.timeline({ schema: ROADMAP_SCHEMA, items }, 'hermes', 'reporter', oa);
+  const bounded = timelineWindow(items);
+  if (bounded.length < items.length && bounded.length !== timelineBounded) log(`timeline: ${bounded.length} of ${items.length} items (every present and future item, then the most recently done that fit)`);
+  timelineBounded = bounded.length;
+  await publication.timeline({ schema: ROADMAP_SCHEMA, items: bounded }, 'hermes', 'reporter', oa);
   timelineDigest = digest;
+}
+// An account holds one timeline, and the platform bounds it. normalizeRoadmap, which the SDK and the platform both apply,
+// keeps at most 2000 items, and the publication refuses a timeline it would cut (publication.ts). The platform stores a
+// revision (the roadmap and its changes) as one Durable Object value, whose size is bounded, so the roadmap is held
+// under 900 kB. That value's bound is the storage's documented limit, not one measured here. A board larger than either
+// bound publishes every present and future item, then its past from the most recently done back as far as fits; older
+// past items stay on the board but not on the account's timeline.
+const TIMELINE_ITEMS = 2000, TIMELINE_BYTES = 900_000;
+function timelineWindow(items: RoadmapItem[]): RoadmapItem[] {
+  const kept = new Set<RoadmapItem>();
+  let bytes = 0;
+  const fits = (item: RoadmapItem): boolean => {
+    const size = JSON.stringify(normalizeRoadmap({ schema: ROADMAP_SCHEMA, items: [item] })?.items[0] ?? item).length + 1;
+    if (kept.size >= TIMELINE_ITEMS || bytes + size > TIMELINE_BYTES) return false;
+    kept.add(item); bytes += size;
+    return true;
+  };
+  for (const item of items) if (item.tense !== 'past' && !fits(item)) throw new Error(`Timeline present and future exceed the platform's bound (${TIMELINE_ITEMS} items, ${TIMELINE_BYTES} bytes); publication remains pending`);
+  for (const item of items.filter((i) => i.tense === 'past').sort((a, b) => itemTime(b) - itemTime(a))) if (!fits(item)) break;
+  return items.filter((item) => kept.has(item));
 }
 let docsDigest = '', setupDigest = '';
 // The project's "about" is the committed document its config names (`about: <path>`); with none named there is none.
