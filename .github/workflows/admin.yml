@@ -1,5 +1,5 @@
 name: Admin
-# The platform's privileged operations, done through GitHub and nowhere else, dispatched `--ref prod` by the owner
+# The platform's privileged operations, done through GitHub and nowhere else, dispatched `--ref publish` by the owner
 # alone: the job runs only when the owner's own account dispatched it, so neither the project's App (which may dispatch
 # workflows) nor a workflow's token can choose its inputs, and the admin token is never loaded for anyone else. The
 # token lives only in the `production` environment's secrets (and in Cloudflare, as the worker's own secret).

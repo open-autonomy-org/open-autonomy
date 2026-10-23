@@ -13,10 +13,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   version (`release.yml`) and publishing the docs (`pages.yml`) run only on a push to `publish`, the dedicated
   publication branch, which moves only on the owner's explicit publication authorization; deploys and releases are
   recorded as `deploy-v*` and `release-v*` tags. A merge to `main` never advances `publish` and never triggers
-  publication, and the standing `main` → `prod` pull request publishes nothing; `admin.yml` is dispatched
-  `--ref prod`. The `production` environment never admits `main`, and `prod` moves only by a merged pull request the
-  `owners` team (the owner) has approved, so the agent's `main` never runs with a secret. No machine holds a deploy or
-  admin token.
+  publication; `admin.yml` is dispatched `--ref publish`. The `production` environment admits `publish` alone, and
+  `publish` moves only by the owner's merge of the standing `main` → `publish` Release pull request (the
+  `publish-protected` ruleset), so the agent's `main` never runs with a secret. No machine holds a deploy or admin
+  token.
 - `packages/sdk/` — `@open-autonomy/sdk`: the roadmap codec, the stream client, the key helpers; its README
   is the wire any language can speak.
 - `packages/kit-hermes/` — `create-open-autonomy`: the Hermes kit. `create`, `adopt`, `check`, `upgrade`. A
@@ -102,7 +102,7 @@ accepted decision records; conflicting directions require a sourced proposal and
 The projects build themselves: they land to `main`, review their own handoffs, and ask when a human must act. Two
 kinds of pull request, never confused. Pull requests into `main` are the agents' own: written, independently reviewed
 and merged by agents, including `.github/` changes, and never routed to a human. The Release pull request is the one
-standing pull request from `main` to `prod`; whatever has landed on `main` compounds onto it, and it is the owner's.
+standing pull request from `main` to `publish`; whatever has landed on `main` compounds onto it, and it is the owner's.
 A human owns two acts, both irreversible: reading a money or auth diff before it ships (unsure means not shipped),
 and shipping, by reading the Release and merging it (`apps/platform/DEPLOY.md`). The Release is the last step before
 the owner is contacted (owner ruling, 2026-09-25: "think about each release as the last step before you need to

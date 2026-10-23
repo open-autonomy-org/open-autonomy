@@ -1,8 +1,9 @@
 name: Deploy platform
 # Production deploy of the platform worker (apps/platform).
-#  - Fires ONLY on a push to `publish`, the dedicated publication branch, which moves only on the owner's explicit
-#    publication authorization. A merge to `main` never advances `publish` and never deploys; `prod` deploys nothing.
-#    The `production` environment must admit `publish` for the deploy to run. Each deploy is recorded as a `deploy-v*`
+#  - Fires ONLY on a push to `publish`, the dedicated publication branch, which moves only when the owner merges the
+#    standing main → publish Release pull request, the owner's explicit publication authorization (`publish-protected`).
+#    A merge to `main` never advances `publish` and never deploys. The `production` environment admits `publish` alone.
+#    Each deploy is recorded as a `deploy-v*`
 #    tag.
 #  - Egress is locked to npm + Cloudflare, so the scoped deploy token cannot leave to any other host. The
 #    token is scoped to Workers-edit on this one worker.

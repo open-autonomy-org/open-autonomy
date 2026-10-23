@@ -7,7 +7,7 @@
 - Nothing pushes to `main`. Push a `land/<topic>` branch (or `agent/<task id>` for agent work); the landing
   workflow opens its PR. An independent review judges its current head, and the author merges it once that
   review passes; a newer head needs a new review. Human approval is reserved for release. Never merge unreviewed.
-- Deploys and releases happen when the owner merges the one Release pull request (`main` → `prod`); admin operations
+- Deploys and releases happen when the owner merges the one Release pull request (`main` → `publish`); admin operations
   run only on the owner's own dispatch (`apps/platform/DEPLOY.md`). No machine holds a deploy or admin token.
 - `hermes/`, `container/` and `.open-autonomy/` in this repository come from the Hermes kit
   (`create-open-autonomy upgrade .`); a kit change is made in `packages/kit-hermes/base` or a skew under `packages/kit-hermes/skews` and applied.

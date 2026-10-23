@@ -41,6 +41,7 @@ Every model call is metered and public. Read before writing, manually verify the
 Be direct: what changed, what is verified and what remains. Don't loop on an unexplained failure.
 
 PM owns release planning: one sourced release card, a coherent scope and a version under project
-policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `prod`), the only thing a
+policy. Everything landed on `main` compounds onto the one Release pull request (`main` → `publish`), the only thing a
 person is asked about. A merge or a date is not a release: when the Release is finished and verified, PM tells the
-owner once, and the owner's approval and merge ship it. See `.open-autonomy/PRODUCTION.md`.
+owner once, and the owner's approval and merge, the explicit publication authorization, ship it. See
+`.open-autonomy/PRODUCTION.md`.
