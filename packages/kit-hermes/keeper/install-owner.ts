@@ -170,8 +170,14 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const respond = (work: Promise<unknown>) => { void work.then(result => { if (!socket.destroyed) socket.end(JSON.stringify({ result }) + '\n'); },
         error => { if (!socket.destroyed) socket.end(JSON.stringify({ error: error.message }) + '\n'); }); };
       if (request.action === 'status') return respond(Promise.resolve(status()));
-      if (busy) return respond(Promise.reject(new Error('a kit transition is in progress; read status')));
-      busy = control(request, progress); respond(busy); void busy.catch(() => {}).finally(() => { busy = null; wake(); });
+      // A rollback of the held transaction waits behind the transition in flight (its own bound ends it) and says so,
+      // so recovery after a lost coordinator is never refused for arriving while the kit was still activating.
+      const behind = busy && ['rollback', 'abort'].includes(request.action) && pending?.id === request.transaction ? busy : null;
+      if (busy && !behind) return respond(Promise.reject(new Error('a kit transition is in progress; read status')));
+      let narrate: ReturnType<typeof setInterval> | undefined;
+      if (behind) { progress('awaiting-transition'); narrate = setInterval(() => progress('awaiting-transition'), 5000); }
+      const work: Promise<unknown> = (behind ?? Promise.resolve()).catch(() => {}).then(() => { clearInterval(narrate); return control(request, progress); });
+      busy = work; respond(work); void work.catch(() => {}).finally(() => { if (busy === work) busy = null; wake(); });
     });
     socket.on('error', () => {});
   });

@@ -27,7 +27,9 @@ retained closure instead of a global npm directory that installation can replace
 Before commit, failure restores and reads back the previous source ledger, machine and board selections before
 predecessor kits restart. A failed kit candidate retains its reservation for that coordinated rollback, including
 after its owner restarts; it never independently restarts an old kit against successor native inputs. The reservation
-clears only after its predecessor serves. Retained databases
+clears only after its predecessor serves. A rollback that arrives while the kit is still activating waits behind that
+bounded transition instead of being refused, so the machine owner's recovery after a lost coordinator always lands.
+Retained databases
 keep all committed rows; rollback never copies old storage over them. Board storage-code changes and mail schema changes
 refuse before transfer until a compatible protocol is qualified. Finalization after commit is idempotent cleanup of
 that completed selection, retained in the recovery journal when incomplete.
