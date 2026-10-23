@@ -90,8 +90,10 @@ if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy
 const SDK_FILES = ['client.ts', 'roadmap.ts', 'redaction.ts', 'drivers.ts', 'team.ts', 'seams.ts', 'statements.ts'];
 
 // Every base file, then every file of the skew's lineage over it, rendered. Placeholders are `__PROJECT__`, `__ACCOUNT__`
-// (and `__ACCOUNT_ENC__`, the account as a URL path segment, and `__OWNER__`, the account's owner); binary-looking files pass through untouched. A
-// substitution is identical in every render with the same parameters, so it never conflicts in an upgrade.
+// (and `__ACCOUNT_ENC__`, the account as a URL path segment, `__OWNER__`, the account's owner, and `__KIT_VERSION__`, the
+// version rendering it, which the host package pins); binary-looking files pass through untouched. A
+// parameter substitution is identical in every render with the same parameters, so it never conflicts in an upgrade;
+// the kit version differs between kits, so its pin moves as any kit change does.
 export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
@@ -103,7 +105,7 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
     const out_rel = rel === '_gitignore' ? '.gitignore' : rel;
-    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]));
+    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]).replaceAll('__KIT_VERSION__', KIT.version));
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
