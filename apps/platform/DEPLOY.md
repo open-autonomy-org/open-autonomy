@@ -1,15 +1,17 @@
 # Deploying the platform
 
-Deploys and admin operations happen through GitHub only, and only from the `prod` branch: the `production`
-environment admits `prod` and nothing else (never `main`), so the workflow that holds a secret is always one the
-owner shipped, never the one the agent last landed. The PM's `maintain.ts ship` keeps one pull request open from `main` to `prod`; it
+Deploys and admin operations happen through GitHub only. Deploys and publication run only on a push to `publish`,
+the dedicated publication branch, which moves only on the owner's explicit publication authorization; a merge to
+`main` never advances `publish` and never triggers publication, and a push to `prod` deploys and publishes nothing.
+The `production` environment admits the owner's branches and never `main`, so the workflow that holds a secret is
+always one the owner authorized, never the one the agent last landed. The PM's `maintain.ts ship` keeps one pull request open from `main` to `prod`; it
 grows as `main` moves, so changes compound until the owner reads the whole diff and merges it (a merge commit, so
 `prod` never drifts from `main`). The `prod` ruleset allows no update but a merged pull request that the `owners`
-team (the owner) has approved, with no bypass: that approval is the owner's act, and the merge follows it. On the
-merge, `deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`, and `release.yml` publishes every
+team (the owner) has approved, with no bypass; that merge deploys and publishes nothing. On a push to `publish`,
+`deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`, and `release.yml` publishes every
 package version not yet on npm, recording a new kit version as a `release-v<version>` tag and GitHub release.
 `admin.yml` (money and key operations) is dispatched `--ref prod`. No machine holds a deploy or admin token, and no
-agent can move `prod`.
+agent can move `prod` or advance `publish`.
 
 ## What survives a deploy
 

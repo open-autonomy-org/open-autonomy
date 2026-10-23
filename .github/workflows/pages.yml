@@ -1,17 +1,13 @@
 name: Publish docs
 # The project's docs (docs/) on GitHub Pages, once its team sets the repository's Pages source to "GitHub Actions"
-# (hermes/skills/open-autonomy/front-door). A publish, never a gate: nothing waits on it. A merge that auto-merge makes
-# with the workflow token starts no workflow, so an hourly run publishes what such merges landed; a person's merge
-# publishes at once. Until Pages is set to Actions, or while there is no docs/index, a run stops at the check: no
-# build, and no deployment recorded. In a private repository each hourly check bills Actions minutes; its team may
-# thin the schedule.
+# (hermes/skills/open-autonomy/front-door). A publish, never a gate: nothing waits on it. It runs only on a push to
+# `publish`, the dedicated publication branch, which moves only on the owner's explicit publication authorization; a
+# merge to `main` never publishes. Until Pages is set to Actions, or while there is no docs/index, a run stops at the
+# check: no build, and no deployment recorded.
 on:
   push:
-    branches: [main]
+    branches: [publish]
     paths: ['docs/**']
-  schedule:
-    - cron: '17 * * * *'
-  workflow_dispatch:
 # Each job holds only what it uses: the check and the build read Pages' settings, and only the deploy writes to Pages
 # and mints the token it proves itself with.
 permissions:
