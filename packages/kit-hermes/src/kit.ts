@@ -49,7 +49,9 @@ export function validateSkew(s: unknown): Skew {
 // its board seed, its schedule, and any skill of its own outside hermes/skills/open-autonomy/ (the kit's shared skills).
 // The agent setup (.open-autonomy/agent.json, docs/decisions/0007) is kit-owned: the kit's changes reach it by the
 // three-way merge, the project's own edits kept. Generated private-state ignore rules use that same merge.
-const OWNED = [/^\.gitignore$/, /^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/(agent\.json|agent\.schema\.json|agent\.ts|native-runtime\.ts|native-setup\.ts|owner-control\.ts|publication\.ts|publication-operator\.ts|PUBLICATION\.md|publisher\.ts|source-events\.ts|mint-key\.ts|start\.ts|enroll\.ts|install-runtime\.ts|machine-supercode\.ts|usage\.ts|fleet\.ts|host\.ts|container(?:-home|-process|-treasurer)?\.ts|community\.ts|hookline\.ts|maintain\.ts|scrum\.ts|valve\.ts|credentials\.ts|codex-auth\.ts|reporting\.ts|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
+// Every program the kit ships in .open-autonomy/ is kit-owned, so an upgraded program never imports one left behind;
+// a project's own program there is in no template and is never touched.
+const OWNED = [/^\.gitignore$/, /^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/([^/]+\.ts$|agent\.json|agent\.schema\.json|PUBLICATION\.md|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -88,8 +90,10 @@ if (below(sdkVersion, SDK_MIN)) throw new Error(`This kit vendors @open-autonomy
 const SDK_FILES = ['client.ts', 'roadmap.ts', 'redaction.ts', 'drivers.ts', 'team.ts', 'seams.ts', 'statements.ts'];
 
 // Every base file, then every file of the skew's lineage over it, rendered. Placeholders are `__PROJECT__`, `__ACCOUNT__`
-// (and `__ACCOUNT_ENC__`, the account as a URL path segment, and `__OWNER__`, the account's owner); binary-looking files pass through untouched. A
-// substitution is identical in every render with the same parameters, so it never conflicts in an upgrade.
+// (and `__ACCOUNT_ENC__`, the account as a URL path segment, `__OWNER__`, the account's owner, and `__KIT_VERSION__`, the
+// version rendering it, which the host package pins); binary-looking files pass through untouched. A
+// parameter substitution is identical in every render with the same parameters, so it never conflicts in an upgrade;
+// the kit version differs between kits, so its pin moves as any kit change does.
 export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
@@ -101,7 +105,7 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
     const out_rel = rel === '_gitignore' ? '.gitignore' : rel;
-    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]));
+    const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]).replaceAll('__KIT_VERSION__', KIT.version));
     out.set(out_rel, rendered);
   }
   for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));

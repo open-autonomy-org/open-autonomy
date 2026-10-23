@@ -35,7 +35,7 @@ import { spawn as spawnCommand } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import type { SupercodeHarnessClient, SessionDescriptor, HarnessRun } from '@volter/supercode-harness-sdk';
-import { harnessSdkModule, orchestratorEntry, supercodeBin } from './machine-supercode.ts';
+import { harnessSdkModule, orchestratorEntry, supercodeBin, supercodeCommand, machineNode } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
 const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
@@ -160,7 +160,7 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   return work;
 }
 const supercode = container ? (process.env.SUPERCODE_BIN ?? 'supercode') : supercodeBin();
-const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
+const reader = container ? inContainer([supercode, 'harness', 'serve']) : supercodeCommand(['harness', 'serve'], supercode);
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : { SUPERCODE_HOME: home }) } as Record<string, string>;
 const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
@@ -661,7 +661,7 @@ sc.on('sessionIndexEvent', ev => {
 const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
   // The orchestrator the start runs (a review World's branch build), else the machine's.
-  : ['node',orchestratorEntry(),'workflow','events','--root',home,'--json'];
+  : [machineNode(),orchestratorEntry(),'workflow','events','--root',home,'--json'];
 const source=activeSource=await retryStartup('source cache',()=>new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:nativeEnvironment,
   sourceContextId:publication.sourceContextId,storeContext:board=>publication.storeContext(board),allowLegacyUpgrade:publication.legacyAdopted,forceSnapshot:publication.requiresSnapshot,

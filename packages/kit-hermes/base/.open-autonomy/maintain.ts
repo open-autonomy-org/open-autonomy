@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const project = resolve(import.meta.dir, '..');
+const project = resolve(process.env.OPEN_AUTONOMY_PROJECT_SOURCE ?? resolve(import.meta.dir, '..'));
 const home = process.env.HERMES_HOME;
 if (!home) throw new Error('maintenance requires HERMES_HOME from the running stack');
 const command = process.argv[2] ?? 'status';
@@ -146,11 +146,22 @@ if (command === 'ship') {
   const moved = !!runningRecord.revision && runningRecord.revision !== main
     && git('diff', '--name-only', runningRecord.revision, main).split('\n').some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'));
   if (running !== landed || moved) {
-    // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked changes
-    // are a killed attempt's work.
-    if (git('status', '--porcelain', '--untracked-files=no')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
-    writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed, revision: main }));
-    console.log(`${moved ? `Main moved to ${main.slice(0, 8)}` : `Kit ${landed} landed`}; the keeper will drain the runtime and restart the complete stack onto it.`);
+    // Prepared native installs use the same whole-machine transaction as a source move. The serving checkout and
+    // dependency tree are never changed in place. The native owner inventories every registered board and kit.
+    if (!existsSync(resolve(home, 'kit-install.json'))) throw new Error('this install needs its separately authorized first adoption before managed upgrades; no restart was requested');
+    const { machineSupercode, supercodeCommand } = await import('./machine-supercode.ts');
+    const machine = machineSupercode();
+    const { machinePublishedBinding } = await import('./install-runtime.ts');
+    const published = machinePublishedBinding();
+    const staged = published ? null : JSON.parse(run(supercodeCommand(['source', 'stage'], machine.bin)));
+    if (!published && typeof staged?.candidate !== 'string') throw new Error('source preparation returned no candidate; the serving install was preserved');
+    const manifest = resolve(home, `kit-upgrade-${main.slice(0, 12)}.json`);
+    writeFileSync(manifest, JSON.stringify({ version: 1, kits: [{ home, project, revision: main }] }) + '\n', { mode: 0o600 });
+    // Activation is admitted by the retained owner. Ending this maintenance caller cannot stop the transaction.
+    const activated = Bun.spawn({ cmd: supercodeCommand(published ? ['teams', 'machine', 'upgrade', '--action', 'install', '--release', published.receipt, '--installs', manifest]
+      : ['source', 'activate', staged.candidate, '--installs', manifest], machine.bin),
+      cwd: project, env: process.env, stdio: ['ignore', 'inherit', 'inherit'] });
+    if (await activated.exited !== 0) throw new Error('the machine upgrade returned no success; read its transaction status before retrying');
     process.exit(0);
   }
   console.log(`The stack already runs kit ${landed}${runningRecord.revision ? ` and main's ${content}/ and .open-autonomy/ as of ${runningRecord.revision.slice(0, 8)}` : ''}.`);

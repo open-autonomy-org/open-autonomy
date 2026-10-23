@@ -44,8 +44,12 @@
 //   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { machineSupercode } from '../base/.open-autonomy/machine-supercode.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
+import { serveInstallOwner } from './install-owner.ts';
+import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
+import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
+import { ensureCodexService } from './codex-service-client.ts';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -86,9 +90,15 @@ const loadedKeeper = readFileSync(import.meta.path, 'utf8');
 // layers below handle all three, so none of them takes the default action that ends one process alone and leaves its
 // children running with no one above them.
 const stopSignals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
-// Hermes drains active turns and exits 75 for an in-band restart. Restart the complete
-// kit entrypoint so a landed upgrade also refreshes the home, valve and reporter.
-if (!argv.includes('--stack-child')) {
+// The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
+// checkout's directory name: two projects checked out as `project` must not share one home.
+const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
+const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
+const initialSetup = existsSync(resolve(project, '.open-autonomy/agent.json')) ? readAgent(project) : null;
+const initialKit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
+const retainedInstall = !arg('--as') && process.platform !== 'win32' && (initialKit.kit === 'ir' || (initialSetup && agentHarness(initialSetup) !== 'hermes'));
+if (retainedInstall && !argv.includes('--stack-child')) process.exit(await serveInstallOwner({ project, home, argv }));
+if (!retainedInstall && !argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
   // The stack below stops on the same signal and exits once its children have; this process leaves when it does.
@@ -102,10 +112,8 @@ if (!argv.includes('--stack-child')) {
   }
   process.exit(0);
 }
-// The home's default is named by the project's account (owner/repo from .open-autonomy/config.yaml), never by the
-// checkout's directory name: two projects checked out as `project` must not share one home.
-const account = /^account:\s*(\S+)/m.exec(existsSync(resolve(project, '.open-autonomy', 'config.yaml')) ? readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8') : '')?.[1];
-const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(), '.local', 'state', 'open-autonomy', ...(account ?? basename(project)).split('/'), 'home'));
+const prepared = process.env.OPEN_AUTONOMY_INSTALL_RECEIPT ? readInstall(process.env.OPEN_AUTONOMY_INSTALL_RECEIPT, home) : null;
+if (retainedInstall && (!prepared || prepared.project !== realpathSync(project))) throw new Error('native kit stacks start only from their owned prepared install receipt');
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
 const developerKey = resolve(secrets, 'agent.env');
 if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
@@ -159,7 +167,17 @@ const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
 // no command — and only waits for what it already started to exit.
 let ending = false;
-let nativeGatewayReady = false;
+let nativeGatewayReady = false, stackConfigured = false;
+const publishKit = (value: Record<string, unknown>) => {
+  const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
+  if (!ending && prepared && file) {
+    const temporary = `${file}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ ...value, pid: process.pid, receipt: prepared.receipt }) + '\n', { mode: 0o600 });
+    renameSync(temporary, file);
+  }
+};
+const publishReady = () => { if (stackConfigured && nativeGatewayReady) publishKit({ ready: true }); };
+publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 let restartAsked = false;
 process.on('exit', () => {
   for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
@@ -170,10 +188,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
-    // The board's dispatcher ends cleanly (0) when a newer orchestrator is installed under it, for its keeper to start the
-    // new one (supercode's `workflow serve`): this start is that keeper, so only the dispatcher restarts, not the stack.
     if (name === 'board' && code === 0) {
-      say(`board ended (0) for a newer orchestrator; the rest keeps running, the board returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
@@ -224,11 +239,13 @@ async function command(cmd: string[], opts: { cwd: string; env: Record<string, s
   await halted();
   const proc = Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   helpers.add(proc);
+  publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid, deadline_ms: Date.now() + opts.boundMs + 5000 });
   let overran = false;
   const bound = setTimeout(() => { overran = true; proc.kill(constants.signals.SIGTERM); setTimeout(() => proc.kill('SIGKILL'), 5000).unref(); }, opts.boundMs);
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   clearTimeout(bound);
   helpers.delete(proc);
+  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
   await halted();
   return overran ? { exitCode: null, stdout, stderr: `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}${cmd.join(' ')}: no answer within ${opts.boundMs / 1000} s` } : { exitCode, stdout, stderr };
 }
@@ -252,6 +269,8 @@ if (existsSync(deployKey)) {
 
 // 2. The checkout.
 let committedFrom: string | undefined;
+if (prepared) say(`prepared project ${project} at ${prepared.revision}`);
+else {
 if (!existsSync(resolve(project, '.git'))) {
   if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
   mkdirSync(project, { recursive: true }); own(project);
@@ -286,6 +305,9 @@ if (!existsSync(resolve(project, '.git'))) {
   }
 }
 
+
+}
+
 // Fetching can replace the entry, and a changed package.json installs another kit release, so another keeper. Load
 // the landed code before claiming its version is running, rather than continuing the previous one with a new record.
 const reload = async () => {
@@ -306,8 +328,12 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: host, environment: agentEnv(), registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
+  if (prepared && (want !== prepared.runtimeIdentity || (existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want)) {
+    throw new Error('prepared runtime identity changed; prepare a new install before activation');
+  }
+  if (!prepared) {
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     let install: ReturnType<typeof Bun.spawn> | undefined;
     rmSync(stamp, { force: true });
@@ -320,6 +346,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
     await halted();
     writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`the host's dependencies installed in ${host}`);
+  }
   }
   const keeper = resolve(host, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');
   if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; for (const c of children) c.proc.kill(); process.exit(1); }
@@ -376,7 +403,7 @@ const orchestratorBin = machine.orchestratorEntry;
 // user and reads that login, so the declaration names the route the host already has rather than opening one.
 const ownLogin = (m?: { credential?: string }) => m?.credential === 'harness-login' && !user;
 if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url && !ownLogin(m); })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail), or, on a start as the host's own user, declare the harness's own login (credential harness-login). No services were started.`); process.exit(1); }
-if (onNative && !Bun.which('node')) { console.error(`start: the selected native runtime needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (onNative && !(process.env.SUPERCODE_NODE_BIN || Bun.which('node'))) { console.error(`start: the selected native runtime needs the selected Node runtime (26.8.1 or later for Node Supercode). No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -406,10 +433,16 @@ const kept = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n').fil
 // Keep the host login environment for the valve; only the agent gets an empty Codex home.
 const hostEnvironment = inherited();
 const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex');
-const codexPort = valvePort + 2;
+const codexPort = Number(arg('--codex-proxy-port') ?? valvePort + 2);
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
-if (onCodex && !codexTwin) await codexAccess();
+let codexInstance: string | undefined;
+if (onCodex && !codexTwin) {
+  const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
+  codexInstance = proxy.instance;
+  say(`Codex proxy :${codexPort} serving independently (pid ${proxy.pid}); board shutdown leaves it running`);
+  await codexAccess();
+}
 await halted();
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
@@ -459,8 +492,8 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 // The revision this stack runs: the main the home was rendered from (a dirty checkout's home comes from origin/main too).
 // `maintain.ts restart` measures a move of main from it.
-const startedRevision = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
-writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version, ...(startedRevision ? { revision: startedRevision } : {}) }));
+const startedRevision = prepared?.revision ?? Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version, revision: startedRevision, receipt: prepared?.receipt, sourceProject: prepared?.sourceProject }));
 const homeReadme = resolve(home, 'README.md');
 // The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
 // Hermes kit's does; the IR kit's home is profiles and a board).
@@ -484,8 +517,7 @@ if (existsSync(resolve(home, 'profiles', 'treasurer')) && (payKey || existsSync(
   writeFileSync(payEnv, `${[...keptPay, ...(payKey ? [`OPEN_AUTONOMY_PAY_KEY=${payKey}`] : [])].join('\n')}\n`, { mode: 0o600 });
   own(payEnv);
 }
-// Both launch modes use the host Codex login. A model twin never starts real authentication.
-if (onCodex && !codexTwin) keys.push('--codex', String(codexPort));
+// Bare mode's Codex proxy has its own lifetime (above); it is never a valve child of this board generation.
 // The agent's GitHub identities: the valve mints each app's own installation tokens and serves its desk's routes on its own port.
 for (const record of githubRecords) keys.push('--github-app', `${record.file}:${record.port}`);
 // An organization's projects (docs/decisions/0017): a project this install publishes for has its key in this install's
@@ -559,6 +591,8 @@ const stopStart = (why: string): never => {
   for (const c of children) c.proc.kill();
   process.exit(1);
 };
+const boardOptions = { home, entry: orchestratorBin, native: supercodeBin, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, command: drop };
+const servingBoard = prepared && onNative && existsSync(resolve(home, 'workflow.yaml')) ? await retainedBoard(boardOptions) : null;
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(home, 'workflow.yaml'))) {
   const checkout = resolve(home, '..', 'board');
@@ -583,7 +617,13 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   const declares = ['--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit',
     ...(ours.length === 1 ? ['--manager', ours[0]] : []),
     ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])];
-  const init = Bun.spawnSync({ cmd: drop([Bun.which('node')!, orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
+  if (servingBoard) {
+    const observed = await boardDeclaration(boardOptions);
+    if (observed.backing !== 'ztrack' || resolve(observed.declared?.document ?? '/') !== resolve(checkout, boardSetup.document))
+      stopStart('the retained board differs from the repository declaration');
+    say('board: retained native owner and declared ztrack backing');
+  } else {
+  const init = Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
     cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   let answer: { kept?: boolean; path?: string } | undefined;
   try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
@@ -592,6 +632,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
     stopStart(`the board its repository declares cannot be made: ${why}`);
   }
   say(`board: ${answer!.kept ? 'kept' : 'made'} on the ztrack backing (${answer!.path ?? home})`);
+  }
 }
 let reportersStarted = false;
 function startReporters(): void {
@@ -630,12 +671,17 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
+  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
 }
-if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+if (boardDeclared && prepared) {
+  publishKit({ progress: 'kit-command', command: 'native-board-start', deadline_ms: Date.now() + 125000 });
+  await acquireBoard(boardOptions);
+  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+}
+else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
 // its loaded and ready events to that exact owned launch chain, never another
 // home, once-mode output, an arbitrary descendant or a prose log sentence.
@@ -659,7 +705,7 @@ async function nativeReadiness(): Promise<void> {
     } else if (event.event === 'ready' && event.once === undefined && event.pid === loadedPid && Array.isArray(event.connected) && event.connected.every((name: unknown) => typeof name === 'string') && Array.isArray(event.down) && event.down.every((name: unknown) => typeof name === 'string') && Number.isSafeInteger(event.webhook_port) && event.webhook_port >= 0 && event.webhook_port <= 65535 && Number.isSafeInteger(event.tick_ms) && event.tick_ms > 0 && typeof event.restarted === 'boolean') {
       if (!await owned(event.pid) || ending) return;
       nativeGatewayReady = true;
-      startReporters();
+      startReporters(); publishReady();
     }
   };
   try {
@@ -699,7 +745,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'slack.env'));
     const channels = slack.channels?.length ? slack.channels : (creds.SLACK_CHANNELS ?? '').split(',').map((c) => c.trim()).filter(Boolean);
     if (!creds.SLACK_BOT_TOKEN || !creds.SLACK_APP_TOKEN || !channels.length) say(`channel ${name} slack: ${resolve(secrets, 'slack.env')} needs SLACK_BOT_TOKEN, SLACK_APP_TOKEN and the channels (agent.json or SLACK_CHANNELS); not carried`);
-    else spawn(`channel ${name} slack`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
+    else spawn(`channel ${name} slack`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
       '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
   const jira = mailAgent.channel?.jira;
@@ -707,10 +753,14 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'jira.env'));
     const auth: Record<string, string> | undefined = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
     if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
-    else spawn(`channel ${name} jira`, [Bun.which('node')!, orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
+    else spawn(`channel ${name} jira`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
       '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
 }
+// Native prepared stacks move through the coherent machine door. Other existing runtime modes retain their own
+// lifecycle; they cannot be included in a machine handover without an owned readiness protocol.
+if (prepared) { stackConfigured = true; publishReady(); }
+else {
 // The restart this keeper performs on request: the stack drains and starts again, onto whatever the checkout then
 // holds, whatever the board holds (sessions run in their own panes and outlive the stack). Whether to move is not this
 // keeper's to decide: `maintain.ts restart` (run by whoever deploys: a person, a PM's pass, a keep job) fetches main,
@@ -734,6 +784,35 @@ setInterval(() => {
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1);
+}, 5000);
+
+}
+// The native board owner and the Codex supervisor serve independently of this stack, so neither is a child whose exit
+// it sees, and neither returns to its child list. Each is read while the stack serves and acquired again once it is
+// gone (a lost lifetime lock, a crash, a kill): a board or proxy never waits on the next stack start. A board serving
+// another selection is a coordinated handover's, and is refused rather than replaced.
+let watching = false, watchRefusal = '';
+setInterval(() => {
+  if (ending || watching) return;
+  watching = true;
+  void (async () => {
+    if (onCodex && !codexTwin) {
+      const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
+      if (proxy.instance !== codexInstance) say(`Codex proxy :${codexPort} had ended; serving again independently (pid ${proxy.pid})`);
+      codexInstance = proxy.instance;
+    }
+    if (boardDeclared && prepared && !ending && !await boardOwnerAnswers(boardOptions)) {
+      say('native board owner had ended; acquiring it again');
+      await acquireBoard(boardOptions);
+      say('native board owner serving again');
+    }
+    watchRefusal = '';
+  })().catch(error => {
+    // A refusal is said once, not every five seconds while it holds.
+    const line = `independent service not reacquired: ${(error as Error).message}`;
+    if (line !== watchRefusal) say(line);
+    watchRefusal = line;
+  }).finally(() => { watching = false; });
 }, 5000);
 say(`${onNative ? `orchestrator (worker ${harness})` : 'gateway'} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');

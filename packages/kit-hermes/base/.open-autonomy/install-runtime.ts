@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
+import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -33,22 +34,100 @@ function sourceLock(environment: Record<string, string | undefined>): string | u
   return existsSync(file) ? file : undefined;
 }
 
+// Select the explicitly staged complete binding while preparing candidate inputs. Ordinary installs read the
+// primary. Native activation re-verifies the complete graph before any serving selection changes.
+function selectedSource(file: string, environment: Record<string, string | undefined>): any {
+  const primary = readFileSync(file, 'utf8'), current = JSON.parse(primary), named = environment.SUPERCODE_SOURCE_CANDIDATE;
+  if (!named) return sourceJson(current.root, current.binding).parse(primary);
+  const path = realpathSync(named), base = realpathSync(join(dirname(file), 'source', 'handovers'));
+  if (path !== resolve(named) || dirname(dirname(path)) !== base || !path.endsWith('/candidate.json')) throw new Error('candidate source receipt is outside this machine handovers');
+  const receipt = JSON.parse(readFileSync(path, 'utf8'));
+  const codec = sourceJson(receipt.lock.root, receipt.lock.binding), candidate = codec.parse(readFileSync(path, 'utf8')), selected = codec.parse(primary);
+  const same = (binding: any) => ['root','commit','supercode','binding','graph'].every(key => codec.equal(binding?.[key] ?? null, candidate.lock?.[key] ?? null));
+  if (receipt.version !== 1 || receipt.kind !== 'serving-source-candidate' || (!same(selected)
+    && !(selected.serving_handover?.previous_receipt === path && same(selected.serving_handover.previous))
+    && receipt.base_digest !== createHash('sha256').update(primary).digest('hex'))) throw new Error('candidate source no longer matches its primary');
+  return candidate.lock;
+}
+
+export function machineSourceBinding(environment: Record<string, string | undefined> = process.env): any | null {
+  const file = sourceLock(environment);
+  return file ? selectedSource(file, environment) : null;
+}
+
+export function machineSourceReceipt(environment: Record<string, string | undefined>): string | null {
+  const file = sourceLock(environment);
+  if (!file) return null;
+  if (environment.SUPERCODE_SOURCE_CANDIDATE) { selectedSource(file, environment); return realpathSync(environment.SUPERCODE_SOURCE_CANDIDATE); }
+  const text = readFileSync(file, 'utf8'), lock = JSON.parse(text), digest = createHash('sha256').update(text).digest('hex');
+  const selected = sourceProgram(lock);
+  const directory = join(realpathSync(dirname(file)), 'source/handovers', `snapshot-${digest}`), path = join(directory, 'candidate.json');
+  if (!existsSync(path)) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${process.pid}.tmp`;
+    const fields = JSON.stringify({ version: 1, kind: 'serving-source-candidate', base_digest: digest, ...selected });
+    writeFileSync(temporary, fields.slice(0, -1) + ',"lock":' + text + '}\n', { mode: 0o600 });
+    renameSync(temporary, path);
+  }
+  return realpathSync(path);
+}
+
+// Published installs use the same complete retained closure as the native machine owner. A replaced global npm
+// directory is preparation input, never evidence that the serving release changed.
+export function machinePublishedBinding(environment: Record<string, string | undefined> = process.env): any | null {
+  if (sourceLock(environment)) {
+    if (environment.SUPERCODE_RELEASE_RECEIPT) throw new Error('a source-pinned machine cannot select a separate published release');
+    return null;
+  }
+  const home = environment.SUPERCODE_HOME || join(environment.XDG_CONFIG_HOME || join(environment.HOME || homedir(), '.config'), 'supercode');
+  const service = join(environment.SUPERCODE_TEAMS_HOME || join(home, 'teams'), 'service');
+  const primary = join(service, 'active-release.json');
+  let named = environment.SUPERCODE_RELEASE_RECEIPT;
+  if (!named && existsSync(primary)) {
+    const active = JSON.parse(readFileSync(primary, 'utf8'));
+    if (!active.release?.supports_generations) return null;
+    named = active.release.receipt ?? join(dirname(active.release.root), 'retained-release.json');
+  }
+  if (!named) return null;
+  const path = realpathSync(named), receipt = JSON.parse(readFileSync(path, 'utf8'));
+  if (path !== resolve(named) || dirname(dirname(path)) !== realpathSync(join(service, 'releases'))
+    || path !== join(dirname(path), 'retained-release.json') || publishedProgram(receipt) === null || !receipt.supports_generations
+    || receipt.root !== join(dirname(path), 'package')) throw new Error('published release receipt is outside this machine retained releases');
+  const manifest = JSON.parse(readFileSync(join(receipt.root, 'package.json'), 'utf8'));
+  if (manifest.name !== '@volter/supercode' || manifest.version !== receipt.release) throw new Error('retained machine release manifest changed');
+  for (const name of ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams']) {
+    if (!manifest.dependencies?.[name] || JSON.parse(readFileSync(join(receipt.root, 'node_modules', name, 'package.json'), 'utf8')).version !== manifest.dependencies[name])
+      throw new Error(`retained machine release has no exact ${name}`);
+  }
+  const program = publishedProgram(receipt)!;
+  for (const input of [program, receipt.entry, receipt.supervised]) if (typeof input !== 'string' || !realpathSync(input).startsWith(receipt.root + sep)) throw new Error('retained machine input escapes its release');
+  return { ...receipt, program, receipt: path };
+}
+
 // Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
 // on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
   const file = sourceLock(options.environment);
-  if (!file) return [];
-  const lock = JSON.parse(readFileSync(file, 'utf8'));
+  if (!file) {
+    const published = machinePublishedBinding(options.environment);
+    if (!published) return [];
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
+    return ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams'].filter(name => declarations[name]).map(name => ({ name, target: realpathSync(join(published.root, 'node_modules', name)) }));
+  }
+  const lock = selectedSource(file, options.environment);
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
   const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
   const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   return Object.entries(declarations).flatMap(([name, value]) => {
     if (typeof value !== 'string' || !value.startsWith('file:')) return [];
-    const target = realpathSync(resolve(options.directory, value.slice(5)));
+    const matches = Object.values(lock.graph?.instances ?? {}).filter((instance: any) => instance.package === name) as any[];
+    if (matches.length > 1) throw new Error(`Source dependency ${name} needs one exact package instance`);
+    const target = realpathSync(matches.length ? resolve(matches[0].root, matches[0].dir) : resolve(options.directory, value.slice(5)));
     const path = relative(root, target);
-    if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) return [];
+    if (!matches.length && (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path))) return [];
     if (!/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name) || name === '.' || name === '..' ||
         JSON.parse(readFileSync(join(target, 'package.json'), 'utf8')).name !== name) {
       throw new Error(`Source-linked dependency ${name} must name its package at ${target}`);
@@ -66,7 +145,13 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   hash.update(options.registry ?? 'https://registry.npmjs.org');
   const lock = sourceLock(options.environment ?? process.env);
   // A pin move, or adopting the linked-install policy, invalidates stamps made for copies too.
-  if (lock) hash.update('source-lock:file-links-v1').update(readFileSync(lock));
+  if (lock) { const selected = selectedSource(lock, options.environment ?? process.env);
+    const codec = sourceJson(selected.root, selected.binding);
+    hash.update('source-lock:file-links-v3');
+    for (const key of ['root','commit','supercode','binding','graph']) hash.update(key).update(codec.stringify(selected[key] ?? null));
+  }
+  const published = machinePublishedBinding(options.environment ?? process.env);
+  if (published) hash.update('retained-release-v3').update(readFileSync(published.receipt));
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }
@@ -82,8 +167,8 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const packed = Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']);
     if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
     const manifest = JSON.parse(packed.stdout.toString());
-    if (!/^@volter\/[a-z0-9-]+$/.test(manifest.name) || typeof manifest.version !== 'string') {
-      throw new Error('Runtime archive must be a versioned @volter package');
+    if ((manifest.name !== 'create-open-autonomy' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
+      throw new Error('Runtime archive must be a versioned kit or @volter package');
     }
     if (artifacts.has(manifest.name)) throw new Error(`Duplicate candidate package ${manifest.name}`);
     const bytes = readFileSync(path);
@@ -99,7 +184,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       for (const [name, artifact] of artifacts) {
-        const tarPath = `/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
+        const tarPath = `/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
         if (pathname === tarPath) return new Response(request.method === 'HEAD' ? null : new Uint8Array(artifact.bytes),
           { headers: { 'content-type': 'application/octet-stream' } });
         if (pathname === `/${name}` || pathname === `/${name}/${artifact.manifest.version}`) {
@@ -149,7 +234,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
       const original = readFileSync(lockPath, 'utf8');
       let normalized = original;
       for (const [name, artifact] of artifacts) {
-        const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
+        const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
         normalized = normalized.replaceAll(JSON.stringify(url), '""');
       }
       if (normalized !== original) writeFileSync(lockPath, normalized);
