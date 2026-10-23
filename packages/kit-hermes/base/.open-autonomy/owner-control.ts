@@ -87,7 +87,7 @@ function audit(value: ControlReconciliationAudit): ControlReconciliationAudit {
   return copy(value);
 }
 export function validateControlSnapshot(value: any, scope: ControlScope): ControlDataV3 {
-  if (value?.version !== 3 || value.account !== scope.account || value.apiBase !== scope.apiBase || !same(value.nativeRuntime,scope.nativeRuntime) || !value.seed || !['empty','reporter-v2','reporter-v3'].includes(value.seed.kind) || !nonempty(value.seed.basis) || (value.seed.kind === 'empty' ? value.seed.reporterDigest !== undefined : typeof value.seed.reporterDigest !== 'string' || !digest.test(value.seed.reporterDigest))) throw new Error('Owner control version, scope or seed conflicts');
+  if (value?.version !== 3 || value.account !== scope.account || value.apiBase !== scope.apiBase || !same(value.nativeRuntime,scope.nativeRuntime) || !value.seed || !['empty','reporter-v2','reporter-v3','reporter-v4'].includes(value.seed.kind) || !nonempty(value.seed.basis) || (value.seed.kind === 'empty' ? value.seed.reporterDigest !== undefined : typeof value.seed.reporterDigest !== 'string' || !digest.test(value.seed.reporterDigest))) throw new Error('Owner control version, scope or seed conflicts');
   const jobs = ids(value.paused_jobs), tasks = ids(value.paused_tasks);
   if (!Array.isArray(value.reconciliations) || new Set(value.reconciliations.map((r:any)=>r?.id)).size !== value.reconciliations.length) throw new Error('Owner reconciliation history conflicts');
   return { ...copy(value), paused_jobs:jobs,paused_tasks:tasks,pending_effects:effects(value.pending_effects,jobs,scope),reconciliations:value.reconciliations.map(audit) };
@@ -127,8 +127,8 @@ export class OwnerControlState implements PublicationOwnerLease {
       } else {
         if(!this.ownsLease)throw new Error('Offline reconciliation requires retained canonical control state');
         const prior=existsSync(this.stateFile)?read(this.stateFile):undefined;
-        if(prior && ![2,3].includes(prior.version))throw new Error('Unsupported reporter state for owner seed');
-        if(prior?.version===3){const e=prior.publication?.enrollment;if(!e||e.version!==1||e.account!==scope.account||e.apiBase!==scope.apiBase||!same(e.selectedRuntime,scope.nativeRuntime))throw new Error('Reporter enrollment conflicts with owner control scope');}
+        if(prior && ![2,3,4].includes(prior.version))throw new Error('Unsupported reporter state for owner seed');
+        if(prior?.version===3||prior?.version===4){const e=prior.publication?.enrollment;if(!e||e.version!==1||e.account!==scope.account||e.apiBase!==scope.apiBase||!same(e.selectedRuntime,scope.nativeRuntime))throw new Error('Reporter enrollment conflicts with owner control scope');}
         const jobs=prior?ids(prior.paused_jobs===undefined?[]:prior.paused_jobs):[];
         this.data=validateControlSnapshot({version:3,...scope,paused_jobs:jobs,paused_tasks:prior?ids(prior.paused_tasks===undefined?[]:prior.paused_tasks):[],pending_effects:historicalEffects(jobs),reconciliations:[],seed:{kind:prior?`reporter-v${prior.version}`:'empty',...(prior?{reporterDigest:hash(readFileSync(this.stateFile))}:{}),basis:prior?.version===2?'Selected owner configuration and retained local state/root custody assertion; historical account/runtime provenance is not available':prior?'Matching retained enrollment and owner local custody':'No retained reporter file'}},scope);
         this.save(this.data.paused_jobs,this.data.paused_tasks);

@@ -145,7 +145,8 @@ not evidence of completion. Explicit later custody/rebinding review is separate 
 
 ### Private state, serialization and source acknowledgement
 
-Reporter state advances to version 3, preserving every existing field and adding `publication` with:
+Reporter state advances to version 4 (a retained version 3 is read and rewritten as 4), preserving every existing
+field and adding `publication` with:
 
 ```text
 enrollment: {version:1, account, apiBase, sourceContext, stores,
@@ -157,7 +158,8 @@ pending: [{obligationId, kind, associationKey?, wire, wireDigest, expected?}]
 receipts: [{obligationId, kind, wireDigest, result}]
 ```
 
-The cache advances to version 2. It retains the enrolled source context and rows
+The cache advances to version 3 (a retained version 2, whose pending observation is whole, is read and rewritten as 3).
+It retains the enrolled source context and rows
 `{publicationId,sequence,board,card}`, with original nonempty public publication ID, nonnegative safe-integer
 sequence, nonempty backing selector and opaque card ID. Cache row keys use `J([storeContext,card.id])`, never
 delimiter concatenation. It also retains committed cursor and a pending complete observation/candidate
@@ -299,7 +301,8 @@ inventory is a refusal rather than silent reassociation. Redact `by` before its 
 validate the unchanged source against its existing lowercase forty-character alphabet. An omitted `by` is derived
 from the authenticated key ID by the server, so no client expectation about that value is invented. The current
 publisher explicitly supplies `reporter`; its value is preserved.
-Its `expected` records `{source,by?,roadmap}` and its obligation ID is `oat_` plus `H(wire)`.
+Its expected `{source,by?,roadmap}` is the event's own data, read from its exact retained wire rather than stored
+beside it, and its obligation ID is `oat_` plus `H(wire)`.
 Send one obligation at a time, after its prerequisite note receipts. Require the existing successful revision or
 unchanged result; a returned revision must agree with the expected source and normalized document. For a new
 revision its explicitly supplied `by` must also match; the existing unchanged contract compares document/source by the SDK's

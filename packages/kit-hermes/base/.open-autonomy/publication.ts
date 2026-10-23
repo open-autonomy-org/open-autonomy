@@ -357,11 +357,13 @@ export class PublicationStore {
       const custodyFile = localJSON(localDirectory(options), this.config.custody);
       const custody = privateJSON(custodyFile) as Custody, custodyDigest = retainedDigest(custodyFile);
       this.checkCustody(custody);
-      if (prior && prior.version !== 2 && prior.version !== 3) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
-      if (cache && cache.version !== 1 && cache.version !== 2) throw new Error(`Unsupported source cache version ${cache.version}; retained state was not overwritten`);
+      if (prior && prior.version !== 2 && prior.version !== 3 && prior.version !== 4) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
+      if (cache && cache.version !== 1 && cache.version !== 2 && cache.version !== 3) throw new Error(`Unsupported source cache version ${cache.version}; retained state was not overwritten`);
       this.runtime = prior ? { ...prior } : {};
       delete this.runtime.publication; delete this.runtime.version;
-      if (prior?.version === 3) {
+      // Version 4 holds the prepared-request and timeline-receipt forms below; a version 3 file is read and rewritten in
+      // them, and a publisher that knows only version 3 refuses a version 4 file instead of misreading it.
+      if (prior?.version === 3 || prior?.version === 4) {
         this.data = prior.publication;
         this.checkData();
         this.data.pending = this.data.pending.map(prepared);
@@ -495,7 +497,7 @@ export class PublicationStore {
     const result = this.tail.then(() => { if (this.closed || this.closing) throw new Error('Publication writer closing/closed'); this.assertOwner(); return work(); }); this.tail = result.catch(() => {}); return result;
   }
   saveRuntime(patch: Record<string, unknown>): void { Object.assign(this.runtime, patch); this.save(); }
-  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); this.savedDigest = savePublicationFileChanged(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }, this.savedDigest); }
+  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); this.savedDigest = savePublicationFileChanged(this.options.stateFile, { ...this.runtime, version: 4, publication: this.data }, this.savedDigest); }
   resolveCards(rows: readonly SourceCard[]): void {
     const additions: Association[] = [], seen = new Set<string>();
     for (const row of rows) {

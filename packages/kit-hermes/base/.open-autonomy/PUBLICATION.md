@@ -131,7 +131,7 @@ Signal-permission failure alone supplies no dead-writer proof.
 
 Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
 and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
-version 3 must match retained enrollment. The exact reporter digest and the available custody basis are recorded.
+version 3 or 4 must match retained enrollment. The exact reporter digest and the available custody basis are recorded.
 Legacy version 2 has no historical account/runtime provenance, so its seed records that limitation. Once present,
 the control file is authoritative even when its ownership arrays are empty; old reporter arrays never re-seed it.
 Malformed control ownership or contradictory scope refuses native effects. Control-only operation preserves

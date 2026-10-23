@@ -16,7 +16,7 @@ interface SourceOptions {
 // The pending observation is retained as what it changes in the committed inventory (`cards`): its rows that differ
 // and the keys it removes. The committed inventory and those changes give the exact observation back after a stop.
 interface PendingChanges { sourceContextId: string; proposedCursor: string; changed: SourceCard[]; removed: string[] }
-interface CacheState { version: 2; sourceContextId: string; cursor?: string; cards: SourceCard[]; pending?: PendingChanges; legacyCursor?: string }
+interface CacheState { version: 3; sourceContextId: string; cursor?: string; cards: SourceCard[]; pending?: PendingChanges; legacyCursor?: string }
 interface StreamChild { child: ChildProcess; retire: () => Promise<void> }
 // The public native CLI can launch a Node stream reader. Retire that private
 // command group, rather than treating the wrapper's exit as reader completion.
@@ -96,7 +96,7 @@ export class BoardEventSource {
       if (saved.version === 1) {
         if (!options.allowLegacyUpgrade) throw new Error('Legacy source cache needs explicit publication adoption');
         this.legacyCursor = saved.cursor;
-      } else if (saved.version === 2 && saved.sourceContextId === options.sourceContextId) {
+      } else if ((saved.version === 2 || saved.version === 3) && saved.sourceContextId === options.sourceContextId) {
         if (options.forceSnapshot && !saved.pending) {
           if (!Array.isArray(saved.cards)) throw new Error('Retained source inventory malformed');
           for (const row of saved.cards) this.row(row, false);
@@ -104,7 +104,8 @@ export class BoardEventSource {
         } else { this.rows = this.inventory(saved.cards); this.cursor = saved.cursor; this.legacyCursor = saved.legacyCursor; }
         if (saved.pending) {
           if (saved.pending.sourceContextId !== options.sourceContextId) throw new Error('Pending source context mismatch');
-          this.pending = this.snapshot(Array.isArray(saved.pending.cards) ? saved.pending.cards : this.applied(saved.pending), saved.pending.proposedCursor);
+          // Version 2 retained the pending observation whole; version 3 retains its changes against the inventory.
+          this.pending = this.snapshot(saved.version === 2 ? saved.pending.cards : this.restored(saved.pending), saved.pending.proposedCursor);
         }
       } else throw new Error('Unsupported/mismatched native source cache; retained state was not overwritten');
     }
@@ -142,14 +143,14 @@ export class BoardEventSource {
     }
     return { sourceContextId: snapshot.sourceContextId, proposedCursor: snapshot.proposedCursor, changed, removed: [...this.rows.keys()].filter(key => !keys.has(key)) };
   }
-  private applied(pending: any): SourceCard[] {
+  private restored(pending: any): SourceCard[] {
     if (!Array.isArray(pending?.changed) || !Array.isArray(pending?.removed)) throw new Error('Pending native observation is malformed');
     const next = new Map(this.rows);
     for (const key of pending.removed) if (typeof key !== 'string' || !next.delete(key)) throw new Error('Pending native observation removes an unknown card');
     for (const value of pending.changed) { const row = this.row(value); next.set(this.key(row), row); }
     return [...next.values()];
   }
-  private state(): CacheState { return { version: 2, sourceContextId: this.options.sourceContextId, cards: [...this.rows.values()], ...(this.cursor ? { cursor: this.cursor } : {}), ...(this.pending ? { pending: this.changes(this.pending) } : {}), ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) }; }
+  private state(): CacheState { return { version: 3, sourceContextId: this.options.sourceContextId, cards: [...this.rows.values()], ...(this.cursor ? { cursor: this.cursor } : {}), ...(this.pending ? { pending: this.changes(this.pending) } : {}), ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) }; }
   private write(state: CacheState): void { this.savedDigest = savePublicationFileChanged(this.options.stateFile, state, this.savedDigest); }
   private save(): void { this.write(this.state()); }
   start(): Promise<void> {
@@ -182,7 +183,7 @@ export class BoardEventSource {
         if (!durable) { this.save(); durable = true; }
         await this.options.changed(observation);
         if (this.closed) return;
-        const state: CacheState = { version: 2, sourceContextId: this.options.sourceContextId, cards: [...observation.cards], cursor: observation.proposedCursor, ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) };
+        const state: CacheState = { version: 3, sourceContextId: this.options.sourceContextId, cards: [...observation.cards], cursor: observation.proposedCursor, ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) };
         this.write(state);
         this.rows = this.inventory(observation.cards); this.cursor = observation.proposedCursor; this.pending = undefined;
         this.ready(); return;

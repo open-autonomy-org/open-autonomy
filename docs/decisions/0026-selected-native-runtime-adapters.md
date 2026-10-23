@@ -157,7 +157,7 @@ Manual acceptance must use the actual pinned owning CLI and installed keeper: ow
 
 Owner pause ownership has one canonical private file, `<reporter-state>.control.json`, with version 3, account,
 logical API base, selected native runtime, `paused_jobs` and `paused_tasks`. On its first creation only, an existing
-reporter version 2 or 3 may supply its validated native pause arrays. A version-3 seed must match the selected
+reporter version 2, 3 or 4 may supply its validated native pause arrays. A version-3 or version-4 seed must match the selected
 account, logical API and runtime in its retained enrollment. Version 2 has no account/API/runtime provenance:
 its seed relies on the owner's existing committed configuration and custody of that retained local state file
 and selected root. This is an operator continuity assertion, not authenticated historical scope or detection of
