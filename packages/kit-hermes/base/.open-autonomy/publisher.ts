@@ -17,13 +17,14 @@
 //   attempt's session reference binds a worker to its card, else a unique workspace match
 //   can supply item_id. Ambiguous association leaves item_id absent. Organization sessions
 //   go to the card's primary project; an unassigned session stays on the organization.
-// - completionOf maps recorded completed/failed runs, a done card's last ended attempt and
-//   bindings; an open card's ended attempt is a pause the board may resume, never an end.
-//   One card's attempts on a session are one association; a session several cards name is
-//   refused alone and skipped while every other session publishes. Absent verdicts stay
-//   absent. reporting.ts may close an old OA transcript projection
-//   on detected source rewrite and continue <native-id>~<n>; that boundary is not native
-//   task completion. Silence and source disappearance supply no completion evidence.
+// - completionOf maps recorded completed/failed runs, a closed (done or cancelled) card's
+//   last ended attempt that ran, and bindings; an open card's ended attempt is a pause the
+//   board may resume, never an end. One card's attempts on a session are one association; a
+//   session several cards name is refused alone and skipped while every other session
+//   publishes. Absent verdicts stay absent. A session its card resumed after its published
+//   end (a reopened card) continues as <native-id>~<n>, as does a source rewrite that
+//   reporting.ts detects when it closes an old OA transcript projection; neither boundary is
+//   native task completion. Silence and source disappearance supply no completion evidence.
 // - Review and handoff notes use native effect IDs under the same OA association.
 //   Adopted legacy IDs/markers remain valid; exact requests and full receipts survive retry.
 //   Full attempt topology, native control records and source-only fields are not exported.
@@ -266,14 +267,23 @@ const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-
 // workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
 // The board's attempts on a session name its card. The board may resume a session in later attempts of the same card,
 // so a session is one card's whatever its attempt count: its first attempt launched it (the association's evidence) and
-// its latest (attempts are in order) is the round it serves now or served last. A session several cards name is refused
-// (SessionRefused): it alone stays unpublished, and every other session's publication goes on.
+// its latest that ran (attempts are in order; a resume that failed to spawn never ran) is the round it serves now or
+// served last. A session several cards name is refused (SessionRefused): it alone stays unpublished, and every other
+// session's publication goes on.
 type BoardAttempt = NonNullable<BoardTask['attempts']>[number];
 class SessionRefused extends Error {}
+const ran = (attempt: BoardAttempt): boolean => attempt.status !== 'spawn_failed' && attempt.outcome !== 'spawn_failed';
 const attemptOf = (sessionId: string): { task: BoardTask; first: BoardAttempt; attempt: BoardAttempt } | undefined => {
   const matches = boardTasksAll.flatMap(task => (task.attempts ?? []).filter(attempt => (attempt.session?.session_id ?? attempt.session?.id) === sessionId).map(attempt => ({ task, attempt })));
   if (new Set(matches.map(match => `${match.task.board}\0${match.task.id}`)).size > 1) throw new SessionRefused(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
-  return matches.length ? { task: matches[0].task, first: matches[0].attempt, attempt: matches.at(-1)!.attempt } : undefined;
+  const latest = [...matches].reverse().find(match => ran(match.attempt)) ?? matches.at(-1);
+  return latest ? { task: latest.task, first: matches[0].attempt, attempt: latest.attempt } : undefined;
+};
+// A session whose end was published and that its card then resumed (a reopened card): an attempt that ran started after
+// that end. The platform is append-only, so its later rounds continue as `<id>~<n>`.
+const resumedAfter = (sessionId: string, endedAt: string): boolean => {
+  const served = attemptOf(sessionId)?.attempt;
+  return !!served?.started_at && ran(served) && Date.parse(served.started_at) > Date.parse(endedAt);
 };
 const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
 const isWorker = (d: SessionDescriptor): boolean => onOrchestrator && (d.locator.harness === 'claude-code' || d.locator.harness === 'codex') && !isSeat(d)
@@ -291,11 +301,11 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
     ? { endedAt: native.finished_at, outcome: native.status === 'completed' ? 'done' : native.status === 'failed' ? 'failed' : undefined } : undefined;
   // A session's native end is authoritative even when its old cron fire has left
   // the bounded native run ledger. An absent outcome stays absent.
-  // A worker the board launched ends with its card's last attempt once the card is done, when no resume follows. While
-  // the card is open an attempt's end is a pause: the platform is append-only, so an end published then would cut off
+  // A worker the board launched ends with its card's last attempt that ran once the card is closed (done or cancelled),
+  // when no resume follows. While the card is open an attempt's end is a pause: an end published then would cut off
   // every round the board resumes the session for.
   const served = isWorker(d) ? attemptOf(d.locator.session_id) : undefined;
-  if (served && served.task.lane !== 'done') return undefined;
+  if (served && !served.task.closed) return undefined;
   const launched = served?.attempt;
   if (launched?.ended_at) return { endedAt: launched.ended_at, outcome: launched.outcome === 'completed' ? 'done' : ['crashed', 'failed', 'timed_out', 'spawn_failed'].includes(launched.outcome ?? '') ? 'failed' : undefined };
   const binding = bindings.get(d.locator.session_id);
@@ -374,8 +384,11 @@ function sessions(only?: string): void {
       if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
     } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); continue; } throw error; }
     refused.delete(key);
-    const pkey = platformKey(key);
-    if (checkpoints[pkey]?.endedAt) stopped.add(key); // published to its end already: nothing to read, nothing to send
+    const ended = checkpoints[platformKey(key)]?.endedAt;
+    if (ended && resumedAfter(key, ended)) {
+      continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); stopped.delete(key); saveState();
+      log(`${key}: resumed after its published end; continues as ${platformKey(key)}`);
+    } else if (ended) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
     transcripts.enqueue(key);
@@ -428,7 +441,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
 // Every board task is an item — its id, its title, its lane as the status, the `- ` lines of its body as the
 // acceptance; its attempts are the sessions serving the item, and a review's verdict or an attempt's handoff is a
 // progress note on it, published once.
-type BoardTask = { id: string; board: string; title?: string; body?: string; tenant?: string; tags?: string[]; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string; session_id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ id: string | number; verdict: string; by?: string; reason?: string; at?: string }> };
+type BoardTask = { id: string; board: string; title?: string; body?: string; tenant?: string; tags?: string[]; workspace?: { kind: string; path?: string; branch?: string }; assignee?: string; lane: string; closed?: boolean; priority?: number; created_at?: string; completed_at?: string; attempts?: Array<{ id: string; profile?: string; status: string; started_at?: string; ended_at?: string; outcome?: string; session?: { id?: string; session_id?: string }; handoff?: { summary?: string; metadata?: { branch?: string; commit?: string } } }>; reviews?: Array<{ id: string | number; verdict: string; by?: string; reason?: string; at?: string }> };
 // The lanes as the status words: done; running or review is active; blocked or parked (scheduled) waits on a
 // decision, so proposed; the rest is planned. A done task is the past; every other lane is the present.
 const statusOf = (lane: string): RoadmapItem['status'] => (lane === 'done' ? 'done' : lane === 'running' || lane === 'review' ? 'active' : lane === 'blocked' || lane === 'scheduled' ? 'proposed' : 'planned');
@@ -446,7 +459,9 @@ let timelineDigest = '';
 async function board(): Promise<RoadmapItem[] | undefined> {
   // This app's cache is rebuilt only from the retained source stream. An organization's board has no root profile's
   // tasks: every card is a profile's (docs/decisions/0017), and a project's reporter publishes its tenant's.
-  boardTasksAll = [...source.cards.values()].map((t) => ({ ...t, lane: t.archived ? 'archived' : t.status }) as BoardTask)
+  boardTasksAll = [...source.cards.values()].map((t) => ({ ...t, lane: t.archived ? 'archived' : t.status,
+    // A done or cancelled card resumes no session. The board normalizes a cancelled card's status to todo; its raw lane keeps it.
+    closed: t.status === 'done' || t.lane === 'cancelled' || t.board_status === 'cancelled' }) as BoardTask)
     .filter((t) => t.lane !== 'archived' && (organization || (t.assignee ?? 'default') === 'default'))
     .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
   const tasks = organization ? boardTasksAll.filter(shown) : boardTasksAll;
