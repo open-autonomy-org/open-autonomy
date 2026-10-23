@@ -163,7 +163,9 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
 }
 const supercode = container ? (process.env.SUPERCODE_BIN ?? 'supercode') : supercodeBin();
 const reader = container ? inContainer([supercode, 'harness', 'serve']) : supercodeCommand(['harness', 'serve'], supercode);
-const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : { SUPERCODE_HOME: home }) } as Record<string, string>;
+// An orchestrator home travels in each query and in the runtime's root. SUPERCODE_HOME stays the machine's supercode
+// home: its source lock and machine door (the session index answers through that door), never the orchestrator's.
+const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : {}) } as Record<string, string>;
 const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
 const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
