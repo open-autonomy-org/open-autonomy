@@ -23,6 +23,6 @@ views: { floor: {
   // Section headings and order are configuration (RH2 ADR 0058). Members use the same voice-channel
   // rows and avatar presence as Sessions and People; the core knows no Office or lead layout.
   groupings: [{ key: 'section', label: 'Section', by: 'value', of: ['section'], values: [{ value: 'management', label: 'Management' }, { value: 'work', label: 'Work' }] }], order: 'position',
-  row: { marks: ['unread', 'mentions', 'in-call'], children: ['conversations', 'call', 'members'] },
+  row: { marks: ['unread', 'mentions', 'in-call'], children: ['conversations', 'call'] },
   actions: ['open'],
 } } };

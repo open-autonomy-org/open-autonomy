@@ -60,8 +60,7 @@
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
 //   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>",
 //   "board": { "root": "<the board's home on this machine>", "supercode": "<optional: the supercode CLI, default supercode>" },
-//   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"],
-//   "lastPersonLeaves": { "kind": "stay" } (optional: what its agents do when the last person leaves its call; default stay)
+//   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"]
 // }
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -279,10 +278,6 @@ export const PROJECT_GUIDANCE = [
   'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
 ];
 const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
-/** When the last person leaves a project Room's call, its agents stay (VO-3700; owner: "that's the rules for the impromptu
- * calls not for permanent calls"): a project Room is permanent. The app's config may say otherwise (`lastPersonLeaves`). */
-export const PROJECT_LAST_PERSON_LEAVES = { kind: 'stay' };
-const lastPersonLeaves = config.lastPersonLeaves && typeof config.lastPersonLeaves === 'object' ? config.lastPersonLeaves : PROJECT_LAST_PERSON_LEAVES;
 /** A card's images and videos, as its snapshot lists them (`attachments`): what its Room shows of its updates. */
 const VISIBLE = /\.(png|jpe?g|gif|webp|svg|avif|mp4|webm|mov|m4v)$/i;
 const visibleFilesOf = (card) => (Array.isArray(card.attachments) ? card.attachments : [])
@@ -476,13 +471,11 @@ async function keepProject(project) {
   const baseChannel = view.conversations?.find((item) => item.conversationId === room.defaultConversationId);
   const topic = topicOf(project, cards);
   if (baseChannel && baseChannel.topic !== topic) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(baseChannel.conversationId)}/topic`, { body: { topic }, method: 'PUT' });
-  // Its guidance (ADR 0063 decision 7) and what its agents do when the last person leaves its call, set with the rules
-  // command whenever either differs.
-  const guidanceDiffers = JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance);
-  const leavingDiffers = JSON.stringify(room.rules?.lastPersonLeaves ?? null) !== JSON.stringify(lastPersonLeaves);
-  if (guidanceDiffers || leavingDiffers) {
-    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, ...(guidanceDiffers ? { guidance } : {}), ...(leavingDiffers ? { lastPersonLeaves } : {}) }, method: 'PUT' });
-    log(guidanceDiffers ? 'room-guidance-set' : 'room-rules-set', { ...label, roomId });
+  // Its guidance (ADR 0063 decision 7), set with the rules command whenever it differs. A project Room is permanent, so its
+  // agents stay in its call until removed (RH2's own rule for a permanent Room).
+  if (JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance)) {
+    await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, guidance }, method: 'PUT' });
+    log('room-guidance-set', { ...label, roomId });
   }
   // Placement has one writer, this app: the Room is on the project Floor alone, and a placement made by hand is taken back.
   const floorId = await projectFloorId();
