@@ -21,8 +21,10 @@
 //   last ended attempt that ran, and bindings; an open card's ended attempt is a pause the
 //   board may resume, never an end. One card's attempts on a session are one association; a
 //   session several cards name is refused alone and skipped while every other session
-//   publishes. Absent verdicts stay absent. A session its card resumed after its published
-//   end (a reopened card) continues as <native-id>~<n>, as does a source rewrite that
+//   publishes. Absent verdicts stay absent, and a board-launched session never ends before
+//   its latest run started. A session its card resumed after its published end (a reopened
+//   card) continues as <native-id>~<n> once its source holds more turns than that end
+//   published, as does a source rewrite that
 //   reporting.ts detects when it closes an old OA transcript projection; neither boundary is
 //   native task completion. Silence and source disappearance supply no completion evidence.
 // - Review and handoff notes use native effect IDs under the same OA association.
@@ -45,7 +47,7 @@ const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule(
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
-import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
+import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, TranscriptPublisher, turnsOf, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
@@ -280,7 +282,7 @@ const attemptOf = (sessionId: string): { task: BoardTask; first: BoardAttempt; a
   return latest ? { task: latest.task, first: matches[0].attempt, attempt: latest.attempt } : undefined;
 };
 // A session whose end was published and that its card then resumed (a reopened card): an attempt that ran started after
-// that end. The platform is append-only, so its later rounds continue as `<id>~<n>`.
+// that end. The platform is append-only, so once its source has grown its later rounds continue as `<id>~<n>`.
 const resumedAfter = (sessionId: string, endedAt: string): boolean => {
   const served = attemptOf(sessionId)?.attempt;
   return !!served?.started_at && ran(served) && Date.parse(served.started_at) > Date.parse(endedAt);
@@ -309,7 +311,9 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   const launched = served?.attempt;
   if (launched?.ended_at) return { endedAt: launched.ended_at, outcome: launched.outcome === 'completed' ? 'done' : ['crashed', 'failed', 'timed_out', 'spawn_failed'].includes(launched.outcome ?? '') ? 'failed' : undefined };
   const binding = bindings.get(d.locator.session_id);
-  if (binding?.ended_at) return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
+  // A board-launched session never ends before its latest run started: an older binding's end is an earlier round's.
+  if (binding?.ended_at && !(launched?.started_at && Date.parse(binding.ended_at) < Date.parse(launched.started_at)))
+    return { endedAt: binding.ended_at, outcome: binding.end_reason === 'error' ? 'failed' : undefined };
   return undefined;
 }
 // Read native declarations on startup and source changes; never on an observation timer.
@@ -382,26 +386,52 @@ function sessions(only?: string): void {
     if (only && key !== only) continue;
     try {
       if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
+      // Published to its end: nothing to read, nothing to send, unless its card has since resumed it (a reopened card).
+      // That resume is checked against the source when its publication runs (publishSession).
+      const ended = checkpoints[platformKey(key)]?.endedAt;
+      if (ended && resumedAfter(key, ended)) stopped.delete(key); else if (ended) stopped.add(key);
     } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); continue; } throw error; }
     refused.delete(key);
-    const ended = checkpoints[platformKey(key)]?.endedAt;
-    if (ended && resumedAfter(key, ended)) {
-      continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); stopped.delete(key); saveState();
-      log(`${key}: resumed after its published end; continues as ${platformKey(key)}`);
-    } else if (ended) stopped.add(key); // published to its end already: nothing to read, nothing to send
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
     transcripts.enqueue(key);
   }
 }
+// The source message count at which a resume's source held no more turns than its published end, so an unchanged
+// source is not read again on the next pass.
+const resumeChecked = new Map<string, number>();
+async function grownPast(key: string, d: SessionDescriptor, reader: SupercodeHarnessClient, seq: number): Promise<boolean> {
+  const read = { signal: narrativeAbort.signal, timeoutMs: 0 };
+  const messages = (await reader.loadWindow(d.locator, { message_tail: 1, inline_media: 'metadata' }, read)).window.total_messages;
+  if (resumeChecked.get(key) === messages) return false;
+  let turns = 0;
+  for (let offset = 0; ;) {
+    const page = await reader.loadWindow(d.locator, { message_limit: 500, inline_media: 'metadata', message_offset: offset }, read);
+    turns += page.session.messages.reduce((n, m) => n + turnsOf(m, d.locator.harness).length, 0);
+    if (turns > seq) { resumeChecked.delete(key); return true; }
+    offset += page.window.returned;
+    if (!page.window.has_newer || !page.window.returned) break;
+  }
+  resumeChecked.set(key, messages);
+  return false;
+}
 async function publishSession(key: string, reader: SupercodeHarnessClient): Promise<void> {
-  const d = descriptors.get(key), pkey = platformKey(key);
+  const d = descriptors.get(key);
   if (quitting || !d || stopped.has(key) || (retryAt.get(key) ?? 0) > Date.now()) return;
   try {
     if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) return;
   } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); return; } throw error; }
   sessionReaders.set(key, reader);
   try {
+    // A session published to its end that its card resumed continues as `<id>~<n>` only once its source holds more
+    // turns than that end published. A resume that never ran or an older end the board outlived adds nothing to it.
+    const published = checkpoints[platformKey(key)];
+    if (published?.endedAt) {
+      if (!await grownPast(key, d, reader, published.seq)) return;
+      continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState();
+      log(`${key}: resumed after its published end; continues as ${platformKey(key)}`);
+    }
+    const pkey = platformKey(key);
     const exactAttempt = attemptOf(key);
     const launched = exactAttempt?.task;
     const candidates = launched ? [launched] : (organization ? boardTasksAll : nativeTasks).filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
