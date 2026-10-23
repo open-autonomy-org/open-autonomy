@@ -9,7 +9,10 @@ type Options = { home: string; entry: string; native: string; env: Record<string
 async function door(options: Options) {
   const require = createRequire(options.entry);
   const module = await import(pathToFileURL(require.resolve('@volter/teams/board-owner')).href);
-  return (argv: string[]) => module.askBoardOwner(options.home, { argv }, { waitMs: 0, timeoutMs: 8000 });
+  // The owner refuses a card verb whose request names no Teams context (@volter/teams/board-owner: `facts`); the
+  // keeper names the one its environment carries, else `local`, as the owner's own handover readback does.
+  const facts = { SUPERCODE_CONTEXT: options.env.SUPERCODE_CONTEXT || 'local' };
+  return (argv: string[]) => module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
 }
 async function probe(options: Options): Promise<any | null> {
   const answer = await (await door(options))(['handover', '--action', 'status']);
