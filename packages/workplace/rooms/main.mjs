@@ -41,9 +41,10 @@
 // Each project Room's rules carry its guidance (runhuman-2 ADR 0063 decision 7, `guidance`, the rules command): what its
 // agents are told it is for. Each image or video a live card's agent attaches to the card (the card's published
 // `attachments`) is posted once into its project Room's base channel, as this app's own file (ADR 0063 decision 8), with
-// a line naming the card: the card stays the one place an update is put. Its bytes are read through the board's door
-// (`supercode workflow attachment-get … --at <board.at>`); a file attached before the app first read the card's files is
-// not posted, so a backlog never floods a Room.
+// a line naming the card: the card stays the one place an update is put. Its bytes are read with the board's own CLI on
+// the machine that keeps the board (`supercode workflow --root <board.root> attachment-read …`, a mebibyte at a time, each
+// part held to the version the first names); the board's door (`--at`) serves only a session, and this app is none. A
+// file attached before the app first read the card's files is not posted, so a backlog never floods a Room.
 //
 //   node packages/workplace/rooms/main.mjs <config.json>          snapshot, then the board's events
 //   node packages/workplace/rooms/main.mjs <config.json> --once   snapshot only
@@ -58,14 +59,12 @@
 //   "envFile": "<custody env file of KEY=VALUE lines>", "stateFile": "<the program's id map and cursor>",
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
 //   "projectFloor": "<a Floor the organization's document declares, for the project Rooms; none = its default Floor, Office unless renamed>",
-//   "board": { "at": "sc:<machine>:board:<home>", "supercode": "<optional: the supercode CLI, default supercode>" },
+//   "board": { "root": "<the board's home on this machine>", "supercode": "<optional: the supercode CLI, default supercode>" },
 //   "guidance": ["<optional: each project Room's guidance, at most four one-line sentences; default PROJECT_GUIDANCE>"]
 // }
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { fstatSync, futimesSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { fstatSync, futimesSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
@@ -288,15 +287,23 @@ const typeOf = (file) => file.contentType && /^(image|video)\//.test(file.conten
   : ({ avif: 'image/avif', gif: 'image/gif', jpeg: 'image/jpeg', jpg: 'image/jpeg', m4v: 'video/mp4', mov: 'video/quicktime', mp4: 'video/mp4', png: 'image/png', svg: 'image/svg+xml', webm: 'video/webm', webp: 'image/webp' })[file.name.split('.').pop().toLowerCase()] ?? 'application/octet-stream';
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const run = promisify(execFile);
-/** A card file's bytes, read through the board's door (attachment-get), never from where the board keeps them. */
+/** A card file's bytes, read with the board's own CLI on the machine that keeps it (`attachment-read`, a mebibyte at a
+ * time), never from where the board stores them: each part after the first is held to the version the first names, so a
+ * file replaced mid-read is refused rather than spliced. */
+const PART_BYTES = 1024 * 1024;
 async function cardFileBytes(cardId, file) {
-  if (!config.board?.at) throw Object.assign(new Error('name the board door to read card files through as board.at (sc:<machine>:board:<home>)'), { code: 'board-door-unset' });
-  const directory = mkdtempSync(join(tmpdir(), 'project-rooms-'));
-  try {
-    const out = join(directory, 'file');
-    await run(config.board.supercode ?? 'supercode', ['workflow', 'attachment-get', cardId, String(file.id), '--at', config.board.at, '--out', out], { timeout: 120_000, signal: shutdown.signal });
-    return readFileSync(out);
-  } finally { rmSync(directory, { force: true, recursive: true }); }
+  if (!config.board?.root) throw Object.assign(new Error('name the board to read card files from as board.root (its home on this machine)'), { code: 'board-root-unset' });
+  const parts = [];
+  let offset = 0, version = null;
+  for (;;) {
+    const { stdout } = await run(config.board.supercode ?? 'supercode', ['workflow', '--root', config.board.root, 'attachment-read', cardId, String(file.id), '--offset', String(offset), '--length', String(PART_BYTES), ...(version ? ['--version', version] : [])], { timeout: 60_000, maxBuffer: 4 * PART_BYTES, signal: shutdown.signal });
+    const part = JSON.parse(stdout);
+    version ??= part.version;
+    parts.push(Buffer.from(part.content_base64 ?? '', 'base64'));
+    if (part.eof || !(part.next_offset > offset)) return Buffer.concat(parts);
+    offset = part.next_offset;
+    if (offset > MAX_FILE_BYTES) throw Object.assign(new Error(`${file.name} is larger than ${MAX_FILE_BYTES} bytes`), { code: 'card-file-too-large' });
+  }
 }
 /** Posts each of the card's images and videos its Room has not shown into the Room's base channel, once: as this app's
  * own file, then a line carrying it that names the card. A file attached before the app first read this card's files is
