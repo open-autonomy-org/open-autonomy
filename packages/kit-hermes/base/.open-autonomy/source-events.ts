@@ -5,7 +5,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
-import { savePublicationFile, type SourceCard, type SourceSnapshot } from './publication.ts';
+import { savePublicationFileChanged, type SourceCard, type SourceSnapshot } from './publication.ts';
 export type { SourceCard, SourceSnapshot } from './publication.ts';
 interface SourceOptions {
   command: string[]; stateFile: string; env: Record<string, string>;
@@ -13,7 +13,10 @@ interface SourceOptions {
   allowLegacyUpgrade?: boolean; forceSnapshot?: boolean;
   changed: (snapshot: SourceSnapshot) => Promise<void>; log: (message: string) => void;
 }
-interface CacheState { version: 2; sourceContextId: string; cursor?: string; cards: SourceCard[]; pending?: SourceSnapshot; legacyCursor?: string }
+// The pending observation is retained as what it changes in the committed inventory (`cards`): its rows that differ
+// and the keys it removes. The committed inventory and those changes give the exact observation back after a stop.
+interface PendingChanges { sourceContextId: string; proposedCursor: string; changed: SourceCard[]; removed: string[] }
+interface CacheState { version: 3; sourceContextId: string; cursor?: string; cards: SourceCard[]; pending?: PendingChanges; legacyCursor?: string }
 interface StreamChild { child: ChildProcess; retire: () => Promise<void> }
 // The public native CLI can launch a Node stream reader. Retire that private
 // command group, rather than treating the wrapper's exit as reader completion.
@@ -84,6 +87,7 @@ export class BoardEventSource {
   private ready!: () => void;
   private refuseReady!: (error: Error) => void;
   private wake?: () => void;
+  private savedDigest?: string;
   constructor(private readonly options: SourceOptions) {
     if (!options.sourceContextId || !options.command.length) throw new Error('Native stream needs explicit OA source context and command');
     if (existsSync(options.stateFile)) {
@@ -92,7 +96,7 @@ export class BoardEventSource {
       if (saved.version === 1) {
         if (!options.allowLegacyUpgrade) throw new Error('Legacy source cache needs explicit publication adoption');
         this.legacyCursor = saved.cursor;
-      } else if (saved.version === 2 && saved.sourceContextId === options.sourceContextId) {
+      } else if ((saved.version === 2 || saved.version === 3) && saved.sourceContextId === options.sourceContextId) {
         if (options.forceSnapshot && !saved.pending) {
           if (!Array.isArray(saved.cards)) throw new Error('Retained source inventory malformed');
           for (const row of saved.cards) this.row(row, false);
@@ -100,7 +104,8 @@ export class BoardEventSource {
         } else { this.rows = this.inventory(saved.cards); this.cursor = saved.cursor; this.legacyCursor = saved.legacyCursor; }
         if (saved.pending) {
           if (saved.pending.sourceContextId !== options.sourceContextId) throw new Error('Pending source context mismatch');
-          this.pending = this.snapshot(saved.pending.cards, saved.pending.proposedCursor);
+          // Version 2 retained the pending observation whole; version 3 retains its changes against the inventory.
+          this.pending = this.snapshot(saved.version === 2 ? saved.pending.cards : this.restored(saved.pending), saved.pending.proposedCursor);
         }
       } else throw new Error('Unsupported/mismatched native source cache; retained state was not overwritten');
     }
@@ -115,7 +120,10 @@ export class BoardEventSource {
   private row(value: any, checkStore = true): SourceCard {
     if (!value || typeof value.publicationId !== 'string' || !value.publicationId || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || typeof value.board !== 'string' || !value.board || !value.card || typeof value.card !== 'object' || Array.isArray(value.card) || typeof value.card.id !== 'string' || !value.card.id) throw new Error('Native publication attribution/card identity is missing or malformed');
     if (checkStore) this.options.storeContext(value.board);
-    return freeze(structuredClone(value));
+    // A card's comments are not read by publication (its items, notes and session attribution read the card's fields,
+    // attempts and reviews) and were most of the retained inventory's bytes, so a row does not keep them.
+    const row = structuredClone(value); delete row.card.comments;
+    return freeze(row);
   }
   private inventory(values: unknown): Map<string, SourceCard> {
     if (!Array.isArray(values)) throw new Error('Native source inventory is malformed');
@@ -127,8 +135,24 @@ export class BoardEventSource {
     if (typeof cursor !== 'string' || !cursor) throw new Error('Native source cursor is missing');
     return freeze({ sourceContextId: this.options.sourceContextId, cards: [...this.inventory(values).values()], proposedCursor: cursor });
   }
-  private state(): CacheState { return { version: 2, sourceContextId: this.options.sourceContextId, cards: [...this.rows.values()], ...(this.cursor ? { cursor: this.cursor } : {}), ...(this.pending ? { pending: this.pending } : {}), ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) }; }
-  private save(): void { savePublicationFile(this.options.stateFile, this.state()); }
+  private changes(snapshot: SourceSnapshot): PendingChanges {
+    const keys = new Set<string>(), changed: SourceCard[] = [];
+    for (const row of snapshot.cards) {
+      const key = this.key(row), old = this.rows.get(key); keys.add(key);
+      if (!old || old.publicationId !== row.publicationId || old.sequence !== row.sequence || old.board !== row.board || JSON.stringify(old.card) !== JSON.stringify(row.card)) changed.push(row);
+    }
+    return { sourceContextId: snapshot.sourceContextId, proposedCursor: snapshot.proposedCursor, changed, removed: [...this.rows.keys()].filter(key => !keys.has(key)) };
+  }
+  private restored(pending: any): SourceCard[] {
+    if (!Array.isArray(pending?.changed) || !Array.isArray(pending?.removed)) throw new Error('Pending native observation is malformed');
+    const next = new Map(this.rows);
+    for (const key of pending.removed) if (typeof key !== 'string' || !next.delete(key)) throw new Error('Pending native observation removes an unknown card');
+    for (const value of pending.changed) { const row = this.row(value); next.set(this.key(row), row); }
+    return [...next.values()];
+  }
+  private state(): CacheState { return { version: 3, sourceContextId: this.options.sourceContextId, cards: [...this.rows.values()], ...(this.cursor ? { cursor: this.cursor } : {}), ...(this.pending ? { pending: this.changes(this.pending) } : {}), ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) }; }
+  private write(state: CacheState): void { this.savedDigest = savePublicationFileChanged(this.options.stateFile, state, this.savedDigest); }
+  private save(): void { this.write(this.state()); }
   start(): Promise<void> {
     if (this.started) throw new Error('Native source already started'); this.started = true;
     const ready = new Promise<void>((resolve, reject) => { this.ready = resolve; this.refuseReady = reject; });
@@ -152,13 +176,15 @@ export class BoardEventSource {
   private async publish(): Promise<void> {
     if (!this.pending) throw new Error('Native delivery has no retained observation');
     const observation = this.pending;
+    let durable = false;
     while (!this.closed) {
       try {
-        this.save(); // also retries uncertain pending-state persistence before any effect
+        // The pending observation is written once before any effect; a retry writes it again only if that write failed.
+        if (!durable) { this.save(); durable = true; }
         await this.options.changed(observation);
         if (this.closed) return;
-        const state: CacheState = { version: 2, sourceContextId: this.options.sourceContextId, cards: [...observation.cards], cursor: observation.proposedCursor, ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) };
-        savePublicationFile(this.options.stateFile, state);
+        const state: CacheState = { version: 3, sourceContextId: this.options.sourceContextId, cards: [...observation.cards], cursor: observation.proposedCursor, ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) };
+        this.write(state);
         this.rows = this.inventory(observation.cards); this.cursor = observation.proposedCursor; this.pending = undefined;
         this.ready(); return;
       } catch (error) { this.options.log(`native event delivery pending: ${(error as Error).message}`); await this.delay(); }

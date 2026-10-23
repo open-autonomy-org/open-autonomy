@@ -131,7 +131,7 @@ Signal-permission failure alone supplies no dead-writer proof.
 
 Owner pause ownership lives in the private `<reporter-state>.control.json`, scoped to the account, logical API
 and selected native runtime. On first creation, validated version-2 or version-3 reporter pause arrays may seed it;
-version 3 must match retained enrollment. The exact reporter digest and the available custody basis are recorded.
+version 3 or 4 must match retained enrollment. The exact reporter digest and the available custody basis are recorded.
 Legacy version 2 has no historical account/runtime provenance, so its seed records that limitation. Once present,
 the control file is authoritative even when its ownership arrays are empty; old reporter arrays never re-seed it.
 Malformed control ownership or contradictory scope refuses native effects. Control-only operation preserves
@@ -285,7 +285,8 @@ contexts/state; unknown replacement never automatically adopts the original sour
 
 Pending source observations and exact redacted requests are durable before effects. Notes retry their original
 identity/content/time and verify the returned full receipt; conflicting content under an old ID refuses. Timeline
-delivery follows its note receipts. The source cursor commits only afterward. Session attribution is frozen before
+delivery follows its note receipts; a timeline the platform answers as unchanged (the SDK's `sameRoadmap`) is
+settled with the revision it returned. The source cursor commits only afterward. Session attribution is frozen before
 publishing; current workspace uniqueness cannot adopt unknown historical association. A rejected weak late
 candidate leaves an existing unbound session unbound while its transcript continues. Transcript keys and per-batch
 receipts remain separate from board cursor acknowledgement. Source absence supplies no completion or session end.
