@@ -1,13 +1,13 @@
 {
   "name": "Project Rooms",
-  "description": "The organization's Office Floor as its board works: one Room per project, the project's lead and its live cards' agents brought in and out with the Workplace's join and leave commands, and its configured Office view (Open Autonomy)",
+  "registrationKey": "project-rooms",
+  "description": "One Room per project in the organization's Office, from the board: the project's lead and its live cards' agents brought in and out with the Workplace's join and leave commands (Open Autonomy)",
   "actions": [
     "organization.read",
     "room.create",
     "room.read",
     "room.manage",
     "conversation.read",
-    "floor.create",
     "floor.read",
     "floor.update",
     "members.manage",

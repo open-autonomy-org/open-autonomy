@@ -19,9 +19,7 @@ type Package = { schema_version: 1; inference?: { models?: Record<string, Model>
 /**
  * An agent with a mailbox (supercode docs/adr/0008-agent-mailbox.md): its main session runs `profile` in a pane the
  * start opens once (`program`, `claude` or `codex`), declared with supercode so roots addressed to the agent reach it.
- * `owners_account_manager` makes it the owner's account manager (RFC 0020 decision 17); `channel.rh2` carries its
- * account Room to its mailbox (decisions 24-25), the Room opened for `principal` (an RH2 principal id) when the
- * organization has none with its key.
+ * `owners_account_manager` makes it the owner's account manager (RFC 0020 decision 17).
  */
 export type MailAgent = {
   profile: string;
@@ -33,7 +31,6 @@ export type MailAgent = {
   /** Mailed the machine-health alarms of this machine and of every machine enrolled in its Teams context, as well as each
    *  machine's maintainer (supercode sdk/health: a failure a machine's own records show, named with its release). */
   health_alarms?: boolean;
-  channel?: { rh2?: { principal?: string; room?: string; room_key?: string; room_name?: string } };
 };
 export type Setup = { harness?: string; profiles: Record<string, Package>; agents?: Record<string, MailAgent> };
 
