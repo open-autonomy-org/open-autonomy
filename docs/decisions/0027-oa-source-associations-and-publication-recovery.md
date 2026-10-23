@@ -153,15 +153,15 @@ enrollment: {version:1, account, apiBase, sourceContext, stores,
 associations: [{key, tuple, itemId}]
 noteAliases: [{associationKey, kind, nativeEffectId, noteId, legacyKey?, acknowledgement}]
 sessionBindings: [{platformKey, nativeSessionId, associationKey?, itemId?, evidence}]
-pending: [{obligationId, kind, associationKey?, wire, wireDigest, expected, sourceObservation}]
-receipts: [{obligationId, wireDigest, result}]
+pending: [{obligationId, kind, associationKey?, wire, wireDigest, expected?}]
+receipts: [{obligationId, kind, wireDigest, result}]
 ```
 
 The cache advances to version 2. It retains the enrolled source context and rows
 `{publicationId,sequence,board,card}`, with original nonempty public publication ID, nonnegative safe-integer
 sequence, nonempty backing selector and opaque card ID. Cache row keys use `J([storeContext,card.id])`, never
 delimiter concatenation. It also retains committed cursor and a pending complete observation/candidate
-cursor. Snapshot rows stay staged until a genuine `snapshot_end`; incomplete snapshots never replace inventory.
+cursor, written as its changed rows and removed keys against the committed inventory. Snapshot rows stay staged until a genuine `snapshot_end`; incomplete snapshots never replace inventory.
 Each live observation is saved before its effects. Cursor values remain opaque positions, never association IDs.
 Unknown state versions, malformed rows or an enrollment mismatch fail loudly without overwriting state.
 
@@ -302,9 +302,10 @@ publisher explicitly supplies `reporter`; its value is preserved.
 Its `expected` records `{source,by?,roadmap}` and its obligation ID is `oat_` plus `H(wire)`.
 Send one obligation at a time, after its prerequisite note receipts. Require the existing successful revision or
 unchanged result; a returned revision must agree with the expected source and normalized document. For a new
-revision its explicitly supplied `by` must also match; the existing unchanged contract compares document/source and may retain the
+revision its explicitly supplied `by` must also match; the existing unchanged contract compares document/source by the SDK's
+`sameRoadmap`, which the adapter applies to an unchanged result, and may retain the
 earlier revision's `by`, which is recorded as returned without claiming this request replaced it. Persist
-the complete returned result with the exact request digest. The complete document remains ordered behind
+the returned revision, without its change list, with the exact request digest. The complete document remains ordered behind
 its pending predecessor, so an older retry cannot overwrite a newer local observation. This does not add server
 compare-and-swap, universal event-ID replay or multi-writer protection. A batch is not transactional: if batching is
 used elsewhere, already applied prefixes remain applied; this adapter uses one effect per checked request.

@@ -285,7 +285,8 @@ contexts/state; unknown replacement never automatically adopts the original sour
 
 Pending source observations and exact redacted requests are durable before effects. Notes retry their original
 identity/content/time and verify the returned full receipt; conflicting content under an old ID refuses. Timeline
-delivery follows its note receipts. The source cursor commits only afterward. Session attribution is frozen before
+delivery follows its note receipts; a timeline the platform answers as unchanged (the SDK's `sameRoadmap`) is
+settled with the revision it returned. The source cursor commits only afterward. Session attribution is frozen before
 publishing; current workspace uniqueness cannot adopt unknown historical association. A rejected weak late
 candidate leaves an existing unbound session unbound while its transcript continues. Transcript keys and per-batch
 receipts remain separate from board cursor acknowledgement. Source absence supplies no completion or session end.

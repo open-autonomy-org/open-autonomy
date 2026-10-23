@@ -6,6 +6,7 @@ import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type CloudEvent, type UpdateRecord } from './sdk/client.ts';
 import { normalizeRoadmap, type Roadmap } from './sdk/roadmap.ts';
+import { sameRoadmap } from './sdk/drivers.ts';
 import { redactDeep, redactSecrets } from './sdk/redaction.ts';
 
 export interface SourceCard { readonly publicationId: string; readonly sequence: number; readonly board: string; readonly card: Readonly<Record<string, any>> }
@@ -18,8 +19,13 @@ interface Association { key: string; tuple: [string, number, string, string, str
 type NoteKind = 'review' | 'handoff';
 interface NoteAlias { associationKey: string; kind: NoteKind; nativeEffectId: string; noteId: string; legacyKey?: string; effectDigest?: string; acknowledgement?: UpdateRecord | { kind: 'legacy-noted'; key: string } }
 export interface SessionBinding { platformKey: string; nativeSessionId: string; associationKey?: string; itemId?: string; evidence: string }
-interface Pending { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire: string; wireDigest: string; expected: any; sourceObservation?: SourceSnapshot }
-interface Receipt extends Omit<Pending, 'sourceObservation'> { result: any }
+// A prepared request keeps what a resend after a crash needs: its exact bytes, their digest and its identity. A note's
+// `expected` is the platform record it must come back as; a timeline's is the event's own data, read from its bytes.
+interface Pending { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire: string; wireDigest: string; expected?: any }
+// A note's receipt keeps its request and the record returned. A timeline's keeps its request digest and the revision
+// it left current (`timelineReceipt`), which the next timeline is compared against; its 900 kB request and the
+// revision's change list are not read again.
+interface Receipt { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire?: string; wireDigest: string; expected?: any; result: any }
 interface PublicationData { enrollment: { version: 1; account: string; apiBase: string; sourceContext: string; stores: StoreContext[]; selectedRuntime: NativeRuntimeSelection; custody: Custody; custodyDigest: string; adoptionDigest?: string }; associations: Association[]; noteAliases: NoteAlias[]; sessionBindings: SessionBinding[]; pending: Pending[]; receipts: Receipt[]; requiresSnapshot?: boolean }
 export interface PublicationOwnerLease { readonly stateFile: string; readonly nonce: string; assert(stateFile: string): void }
 export interface PublicationOptions { configFile: string; localDirectory?: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
@@ -40,6 +46,23 @@ export function savePublicationBytes(file: string, bytes: string | Buffer): void
   const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
 }
 export function savePublicationFile(file: string, value: unknown): void { savePublicationBytes(file, JSON.stringify(value) + '\n'); }
+// Writes a retained file only when its bytes differ from the last ones this writer wrote (`previous`, their digest), and
+// returns the digest the file now holds. A save that changes nothing, a retry or a checkpoint that did not move, writes
+// nothing. A failed write throws before the digest is returned, so the next save writes again.
+export function savePublicationFileChanged(file: string, value: unknown, previous: string | undefined): string {
+  const bytes = JSON.stringify(value) + '\n', digest = publicationHash(bytes);
+  if (digest !== previous) savePublicationBytes(file, bytes);
+  return digest;
+}
+const timelineData = (p: { wire: string }): any => JSON.parse(p.wire)[0]?.data;
+// The fields a prepared request keeps (Pending), whatever else a retained one carries.
+const prepared = (p: Pending): Pending => ({ obligationId: p.obligationId, kind: p.kind, ...(p.associationKey !== undefined ? { associationKey: p.associationKey } : {}), wire: p.wire, wireDigest: p.wireDigest, ...(p.kind === 'note' ? { expected: p.expected } : {}) });
+// What a timeline receipt keeps of a successful result: its identity and the revision it left current, without the
+// revision's change list and conformance, which nothing reads.
+function timelineReceipt(p: { obligationId: string; wireDigest: string }, result: any): Receipt {
+  const { revision, ts, source, by, roadmap } = result.revision;
+  return { obligationId: p.obligationId, kind: 'timeline', wireDigest: p.wireDigest, result: { ok: result.ok, id: result.id, ...(result.unchanged ? { unchanged: true } : {}), revision: { revision, ts, source, ...(by !== undefined ? { by } : {}), roadmap } } };
+}
 type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; hostBasis?: 'machine' | 'boot'; boot: string; namespace: string };
 type WriterIdentity = ExecutorIdentity & { start: string };
 export type ControlAbsence = { kind: 'absent-control'; file: string };
@@ -322,6 +345,7 @@ export class PublicationStore {
   private closed = false;
   private closing = false;
   private observation?: SourceSnapshot;
+  private savedDigest?: string;
   constructor(private readonly options: PublicationOptions) {
     this.config = checkConfig(options.publication); this.sourceContextId = this.config.source_context;
     this.lock = `${resolve(options.stateFile)}.lock`;
@@ -340,6 +364,8 @@ export class PublicationStore {
       if (prior?.version === 3) {
         this.data = prior.publication;
         this.checkData();
+        this.data.pending = this.data.pending.map(prepared);
+        this.data.receipts = this.data.receipts.map(r => r.kind === 'timeline' ? timelineReceipt(r, r.result) : { ...prepared(r as Pending), result: r.result });
         this.checkContinuity(custody, custodyDigest);
         if (this.config.adoption && retainedDigest(localJSON(localDirectory(options), this.config.adoption)) !== this.data.enrollment.adoptionDigest) throw new Error('A changed/second adoption cannot replace retained source/effect aliases');
       } else {
@@ -392,7 +418,8 @@ export class PublicationStore {
     for (const p of d.pending) { this.checkedEvent(p); if (obligations.has(p.obligationId)) throw new Error('Duplicate pending publication obligation'); obligations.add(p.obligationId); }
     const receipts = new Set<string>();
     for (const receipt of d.receipts) {
-      const event = this.checkedEvent(receipt); this.checkedResult(receipt, event, receipt.result);
+      if (receipt.kind === 'timeline') this.checkedTimelineReceipt(receipt);
+      else { const event = this.checkedEvent(receipt as Pending); this.checkedResult(receipt as Pending, event, receipt.result); }
       if (receipts.has(receipt.obligationId) || obligations.has(receipt.obligationId)) throw new Error('Duplicate/conflicting retained publication receipt');
       receipts.add(receipt.obligationId);
     }
@@ -468,7 +495,7 @@ export class PublicationStore {
     const result = this.tail.then(() => { if (this.closed || this.closing) throw new Error('Publication writer closing/closed'); this.assertOwner(); return work(); }); this.tail = result.catch(() => {}); return result;
   }
   saveRuntime(patch: Record<string, unknown>): void { Object.assign(this.runtime, patch); this.save(); }
-  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); savePublicationFile(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }); }
+  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); this.savedDigest = savePublicationFileChanged(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }, this.savedDigest); }
   resolveCards(rows: readonly SourceCard[]): void {
     const additions: Association[] = [], seen = new Set<string>();
     for (const row of rows) {
@@ -499,7 +526,7 @@ export class PublicationStore {
     if (p.kind === 'note') {
       const a = this.data.associations.find(a => a.key === p.associationKey);
       if (!a || e.type !== EVENT_TYPES.update || e.id !== p.obligationId || e.subject !== a.itemId || p.expected?.id !== e.id || p.expected?.account !== this.options.account || p.expected?.item_id !== e.subject || p.expected?.ts !== e.time || !eq(e.data, { text: p.expected?.text, ...(p.expected?.session ? { session: p.expected.session } : {}) }) || !eq(redactDeep(e.data), e.data)) throw new Error('Retained note request differs from its account/item/content binding');
-    } else if (p.obligationId !== `oat_${publicationHash(p.wire)}` || e.type !== TIMELINE_EVENT_TYPE || e.subject !== 'project' || !eq(e.data, p.expected) || !eq(normalizeRoadmap(redactDeep(e.data.roadmap)), e.data.roadmap)) throw new Error('Retained timeline request differs from normalized expected document');
+    } else if (p.obligationId !== `oat_${publicationHash(p.wire)}` || e.type !== TIMELINE_EVENT_TYPE || e.subject !== 'project' || (p.expected !== undefined && !eq(e.data, p.expected)) || !eq(normalizeRoadmap(redactDeep(e.data.roadmap)), e.data.roadmap)) throw new Error('Retained timeline request differs from normalized expected document');
     return events[0];
   }
   private checkedResult(p: Pending, event: CloudEvent, result: any): void {
@@ -509,17 +536,24 @@ export class PublicationStore {
       const alias = this.data.noteAliases.find(n => n.noteId === p.obligationId);
       if (!alias || alias.associationKey !== p.associationKey) throw new Error('Publication receipt has no matching native note association');
     } else {
-      const r = result.revision;
-      if (!r || !eq(r.roadmap, p.expected.roadmap) || r.source !== p.expected.source || (!result.unchanged && p.expected.by !== undefined && r.by !== p.expected.by)) throw new Error(`Publication ${p.obligationId} conflicts with normalized timeline receipt`);
+      // The platform answers `unchanged`, with its current revision, for a document it judges the same as that revision:
+      // sameRoadmap, the SDK's own comparison, which the platform applies and which leaves out fields such as an item's
+      // `by`. A new revision is the document exactly.
+      const r = result.revision, expected = timelineData(p);
+      const same = r && (result.unchanged ? sameRoadmap(r.roadmap, expected.roadmap) : eq(r.roadmap, expected.roadmap));
+      if (!same || r.source !== expected.source || (!result.unchanged && expected.by !== undefined && r.by !== expected.by)) throw new Error(`Publication ${p.obligationId} conflicts with normalized timeline receipt`);
     }
+  }
+  private checkedTimelineReceipt(r: Receipt): void {
+    const v = r.result?.revision;
+    if (!/^[0-9a-f]{64}$/.test(r.wireDigest) || r.obligationId !== `oat_${r.wireDigest}` || r.result?.ok !== true || !nonempty(r.result.id) || !v || !nonempty(v.ts) || !Number.isFinite(Date.parse(v.ts)) || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(v.source) || !nonempty(v.roadmap?.schema) || !Array.isArray(v.roadmap?.items)) throw new Error('Retained timeline receipt is malformed');
   }
   private async deliver(p: Pending, oa: OpenAutonomy): Promise<any> {
     this.assertOwner();
     const event = this.checkedEvent(p), result = await oa.send(event), first = result.results[0];
     if (!result.ok || result.results.length !== 1 || first?.ok !== true || first.id !== event.id) throw new Error(`Publication ${p.obligationId} pending: ${result.status} ${first?.error ?? result.error ?? 'missing successful receipt'}`);
     this.checkedResult(p, event, first);
-    const { sourceObservation: _observation, ...prepared } = p;
-    const receipt: Receipt = { ...prepared, result: first };
+    const receipt: Receipt = p.kind === 'timeline' ? timelineReceipt(p, first) : { ...p, result: first };
     const old = this.data.receipts.find(r => r.obligationId === p.obligationId);
     if (old && old.wireDigest !== p.wireDigest) throw new Error('Publication receipt request binding changed');
     // A timeline revision supersedes the one before it: only the account's current timeline is compared against
@@ -548,7 +582,7 @@ export class PublicationStore {
     const ts = new Date(Number.isFinite(supplied) && supplied <= Date.now() ? supplied : Date.now()).toISOString();
     const event = updateEvent({ id: noteId, item: association.itemId, text, at: ts, ...(input.session ? { session: input.session } : {}) });
     const wire = JSON.stringify([event]);
-    const p: Pending = { obligationId: noteId, kind: 'note', associationKey: association.key, wire, wireDigest: publicationHash(wire), expected: { id: noteId, account: this.options.account, item_id: association.itemId, ts, text, ...(input.session ? { session: input.session } : {}) }, sourceObservation: this.observation };
+    const p: Pending = { obligationId: noteId, kind: 'note', associationKey: association.key, wire, wireDigest: publicationHash(wire), expected: { id: noteId, account: this.options.account, item_id: association.itemId, ts, text, ...(input.session ? { session: input.session } : {}) } };
     this.data.pending.push(p);
     if (!alias) this.data.noteAliases.push({ associationKey: association.key, kind: input.kind, nativeEffectId, noteId, effectDigest });
     this.save(); await this.deliver(p, oa);
@@ -559,10 +593,10 @@ export class PublicationStore {
     if (!model || model.items.length !== roadmap.items.length || model.items.some((item, i) => item.id !== roadmap.items[i]?.id) || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(source)) throw new Error('Timeline normalization omitted/transformed item identity or source');
     const normalizedBy = by ? redactSecrets(by).slice(0, 80) : undefined;
     const current = this.data.receipts.filter(r => r.result?.revision).at(-1)?.result.revision;
-    if (current?.source === source && eq(current.roadmap, model)) return;
+    if (current?.source === source && sameRoadmap(current.roadmap, model)) return;
     const event: CloudEvent = { specversion: '1.0', id: randomUUID(), source: 'open-autonomy-sdk', type: TIMELINE_EVENT_TYPE, subject: 'project', time: new Date().toISOString(), datacontenttype: 'application/json', data: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) } };
     const wire = JSON.stringify([event]), obligationId = `oat_${publicationHash(wire)}`;
-    const p: Pending = { obligationId, kind: 'timeline', wire, wireDigest: publicationHash(wire), expected: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) }, sourceObservation: this.observation };
+    const p: Pending = { obligationId, kind: 'timeline', wire, wireDigest: publicationHash(wire) };
     this.data.pending.push(p); this.save(); await this.deliver(p, oa);
   }
   async sessionItem(binding: SessionBinding, oa: OpenAutonomy): Promise<string | undefined> {
