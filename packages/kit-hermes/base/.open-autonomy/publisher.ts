@@ -261,11 +261,13 @@ const stopped = new Set<string>();
 const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-code' && !!cfg.seats && !!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(cfg.seats)}/`);
 // Under the orchestrator a worker is a Claude Code or Codex session the orchestrator opened: a card's, in the card's
 // workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
-// The board's attempt that launched a session names its card and, once the run is over, its end.
+// The board's attempt that launched a session names its card and, once the run is over, its end. A session the board
+// resumes across attempts of one card is that card's, and its latest attempt (attempts are in order) holds its end;
+// a session several cards name stays unattributed.
 const attemptOf = (sessionId: string): { task: BoardTask; attempt: NonNullable<BoardTask['attempts']>[number] } | undefined => {
   const matches = boardTasksAll.flatMap(task => (task.attempts ?? []).filter(attempt => (attempt.session?.session_id ?? attempt.session?.id) === sessionId).map(attempt => ({ task, attempt })));
-  if (matches.length > 1) throw new Error(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
-  return matches.length === 1 ? matches[0] : undefined;
+  if (new Set(matches.map(match => `${match.task.board}\0${match.task.id}`)).size > 1) throw new Error(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
+  return matches.at(-1);
 };
 const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
 const isWorker = (d: SessionDescriptor): boolean => onOrchestrator && (d.locator.harness === 'claude-code' || d.locator.harness === 'codex') && !isSeat(d)
