@@ -35,6 +35,7 @@ import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { Database } from 'bun:sqlite';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -433,6 +434,27 @@ if (harness !== 'hermes') {
 // (`apps install room-chat … --profile <agent>`); its channel reads the record from this home.
 // They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
 // §2.10), so an export names each one it folds into its profile.
+/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
+ * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
+ * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
+function homeAgent(name: string, profile: string): string | null {
+  const shown = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'context', 'show', '--json']), cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  let context: { origin?: string; team_id?: string };
+  try { context = JSON.parse(shown.stdout.toString()); } catch { return null; }
+  const file = resolve(home, 'agent-state.sqlite');
+  if (!context.origin || !context.team_id || !existsSync(file)) return null;
+  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
+  let db: Database;
+  try { db = new Database(file, { readonly: true }); } catch { return null; }
+  try {
+    const at = (key: string): string | null => {
+      const stable = `${context.origin}/${context.team_id}/${key}`;
+      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
+        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
+    };
+    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
+  } catch { return null; } finally { db.close(); }
+}
 const agentLayerFile = resolve(home, 'agents.json');
 const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
 agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object.entries(agentSetup.agents ?? {}).map(([name, mailAgent]) => [name, { name, profile: mailAgent.profile }])) };
@@ -447,6 +469,17 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
   say(declared.stdout.toString().trim());
+  // The mailbox's main session is its profile's agent's main session in Teams (supercode ADR 0041 decision 1: whose session
+  // it is reaches Teams through the machine), so a Workplace mirrors it as that agent rather than as a plain session
+  // beside it. The address is the declaration's own (`roots go to sc:<machine>:<harness>:<id>.`, whatever follows it).
+  const main = /roots go to sc:[^:\s]+:([a-z][a-z-]*:[^\s]+?)\.(?=\s|$)/.exec(declared.stdout.toString())?.[1];
+  const profileAgent = homeAgent(name, mailAgent.profile);
+  if (!main) say(`agent ${name}: its declaration named no main session, so none is recorded as its agent's in Teams`);
+  else if (!profileAgent) say(`agent ${name}: this home declared no Teams agent for it or its profile ${mailAgent.profile}, so its main session ${main} is not recorded as one's`);
+  else {
+    const recorded = Bun.spawnSync({ cmd: drop([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    say(recorded.exitCode === 0 ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${recorded.stderr.toString().trim().split('\n').at(-1)}`);
+  }
   // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
   // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
   if (mailAgent.every_machine) {

@@ -154,17 +154,16 @@ if (command === 'ship') {
     process.exit(0);
   }
   console.log(`The stack already runs kit ${landed}${runningRecord.revision ? ` and main's ${content}/ and .open-autonomy/ as of ${runningRecord.revision.slice(0, 8)}` : ''}.`);
-  // The revision the stack runs, enrolled once: its mail agents declared and their sessions opened, the box maintainer on
-  // each online machine, the checkout in the workspace map (enroll.ts). The start renders the home and records the
-  // revision; enrolling is this pass's, never the keeper's. A failed or slow enrollment (Teams down) only delays the next
-  // enrollment, never a restart request, which this pass has already decided; the next pass tries again. Bounded at
-  // 120 s, enough for the declarations and opens over a healthy Teams, so a slow one cannot hold the next pass's move.
+  // Full enrollment belongs to each running revision. On subsequent passes, reconcile health subscriptions against
+  // the native declarations and currently online machines: a returning machine needs no revision change. This uses
+  // the existing deployer cadence, opens no extra sessions and introduces no separate polling clock.
   const enrolledFile = resolve(home, 'enrolled.json');
   const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
-  if (runningRecord.revision && runningRecord.revision !== enrolled) {
-    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 120_000 });
-    if (enroll.exitCode === 0) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
-    else console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
+  if (runningRecord.revision) {
+    const healthOnly = runningRecord.revision === enrolled;
+    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home, ...(healthOnly ? ['--health-only'] : [])], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 120_000 });
+    if (enroll.exitCode === 0 && !healthOnly) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
+    else if (enroll.exitCode !== 0) console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
   }
 } else if (command === 'status' || command === 'upgrade') {
   const latest = run(['npm', 'view', 'create-open-autonomy', 'version']).trim();

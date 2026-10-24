@@ -111,6 +111,20 @@
         "typescript": "^5.9.0",
       },
     },
+    "packages/workplace": {
+      "name": "@open-autonomy/workplace",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@runhuman/workplace": "0.0.0",
+        "react": "^19",
+        "react-native": ">=0.83",
+      },
+      "optionalPeers": [
+        "@runhuman/workplace",
+        "react",
+        "react-native",
+      ],
+    },
   },
   "overrides": {
     "sharp": "0.35.5",
@@ -283,6 +297,8 @@
     "@open-autonomy/self-host": ["@open-autonomy/self-host@workspace:apps/self-host"],
 
     "@open-autonomy/storybook": ["@open-autonomy/storybook@workspace:apps/storybook"],
+
+    "@open-autonomy/workplace": ["@open-autonomy/workplace@workspace:packages/workplace"],
 
     "@oxc-parser/binding-android-arm-eabi": ["@oxc-parser/binding-android-arm-eabi@0.127.0", "", { "os": "android", "cpu": "arm" }, "sha512-0LC7ye4hvqbIKxAzThzvswgHLFu2AURKzYLeSVvLdu2TBOYWQDmHnTqPLeA597BcUCxiLqLsS4CJ5uoI5WYWCQ=="],
 

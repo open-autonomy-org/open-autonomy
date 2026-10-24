@@ -4,10 +4,16 @@
   "actions": [
     "alert.raise",
     "books.publish",
-    "organization.read"
+    "organization.read",
+    "roles.grant",
+    "books.read",
+    "overview.read"
   ],
   "eventKinds": [],
   "redirectUrls": [
     "https://open-autonomy.org/workplace/callback"
+  ],
+  "contributions": [
+    "@open-autonomy/workplace"
   ]
 }

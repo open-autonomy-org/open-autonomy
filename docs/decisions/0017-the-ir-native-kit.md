@@ -47,7 +47,7 @@ for?".
   - named profiles, each its job: `manager` (its tick a job), `account-manager` (its digest a job; its owner instance a
     named profile until agents are their own layer), a `coder` parent with `coder-codex` and `coder-claude` children
     differing only in harness, `reviewer`, `auditor` (a job `every: 1h`, read-only, a model family apart from the
-    manager's) and `box-maintainer` (the hourly pass a job; one instance per machine);
+    manager's) and `box-maintainer` (the hourly pass a job; one main session across enrolled machines);
   - `workflow.yaml`, the board IR: one board for the organization, one review per arc started by the dispatcher, a
     review naming its reviewer profile, drafts blocked by a message.
 - **The start runs the install's processes, and nothing else does.** The keeper is the kit package's
@@ -82,7 +82,7 @@ for?".
   or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by the
   deployer pass once per revision the stack runs (below), runs `supercode agent declare <name>
   --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
-  registers the checkout in this machine's workspace map. An agent with `every_machine` (the box maintainer, RFC 0022
+  registers the checkout in this machine's workspace map. An agent explicitly requesting `every_machine` (RFC 0022
   decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it
   there once by its launch key (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares
   itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts

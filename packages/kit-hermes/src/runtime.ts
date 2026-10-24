@@ -98,9 +98,13 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     }
   }
   {
+    // The image installs supercode from npm at the machine's release. A machine whose supercode runs from its source lock
+    // (machine-supercode.ts) may run a version npm doesn't have: the image then takes the release its locked tree
+    // descends from, the tree's last release tag.
+    const IMAGE_SUPERCODE = `V=$(supercode --version | cut -d' ' -f2); npm view "@volter/supercode@$V" version >/dev/null 2>&1 && echo "$V" || git -C "$(node -p "const h=process.env.SUPERCODE_HOME||require('path').join(require('os').homedir(),'.config','supercode'); require(require('path').join(h,'source-lock.json')).root")" describe --tags --abbrev=0 --match 'v[0-9]*' | sed 's/^v//'`;
     const build = worldConfig({ id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down keeps the image.',
       env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
-      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --build-arg SUPERCODE_VERSION="$(supercode --version | cut -d' ' -f2)" --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
+      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --build-arg SUPERCODE_VERSION="$(${IMAGE_SUPERCODE})" --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
     say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-out=${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }

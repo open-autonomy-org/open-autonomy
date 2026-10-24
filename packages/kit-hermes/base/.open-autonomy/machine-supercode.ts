@@ -8,6 +8,10 @@
 // daemon or serve was refused by it, and an orchestrator released apart from its native refused its board verbs.
 // A review or a World runs unreleased builds instead, named together: OPEN_AUTONOMY_SUPERCODE_BIN, its
 // OPEN_AUTONOMY_ORCHESTRATOR_BIN and its OPEN_AUTONOMY_HARNESS_SDK (a harness SDK package folder, sdk/typescript).
+// A machine whose supercode runs from a source lock (`<supercode home>/source-lock.json`: supercode pinned to a checked-out
+// commit, its `packaging/npm` package linked onto PATH) is one release too: the lock's tree carries the orchestrator,
+// harness SDK and Teams package at that commit (sdk/orchestrator, sdk/typescript, sdk/teams), and the machine daemon
+// runs that tree's Teams package. Its packaging/npm package pins nothing, because the tree is the release.
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve, sep } from 'node:path';
@@ -48,6 +52,8 @@ export function machineSupercode(): MachineSupercode {
   const pkg = resolve(dirname(realpathSync(bin)), '..');
   const manifest = json(join(pkg, 'package.json'));
   if (manifest?.name !== '@volter/supercode') refuse(`${bin} is not the npm package @volter/supercode`);
+  const locked = sourceLocked(bin, pkg);
+  if (locked) return locked;
   const pins = manifest.dependencies ?? {};
   if (!PINNED.every((name) => pins[name])) refuse(`supercode ${manifest.version} at ${pkg} predates one release per install (it pins no orchestrator, harness SDK and Teams package)`);
   const wrong = PINNED.flatMap((name) => {
@@ -69,14 +75,36 @@ export function machineSupercode(): MachineSupercode {
   };
 }
 
-/** The Teams entries this machine's installed connector units run (`<teams home>/service`, teams.rs). */
+const supercodeHome = () => process.env.SUPERCODE_HOME || (process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'supercode') : join(homedir(), '.config', 'supercode'));
+
+/**
+ * The machine's supercode when it runs from its source lock: the package on PATH is the lock's tree's packaging/npm, and
+ * the three come from that tree at its pinned commit. Null when the package on PATH is not a source-locked tree's.
+ */
+function sourceLocked(bin: string, pkg: string): MachineSupercode | null {
+  const lock = json(join(supercodeHome(), 'source-lock.json'));
+  if (typeof lock?.root !== 'string' || !existsSync(lock.root)) return null;
+  const root = realpathSync(lock.root);
+  if (realpathSync(pkg) !== join(root, 'packaging', 'npm')) return null;
+  const refuse = (why: string): never => { throw new Error(`supercode's source lock at ${root} (commit ${String(lock.commit ?? '?').slice(0, 9)}) ${why}; re-pin it, or install a release: ${INSTALL}`); };
+  const orchestratorEntry = join(root, 'sdk', 'orchestrator', 'bin', 'orchestrator.mjs');
+  const harnessSdk = join(root, 'sdk', 'typescript');
+  const teams = join(root, 'sdk', 'teams', 'bin', 'teams.mjs');
+  const missing = [orchestratorEntry, join(harnessSdk, 'package.json'), teams].filter((path) => !existsSync(path));
+  if (missing.length) refuse(`has no ${missing.join(', ')}`);
+  const stale = daemonEntries().filter((entry) => resolve(entry) !== teams);
+  if (stale.length) refuse(`is not what the machine daemon runs (${[...new Set(stale)].join(', ')}, not ${teams}); reinstall its service: supercode teams connect --install`);
+  return { bin, orchestratorEntry, harnessSdk, release: typeof lock.supercode === 'string' ? lock.supercode : null };
+}
+
+/** The Teams entries this machine's installed connector units run (`<teams home>/service`, teams.rs): a release's
+ *  `@volter/supercode-teams` package, or a source tree's `sdk/teams`. */
 function daemonEntries(): string[] {
-  const home = process.env.SUPERCODE_HOME || (process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'supercode') : join(homedir(), '.config', 'supercode'));
-  const service = join(process.env.SUPERCODE_TEAMS_HOME || join(home, 'teams'), 'service');
+  const service = join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'service');
   let names: string[] = [];
   try { names = readdirSync(service); } catch { return []; }
   return names.filter((name) => /^dev\.volter\.supercode-teams-connector-[0-9a-f]{16}\.(plist|service|xml)$/.test(name))
-    .flatMap((name) => readFileSync(join(service, name), 'utf8').match(/[^\s<>"']*[\\/]@volter[\\/]supercode-teams[\\/]bin[\\/]teams\.mjs/g) ?? []);
+    .flatMap((name) => readFileSync(join(service, name), 'utf8').match(/[^\s<>"']*[\\/](?:@volter[\\/]supercode-teams|sdk[\\/]teams)[\\/]bin[\\/]teams\.mjs/g) ?? []);
 }
 
 let checked: MachineSupercode | null = null;

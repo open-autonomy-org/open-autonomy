@@ -90,14 +90,15 @@ if (machineBBin) {
 // The second machine's own custodian, when VO_MACHINE_B_CUSTODIAN names one: it enrolls machine-b, and the install
 // reaches machine-b only through the grants given on it (`supercode teams machines access grant machine-b …`).
 if (process.env.VO_MACHINE_B_CUSTODIAN) config.services.find((service: { id: string }) => service.id === 'machine-b').execution.environment.values.VO_MACHINE_CUSTODIAN = process.env.VO_MACHINE_B_CUSTODIAN;
+if (process.env.VO_MACHINE_B_AFTER_ENROLL === '1') config.services.find((service: { id: string }) => service.id === 'machine-b').execution.environment.values.VO_MACHINE_B_AFTER_ENROLL = '1';
 // The account's Slack channel runs only where a rehearsal RH2 is wired, with the owner's session to install the bridge.
 if (!process.env.VO_RH2_URL || !process.env.VO_RH2_OWNER_TOKEN || !process.env.VO_RH2_ROOT) config.services = config.services.filter((service: { id: string }) => !['rh2-agent', 'slack', 'bridge', 'voice'].includes(service.id));
 // RH2's integration apps (the mirrored ontology's bots) run where the RH2 tree under review carries them.
 config.services = config.services.filter((service: { id: string }) => !['arcs-rooms', 'cards-tasks'].includes(service.id) || (process.env.VO_RH2_ROOT && existsSync(resolve(process.env.VO_RH2_ROOT, 'bots', service.id, 'main.mjs'))));
 for (const service of config.services) service.execution.cwd = ROOT;
-// The machine-health pack's alarm lines (supercode sdk/health, the RFC 0022 probe), its maintainer's config on each
-// machine: free memory set to cross on every machine, so each machine's alarm shows whose maintainer it reaches (row 6);
-// one process's CPU on the first, so a runaway alarms (rows 4-5). Fast readings, so an alarm lands in seconds.
+// Native probe thresholds deliberately cross so routing is observable after enrollment supplies the one host
+// address. The model's labelled alarm stub makes no resource decisions; this proves neither runaway intervention
+// nor resource-management judgment.
 const healthAlarms = { intervalSec: 5, alarms: { 'memory.free': { below: true, warn: 99, crit: 1, clear: 100, forSec: 0 }, 'process.cpu': { warn: 95, crit: 400, clear: 50, forSec: 10 } } };
 Object.assign(config.runtime.environment.values, { VO_HEALTH_ALARMS: JSON.stringify(healthAlarms), VO_SUPERCODE_TREE: supercodeTree,
   // `supercode teams …` runs the branch's Teams package (the World's server, `connect`, `machines`, `open --on`).
