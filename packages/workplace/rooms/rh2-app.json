@@ -1,7 +1,7 @@
 {
   "name": "Project Rooms",
   "registrationKey": "project-rooms",
-  "description": "One Room per project in the organization's Office, from the board: the sessions working its cards now brought in and out with the Workplace's join and leave commands, its guidance set, and the images and videos attached to its cards posted in it (Open Autonomy)",
+  "description": "One Room per project in the organization's Office, from the board: the agents working its cards now brought in and out with the Workplace's join and leave commands, its guidance set, and the images and videos attached to its cards posted in it (Open Autonomy)",
   "actions": [
     "organization.read",
     "room.create",
