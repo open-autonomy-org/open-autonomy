@@ -1,0 +1,464 @@
+{
+  "schemaVersion": 2,
+  "metadata": {
+    "id": "volter-org-review",
+    "description": "volter-org's review World: the IR kit's company install from its branches, synthetic vendors, the real platform; the orchestrator's workers on Codex through the OpenAI twin, the mail agents' Claude sessions through the Anthropic twin, panes on a machine daemon of the World's own; RH2 is the rehearsal World's when VO_RH2_URL names it."
+  },
+  "discovery": {
+    "selection": {
+      "include": [
+        {
+          "usage": "application"
+        },
+        {
+          "usage": "dependencies"
+        }
+      ],
+      "exclude": []
+    }
+  },
+  "runtime": {
+    "environment": {
+      "values": {
+        "AGENT_PROXY_ADMIN_TOKEN": "world-admin",
+        "AGENT_PROXY_HMAC_SECRET": "world-hmac-secret",
+        "MODEL_GATEWAY_API_KEY": "world-gateway-key",
+        "OPEN_AUTONOMY_MODEL": "gpt-6-astra"
+      },
+      "strip": [
+        "*"
+      ]
+    },
+    "network": {
+      "egress": []
+    }
+  },
+  "services": [
+    {
+      "id": "codex",
+      "type": "twin",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${TWIN_ROOT:openai}",
+            "serve"
+          ]
+        },
+        "environment": {
+          "values": {
+            "TWIN_OPENAI_SCENARIO": "${HANDLERS}"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto"
+      },
+      "bindings": {
+        "injectEnv": "CODEX_TWIN_URL"
+      }
+    },
+    {
+      "id": "openai",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bash",
+          "args": [
+            "-lc",
+            "exec bun \"$WORLD_OPENAI_CLI\" serve --port \"$PORT\" --root \"$VOLTER_WORLD_DATA/openai\" --scenario \"$VO_REALTIME_HANDLERS\""
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "openai twin at",
+          "timeoutMs": 120000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "OPENAI_TWIN_URL"
+      }
+    },
+    {
+      "id": "gateway",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/gateway.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "gateway: organization",
+          "timeoutMs": 120000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "GATEWAY_TWIN_URL"
+      }
+    },
+    {
+      "id": "github",
+      "type": "twin",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${TWIN:github}",
+            "serve"
+          ]
+        }
+      },
+      "endpoint": {
+        "port": "auto"
+      },
+      "bindings": {
+        "injectEnv": "GITHUB_TWIN_URL"
+      }
+    },
+    {
+      "id": "anthropic",
+      "type": "twin",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${TWIN:anthropic}",
+            "serve"
+          ]
+        },
+        "environment": {
+          "values": {
+            "TWIN_ANTHROPIC_SCENARIO": "${HANDLERS_ANTHROPIC}"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto"
+      },
+      "bindings": {
+        "injectEnv": "ANTHROPIC_TWIN_URL"
+      }
+    },
+    {
+      "id": "platform",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/platform.ts",
+            "${OA_TREE}/apps/platform/world.ts"
+          ],
+          "rootArg": "--persist-to",
+          "portArg": false
+        },
+        "environment": {
+          "values": {
+            "OPEN_AUTONOMY_ACCOUNT": "volter-ai/volter-org"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "httpUrl": "${url}/healthz",
+          "timeoutMs": 120000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "PLATFORM_URL"
+      }
+    },
+    {
+      "id": "teams",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bash",
+          "args": [
+            "-lc",
+            "exec \"$VO_SUPERCODE_BIN\" teams server start --listen \"127.0.0.1:$PORT\" --public-origin \"http://127.0.0.1:$PORT\" --init-team Volter"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "server_id",
+          "timeoutMs": 60000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "TEAMS_URL"
+      }
+    },
+    {
+      "id": "rh2-agent",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/rh2-agent.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "rh2-agent: the account manager is",
+          "timeoutMs": 300000,
+          "intervalMs": 1000
+        }
+      }
+    },
+    {
+      "id": "machine",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/machine.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "httpUrl": "${url}/",
+          "timeoutMs": 60000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "VO_MACHINE_URL"
+      }
+    },
+    {
+      "id": "machine-b",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/machine.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        },
+        "environment": {
+          "values": {
+            "VO_MACHINE": "machine-b"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "httpUrl": "${url}/",
+          "timeoutMs": 60000,
+          "intervalMs": 500
+        }
+      },
+      "bindings": {
+        "injectEnv": "VO_MACHINE_B_URL"
+      }
+    },
+    {
+      "id": "slack",
+      "type": "twin",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${TWIN:slack}",
+            "serve"
+          ]
+        }
+      },
+      "endpoint": {
+        "port": "auto"
+      },
+      "bindings": {
+        "injectEnv": "SLACK_TWIN_URL"
+      }
+    },
+    {
+      "id": "bridge",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/bridge.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "bridge: installed",
+          "timeoutMs": 300000,
+          "intervalMs": 1000
+        }
+      },
+      "bindings": {
+        "injectEnv": "VO_BRIDGE_URL"
+      }
+    },
+    {
+      "id": "arcs-rooms",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/rh2-app.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        },
+        "environment": {
+          "values": {
+            "VO_BOT": "arcs-rooms"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "arcs-rooms: installed",
+          "timeoutMs": 300000,
+          "intervalMs": 1000
+        }
+      }
+    },
+    {
+      "id": "cards-tasks",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/rh2-app.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        },
+        "environment": {
+          "values": {
+            "VO_BOT": "cards-tasks"
+          }
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "cards-tasks: installed",
+          "timeoutMs": 300000,
+          "intervalMs": 1000
+        }
+      }
+    },
+    {
+      "id": "agent",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "sh",
+          "args": [
+            "${SCENARIO_DIR}/agent.sh"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": 19787,
+        "portReason": "The start's valve uses this port and the next three; an organization's project keys take +4 each after them. Choose VO_VALVE_PORT for another instance.",
+        "ready": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/ready.ts"
+          ],
+          "timeoutMs": 300000,
+          "intervalMs": 1000
+        }
+      },
+      "bindings": {
+        "injectEnv": "VO_AGENT_URL"
+      }
+    },
+    {
+      "id": "enroll",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "sh",
+          "args": [
+            "${SCENARIO_DIR}/enroll.sh"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "enroll: done",
+          "timeoutMs": 600000,
+          "intervalMs": 1000
+        }
+      }
+    },
+    {
+      "id": "voice",
+      "type": "process",
+      "execution": {
+        "process": {
+          "command": "bun",
+          "args": [
+            "${SCENARIO_DIR}/voice.ts"
+          ],
+          "rootArg": false,
+          "portArg": false
+        }
+      },
+      "endpoint": {
+        "port": "auto",
+        "ready": {
+          "stdoutMatch": "voice: the account manager",
+          "timeoutMs": 600000,
+          "intervalMs": 1000
+        }
+      },
+      "bindings": {
+        "injectEnv": "VO_VOICE_URL"
+      }
+    }
+  ]
+}

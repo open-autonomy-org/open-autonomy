@@ -189,7 +189,7 @@ export async function startContainer(options: {
     const restart = () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); };
     // What the agent IS is what main says, and main moves while it runs (start.ts's watch, read in the executor): every
     // ten minutes the checkout fetches main; a move that touches the stack's own files (hermes/, .open-autonomy/) drains
-    // the runtime once the board is quiet, and this host exits 75, which its service manager restarts onto the new main.
+    // the runtime at once, whatever the board holds, and this host exits 75, which its service manager restarts onto the new main.
     // A move that touches only the project's books advances the mark; a checkout with tracked changes is left alone.
     let startedMain = prepared.revision, watching = false;
     mainWatch = setInterval(async () => {
@@ -200,8 +200,6 @@ export async function startContainer(options: {
         if (!seen.main || seen.main === startedMain) return;
         // a started revision main no longer reaches names no files, and restarts as bare mode's does
         if (seen.changed && !seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
-        if (seen.busy === null) { console.error('host: cannot read the board; the restart onto main waits'); return; }
-        if (seen.busy) return;
         console.log(`host: main moved to ${seen.main.slice(0, 8)}; asking ${runtimeName} to drain before restarting the stack onto it`);
         restartAsked = true;
         restart();

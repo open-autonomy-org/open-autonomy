@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The PM's bounded maintenance: inspect releases, land an idle kit upgrade, request a drained restart, and put a ready
+// The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
 // release on the Release pull request. Never deploys, tags or publishes.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -30,9 +30,6 @@ const run = (cmd: string[], cwd = project): string => {
   return result.stdout.toString().trim();
 };
 const git = (...args: string[]) => run(['git', ...args]);
-type Task = { id: string; title: string; status: string; body?: string };
-const board = () => JSON.parse(run(['hermes', 'kanban', 'list', '--json'])) as Task[];
-const idle = () => !board().some((t) => ['running', 'review'].includes(t.status));
 const record = (text: string) => JSON.parse(text) as { version: string; skew?: string };
 const installed = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8')).version;
 const runningFile = resolve(home, 'running-kit.json');
@@ -130,7 +127,6 @@ if (command === 'ship') {
     console.log(`Release ${release} is on ${open.html_url}; the owner is told once.`);
   }
 } else if (command === 'restart') {
-  if (!idle()) { console.log('A task is running or under review; restart waits for an idle hour.'); process.exit(0); }
   git('fetch', '-q', 'origin', 'main');
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   if (running === landed) { console.log(`Gateway already runs kit ${landed}.`); process.exit(0); }
@@ -140,9 +136,8 @@ if (command === 'ship') {
   console.log(`Kit ${landed} landed; the supervisor will drain the gateway and restart the complete stack.`);
 } else if (command === 'status' || command === 'upgrade') {
   const latest = run(['npm', 'view', 'create-open-autonomy', 'version']).trim();
-  console.log(JSON.stringify({ installed, running, latest, idle: idle() }));
+  console.log(JSON.stringify({ installed, running, latest }));
   if (command === 'status' || !newer(latest, installed)) process.exit(0);
-  if (!idle()) { console.log('A task is running or under review; upgrade waits for an idle hour.'); process.exit(0); }
   git('fetch', '-q', 'origin', 'main');
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   if (!newer(latest, landed)) { console.log(`Kit ${landed} already landed; request a restart.`); process.exit(0); }
@@ -176,7 +171,6 @@ if (command === 'ship') {
     run(['bun', 'install', '--frozen-lockfile'], worktree);
     run(['bun', 'run', 'check'], worktree);
   }
-  if (!idle()) throw new Error(`a task started during the upgrade; ${worktree} is preserved and has not been pushed`);
   run(['git', 'add', '-A'], worktree);
   if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
   // Land it the way this repository lands changes, read from main as it stands, never from the upgrade's result: a

@@ -16,32 +16,44 @@ and are removed by normal World purge. The source scenario survives.
 Install dependencies from the lockfile through a tooling World, using the package manager's warm
 cache. Prepare both the OA workspace and the cookbook's `.open-autonomy` dependencies. Use the
 Hermes version recorded in `cookbooks/todo-cli/container/hermes.pin`; an existing installation
-can be reused. Boot does not download Hermes or bypass World to install packages. Keep the state root and World name
-short: the pinned Hermes uses a Unix socket below its home; preparation checks its path length.
+can be reused only after checking that its checkout is at that exact commit. Boot does not download
+Hermes or bypass World to install packages. Keep the state root and World name short: the pinned Hermes uses a Unix socket below its home; preparation checks its path length.
 
 ```bash
 export WORLD_STATE_ROOT=/fast/disk/oa  # outside the checkout
 export OA_WORLD_NAME=oa
+export OA_WORLD_OWNER=oa-manual-scenario
 export WORLD_HERMES_BIN=/path/to/pinned-hermes/.venv/bin
 export TWINS_ROOT=/path/to/twin             # current checkout with complete environment stripping
 bun world/prepare.ts
 ```
 
-Preparation prints the exact commands for the selected World CLI. Until the supporting World change
-is released, use the current Twin checkout: this scenario requires `stripEnv: ["*"]`.
+Preparation prints the exact commands for the selected World CLI. Select one compatible pinned CLI and
+use it for the whole instance lifecycle: this scenario requires `stripEnv: ["*"]`. Never run two runtime
+versions over an instance. The printed command uses the checkout or explicit CLI selected at preparation.
 It writes ordinary `world.config.json` and `<scenario>/handlers/openai.json` under
 `$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/`. Use the printed commands, or the equivalent
 installed CLI below, from the OA repository:
 
 ```bash
-volter-world up "$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/world.config.json" --env-file "$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/world.env" --root "$WORLD_STATE_ROOT"
-volter-world app-url "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" --set "$(volter-world url "$OA_WORLD_NAME" platform --root "$WORLD_STATE_ROOT")"
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes kanban list
-volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm
+volter-world resources --root "$WORLD_STATE_ROOT"
+volter-world up "$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/world.config.json" --env-out "$WORLD_STATE_ROOT/scenarios/$OA_WORLD_NAME/world.$(date +%s).$$.env" --owner "$OA_WORLD_OWNER" --root "$WORLD_STATE_ROOT"
 volter-world doctor "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT"
 volter-world tail "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" --no-follow
+volter-world covers "$OA_WORLD_NAME" --repo cookbooks/todo-cli --root "$WORLD_STATE_ROOT"
+volter-world app-url "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" --set "$(volter-world url "$OA_WORLD_NAME" platform --root "$WORLD_STATE_ROOT")"
+volter-world attach "$OA_WORLD_NAME" --owner "$OA_WORLD_OWNER" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes kanban list
+volter-world attach "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" -- bun world/operator.ts hermes cron run pm
 volter-world down "$OA_WORLD_NAME" --root "$WORLD_STATE_ROOT" --purge
 ```
+
+`--env-out` is a new disposable output path, never an input or credential file. Preparation emits a
+unique path each time; use `url` and `app-url` for endpoints rather than reading that file. After boot,
+inspect `doctor`, `tail --no-follow`, vendor `GET /twin` manifests and `covers` results before claiming
+coverage. Register the app URL as the last readiness step. A missing vendor remains a coverage gap;
+do not disable routing or substitute real credentials. `covers` is a static connection check; the native
+readiness command observes the schedule. Neither proves publication or owner control: inspect acknowledged
+SDK records and desired versus observed state for those claims. Stop registered attached consumers before teardown.
 
 `up` starts a fresh instance and the agent entrypoint seeds it once. A running instance rejects
 another `up`; it is never silently reseeded. To change handlers or the opening situation, finish

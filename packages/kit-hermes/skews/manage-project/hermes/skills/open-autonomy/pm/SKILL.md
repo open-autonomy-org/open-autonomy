@@ -112,7 +112,7 @@ rewrite main. After landing, advance the notepad's `main` cursor to the snapshot
 ## Keep the installation moving
 
 Inspect `hermes cron list`, `runs` and `incidents` for missed scrums and delivery errors; recover coverage
-before advancing a cursor. Run `bun .open-autonomy/maintain.ts upgrade`, then `restart`, for idle kit
+before advancing a cursor. Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for kit
 maintenance; the upgrade merges the kit's change into this project's files three-way, and a file where
 both moved is left with conflict markers in the upgrade worktree for you to resolve, keeping this
 project's intent and the kit's change, before it lands. It lands as this repository lands changes: a

@@ -14,6 +14,7 @@
   "include": [
     "../../.open-autonomy/publisher.ts",
     "src/**/*.ts",
+    "keeper/**/*.ts",
     "test/**/*.ts",
     "skews/self-build/.open-autonomy/scrum.ts",
     "../../.open-autonomy/community.ts",

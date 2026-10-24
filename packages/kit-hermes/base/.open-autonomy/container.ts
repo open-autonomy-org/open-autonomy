@@ -177,20 +177,19 @@ export async function startContainer(options: {
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    // the orchestrator and Volter Harness are the image's own (its .open-autonomy, installed for Linux)
-    const kitDir = '/opt/agent/.open-autonomy';
+    // the orchestrator and Volter Harness are the image's own, installed globally there: the container's machine (D215)
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
-      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+      : startContainerProcess({ container, cwd: workspace, command: ['supercode-orchestrator', '--root', home],
         // the executor is the boundary: a gated Codex worker keeps the kit's sandbox setting there (supercode activation.mjs)
-        env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode`, SUPERCODE_CODEX_SANDBOX: 'executor' } });
+        env: { ...env, SUPERCODE_BIN: 'supercode', SUPERCODE_CODEX_SANDBOX: 'executor' } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
     const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;
     console.log(`host: ${runtimeName} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);
     const restart = () => { if (harness === 'hermes') return gateway?.restart(); restartAsked = true; void gateway?.close(); };
     // What the agent IS is what main says, and main moves while it runs (start.ts's watch, read in the executor): every
     // ten minutes the checkout fetches main; a move that touches the stack's own files (hermes/, .open-autonomy/) drains
-    // the runtime once the board is quiet, and this host exits 75, which its service manager restarts onto the new main.
+    // the runtime at once, whatever the board holds, and this host exits 75, which its service manager restarts onto the new main.
     // A move that touches only the project's books advances the mark; a checkout with tracked changes is left alone.
     let startedMain = prepared.revision, watching = false;
     mainWatch = setInterval(async () => {
@@ -201,8 +200,6 @@ export async function startContainer(options: {
         if (!seen.main || seen.main === startedMain) return;
         // a started revision main no longer reaches names no files, and restarts as bare mode's does
         if (seen.changed && !seen.changed.some(file => file.startsWith('hermes/') || file.startsWith('.open-autonomy/'))) { startedMain = seen.main; return; }
-        if (seen.busy === null) { console.error('host: cannot read the board; the restart onto main waits'); return; }
-        if (seen.busy) return;
         console.log(`host: main moved to ${seen.main.slice(0, 8)}; asking ${runtimeName} to drain before restarting the stack onto it`);
         restartAsked = true;
         restart();

@@ -628,6 +628,16 @@ provider's existing apps before deciding what to retry. The receiver does not ov
 The setup agent handles recovery using provider evidence. No manifest generation, browser navigation,
 installation, Git operation, policy decision or runtime configuration belongs in the credential saver.
 
+### Pull request events through hookline
+
+Where the install's manager should hear of pull request events (opened, pushed, reviewed, commented, merged) as they
+happen, point the repository's GitHub webhook at a [hookline](https://github.com/open-autonomy-org/hookline) inbox
+(`https://<inbox>/in/github`) and attach this install as a socket target there
+(`PUT /targets/<name>` with `{"url": "hookline-socket:<name>"}`). Then write the protected `hookline.env` beside the
+install's other credentials: `HOOKLINE_INBOX=wss://<inbox>`, `HOOKLINE_READ_TOKEN`, `HOOKLINE_TARGET=<name>`, and
+optionally `HOOKLINE_MAIL_TO` (default `manager`). The keeper then runs `.open-autonomy/hookline.ts`. It needs no
+tunnel and no inbound port, and tells the manager of each event once: a replay is acknowledged and not told again.
+
 ### Displayed credentials
 
 When the agreed integration displays its new credential on a page, use the standalone helper's capture
@@ -660,6 +670,19 @@ and credential receiver on the same host. For a remote runtime, use the manual r
 authorized SSH tunnel; never expose it as a public secret endpoint.
 
 ## Prepare the host and application's world
+
+Before activation, finalize the adopter-owned host lock through the existing installer in that project's World:
+`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/bun.lock` against the
+exact declared host manifest, then use frozen installation for startup. The template's native dependency lock
+cannot contain the integrity of the kit archive that contains it. An unresolved committed template lock refuses;
+startup never silently unfreezes it. Unpublished candidates require explicitly supplied reviewed package artifacts
+through a disposable review registry; this is not an npm release.
+
+For bare company/IR installs, the selected runtime is the orchestrator, independent of the worker harness.
+The bounded declaration and refusal rules are in ADR 0026; Hermes-specific settings are not native guarantees.
+The reporter needs explicit source enrollment or retained-state adoption through `PUBLICATION.md`; without it,
+publication stays pending and the native engine keeps running. An organization's project reporter declares a
+relative `reporter_config` with that tenant's own account, policy, logical platform and publication custody.
 
 The model choice does not change the fleet architecture. For the managed setup, World owns one executor
 and the host runs `start.ts --container`: credential valves and SDK reporting stay outside, native Hermes
@@ -697,6 +720,21 @@ the reviewed procedure in `.open-autonomy/PRODUCTION.md`; `--with release` repor
 is not implemented and refuses before collecting a credential. Other deployment targets use their own
 documented setup. Optional sponsorship setup is also separate, explicitly selected with `--with sponsors`.
 
+## Keep the install on main
+
+The start only starts and stops the install's processes. Two things it does not do are the deployer pass's,
+`HERMES_HOME=<home> bun .open-autonomy/maintain.ts restart`, which the kit ships and the host runs on a schedule:
+
+- **Moving onto main.** When main moved what the install runs on (its content folder or `.open-autonomy/`) or a kit
+  release landed, the pass asks the start for a drained restart, whatever the board holds.
+- **Enrolling the install on this machine.** Once the stack runs a revision not yet enrolled, the pass runs
+  `.open-autonomy/enroll.ts`: each mail agent of `agent.json` declared with its main session opened, an `every_machine`
+  agent's instance on each other online machine, and the checkout in the machine's workspace map.
+
+After the first start has rendered the home, run the pass once by hand, then schedule it every ten minutes beside the
+start: a launchd job with `StartInterval` 600 (or a cron line) running that command in the checkout, with the start's
+`--home` as `HERMES_HOME`. A project with a keep job of its own may run the pass from it instead.
+
 ## Verify, resume and hand off
 
 Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing
@@ -707,7 +745,12 @@ If a completed credential step has missing files in the selected directory, setu
 its record or issuing replacements. Reconcile the intended host/directory and restore credentials or
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
-a treasurer credential alone cannot activate the fleet.
+a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
+one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode @volter/supercode`,
+which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
+alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
+the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
+command.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.

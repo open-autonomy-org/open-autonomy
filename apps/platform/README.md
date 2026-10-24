@@ -1,28 +1,40 @@
-# The platform
+# The official hosted service
 
-One Cloudflare Worker: the books, the rails, the development stream, the site. It holds each project's
-funds in an account tree, meters every spend against its account as it happens, takes money in, carries
-every session the project's agent works, and serves the funding site and the README widgets. The ledger's
-`consumed_usd_cents` is the authoritative cost; nothing is estimated client-side.
+Open Autonomy's official Cloudflare Worker mounts the reusable [backend](../../packages/backend/README.md)
+with its discovery/funding application. The core accepts the SDK, retains published development records,
+enforces policy and owns treasury settlement. The surrounding app offers listings, sponsorship, checkout,
+giving and human account connections. It operates the API and site; owners operate their project's compute.
+
+The [ecosystem architecture](../../docs/decisions/0024-ecosystem-target-architecture.md) defines these logical
+boundaries and records its acceptance status. They can share one Worker and Durable Object. Application
+funding records identify provider receipts; core balances, reservations and settled cents remain the one
+monetary authority. Nothing is estimated client-side.
 
 ```text
-src/index.ts      the entry: the backend's worker with this app mounted, the one Durable Object re-exported
-src/app.tsx       the app: its routes before the core's, the page's slots, the GitHub login as the identity door, the monthly accrual
-src/patronage.ts  the operations on the books this app registers: sponsors and their accrual, coupons, tiers, Polar products and checkouts, the patrons wall
-src/site.tsx      its pages: explore, a funder's page, the giving page, and the panels it adds to every project's page
-src/polar.ts      money in through Polar: the tiers as products, the checkout, the thanks page, the webhook
-src/sponsors.ts   the GitHub Sponsors webhook
-src/give-auth.ts  the GitHub login for the giving page and the roster edit
+src/index.ts      worker(app), with LimitLedger re-exported and patronage operations registered
+src/app.tsx       application routes, page/viewer/identity extensions and monthly accrual
+src/patronage.ts  application records and operations: sponsors, coupons, tiers, Polar products/checkouts and patrons
+src/site.tsx      discovery, project funding presentation, funder/giving pages and shared-page slots
+src/polar.ts      Polar checkout, thanks-page reconciliation and signed funding webhook
+src/sponsors.ts   GitHub Sponsors webhook
+src/give-auth.ts  Volter/GitHub identity connections for giving and owner actions
 ```
 
-The books, the rails, the keys, the stream, the timeline and the project page are the backend, `packages/backend/`,
-which this app mounts. Everything below describes the whole as deployed at open-autonomy.org.
+The backend also supplies reusable views/widgets and OA's consented integration with external RH2
+Workplace. OA publishes books and book conditions there; Supercode's integration owns runtime conditions
+and resource access. Linked projects open their Workplace Overview; the dashboard deliberately retains
+owner controls and books ([ADR 0018](../../docs/decisions/0018-the-workplace-integration.md)). Neither
+Workplace nor this application dispatches native work.
+
+Everything below describes this deployment's implementation; release follows [DEPLOY.md](DEPLOY.md).
+Code presence does not establish that a feature is deployed. A self-host mounts the same core without
+this funding application; cross-deployment discovery/funding and treasury federation are undecided.
 
 ## Money
 
 - `mint` puts money into an account (a sponsor, a coupon, an admin through the reviewed workflow);
   `grant` moves it down the tree; a metered rail takes it out. balance = in − out − consumed.
-- **Rails.** `model` is live: a stock OpenAI or Anthropic SDK pointed at this host, with the project's key,
+- **Model rail.** A stock OpenAI or Anthropic SDK pointed at this host, with the project's key,
   reaches the model gateway through a reservation held against the balance (the hard-stop) and the global
   daily rail (`MAX_GLOBAL_DAILY_USD_CENTS`, runaway safety), then settles to the gateway's reported cost in
   fractional cents. Every settled call is appended to the account's public audit trail
@@ -37,9 +49,11 @@ which this app mounts. Everything below describes the whole as deployed at open-
   reservation as a `card` audit record naming the merchant, the category and the card's last4, and retires
   the card. A decline, by the platform or by the issuer's own controls, releases the reservation and
   retires the card. `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and (for a twin) `STRIPE_API_BASE`.
-- **The partner rail.** `POST /v1/rails/partner` settles a partner service's metered charge now, for a
-  partner the owner listed and within the amount the owner set, as a `partner` audit record naming the
-  partner, the unit and the quantity.
+- **The partner rail.** Durable reservations hold a bounded charge, then capture or release under stable
+  partner identities; see [partner reservations](../../docs/decisions/0016-partner-reservations.md) and the
+  [SDK wire](../../packages/sdk/README.md). The older `POST /v1/rails/partner` immediate-charge route remains
+  for compatibility. Both enforce the owner's partner bounds and record settled charges on the books;
+  a treasury receipt is not external work acceptance or seller payout.
 - **Money in.** Three doors onto the same books. Grant credits: a funder (`@login`, proven either by a claim-file
   key that can only give or by GitHub OAuth on `GET /give`) holds credits the org gave them (or bought) and gives
   them to a project they believe in. An org admin passes Sponsors money on from the grants-pool source on that same
@@ -86,10 +100,12 @@ profile,moderate,keys}`, `accounts/:id/sessions/:key` (DELETE), `coupons`, `keys
 
 `wrangler.toml` holds the vars; secrets are `AGENT_PROXY_ADMIN_TOKEN`, `AGENT_PROXY_HMAC_SECRET`,
 `MODEL_GATEWAY_API_KEY`, `GITHUB_SPONSORS_WEBHOOK_SECRET`, the giving page's `GITHUB_OAUTH_CLIENT_ID`,
-`GITHUB_OAUTH_CLIENT_SECRET` and dedicated `GIVE_SESSION_HMAC_SECRET`; `GITHUB_TOKEN` with `read:org` is required
+`GITHUB_OAUTH_CLIENT_SECRET` and dedicated `GIVE_SESSION_HMAC_SECRET`; Volter identity uses
+`VOLTER_ISSUER`, `VOLTER_CLIENT_ID` and `VOLTER_CLIENT_SECRET`; `GITHUB_TOKEN` with `read:org` is required
 to expose the grants pool to signed-in organization admins (and is otherwise optional). The one Durable
-Object is `LIMITS` (class `LimitLedger`); its state record is normalized on load, so the books written by
-an earlier worker carry over. See `DEPLOY.md`.
+Object is `LIMITS` (class `LimitLedger`); its state record is normalized on load, preserving supported older
+records. Optional Workplace configuration is `WORKPLACE_URL`, `WORKPLACE_APP_ID`, `WORKPLACE_CLIENT_ID` and
+`WORKPLACE_CLIENT_SECRET`; absence refuses linking. See [DEPLOY.md](DEPLOY.md).
 
 ```bash
 bun run check   # typecheck; manually exercise behavior in the disposable World scenario

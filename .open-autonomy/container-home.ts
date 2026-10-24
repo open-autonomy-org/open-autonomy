@@ -70,11 +70,10 @@ print(json.dumps({'revision':revision,'dirty':dirty,'config':config,'agent':agen
 
 /**
  * Where main is now, for a running stack (start.ts's watch, read in the executor): a clean checkout fetches it and names
- * the files changed since `since`; where any changed, whether the board has a task running or in review (`busy`, null
- * when the board cannot be read). A checkout with tracked changes is a killed attempt's: nothing is fetched. A started
+ * the files changed since `since`. A checkout with tracked changes is a killed attempt's: nothing is fetched. A started
  * revision main no longer reaches (a rewritten history) names no files: `changed` is null, and the stack restarts.
  */
-export async function containerMainMoved(options: { container: string; home: string; workspace: string; since: string }): Promise<{ main?: string; changed: string[] | null; busy?: boolean | null }> {
+export async function containerMainMoved(options: { container: string; home: string; workspace: string; since: string }): Promise<{ main?: string; changed: string[] | null }> {
   if (!/^[0-9a-f]{40}$/.test(options.since)) throw new Error('The started revision must be a commit id');
   const output = await python(options.container, String.raw`
 import json,os,pathlib,subprocess,sys
@@ -89,13 +88,7 @@ changed=[]
 if main!=s['since']:
     diff=subprocess.run(['git','-C',str(workspace),'diff','--name-only',s['since'],main],env=env,capture_output=True,timeout=60)
     changed=diff.stdout.decode().split() if diff.returncode==0 else None
-busy=None
-if changed is None or changed:
-    board=subprocess.run(['hermes','kanban','list','--json'],cwd=str(workspace),env=env,capture_output=True,timeout=60)
-    try: tasks=json.loads(board.stdout) if board.returncode==0 else None
-    except ValueError: tasks=None
-    if isinstance(tasks,list): busy=any(isinstance(t,dict) and t.get('status') in ('running','review') for t in tasks)
-print(json.dumps({'main':main,'changed':changed,'busy':busy}))
+print(json.dumps({'main':main,'changed':changed}))
 `, options, 150_000, 'Reading main in the executor failed.');
   return JSON.parse(output);
 }

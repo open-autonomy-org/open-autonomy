@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
-// The PM's bounded maintenance: inspect releases, land an idle kit upgrade, request a drained restart, and put a ready
-// release on the Release pull request. Never deploys, tags or publishes.
+// The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
+// release on the Release pull request. Never deploys, tags or publishes. `restart` is the install's deployer pass, run
+// on a schedule by whoever runs the install (SETUP.md, "Keep the install on main": a launchd or cron job every ten
+// minutes, a project's keep job, a PM's pass): it moves a running install onto main (the keeper performs the restart it
+// asks for and never fetches main itself), and once the stack runs a revision it has not enrolled, runs enroll.ts.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -24,19 +27,18 @@ os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
 // Bun does not use the world's HTTP injector. Point bunx at the same registry
 // npm queried so the rehearsal release, rather than a cached public package, is applied.
 const bunxEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, BUN_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
+// Bounded: a command that reaches the network and hangs fails here at five minutes rather than holding the pass.
 const run = (cmd: string[], cwd = project): string => {
-  const result = Bun.spawnSync({ cmd, cwd, env: cmd[0] === 'bunx' ? bunxEnv : process.env, stdout: 'pipe', stderr: 'pipe' });
+  const result = Bun.spawnSync({ cmd, cwd, env: cmd[0] === 'bunx' ? bunxEnv : process.env, stdout: 'pipe', stderr: 'pipe', timeout: 300_000 });
   if (result.exitCode !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed: ${result.stderr.toString().trim()}`);
   return result.stdout.toString().trim();
 };
 const git = (...args: string[]) => run(['git', ...args]);
-type Task = { id: string; title: string; status: string; body?: string };
-const board = () => JSON.parse(run(['hermes', 'kanban', 'list', '--json'])) as Task[];
-const idle = () => !board().some((t) => ['running', 'review'].includes(t.status));
-const record = (text: string) => JSON.parse(text) as { version: string; skew?: string };
+const record = (text: string) => JSON.parse(text) as { version: string; skew?: string; revision?: string };
 const installed = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8')).version;
 const runningFile = resolve(home, 'running-kit.json');
-const running = existsSync(runningFile) ? record(readFileSync(runningFile, 'utf8')).version : null;
+const runningRecord = existsSync(runningFile) ? record(readFileSync(runningFile, 'utf8')) : null;
+const running = runningRecord?.version ?? null;
 const stable = (version: string) => /^\d+\.\d+\.\d+$/.test(version);
 const newer = (a: string, b: string) => {
   if (!stable(a) || !stable(b)) throw new Error(`expected stable kit versions, got ${a} and ${b}`);
@@ -130,19 +132,44 @@ if (command === 'ship') {
     console.log(`Release ${release} is on ${open.html_url}; the owner is told once.`);
   }
 } else if (command === 'restart') {
-  if (!idle()) { console.log('A task is running or under review; restart waits for an idle hour.'); process.exit(0); }
+  // The install moves onto main when the kit landed or main changed what the stack runs on: the home's content (home/
+  // or hermes/) and .open-autonomy/. A move that touches only the project's own books (a roadmap, a changelog, the board's
+  // records) needs no restart. Nothing waits for the board to be quiet: sessions run in their own panes and outlive the
+  // stack, and a round lost to the restart is redone by the next.
   git('fetch', '-q', 'origin', 'main');
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
-  if (running === landed) { console.log(`Gateway already runs kit ${landed}.`); process.exit(0); }
-  if (!running) throw new Error('the running stack predates managed restarts; restart it once with the current start script');
-  if (git('status', '--porcelain')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
-  writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed }));
-  console.log(`Kit ${landed} landed; the supervisor will drain the gateway and restart the complete stack.`);
+  const main = git('rev-parse', 'origin/main');
+  if (!runningRecord) throw new Error('the running stack predates managed restarts; restart it once with the current start script');
+  // The move first: nothing about Teams decides or delays a deploy (D137). Enrolling comes after, and only on a pass that
+  // asked for no restart, since a revision about to be replaced is enrolled once the stack runs its successor.
+  const content = existsSync(resolve(project, 'home')) ? 'home' : 'hermes';
+  const moved = !!runningRecord.revision && runningRecord.revision !== main
+    && git('diff', '--name-only', runningRecord.revision, main).split('\n').some((file) => file.startsWith(`${content}/`) || file.startsWith('.open-autonomy/'));
+  if (running !== landed || moved) {
+    // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked changes
+    // are a killed attempt's work.
+    if (git('status', '--porcelain', '--untracked-files=no')) throw new Error('checkout has uncommitted work; restart waits until it is preserved');
+    writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed, revision: main }));
+    console.log(`${moved ? `Main moved to ${main.slice(0, 8)}` : `Kit ${landed} landed`}; the keeper will drain the runtime and restart the complete stack onto it.`);
+    process.exit(0);
+  }
+  console.log(`The stack already runs kit ${landed}${runningRecord.revision ? ` and main's ${content}/ and .open-autonomy/ as of ${runningRecord.revision.slice(0, 8)}` : ''}.`);
+  // The revision the stack runs, enrolled once: its mail agents declared and their sessions opened, the box maintainer on
+  // each online machine, the checkout in the workspace map (enroll.ts). The start renders the home and records the
+  // revision; enrolling is this pass's, never the keeper's. A failed or slow enrollment (Teams down) only delays the next
+  // enrollment, never a restart request, which this pass has already decided; the next pass tries again. Bounded at
+  // 120 s, enough for the declarations and opens over a healthy Teams, so a slow one cannot hold the next pass's move.
+  const enrolledFile = resolve(home, 'enrolled.json');
+  const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
+  if (runningRecord.revision && runningRecord.revision !== enrolled) {
+    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 120_000 });
+    if (enroll.exitCode === 0) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
+    else console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
+  }
 } else if (command === 'status' || command === 'upgrade') {
   const latest = run(['npm', 'view', 'create-open-autonomy', 'version']).trim();
-  console.log(JSON.stringify({ installed, running, latest, idle: idle() }));
+  console.log(JSON.stringify({ installed, running, latest }));
   if (command === 'status' || !newer(latest, installed)) process.exit(0);
-  if (!idle()) { console.log('A task is running or under review; upgrade waits for an idle hour.'); process.exit(0); }
   git('fetch', '-q', 'origin', 'main');
   const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
   if (!newer(latest, landed)) { console.log(`Kit ${landed} already landed; request a restart.`); process.exit(0); }
@@ -176,7 +203,6 @@ if (command === 'ship') {
     run(['bun', 'install', '--frozen-lockfile'], worktree);
     run(['bun', 'run', 'check'], worktree);
   }
-  if (!idle()) throw new Error(`a task started during the upgrade; ${worktree} is preserved and has not been pushed`);
   run(['git', 'add', '-A'], worktree);
   if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
   // Land it the way this repository lands changes, read from main as it stands, never from the upgrade's result: a

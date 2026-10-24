@@ -1,0 +1,4 @@
+#!/bin/sh
+# A record is registered before it is used (records-register.md): a commit that adds one with no entry is refused, and its
+# entry is stubbed for the writer to complete. Enable with: git config core.hooksPath .githooks
+exec node "$(git rev-parse --show-toplevel)/tools/records-check.mjs" staged

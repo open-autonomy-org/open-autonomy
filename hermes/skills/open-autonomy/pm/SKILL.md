@@ -262,7 +262,7 @@ execution. PM coordinates; it doesn't implement.
   the package on it once the section requests review. After the owner's merge, verify what shipped.
 - Review human-input blocks and follow up using the `project-communications` skill. Record the conversation
   link in the native task so the next scrum can check for a reply. Volunteer commitments follow their agreed follow-ups.
-- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for idle kit maintenance. The upgrade merges the
+- Run `bun .open-autonomy/maintain.ts upgrade`, then `restart` for kit maintenance. The upgrade merges the
   kit's change into this project's files three-way; a file where both moved is left with conflict markers in
   the upgrade worktree for you to resolve, keeping this project's intent and the kit's change. Every upgrade PR,
   including workflow changes, goes through independent exact-head agent review and automatic merge.

@@ -20,6 +20,44 @@ await oa.update({ item: 'add', text: 'the store writes; the id counter next', se
 await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commit: '7d30729' });
 ```
 
+## Implementer checklist
+
+The SDK is the protocol a project implements, not a required TypeScript dependency or runtime. The
+[ecosystem target](../../docs/decisions/0024-ecosystem-target-architecture.md) assigns native execution to the
+running system and publication and treasury enforcement to its selected OA server. This checklist consolidates
+the existing wire below; the server does not issue a conformance certificate or negotiate a capability set.
+
+| Capability | Requirement and evidence |
+|---|---|
+| Account authority | Required. Connect to the selected deployment with a key for the intended account, proved by the existing GitHub repository claim. Committed owner policy and money bounds remain authoritative; possession of a key cannot widen them. |
+| Metered spending | Required whenever project funds are spent. Use the configured rails and their settled receipts; local usage attribution or a widget is not another charge or an authoritative estimate. |
+| Development publication | Required for information shown about development. Publish supported sessions, timeline items, setup and documents through this wire. Map native identities and evidence, state omissions and unsupported capabilities, and apply publication policy before intake; this is a projection, not an export of the complete native system. |
+| Owner control | Required to claim control support. Read effective desired state, apply it through the system's own control door, and report observed state only when true. Name the scope of pause; an absent report stays unknown and an unavailable or unsupported control must not produce a success report. |
+| Tracker drivers | Conditional on the chosen source. Preserve the driver's `CONFORMANCE` and its native reconciliation limits; an item projection does not itself update or complete a native task. |
+| Funding, card and partner operations | Conditional on enabled integrations and the caller's authority. Provider checkout is application behavior; treasury receipts establish money operations, not work acceptance or seller payout. Use the partner reservation contract below when holding funds until work closes. |
+| Owner statements and org control | Conditional on those features. Use the scoped owner routes; a narration key cannot publish the owner's word. An org's inherited pause remains distinct from a project's own request. |
+
+For each implemented capability, retain source identity, attribution, publication receipts and the relevant native
+evidence. Never infer an end, completion, authorization or successful control from silence, a failed read, an
+elapsed interval or a missing record. A partial integration should describe what it supports and leaves unknown;
+the wire has no `unsupported` operating-state value to substitute for `running` or `paused`.
+
+### Versions and compatibility
+
+| Version | What it identifies |
+|---|---|
+| HTTP `/v1` | The OA route namespace documented here; it is not an npm version or an automatic compatibility negotiation. |
+| CloudEvents `specversion: "1.0"` | The event envelope accepted by intake; event `type` selects the OA operation. |
+| Timeline `schema: "open-autonomy.timeline.v1"` | The SDK's normalized timeline format, distinct from the event envelope and the native source format. |
+| Native IR and interface versions | External source contracts, consumed by the adapter. They do not become OA wire versions or require every project to use Supercode. |
+| npm SDK version | The reference client's release, currently 4.0.0. An implementation in another language speaks the same wire without this package. |
+
+Compatibility must be checked for the concrete operations in use against the selected server. Unknown event types
+are refused with `unknown_event_type`; a wrong CloudEvents envelope is `invalid_cloudevent`. Do not assume that
+changing a schema label enables a new server capability. Keep unsupported source fields in the native system or
+describe their omission, rather than silently claiming a lossless mapping. No cross-deployment key acceptance,
+publication replication or treasury federation is supplied by these version labels.
+
 ## The model
 
 - **A session** is one agent conversation: a `kind` (`run` is a scheduled run, the funded work; `chat`
@@ -38,8 +76,8 @@ await s.end({ outcome: 'done', report: 'Done. add — committed 7d30729.', commi
   links, typed and as many as the publisher knows: the ticket that asked, the issue, the pull request, the branch, the
   recording, the roadmap section. The page's views (a board, a list, the timeline by month, the past by release) are sorts and
   groupings over that one document, never edits: the platform shows, it does not steer. What a substrate keeps
-  locally is its own business: the Hermes kit keeps its past in `CHANGELOG.md`, its present on the Hermes board
-  with the sessions serving it, and its future in `ROADMAP.md`; an engagement keeps all three in a client's
+  locally is its own business: the Hermes kit keeps its past in [CHANGELOG.md](../kit-hermes/skews/self-build/CHANGELOG.md), its present on the Hermes board
+  with the sessions serving it, and its future in [ROADMAP.md](../kit-hermes/skews/self-build/ROADMAP.md); an engagement keeps all three in a client's
   tracker. Unifying those into the one language is the job of that substrate's SDK implementation, the reporter
   or a driver, and of nothing on the platform (owner ruling, 2026-09-08). A substrate publishes the whole document
   on the events door (`org.open-autonomy.timeline`, `timeline()`); the books keep it revisioned. The wire still
@@ -79,15 +117,29 @@ are bounded by the owner in `.open-autonomy/config.yaml` (the platform reads the
 | `POST /v1/patrons/checkout` `{ account: "@login", tier, interval: "once" }` | a funder buys a credit pack through Polar; the org matches a share as bonus credits |
 | `POST /v1/rails/partner` `{ partner, usd_cents, unit?, quantity?, reference? }` | a partner service's metered charge, settled now as a `partner` record, for a partner the owner listed and within the amount the owner set |
 
-Key scopes: `spend` (the rails), `narrate` (the events door: everything the automation says), `steer` (the owner's word: a roadmap push, the operating state, the owner's statements). A key minted without
+Key scopes: `spend` (the model rail), `pay` (the card and partner rails), `narrate` (the events door: everything the automation says), `steer` (the owner's word: a roadmap push, the operating state, the owner's statements and spending freeze), and `give` (grant credits from the funder's own account). A key minted without
 `scopes` carries spend and narrate; `POST /v1/keys/mint {account, scopes: ["steer"]}` mints a driver's key
 that spends nothing.
 
 ## The wire
 
 All narration is `POST /v1/agent/events` with the project's key as `Authorization: Bearer <key>`, a body
-of one CloudEvents 1.0 event or a JSON array of them, applied in order. Secret-shaped text is redacted at
-intake; everything accepted is public.
+of one CloudEvents 1.0 event or a JSON array of them, applied in array order. The authenticated key selects
+the account, not an event field. Secret-shaped text is redacted at intake; publication policy must still
+exclude material that should not be sent. Read access follows the existing panel policy below; intake
+does not provide a per-event audience field or safe custody for private transcripts or credentials.
+
+The SDK exports the shared pure `redactSecrets`/`redactDeep` policy from `redaction` and
+`normalizeRoadmap` from `roadmap`. The backend uses those same implementations: redact event data first, then
+apply existing text bounds or timeline normalization. A publisher can prepare the expected stored representation
+before a write; these helpers add no authority or server negotiation.
+
+`send()` preserves HTTP/top-level and per-event outcomes. An accepted update result includes its full
+`id`, `account`, `item_id`, `ts`, `text` and optional `session`. Update IDs are account-wide first-write-wins:
+replay returns the original record without checking a changed payload. Verify the returned normalized record,
+not just `idempotent`. Persist a prepared request/time before sending and its checked receipt before acknowledging
+the source. `update()` can return `undefined` on refusal; this is not an acknowledgement. There is no read-by-ID
+update door, and the latest hundred notes returned by `item()` do not establish absence of older history.
 
 ```json
 [{ "specversion": "1.0", "id": "…", "source": "my-reporter", "time": "2026-09-04T00:20:11Z",
@@ -118,21 +170,58 @@ intake; everything accepted is public.
    "data": { "outcome": "done", "report": "…", "commit_sha": "7d30729", "item_id": "add", "ended_at": "…" } }]
 ```
 
-`seq` is the offset of the first turn in the session's own order: a retry or a reconnect that replays
-offsets already applied is ignored (`idempotent: true` in that event's result), so a reporter that restarts
-reads the session back and continues from its `next_seq`. An update's event `id` is its identity when the publisher
-chooses one: the same id again answers with the record already held (`idempotent: true`), so a note survives a lost
-acknowledgement or a restart without doubling; an update sent without a chosen id is a new update each time. The response is `{ ok, results: [{ id, ok,
-session | update, idempotent?, error? }] }`; the first failing event stops the batch.
+The response is `{ ok, results: [{ id, ok, session | update | revision, idempotent?, unchanged?, error? }] }`;
+the first failing event stops the batch. Replay behavior depends on the operation, as below.
 
-Every write the client makes (`setup`, `docs`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answers
+### Delivery, identities and receipts
+
+- Keep session keys stable within an account (nonempty, at most 200 characters, no `:`). A repeated start
+  returns the existing session; turn replay uses `seq`, not the CloudEvents `id`. Use one serialized uploader
+  per session, read `next_seq` after ambiguous results, and compare the acknowledged transcript before appending.
+- Send at most 100 turns per event. The server normalizes turns and retains the latest 400, with `next_seq`
+  tracking the offset beyond that tail. A lower starting offset is ignored as a replay without checking content;
+  a higher offset is accepted as a gap. These are not server guarantees of contiguous or identical history.
+  The reference client requires an acknowledged offset matching each submitted batch and throws if reconciliation is needed.
+- Give an update a stable, nonblank event `id` of at most 200 characters, unique across that account's updates.
+  Reusing it returns the first stored update, even if the new payload or item differs. Reuse it for the same
+  effect only. Other event types do not acquire a universal deduplication guarantee from a CloudEvents `id`.
+- A batch is not a transaction: earlier effects can remain when a later event fails. Returned operation refusals
+  return accumulated `results`; envelope/type validation can instead return a top-level error after prior effects.
+  Reconcile ambiguous outcomes using each operation's read and replay rules, not a new identity for the same effect.
+- Setup and project documents replace their current representation. Timeline publications are whole documents
+  with revision semantics; unchanged content/source is not a new revision. Observed state history records state
+  changes. Partner and grant replay rules are their own contracts, not extensions of session offsets.
+
+Do not advance local receipts on a refusal, incomplete acknowledgement or failed read. `send()` exposes HTTP
+status, top-level errors and per-event results; network failures can throw without proving whether an effect
+landed. The client does not automatically retry every operation. Persist acknowledged progress and reconcile
+before retrying. Server-Sent Events resume session turns by offset and expose the retained transcript tail;
+they are not a durable global event log or a full native transcript archive.
+These behaviors are implemented by the [reference client](src/client.ts),
+[event intake](../backend/src/stream.ts) and [ledger](../backend/src/ledger.ts).
+
+The publication and control methods (`setup`, `docs`, `timeline`, `reportState`, `pushRoadmap`, `requestState`) answer
 the same way: `{ ok, status, error? }`, the platform's error code when refused, plus what the write returned.
+
+Intake refuses an invalid, expired or revoked credential with 401 `auth_failed`, and missing narration
+scope with 403 `scope_required`. A top-level refusal uses `{ error: { code, ... } }`; an operation's result
+can instead carry an error string. Reader-backed methods throw `ReadError(status, code)` for HTTP read failures.
+A closed panel returns 404 `not_open`, not proof that the native record is absent; `session()` returns
+`undefined` for other 404 responses and throws for `not_open` and other failed reads. `update()` returns
+the acknowledged update or `undefined`; session open, turns and end reject failed acknowledgements.
+The current `state()` helper is an exception: it sends an unauthenticated read and returns `undefined`
+for every non-OK HTTP response. It cannot distinguish a closed overview or an outage from absent control,
+and does not use the configured key to read a closed panel. Implementers needing that distinction must
+read the documented state route with the appropriate authorization and inspect the response; do not
+treat the helper's `undefined` as evidence that no request exists.
 
 `Session.turns()` splits uploads into the wire's 100-turn batches and advances only after the server
 acknowledges each offset. Rejected uploads and end events throw; a failed read is not a missing session.
 The Hermes kit's `reporting.ts` adapter (a kit file beside this SDK, not part of it) consumes Volter Harness's message windows and explicit completion records, verifies the already-published prefix and saves acknowledged checkpoints. It never infers completion from silence. History changes that conflict with the append-only destination require reconciliation; they are not silently treated as new offsets.
 
-Public reads, no key:
+Reads and related publication/owner routes:
+
+Anonymous reads are subject to the panel policy below; the POST routes still require their stated scopes.
 
 | Route | What |
 |---|---|
@@ -163,12 +252,16 @@ grace, capped by its existing expiry. Rotation works with all three independent 
 Each slot permits one retiring predecessor: another rotation using that old key returns
 `key_already_rotated` (409), and rotating its successor before the predecessor expires or is revoked
 returns `rotation_grace_pending` (409). Normal minting still refuses a fourth independent credential.
-A key is verified by its signature and expiry alone, so it survives every redeploy; the platform's
-registry can only revoke it or shorten it.
+A key's signature and expiry survive redeploys; authenticated routes also check the platform's registry,
+which can revoke it or shorten its life, including rotation grace. Keys from another deployment are not
+accepted merely because they name the same account.
 
 ## Team roster
 
-The project's `team` section in `.open-autonomy/config.yaml` is the shared public roster.
+For a project without a Workplace link, `team` in `.open-autonomy/config.yaml` is the shared public roster.
+A linked project instead uses Workplace's verified seats and team roles; unlinking restores this committed roster
+([ADR 0018](../../docs/decisions/0018-the-workplace-integration.md)). This does not replace the GitHub repository
+claim or permit a key to widen committed bounds.
 `parseTeamConfig(configText)` returns `{ members }`; `replaceTeamConfig(configText, team)` validates and
 updates only that section, preserving other configuration. Import them from `@open-autonomy/sdk/team`
 or the kit's vendored `.open-autonomy/sdk/team.ts`. The section contains a JSON value (valid YAML),
@@ -227,7 +320,8 @@ committed `.open-autonomy/config.yaml`. A default developer key cannot use these
 Responses are `{ ok: true, reservation }`, or `{ ok: false, error, ...details }` with an HTTP
 refusal status. The reservation includes `account`, `partner`, `recipient` (the service id),
 `key`, `reference`, `request_id`, the original quote, `status` (`held`, `captured`, `released`),
-`created_at`, and, after close, `closed_at` and captured cents/credits when applicable.
+`created_at`, and, after close, `closed_at` and captured cents/credits when applicable, or
+`closed_by: "operator"` when the platform operator released an abandoned hold.
 `request_id` joins the captured receipt to the project's public calls.
 
 Credits, cents per credit and cents must be positive safe integers with an exact product:
@@ -246,7 +340,8 @@ terminal operation returns 409 `reservation_closed`. A GET with another account'
 UTC rollover, model reservation garbage collection, key rotation and worker restart retain them.
 A new pay key for the same account can finish or read old holds. Disabling the rail prevents new
 holds and still allows the payer to finish existing obligations. Outstanding holds continue to
-count against the balance, envelopes, owner limits and conservative global daily capacity.
+count against the balance, envelopes and owner spend limits. They count against the global daily
+capacity only on the UTC day they were made.
 
 RH2 owns enrollment, buyer close/cancel authority, and deciding whether funding is grants-only,
 prepaid or directly treasury-funded. Grants-only work never calls these doors; prepaid funding
