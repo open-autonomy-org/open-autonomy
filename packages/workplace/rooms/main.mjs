@@ -364,8 +364,11 @@ async function peopleOf(view) {
  * so it is tried again on the app's backoff. Who is in the Room is its roster, the Room read's `members` (RH2 ADR 0063
  * decision 1).
  */
-async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true } = {}) {
-  const roomId = view.room.roomId, missing = [...unresolved], principals = new Set();
+async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true, held = [] } = {}) {
+  // `held`: agents working a card whose assignment on its Task is not there yet. One already seated keeps its seat, and
+  // none is brought in, until the assignment is (a new run's assignment lagging the board unseated its implementer and
+  // the reviewer five times in minutes, each leave told, VO-3602 t_ab4e09ab).
+  const roomId = view.room.roomId, missing = [...unresolved], principals = new Set(held);
   const inRoom = new Set((view.members ?? []).map((member) => member.principalId));
   const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
@@ -420,7 +423,7 @@ async function taskOfCard(cardId) {
  * supercode integration makes them on its own turns): the project stays owed until every one is seated.
  */
 async function projectAgentsOf(project, cards) {
-  const wanted = new Map(), unresolved = [], waiting = [];
+  const wanted = new Map(), unresolved = [], waiting = [], held = [];
   let mayUnseat = true;
   for (const card of cards) {
     if (!Array.isArray(card.agents)) { mayUnseat = false; continue; }
@@ -431,12 +434,12 @@ async function projectAgentsOf(project, cards) {
       if (agentEnded(agentId)) continue;
       const principalId = await agentPrincipalOf(agentId);
       if (!principalId) { unresolved.push(agentId); continue; }
-      if (!assigned.has(principalId)) { waiting.push(`${card.id}: ${agentId}'s assignment`); continue; }
+      if (!assigned.has(principalId)) { waiting.push(`${card.id}: ${agentId}'s assignment`); held.push(principalId); continue; }
       const lead = card.leads?.includes(agentId) || wanted.get(agentId)?.answers === 'all';
       wanted.set(agentId, { answers: lead ? 'all' : 'mentions', roleKeys: AGENT_ROLE_KEYS });
     }
   }
-  return { mayUnseat, unresolved, waiting, wanted };
+  return { held, mayUnseat, unresolved, waiting, wanted };
 }
 
 /**
@@ -501,8 +504,8 @@ async function keepProject(project) {
       log('room-access-given', { ...label, roomId, principalId });
     }
   }
-  const { mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
-  await keepAgentSeats(view, wanted, label, { mayUnseat, unresolved });
+  const { held, mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
+  await keepAgentSeats(view, wanted, label, { held, mayUnseat, unresolved });
   // Each card's new images and videos, in the Room's base channel (ADR 0063 decision 8).
   if (baseChannel) for (const card of cards) await repostCardFiles(roomId, baseChannel.conversationId, card);
   // Seated what can be; what waits keeps the project owed, tried again on the app's backoff (keepOwedProjects).
