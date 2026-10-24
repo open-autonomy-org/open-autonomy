@@ -8,7 +8,7 @@
 //
 // The board's live cards (started, not a subtask, not scheduled, not archived, not in a closed lane) are worked in their
 // project's Room: one Room per project (`projectOf`, the organization's convention) under the key `project-<name>`,
-// named for the project, on the Office Floor (`projectFloor`, else the organization's default Floor) in its Work section,
+// named for the project, on the Floor the organization's file names it on (ADR 0060 decision 6; before any Floor names an app, `projectFloor`, else the default Floor, in Work),
 // below the Floor's divider. The program is the one writer of its Rooms' placement and section: a hand move is put back.
 // Its base channel's topic lists the project's live cards and where each stands. A Room's roster is who is in its call
 // (RH2 ADR 0063 decision 1): the program puts no person on it, and holds no seat itself. A ticket's people who hold a
@@ -208,25 +208,37 @@ const registryOf = (card) => {
     name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
-// The Floor the project Rooms sit on, read once per pass (drain): `projectFloor` by name, a Floor the organization's
-// document declares, else the organization's default Floor (Office unless renamed). The program makes no Floor: one it
-// is named and cannot find holds its projects until the document's apply makes it.
+// The Floor the project Rooms sit on, and their section, read once per pass (drain). The organization's file says it
+// (runhuman-2 ADR 0060 decision 6, VO-3602): the Floor whose `apps` names this app (its registration key, or its app id),
+// in the section it names. Once the file names any app on a Floor, a project Room goes nowhere else, and with no Floor
+// naming this app the projects are held until the file does. Before that: `projectFloor` by name, else the
+// organization's default Floor (Office unless renamed), in the Work section. The program makes no Floor.
+const APP_KEY = JSON.parse(readFileSync(new URL('./rh2-app.json', import.meta.url), 'utf8')).registrationKey;
 let projectFloor;
-function projectFloorId() {
+function projectPlace() {
   const name = typeof config.projectFloor === 'string' && config.projectFloor.trim() ? config.projectFloor.trim().slice(0, 120) : null;
   return projectFloor ??= door('/api/v3/floors').then((read) => {
-    if (name === null) return read.defaultFloorId ?? null;
-    const floor = (read.floors ?? []).find((each) => each.name === name);
+    const floors = read.floors ?? [];
+    if (floors.some((floor) => (floor.apps ?? []).length > 0)) {
+      for (const floor of floors) {
+        const named = (floor.apps ?? []).find((entry) => entry.app === APP_KEY || (config.rh2.appId && entry.app === config.rh2.appId));
+        if (named) return { floorId: floor.floorId, section: typeof named.section === 'string' ? named.section : '' };
+      }
+      throw Object.assign(new Error(`the organization's file names no Floor for ${APP_KEY}`), { code: 'floor-not-declared' });
+    }
+    if (name === null) return { floorId: read.defaultFloorId ?? null, section: 'work' };
+    const floor = floors.find((each) => each.name === name);
     if (!floor) throw Object.assign(new Error(`the organization has no Floor named ${name}`), { code: 'floor-not-declared' });
-    return floor.floorId;
+    return { floorId: floor.floorId, section: 'work' };
   }).catch((error) => { projectFloor = undefined; throw error; });
 }
 
 // Keyed creation serializes the organization's lookup and creation. Each retry asks for the desired active Room;
 // it need not know whether an earlier request arrived or committed, and no receipt lifetime governs the mirror.
 async function createRoomOf(project) {
+  const { section } = await projectPlace();
   const created = await door('/api/v3/rooms', { body: {
-    key: projectKeyOf(project), members: [{ principalId: self, roleKeys: ['manager'] }], name: project, section: 'work',
+    key: projectKeyOf(project), members: [{ principalId: self, roleKeys: ['manager'] }], name: project, section,
   } });
   if (!created?.room?.roomId) throw new Error('the keyed create returned no Room id');
   state.projects[project] = created.room.roomId; saveState();
@@ -465,7 +477,8 @@ async function keepProject(project) {
     const reopened = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/reopen`, { body: { expectedVersion: version } }).catch((error) => { if (error.code === 'room-key-held') { delete state.projects[project]; saveState(); } throw error; });
     version = reopened?.room?.version ?? version + 1; log('room-reopened', { ...label, roomId });
   }
-  if (room.name !== project || room.section !== 'work') { const renamed = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`, { body: { expectedVersion: version, name: project, section: 'work' }, method: 'PATCH' }); version = renamed.room.version; log('room-renamed', { ...label, roomId }); }
+  const { floorId, section } = await projectPlace();
+  if (room.name !== project || (room.section ?? '') !== section) { const renamed = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`, { body: { expectedVersion: version, name: project, section }, method: 'PATCH' }); version = renamed.room.version; log('room-renamed', { ...label, roomId }); }
   // The Room's base channel (its default Conversation, named after it) carries the project's arcs; the app opens no other.
   const baseChannel = view.conversations?.find((item) => item.conversationId === room.defaultConversationId);
   const topic = topicOf(project, cards);
@@ -477,7 +490,6 @@ async function keepProject(project) {
     log('room-guidance-set', { ...label, roomId });
   }
   // Placement has one writer, this app: the Room is on the project Floor alone, and a placement made by hand is taken back.
-  const floorId = await projectFloorId();
   if (floorId === null) throw new Error('the organization has no default Floor to place the Room on');
   const placed = (room.placements ?? []).map((placement) => placement.floorId);
   // A Room on no Floor is placed by its members' agreement: while a request is open the app asks nothing more.
