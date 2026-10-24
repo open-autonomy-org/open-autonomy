@@ -10,22 +10,47 @@ export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: 
   initiator: Initiator };
 // Who asked for this preparation. Supercode's machine owner, which runs it for an activation, relays the activating
 // command's own reading in SUPERCODE_INITIATOR stamped with the owner's pid; it is taken only from this process's actual
-// parent, so a value left in a long-lived environment never names a later preparation. Anything else records this
-// process's own facts. A record, never an authority.
-export type Initiator = { version: 1; pid: number; ppid: number | null; executable: string | null; argv: string[]; cwd: string | null;
-  claims: Record<string, string>; [fact: string]: unknown };
+// parent, so a value left in a long-lived environment never names a later preparation, and it is re-checked here field
+// by field, as any other input. Anything else records this process's own facts. Every kept text passes the Teams
+// redactor (@volter/teams/redact, the project's own install) and is cut on a code-point boundary; without the redactor
+// no text but the pid facts is kept. The board's per-run launch secret is never a claim. A record, never an authority.
+export type Initiator = { version: 1; at: string | null; pid: number; ppid: number | null; executable: string | null; argv: string[]; cwd: string | null;
+  session: string | null; session_error: string | null; claims: Record<string, string>;
+  ancestry: { pid: number; parent_pid: number | null; image: string | null; command_line: string | null }[]; ancestry_error: string | null };
 const CLAIMS = ['CLAUDE_CODE_SESSION_ID', 'CODEX_THREAD_ID', 'SUPERCODE_CALLER', 'SUPERCODE_AGENT_ID', 'SUPERCODE_AGENT_SESSION',
-  'SUPERCODE_HOOK_SESSION', 'SUPERCODE_BOARD_OWNER_PID', 'SUPERCODE_RUN_LAUNCH'];
-export function installInitiator(environment: Record<string, string | undefined>): Initiator {
+  'SUPERCODE_HOOK_SESSION', 'SUPERCODE_BOARD_OWNER_PID'];
+const pidOf = (value: unknown): number | null => Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 0xffffffff ? value as number : null;
+export async function installInitiator(environment: Record<string, string | undefined>): Promise<Initiator> {
+  let redact: ((text: string) => string) | null = null;
+  try { const name = '@volter/teams/redact', module = await import(name); redact = (text: string) => module.redactText(text); } catch { /* no redactor: no text is kept */ }
+  const text = (value: unknown, max = 1024): string | null => {
+    if (typeof value !== 'string' || !redact) return null;
+    let clean: string;
+    try { clean = redact(value.toWellFormed()); } catch { return null; }
+    if (clean.length <= max) return clean;
+    const last = clean.charCodeAt(max - 1);
+    return `${clean.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max)}…`;
+  };
+  const check = (value: any): Initiator | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 || pidOf(value.pid) === null) return null;
+    const claims: Record<string, string> = {};
+    for (const name of CLAIMS) { const kept = text(value.claims?.[name], 256); if (kept !== null) claims[name] = kept; }
+    return { version: 1, at: text(value.at, 64), pid: value.pid, ppid: pidOf(value.ppid), executable: text(value.executable),
+      argv: Array.isArray(value.argv) ? value.argv.slice(0, 64).map((word: unknown) => text(word)).filter((word: string | null): word is string => word !== null) : [],
+      cwd: text(value.cwd, 4096), session: text(value.session, 512), session_error: text(value.session_error, 512), claims,
+      ancestry: Array.isArray(value.ancestry) ? value.ancestry.slice(0, 32).filter((row: any) => pidOf(row?.pid) !== null).map((row: any) => ({
+        pid: row.pid, parent_pid: pidOf(row.parent_pid), image: text(row.image, 256), command_line: text(row.command_line, 2048) })) : [],
+      ancestry_error: text(value.ancestry_error, 512) };
+  };
   const raw = environment.SUPERCODE_INITIATOR;
-  if (raw && raw.length <= 262144) try {
-    const { relay_pid: relay, ...relayed } = JSON.parse(raw);
-    if (relay === process.ppid && relayed?.version === 1 && Number.isSafeInteger(relayed.pid)) return relayed as Initiator;
+  if (raw && raw.length <= 65536) try {
+    const relayed = JSON.parse(raw);
+    if (relayed?.relay_pid === process.ppid) { const checked = check(relayed); if (checked) return checked; }
   } catch { /* not a relayed initiator: this process's own facts below */ }
   let cwd: string | null = null;
   try { cwd = process.cwd(); } catch { /* a removed directory has no name */ }
-  const claims = Object.fromEntries(CLAIMS.filter(name => environment[name]).map(name => [name, String(environment[name]).slice(0, 256)]));
-  return { version: 1, at: new Date().toISOString(), pid: process.pid, ppid: process.ppid, executable: process.execPath, argv: process.argv.slice(0, 64), cwd, claims };
+  return check({ version: 1, at: new Date().toISOString(), pid: process.pid, ppid: process.ppid, executable: process.execPath, argv: process.argv, cwd,
+    session: null, session_error: 'not read: no initiator was relayed to this preparation', claims: environment, ancestry: [], ancestry_error: 'not read' })!;
 }
 const run = async (cmd: string[], cwd: string): Promise<string> => {
   const child = Bun.spawn({ cmd, cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
@@ -70,7 +95,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
     entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
-    receipt: resolve(directory, 'install.json'), initiator: installInitiator(environment) };
+    receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment) };
   writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
   return receipt;
 }
