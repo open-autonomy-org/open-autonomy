@@ -209,7 +209,7 @@ const registryOf = (card) => {
 };
 
 // The Floor the project Rooms sit on, and their section, read once per pass (drain). The organization's file says it
-// (runhuman-2 ADR 0060 decision 6, VO-3602): the Floor whose `apps` names this app (its registration key, or its app id),
+// (runhuman-2 ADR 0060 decision 6, VO-3602): the Floor whose `apps` resolves to this app (its own principal, as RH2 answers),
 // in the section it names. Once the file names any app on a Floor, a project Room goes nowhere else, and with no Floor
 // naming this app the projects are held until the file does. Before that: `projectFloor` by name, else the
 // organization's default Floor (Office unless renamed), in the Work section. The program makes no Floor.
@@ -221,7 +221,9 @@ function projectPlace() {
     const floors = read.floors ?? [];
     if (floors.some((floor) => (floor.apps ?? []).length > 0)) {
       for (const floor of floors) {
-        const named = (floor.apps ?? []).find((entry) => entry.app === APP_KEY || (config.rh2.appId && entry.app === config.rh2.appId));
+        // By who it is: RH2 answers the installed app each name resolves to (its principal), whatever the file called it
+        // (its id where it has no registration key), else by its manifest's key.
+        const named = (floor.apps ?? []).find((entry) => entry.principalId === self || entry.app === APP_KEY);
         if (named) return { floorId: floor.floorId, section: typeof named.section === 'string' ? named.section : '' };
       }
       throw Object.assign(new Error(`the organization's file names no Floor for ${APP_KEY}`), { code: 'floor-not-declared' });
