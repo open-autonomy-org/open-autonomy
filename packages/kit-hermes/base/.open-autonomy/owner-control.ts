@@ -199,7 +199,7 @@ export class OwnerController {
     this.work = (async () => {
       while (this.again && !this.stopping) {
         this.again = false;
-        try { await this.pass(); } catch (error) { this.options.log(`owner control pending: ${(error as Error).message}`); }
+        try { await this.pass(); } catch (error) { this.options.log(this.stopping ? 'owner control not finished: the reporter is stopping; retained intent waits' : `owner control pending: ${(error as Error).message}`); }
       }
     })().finally(() => { this.work = undefined; });
     return this.work;

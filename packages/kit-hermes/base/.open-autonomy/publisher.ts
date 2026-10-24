@@ -351,7 +351,7 @@ async function watch(d: SessionDescriptor): Promise<void> {
       // both reconcile against the complete SDK window sequence and server receipt.
       nativeOk=false;requestTick();
     }
-  } catch (e) { log(`${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
+  } catch (e) { log(quitting ? `${key}: watch ended: the reporter is stopping` : `${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
   finally { watching.delete(key);if(!stopped.has(key))later(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
 // A publication that failed waits before the next attempt, a minute after its first failure and twice as long after each
@@ -458,6 +458,9 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
   } catch (e) {
     if (e instanceof SessionRefused) { refuse(key, e); return; }
     if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); requestTick(); return; }
+    // A publication its own stop cut short is not a failure: this reporter retries nothing, and its successor reads the
+    // retained intent afresh (a kit handover's retiring stack aborted every publication in flight, said as failures).
+    if (quitting) { log(`${key}: publication not finished: the reporter is stopping; its intent is retained`); return; }
     if ((retryAt.get(key) ?? 0) > Date.now()) return; // this attempt's failure is already counted and its retry armed
     const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
     failures.set(key, failed); retryAt.set(key, Date.now() + delay); retryLater(key, delay);

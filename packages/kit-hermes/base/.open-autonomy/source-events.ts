@@ -161,7 +161,11 @@ export class BoardEventSource {
         savePublicationFile(this.options.stateFile, state);
         this.rows = this.inventory(observation.cards); this.cursor = observation.proposedCursor; this.pending = undefined;
         this.ready(); return;
-      } catch (error) { this.options.log(`native event delivery pending: ${(error as Error).message}`); await this.delay(); }
+      } catch (error) {
+        // A delivery its source's close cut short is not pending on this process: the pending bytes are kept for the next.
+        if (this.closed) { this.options.log('native event delivery not finished: its source closed; pending bytes kept'); return; }
+        this.options.log(`native event delivery pending: ${(error as Error).message}`); await this.delay();
+      }
     }
     // Intentional close cancels delivery, preserving pending bytes. Readiness is
     // still refused by follow(); stop() separately proves reader retirement.
