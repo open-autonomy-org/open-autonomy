@@ -21,9 +21,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -48,9 +49,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -89,9 +91,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -127,9 +130,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -165,9 +169,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -189,9 +194,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -217,9 +223,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "claude-code"
           }
@@ -245,9 +252,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -269,9 +277,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -305,9 +314,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off",
             "worker.harness": "codex"
           }
@@ -319,9 +329,9 @@
             "kind": "interval",
             "minutes": 60
           },
-          "prompt": "FLEET PASS: pass.sh files a turn to the single box-maintainer main session. Clear disk first, then inspect resources, hangs and working-session outages across every enrolled machine.",
-          "script": "pass.sh",
-          "no_agent": true
+          "prompt": "HOURLY PASS. Read this machine's disk, what runs and the ledger against its machine file; act only as your profile says.",
+          "model": "project",
+          "workdir": "{{workspace}}"
         }
       }
     },
@@ -344,9 +354,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -371,9 +382,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -398,9 +410,10 @@
         "unattended": "project"
       },
       "extensions": {
-        "orchestrator": {
+        "hermes": {
           "config": {
             "agent.max_turns": 400,
+            "memory.memory_enabled": false,
             "approvals.mode": "off"
           }
         }
@@ -419,13 +432,6 @@
           ]
         }
       }
-    }
-  },
-  "agents": {
-    "box-maintainer": {
-      "profile": "box-maintainer",
-      "program": "codex",
-      "health_alarms": true
     }
   }
 }
