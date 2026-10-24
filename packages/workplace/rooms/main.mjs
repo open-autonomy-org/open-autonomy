@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // VOLTER'S PROJECT ROOMS: Open Autonomy's integration that keeps one Room per project in the organization's Office, as its
-// board works (runhuman-2 ADR 0063 decision 3). It reads nothing but the board, as supercode publishes it on Teams' event
-// stream (cards with their agents), and owns exactly its `project-*` Rooms: it makes, names, places and closes them through
-// the Workplace's public commands with its own installation's token, and brings agents in and out of them with the join
+// board works (runhuman-2 ADR 0063 decision 3). It reads the board, as supercode publishes it on Teams' event stream
+// (cards with their sessions), and the Teams sessions its cards name, and owns exactly its `project-*` Rooms: it makes, names, places and closes them through
+// the Workplace's public commands with its own installation's token, and brings sessions in and out of them with the join
 // and leave commands (ADR 0060). It declares nothing the organization's document declares (its Floors, views and
 // standing Rooms), never writes who is in a Room any other way, and never writes back to the board.
 //
@@ -21,24 +21,24 @@
 // whole snapshot is also the list of what the board still carries. The organization's open-Room threshold asks a person
 // to review dormant Rooms; the program never confirms it for them: it closes its own Rooms whose projects have no live
 // card and says the refusal once.
-// The agents working a live card right now (the board's `card.agents` declarations, active, of an agent Teams has not
-// ended, holding a live assignment on the card's Task, in the role its card is in now: its implementer while the card is
-// worked (`running`), its reviewer while it is in review, any other role while either; none while the card is paused,
-// blocked or waiting, VO-3602: "a project Room holds only the agents working its cards right now") are brought into its
-// project's Room: resolved through the Workplace's resolve door to the
-// principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
-// command (`POST /api/v3/rooms/:roomId/join`) seats it with `agentRoleKeys` (default member), joins it to the Room's base
-// channel and sends its session the Room's seating message. The project's lead, an agent declared under one of
-// `leadProfiles` (default `lead`, Open Autonomy's company profile), holds the conversation: it receives every line of the
-// base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
-// program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
-// live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
-// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses, blocks or moves to the other role leaves,
-// and comes back when its work resumes. A state write the disk refuses is retried each minute while the program works
-// from memory.
+// The sessions working a live card right now (the board's `card.sessions`, each role's latest session on the card, in the
+// role its card is in now: its implementer's while the card is worked (`running`), its reviewer's while it is in review,
+// any other role's while either; none while the card is paused, blocked or waiting, VO-3602: "a project Room holds only
+// the sessions working its cards right now") are brought into its project's Room. Each is found in Teams by its harness's
+// own id (`GET /sessions/<harness>:<native id>`, which needs the installation's `sessions.read`), resolved through the
+// Workplace's resolve door to the session participant supercode's integration named for it (`rh2.agentsRegistration`,
+// its reference `{ id, team }`), and joined: the Workplace's join command (`POST /api/v3/rooms/:roomId/join`) seats it with
+// `seatRoleKeys` (default member), joins it to the Room's base channel and sends the session the Room's seating message.
+// The project's lead, a session running under one of `leadProfiles` (default `lead`, Open Autonomy's company profile),
+// holds the conversation: it receives every line of the base channel (`answers: all`); every other card session receives
+// the lines that name it (`answers: mentions`). The program is the one writer of its seats' receive setting, and of which
+// sessions are in its Rooms: a session or agent in one that no live card of the project names now leaves
+// (`POST /api/v3/rooms/:roomId/leave`), whoever brought it in, unless a person did (its seat's `seatedBy` is a person:
+// their /invite). A session whose card pauses, blocks or moves to the other role leaves, and comes back when its work
+// resumes. A state write the disk refuses is retried each minute while the program works from memory.
 //
 // Each project Room's rules carry its guidance (runhuman-2 ADR 0063 decision 7, `guidance`, the rules command): what its
-// agents are told it is for. Each image or video a live card's agent attaches to the card (the card's published
+// sessions are told it is for. Each image or video a live card's session attaches to the card (the card's published
 // `attachments`) is posted once into its project Room's base channel, as this app's own file (ADR 0063 decision 8), with
 // a line naming the card: the card stays the one place an update is put. Its bytes are read with the board's own CLI on
 // the machine that keeps the board (`supercode workflow --root <board.root> attachment-read …`, a mebibyte at a time, each
@@ -51,9 +51,8 @@
 //   "teams": { "server": "https://teams.example", "team": "<team id>", "source": "<the board's event_source_… id>", "tokenEnv": "PROJECT_ROOMS_TEAMS_TOKEN" },
 //   "rh2": { "baseUrl": "https://workplace.example", "organization": "volter", "tokenEnv": "PROJECT_ROOMS_WORKPLACE_TOKEN", "principalId": "<the installation's prn_…>",
 //            "issuer": "<optional: the Workplace's canonical origin>",
-//            "agentsRegistration": "<supercode's Agents → Room agents registration's client id, app_…>",
-//            "cardsPrincipalId": "<optional: only Tasks supercode's Cards → Tasks registration made are a card's Task>" },
-//   "agentRoleKeys": ["member"], "postRoleKeys": ["manager"] (optional),
+//            "agentsRegistration": "<supercode's Agents → Room agents registration's client id, app_…, which names the sessions>" },
+//   "seatRoleKeys": ["member"], "postRoleKeys": ["manager"] (optional),
 //   "leadProfiles": ["lead"],
 //   "envFile": "<custody env file of KEY=VALUE lines>", "stateFile": "<the program's id map and cursor>",
 //   "closedLanes": ["done", "cancelled", "archived", "scheduled"],
@@ -69,7 +68,7 @@ import { promisify } from 'node:util';
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 5;
+const ARC_ROOM_LIFECYCLE_VERSION = 6;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -106,7 +105,7 @@ const [configPath, flag] = process.argv.slice(2);
 if (!configPath) { process.stderr.write('usage: main.mjs <config.json> [--once]\n'); process.exit(1); }
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 // Every key the rh2 section may hold (`issuer` is what a connection's generated config names); any other is refused by name.
-for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization', 'tokenEnv', 'principalId', 'agentsRegistration', 'cardsPrincipalId', 'issuer'].includes(key)) {
+for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization', 'tokenEnv', 'principalId', 'agentsRegistration', 'issuer'].includes(key)) {
   process.stderr.write(`project-rooms: unknown config key rh2.${key}\n`); process.exit(1);
 }
 const shutdown = new AbortController();
@@ -166,8 +165,8 @@ const topicOf = (project, cards) => {
   return `${project}: ${lines.join('; ')}`.slice(0, 300);
 };
 const closedLanes = new Set(config.closedLanes ?? ['done', 'cancelled', 'archived', 'scheduled']);
-const live = (card) => arcRoomExpected(card, closedLanes);
 const LEAD_PROFILES = new Set(config.leadProfiles ?? ['lead']);
+const live = (card) => arcRoomExpected(card, closedLanes);
 function loadState() {
   try { return JSON.parse(readFileSync(config.stateFile, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return { cursor: null }; throw error; }
@@ -198,13 +197,13 @@ function flushState() {
 }
 function saveState() { flushing ??= setTimeout(flushState, 5_000); }
 // What the app reads of a card, kept while it is owed (a whole card carries its body and history).
-const KEPT = ['id', 'ref', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments'];
+const KEPT = ['id', 'ref', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'sessions', 'attachments'];
 const kept = (card) => Object.fromEntries(KEPT.filter((key) => card[key] !== undefined).map((key) => [key, card[key]]));
 /** What the project pass reads of a card: kept in the registry for every card of the board's latest reading. */
 const registryOf = (card) => {
   const lane = card.archived ? 'archived' : card.lane ?? card.status;
   const people = (card.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('person:')).map((tag) => tag.slice(7).toLowerCase());
-  return { agents: cardAgentsOf({ ...card, lane }), files: visibleFilesOf(card), id: card.id, leads: leadAgentsOf(card), live: live({ ...card, lane }),
+  return { files: visibleFilesOf(card), id: card.id, live: live({ ...card, lane }), sessions: workingSessionsOf({ ...card, lane }),
     name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
@@ -251,7 +250,7 @@ async function createRoomOf(project) {
 /**
  * Close a project Room of this app's: a Room on no Floor is its members', left rather than closed, and a Room already
  * closed or gone is left. The Room is read first: RH2's active-Room list carries no placements, so a close judged from it
- * would close a Room it must leave. Its agents leave with it; its history stays (a closed Room's own seats may be
+ * would close a Room it must leave. Its sessions leave with it; its history stays (a closed Room's own seats may be
  * removed). Answers whether it closed it.
  */
 async function closeOwnRoom(roomId) {
@@ -260,34 +259,36 @@ async function closeOwnRoom(roomId) {
   if (!room || (room.placements ?? []).length === 0) return false;
   const closed = room.state === 'active';
   if (closed) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/close`, { body: { expectedVersion: room.version } });
-  if (state.cleanupReady) await keepAgentSeats(view, new Map(), { roomId });
+  if (state.cleanupReady) await keepSeats(view, new Map(), { roomId });
   return closed;
 }
 
-// ---- the arcs' agents (ADR 0050 decision 12) ------------------------------------------------------------------------
-const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
+// ---- the cards' sessions (ADR 0050 decision 12) ----------------------------------------------------------------------
+const SEAT_ROLE_KEYS = config.seatRoleKeys ?? ['member'];
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
-const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
-/** Whether an agent of the card works it right now, in its role: its implementer while the card is worked (`running`),
- * its reviewer while it is in review, any other role while either; none while the card is paused or blocked. */
+/** Whether a session of the card works it right now, in its role: its implementer's while the card is worked
+ * (`running`), its reviewer's while it is in review, any other role's while either; none while it is paused or blocked. */
 const WORKING_LANES = { implementer: ['running'], reviewer: ['review'] };
-const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
-/** The ids of the agents working the card right now (the board's `card.agents`, active, in the role its card is in now),
- * or null when the card publishes none. */
-function cardAgentsOf(card) {
-  const agents = activeAgents(card);
-  return agents === null ? null : [...new Set(agents.filter((agent) => worksNow(card, agent)).map((agent) => agent.id))].sort();
-}
-/** The card's agents declared under a lead profile: the project's lead, which holds its Room's conversation. */
-function leadAgentsOf(card) {
-  const lane = card.archived ? 'archived' : card.lane ?? card.status;
-  return [...new Set((activeAgents(card) ?? []).filter((agent) => LEAD_PROFILES.has(agent.profile) && worksNow({ ...card, lane }, agent)).map((agent) => agent.id))].sort();
+const worksNow = (card, session) => !cardHoldOf(card).state && (WORKING_LANES[session.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
+const NATIVE = /^[A-Za-z0-9._:-]{1,200}$/;
+/** The sessions working the card right now (the board's `card.sessions`, in the role its card is in now), each by its
+ * harness's own id and whether it is the project's lead (`leadProfiles`), or null when the card publishes none. */
+function workingSessionsOf(card) {
+  if (!Array.isArray(card.sessions)) return null;
+  const working = new Map();
+  for (const session of card.sessions) {
+    if (!session || typeof session.role !== 'string' || typeof session.harness !== 'string' || typeof session.session_id !== 'string'
+      || !NATIVE.test(session.harness) || !NATIVE.test(session.session_id) || !worksNow(card, session)) continue;
+    const native = `${session.harness}:${session.session_id}`;
+    working.set(native, { lead: LEAD_PROFILES.has(session.profile) || working.get(native)?.lead === true, native });
+  }
+  return [...working.values()].sort((left, right) => left.native < right.native ? -1 : 1);
 }
 
 // ---- the project Room's guidance and its cards' visible updates (runhuman-2 ADR 0063 decisions 7 and 8) -------------
-/** What a project Room's agents are told it is for, unless the app's config says otherwise. */
+/** What a project Room's sessions are told it is for, unless the app's config says otherwise. */
 export const PROJECT_GUIDANCE = [
-  'This Room is the project\'s: its cards being worked now, and the agents working them.',
+  'This Room is the project\'s: its cards being worked now, and the sessions working them.',
   'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
 ];
 const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
@@ -347,17 +348,36 @@ async function repostCardFiles(roomId, conversationId, card) {
     log('card-file-posted', { card: card.id, file: file.id, roomId });
   }
 }
-const agentEnded = (agentId) => state.agents[agentId]?.ended === true;
-/** The Workplace principal the supercode integration provided for a Teams agent (the resolve door, by the Agents → Room
- *  agents registration and the agent's id as its reference), or null while it has provided none. Kept once found. */
-async function agentPrincipalOf(agentId) {
-  if (state.agentPrincipals[agentId]) return state.agentPrincipals[agentId];
+/** A Teams request for this app's own reads (its installation token), bounded like the Workplace's. */
+async function teamsRead(path) {
+  const response = await fetch(`${config.teams.server.replace(/\/+$/, '')}/api/v1/teams/${encodeURIComponent(config.teams.team)}${path}`, {
+    signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(9000)]), redirect: 'manual',
+    headers: { accept: 'application/json', authorization: `Bearer ${teamsToken}`, 'x-supercode-caller': 'open-autonomy-project-rooms' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `Teams ${response.status}`), { code: payload?.error?.code, status: response.status });
+  return payload.data;
+}
+/** The Teams session a harness's own session id is (`harness:native id`), or null while Teams does not hold it for this
+ *  app (not captured yet, or not readable by its installation). Kept once found: the pairing never changes. */
+async function teamsSessionOf(native) {
+  if (state.sessionIds[native]) return state.sessionIds[native];
+  const found = await teamsRead(`/sessions/${encodeURIComponent(native)}`).catch((error) => { if (error.status === 404) return null; throw error; });
+  if (typeof found?.id !== 'string') return null;
+  state.sessionIds[native] = found.id; saveState();
+  return found.id;
+}
+/** The Workplace session participant the supercode integration named for a Teams session (the resolve door, by its
+ *  registration and the session's reference `{ id, team }`), or null while it has named none. Kept once found. */
+async function sessionPrincipalOf(teamsSession) {
+  if (state.sessionPrincipals[teamsSession]) return state.sessionPrincipals[teamsSession];
   if (!config.rh2.agentsRegistration) return null;
-  const query = `registration=${encodeURIComponent(config.rh2.agentsRegistration)}&reference=${encodeURIComponent(agentId)}&kind=agent`;
+  const reference = JSON.stringify({ id: teamsSession, team: config.teams.team });
+  const query = `registration=${encodeURIComponent(config.rh2.agentsRegistration)}&reference=${encodeURIComponent(reference)}&kind=session`;
   const found = await door(`${orgPath}/principals/resolve?${query}`).catch((error) => { if (error.status === 404) return null; throw error; });
   const principalId = found?.principal?.principalId;
   if (typeof principalId !== 'string') return null;
-  state.agentPrincipals[agentId] = principalId; saveState();
+  state.sessionPrincipals[teamsSession] = principalId; saveState();
   return principalId;
 }
 // The organization's people (its principals of kind human), read once per pass with the organization, and the Room's own.
@@ -370,95 +390,66 @@ async function peopleOf(view) {
   return people;
 }
 /**
- * Brings `wanted` (agent id → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join command, each
- * with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule), joined again when
- * someone changed it. Any other agent in the Room leaves by the leave command, unless a person brought it in (its seat's
- * `seatedBy` is a person of the organization: their /invite), or `mayUnseat` is false. Leaving waits for a whole board reading, and for every wanted agent to be resolved (an
- * unresolved one may be a joined one). An agent the integration has not provided yet is refused as `agent-not-provided`,
- * so it is tried again on the app's backoff. Who is in the Room is its roster, the Room read's `members` (RH2 ADR 0063
- * decision 1).
+ * Brings `wanted` (session participant → `{ roleKeys, answers }`) into the Room `view` shows with the Workplace's join
+ * command, each with `answers` its receive setting in the base channel (`all` or `mentions`; none, the Room's rule),
+ * joined again when someone changed it. Any other session or agent in the Room leaves by the leave command, unless a
+ * person brought it in (its seat's `seatedBy` is a person of the organization: their /invite), or `mayUnseat` is false.
+ * Leaving waits for a whole board reading, and for every working session to be resolved (an unresolved one may be a
+ * joined one). Who is in the Room is its roster, the Room read's `members` (RH2 ADR 0063 decision 1).
  */
-async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true, held = [] } = {}) {
-  // `held`: agents working a card whose assignment on its Task is not there yet. One already seated keeps its seat, and
-  // none is brought in, until the assignment is (a new run's assignment lagging the board unseated its implementer and
-  // the reviewer five times in minutes, each leave told, VO-3602 t_ab4e09ab).
-  const roomId = view.room.roomId, missing = [...unresolved], principals = new Set(held);
+async function keepSeats(view, wanted, label, { unresolved = [], mayUnseat = true } = {}) {
+  const roomId = view.room.roomId;
   const inRoom = new Set((view.members ?? []).map((member) => member.principalId));
   const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
   const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
-  for (const [agentId, { answers, roleKeys }] of wanted) {
-    const principalId = await agentPrincipalOf(agentId);
-    if (!principalId) { missing.push(agentId); continue; }
-    principals.add(principalId);
+  for (const [principalId, { answers, roleKeys, teamsSession }] of wanted) {
     const joined = inRoom.has(principalId);
     if (joined && (!answers || !base || receives.get(principalId) === answers)) continue;
     try {
       await door(`${room}/join`, { body: { principalId, roleKeys, ...(answers ? { answers } : {}), ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}) } });
     } catch (error) {
-      // A principal that no longer stands (ended in the Workplace) is resolved again next time.
-      if (['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.agentPrincipals[agentId];
+      // A participant that no longer stands (ended in the Workplace) is resolved again next time.
+      if (['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.sessionPrincipals[teamsSession];
       throw error;
     }
-    log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
+    log(joined ? 'session-receives' : 'session-joined', { ...label, principalId, roomId, session: teamsSession, ...(answers ? { answers } : {}) });
   }
-  if (mayUnseat && !missing.length && state.cleanupReady) {
-    const leaving = (view.members ?? []).filter((member) => member.kind === 'agent' && !principals.has(member.principalId));
+  if (mayUnseat && !unresolved.length && state.cleanupReady) {
+    const leaving = (view.members ?? []).filter((member) => (member.kind === 'session' || member.kind === 'agent') && !wanted.has(member.principalId));
     const people = leaving.length ? await peopleOf(view) : new Set();
     for (const member of leaving) {
       if (people.has(member.seatedBy)) continue;
       // Named by who brought it in, so a person who brings it in again meanwhile is not undone.
       await door(`${room}/leave`, { body: { principalId: member.principalId, ...(member.seatedBy ? { expectedSeatedBy: member.seatedBy } : {}) } });
-      log('agent-left', { ...label, principalId: member.principalId, roomId, seatedBy: member.seatedBy ?? null });
+      log('member-left', { ...label, kind: member.kind, principalId: member.principalId, roomId, seatedBy: member.seatedBy ?? null });
     }
   }
-  if (missing.length) throw Object.assign(new Error(`the supercode integration has provided no Workplace agent yet for ${missing.join(', ')}`), { code: 'agent-not-provided' });
-}
-// The card's Task (by the correlation the Cards → Tasks registration makes it under), read once per pass with the Task
-// directory: its live agent assignments say which of the card's agents still work it.
-let passTasks;
-const cardCorrelation = (cardId) => config.source?.namespace
-  ? `card:${config.source.namespace}:${createHash('sha256').update(JSON.stringify([config.teams.source, cardId])).digest('hex')}`
-  : `card:${config.teams.source}:${cardId}`.slice(0, 256);
-async function taskOfCard(cardId) {
-  passTasks ??= door('/api/v3/tasks').then((read) => {
-    if (!Array.isArray(read?.tasks)) throw new Error('the Task directory returned no task list');
-    return read.tasks;
-  }, (error) => { passTasks = undefined; throw error; });
-  const correlation = cardCorrelation(cardId);
-  const matches = (await passTasks).filter((task) => task.correlationId === correlation && (!config.rh2.cardsPrincipalId || task.createdByPrincipalId === config.rh2.cardsPrincipalId));
-  return matches.length === 1 ? matches[0] : null;
 }
 /**
- * The project's agents, from its live arcs: each active declaration of an agent Teams has not ended whose Workplace agent
- * holds a live assignment on its card's Task, the lead's receiving every line and every other's the lines naming it. An
- * arc that publishes no declarations, or whose Task is not found exactly once, says nothing of who is seated: no seat
- * leaves while one does. `waiting` names each arc whose Task or an agent's assignment on it is not there yet (the
- * supercode integration makes them on its own turns): the project stays owed until every one is seated.
+ * The project's seats, from its live arcs: each session working one now (workingSessionsOf), the lead's receiving every
+ * line and every other's the lines naming it. An arc that publishes no sessions says nothing of who is seated: no seat
+ * leaves while one does. `unresolved` names each working session not yet found in Teams or named in the Workplace
+ * (supercode's integration names it on its own turn): the project stays owed until every one is seated.
  */
-async function projectAgentsOf(project, cards) {
-  const wanted = new Map(), unresolved = [], waiting = [], held = [];
+async function projectSeatsOf(cards) {
+  const wanted = new Map(), unresolved = [];
   let mayUnseat = true;
   for (const card of cards) {
-    if (!Array.isArray(card.agents)) { mayUnseat = false; continue; }
-    const task = await taskOfCard(card.id);
-    if (!task) { mayUnseat = false; if (card.agents.some((agentId) => !agentEnded(agentId))) waiting.push(`${card.id}: its Task`); continue; }
-    const assigned = new Set((task.assignedAgents ?? []).map((agent) => agent.principalId));
-    for (const agentId of card.agents) {
-      if (agentEnded(agentId)) continue;
-      const principalId = await agentPrincipalOf(agentId);
-      if (!principalId) { unresolved.push(agentId); continue; }
-      if (!assigned.has(principalId)) { waiting.push(`${card.id}: ${agentId}'s assignment`); held.push(principalId); continue; }
-      const lead = card.leads?.includes(agentId) || wanted.get(agentId)?.answers === 'all';
-      wanted.set(agentId, { answers: lead ? 'all' : 'mentions', roleKeys: AGENT_ROLE_KEYS });
+    if (!Array.isArray(card.sessions)) { mayUnseat = false; continue; }
+    for (const { lead, native } of card.sessions) {
+      const teamsSession = await teamsSessionOf(native);
+      const principalId = teamsSession ? await sessionPrincipalOf(teamsSession) : null;
+      if (!principalId) { unresolved.push(`${card.id} ${native}`); continue; }
+      wanted.set(principalId, { answers: lead || wanted.get(principalId)?.answers === 'all' ? 'all' : 'mentions', roleKeys: SEAT_ROLE_KEYS, teamsSession });
     }
   }
-  return { held, mayUnseat, unresolved, waiting, wanted };
+  return { mayUnseat, unresolved, wanted };
 }
 
 /**
  * One project's Room as its live arcs say: open, named for the project, in the project Floor's Work section,
- * its topic their list, their agents joined. With no live arc it is closed (closeOwnRoom), only once the board's
+ * its topic their list, their sessions joined. With no live arc it is closed (closeOwnRoom), only once the board's
  * whole list has been read, and only a Room this app opened for the project.
  */
 async function keepProject(project) {
@@ -486,7 +477,7 @@ async function keepProject(project) {
   const topic = topicOf(project, cards);
   if (baseChannel && baseChannel.topic !== topic) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(baseChannel.conversationId)}/topic`, { body: { topic }, method: 'PUT' });
   // Its guidance (ADR 0063 decision 7), set with the rules command whenever it differs. A project Room is permanent, so its
-  // agents stay in its call until removed (RH2's own rule for a permanent Room).
+  // sessions stay in its call until removed (RH2's own rule for a permanent Room).
   if (JSON.stringify(room.rules?.guidance ?? []) !== JSON.stringify(guidance)) {
     await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/rules`, { body: { expectedRevision: room.rules?.revision ?? 0, guidance }, method: 'PUT' });
     log('room-guidance-set', { ...label, roomId });
@@ -518,12 +509,13 @@ async function keepProject(project) {
       log('room-access-given', { ...label, roomId, principalId });
     }
   }
-  const { held, mayUnseat, unresolved, waiting, wanted } = await projectAgentsOf(project, cards);
-  await keepAgentSeats(view, wanted, label, { held, mayUnseat, unresolved });
+  const { mayUnseat, unresolved, wanted } = await projectSeatsOf(cards);
+  await keepSeats(view, wanted, label, { mayUnseat, unresolved });
   // Each card's new images and videos, in the Room's base channel (ADR 0063 decision 8).
   if (baseChannel) for (const card of cards) await repostCardFiles(roomId, baseChannel.conversationId, card);
-  // Seated what can be; what waits keeps the project owed, tried again on the app's backoff (keepOwedProjects).
-  if (waiting.length) throw Object.assign(new Error(`waiting for ${waiting.slice(0, 5).join('; ')}`), { code: 'seats-pending' });
+  // Seated what can be; a working session not yet found in Teams or named in the Workplace keeps the project owed, tried
+  // again on the app's backoff (keepOwedProjects).
+  if (unresolved.length) throw Object.assign(new Error(`not yet found in Teams or named in the Workplace: ${unresolved.slice(0, 5).join('; ')}`), { code: 'session-not-named' });
 }
 
 // A card whose reading changed owes its project a pass (keepProject); the project it named before is owed by the frame
@@ -581,9 +573,8 @@ async function* follow(after) {
   }
 }
 async function* followReading(after, continuation) {
-  // Agent events are the team's own, under no board's source, so the stream names no source and the board's cards are
-  // kept by their resource id (the loop below): an arc's agents are unseated when Teams ends them.
-  const kinds = 'task.created,task.changed,task.started,task.review_requested,task.changes_requested,task.completed,task.cancelled,task.reopened,task.blocked,task.unblocked,task.paused,task.resumed,task.assigned,task.linked,task.unlinked,task.commented,task.specified,agent.declared,agent.changed,agent.reassigned,agent.reparented,agent.ended';
+  // The board's cards are kept by their resource id (the loop below), which carries the board's source.
+  const kinds = 'task.created,task.changed,task.started,task.review_requested,task.changes_requested,task.completed,task.cancelled,task.reopened,task.blocked,task.unblocked,task.paused,task.resumed,task.assigned,task.linked,task.unlinked,task.commented,task.specified';
   const url = `${config.teams.server.replace(/\/+$/, '')}/api/v1/teams/${encodeURIComponent(config.teams.team)}/events?kinds=${kinds}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
   // This connection's own end beside the app's, which its bounds (readingBounds) use to end a reading that hangs.
   const connection = new AbortController();
@@ -621,7 +612,8 @@ bindProjectionState(config,state);
 // A project → its Room; the projects owed a pass (keepProject); when each was last kept.
 state.projects ??= {}; state.projectsOwed ??= {}; state.projectsKept ??= {};
 state.pending ??= {};
-state.agents ??= {}; state.agentPrincipals ??= {}; // Teams agent → { ended }; → its Workplace principal (resolve door)
+// A harness's own session id → its Teams session; a Teams session → its Workplace session participant (resolve door).
+state.sessionIds ??= {}; state.sessionPrincipals ??= {};
 // Each card's files its Room has shown (or that predate its first reading of them), and when the app first reposted any:
 // a file attached before then is never posted.
 state.reposted ??= {}; state.repostSince ??= Date.now();
@@ -753,7 +745,7 @@ let draining;
 function drain() {
   draining ??= (async () => {
     if (!sourceAdmitted || !state.ready) return;
-    projectFloor = undefined; passTasks = undefined; passPeople = undefined;
+    projectFloor = undefined; passPeople = undefined;
     const tried = new Map();
     for (let next; !stopping && sourceAdmitted && state.ready && (next = Object.entries(state.pending).find(([id, card]) => tried.get(id) !== versionOf(card) && due(id, card)));) {
       tried.set(next[0], versionOf(next[1]));
@@ -793,12 +785,6 @@ while (!stopping) {
         // A card that moved to another project leaves the one it named before.
         if (was && was !== state.cards[card.id].project) state.projectsOwed[was] = true;
         named?.add(card.id);
-      }
-      if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'agent' && typeof event.data?.id === 'string') {
-        const ended = event.data.state === 'ended', was = state.agents[event.data.id]?.ended === true;
-        state.agents[event.data.id] = { ended };
-        // An agent Teams ended leaves the Room of every live arc that names it.
-        if (ended !== was) for (const held of Object.values(state.cards)) if (held.live && held.project && held.agents?.includes(event.data.id)) state.projectsOwed[held.project] = true;
       }
       if (frame.type === 'snapshot_end' && named) {
         state.ready = true; state.cleanupReady = named.size > 0;
