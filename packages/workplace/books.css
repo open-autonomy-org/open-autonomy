@@ -1,0 +1,38 @@
+/* The organization's books (Open Autonomy's Books page): the ledger as figures, the freeze, then panels for daily
+   spend, caps, money in and out, earmarks and statements. */
+.ui-books { display: grid; gap: var(--rh-space-5); }
+.ui-books__source { display: grid; gap: var(--rh-space-3); min-width: 0; }
+.ui-books__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--rh-space-3); }
+.ui-books__head h2 { margin: 0; font-size: 15px; }
+.ui-books__head p { margin: 0; color: var(--rh-color-text-muted); font-size: 12px; }
+.ui-books__head a { color: var(--rh-color-action-text); }
+.ui-books__kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--rh-space-2); margin: 0; }
+.ui-books__kpis > div { padding: var(--rh-space-2) var(--rh-space-3); border: 1px solid var(--rh-color-border); border-radius: var(--rh-radius-control); background: var(--rh-color-surface); }
+.ui-books__kpis dt { color: var(--rh-color-text-muted); font-size: 11.5px; }
+.ui-books__kpis dd { margin: 2px 0 0; color: var(--rh-color-text); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ui-books__kpis > div[data-tone="warn"] dd { color: var(--rh-color-attention-text); }
+.ui-books__freeze { display: grid; gap: var(--rh-space-2); padding: var(--rh-space-2) var(--rh-space-3); border: 1px solid var(--rh-color-border); border-radius: var(--rh-radius-control); background: var(--rh-color-surface-subtle); font-size: 13px; }
+.ui-books__freeze[data-frozen] { border-color: var(--rh-color-danger-line); background: var(--rh-color-danger-soft); }
+.ui-books__freeze p { margin: 0; }
+.ui-books__freeze-form { display: flex; gap: var(--rh-space-2); align-items: center; }
+.ui-books__freeze-form input { flex: 1; min-height: 28px; padding: 0 8px; border: 1px solid var(--rh-color-border); border-radius: var(--rh-radius-control); background: var(--rh-color-surface); color: var(--rh-color-text); font: inherit; font-size: 12.5px; }
+.ui-books__asked { color: var(--rh-color-text-muted); font-size: 12px; }
+.ui-books__error { color: var(--rh-color-danger-text); font-size: 12px; }
+.ui-books__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--rh-space-3); }
+.ui-books__panel { display: grid; align-content: start; gap: var(--rh-space-2); min-width: 0; padding: var(--rh-space-3); border: 1px solid var(--rh-color-border); border-radius: var(--rh-radius-control); background: var(--rh-color-surface); }
+.ui-books__panel h3 { margin: 0; font-size: 13px; }
+.ui-books__rows { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+.ui-books__rows li { display: flex; justify-content: space-between; gap: var(--rh-space-3); }
+.ui-books__rows li > span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ui-books__rows li[data-tone="warn"] > span:last-child { color: var(--rh-color-attention-text); }
+.ui-books__rows li[data-tone="hot"] > span:last-child { color: var(--rh-color-danger-text); }
+.ui-books__bars { display: flex; align-items: flex-end; gap: 2px; height: 80px; margin: 0; padding: 0; list-style: none; }
+.ui-books__bars li { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--rh-color-data); }
+.ui-books__statements { display: grid; gap: var(--rh-space-2); margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+.ui-books__statements p { margin: 2px 0; }
+.ui-books__statements small { color: var(--rh-color-text-muted); }
+.ui-books__empty { margin: 0; color: var(--rh-color-text-muted); font-size: 12.5px; }
+.ui-books__metered { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ui-books__metered th, .ui-books__metered td { padding: 4px 6px; border-bottom: 1px solid var(--rh-color-border-soft); text-align: right; white-space: nowrap; }
+.ui-books__metered th:first-child, .ui-books__metered td:first-child { text-align: left; }
+.ui-books__metered small { color: var(--rh-color-text-muted); }

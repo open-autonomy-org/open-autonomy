@@ -1,0 +1,19 @@
+/* Cost control (Vercel's spend management): the month's figures, each limit's meter, and the spend attributed. */
+.ui-cost { display: grid; gap: var(--rh-space-4); padding: var(--rh-space-3); }
+.ui-cost h3 { margin: 0 0 var(--rh-space-2); font-size: 13px; }
+.ui-cost__figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--rh-space-3); margin: 0; }
+.ui-cost__figures dt { color: var(--rh-color-text-muted); font-size: 12px; }
+.ui-cost__figures dd { margin: 2px 0 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ui-cost__limits { display: grid; gap: var(--rh-space-2); margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.ui-cost__limits li { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 1fr) auto auto; gap: var(--rh-space-3); align-items: center; }
+.ui-cost__limits li[data-tone="near"] span:nth-of-type(2) { color: var(--rh-color-attention-text); }
+.ui-cost__limits li[data-tone="over"] span:nth-of-type(2) { color: var(--rh-color-danger-text); font-weight: 600; }
+.ui-cost__limits meter { width: 100%; }
+.ui-cost__limits a, .ui-cost__table a, .ui-cost__bars a { color: var(--rh-color-action-text); }
+.ui-cost__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ui-cost__table th { color: var(--rh-color-text-muted); font-weight: 500; text-align: left; }
+.ui-cost__table th, .ui-cost__table td { padding: 6px 8px; border-bottom: 1px solid var(--rh-color-border); }
+.ui-cost__table td:nth-child(n+3) { font-variant-numeric: tabular-nums; }
+.ui-cost__split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--rh-space-4); }
+.ui-cost__bars { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.ui-cost__bars li { display: flex; justify-content: space-between; gap: var(--rh-space-2); padding: 4px 0; border-bottom: 1px solid var(--rh-color-border); }
