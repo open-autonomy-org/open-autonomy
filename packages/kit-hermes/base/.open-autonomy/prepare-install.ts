@@ -6,7 +6,27 @@ import { dirname, resolve } from 'node:path';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
-  entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string };
+  entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string;
+  initiator: Initiator };
+// Who asked for this preparation. Supercode's machine owner, which runs it for an activation, relays the activating
+// command's own reading in SUPERCODE_INITIATOR stamped with the owner's pid; it is taken only from this process's actual
+// parent, so a value left in a long-lived environment never names a later preparation. Anything else records this
+// process's own facts. A record, never an authority.
+export type Initiator = { version: 1; pid: number; ppid: number | null; executable: string | null; argv: string[]; cwd: string | null;
+  claims: Record<string, string>; [fact: string]: unknown };
+const CLAIMS = ['CLAUDE_CODE_SESSION_ID', 'CODEX_THREAD_ID', 'SUPERCODE_CALLER', 'SUPERCODE_AGENT_ID', 'SUPERCODE_AGENT_SESSION',
+  'SUPERCODE_HOOK_SESSION', 'SUPERCODE_BOARD_OWNER_PID', 'SUPERCODE_RUN_LAUNCH'];
+export function installInitiator(environment: Record<string, string | undefined>): Initiator {
+  const raw = environment.SUPERCODE_INITIATOR;
+  if (raw && raw.length <= 262144) try {
+    const { relay_pid: relay, ...relayed } = JSON.parse(raw);
+    if (relay === process.ppid && relayed?.version === 1 && Number.isSafeInteger(relayed.pid)) return relayed as Initiator;
+  } catch { /* not a relayed initiator: this process's own facts below */ }
+  let cwd: string | null = null;
+  try { cwd = process.cwd(); } catch { /* a removed directory has no name */ }
+  const claims = Object.fromEntries(CLAIMS.filter(name => environment[name]).map(name => [name, String(environment[name]).slice(0, 256)]));
+  return { version: 1, at: new Date().toISOString(), pid: process.pid, ppid: process.ppid, executable: process.execPath, argv: process.argv.slice(0, 64), cwd, claims };
+}
 const run = async (cmd: string[], cwd: string): Promise<string> => {
   const child = Bun.spawn({ cmd, cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
@@ -50,7 +70,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
     entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
-    receipt: resolve(directory, 'install.json') };
+    receipt: resolve(directory, 'install.json'), initiator: installInitiator(environment) };
   writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
   return receipt;
 }
