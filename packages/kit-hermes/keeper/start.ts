@@ -521,7 +521,8 @@ const env = agentEnv();
 const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
   const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string>, boundMs: 600_000 });
-  if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied: ${applied.stderr.trim().split('\n').at(-1)}. No gateway was started.`); process.exit(1); }
+  // the applier's own error and its stack, not only its last line (Bun ends a crash's stderr with its version banner)
+  if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied (exit ${applied.exitCode}):\n${applied.stderr.trim().split('\n').slice(-20).join('\n')}\nNo gateway was started.`); process.exit(1); }
   for (const line of JSON.parse(applied.stdout.trim().split('\n').at(-1) ?? '[]') as string[]) say(`agent: ${line}`);
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.

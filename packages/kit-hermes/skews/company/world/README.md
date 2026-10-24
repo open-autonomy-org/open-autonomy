@@ -74,9 +74,16 @@ ended), and `show` prints the card, its PR and the twin's merge state. Supervisi
 - **RFC 0020 rows 1–24:** through `supercode agent`, `supercode message` (send, reply, delegate, threads) and the
   sessions' panes; a channel through `AgentMailboxBridge` over the RH2 twin; a call through `supercode voice run` with
   `agent:` set.
-- **RFC 0022 rows 1–6:** the auditor's round as a job; the probe is supercode's machine-health pack (`sdk/health` from
-  `SUPERCODE_TREE`, run by each machine's connector), its maintainer's config naming that machine's box maintainer and
-  alarm lines set to cross.
+- **Native fleet routing:** the auditor's round as a job; each connector runs the machine-health probe. Recipient
+  configs start empty. Enrollment subscribes the same host maintainer on both machines and opens one main on the
+  install host. Inspect both machines' native agents, launches and subscriptions, then the host main's mailbox for
+  machine-b's alarm. Labelled model stubs prove receipt only, not resource judgment or runaway intervention.
+
+For late enrollment, prepare with `VO_MACHINE_B_AFTER_ENROLL=1`. Machine-b waits for
+`$VOLTER_WORLD_DATA/enrollment.done` before connecting. After the first enrollment, create that marker and run
+the existing maintenance pass again at the same revision. Its health-only enrollment must subscribe the retained
+host agent on machine-b without opening a remote maintainer. Clear/raise a threshold through the native health
+configuration door to observe a fresh alarm transition.
 
 ## An install's own scenarios
 
