@@ -96,10 +96,15 @@ platform needs the full `Dockerfile` image.
 
 ## From npm
 
-Three packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend` and `create-open-autonomy`, each at its own version.
-`.github/workflows/release.yml` publishes each new version when the owner merges the standing `main` → `prod` pull
-request (`apps/platform/DEPLOY.md`), with egress locked to npm and the token it needs
-(`NPM_TOKEN`) installed in that environment only. The world proves the same publish and a `bun create
+Four packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend`, `create-open-autonomy` and `@open-autonomy/cli`, each at its own version.
+`scripts/npm-publish-missing.sh` publishes each version npm lacks, run from a checkout of the `publish` branch at
+`origin/publish` with `VOLTER_PUBLICATION_AUTHORIZED=1`, as the machine's own npm login (`--check` lists what it would
+publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
+from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
+(`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys (`scripts/npm-keys-sweep.mjs`: gitleaks,
+the machine's supercode custody values and `@volter/teams/redact`'s token forms); any failure publishes nothing. Only
+those swept tarballs are uploaded, npm's integrity for each is read back against the file's, and a new kit version is
+recorded as a `release-v<version>` tag and GitHub release. The world proves the same publish and a `bun create
 open-autonomy` from it against the npm registry twin (the [World operator guide](../../world/README.md)) before any release is cut.
 
 ## What a generated repository contains

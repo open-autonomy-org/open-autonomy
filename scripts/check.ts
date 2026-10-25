@@ -14,7 +14,7 @@ const steps: Array<[string, string[], string]> = [
   ['kit: cookbooks current', ['sh', '-c', 'bun packages/kit-hermes/src/cli.ts check cookbooks/todo-cli && bun packages/kit-hermes/src/cli.ts check .'], '.'],
   ['docs', ['bun', 'scripts/check-docs.ts'], '.'],
 ];
-// The lockfile names each workspace package's version, and `bun publish` writes that — not package.json's — in place
+// The lockfile names each workspace package's version, and `bun pm pack` writes that — not package.json's — in place
 // of a `workspace:*` dependency; bun never refreshes it on install, so a bumped package would publish depending on
 // the version before. The check keeps them equal, fixing and staging the lockfile as a pre-commit hook does.
 {
