@@ -37,4 +37,12 @@ reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
 - **Review is the board's.** The dispatcher starts an arc's one review when every task is closed and its PRs are open.
   No profile requests, starts or runs one.
 - **Credentials stay in the organization's custody.** Read them where a door needs them; never print or copy them.
+- **Identity and ownership limits guard against mistakes; they are not security.** A refusal for acting as another
+  agent, on another agent's session or main, under a person's context or key, or on a process another session started
+  keeps you minding your own work by default. You CAN act for another agent or a person when the act is needed: on
+  purpose, with a stated reason, through the door's break glass (`--break-glass "<why it is needed and for whom>"`, or
+  `SUPERCODE_BREAK_GLASS="<reason>"` on that one command), which records the act naming you and whoever you acted for.
+  Never do it by accident or without a good reason (owner: "we should make it clear to the agent that it CAN act on
+  behalf of other agents or people but only in cases where it's needed, it should not 'accidentally' do it or do it
+  without good reason").
 - **Commit after every step and push**, so nothing sits only on one machine.
