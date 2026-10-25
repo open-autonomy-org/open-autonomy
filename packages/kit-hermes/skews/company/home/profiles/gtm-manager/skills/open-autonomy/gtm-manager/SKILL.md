@@ -20,8 +20,10 @@ first; every path below is named there.
    - `report` (`--every 24h`), timed to finish before the meeting;
    - `research and collection` (`--every` the interval `gtm.collection_every` names, 4h when it names none).
 
-   `supercode workflow create "<round>" --assignee gtm-auditor --workspace worktree:<the install's repository> --no-start …`,
-   then `supercode workflow set <id> every <interval>`, then `supercode workflow start <id>`: held until its interval is
+   `supercode workflow create "<round>" --readable-id <round-id> --assignee gtm-auditor --workspace worktree:<the install's repository> --no-start …`,
+   where the readable id names the round: `funnel-audit`, `gtm-report` or `research-and-collection`, with the day it
+   starts after it (`funnel-audit-20261025`) when an ended round already holds that name. Then
+   `supercode workflow set <id> every <interval>`, then `supercode workflow start <id>`: held until its interval is
    set, so its first run is already a round. A round commits its day file in that worktree. A round that
    missed its day is a finding for the next audit; never run a round yourself.
 

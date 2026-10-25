@@ -35,7 +35,7 @@ const state = () => JSON.parse(readFileSync(stateFile, 'utf8')) as { card: strin
 const verb = process.argv[2];
 if (verb === 'start') {
   if (existsSync(stateFile)) throw new Error(`the adoption story already started: ${readFileSync(stateFile, 'utf8')}`);
-  const card = /t_[0-9a-f]+/.exec(workflow('create', NATIVE_TITLE, '--no-start', '--assignee', 'coder', '--machine', MACHINE, '--workspace', `worktree:${project}`,
+  const card = /t_[0-9a-f]+/.exec(workflow('create', NATIVE_TITLE, '--readable-id', `adopted-rehearsal-${Date.now().toString(36)}`, '--no-start', '--assignee', 'coder', '--machine', MACHINE, '--workspace', `worktree:${project}`,
     '--body', 'Add one line to REHEARSAL.md saying an adopted session worked one board card end to end, on a PR to main.'))?.[0];
   if (!card) throw new Error('no card id from workflow create');
   const worktree = resolve(project, '.worktrees', card);
