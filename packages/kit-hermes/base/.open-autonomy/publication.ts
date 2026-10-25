@@ -36,11 +36,16 @@ export const retainedDigest = (file: string): string => publicationHash(readFile
 export function savePublicationBytes(file: string, bytes: string | Buffer): void {
   const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
   const fd = openSync(temporary, 'wx', 0o600);
-  try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
-  renameSync(temporary, file);
+  // A write that fails (a full disk) removes its own partial copy: every retry would otherwise leave one behind.
+  try { try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); } renameSync(temporary, file); }
+  catch (error) { rmSync(temporary, { force: true }); throw error; }
   const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
 }
 export function savePublicationFile(file: string, value: unknown): void { savePublicationBytes(file, JSON.stringify(value) + '\n'); }
+// The source cache's journal (source-events.ts): the card changes and cursors committed since the cache file was last
+// written whole. A non-empty journal means the cache file alone is not the source's retained state.
+export const sourceJournalFile = (cacheFile: string): string => `${cacheFile}.journal`;
+export const sourceJournalOpen = (cacheFile: string): boolean => existsSync(sourceJournalFile(cacheFile)) && lstatSync(sourceJournalFile(cacheFile)).size > 0;
 type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; hostBasis?: 'machine' | 'boot'; boot: string; namespace: string };
 type WriterIdentity = ExecutorIdentity & { start: string };
 export type ControlAbsence = { kind: 'absent-control'; file: string };
@@ -405,7 +410,7 @@ export class PublicationStore {
       return;
     }
     const prev = custody.previous;
-    if (custody.generation !== old.custody.generation + 1 || !prev || prev.custodyDigest !== old.custodyDigest || prev.reporterDigest !== retainedDigest(this.options.stateFile) || !existsSync(this.options.cacheFile) || prev.cacheDigest !== retainedDigest(this.options.cacheFile) || privateJSON(this.options.cacheFile).pending || this.data.pending.length || !eq(old.stores.map(s => s.context).sort(), this.config.stores.map(s => s.context).sort())) throw new Error('Publication continuity needs exact stopped prior digests, unchanged contexts and settled obligations');
+    if (custody.generation !== old.custody.generation + 1 || !prev || prev.custodyDigest !== old.custodyDigest || prev.reporterDigest !== retainedDigest(this.options.stateFile) || !existsSync(this.options.cacheFile) || prev.cacheDigest !== retainedDigest(this.options.cacheFile) || sourceJournalOpen(this.options.cacheFile) || privateJSON(this.options.cacheFile).pending || this.data.pending.length || !eq(old.stores.map(s => s.context).sort(), this.config.stores.map(s => s.context).sort())) throw new Error('Publication continuity needs exact stopped prior digests, unchanged contexts and settled obligations');
     retainExactBytes(this.options.stateFile, `${this.options.stateFile}.custody-${old.custody.generation}.json`);
     retainExactBytes(this.options.cacheFile, `${this.options.cacheFile}.custody-${old.custody.generation}.json`);
     this.data.enrollment = { ...old, custody, custodyDigest: digest, stores: this.config.stores, selectedRuntime: this.options.nativeRuntime };
