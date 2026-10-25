@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-// The keys sweep over the exact tarballs a release uploads, before any is uploaded (.github/workflows/release.yml packs
-// each version once, runs this, and publishes those same files). An npm package is published only with this sweep in
-// place ("for the npms, we can carve out an exception to allow public release IF we have the keys sweep"); it is the
-// sweep supercode's release runs (its scripts/npm-keys-sweep.mjs). Every tarball listed in <dir>/packed is unpacked
-// into a folder of its own and read twice:
+// The keys sweep over the exact tarballs a release uploads, before any is uploaded (scripts/npm-publish-missing.sh
+// packs each version once, runs this, and publishes those same files). An npm package is published only with this
+// sweep in place ("for the npms, we can carve out an exception to allow public release IF we have the keys sweep"); it
+// is the sweep supercode's release runs (its scripts/npm-keys-sweep.mjs). Every tarball listed in <dir>/packed is
+// unpacked into a folder of its own and read twice:
 //   - by gitleaks itself (`gitleaks dir`, its own default rules and allowlists), pinned here by its release's SHA-256;
 //   - by the redactor Teams uses on what leaves a machine (@volter/teams/redact, pinned here by its npm integrity), for
-//     what gitleaks cannot know: the custody values this process can read (the files in SUPERCODE_CUSTODY_FILES and the
-//     registry at <SUPERCODE_HOME>/custody.json, read fresh: a declared file that cannot be read refuses the sweep) and
-//     the tokens a Teams server mints.
+//     what gitleaks cannot know: this machine's custody values (the files its supercode custody registry names,
+//     ~/.config/supercode/custody.json or <SUPERCODE_HOME>/custody.json, and SUPERCODE_CUSTODY_FILES; read fresh: a
+//     declared file that cannot be read refuses the sweep, and so does a machine with no custody value at all) and the
+//     tokens a Teams server mints.
 // Any hit refuses the whole publication, naming the package, the file and the rule, never the value. The tools run
 // with an environment holding no secret.
 //
-//   node .github/keys-sweep.mjs <tarballs dir>   (its `packed` lists: package dir <tab> name <tab> version; each
+//   node scripts/npm-keys-sweep.mjs <tarballs dir>   (its `packed` lists: package dir <tab> name <tab> version; each
 //                                                 tarball is <dir>/<name with / as +>@<version>.tgz)
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -40,54 +41,54 @@ const stop = (message) => {
 };
 // What the tools run with: no token, no custody path.
 const bare = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir(), LANG: 'C' };
-const cache = join(process.env.RUNNER_TEMP ?? tmpdir(), 'keys-sweep-tools');
+// The pinned archives are kept between runs and checked against their pins on every run; each run unpacks its own.
+const cache = join(tmpdir(), 'keys-sweep-tools');
+// How long one pinned download may take before the sweep refuses (it fails closed: nothing is published).
+const DOWNLOAD_DEADLINE_MS = 60_000;
 
-async function download(url, check, what) {
+/** The pinned archive's bytes: the kept copy when it still matches its pin, else downloaded and checked. */
+async function pinned(url, file, check, what) {
+  const kept = join(cache, file);
+  if (existsSync(kept)) { const bytes = readFileSync(kept); if (check(bytes)) return bytes; }
   let bytes;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_DEADLINE_MS) });
     if (!response.ok) stop(`downloading ${what} answered ${response.status}: ${url}`);
     bytes = Buffer.from(await response.arrayBuffer());
   } catch (error) {
     stop(`could not download ${what}: ${error.message}`);
   }
   if (!check(bytes)) stop(`${what} does not match its pin`);
+  mkdirSync(cache, { recursive: true });
+  writeFileSync(`${kept}.part`, bytes);
+  renameSync(`${kept}.part`, kept);
   return bytes;
 }
 
-async function gitleaks() {
+/** Unpack `bytes` (a .tgz) into `dir`, only the `members` named. */
+function unpack(bytes, dir, members) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'archive.tgz'), bytes);
+  execFileSync('tar', ['-xzf', 'archive.tgz', ...members], { cwd: dir, env: bare });
+  rmSync(join(dir, 'archive.tgz'));
+}
+
+async function gitleaks(tools) {
   const os = { darwin: 'darwin', linux: 'linux' }[process.platform];
   const asset = `${os}_${process.arch}`;
   const sha256 = GITLEAKS_SHA256[asset];
   if (!sha256) stop(`gitleaks ${GITLEAKS_VERSION} is not pinned for ${process.platform} ${process.arch}`);
-  const dir = join(cache, `gitleaks-${GITLEAKS_VERSION}-${asset}`);
-  const binary = join(dir, 'gitleaks');
-  if (!existsSync(binary)) {
-    const url = `https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${asset}.tar.gz`;
-    const bytes = await download(url, (b) => createHash('sha256').update(b).digest('hex') === sha256, `gitleaks ${GITLEAKS_VERSION} ${asset}`);
-    const part = `${dir}.part`;
-    rmSync(part, { recursive: true, force: true });
-    mkdirSync(part, { recursive: true });
-    writeFileSync(join(part, 'gitleaks.tar.gz'), bytes);
-    execFileSync('tar', ['-xzf', 'gitleaks.tar.gz', 'gitleaks'], { cwd: part, env: bare });
-    renameSync(part, dir);
-  }
-  return binary;
+  const file = `gitleaks_${GITLEAKS_VERSION}_${asset}.tar.gz`;
+  const bytes = await pinned(`https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}`, file, (b) => createHash('sha256').update(b).digest('hex') === sha256, `gitleaks ${GITLEAKS_VERSION} ${asset}`);
+  unpack(bytes, join(tools, 'gitleaks'), ['gitleaks']);
+  return join(tools, 'gitleaks', 'gitleaks');
 }
 
-async function teams() {
-  const dir = join(cache, `volter-teams-${TEAMS_VERSION}`);
-  if (!existsSync(join(dir, 'package', 'redact.mjs'))) {
-    const url = `https://registry.npmjs.org/@volter/teams/-/teams-${TEAMS_VERSION}.tgz`;
-    const bytes = await download(url, (b) => `sha512-${createHash('sha512').update(b).digest('base64')}` === TEAMS_INTEGRITY, `@volter/teams@${TEAMS_VERSION}`);
-    const part = `${dir}.part`;
-    rmSync(part, { recursive: true, force: true });
-    mkdirSync(part, { recursive: true });
-    writeFileSync(join(part, 'teams.tgz'), bytes);
-    execFileSync('tar', ['-xzf', 'teams.tgz', 'package/redact.mjs', 'package/redact'], { cwd: part, env: bare });
-    renameSync(part, dir);
-  }
-  return join(dir, 'package');
+async function teams(tools) {
+  const file = `volter-teams-${TEAMS_VERSION}.tgz`;
+  const bytes = await pinned(`https://registry.npmjs.org/@volter/teams/-/teams-${TEAMS_VERSION}.tgz`, file, (b) => `sha512-${createHash('sha512').update(b).digest('base64')}` === TEAMS_INTEGRITY, `@volter/teams@${TEAMS_VERSION}`);
+  unpack(bytes, join(tools, 'teams'), ['package/redact.mjs', 'package/redact']);
+  return join(tools, 'teams', 'package');
 }
 
 const tarballs = resolve(process.argv[2] ?? '');
@@ -97,22 +98,26 @@ const packages = [...new Map(listed.map(([, name, version]) => [`${name}@${versi
 for (const pkg of packages) if (!existsSync(pkg.tarball)) stop(`${pkg.name}@${pkg.version} is listed but its tarball is missing`);
 if (!packages.length) { process.stdout.write('keys sweep: no tarball was packed, so none is published\n'); process.exit(0); }
 
-const binary = await gitleaks();
+const work = mkdtempSync(join(tmpdir(), 'keys-sweep-'));
+process.on('exit', () => rmSync(work, { recursive: true, force: true }));
+const binary = await gitleaks(join(work, 'tools'));
 const version = spawnSync(binary, ['version'], { encoding: 'utf8', env: bare });
 if (version.status !== 0) stop(`gitleaks did not run: ${version.stderr.trim().slice(-300)}`);
-const redactor = await teams();
+const redactor = await teams(join(work, 'tools'));
 const { redactText, redactionSnapshot } = await import(pathToFileURL(join(redactor, 'redact.mjs')).href);
 const gitleaksIds = new Set(JSON.parse(readFileSync(join(redactor, 'redact', 'gitleaks-rules.json'), 'utf8')).rules.map((rule) => rule.id));
 let custody;
 try { ({ values: custody } = redactionSnapshot(process.env, { fresh: true })); } catch (error) { stop(error.message); }
+if (!custody.length) stop('no custody value is readable here (no supercode custody registry, or it names no secret), so the sweep cannot look for them');
 
 const files = (dir) => readdirSync(dir, { recursive: true }).map((name) => join(dir, String(name))).filter((path) => statSync(path).isFile());
 const hits = [];
 let count = 0;
-const work = mkdtempSync(join(tmpdir(), 'keys-sweep-'));
+const unpacked = join(work, 'tarballs');
+mkdirSync(unpacked);
 try {
   for (const pkg of packages) {
-    const dir = join(work, `${pkg.name.replace('/', '+')}@${pkg.version}`);
+    const dir = join(unpacked, `${pkg.name.replace('/', '+')}@${pkg.version}`);
     mkdirSync(dir);
     execFileSync('tar', ['-xzf', pkg.tarball, '-C', dir], { env: bare });
     const here = (path) => relative(dir, path);
@@ -132,7 +137,7 @@ try {
       });
     }
   }
-} finally { rmSync(work, { recursive: true, force: true }); }
+} finally { rmSync(unpacked, { recursive: true, force: true }); }
 const basis = `${packages.length} tarball(s), ${count} files, under gitleaks ${version.stdout.trim()}, ${custody.length} custody value(s) and Teams' token forms (@volter/teams@${TEAMS_VERSION})`;
 if (hits.length) {
   for (const hit of hits) process.stderr.write(`keys sweep: ${hit.package} ${hit.file}: ${hit.rule}\n`);

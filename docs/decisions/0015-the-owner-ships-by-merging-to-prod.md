@@ -28,8 +28,9 @@ explicit publication authorization. The `production` environment admits `publish
 approval.
 
 **Publication runs only from `publish`.** Only a push to `publish` deploys the platform (tagging the commit
-`deploy-v<date>.<n>`), publishes every package version not yet on npm (recording a new kit version as a
-`release-v<version>` tag and GitHub release) and publishes the docs. `main` is never published: a merge to `main`
+`deploy-v<date>.<n>`) and publishes the docs, and every package version not yet on npm is published only from a
+checkout of `publish` (`scripts/npm-publish-missing.sh`, recording a new kit version as a `release-v<version>` tag and
+GitHub release). `main` is never published: a merge to `main`
 never advances `publish` and never triggers publication. The tags stay, as the record of what shipped when.
 `admin.yml` is dispatched from `publish`.
 
@@ -50,8 +51,9 @@ merge commits only (the repository allows no squash or rebase merge, so `publish
 
 - `maintain.ts ship`, which PM runs every pass through the project's App, keeps the pull request open. A scheduled
   workflow did at first, and was removed: merges to `main` start no workflow, and GitHub ran its fifteen-minute schedule
-  not once in the two hours after the first ship. `deploy.yml`, `release.yml` and `pages.yml` run only on a push to
-  `publish`, and the first two record their tags; `apps/platform/DEPLOY.md` and `CLAUDE.md` say so.
+  not once in the two hours after the first ship. `deploy.yml` and `pages.yml` run only on a push to `publish`,
+  and `deploy.yml` records its tag; `scripts/npm-publish-missing.sh` publishes only from a checkout of `publish` and
+  records the kit's; `apps/platform/DEPLOY.md` and `CLAUDE.md` say so.
 - Repository settings: a `publish-protected` ruleset (creation, deletion, non-fast-forward, and a pull request
   approved by the `owners` team, merge commits only; the `owners` team alone bypasses, so only the owner creates
   `publish`); the `production` and `github-pages` environments' deployment branches `publish` alone, the

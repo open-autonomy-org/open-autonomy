@@ -9,8 +9,9 @@ changes compound until the owner reads the whole diff and merges it (a merge com
 `main`). `ship` never merges it and never pushes to `publish`. The `publish-protected` ruleset allows no creation or
 update of `publish` but a merged pull request that the `owners` team (the owner) has approved, and only that team
 bypasses it: the owner's merge is the publication authorization. On a push to `publish`,
-`deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`, and `release.yml` publishes every
-package version not yet on npm, recording a new kit version as a `release-v<version>` tag and GitHub release.
+`deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`. Every package version not yet on npm is
+published from a checkout of `publish` by `scripts/npm-publish-missing.sh` (packed once, keys-swept, that tarball
+uploaded), which records a new kit version as a `release-v<version>` tag and GitHub release.
 `admin.yml` (money and key operations) is dispatched `--ref publish`. No machine holds a deploy or admin token, and no
 agent can advance `publish`.
 

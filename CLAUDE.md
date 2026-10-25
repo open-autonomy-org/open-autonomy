@@ -9,10 +9,11 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
   coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
-  Deploys and admin ops go through GitHub only. Deploying the platform (`deploy.yml`), publishing every new package
-  version (`release.yml`) and publishing the docs (`pages.yml`) run only on a push to `publish`, the dedicated
-  publication branch, which moves only on the owner's explicit publication authorization; deploys and releases are
-  recorded as `deploy-v*` and `release-v*` tags. A merge to `main` never advances `publish` and never triggers
+  Deploys and admin ops go through GitHub only. Deploying the platform (`deploy.yml`) and publishing the docs
+  (`pages.yml`) run only on a push to `publish`, the dedicated publication branch, which moves only on the owner's
+  explicit publication authorization. Every new package version is published from a checkout of `publish` by
+  `scripts/npm-publish-missing.sh` (pack once, keys-sweep that tarball, upload it). Deploys and releases are recorded as
+  `deploy-v*` and `release-v*` tags. A merge to `main` never advances `publish` and never triggers
   publication; `admin.yml` is dispatched `--ref publish`. The `production` environment admits `publish` alone, and
   `publish` moves only by the owner's merge of the standing `main` → `publish` Release pull request (the
   `publish-protected` ruleset), so the agent's `main` never runs with a secret. No machine holds a deploy or admin
