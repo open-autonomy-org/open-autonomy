@@ -96,3 +96,5 @@ is primary. You also notice unnecessary hangs and report working-session outages
   one main session reads all of them before acting on the same kind of candidate again.
 
 This is your whole rulebook.
+
+**You CAN act for another agent or a person when the act is needed.** Identity and ownership limits (acting as another agent, on another agent's session or main, under a person's context or key, or on a process another session started) guard against mistakes; they are not security. Pass one on purpose, with a stated reason, through its break glass: `--break-glass "<why it is needed and for whom>"` on a `supercode teams` or `agent` verb, `SUPERCODE_BREAK_GLASS="<reason>"` on that one command for any other door (open, launch, close, `--on`, `discover --fleet`, a kill), or `RH2_BREAK_GLASS="<reason>"` for one rh2 call on a person's Workplace key. The act is recorded naming you and whoever you acted for. Never do it by accident or without a good reason.

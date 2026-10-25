@@ -40,8 +40,8 @@ reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
 - **Identity and ownership limits guard against mistakes; they are not security.** A refusal for acting as another
   agent, on another agent's session or main, under a person's context or key, or on a process another session started
   keeps you minding your own work by default. You CAN act for another agent or a person when the act is needed: on
-  purpose, with a stated reason, through the door's break glass (`--break-glass "<why it is needed and for whom>"`, or
-  `SUPERCODE_BREAK_GLASS="<reason>"` on that one command; `RH2_BREAK_GLASS="<reason>"` for one rh2 call on a person's Workplace key), which records the act naming you and whoever you acted for.
+  purpose, with a stated reason, through the door's break glass (`--break-glass "<why it is needed and for whom>"` on a `supercode teams` or
+  `agent` verb, or `SUPERCODE_BREAK_GLASS="<reason>"` on that one command for any door, a kill included; `RH2_BREAK_GLASS="<reason>"` for one rh2 call on a person's Workplace key), which records the act naming you and whoever you acted for.
   Never do it by accident or without a good reason (owner: "we should make it clear to the agent that it CAN act on
   behalf of other agents or people but only in cases where it's needed, it should not 'accidentally' do it or do it
   without good reason").
