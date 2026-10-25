@@ -2,7 +2,7 @@
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
@@ -19,11 +19,18 @@ export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: 
 // The redactor is the machine's own supercode's (@volter/teams/redact), loaded by its file path in the selection this
 // preparation is for: a source pin's tree or a retained release's closure. The kit's own install does not carry it, and
 // no package specifier is resolved, so nothing is ever fetched to find it.
+// The file is taken only where it really lies inside that root (a source tree links it from its own sdk/volter-teams);
+// a link that leads outside the root names no redactor, and only the pids are kept.
 function redactorPath(supercodeRoot: string | null): string | null {
   if (!supercodeRoot) return null;
-  const modules = join(supercodeRoot, 'node_modules', '@volter');
-  for (const path of [join(modules, 'supercode-teams', 'node_modules', '@volter', 'teams', 'redact.mjs'), join(modules, 'teams', 'redact.mjs')])
-    if (existsSync(path)) return realpathSync(path);
+  let root: string;
+  try { root = realpathSync(supercodeRoot); } catch { return null; }
+  const modules = join(root, 'node_modules', '@volter');
+  for (const path of [join(modules, 'supercode-teams', 'node_modules', '@volter', 'teams', 'redact.mjs'), join(modules, 'teams', 'redact.mjs')]) {
+    if (!existsSync(path)) continue;
+    const actual = realpathSync(path);
+    return actual.startsWith(root + sep) ? actual : null;
+  }
   return null;
 }
 /** The supercode root a complete machine selection names: the staged source candidate's tree, or the retained release. */
