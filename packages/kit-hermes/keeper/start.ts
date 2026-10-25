@@ -114,6 +114,9 @@ if (!retainedInstall && !argv.includes('--stack-child')) {
 }
 const prepared = process.env.OPEN_AUTONOMY_INSTALL_RECEIPT ? readInstall(process.env.OPEN_AUTONOMY_INSTALL_RECEIPT, home) : null;
 if (retainedInstall && (!prepared || prepared.project !== realpathSync(project))) throw new Error('native kit stacks start only from their owned prepared install receipt');
+// Where the agents work: the project's own checkout. A prepared install's project is a copy of it that serves only the
+// kit's code and is replaced at the next install; work started in it is outside every folder the machine shares.
+const workspace = prepared?.sourceProject ?? project;
 const secrets = resolve(arg('--secrets') ?? process.env.AGENT_SECRETS ?? resolve(homedir(), '.config', 'open-autonomy'));
 const developerKey = resolve(secrets, 'agent.env');
 if (!existsSync(developerKey)) { console.error(`start: no ${developerKey} — restore the developer credential or complete setup before starting the fleet`); process.exit(1); }
@@ -572,7 +575,7 @@ const env = agentEnv();
 //    for the whole setup, then started the services before stopping them).
 {
   const setupStarted = performance.now();
-  const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, runtime: nativeSelection, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [] });
+  const request = JSON.stringify({ agent: resolve(host, 'agent.ts'), setup: agentSetup, home, runtime: nativeSelection, homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace, asAgent: user ? drop([]) : [] });
   const applier = `const r = JSON.parse(process.argv[1]); const { applyAgent } = await import(r.agent); const { resolve } = await import('node:path');
 const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
