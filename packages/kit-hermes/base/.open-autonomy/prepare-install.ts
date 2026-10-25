@@ -2,7 +2,8 @@
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
@@ -12,17 +13,46 @@ export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: 
 // command's own reading in SUPERCODE_INITIATOR stamped with the owner's pid; it is taken only from this process's actual
 // parent, so a value left in a long-lived environment never names a later preparation, and it is re-checked here field
 // by field, as any other input. Anything else records this process's own facts. Every kept text passes the Teams
-// redactor (@volter/teams/redact, the project's own install) and is cut on a code-point boundary; without the redactor
-// no text but the pid facts is kept. The board's per-run launch secret is never a claim. A record, never an authority.
+// redactor and is cut on a code-point boundary; without the redactor no text but the pid facts is kept. The board's
+// per-run launch secret is never a claim, and its value is redacted wherever it appears. A record, never an authority.
+//
+// The redactor is the machine's own supercode's (@volter/teams/redact), loaded by its file path in the selection this
+// preparation is for: a source pin's tree or a retained release's closure. The kit's own install does not carry it, and
+// no package specifier is resolved, so nothing is ever fetched to find it.
+function redactorPath(supercodeRoot: string | null): string | null {
+  if (!supercodeRoot) return null;
+  const modules = join(supercodeRoot, 'node_modules', '@volter');
+  for (const path of [join(modules, 'supercode-teams', 'node_modules', '@volter', 'teams', 'redact.mjs'), join(modules, 'teams', 'redact.mjs')])
+    if (existsSync(path)) return realpathSync(path);
+  return null;
+}
+/** The supercode root a complete machine selection names: the staged source candidate's tree, or the retained release. */
+function supercodeRootOf(source: string | null, release: string | null): string | null {
+  try {
+    if (source) return JSON.parse(readFileSync(source, 'utf8')).lock?.root ?? null;
+    if (release) return JSON.parse(readFileSync(release, 'utf8')).root ?? null;
+  } catch { /* an unreadable selection names no redactor */ }
+  return null;
+}
 export type Initiator = { version: 1; at: string | null; pid: number; ppid: number | null; executable: string | null; argv: string[]; cwd: string | null;
   session: string | null; session_error: string | null; claims: Record<string, string>;
   ancestry: { pid: number; parent_pid: number | null; image: string | null; command_line: string | null }[]; ancestry_error: string | null };
 const CLAIMS = ['CLAUDE_CODE_SESSION_ID', 'CODEX_THREAD_ID', 'SUPERCODE_CALLER', 'SUPERCODE_AGENT_ID', 'SUPERCODE_AGENT_SESSION',
   'SUPERCODE_HOOK_SESSION', 'SUPERCODE_BOARD_OWNER_PID'];
 const pidOf = (value: unknown): number | null => Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= 0xffffffff ? value as number : null;
-export async function installInitiator(environment: Record<string, string | undefined>): Promise<Initiator> {
+export async function installInitiator(environment: Record<string, string | undefined>, supercodeRoot: string | null): Promise<Initiator> {
   let redact: ((text: string) => string) | null = null;
-  try { const name = '@volter/teams/redact', module = await import(name); redact = (text: string) => module.redactText(text); } catch { /* no redactor: no text is kept */ }
+  const launch = environment.SUPERCODE_RUN_LAUNCH;
+  try {
+    const path = redactorPath(supercodeRoot);
+    if (path) {
+      const module = await import(pathToFileURL(path).href);
+      redact = (text: string) => {
+        const clean: string = module.redactText(text);
+        return launch && launch.length >= 8 ? clean.split(launch).join('[redacted:SUPERCODE_RUN_LAUNCH]') : clean;
+      };
+    }
+  } catch { /* no redactor: no text is kept */ }
   const text = (value: unknown, max = 1024): string | null => {
     if (typeof value !== 'string' || !redact) return null;
     let clean: string;
@@ -95,7 +125,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
     entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
-    receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment) };
+    receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment, supercodeRootOf(source, release)) };
   writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
   return receipt;
 }
