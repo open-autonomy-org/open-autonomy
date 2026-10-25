@@ -50,7 +50,7 @@ const handlers = [
   // it, and blocks the card on that message (the drafts skill). The design is linked, the owner is the sponsor.
   { id: 'draft-file', on: { userTextIncludes: 'design: file the work' }, respond: bash([
     `src=${idOf('I lock the audit export design')}`,
-    `card=$(supercode workflow create "Audit export" --no-start --root "$HOME" --body "Export the audit log as CSV.\n\n## Acceptance\n- [ ] An admin downloads the audit log as CSV\n\n## Order and blockers\n- none, because the design names none\n\n## Design\ncompany/rfcs/0099-audit-export.md (decisions 1-3)\n\n## Sponsor\nthe owner\n  - source: $src “I lock the audit export design”" | grep -o 't_[0-9a-f]*' | head -1)`,
+    `card=$(supercode workflow create "Audit export" --readable-id audit-export --no-start --root "$HOME" --body "Export the audit log as CSV.\n\n## Acceptance\n- [ ] An admin downloads the audit log as CSV\n\n## Order and blockers\n- none, because the design names none\n\n## Design\ncompany/rfcs/0099-audit-export.md (decisions 1-3)\n\n## Sponsor\nthe owner\n  - source: $src “I lock the audit export design”" | grep -o 't_[0-9a-f]*' | head -1)`,
     `msg=$(supercode message send sc:${MACHINE}:agent:manager --subject "draft: Audit export" "draft: Audit export ($card), from $src “I lock the audit export design”" | grep -o 'm-[0-9a-f]*' | head -1)`,
     `supercode workflow block "$card" "draft: it waits for the manager's answer to $msg" --waiting-on "$msg" --root "$HOME"`,
   ].join(' && '), 'File the draft') },

@@ -20,7 +20,7 @@ Every draft comes from a line of the principal's that decided something. Never f
 1. **Write the card, held.** It must not dispatch in the moment before its block exists:
 
    ```sh
-   supercode workflow create "<title>" --no-start --body "$(cat <<'CARD'
+   supercode workflow create "<title>" --readable-id <outcome-words> --no-start --body "$(cat <<'CARD'
    <what the work is, in one paragraph>
 
    ## Acceptance
@@ -39,6 +39,9 @@ Every draft comes from a line of the principal's that decided something. Never f
    )" --root <home>
    ```
 
+   - **The readable id names the outcome.** A few lowercase words joined by hyphens that say at a glance what the card
+     delivers (`voice-calls`, `rooms-are-the-call`), never a cut of the title; at most 32 characters, unique on the
+     board. It names the card's branch, worktree, sessions and agents, and the board refuses a card without one.
    - **The design is linked, never copied.** The record's design while it is a design; the product repository's
      `docs/adr/<NNNN>-…` once it has shipped.
    - **The sponsor is the principal**, with the line that asked for the work as its evidence. A client principal is

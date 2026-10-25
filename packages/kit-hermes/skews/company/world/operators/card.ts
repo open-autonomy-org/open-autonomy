@@ -20,7 +20,8 @@ const listed = JSON.parse(supercode('list', '--json')) as unknown;
 const cards = (Array.isArray(listed) ? listed : (listed as { data?: unknown[] }).data ?? []) as Array<{ id: string; title: string; status: string }>;
 let id = cards.find((c) => c.title === CARD_TITLE && !['done', 'cancelled', 'archived'].includes(c.status))?.id;
 if (!id) {
-  const created = supercode('create', CARD_TITLE, '--assignee', 'coder', '--workspace', `worktree:${need('VO_AGENT_PROJECT')}`,
+  // each rehearsal's card is its own: an ended one keeps its name, branch and worktree
+  const created = supercode('create', CARD_TITLE, '--readable-id', `rehearsal-line-${Date.now().toString(36)}`, '--assignee', 'coder', '--workspace', `worktree:${need('VO_AGENT_PROJECT')}`,
     '--machine', process.env.VO_CARD_MACHINE ?? MACHINE,
     '--body', 'Add one line to REHEARSAL.md saying the rehearsal ran one board card end to end, on a PR to main.');
   id = /t_[0-9a-f]+/.exec(created)?.[0];
