@@ -160,9 +160,13 @@ const nameOf = (card) => {
 };
 const STANDING = { blocked: 'blocked', review: 'in review', running: 'being worked on', todo: 'waiting to start', triage: 'in triage' };
 const standingOf = (card) => cardHoldOf(card).state ?? STANDING[card.lane] ?? card.lane ?? null;
-// The project Room's base channel topic: each live arc, by the board's reference, what it is and where it stands.
+// How a card is named where people read it: its readable id (the few words naming its outcome), the board's number
+// beside it (the owner: "everywhere I see the card it should be showing the human readable ids"); the number alone only
+// for a card with no readable id.
+const handleOf = (card) => card.readable ? `${card.readable}${card.ref ? ` (${card.ref})` : ''}` : card.ref ?? card.id;
+// The project Room's base channel topic: each live arc, by its handle, what it is and where it stands.
 const topicOf = (project, cards) => {
-  const lines = cards.map((card) => `${card.ref ?? card.id} ${card.name}${card.standing ? ` (${card.standing})` : ''}`).sort();
+  const lines = cards.map((card) => `${handleOf(card)} ${card.name}${card.standing ? ` (${card.standing})` : ''}`).sort();
   return `${project}: ${lines.join('; ')}`.slice(0, 300);
 };
 const closedLanes = new Set(config.closedLanes ?? ['done', 'cancelled', 'archived', 'scheduled']);
@@ -198,14 +202,14 @@ function flushState() {
 }
 function saveState() { flushing ??= setTimeout(flushState, 5_000); }
 // What the app reads of a card, kept while it is owed (a whole card carries its body and history).
-const KEPT = ['id', 'ref', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments'];
+const KEPT = ['id', 'ref', 'readable_id', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments'];
 const kept = (card) => Object.fromEntries(KEPT.filter((key) => card[key] !== undefined).map((key) => [key, card[key]]));
 /** What the project pass reads of a card: kept in the registry for every card of the board's latest reading. */
 const registryOf = (card) => {
   const lane = card.archived ? 'archived' : card.lane ?? card.status;
   const people = (card.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('person:')).map((tag) => tag.slice(7).toLowerCase());
   return { agents: cardAgentsOf({ ...card, lane }), files: visibleFilesOf(card), id: card.id, leads: leadAgentsOf(card), live: live({ ...card, lane }),
-    name: nameOf(card), people, project: projectOf(card), ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
+    name: nameOf(card), people, project: projectOf(card), readable: typeof card.readable_id === 'string' && card.readable_id ? card.readable_id : null, ref: typeof card.ref === 'string' ? card.ref : null, standing: standingOf({ ...card, lane }) };
 };
 
 // The Floor the project Rooms sit on, and their section, read once per pass (drain). The organization's file says it
@@ -327,7 +331,7 @@ async function repostCardFiles(roomId, conversationId, card) {
     if (shown.ids.includes(file.id)) continue;
     const at = file.at ? Date.parse(file.at) : NaN;
     if (!(at >= shown.since - 60_000) || !(at >= state.repostSince)) { shown.ids.push(file.id); saveState(); continue; }
-    const where = `${card.ref ?? card.id} ${card.name}`;
+    const where = `${handleOf(card)} ${card.name}`;
     let files = [], body;
     if (file.size > MAX_FILE_BYTES) body = `${where}: ${file.name} was attached to the card (too large to show here; it is on the card).`;
     else {
