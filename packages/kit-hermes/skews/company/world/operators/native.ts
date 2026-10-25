@@ -8,12 +8,12 @@
 //   world attach <name> --root <state> -- bun world/operators/native.ts end     # once the board let it go, the person ends it
 //   world attach <name> --root <state> -- bun world/operators/native.ts show    # the card, its PR and the twin's merge state
 //
-// start: creates the story's card held (`--no-start`) on the World's first machine, checks out the card's branch in
-// the worktree the board would make for it (`<checkout>/.worktrees/<card>` on `wt/<card>`), and starts Claude Code
-// there in a terminal of the person's own (its own tmux server, `vorg-<world>-outside`, not the machine daemon's
-// panes), with a session id it names. Its state is kept in the World's data (outside.json); the World's stop ends the
-// outside terminal with the machine's own. ask: the owner's line to the manager, through the session service as
-// world/owner.ts sends one, naming the session and the card.
+// start: creates the story's card held (`--no-start`) on the World's first machine, makes the person's own worktree
+// for it (`<checkout>/.worktrees/<card id>` on `wt/<card id>`, apart from the one the board makes for a card, named by
+// its readable id), and starts Claude Code there in a terminal of the person's own (its own tmux server,
+// `vorg-<world>-outside`, not the machine daemon's panes), with a session id it names. Its state is kept in the World's
+// data (outside.json); the World's stop ends the outside terminal with the machine's own. ask: the owner's line to the
+// manager, through the session service as world/owner.ts sends one, naming the session and the card.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ADOPT_PHRASE, NATIVE_TITLE } from '../model/card.ts';

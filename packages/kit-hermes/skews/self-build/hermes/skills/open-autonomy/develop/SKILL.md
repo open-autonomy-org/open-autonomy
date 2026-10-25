@@ -97,7 +97,8 @@ You cannot pay: your key reaches the model, not the rails. The treasurer, a seco
 holds the only key that can. Ask it the way a company does, once, and wait:
 
 1. File the request, the one task you may create:
-   `kanban_create` with `assignee: "treasurer"`, `workspace_kind: "dir"`, `workspace_path: <the project checkout, your working directory>` (so the
+   `kanban_create` with `readable_id: <a few lowercase words naming this purchase, such as buy-render-credits>`,
+   `assignee: "treasurer"`, `workspace_kind: "dir"`, `workspace_path: <the project checkout, your working directory>` (so the
    treasurer reads the owner's bounds), title `Purchase: <what> at <merchant>, at most $<ceiling>`, and a body of
    `- ` lines: what, merchant (and its category), at most N cents, purpose, `for task: <your task id>`,
    and how to pay (the merchant's checkout: a URL, a command). Stay within the owner's bounds in
