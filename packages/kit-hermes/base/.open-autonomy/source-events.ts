@@ -101,6 +101,9 @@ export class BoardEventSource {
   private journaled?: SourceSnapshot;
   private journalBytes = 0;
   private cacheBytes = 0;
+  // The journal ends in bytes an unfinished append left (no closing newline): nothing is appended after them, so the
+  // first persistence writes the cache whole and removes the journal.
+  private torn = false;
   private readonly journalFile: string;
   private ready!: () => void;
   private refuseReady!: (error: Error) => void;
@@ -126,13 +129,14 @@ export class BoardEventSource {
         }
       } else throw new Error('Unsupported/mismatched native source cache; retained state was not overwritten');
       // Only an unmodified version 2 reading is what disk holds; any other start writes the cache whole first.
-      this.durable = saved.version === 2 && !options.forceSnapshot;
+      this.durable = saved.version === 2 && !options.forceSnapshot && !this.torn;
     }
     if (options.forceSnapshot && !this.pending) { this.legacyCursor ??= this.cursor; this.cursor = undefined; }
   }
   // The cache as last written whole, with its generation's journal applied: a pending entry is the next observation
   // (its changed cards over the committed ones), a commit makes the latest pending committed at the cursor it names.
-  // A torn last line is an append the process did not finish, so its delivery never began.
+  // Bytes after the last newline are an append the process did not finish, so its delivery never began; they are
+  // left as they are until the cache is next written whole, which removes the journal.
   private replay(saved: any): any {
     this.cacheBytes = lstatSync(this.options.stateFile).size;
     if (saved?.version !== 2 || saved.sourceContextId !== this.options.sourceContextId) return saved;
@@ -141,11 +145,15 @@ export class BoardEventSource {
     if (lstatSync(this.journalFile).isSymbolicLink()) throw new Error('Source journal must not be a symlink');
     const text = readFileSync(this.journalFile, 'utf8');
     this.journalBytes = Buffer.byteLength(text);
-    const lines = text.split('\n');
+    const end = text.lastIndexOf('\n') + 1;
+    this.torn = end < text.length;
+    const lines = text.slice(0, end).split('\n');
     // Raw rows by card association; the constructor validates what results exactly as it validates the cache.
     const byKey = (values: unknown): Map<string, any> => {
       if (!Array.isArray(values)) throw new Error('Native source inventory is malformed');
-      return new Map(values.map(value => [rawKey(value), value]));
+      const rows = new Map<string, any>();
+      for (const value of values) { const key = rawKey(value); if (rows.has(key)) throw new Error('Duplicate native card association in complete inventory'); rows.set(key, value); }
+      return rows;
     };
     let cards = byKey(saved.cards), cursor: string | undefined = saved.cursor;
     let pending: Map<string, any> | undefined = saved.pending ? byKey(saved.pending.cards) : undefined, proposed: string | undefined = saved.pending?.proposedCursor;
@@ -153,7 +161,7 @@ export class BoardEventSource {
       if (!lines[i]) continue;
       let entry: JournalEntry;
       try { entry = JSON.parse(lines[i]); }
-      catch { if (i === lines.length - 1) break; throw new Error('Source journal malformed; retained state was not overwritten'); }
+      catch { throw new Error('Source journal malformed; retained state was not overwritten'); }
       if (entry.generation !== this.generation) continue;
       if (entry.kind === 'pending') {
         if (!Array.isArray(entry.rows) || !Array.isArray(entry.removed) || typeof entry.cursor !== 'string') throw new Error('Source journal pending entry malformed');
@@ -194,9 +202,14 @@ export class BoardEventSource {
   // The whole cache, as the next generation; the older generation's journal entries are then inert, and removed.
   private compact(state: CacheState = this.state()): void {
     const generation = this.generation + 1, bytes = JSON.stringify({ ...state, generation }) + '\n';
-    savePublicationBytes(this.options.stateFile, bytes);
-    this.generation = generation; this.cacheBytes = Buffer.byteLength(bytes); this.durable = true; this.journaled = state.pending;
-    rmSync(this.journalFile, { force: true }); this.journalBytes = 0;
+    // A whole write that failed at any step (even after its rename) leaves disk unknown: nothing is appended until a
+    // later whole write succeeds, so no entry can name a generation the cache on disk does not hold.
+    try {
+      savePublicationBytes(this.options.stateFile, bytes);
+      this.generation = generation; this.cacheBytes = Buffer.byteLength(bytes); this.journaled = state.pending;
+      rmSync(this.journalFile, { force: true }); this.journalBytes = 0; this.torn = false;
+    } catch (error) { this.durable = false; throw error; }
+    this.durable = true;
   }
   private append(entry: JournalRecord): void {
     const line = JSON.stringify({ generation: this.generation, ...entry }) + '\n';
