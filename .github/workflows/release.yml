@@ -2,8 +2,10 @@ name: Release the SDK and the kit
 # Publishes @open-autonomy/sdk, @open-autonomy/backend, create-open-autonomy and @open-autonomy/cli to npm on a push to
 # `publish`, the dedicated publication branch, which moves only on the owner's explicit publication authorization (a
 # merge to `main` never advances it): each package whose version is not on the registry yet
-# is published, the rest are left alone, so releases compound on `main` until the owner authorizes publication. A new
-# kit version is recorded as a `release-v<kit version>` tag and GitHub release.
+# is published, the rest are left alone, so releases compound on `main` until the owner authorizes publication. Each
+# such version is packed once, the keys sweep reads every file of that exact tarball, and that same file is what is
+# uploaded (`npm publish <file>.tgz`); a sweep hit publishes nothing. A new kit version is recorded as a
+# `release-v<kit version>` tag and GitHub release.
 # Egress is locked to npm, so the publish token cannot leave to any other host. The world proves the same
 # publish against the npm registry twin (bun world/run.ts kit) before it ships.
 on:
@@ -44,23 +46,17 @@ jobs:
           RELEASE_SCAN_WORKFLOW: release.yml
       - name: Install (frozen)
         run: bun install --frozen-lockfile
-      - name: Publish (the SDK first; the kit and the CLI depend on it)
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Each version npm lacks is packed once, here, into $RUNNER_TEMP/tarballs (listed in its `packed` file, the SDK
+      # first: the kit and the CLI depend on it); the sweep and the upload below read those files, never a tree packed
+      # again. No token is in this step.
+      - name: Pack each version npm lacks, once
         run: |
-          [ -n "$NPM_TOKEN" ] || { echo "NPM_TOKEN is not installed in the production environment"; exit 1; }
-          # The token where bun looks for it: the home's .npmrc, each package's .npmrc, and the environment.
-          rc=$(printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN")
-          printf '%s\n' "$rc" > "$HOME/.npmrc"
-          for p in packages/sdk packages/backend packages/kit-hermes packages/cli; do printf '%s\n' "$rc" > "$p/.npmrc"; done
-          export NPM_CONFIG_TOKEN="$NPM_TOKEN"
-          echo "home: $HOME; npmrc: $(wc -c < "$HOME/.npmrc") bytes; whoami: $(cd packages/sdk && bun pm whoami 2>&1 | tail -1)"
-          # A version already on the registry is not published again (a rerun after a partial release), and an
-          # unpublished one that fails, fails loudly.
+          T="$RUNNER_TEMP/tarballs"; mkdir -p "$T"; : > "$T/packed"
           for p in packages/sdk packages/backend packages/kit-hermes packages/cli; do
             name=$(bun -e "console.log(require('./$p/package.json').name)"); v=$(bun -e "console.log(require('./$p/package.json').version)")
+            # A version already on the registry is not published again (a rerun after a partial release).
             if npm view "$name@$v" version >/dev/null 2>&1; then echo "$name@$v is already on the registry"; continue; fi
-            # A workspace dependency is pinned to the version in this checkout, here, not left to the publisher's
+            # A workspace dependency is pinned to the version in this checkout, here, not left to the packer's
             # substitution: create-open-autonomy vendors the SDK it was built with into every project it makes, and a
             # stale pin ships a client that cannot read what the project needs.
             bun -e '
@@ -76,8 +72,61 @@ jobs:
               }
               fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
             ' "$p"
-            (cd "$p" && bun publish --access public --registry https://registry.npmjs.org/)
+            # `bun pm pack` copies each file's mode from disk (a 0777 file packs as 0777), and on this runner the bin
+            # entries were 0777 (create-open-autonomy@3.26.15's src/cli.ts, @open-autonomy/cli@0.2.0's src/oa.ts; git
+            # holds 0755; which step set it is not read): group and other lose write, so the tarball's modes are git's.
+            find "$p" -path "$p/node_modules" -prune -o -type f -perm /022 -exec chmod go-w {} +
+            d=$(mktemp -d); (cd "$p" && bun pm pack --destination "$d")
+            set -- "$d"/*.tgz
+            [ "$#" = 1 ] && [ -f "$1" ] || { echo "bun pm pack left no single tarball for $name@$v"; exit 1; }
+            kept="$T/$(printf '%s' "$name" | tr / +)@$v.tgz"; mv "$1" "$kept"
+            printf '%s\t%s\t%s\n' "$p" "$name" "$v" >> "$T/packed"
+            echo "packed $name@$v: sha512-$(openssl dgst -sha512 -binary "$kept" | base64 -w0)"
           done
+      # The keys sweep (.github/keys-sweep.mjs, supercode's: gitleaks plus @volter/teams/redact's custody values and
+      # Teams token forms) over every file of every tarball packed above, before any upload; one hit stops the release.
+      # The owner's custody file is not on this runner: the custody values swept for are the secrets this job can hold
+      # (the production environment's tokens and secrets, and this run's GitHub token), written to a file only this step
+      # reads and removed after it. The tools the sweep runs see none of them.
+      - name: Keys sweep (the exact tarballs, before any upload)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          AGENT_PROXY_ADMIN_TOKEN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GIVE_SESSION_HMAC_SECRET: ${{ secrets.GIVE_SESSION_HMAC_SECRET }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+          POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+          POLAR_WEBHOOK_SECRET: ${{ secrets.POLAR_WEBHOOK_SECRET }}
+          SPONSORS_WEBHOOK_SECRET: ${{ secrets.SPONSORS_WEBHOOK_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          VOLTER_CLIENT_SECRET: ${{ secrets.VOLTER_CLIENT_SECRET }}
+          WORKPLACE_CLIENT_SECRET: ${{ secrets.WORKPLACE_CLIENT_SECRET }}
+        run: |
+          custody="$RUNNER_TEMP/custody/custody.env"
+          trap 'rm -rf "$RUNNER_TEMP/custody"' EXIT
+          (umask 077; mkdir -p "$RUNNER_TEMP/custody"; : > "$custody"
+           for n in GITHUB_TOKEN NPM_TOKEN AGENT_PROXY_ADMIN_TOKEN CLOUDFLARE_API_TOKEN GIVE_SESSION_HMAC_SECRET OAUTH_CLIENT_SECRET POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET SPONSORS_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET VOLTER_CLIENT_SECRET WORKPLACE_CLIENT_SECRET; do
+             v=$(printenv "$n" || true); [ -n "$v" ] && printf '%s=%s\n' "$n" "$v" >> "$custody"
+           done; true)
+          env -i PATH="$PATH" RUNNER_TEMP="$RUNNER_TEMP" SUPERCODE_HOME="$RUNNER_TEMP/custody" SUPERCODE_CUSTODY_FILES="$custody" \
+            node .github/keys-sweep.mjs "$RUNNER_TEMP/tarballs"
+      - name: Publish the swept tarballs (the SDK first; the kit and the CLI depend on it)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          T="$RUNNER_TEMP/tarballs"
+          [ -s "$T/packed" ] || { echo "every version is already on the registry"; exit 0; }
+          [ -n "$NPM_TOKEN" ] || { echo "NPM_TOKEN is not installed in the production environment"; exit 1; }
+          printf 'registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
+          echo "whoami: $(npm whoami 2>&1 | tail -1)"
+          # Only the files the sweep read go up, from the tarballs folder (no project's .npmrc or workspace applies); an
+          # upload that fails, fails loudly.
+          while IFS="$(printf '\t')" read -r _ name v; do
+            file="$(printf '%s' "$name" | tr / +)@$v.tgz"
+            (cd "$T" && npm publish "./$file" --access public --registry https://registry.npmjs.org/)
+          done < "$T/packed"
   # The repository's own front door: a GitHub release for what npm now serves, so its Releases page and "Latest" say the
   # version people install. Its own job, after the publish: the write permission is this job's alone, and the npm token
   # never enters it.
