@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path
 import { harnessSdkModule, supercodeCommand } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
 const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
-import { PublicationStore, acquirePublicationLease, acquireAttestedPublicationLease, releaseAbandonedPublicationLease, retainedDigest, publicationHash, savePublicationBytes, savePublicationFile, type NativeRuntimeSelection, type LocalPublicationLease, type LeaseHandoffAcknowledgement } from './publication.ts';
+import { PublicationStore, acquirePublicationLease, acquireAttestedPublicationLease, releaseAbandonedPublicationLease, retainedDigest, publicationHash, savePublicationBytes, savePublicationFile, sourceJournalOpen, type NativeRuntimeSelection, type LocalPublicationLease, type LeaseHandoffAcknowledgement } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, validateRecoveryControlSnapshot, effectDigest, type ControlScope, type ControlDataV3, type ControlSelection, type ControlReconciliationAudit, type ControlRecoveryAction, type ControlRecoveryEvidence } from './owner-control.ts';
 const args = process.argv.slice(2), command = args.shift();
@@ -271,7 +271,7 @@ try {
   if (command === 'control-status' || command === 'reconcile-controls' || command === 'handoff-controls') {
     await controlDoor(configFile, stateFile, { account: cfg.account, apiBase, nativeRuntime: runtime() });
   } else if (command === 'status') {
-    console.log(JSON.stringify({ account: cfg.account, apiBase, enrolled: Boolean(cfg.publication), reporter: existsSync(stateFile) ? { version: readJSON(stateFile).version, digest: retainedDigest(stateFile) } : null, cache: existsSync(cacheFile) ? { version: readJSON(cacheFile).version, digest: retainedDigest(cacheFile) } : null, lock: existsSync(`${stateFile}.lock`) ? readJSON(resolve(`${stateFile}.lock`, 'owner.json')) : null }, null, 2));
+    console.log(JSON.stringify({ account: cfg.account, apiBase, enrolled: Boolean(cfg.publication), reporter: existsSync(stateFile) ? { version: readJSON(stateFile).version, digest: retainedDigest(stateFile) } : null, cache: existsSync(cacheFile) ? { version: readJSON(cacheFile).version, digest: retainedDigest(cacheFile), journal: sourceJournalOpen(cacheFile) } : null, lock: existsSync(`${stateFile}.lock`) ? readJSON(resolve(`${stateFile}.lock`, 'owner.json')) : null }, null, 2));
   } else if (command === 'enroll' || command === 'prepare-adoption') {
     if (cfg.publication) throw new Error('Publication is already declared; no fresh contexts overwrite an enrollment');
     if (existsSync(`${stateFile}.lock`)) throw new Error('Publisher ownership is held/unknown; stop its owner first');

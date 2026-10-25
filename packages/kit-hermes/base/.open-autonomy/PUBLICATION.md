@@ -60,7 +60,10 @@ cannot enroll a tenant account. Different account timelines have separate writer
 
 `status --config FILE` prints state versions/digests and local lock ownership, without transcript or note content.
 Use `--state-file FILE`/`--cache-file FILE` when the reporter uses overrides; the defaults are its configured
-`state_file` and that path plus `.board.json`.
+`state_file` and that path plus `.board.json`. The cache file holds the source inventory as of its last whole write; the
+changes delivered since are appended to the cache file's `.journal`, which the reporter folds back into the cache as
+it outgrows it and when it stops. `cache.journal: true` means that journal is open, so the cache digest is not the
+source's whole state, and custody continuity refuses until the reporter has stopped cleanly.
 
 For original version-2 reporter state and version-1 cache, use `prepare-adoption` with the same explicit runtime,
 backing and operator arguments as fresh enrollment. It prepares configuration/custody and reports the exact input
