@@ -344,6 +344,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   };
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(dec(m[1]), m[2] === 'now' ? 'overview' : m[2] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(dec(m[1]), m[2]); }
   if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(fundingAccount(env), m[1] === 'now' ? 'overview' : m[1] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(fundingAccount(env), m[1]); }
+  // The money that moved on the books, newest first (no spend: that is /calls): what came in (a sale, a grant, credits),
+  // what was given on, and what the owner set aside for a card. Behind the books panel, like the balance.
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/flows$/))) { const c = await closed(dec(m[1]), 'books'); if (c) return c; const view = await ledger.project(dec(m[1])); return json({ ok: true, account: dec(m[1]), flows: view.found ? view.feed ?? [] : [] }, { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'books'); if (c) return c; return json(await ledger.funding(dec(m[1]))); }
   if (path === '/v1/funding') { const c = await closed(fundingAccount(env), 'books'); if (c) return c; return json(await ledger.funding(fundingAccount(env))); }
 
