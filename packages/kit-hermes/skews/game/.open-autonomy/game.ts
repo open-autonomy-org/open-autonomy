@@ -31,7 +31,7 @@ interface Game {
   store: string; storeGame: string; uploader?: string;
   workplace: string; organization: string; room: string; owners: string[]; self?: string;
   conversations: { general: string; feedback: string; build: string };
-  std?: string; goal?: string; models?: string[];
+  std?: string; signaling?: string; goal?: string; models?: string[];
 }
 const yaml = readFileSync(join(HERE, 'config.yaml'), 'utf8');
 // A computer's own values (a local World's addresses and ids) may stand beside it in .open-autonomy/game.local.json,
@@ -243,7 +243,9 @@ switch (command) {
     if (!build) {
       if (!game.uploader) throw new Error("config.yaml `game.uploader` names the store's folder uploader (scripts/upload-build.mjs)");
       const folder = join(ROOT, 'build', 'web');
-      const built = spawnSync('node', [join(game.std!, 'packages/web/run/dev.ts'), ROOT, '--build', '--out-dir', folder], { cwd: game.std, stdio: 'inherit' });
+      // The release names the signaling service its players' browsers use: the game's own (config `signaling`), else
+      // game-std's choice for a build.
+      const built = spawnSync('node', [join(game.std!, 'packages/web/run/dev.ts'), ROOT, '--build', '--out-dir', folder, ...(game.signaling ? ['--signaling', game.signaling] : [])], { cwd: game.std, stdio: 'inherit' });
       if (built.status !== 0) throw new Error('the build failed');
       const player = (await store('/me')).user.id;
       for (let step = 0; step < 400 && !build; step++) {
