@@ -1763,7 +1763,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
   }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
-  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate')) : [];
+  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate' || f.kind === 'refund')) : [];
   state.keys = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
   for (const [k, v] of Object.entries(stored as Record<string, unknown>)) if (!CORE_STATE_KEYS.has(k) && v !== undefined) state[k] = v;
   return state;
