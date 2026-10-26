@@ -54,8 +54,13 @@ const key = (name: string, needed = true): string => {
   if (needed) throw new Error(`${file} is missing (${name.startsWith('card-') ? 'this card has no key yet: the owner makes the card with `card`' : name === 'workplace.token' ? "the agent's Workplace token" : "the owner's credential"})`);
   return '';
 };
-const state = (): Record<string, any> => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : {});
-const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.stringify({ ...state(), ...patch }, null, 2) + '\n');
+// What this checkout remembers of its game on the store (sessions, checks, released builds): one store game's, started
+// over when the checkout is wired to another (a World made again).
+const state = (): Record<string, any> => {
+  const kept = existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : {};
+  return kept.storeGame === game.storeGame ? kept : {};
+};
+const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.stringify({ ...state(), ...patch, storeGame: game.storeGame }, null, 2) + '\n');
 
 async function call(base: string, path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; ok?: number[] } = {}): Promise<any> {
   const response = await fetch(base.replace(/\/$/, '') + path, { method: init.method ?? 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000),
