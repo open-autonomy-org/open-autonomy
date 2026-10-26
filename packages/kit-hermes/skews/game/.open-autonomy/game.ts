@@ -260,7 +260,7 @@ switch (command) {
       if (built.status !== 0) throw new Error('the build failed');
       const player = (await store('/me')).user.id;
       for (let step = 0; step < 400 && !build; step++) {
-        const run = spawnSync('node', [game.uploader, '--origin', game.store, '--player', player, '--game', game.storeGame, '--version', version, '--branch', 'default', '--folder', folder, '--journal', join(ROOT, 'build', `upload-${version}`)],
+        const run = spawnSync('node', [game.uploader, '--origin', game.store, '--player', player, '--game', game.storeGame, '--version', version, '--branch', 'default', '--folder', folder, '--journal', join(ROOT, 'build', `upload-${game.storeGame}-${version}`)],
           { env: { ...process.env, RELAY_PUBLISHER_SESSION: sessionToken }, encoding: 'utf8' });
         if (run.status === 0) build = JSON.parse(run.stdout.trim().split('\n').pop()!).build;
         else if (run.status !== 75) throw new Error(`the uploader stopped: ${(run.stderr || run.stdout).trim().slice(0, 400)}`);
