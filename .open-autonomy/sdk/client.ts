@@ -19,7 +19,8 @@ export type TurnRole = 'user' | 'assistant' | 'tool' | 'system';
 export interface Turn { ts?: string; role: TurnRole; text?: string; tool?: string; args?: string; result?: string }
 export type SessionOutcome = 'done' | 'failed';
 
-export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; modelProvider?: string; startedAt?: string }
+// `harness` is the session's own harness id as Volter Harness names it (`claude-code`, `codex`, `hermes`, ...), not the project's.
+export interface SessionStart { key: string; kind?: string; title?: string; item?: string; source?: string; harness?: string; modelProvider?: string; startedAt?: string }
 export interface SessionEnd { key: string; outcome?: SessionOutcome; report?: string; commit?: string; item?: string; endedAt?: string }
 // `id`, when the publisher gives one, is the update's identity: the same id again is the same update (the platform answers
 // `idempotent: true` with the record it already holds), so a note survives a lost acknowledgement or a restart without doubling.
@@ -84,7 +85,7 @@ export const EVENT_TYPES = {
 } as const;
 
 export function sessionStartedEvent(s: SessionStart, source = 'open-autonomy-sdk'): CloudEvent {
-  return event(EVENT_TYPES.started, s.key, { session_kind: s.kind, title: s.title, item_id: s.item, source: s.source, model_provider: s.modelProvider }, s.startedAt, source);
+  return event(EVENT_TYPES.started, s.key, { session_kind: s.kind, title: s.title, item_id: s.item, source: s.source, harness: s.harness, model_provider: s.modelProvider }, s.startedAt, source);
 }
 export function sessionTurnsEvent(key: string, seq: number, turns: Turn[], item?: string, source = 'open-autonomy-sdk'): CloudEvent {
   return event(EVENT_TYPES.turns, key, { seq, turns, item_id: item }, undefined, source);
@@ -104,7 +105,7 @@ export interface EventResult { id?: string; ok: boolean; error?: string; idempot
 // Every write answers the same way: whether the platform accepted it, the HTTP status, and the platform's error code when not.
 export interface WriteResult { ok: boolean; status: number; error?: string }
 export interface SessionSummary {
-  key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string;
+  key: string; account: string; kind: string; status: 'live' | 'ended'; outcome?: SessionOutcome; title?: string; item_id?: string; source?: string; harness?: string;
   model_provider?: string; started_at: string; ended_at?: string; report?: string; commit_sha?: string; turn_count: number; next_seq: number; tool_calls: number; usd_cents?: number; calls: number; updated_at: string;
 }
 export interface SessionRecord extends Omit<SessionSummary, 'tool_calls'> { turns: Array<Turn & { seq?: number }> }

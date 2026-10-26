@@ -53,9 +53,12 @@ export interface Schedule { name?: string; schedule?: string }
 export const scheduleOf = (v: ProjectView): Schedule[] => { try { const j = JSON.parse(v.profile.schedule_json ?? '{}') as { jobs?: Schedule[] }; return Array.isArray(j.jobs) ? j.jobs : []; } catch { return []; } };
 export const harnessOf = (v: ProjectView): string => v.profile.agent_harness ?? 'hermes';
 // A session's own harness, as its reporter recorded it. A project's sessions can run on several harnesses (Hermes,
-// Claude Code seats, Codex workers), so the project's harness is never a session's; unrecorded stays empty and the
-// kit says nothing harness-specific.
+// Claude Code seats, Codex workers), so the project's harness is never a session's. Unrecorded stays empty in the data
+// (the kit's session reader keeps a row whose harness is an empty string), so no logo or filter claims a harness.
 export const sessionHarness = (s: { harness?: string } | undefined): string => s?.harness ?? '';
+// The name the conversation speaks in ("<name> is listening", "<name> is working"): the session's harness, or the
+// neutral "Agent" when none was recorded, where the pinned kit would otherwise print " is working".
+export const conversationHarness = (harness: string): string => harness || 'Agent';
 export const itemTitle = (roadmap: Roadmap, id: string | undefined): string | undefined => (id ? roadmap.items.find((i) => i.id === id)?.title : undefined);
 // A report's first line as plain words: a preview is a line of text, so its markdown marks come off.
 const plain = (s: string): string => s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|\*|`)(?=\S)([^*`]*?\S)\1/g, '$2').replace(/^#+\s*/, '');
@@ -123,7 +126,7 @@ export function uiState(d: DashData, attached?: SessionRecord | { key: string; t
   const busy = live;
   const harness = sessionHarness(a ?? (attached as { harness?: string } | undefined));
   return normalizeUiState({
-    startup: 'ready', harness, workspace: d.v.account, workspaceRef: { kind: 'repo', value: d.v.account },
+    startup: 'ready', harness: conversationHarness(harness), workspace: d.v.account, workspaceRef: { kind: 'repo', value: d.v.account },
     pill: live ? { tone: 'live', label: 'live' } : { tone: 'off', label: 'ended' },
     busy, operation: busy ? 'running' : null, needsInput: false, mode: 'observe', messaging: null,
     canSend: false, canSteer: false, canResume: false, supportsResume: false, continuationModes: [], canBranch: false, supportsBranch: false,

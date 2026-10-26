@@ -78,9 +78,10 @@ function walk(dir: string, base = dir): string[] {
 // that sends the project's key on reads, without which a project whose page is not open reads its own sessions as
 // 'not_open', 3.2.0 the first with seams.ts (docs/decisions/0008), which the kit vendors and `check` reads, and 3.6.0
 // the first with statements.ts (docs/decisions/0012), which the vendored client imports, and 4.0.0 the roster the
-// Team page writes (roles, contributions and availability, docs/decisions/0013), which `check` parses.
+// Team page writes (roles, contributions and availability, docs/decisions/0013), which `check` parses, and 4.1.0 the
+// first whose session start carries the session's own harness, which the publisher sends.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
-const SDK_MIN = '4.0.1';
+const SDK_MIN = '4.1.0';
 const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
