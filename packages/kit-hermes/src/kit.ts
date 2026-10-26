@@ -115,7 +115,8 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
     const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]).replaceAll('__KIT_VERSION__', KIT.version));
     out.set(out_rel, rendered);
   }
-  for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
+  // The game skew's doors speak to the services directly and import no SDK, so none is vendored into a game.
+  if (!BASE_KEEP[skew]) for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
   out.set(KIT_FILE, Buffer.from(record({ kit, skew, version: KIT.version, params })));
   return out;
 }
