@@ -1,0 +1,16 @@
+node_modules/
+*.log
+.env
+build/
+
+# The game skew's credentials and its tool's cursors: never committed (.open-autonomy/game.ts).
+.open-autonomy/keys/
+.open-autonomy/game-state.json
+# The reporter's own cursor and the publisher's private state.
+.open-autonomy/reporter-state.json*
+.open-autonomy/*.control.json
+.open-autonomy/publication-private/
+.open-autonomy/*.tmp
+.open-autonomy/bun.lock
+.volter/
+.worktrees/

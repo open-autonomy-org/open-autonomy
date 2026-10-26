@@ -1,0 +1,33 @@
+# The game's connection to Open Autonomy, its store and its Workplace Room. Read by .open-autonomy/game.ts and the
+# reporter. The kit seeds this file once; it is the project's own.
+account: __ACCOUNT__
+platform: https://open-autonomy.org
+
+# Shared human roster, managed on the project's Team page. JSON is a YAML value. IDs are strings.
+team: {"members": []}
+
+# Where the game lives, one JSON line: the books (above), the store (its origin, the game's id there and the store's
+# folder uploader), the Workplace (its origin, the game's organization and Room, each conversation's id, and the owners
+# whose Inbox an ask is queued in), the game-std checkout the game builds against, the bot's release goal, and the
+# models a card's key may buy.
+game: {"store": "https://videogame.ai", "storeGame": "", "uploader": "", "workplace": "", "organization": "", "room": "", "owners": [], "conversations": {"general": "", "feedback": "", "build": ""}, "std": "../game-std", "goal": "do the quest", "models": ["zai/glm-5.3-flash"]}
+
+publish:
+  runs: true
+  chats: false
+  private: []
+
+state_file: reporter-state.json
+
+# The models the game's funds may buy on the platform's model rail, and the limits they run under. A card's own budget
+# bounds its agent beyond these.
+models: [zai/glm-5.3-flash]
+spend:
+  limits:
+    - { window: 1d, usd_cents: 500 }
+    - { window: 30d, usd_cents: 6000 }
+    - { window: 1m, calls: 60 }
+
+# The roadmap, the books and the work are public; transcripts and calls are the team's.
+dashboard:
+  visibility: roadmap
