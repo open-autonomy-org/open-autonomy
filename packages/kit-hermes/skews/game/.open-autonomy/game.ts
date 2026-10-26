@@ -17,13 +17,13 @@
 //   bun .open-autonomy/game.ts questions                    lines in `build` the agent has not answered
 //   bun .open-autonomy/game.ts answer <messageId> <text>    answer a line in `build`, quoting it
 //   bun .open-autonomy/game.ts ask <id> <prompt>            one model call paid from the card's budget, on its key
-//   bun .open-autonomy/game.ts check <id> [--goal <goal>] [--url <dev run>]   the game's bot plays its goal in a dev run
+//   bun .open-autonomy/game.ts check <id> --cdp <browser origin> --target <tab id> --commit <SHA> [--goal <goal>]   read the bot's retained outcome once
 //   bun .open-autonomy/game.ts release <id> <version> --members | --public --owner <dir>   (owner) members first, then everyone
 //   bun .open-autonomy/game.ts ship <id> --owner <dir>      (owner) the card is done: shipped on the roadmap
 //   bun .open-autonomy/game.ts end <id> [done|failed]       the card's session ends
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 const HERE = import.meta.dir, ROOT = resolve(HERE, '..'), KEYS = join(HERE, 'keys'), STATE = join(HERE, 'game-state.json');
 interface Game {
@@ -177,7 +177,9 @@ switch (command) {
     if (game.board) {
       const cardId = nativeId(id);
       // External harnesses already exist. Taking a card never launches or signs in to one.
-      native('goto', cardId, 'running');
+      const listing = JSON.parse(native('list', '--json'));
+      const current = (Array.isArray(listing) ? listing : listing.tasks ?? listing.cards ?? []).find((row: any) => row.id === cardId);
+      if (current?.status !== 'running') native('claim', cardId);
       native('deliver');
       if (liveSession) {
         const frames = native('events', '--once', '--json').split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -244,39 +246,36 @@ switch (command) {
     break;
   }
   case 'check': {
-    // The release candidate's automated play: this checkout in a dev run (its bot kept, its signaling on this machine),
-    // played in game-std's headless Chrome with `?autopilot=<goal>` (`?bot=` before game-std 1.0), read back from the page's console. Recorded on the release.
-    const [id] = args, goal = flag('--goal') ?? game.goal ?? 'do the quest', minutes = Number(flag('--minutes') ?? 6);
-    if (!game.std) throw new Error('config.yaml `game.std` names the game-std checkout the game builds against');
-    const commit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
-    // `--url`: the dev run already serving this checkout (the one shown in the Room); else one of its own, stopped after.
-    const given = flag('--url');
-    const dev = given ? undefined : spawn('node', [join(game.std, 'packages/web/run/dev.ts'), ROOT], { cwd: game.std, stdio: ['ignore', 'pipe', 'pipe'] });
-    let printed = '';
-    const address = given ?? await new Promise<string>((resolveUrl, reject) => {
-      const timer = setTimeout(() => reject(new Error(`the dev run printed no address in 3 minutes:\n${printed.slice(-800)}`)), 180_000);
-      const read = (chunk: Buffer) => { printed += chunk; const m = /host at (http:\/\/\S+)/.exec(printed); if (m) { clearTimeout(timer); resolveUrl(m[1]); } };
-      dev!.stdout.on('data', read); dev!.stderr.on('data', read);
-      dev!.on('exit', (code) => { clearTimeout(timer); reject(new Error(`the dev run ended (${code}):\n${printed.slice(-800)}`)); });
+    // Read an already-running bot's retained console once. The operator starts and records the real dev tab;
+    // this command never launches a browser, waits for a goal, polls, or turns a missing result into a failure.
+    const cdp = flag('--cdp'), target = flag('--target'), commit = flag('--commit');
+    const goal = flag('--goal') ?? game.goal ?? 'do the quest', [id] = args;
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: ROOT, encoding: 'utf8'}).stdout.trim();
+    if (!id || !cdp || !target || commit !== head) throw new Error('check <id> --cdp <http://127.0.0.1:port> --target <recorded tab id> --commit <current full SHA> [--goal <goal>]');
+    const browser = new URL(cdp);
+    if (browser.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(browser.hostname)) throw new Error('Read only the operator’s local browser.');
+    const tabs = await fetch(new URL('/json/list', browser), {signal: AbortSignal.timeout(2000)}).then(r => r.json()) as any[];
+    const tab = tabs.find(row => row.id === target && row.type === 'page');
+    if (!tab?.webSocketDebuggerUrl || new URL(tab.url).searchParams.get('autopilot') !== goal) throw new Error('Choose the recorded game tab running this exact autopilot goal.');
+    const lines = await new Promise<string[]>((resolveLines, reject) => {
+      const socket = new WebSocket(tab.webSocketDebuggerUrl), lines: string[] = [];
+      const timer = setTimeout(() => { socket.close(); reject(new Error('The browser supplied no retained console within five seconds.')); }, 5000);
+      const finish = (error?: Error) => { clearTimeout(timer); socket.close(); if (error) reject(error); else resolveLines(lines); };
+      socket.onopen = () => socket.send(JSON.stringify({id: 1, method: 'Runtime.enable'}));
+      socket.onerror = () => finish(new Error('The browser console connection failed.'));
+      socket.onmessage = event => {
+        const message = JSON.parse(String(event.data));
+        if (message.method === 'Runtime.consoleAPICalled') lines.push(message.params.args.map((arg: any) => arg.value ?? arg.description ?? '').join(' '));
+        // Runtime.enable replays retained console entries before its reply. No goal watcher is installed.
+        if (message.id === 1) finish(message.error ? new Error(message.error.message) : undefined);
+      };
     });
-    const url = new URL(address); url.searchParams.set('name', 'Bot'); url.searchParams.set('autopilot', goal); url.searchParams.set('bot', goal);
-    const { HeadlessPage } = await import(join(game.std, 'packages/tools/headless.ts'));
-    const page = await HeadlessPage.open(url.href, join(ROOT, 'build', 'check', 'chrome'));
-    const until = Date.now() + minutes * 60_000;
-    // The game's autopilot says each goal's end on the page's console: `[autopilot] ✓ <goal> (<time>)` or `… ✗ <goal> (<time>): why`
-    // (`[bot]` before game-std 1.0).
-    let result: 'passed' | 'failed' = 'failed', detail = `the bot had not finished “${goal}” after ${minutes} minutes`;
-    while (Date.now() < until) {
-      const done = page.console.find((line: string) => /\[(autopilot|bot)\] [✓✗] /.test(line) && (line.includes(`✓ ${goal}`) || line.includes(`✗ ${goal}`)));
-      if (done) { result = done.includes('✓') ? 'passed' : 'failed'; detail = done.slice(done.search(/\[(autopilot|bot)\]/)).replace(/^\[\w+\]/, '').trim().slice(0, 300); break; }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    page.close(); dev?.kill('SIGTERM');
-    remember({ checks: { ...(state().checks ?? {}), [id]: { goal, result, detail, commit, at: new Date().toISOString() } } });
+    const outcome = lines.findLast(line => line.startsWith(`[autopilot] ✓ ${goal} (`) || line.startsWith(`[autopilot] ✗ ${goal} (`) || line.startsWith(`[bot] ✓ ${goal} (`) || line.startsWith(`[bot] ✗ ${goal} (`));
+    if (!outcome) throw new Error('This tab has no completed outcome for the goal. Keep its take; read again only after the bot has finished.');
+    const result = outcome.includes('] ✓ ') ? 'passed' : 'failed', detail = outcome.replace(/^\[\w+\] /, '').slice(0, 300);
+    remember({checks: {...(state().checks ?? {}), [id]: {goal, result, detail, commit, at: new Date().toISOString(), target, url: tab.url}}});
     console.log(`The bot played “${goal}” on ${commit.slice(0, 7)}: ${result} (${detail}).`);
-    if (session(id)) await event('org.open-autonomy.item.update', id, { text: `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} (${detail}).`, session: session(id) }, id).catch(() => {});
-    await post(game.conversations.build, `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} · ${detail}.`).catch(() => {});
-    process.exit(0);
+    break;
   }
   case 'release': {
     // Members first: the build uploaded to the store and set on the Members beta channel. Then everyone: the same build
