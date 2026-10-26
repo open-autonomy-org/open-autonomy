@@ -348,7 +348,7 @@ switch (command) {
     if (!item) throw new Error(`no card ${id} on the roadmap`);
     Object.assign(item, { status: 'done', tense: 'past', done_at: new Date().toISOString() });
     await books('/v1/agent/roadmap', 'steer.key', { method: 'POST', body: { source: 'game', roadmap: road, by: 'owner' } });
-    if (game.board) native('complete', nativeId(id), '--result', 'Shipped to members, then released to everyone.');
+    if (game.board) native('complete', nativeId(id), '--summary', 'Shipped to members, then released to everyone; the release carries its observed bot result.');
     console.log(`${id} is shipped on What's next.`);
     break;
   }
