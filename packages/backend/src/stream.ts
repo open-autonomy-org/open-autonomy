@@ -39,6 +39,12 @@ export async function agentEvents(req: Request, env: Env): Promise<Response> {
   for (const e of events as Array<Record<string, unknown>>) {
     if (!e || typeof e !== 'object' || e.specversion !== '1.0' || typeof e.type !== 'string' || typeof e.subject !== 'string' || !e.subject) return error('invalid_cloudevent', 400);
     const data = redactDeep(e.data && typeof e.data === 'object' ? e.data : {}) as Record<string, unknown>;
+    // A key bound to one roadmap item (its card's agent) speaks only of that card: its updates and its sessions, every
+    // session booked to the card. The project's setup, documents, state and timeline stay the project's own keys' to say.
+    if (claims.item) {
+      if (e.type === UPDATE_EVENT_TYPE ? e.subject !== claims.item : !SESSION_EVENT_TYPES[e.type]) return error('item_key_scope', 403, { item: claims.item, message: `This key is bound to card ${claims.item}: it posts that card's updates and sessions only.` });
+      if (SESSION_EVENT_TYPES[e.type]) data.item_id = claims.item;
+    }
     if (e.type === UPDATE_EVENT_TYPE) {
       const result = await ledger.postUpdate(claims.account, e.subject, String(data.text ?? ''), typeof data.session === 'string' ? data.session : undefined, typeof e.time === 'string' ? e.time : undefined, typeof e.id === 'string' ? e.id : undefined);
       results.push({ id: e.id, ...result });
