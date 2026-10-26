@@ -93,7 +93,7 @@ async function call(base: string, path: string, init: { method?: string; body?: 
 }
 const room = (path: string, init: Parameters<typeof call>[2] = {}) => call(game.workplace, path, { ...init, headers: { authorization: `Bearer ${key('workplace.token')}`, origin: game.workplace, 'x-rh2-organization': game.organization, ...init.headers } });
 const books = (path: string, keyName: string, init: Parameters<typeof call>[2] = {}) => call(platform, path, { ...init, headers: { authorization: `Bearer ${key(keyName)}`, ...init.headers } });
-const post = (conversation: string, body: string) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId: crypto.randomUUID() } });
+const post = (conversation: string, body: string, correlationId = crypto.randomUUID()) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId } });
 const messages = async (conversation: string): Promise<any[]> => { const r = await room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages?limit=100`); return r.messages ?? r.items ?? (Array.isArray(r) ? r : []); };
 const textOf = (m: any): string => String(m.body ?? m.text ?? m.content ?? '');
 const idOf = (m: any): string => String(m.messageId ?? m.id);
@@ -190,10 +190,15 @@ switch (command) {
         if (recorded.status !== 0) throw new Error(`The existing session could not join its native card agent: ${String(recorded.stderr || recorded.stdout).slice(-700)}`);
       }
     }
-    const key = `game-${id}-${Date.now().toString(36)}`;
-    await event('org.open-autonomy.session.started', key, { session_kind: 'run', title: item.title, source: 'game', item_id: id }, id);
+    const existing = session(id);
+    const key = existing && !state().endedSessions?.[existing] ? existing : `game-${id}-${crypto.randomUUID()}`;
+    // Retain the subject before the request: OA's session-start door is idempotent by this key.
     remember({ sessions: { ...(state().sessions ?? {}), [id]: key } });
-    await post(game.conversations.build, `Starting “${item.title}”. I post what I do here; ask me anything in this conversation.`);
+    await event('org.open-autonomy.session.started', key, { session_kind: 'run', title: item.title, source: 'game', item_id: id }, id);
+    if (!state().announcedSessions?.[key]) {
+      await post(game.conversations.build, `Starting “${item.title}”. I post what I do here; ask me anything in this conversation.`, `start:${key}`);
+      remember({announcedSessions: {...(state().announcedSessions ?? {}), [key]: true}});
+    }
     console.log(`Session ${key} is live on the card.`);
     break;
   }
@@ -349,6 +354,7 @@ switch (command) {
     const [id, outcome = 'done'] = args;
     if (!session(id)) throw new Error(`card ${id} has no session started here`);
     await event('org.open-autonomy.session.ended', session(id)!, { outcome, item_id: id }, id);
+    remember({endedSessions: {...(state().endedSessions ?? {}), [session(id)!]: true}});
     console.log(`Session ${session(id)} ended (${outcome}).`);
     break;
   }
