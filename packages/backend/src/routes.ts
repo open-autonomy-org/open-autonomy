@@ -1,6 +1,6 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './http.js';
-import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
+import { authedClaims, handleItemKey, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate, handleSellerKey } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { partnerReservation } from './partner.js';
@@ -194,6 +194,24 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if (path === '/v1/keys/mint') return handleKeyMint(req, env);
   if (path === '/v1/keys/rotate') return handleKeyRotate(req, env);
   if (path === '/v1/keys') return handleKeyList(req, env);
+  if (path === '/v1/keys/item') return handleItemKey(req, env);
+  if (path === '/v1/keys/seller') return handleSellerKey(req, env);
+
+  // A sale, on a seller's key (a store's): money in for the project the key names, once per order. The project receives
+  // the net (gross less the seller's and processor's fees); the books keep all three figures and read it as a sale.
+  // {order, product, gross_usd_cents, fee_usd_cents}; the seller is the key's own name for itself in `seller`.
+  if (path === '/v1/sales') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'sell')) return error('scope_required', 403, { scope: 'sell' });
+    const body = parseJson<Record<string, unknown>>(await req.text()) ?? {};
+    const sale = { seller: body.seller, order: body.order, product: body.product, gross_usd_cents: body.gross_usd_cents, fee_usd_cents: body.fee_usd_cents };
+    if (typeof sale.seller !== 'string' || typeof sale.order !== 'string' || typeof sale.gross_usd_cents !== 'number' || typeof sale.fee_usd_cents !== 'number') return error('invalid_request');
+    const net = sale.gross_usd_cents - sale.fee_usd_cents;
+    const r = await ledger.mint(claims.account, net, `sale:${sale.seller}:${sale.order}`, undefined, undefined, sale as never);
+    return json({ ...r, net_usd_cents: net }, { status: r.ok ? 200 : 400 });
+  }
 
   // ---- the development stream ----
   if (path === '/v1/agent/events') return agentEvents(req, env);
@@ -209,6 +227,20 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);
     return json(r, { status: r.ok ? 200 : 400 });
+  }
+  // The owner sets part of the project's own money aside for one roadmap item, on a steer-scoped key: the card's
+  // envelope, which only that item's spend draws (a key bound to the item, /v1/keys/item, draws nothing else).
+  // {item, usd_cents, key?}; refused when the item is not on the roadmap or done, or the free balance is short.
+  if (path === '/v1/agent/allocate') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    if (!claims.account.includes('/')) return error('not_a_project', 403);
+    const body = parseJson<{ item?: string; usd_cents?: number; key?: string; by?: string }>(await req.text()) ?? {};
+    if (typeof body.item !== 'string' || typeof body.usd_cents !== 'number' || !Number.isFinite(body.usd_cents) || body.usd_cents < 1) return error('invalid_request');
+    const r = await ledger.allocate(claims.account, Math.floor(body.usd_cents), body.item, typeof body.key === 'string' ? `allocate:${claims.account}:${body.key}` : undefined, typeof body.by === 'string' ? body.by : claims.kid);
+    return json(r, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_item' ? 404 : 400 });
   }
   // The owner's word on the agent's operating state, on a steer-scoped key: running or paused, with a reason. The
   // platform records it and applies nothing; the automation reads it back and reports what became true of itself.

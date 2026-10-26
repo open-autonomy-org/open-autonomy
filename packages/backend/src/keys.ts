@@ -1,7 +1,7 @@
 import { base64url, constantTimeEqual, error, fromBase64url, hmac, json, methodNotAllowed, modelKey, parseJson } from './http.js';
 import { fetchRepoText, isOrganization } from './sync.js';
-import { LedgerClient } from './ledger.js';
-import { DEFAULT_SCOPES, type Env, type KeyClaims, type KeyScope } from './types.js';
+import { itemId, LedgerClient } from './ledger.js';
+import { DEFAULT_SCOPES, hasScope, type Env, type KeyClaims, type KeyScope } from './types.js';
 
 // A project's key. The owner proves control of the repository by committing a claim code (derived from
 // the account and the UTC day, so the platform keeps no challenge state) to a well-known file at HEAD; the
@@ -55,7 +55,7 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   const nameOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give' || x === 'steer' || x === 'sell');
   if (!claims.models.length && !nameOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
-  if (claims.item !== undefined && (typeof claims.item !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(claims.item))) return null;
+  if (claims.item !== undefined && !itemId(claims.item)) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
 }
@@ -69,14 +69,14 @@ export async function authedClaims(req: Request, env: Env): Promise<KeyClaims | 
   return check.ok ? claims : null;
 }
 
-function newKeyClaims(env: Env, account: string, models: string[], scopes: KeyScope[]): KeyClaims {
+function newKeyClaims(env: Env, account: string, models: string[], scopes: KeyScope[], item?: string): KeyClaims {
   const ttl = Number(env.KEY_EXPIRES_SECONDS ?? 90 * 24 * 3600);
   const now = Date.now();
-  return { kid: `key_${crypto.randomUUID()}`, account, models, scopes, iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
+  return { kid: `key_${crypto.randomUUID()}`, account, models, scopes, ...(item ? { item } : {}), iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
 }
 
-export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES): Promise<Response> {
-  const claims = newKeyClaims(env, account, models, scopes);
+export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES, item?: string): Promise<Response> {
+  const claims = newKeyClaims(env, account, models, scopes, item);
   const registered = await new LedgerClient(env.LIMITS).keyRegister(claims);
   if (!registered.ok) return error(registered.error ?? 'key_limit_reached', 429, { account });
   return json({ ok: true, key: claims, token: await signKey(env, claims) });
@@ -144,6 +144,36 @@ export async function handleKeyMint(req: Request, env: Env): Promise<Response> {
   return mintKey(env, body.account, models, scopes);
 }
 
+// POST /v1/keys/item (Authorization: Bearer <the project's steer key>) {item, models?} → a key bound to one roadmap
+// item: it spends (and narrates) only from that item's envelopes, so a card's agent runs on the card's budget and its
+// key stops when the budget is spent. The item must be on the roadmap and not done.
+export async function handleItemKey(req: Request, env: Env): Promise<Response> {
+  if (req.method !== 'POST') return methodNotAllowed();
+  const claims = await authedClaims(req, env);
+  if (!claims) return error('auth_failed', 401);
+  if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+  if (!ACCOUNT_RE.test(claims.account)) return error('not_a_project', 403);
+  const body = parseJson<{ item?: unknown; models?: unknown }>(await req.text()) ?? {};
+  const item = itemId(body.item);
+  if (!item) return error('invalid_item', 400);
+  const models = Array.isArray(body.models) && body.models.length ? body.models : DEFAULT_MODELS;
+  if (models.some((m) => typeof m !== 'string' || !m)) return error('invalid_models', 400);
+  const road = await new LedgerClient(env.LIMITS).roadmap(claims.account);
+  if (!road.revision?.roadmap.items.some((x) => x.id === item && x.status !== 'done')) return error('no_such_item', 404, { item });
+  return mintKey(env, claims.account, models as string[], DEFAULT_SCOPES, item);
+}
+
+// POST /v1/keys/seller (Authorization: Bearer <the project's steer key>) → a seller's key (a store's): it records the
+// project's sales on its books (POST /v1/sales) and does nothing else.
+export async function handleSellerKey(req: Request, env: Env): Promise<Response> {
+  if (req.method !== 'POST') return methodNotAllowed();
+  const claims = await authedClaims(req, env);
+  if (!claims) return error('auth_failed', 401);
+  if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+  if (!ACCOUNT_RE.test(claims.account)) return error('not_a_project', 403);
+  return mintKey(env, claims.account, [], ['sell']);
+}
+
 // POST /v1/keys/rotate (Authorization: Bearer <current key>) {grace_seconds?} → a fresh key for the same
 // account and models. The old key keeps working for the grace (ROTATE_GRACE_MS unless the caller asks for
 // less), then the registry refuses it.
@@ -154,7 +184,7 @@ export async function handleKeyRotate(req: Request, env: Env): Promise<Response>
   let graceMs = ROTATE_GRACE_MS;
   try { const body = JSON.parse(await req.text() || '{}') as { grace_seconds?: unknown }; if (typeof body.grace_seconds === 'number' && Number.isFinite(body.grace_seconds)) graceMs = Math.min(ROTATE_GRACE_MS, Math.max(0, body.grace_seconds) * 1000); } catch { /* no body: the full grace */ }
   const graceUntil = new Date(Date.now() + graceMs).toISOString();
-  const successor = newKeyClaims(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES);
+  const successor = newKeyClaims(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES, claims.item);
   const token = await signKey(env, successor);
   const rotated = await new LedgerClient(env.LIMITS).keyRotate(claims, successor, graceUntil);
   if (!rotated.ok) {

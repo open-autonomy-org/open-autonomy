@@ -177,7 +177,7 @@ export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, state
   const flows = moved.filter((flow) => flow.to === v.account || flow.from === v.account).slice(-200).map((flow, index) => {
     const out = flow.kind === 'grant' && flow.from === v.account;
     const party = out ? flow.to : flow.from ? flow.from.replace(/^@/, '') : flow.sponsor_login ?? 'the operator';
-    const what = flow.kind === 'mint' ? (flow.coupon ? 'a coupon' : flow.sponsor_login ? 'sponsorship' : 'credits') : flow.note ? `a grant · "${flow.note}"` : 'a grant';
+    const what = flow.sale ? `a sale · ${flow.sale.product}` : flow.kind === 'mint' ? (flow.coupon ? 'a coupon' : flow.sponsor_login ? 'sponsorship' : 'credits') : flow.note ? `a grant · "${flow.note}"` : 'a grant';
     return { key: flow.id ?? `${flow.ts}-${index}`, at: flow.ts, direction: out ? 'out' : 'in', party, what, usdCents: flow.amount_usd_cents };
   });
   const days = funding.daily_spend_usd_cents ?? [];

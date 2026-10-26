@@ -295,6 +295,8 @@ export interface KeyEntry {
   exp: string;
   revoked_at?: string;
   replaced_by?: string;
+  // The roadmap item the key is bound to: its spend draws only that item's envelopes (KeyClaims.item).
+  item?: string;
 }
 
 // One metered spend, as appended to the account's audit trail.
@@ -391,6 +393,9 @@ export interface ItemView {
   // The card and partner settlements attributed to this item's sessions: what the agent bought for it.
   purchases: CallRecord[];
   usd_cents: number;
+  // The item's own budget (its card's envelope): what the owner set aside for it, what is left, what went back to the
+  // project's free money when it was done, and what its spend drew. Absent when nothing was ever set aside for it.
+  budget?: { allocated_usd_cents: number; left_usd_cents: number; released_usd_cents: number; spent_usd_cents: number };
 }
 
 // An app's operation on the books: registered by name before the worker serves, run inside the one Durable
@@ -646,7 +651,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!claims?.kid || !claims.account) return { ok: false, error: 'invalid_key' };
     if (this.acct(claims.account)?.moderation === 'banned') return { ok: false, error: 'account_banned' };
     if (this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
-    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
+    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp, ...(claims.item ? { item: claims.item } : {}) };
     // The account exists from its first key, so its page and funding gate work before any money arrives.
     this.ensureAcct(claims.account);
     await this.save();
@@ -669,7 +674,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!old && this.keySlots(previous.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
     const exp = new Date(Math.min(Date.parse(previous.exp), old ? Date.parse(old.exp) : Infinity, Date.parse(graceUntil))).toISOString();
     this.state.keys[previous.kid] = { ...(old ?? { kid: previous.kid, account: previous.account, models: previous.models, created_at: previous.iat }), exp, replaced_by: claims.kid };
-    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
+    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp, ...(claims.item ? { item: claims.item } : {}) };
     this.ensureAcct(claims.account);
     await this.save();
     return { ok: true, exp };
@@ -782,7 +787,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
     const frozen = this.effectiveFreeze(account);
     if (frozen) return { ok: false, error: 'spending_frozen', message: `Spending is frozen${frozen.from ? ` for every project of ${frozen.from.slice(1)}` : ''} by ${frozen.by} since ${frozen.at}${frozen.reason ? `: ${frozen.reason}` : ''}. Nothing is spent until it is lifted.`, account };
-    let spendItem = itemId(item);
+    // A key bound to one roadmap item (its card) spends that item's envelopes and nothing else, whatever the call names:
+    // the registry holds the binding, so the key stops when the card's budget is spent or the item is done.
+    const bound = this.state.keys[kid]?.item;
+    let spendItem = bound ?? itemId(item);
     if (!spendItem && session) {
       const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${session}`);
       spendItem = itemId(storageKey ? (await this.ctx.storage.get<SessionRecord>(storageKey))?.item_id : undefined);
@@ -792,7 +800,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     // the balance the totals say, whatever the envelopes add up to (they can only drift by rounding or an overage).
     const ceiling = this.balanceOf(account) - this.reservedFor(account);
     if (amount > ceiling) return { ok: false, error: 'insufficient_funds', message: `This account has ${formatCents(Math.max(0, ceiling))} available and this ${rail} spend needs ${formatCents(amount)}.`, account, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: Math.max(0, ceiling), needed_usd_cents: amount };
-    const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context)).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
+    const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context) && (!bound || e.purpose.type === 'item')).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
     const allocations: ReservationAllocation[] = [];
     let remainder = amount;
     for (const envelope of candidates) {
@@ -804,6 +812,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     }
     const available = amount - Math.max(0, remainder);
     if (remainder > 0) {
+      if (bound) return { ok: false, error: 'insufficient_funds', message: `Card ${bound}'s budget has ${formatCents(available)} left and this ${rail} spend needs ${formatCents(amount)}. This key spends only that card's budget; the owner sets more aside for it to go on.`, account, item: bound, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: available, needed_usd_cents: amount };
       const remaining = (this.acct(account)?.envelopes ?? []).filter((e) => e.balance_usd_cents - this.reservedFrom(account, e.id) > 0 && !qualifies(e.purpose, context));
       const earmarked = remaining.reduce((sum, e) => sum + e.balance_usd_cents - this.reservedFrom(account, e.id), 0);
       const detail = remaining.map((e) => `${formatCents(e.balance_usd_cents - this.reservedFrom(account, e.id))} for ${purposeWords(e.purpose)}`).join(', ');
@@ -1138,7 +1147,13 @@ export class LimitLedger implements DurableObject, LedgerCore {
     // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
     const candidates = [[...calls.values()].flat(), await this.callsForItem(account, item_id)].flat();
     const purchases = [...new Map(candidates.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session)))).map((c) => [c.request_id, c])).values()];
-    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents };
+    const forItem = (f: Flow) => (f.purpose?.type === 'item' ? f.purpose.item : f.item) === item_id;
+    const set = this.state.flows.filter((f) => f.to === account && (f.kind === 'allocate' || f.kind === 'grant' || f.kind === 'mint') && forItem(f));
+    const allocated = set.reduce((sum, f) => sum + f.amount_usd_cents, 0);
+    const released = this.state.flows.filter((f) => f.to === account && f.kind === 'release' && f.item === item_id).reduce((sum, f) => sum + f.amount_usd_cents, 0);
+    const left = this.itemBalance(account, item_id);
+    const budget = allocated || left ? { allocated_usd_cents: allocated, left_usd_cents: left, released_usd_cents: released, spent_usd_cents: Math.max(0, allocated - left - released) } : undefined;
+    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents, ...(budget ? { budget } : {}) };
   }
 
   // The agent's setup replaces what was there: its substrate publishes the whole record each time.
@@ -1709,7 +1724,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
   }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
-  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release')) : [];
+  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate')) : [];
   state.keys = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
   for (const [k, v] of Object.entries(stored as Record<string, unknown>)) if (!CORE_STATE_KEYS.has(k) && v !== undefined) state[k] = v;
   return state;
@@ -1789,7 +1804,6 @@ function clipText(v: unknown, max: number): string | undefined {
   if (typeof v !== 'string' || !v) return undefined;
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
-// A work item id as the substrate names it (a file's slug, a board's task id): short, and never a storage-key separator.
 /** A sale as a mint carries it, or undefined when the body names none or names it malformed. */
 function saleOf(raw: unknown): Sale | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -1799,6 +1813,7 @@ function saleOf(raw: unknown): Sale | undefined {
   const sale = { seller: text(v.seller, 120), order: text(v.order, 200), product: text(v.product, 120), gross_usd_cents: cents(v.gross_usd_cents), fee_usd_cents: cents(v.fee_usd_cents) };
   return Object.values(sale).every((x) => x !== undefined) && sale.fee_usd_cents! < sale.gross_usd_cents! ? sale as Sale : undefined;
 }
+// A work item id as the substrate names it (a file's slug, a board's task id): short, and never a storage-key separator.
 export function itemId(v: unknown): string | undefined {
   return typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v) ? v : undefined;
 }
