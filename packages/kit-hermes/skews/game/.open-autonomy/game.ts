@@ -235,7 +235,13 @@ switch (command) {
     // Members first: the build uploaded to the store and set on the Members beta channel. Then everyone: the same build
     // released to the game's public page. The bot's result for the build is recorded on the store beside it.
     const [id, version] = args, members = has('--members'), everyone = has('--public');
-    if (!id || !version || members === everyone) throw new Error('release <id> <version> --members | --public');
+    if (!id || !version || members === everyone) throw new Error('release <id> <version> --members | --public [--despite "<why>"]');
+    // A release follows the bot's passing check of this commit; one that failed goes out only on the owner's word, its
+    // reason recorded beside the result on the store.
+    const check = state().checks?.[id], head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
+    const despite = flag('--despite');
+    if (!check || check.commit !== head) throw new Error(`the bot has not played ${id} on ${head.slice(0, 7)}: run check first`);
+    if (check.result !== 'passed' && !despite) throw new Error(`the bot's check of ${head.slice(0, 7)} failed (${check.detail}): release after a passing check, or give the owner's reason with --despite "<why>"`);
     const sessionToken = key('store.session');
     const store = (path: string, init: Parameters<typeof call>[2] = {}) => call(game.store, `/api${path}`, { ...init, headers: { origin: game.store, cookie: `relay_session=${sessionToken}`, ...init.headers } });
     const releases = state().releases ?? {};
@@ -257,9 +263,9 @@ switch (command) {
       if (!build) throw new Error('the upload did not finish; its journal keeps its progress, run release again');
       remember({ releases: { ...releases, [version]: build } });
     }
-    const check = state().checks?.[id];
-    if (check && !state().recorded?.[build]) {
-      await store(`/developers/apps/${game.storeGame}/builds/${build}/checks`, { method: 'POST', body: { goal: check.goal, result: check.result, detail: check.detail, commit: check.commit } });
+    if (!state().recorded?.[build]) {
+      const detail = despite ? `${check.detail} · released by the owner despite it: ${despite}` : check.detail;
+      await store(`/developers/apps/${game.storeGame}/builds/${build}/checks`, { method: 'POST', body: { goal: check.goal, result: check.result, detail, commit: check.commit } });
       remember({ recorded: { ...(state().recorded ?? {}), [build]: true } });
     }
     if (members) {

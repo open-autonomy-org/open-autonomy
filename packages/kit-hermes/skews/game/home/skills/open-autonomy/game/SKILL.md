@@ -40,6 +40,7 @@ means and how to build it are your judgment and the owners'.
   `do the quest`, in a headless browser). A failed check is fixed before a release.
 - Releases are the owners': when the check passes, ask in `build` for the release. The owner runs
   `bun .open-autonomy/game.ts release <id> <version> --members --owner <dir>` (the store's Members channel; the bot's
-  result recorded beside the build), and after the members' day `--public`.
+  result recorded beside the build), and after the members' day `--public`. A release follows a passing check of the
+  head commit; after a failed one it goes out only with the owner's reason, `--despite "<why>"`, recorded beside the result.
 - The owner ships the card: `bun .open-autonomy/game.ts ship <id> --owner <dir>`; you end your session with
   `bun .open-autonomy/game.ts end <id> done` and add the change to `CHANGELOG.md`.
