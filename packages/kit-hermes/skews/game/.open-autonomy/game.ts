@@ -275,7 +275,9 @@ switch (command) {
         if (message.id === 1) finish(message.error ? new Error(message.error.message) : undefined);
       };
     });
-    const outcome = lines.findLast(line => line.startsWith(`[autopilot] ✓ ${goal} (`) || line.startsWith(`[autopilot] ✗ ${goal} (`) || line.startsWith(`[bot] ✓ ${goal} (`) || line.startsWith(`[bot] ✗ ${goal} (`));
+    // A served client's console wraps game output in these runtime tags; bare native output has none.
+    const gameLines = lines.map(line => line.replace(/^(?:\[(?:client|log|dev)\] )+/, ''));
+    const outcome = gameLines.findLast(line => line.startsWith(`[autopilot] ✓ ${goal} (`) || line.startsWith(`[autopilot] ✗ ${goal} (`) || line.startsWith(`[bot] ✓ ${goal} (`) || line.startsWith(`[bot] ✗ ${goal} (`));
     if (!outcome) throw new Error('This tab has no completed outcome for the goal. Keep its take; read again only after the bot has finished.');
     const result = outcome.includes('] ✓ ') ? 'passed' : 'failed', detail = outcome.replace(/^\[\w+\] /, '').slice(0, 300);
     remember({checks: {...(state().checks ?? {}), [id]: {goal, result, detail, commit, at: new Date().toISOString(), target, url: tab.url}}});
