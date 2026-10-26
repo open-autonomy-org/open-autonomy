@@ -1,6 +1,6 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './http.js';
-import { authedClaims, handleItemKey, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate, handleSellerKey } from './keys.js';
+import { authedClaims, handleItemKey, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate, mintSellerKey } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { partnerReservation } from './partner.js';
@@ -127,6 +127,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
       return json(r, { status: r.ok ? 200 : r.error === 'not_found' ? 404 : r.error === 'invalid_identity' ? 400 : 409 });
     }
     if ((m = path.match(/^\/admin\/keys\/([^/]+)\/revoke$/))) { if (req.method !== 'POST') return methodNotAllowed(); const r = await ledger.keyRevoke(dec(m[1])); return json(r, { status: r.ok ? 200 : 404 }); }
+    if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/seller-key$/))) { if (req.method !== 'POST') return methodNotAllowed(); const body = parseJson<{ seller?: unknown }>(await req.text()) ?? {}; return mintSellerKey(env, dec(m[1]), body.seller); }
     if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/(mint|grant|sync|profile|moderate|keys)$/))) {
       const id = dec(m[1]);
       if (m[2] === 'keys') { if (get()) return get()!; return json(await ledger.keys(id)); }
@@ -195,19 +196,19 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if (path === '/v1/keys/rotate') return handleKeyRotate(req, env);
   if (path === '/v1/keys') return handleKeyList(req, env);
   if (path === '/v1/keys/item') return handleItemKey(req, env);
-  if (path === '/v1/keys/seller') return handleSellerKey(req, env);
 
-  // A sale, on a seller's key (a store's): money in for the project the key names, once per order. The project receives
-  // the net (gross less the seller's and processor's fees); the books keep all three figures and read it as a sale.
-  // {order, product, gross_usd_cents, fee_usd_cents}; the seller is the key's own name for itself in `seller`.
+  // A sale, on a seller's key (an enrolled store's, minted only by the operator: /admin/accounts/:a/seller-key): money in
+  // for the project the key names, once per order, booked as the key's seller. The project receives the net (gross less
+  // the seller's and processor's fees); the books keep all three figures and read it as a sale.
+  // {order, product, gross_usd_cents, fee_usd_cents}
   if (path === '/v1/sales') {
     if (req.method !== 'POST') return methodNotAllowed();
     const claims = await authedClaims(req, env);
     if (!claims) return error('auth_failed', 401);
-    if (!hasScope(claims, 'sell')) return error('scope_required', 403, { scope: 'sell' });
+    if (!hasScope(claims, 'sell') || !claims.seller) return error('scope_required', 403, { scope: 'sell' });
     const body = parseJson<Record<string, unknown>>(await req.text()) ?? {};
-    const sale = { seller: body.seller, order: body.order, product: body.product, gross_usd_cents: body.gross_usd_cents, fee_usd_cents: body.fee_usd_cents };
-    if (typeof sale.seller !== 'string' || typeof sale.order !== 'string' || typeof sale.gross_usd_cents !== 'number' || typeof sale.fee_usd_cents !== 'number') return error('invalid_request');
+    const sale = { seller: claims.seller, order: body.order, product: body.product, gross_usd_cents: body.gross_usd_cents, fee_usd_cents: body.fee_usd_cents };
+    if (typeof sale.order !== 'string' || typeof sale.gross_usd_cents !== 'number' || typeof sale.fee_usd_cents !== 'number') return error('invalid_request');
     const net = sale.gross_usd_cents - sale.fee_usd_cents;
     const r = await ledger.mint(claims.account, net, `sale:${sale.seller}:${sale.order}`, undefined, undefined, sale as never);
     return json({ ...r, net_usd_cents: net }, { status: r.ok ? 200 : 400 });

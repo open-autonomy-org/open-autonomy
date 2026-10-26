@@ -11,9 +11,10 @@ that card's budget. Any coding agent at the computer works the game (the owner: 
 
 ## Decision
 
-1. **A sale is a mint with provenance.** `POST /v1/sales` on a seller's key (`sell` scope, minted by the owner's steer
-   key at `POST /v1/keys/seller`) records `{seller, order, product, gross, fee}` and mints the net, idempotent per seller
-   order. The books show it as a sale with all three figures; the money is the project's unrestricted balance.
+1. **A sale is a mint with provenance, and only an enrolled seller mints it.** A sale is money in, so a seller is a
+   money rail the operator enrolls through its own door: `POST /admin/accounts/:account/seller-key {seller}` mints a
+   `sell` key bound to that project and that seller; no project key mints one. `POST /v1/sales` on it records
+   `{order, product, gross, fee}` as the key's seller and mints the net, idempotent per seller order. The books show it as a sale with all three figures; the money is the project's unrestricted balance.
 2. **A card's budget is the owner's own money set aside.** `POST /v1/agent/allocate` (steer) moves free unrestricted
    money into an `{type: 'item'}` envelope for a roadmap item that is not done (an `allocate` flow; the total is
    unchanged). Marking the item done releases the remainder, as before.

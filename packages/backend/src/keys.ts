@@ -56,6 +56,8 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   if (!claims.models.length && !nameOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
   if (claims.item !== undefined && !itemId(claims.item)) return null;
+  if (claims.seller !== undefined && (typeof claims.seller !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(claims.seller))) return null;
+  if (claims.scopes?.includes('sell') && claims.seller === undefined) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
 }
@@ -69,14 +71,14 @@ export async function authedClaims(req: Request, env: Env): Promise<KeyClaims | 
   return check.ok ? claims : null;
 }
 
-function newKeyClaims(env: Env, account: string, models: string[], scopes: KeyScope[], item?: string): KeyClaims {
+function newKeyClaims(env: Env, account: string, models: string[], scopes: KeyScope[], item?: string, seller?: string): KeyClaims {
   const ttl = Number(env.KEY_EXPIRES_SECONDS ?? 90 * 24 * 3600);
   const now = Date.now();
-  return { kid: `key_${crypto.randomUUID()}`, account, models, scopes, ...(item ? { item } : {}), iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
+  return { kid: `key_${crypto.randomUUID()}`, account, models, scopes, ...(item ? { item } : {}), ...(seller ? { seller } : {}), iat: new Date(now).toISOString(), exp: new Date(now + ttl * 1000).toISOString() };
 }
 
-export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES, item?: string): Promise<Response> {
-  const claims = newKeyClaims(env, account, models, scopes, item);
+export async function mintKey(env: Env, account: string, models: string[], scopes: KeyScope[] = DEFAULT_SCOPES, item?: string, seller?: string): Promise<Response> {
+  const claims = newKeyClaims(env, account, models, scopes, item, seller);
   const registered = await new LedgerClient(env.LIMITS).keyRegister(claims);
   if (!registered.ok) return error(registered.error ?? 'key_limit_reached', 429, { account });
   return json({ ok: true, key: claims, token: await signKey(env, claims) });
@@ -163,15 +165,13 @@ export async function handleItemKey(req: Request, env: Env): Promise<Response> {
   return mintKey(env, claims.account, models as string[], DEFAULT_SCOPES, item);
 }
 
-// POST /v1/keys/seller (Authorization: Bearer <the project's steer key>) → a seller's key (a store's): it records the
-// project's sales on its books (POST /v1/sales) and does nothing else.
-export async function handleSellerKey(req: Request, env: Env): Promise<Response> {
-  if (req.method !== 'POST') return methodNotAllowed();
-  const claims = await authedClaims(req, env);
-  if (!claims) return error('auth_failed', 401);
-  if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
-  if (!ACCOUNT_RE.test(claims.account)) return error('not_a_project', 403);
-  return mintKey(env, claims.account, [], ['sell']);
+// POST /admin/accounts/:account/seller-key {seller} (the operator's admin token): a seller's key for one project. A sale
+// mints money, so only the operator enrolls a seller (a store it admits as a money rail, through its own door); the
+// project's own keys never mint one. The key records sales on that project's books, as that seller, and does nothing else.
+export async function mintSellerKey(env: Env, account: string, seller: unknown): Promise<Response> {
+  if (!ACCOUNT_RE.test(account)) return error('not_a_project', 400);
+  if (typeof seller !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(seller)) return error('invalid_seller', 400);
+  return mintKey(env, account, [], ['sell'], undefined, seller);
 }
 
 // POST /v1/keys/rotate (Authorization: Bearer <current key>) {grace_seconds?} → a fresh key for the same
@@ -184,7 +184,7 @@ export async function handleKeyRotate(req: Request, env: Env): Promise<Response>
   let graceMs = ROTATE_GRACE_MS;
   try { const body = JSON.parse(await req.text() || '{}') as { grace_seconds?: unknown }; if (typeof body.grace_seconds === 'number' && Number.isFinite(body.grace_seconds)) graceMs = Math.min(ROTATE_GRACE_MS, Math.max(0, body.grace_seconds) * 1000); } catch { /* no body: the full grace */ }
   const graceUntil = new Date(Date.now() + graceMs).toISOString();
-  const successor = newKeyClaims(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES, claims.item);
+  const successor = newKeyClaims(env, claims.account, claims.models, claims.scopes ?? DEFAULT_SCOPES, claims.item, claims.seller);
   const token = await signKey(env, successor);
   const rotated = await new LedgerClient(env.LIMITS).keyRotate(claims, successor, graceUntil);
   if (!rotated.ok) {
