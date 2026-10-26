@@ -33,7 +33,7 @@ function Gift({ f, dir, entries, now, brand, impact }: { f: Flow; dir: 'out' | '
   return (
     <li>
       {project && safeUrl(project.profile.avatar_url) ? <img src={safeUrl(project.profile.avatar_url)} alt="" /> : <span class="ph" />}
-      <span class="who"><b>{href ? <a href={href}>{who}</a> : who}</b><span>{f.note ? `“${f.note}” · ` : ''}{f.kind === 'mint' ? (f.coupon ? 'a coupon' : 'credits') : 'a grant'} · {fmtAgo(f.ts, now)}</span>{dir === 'out' && project ? (() => { const line = since(f, impact); return line ? <span class="since">{line}</span> : null; })() : null}</span>
+      <span class="who"><b>{href ? <a href={href}>{who}</a> : who}</b><span>{f.note ? `“${f.note}” · ` : ''}{f.sale ? `a sale · ${f.sale.product}` : f.kind === 'mint' ? (f.coupon ? 'a coupon' : 'credits') : 'a grant'} · {fmtAgo(f.ts, now)}</span>{dir === 'out' && project ? (() => { const line = since(f, impact); return line ? <span class="since">{line}</span> : null; })() : null}</span>
       <span class="amt">{dir === 'out' ? '−' : '+'}{usd(f.amount_usd_cents)}</span>
     </li>
   );

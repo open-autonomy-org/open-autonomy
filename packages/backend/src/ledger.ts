@@ -21,6 +21,8 @@ import type { KeyClaims, UsageEvent } from './types.js';
 const MAX_FLOWS = 200;
 const FEED_LIMIT = 24;
 const MAX_KEY_SLOTS_PER_ACCOUNT = 3;
+// A card's keys: one for its agent, and one more so a replacement can be minted before the first is let go.
+const MAX_KEYS_PER_ITEM = 2;
 const MAX_TURNS = 400;
 const MAX_TURNS_PER_EVENT = 100;
 const MAX_TURN_TEXT = 2000;
@@ -187,8 +189,19 @@ export interface AccountProfile {
 }
 const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'agent_runtime', 'config_yaml'] as const;
 
+// A sale behind a mint: who sold what to whom, by the seller's own order, and the money's three figures. The mint
+// itself is the net, what reached the project; gross and fee stay on the entry so the books read it as a sale.
+export interface Sale {
+  seller: string;
+  order: string;
+  product: string;
+  gross_usd_cents: number;
+  fee_usd_cents: number;
+}
+
 export interface Flow {
-  kind: 'mint' | 'grant' | 'consume' | 'release';
+  // `allocate`: the project's own money set aside for one roadmap item (its card's envelope); the total is unchanged.
+  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate';
   id?: string;
   to: string;
   from?: string;
@@ -203,6 +216,7 @@ export interface Flow {
   purpose?: EnvelopePurpose;
   envelope_id?: string;
   item?: string;
+  sale?: Sale;
   ts: string;
   // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
   private?: true;
@@ -283,6 +297,8 @@ export interface KeyEntry {
   exp: string;
   revoked_at?: string;
   replaced_by?: string;
+  // The roadmap item the key is bound to: its spend draws only that item's envelopes (KeyClaims.item).
+  item?: string;
 }
 
 // One metered spend, as appended to the account's audit trail.
@@ -382,6 +398,9 @@ export interface ItemView {
   // The card and partner settlements attributed to this item's sessions: what the agent bought for it.
   purchases: CallRecord[];
   usd_cents: number;
+  // The item's own budget (its card's envelope): what the owner set aside for it, what is left, what went back to the
+  // project's free money when it was done, and what its spend drew. Absent when nothing was ever set aside for it.
+  budget?: { allocated_usd_cents: number; left_usd_cents: number; released_usd_cents: number; spent_usd_cents: number };
 }
 
 // An app's operation on the books: registered by name before the worker serves, run inside the one Durable
@@ -397,7 +416,7 @@ export interface LedgerCore {
   applyKey(key?: string): boolean;
   recordFlow(flow: Omit<Flow, 'ts'>): Flow;
   addEnvelope(account: string, amount: number, purpose: EnvelopePurpose, from?: string, giftId?: string): Envelope;
-  mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>>;
+  mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown, sale?: Sale): Promise<Record<string, unknown>>;
   grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>>;
   fundingSnapshot(account: string): FundingSnapshot;
   entryFor(account: string): DirectoryEntry;
@@ -433,7 +452,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
-      case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for));
+      case 'mint': {
+        // A sale that does not read is refused, never minted as plain credits.
+        if (body.sale !== undefined && !saleOf(body.sale)) return json({ ok: false, error: 'invalid_sale', message: 'A sale names its seller, order and product, and its gross and fee in whole cents, the fee below the gross.' });
+        return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)));
+      }
+      case 'allocate': return json(await this.allocate(s('account'), Number(body.amount_usd_cents), s('item'), body.key ? s('key') : undefined, typeof body.by === 'string' ? body.by : undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
       case 'funder': return json(await this.funderView(s('account'), body?.own === true));
@@ -543,17 +567,43 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // Money enters: the only operation that increases the total.
-  async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>> {
+  async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown, sale?: Sale): Promise<Record<string, unknown>> {
     if (!account || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_amount' };
+    if (sale && sale.gross_usd_cents - sale.fee_usd_cents !== Math.floor(amount)) return { ok: false, error: 'invalid_sale', message: 'A sale mints its net: gross less fee.' };
     const marked = await this.earmark(account, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
-    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id });
+    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
     await this.save();
     return { ok: true, account, balance_usd_cents: this.balanceOf(account) };
+  }
+
+  // The owner sets part of the project's own money aside for one roadmap item: unrestricted envelopes give it up to a
+  // new item envelope, which only that item's spend may draw (a key bound to the item draws nothing else). The total is
+  // unchanged; the item must be on the roadmap and not done.
+  async allocate(account: string, amount: number, item: string, key?: string, by?: string): Promise<Record<string, unknown>> {
+    if (!account || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_amount' };
+    const marked = await this.earmark(account, { type: 'item', item });
+    if (!marked.ok || !marked.purpose) return marked;
+    if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, item, envelope_usd_cents: this.itemBalance(account, item) };
+    const source = this.ensureAcct(account).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
+    const free = source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(account, e.id)), 0);
+    if (free < amount) return { ok: false, error: 'insufficient_balance', message: `${formatCents(free)} is free to set aside and the card needs ${formatCents(amount)}.`, available_usd_cents: free };
+    this.applyKey(key);
+    let debit = Math.floor(amount);
+    for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
+    const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, by, key);
+    this.recordFlow({ kind: 'allocate', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), purpose: marked.purpose, envelope_id: envelope.id, item, ...(by ? { by } : {}) });
+    await this.save();
+    return { ok: true, account, item, envelope_usd_cents: this.itemBalance(account, item), balance_usd_cents: this.balanceOf(account) };
+  }
+
+  /** What an item's envelopes hold now. */
+  itemBalance(account: string, item: string): number {
+    return (this.acct(account)?.envelopes ?? []).filter((e) => e.purpose.type === 'item' && e.purpose.item === item).reduce((sum, e) => sum + e.balance_usd_cents, 0);
   }
 
   // Money moves down the tree: conserves the total, refused if the source lacks the balance.
@@ -603,14 +653,15 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private keySlots(account: string): number {
     const active = this.activeKeys(account);
     const ids = new Set(active.map((k) => k.kid));
-    return active.filter((k) => !k.replaced_by || !ids.has(k.replaced_by)).length;
+    // A card's key (bound to one roadmap item) holds no account slot: it is limited per item in keyRegister instead.
+    return active.filter((k) => !k.item && (!k.replaced_by || !ids.has(k.replaced_by))).length;
   }
 
   private async keyRegister(claims: KeyClaims): Promise<Record<string, unknown>> {
     if (!claims?.kid || !claims.account) return { ok: false, error: 'invalid_key' };
     if (this.acct(claims.account)?.moderation === 'banned') return { ok: false, error: 'account_banned' };
-    if (this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
-    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
+    if (claims.item ? this.activeKeys(claims.account).filter((k) => k.item === claims.item).length >= MAX_KEYS_PER_ITEM : this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
+    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp, ...(claims.item ? { item: claims.item } : {}) };
     // The account exists from its first key, so its page and funding gate work before any money arrives.
     this.ensureAcct(claims.account);
     await this.save();
@@ -633,7 +684,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!old && this.keySlots(previous.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
     const exp = new Date(Math.min(Date.parse(previous.exp), old ? Date.parse(old.exp) : Infinity, Date.parse(graceUntil))).toISOString();
     this.state.keys[previous.kid] = { ...(old ?? { kid: previous.kid, account: previous.account, models: previous.models, created_at: previous.iat }), exp, replaced_by: claims.kid };
-    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp };
+    this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp, ...(claims.item ? { item: claims.item } : {}) };
     this.ensureAcct(claims.account);
     await this.save();
     return { ok: true, exp };
@@ -746,7 +797,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (this.acct(account)?.moderation === 'banned') return { ok: false, error: 'account_banned', account };
     const frozen = this.effectiveFreeze(account);
     if (frozen) return { ok: false, error: 'spending_frozen', message: `Spending is frozen${frozen.from ? ` for every project of ${frozen.from.slice(1)}` : ''} by ${frozen.by} since ${frozen.at}${frozen.reason ? `: ${frozen.reason}` : ''}. Nothing is spent until it is lifted.`, account };
-    let spendItem = itemId(item);
+    // A key bound to one roadmap item (its card) spends that item's envelopes and nothing else, whatever the call names:
+    // the registry holds the binding, so the key stops when the card's budget is spent or the item is done.
+    const bound = this.state.keys[kid]?.item;
+    let spendItem = bound ?? itemId(item);
     if (!spendItem && session) {
       const storageKey = await this.ctx.storage.get<string>(`sessionidx:${account}:${session}`);
       spendItem = itemId(storageKey ? (await this.ctx.storage.get<SessionRecord>(storageKey))?.item_id : undefined);
@@ -756,7 +810,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     // the balance the totals say, whatever the envelopes add up to (they can only drift by rounding or an overage).
     const ceiling = this.balanceOf(account) - this.reservedFor(account);
     if (amount > ceiling) return { ok: false, error: 'insufficient_funds', message: `This account has ${formatCents(Math.max(0, ceiling))} available and this ${rail} spend needs ${formatCents(amount)}.`, account, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: Math.max(0, ceiling), needed_usd_cents: amount };
-    const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context)).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
+    const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context) && (!bound || e.purpose.type === 'item')).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
     const allocations: ReservationAllocation[] = [];
     let remainder = amount;
     for (const envelope of candidates) {
@@ -768,6 +822,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     }
     const available = amount - Math.max(0, remainder);
     if (remainder > 0) {
+      if (bound) return { ok: false, error: 'insufficient_funds', message: `Card ${bound}'s budget has ${formatFine(available)} left and this ${rail} spend needs ${formatFine(amount)}. This key spends only that card's budget; the owner sets more aside for it to go on.`, account, item: bound, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: available, needed_usd_cents: amount };
       const remaining = (this.acct(account)?.envelopes ?? []).filter((e) => e.balance_usd_cents - this.reservedFrom(account, e.id) > 0 && !qualifies(e.purpose, context));
       const earmarked = remaining.reduce((sum, e) => sum + e.balance_usd_cents - this.reservedFrom(account, e.id), 0);
       const detail = remaining.map((e) => `${formatCents(e.balance_usd_cents - this.reservedFrom(account, e.id))} for ${purposeWords(e.purpose)}`).join(', ');
@@ -1102,7 +1157,13 @@ export class LimitLedger implements DurableObject, LedgerCore {
     // A purchase belongs to the item it names (the payer's word), else to the item of the session it was made in.
     const candidates = [[...calls.values()].flat(), await this.callsForItem(account, item_id)].flat();
     const purchases = [...new Map(candidates.filter((c) => c.rail !== 'model' && (c.item === item_id || (c.session && keys.has(c.session)))).map((c) => [c.request_id, c])).values()];
-    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents };
+    const forItem = (f: Flow) => (f.purpose?.type === 'item' ? f.purpose.item : f.item) === item_id;
+    const set = this.state.flows.filter((f) => f.to === account && (f.kind === 'allocate' || f.kind === 'grant' || f.kind === 'mint') && forItem(f));
+    const allocated = set.reduce((sum, f) => sum + f.amount_usd_cents, 0);
+    const released = this.state.flows.filter((f) => f.to === account && f.kind === 'release' && f.item === item_id).reduce((sum, f) => sum + f.amount_usd_cents, 0);
+    const left = this.itemBalance(account, item_id);
+    const budget = allocated || left ? { allocated_usd_cents: allocated, left_usd_cents: left, released_usd_cents: released, spent_usd_cents: Math.max(0, allocated - left - released) } : undefined;
+    return { ok: true, account, item_id, live: sessions.filter((s) => s.status === 'live').map((s) => s.key), sessions, updates, purchases, usd_cents, ...(budget ? { budget } : {}) };
   }
 
   // The agent's setup replaces what was there: its substrate publishes the whole record each time.
@@ -1673,7 +1734,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
   }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
-  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release')) : [];
+  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate')) : [];
   state.keys = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
   for (const [k, v] of Object.entries(stored as Record<string, unknown>)) if (!CORE_STATE_KEYS.has(k) && v !== undefined) state[k] = v;
   return state;
@@ -1718,6 +1779,8 @@ function qualifies(purpose: EnvelopePurpose, spend: { rail: Rail; model?: string
 }
 function purposeWords(purpose: EnvelopePurpose): string { return purpose.type === 'item' ? `roadmap item ${purpose.item}` : purpose.type === 'models' ? `model calls on ${purpose.models.join(', ')}` : purpose.type === 'model' ? 'model calls only' : purpose.type === 'any' ? 'any spend' : 'whatever the project needs'; }
 function formatCents(cents: number): string { return `$${(cents / 100).toFixed(2)}`; }
+// (to a hundredth of a cent where that tells two figures apart: a card's last cents against a call's reservation)
+function formatFine(cents: number): string { return Math.round(cents) === cents ? formatCents(cents) : `$${(cents / 100).toFixed(4)}`; }
 // Daily spend (idle days as 0), oldest to today, over the trailing 14 days: the evidence for the runway estimate.
 function dailySpendSeries(days: Record<string, Tally>): number[] {
   const daily: Record<string, number> = Object.fromEntries(Object.entries(days).map(([d, t]) => [d, t.u]));
@@ -1753,8 +1816,17 @@ function clipText(v: unknown, max: number): string | undefined {
   if (typeof v !== 'string' || !v) return undefined;
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
+/** A sale as a mint carries it, or undefined when the body names none or names it malformed. */
+function saleOf(raw: unknown): Sale | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const v = raw as Record<string, unknown>;
+  const text = (x: unknown, n: number) => typeof x === 'string' && x.length > 0 && x.length <= n ? x : undefined;
+  const cents = (x: unknown) => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 ? x : undefined;
+  const sale = { seller: text(v.seller, 120), order: text(v.order, 200), product: text(v.product, 120), gross_usd_cents: cents(v.gross_usd_cents), fee_usd_cents: cents(v.fee_usd_cents) };
+  return Object.values(sale).every((x) => x !== undefined) && sale.fee_usd_cents! < sale.gross_usd_cents! ? sale as Sale : undefined;
+}
 // A work item id as the substrate names it (a file's slug, a board's task id): short, and never a storage-key separator.
-function itemId(v: unknown): string | undefined {
+export function itemId(v: unknown): string | undefined {
   return typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v) ? v : undefined;
 }
 function sessionKind(v: unknown): string {
@@ -1875,8 +1947,11 @@ export class LedgerClient {
   }
   consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.call<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
   release(requestId: string) { return this.call<{ ok: true }>('release', { request_id: requestId }); }
-  mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown) {
-    return this.call<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose });
+  mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown, sale?: Sale) {
+    return this.call<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string; message?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose, sale });
+  }
+  allocate(account: string, amountUsdCents: number, item: string, key?: string, by?: string) {
+    return this.call<{ ok: boolean; idempotent?: boolean; error?: string; message?: string; envelope_usd_cents?: number; balance_usd_cents?: number }>('allocate', { account, amount_usd_cents: amountUsdCents, item, key, by });
   }
   grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string, purpose?: unknown, by?: string) {
     return this.call<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });

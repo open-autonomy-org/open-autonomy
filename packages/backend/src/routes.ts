@@ -1,6 +1,6 @@
 import type { Roadmap } from '@open-autonomy/sdk/roadmap';
 import { error, html, json, methodNotAllowed, parseJson, withoutMoney } from './http.js';
-import { authedClaims, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate } from './keys.js';
+import { authedClaims, handleItemKey, handleKeyChallenge, handleKeyList, handleKeyMint, handleKeyRotate, mintSellerKey } from './keys.js';
 import { LedgerClient, type AccountProfile, type Moderation, type Sponsor } from './ledger.js';
 import { gatewayBase, handleModelCall } from './proxy.js';
 import { partnerReservation } from './partner.js';
@@ -127,6 +127,7 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
       return json(r, { status: r.ok ? 200 : r.error === 'not_found' ? 404 : r.error === 'invalid_identity' ? 400 : 409 });
     }
     if ((m = path.match(/^\/admin\/keys\/([^/]+)\/revoke$/))) { if (req.method !== 'POST') return methodNotAllowed(); const r = await ledger.keyRevoke(dec(m[1])); return json(r, { status: r.ok ? 200 : 404 }); }
+    if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/seller-key$/))) { if (req.method !== 'POST') return methodNotAllowed(); const body = parseJson<{ seller?: unknown }>(await req.text()) ?? {}; return mintSellerKey(env, dec(m[1]), body.seller); }
     if ((m = path.match(/^\/admin\/accounts\/([^/]+)\/(mint|grant|sync|profile|moderate|keys)$/))) {
       const id = dec(m[1]);
       if (m[2] === 'keys') { if (get()) return get()!; return json(await ledger.keys(id)); }
@@ -194,6 +195,24 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   if (path === '/v1/keys/mint') return handleKeyMint(req, env);
   if (path === '/v1/keys/rotate') return handleKeyRotate(req, env);
   if (path === '/v1/keys') return handleKeyList(req, env);
+  if (path === '/v1/keys/item') return handleItemKey(req, env);
+
+  // A sale, on a seller's key (an enrolled store's, minted only by the operator: /admin/accounts/:a/seller-key): money in
+  // for the project the key names, once per order, booked as the key's seller. The project receives the net (gross less
+  // the seller's and processor's fees); the books keep all three figures and read it as a sale.
+  // {order, product, gross_usd_cents, fee_usd_cents}
+  if (path === '/v1/sales') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'sell') || !claims.seller) return error('scope_required', 403, { scope: 'sell' });
+    const body = parseJson<Record<string, unknown>>(await req.text()) ?? {};
+    const sale = { seller: claims.seller, order: body.order, product: body.product, gross_usd_cents: body.gross_usd_cents, fee_usd_cents: body.fee_usd_cents };
+    if (typeof sale.order !== 'string' || typeof sale.gross_usd_cents !== 'number' || typeof sale.fee_usd_cents !== 'number') return error('invalid_request');
+    const net = sale.gross_usd_cents - sale.fee_usd_cents;
+    const r = await ledger.mint(claims.account, net, `sale:${sale.seller}:${sale.order}`, undefined, undefined, sale as never);
+    return json({ ...r, net_usd_cents: net }, { status: r.ok ? 200 : 400 });
+  }
 
   // ---- the development stream ----
   if (path === '/v1/agent/events') return agentEvents(req, env);
@@ -209,6 +228,20 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     if (!body?.roadmap || typeof body.source !== 'string') return error('invalid_request');
     const r = await ledger.roadmapSet(claims.account, body.roadmap, body.source, typeof body.by === 'string' ? body.by : claims.kid);
     return json(r, { status: r.ok ? 200 : 400 });
+  }
+  // The owner sets part of the project's own money aside for one roadmap item, on a steer-scoped key: the card's
+  // envelope, which only that item's spend draws (a key bound to the item, /v1/keys/item, draws nothing else).
+  // {item, usd_cents, key?}; refused when the item is not on the roadmap or done, or the free balance is short.
+  if (path === '/v1/agent/allocate') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'steer')) return error('scope_required', 403, { scope: 'steer' });
+    if (!claims.account.includes('/')) return error('not_a_project', 403);
+    const body = parseJson<{ item?: string; usd_cents?: number; key?: string; by?: string }>(await req.text()) ?? {};
+    if (typeof body.item !== 'string' || typeof body.usd_cents !== 'number' || !Number.isFinite(body.usd_cents) || body.usd_cents < 1) return error('invalid_request');
+    const r = await ledger.allocate(claims.account, Math.floor(body.usd_cents), body.item, typeof body.key === 'string' ? `allocate:${claims.account}:${body.key}` : undefined, typeof body.by === 'string' ? body.by : claims.kid);
+    return json(r, { status: r.ok ? 200 : r.error === 'insufficient_balance' ? 402 : r.error === 'no_such_item' ? 404 : 400 });
   }
   // The owner's word on the agent's operating state, on a steer-scoped key: running or paused, with a reason. The
   // platform records it and applies nothing; the automation reads it back and reports what became true of itself.
@@ -312,6 +345,9 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
   };
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(dec(m[1]), m[2] === 'now' ? 'overview' : m[2] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(dec(m[1]), m[2]); }
   if ((m = path.match(/^\/v1\/funding\/(runway|activity|roadmap|now)\.svg$/))) { const c = await closed(fundingAccount(env), m[1] === 'now' ? 'overview' : m[1] === 'roadmap' ? 'work' : 'books'); if (c) return c; return widget(fundingAccount(env), m[1]); }
+  // The money that moved on the books, newest first (no spend: that is /calls): what came in (a sale, a grant, credits),
+  // what was given on, and what the owner set aside for a card. Behind the books panel, like the balance.
+  if ((m = path.match(/^\/v1\/accounts\/([^/]+)\/flows$/))) { const c = await closed(dec(m[1]), 'books'); if (c) return c; const view = await ledger.project(dec(m[1])); return json({ ok: true, account: dec(m[1]), flows: view.found ? view.feed ?? [] : [] }, { headers: NO_STORE }); }
   if ((m = path.match(/^\/v1\/accounts\/([^/]+)$/))) { const c = await closed(dec(m[1]), 'books'); if (c) return c; return json(await ledger.funding(dec(m[1]))); }
   if (path === '/v1/funding') { const c = await closed(fundingAccount(env), 'books'); if (c) return c; return json(await ledger.funding(fundingAccount(env))); }
 

@@ -11,8 +11,10 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
   Deploys and admin ops go through GitHub only. Deploying the platform (`deploy.yml`) and publishing the docs
   (`pages.yml`) run only on a push to `publish`, the dedicated publication branch, which moves only on the owner's
-  explicit publication authorization. Every new package version is published from a checkout of `publish` by
-  `scripts/npm-publish-missing.sh` (pack once, keys-sweep that tarball, upload it). Deploys and releases are recorded as
+  explicit publication authorization. npm packages are released apart from the site, from a clean
+  checkout of the commit the manager permitted, on reviewed `main`, by `scripts/npm-publish-missing.sh` (pack once,
+  keys-sweep that tarball, upload it; `VOLTER_NPM_RELEASE_COMMIT=<sha>`): an npm release never pushes `publish`
+  (ADR 0033). Deploys and releases are recorded as
   `deploy-v*` and `release-v*` tags. A merge to `main` never advances `publish` and never triggers
   publication; `admin.yml` is dispatched `--ref publish`. The `production` environment admits `publish` alone, and
   `publish` moves only by the owner's merge of the standing `main` → `publish` Release pull request (the

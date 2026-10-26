@@ -40,12 +40,18 @@ export interface KeyClaims {
   // What the key may do. `spend`: the model rail; `pay`: the card and partner rails (a treasurer's key, kept
   // apart from the developer's); `narrate`: the development stream, everything the automation says; `steer`: the owner's word (a
   // roadmap revision, the operating state), an owner-side key which spends nothing; `give`: a funder's key, which moves grant credits from the
-  // funder's own books to a project. Absent means spend + narrate.
+  // funder's own books to a project; `sell`: a seller's key (a store the operator enrolled, never minted by the project),
+  // which records the project's sales on its books and spends nothing. Absent means spend + narrate.
   scopes?: KeyScope[];
+  // A key bound to one roadmap item (a card): it spends only from that item's envelopes, never the project's
+  // unrestricted money, so it stops when the card's budget is spent. The owner mints it on their steer key.
+  item?: string;
+  // A seller's key names the seller the operator enrolled it for (a store): its sales are booked as that seller's.
+  seller?: string;
   iat: string;
   exp: string;
 }
-export type KeyScope = 'spend' | 'pay' | 'narrate' | 'steer' | 'give';
+export type KeyScope = 'spend' | 'pay' | 'narrate' | 'steer' | 'give' | 'sell';
 export const DEFAULT_SCOPES: KeyScope[] = ['spend', 'narrate'];
 export const grantsAccount = (env: Env): string => env.GRANTS_ACCOUNT || 'open-autonomy-org/grants';
 export const isFunder = (account: string): boolean => account.startsWith('@');

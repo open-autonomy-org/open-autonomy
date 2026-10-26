@@ -1,0 +1,23 @@
+{
+  "profiles": {
+    "default": {
+      "schema_version": 1,
+      "parameters": {
+        "workspace": {}
+      },
+      "inference": {
+        "models": {
+          "card": {
+            "provider": "custom",
+            "model": "zai/glm-5.3-flash",
+            "endpoint": "OPEN_AUTONOMY_BASE_URL",
+            "credential": "OPEN_AUTONOMY_KEY",
+            "api_mode": "chat_completions"
+          }
+        },
+        "default": "card",
+        "unattended": "card"
+      }
+    }
+  }
+}

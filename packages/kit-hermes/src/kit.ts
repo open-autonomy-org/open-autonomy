@@ -21,18 +21,22 @@ export const KIT_FILE = '.open-autonomy/kit.json';
 // The kit is a lineage (docs/decisions/0006): an abstract base every subject runs, and one skew laid over it, whole
 // files, a later key winning. A skew is what its PM does and to whom; a PM knows only its own skew. A skew may extend
 // another: soc2 is self-build with the SOC 2 layer of docs/decisions/0008 laid over it, so its PM is self-build's.
-export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2', 'company'] as const;
+// `game` is a game's own repository built by whatever coding agent sits at the computer: runtime-neutral (configuration,
+// instructions and the tools in .open-autonomy/game.ts), so it renders on the IR kit's engine with no hermes/ and no
+// harness named; the Room's asks reach the owners, only the owners' funded cards are built, a card's key pays for them.
+export const SKEWS = ['self-build', 'manage-project', 'manage-organization', 'soc2', 'company', 'game'] as const;
 export type Skew = (typeof SKEWS)[number];
 // Two kits share this engine (docs/decisions/0017): `hermes`, whose agent content is hermes/, and `ir`, whose content is
 // home/, Supercode's native folder. A skew belongs to one kit; the record names it. The IR kit's base is the Hermes kit's
 // base without hermes/.
 export const KITS = ['hermes', 'ir'] as const;
 export type KitName = (typeof KITS)[number];
-const KIT_OF: Partial<Record<Skew, KitName>> = { company: 'ir' };
+const KIT_OF: Partial<Record<Skew, KitName>> = { company: 'ir', game: 'ir' };
 export const kitOf = (skew: Skew): KitName => KIT_OF[skew] ?? 'hermes';
 // A child's copy of a parent's or base's file replaces it whole: change the copy whenever the original changes
 // (soc2 carries PRODUCTION.md and project-communications with the seams text added).
 const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
+const BASE_KEEP: Partial<Record<Skew, RegExp>> = { game: /^(LICENSE|branding\/)/ };
 const lineage = (skew: Skew): Skew[] => [...(PARENT[skew] ? lineage(PARENT[skew]!) : []), skew];
 const BASE = resolve(import.meta.dir, '..', 'base');
 const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
@@ -102,6 +106,9 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   for (const dir of [BASE, ...lineage(skew).map(SKEW_DIR)]) for (const rel of walk(dir)) {
     // The IR kit's agent content is its skew's home/; the Hermes kit's hermes/ is not part of it.
     if (kit === 'ir' && dir === BASE && rel.startsWith('hermes/')) continue;
+    // A skew may take only part of the base (the runtime-neutral game skew lays down no container, Hermes setup or
+    // reporter: only the licence and the branding, beside its own files and the SDK).
+    if (dir === BASE && BASE_KEEP[skew] && !BASE_KEEP[skew]!.test(rel)) continue;
     const raw = readFileSync(join(dir, rel));
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
@@ -109,7 +116,8 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
     const rendered = /[\x00]/.test(text) ? raw : Buffer.from(text.replaceAll('__PROJECT__', params.project).replaceAll('__ACCOUNT_ENC__', encodeURIComponent(params.account)).replaceAll('__ACCOUNT__', params.account).replaceAll('__OWNER__', params.account.split('/')[0]).replaceAll('__KIT_VERSION__', KIT.version));
     out.set(out_rel, rendered);
   }
-  for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
+  // The game skew's doors speak to the services directly and import no SDK, so none is vendored into a game.
+  if (!BASE_KEEP[skew]) for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
   out.set(KIT_FILE, Buffer.from(record({ kit, skew, version: KIT.version, params })));
   return out;
 }

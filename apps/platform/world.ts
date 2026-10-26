@@ -26,8 +26,9 @@ const vars: Record<string, string> = {
   GITHUB_OAUTH_CLIENT_ID: 'world-open-autonomy',
   GITHUB_OAUTH_CLIENT_SECRET: 'world-oauth-secret',
   GIVE_SESSION_HMAC_SECRET: 'world-give-session-secret',
-  // Represents the platform operator's read:org credential; the funder's OAuth token remains scope-free.
-  GITHUB_TOKEN: 'world-bot',
+  // Represents the platform operator's read:org credential; the funder's OAuth token remains scope-free. A World whose
+  // GitHub twin issues its application's token at boot (POST /_twin/app-credentials) passes it in.
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? 'world-bot',
   DEPLOY_COMMIT: execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: TREE, encoding: 'utf8' }).trim(),
   // The owner's previous model is a world-only name for the same model: priced like it, so a run reserves against
   // a flash-class ceiling and not the unlisted-model ceiling (which would refuse a second call in flight on $5).
