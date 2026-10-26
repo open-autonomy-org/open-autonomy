@@ -446,7 +446,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     const completion = completionOf(d);
     let publisher = publishers.get(key);
     if (!publisher || publisherItems.get(key) !== item) {
-      publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined,
+      publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined, harness: d.locator.harness,
         modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
       publishers.set(key, publisher);
       publisherItems.set(key, item);
