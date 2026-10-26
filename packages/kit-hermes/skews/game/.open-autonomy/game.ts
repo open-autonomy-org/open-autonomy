@@ -204,7 +204,7 @@ switch (command) {
   }
   case 'check': {
     // The release candidate's automated play: this checkout in a dev run (its bot kept, its signaling on this machine),
-    // played in game-std's headless Chrome with `?bot=<goal>`, read back from the page's console. Recorded on the release.
+    // played in game-std's headless Chrome with `?autopilot=<goal>` (`?bot=` before game-std 1.0), read back from the page's console. Recorded on the release.
     const [id] = args, goal = flag('--goal') ?? game.goal ?? 'do the quest', minutes = Number(flag('--minutes') ?? 6);
     if (!game.std) throw new Error('config.yaml `game.std` names the game-std checkout the game builds against');
     const commit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
@@ -218,15 +218,16 @@ switch (command) {
       dev!.stdout.on('data', read); dev!.stderr.on('data', read);
       dev!.on('exit', (code) => { clearTimeout(timer); reject(new Error(`the dev run ended (${code}):\n${printed.slice(-800)}`)); });
     });
-    const url = new URL(address); url.searchParams.set('name', 'Bot'); url.searchParams.set('bot', goal);
+    const url = new URL(address); url.searchParams.set('name', 'Bot'); url.searchParams.set('autopilot', goal); url.searchParams.set('bot', goal);
     const { HeadlessPage } = await import(join(game.std, 'packages/tools/headless.ts'));
     const page = await HeadlessPage.open(url.href, join(ROOT, 'build', 'check', 'chrome'));
     const until = Date.now() + minutes * 60_000;
-    // The game's bot says each goal's end on the page's console: `[bot] ✓ <goal> (<time>)` or `[bot] ✗ <goal> (<time>): why`.
+    // The game's autopilot says each goal's end on the page's console: `[autopilot] ✓ <goal> (<time>)` or `… ✗ <goal> (<time>): why`
+    // (`[bot]` before game-std 1.0).
     let result: 'passed' | 'failed' = 'failed', detail = `the bot had not finished “${goal}” after ${minutes} minutes`;
     while (Date.now() < until) {
-      const done = page.console.find((line: string) => line.includes(`[bot] ✓ ${goal}`) || line.includes(`[bot] ✗ ${goal}`));
-      if (done) { result = done.includes('✓') ? 'passed' : 'failed'; detail = done.slice(done.indexOf('[bot]') + 6).trim().slice(0, 300); break; }
+      const done = page.console.find((line: string) => /\[(autopilot|bot)\] [✓✗] /.test(line) && (line.includes(`✓ ${goal}`) || line.includes(`✗ ${goal}`)));
+      if (done) { result = done.includes('✓') ? 'passed' : 'failed'; detail = done.slice(done.search(/\[(autopilot|bot)\]/)).replace(/^\[\w+\]/, '').trim().slice(0, 300); break; }
       await new Promise((r) => setTimeout(r, 1000));
     }
     page.close(); dev?.kill('SIGTERM');
