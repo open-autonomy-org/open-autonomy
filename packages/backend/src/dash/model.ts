@@ -52,6 +52,13 @@ export const PAGES: Array<{ id: DashPage; label: string; panel: keyof Visibility
 export interface Schedule { name?: string; schedule?: string }
 export const scheduleOf = (v: ProjectView): Schedule[] => { try { const j = JSON.parse(v.profile.schedule_json ?? '{}') as { jobs?: Schedule[] }; return Array.isArray(j.jobs) ? j.jobs : []; } catch { return []; } };
 export const harnessOf = (v: ProjectView): string => v.profile.agent_harness ?? 'hermes';
+// A session's own harness, as its reporter recorded it. A project's sessions can run on several harnesses (Hermes,
+// Claude Code seats, Codex workers), so the project's harness is never a session's. Unrecorded stays empty in the data
+// (the kit's session reader keeps a row whose harness is an empty string), so no logo or filter claims a harness.
+export const sessionHarness = (s: { harness?: string } | undefined): string => s?.harness ?? '';
+// The name the conversation speaks in ("<name> is listening", "<name> is working"): the session's harness, or the
+// neutral "Agent" when none was recorded, where the pinned kit would otherwise print " is working".
+export const conversationHarness = (harness: string): string => harness || 'Agent';
 export const itemTitle = (roadmap: Roadmap, id: string | undefined): string | undefined => (id ? roadmap.items.find((i) => i.id === id)?.title : undefined);
 // A report's first line as plain words: a preview is a line of text, so its markdown marks come off.
 const plain = (s: string): string => s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|\*|`)(?=\S)([^*`]*?\S)\1/g, '$2').replace(/^#+\s*/, '');
@@ -65,7 +72,7 @@ export function rowOf(d: DashData, s: SessionSummary): SessionRowModel {
   const runs = d.sessions.filter((x) => (x.source ?? x.kind) === (s.source ?? s.kind) && x.kind === 'run');
   const last = runs.find((x) => x.status === 'ended');
   return {
-    key: s.key, harness: harnessOf(d.v), name: s.source ?? s.kind, cwd: '',
+    key: s.key, harness: sessionHarness(s), name: s.source ?? s.kind, cwd: '',
     title: on ? `${s.source ?? s.kind} · ${on}` : s.source ?? s.kind,
     preview: said(s.report), previewUpdatedAt: s.report ? when(s) : null,
     age: relativeAge(when(s), d.now), updatedAt: when(s), messages: s.turn_count,
@@ -117,15 +124,16 @@ export function uiState(d: DashData, attached?: SessionRecord | { key: string; t
   const a = attached ? d.sessions.find((s) => s.key === attached.key) : undefined;
   const live = attached ? d.live.includes(attached.key) || ('status' in attached && attached.status === 'live') : false;
   const busy = live;
+  const harness = sessionHarness(a ?? (attached as { harness?: string } | undefined));
   return normalizeUiState({
-    startup: 'ready', harness: harnessOf(d.v), workspace: d.v.account, workspaceRef: { kind: 'repo', value: d.v.account },
+    startup: 'ready', harness: conversationHarness(harness), workspace: d.v.account, workspaceRef: { kind: 'repo', value: d.v.account },
     pill: live ? { tone: 'live', label: 'live' } : { tone: 'off', label: 'ended' },
     busy, operation: busy ? 'running' : null, needsInput: false, mode: 'observe', messaging: null,
     canSend: false, canSteer: false, canResume: false, supportsResume: false, continuationModes: [], canBranch: false, supportsBranch: false,
     canAttach: false, supportsAttach: false, canDetach: false, canOpenTerminal: false, canExport: false, canReduce: false, canInterrupt: false, canRespond: false, canConfigureSettings: false,
     sessions: rows,
     transcript: attached ? entriesOf(attached.turns, live) : [],
-    attached: attached && a ? { key: a.key, harness: harnessOf(d.v), name: a.source ?? a.kind, cwd: d.v.account, title: rowOf(d, a).title } : attached ? { key: attached.key, harness: harnessOf(d.v), name: attached.key, cwd: d.v.account, title: attached.key } : null,
+    attached: attached && a ? { key: a.key, harness, name: a.source ?? a.kind, cwd: d.v.account, title: rowOf(d, a).title } : attached ? { key: attached.key, harness, name: attached.key, cwd: d.v.account, title: attached.key } : null,
     history: { sessionLimit: rows.length, hasMoreSessions: false, transcriptLimit: attached ? attached.turns.length : 0, hasEarlier: false },
     attention: [], harnesses: [{ id: harnessOf(d.v), label: harnessOf(d.v), available: true }],
   });
