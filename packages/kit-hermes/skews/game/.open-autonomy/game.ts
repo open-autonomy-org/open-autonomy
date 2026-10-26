@@ -33,10 +33,13 @@ interface Game {
   std?: string; goal?: string; models?: string[];
 }
 const yaml = readFileSync(join(HERE, 'config.yaml'), 'utf8');
-const game = JSON.parse(/^game:\s*(\{.*\})\s*$/m.exec(yaml)?.[1] ?? 'null') as Game | null;
-if (!game) throw new Error('.open-autonomy/config.yaml names no `game:` (the store, the Room and the books this game lives on)');
-const account = /^account:\s*(\S+)/m.exec(yaml)?.[1] ?? game.account;
-const platform = (/^platform:\s*(\S+)/m.exec(yaml)?.[1] ?? game.platform).replace(/\/$/, '');
+// A computer's own values (a local World's addresses and ids) may stand beside it in .open-autonomy/game.local.json,
+// which is never committed and wins key by key.
+const LOCAL = join(HERE, 'game.local.json');
+const game = { ...JSON.parse(/^game:\s*(\{.*\})\s*$/m.exec(yaml)?.[1] ?? 'null'), ...(existsSync(LOCAL) ? JSON.parse(readFileSync(LOCAL, 'utf8')) : {}) } as Game;
+if (!game.workplace || !game.room) throw new Error('.open-autonomy/config.yaml (or game.local.json) names no `game:` Room: the store, the Room and the books this game lives on');
+const account = game.account ?? /^account:\s*(\S+)/m.exec(yaml)?.[1];
+const platform = (game.platform ?? /^platform:\s*(\S+)/m.exec(yaml)?.[1]).replace(/\/$/, '');
 const key = (name: string, needed = true): string => {
   const file = join(KEYS, name);
   if (existsSync(file)) return readFileSync(file, 'utf8').trim();
