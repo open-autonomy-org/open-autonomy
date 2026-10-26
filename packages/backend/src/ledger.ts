@@ -21,6 +21,8 @@ import type { KeyClaims, UsageEvent } from './types.js';
 const MAX_FLOWS = 200;
 const FEED_LIMIT = 24;
 const MAX_KEY_SLOTS_PER_ACCOUNT = 3;
+// A card's keys: one for its agent, and one more so a replacement can be minted before the first is let go.
+const MAX_KEYS_PER_ITEM = 2;
 const MAX_TURNS = 400;
 const MAX_TURNS_PER_EVENT = 100;
 const MAX_TURN_TEXT = 2000;
@@ -644,13 +646,14 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private keySlots(account: string): number {
     const active = this.activeKeys(account);
     const ids = new Set(active.map((k) => k.kid));
-    return active.filter((k) => !k.replaced_by || !ids.has(k.replaced_by)).length;
+    // A card's key (bound to one roadmap item) holds no account slot: it is limited per item in keyRegister instead.
+    return active.filter((k) => !k.item && (!k.replaced_by || !ids.has(k.replaced_by))).length;
   }
 
   private async keyRegister(claims: KeyClaims): Promise<Record<string, unknown>> {
     if (!claims?.kid || !claims.account) return { ok: false, error: 'invalid_key' };
     if (this.acct(claims.account)?.moderation === 'banned') return { ok: false, error: 'account_banned' };
-    if (this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
+    if (claims.item ? this.activeKeys(claims.account).filter((k) => k.item === claims.item).length >= MAX_KEYS_PER_ITEM : this.keySlots(claims.account) >= MAX_KEY_SLOTS_PER_ACCOUNT) return { ok: false, error: 'key_limit_reached' };
     this.state.keys[claims.kid] = { kid: claims.kid, account: claims.account, models: claims.models, created_at: claims.iat, exp: claims.exp, ...(claims.item ? { item: claims.item } : {}) };
     // The account exists from its first key, so its page and funding gate work before any money arrives.
     this.ensureAcct(claims.account);
