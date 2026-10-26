@@ -65,7 +65,7 @@ const messages = async (conversation: string): Promise<any[]> => { const r = awa
 const textOf = (m: any): string => String(m.body ?? m.text ?? m.content ?? '');
 const idOf = (m: any): string => String(m.messageId ?? m.id);
 const roadmap = async () => (await call(platform, `/v1/accounts/${encodeURIComponent(account)}/roadmap`, { ok: [404] }))?.revision?.roadmap ?? { schema: 'open-autonomy.timeline.v1', items: [] };
-const usd = (cents: number) => `$${(Number(cents) / 100).toFixed(2)}`;
+const usd = (cents: number) => `$${(Number(cents) / 100).toFixed(Number(cents) > 0 && Number(cents) < 100 && !Number.isInteger(Number(cents)) ? 4 : 2)}`;
 const event = (type: string, subject: string, data: Record<string, unknown>, item: string) =>
   books('/v1/agent/events', `card-${item}.key`, { method: 'POST', body: { specversion: '1.0', id: crypto.randomUUID(), source: `game/${account}`, type, subject, time: new Date().toISOString(), data } });
 const session = (item: string) => state().sessions?.[item] as string | undefined;
