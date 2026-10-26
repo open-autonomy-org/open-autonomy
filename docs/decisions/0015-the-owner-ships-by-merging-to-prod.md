@@ -27,6 +27,9 @@ is the owner, and only that team bypasses it; stale approvals are dismissed when
 explicit publication authorization. The `production` environment admits `publish` alone and asks for no second
 approval.
 
+(Amended by [ADR 0033](0033-npm-releases-apart-from-the-site.md): npm packages are released from reviewed `main` at
+the commit the manager permitted, never through `publish`; the site and docs still ship only from `publish`.)
+
 **Publication runs only from `publish`.** Only a push to `publish` deploys the platform (tagging the commit
 `deploy-v<date>.<n>`) and publishes the docs, and every package version not yet on npm is published only from a
 checkout of `publish` (`scripts/npm-publish-missing.sh`, recording a new kit version as a `release-v<version>` tag and

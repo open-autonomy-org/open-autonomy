@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# The release door: publish each package version npm lacks (@open-autonomy/sdk, @open-autonomy/backend,
-# create-open-autonomy, @open-autonomy/cli, in that order: the kit and the CLI depend on the SDK), from a checkout of
-# the `publish` branch, as supercode's scripts/npm-publish-missing.sh does. An npm package is published only with the
-# keys sweep over its exact tarball ("for the npms, we can carve out an exception to allow public release IF we have
-# the keys sweep"). In order, before anything is uploaded:
+# The npm release door: publish each package version npm lacks (@open-autonomy/sdk, @open-autonomy/backend,
+# create-open-autonomy, @open-autonomy/cli, in that order: the kit and the CLI depend on the SDK). npm publication is its
+# own act, independent of the site: it never touches `publish`, whose push deploys open-autonomy.org (deploy.yml). It is
+# cut from reviewed `main` at the one commit the manager permitted, the npm carve-out the owner allowed ("for the npms,
+# we can carve out an exception to allow public release IF we have the keys sweep"; "publishing npm is different since
+# there is a reason"), as supercode's packages ship. An npm package is published only with the keys sweep over its exact
+# tarball. In order, before anything is uploaded:
 #   1. the release scan (.github/release-scan.mjs, company decision 0038) of the lockfiles the kit ships, against the
 #      last `release-v*` tag;
 #   2. each version npm lacks packed once, from the files git tracks at this commit, its workspace dependencies pinned
@@ -15,8 +17,9 @@
 # integrity for it is read back against the file's, and a new kit version is recorded as a `release-v<version>` tag and
 # GitHub release. npm's own login (`npm whoami`) is the publisher.
 #
-#   scripts/npm-publish-missing.sh           publish (on `publish`, at origin/publish, VOLTER_PUBLICATION_AUTHORIZED=1)
-#   scripts/npm-publish-missing.sh --check   list the versions npm lacks; publishes nothing
+#   VOLTER_NPM_RELEASE_COMMIT=<sha> scripts/npm-publish-missing.sh   publish, from a clean checkout of exactly that commit,
+#                                                                    which origin/main contains (the permitted head)
+#   scripts/npm-publish-missing.sh --check                            list the versions npm lacks; publishes nothing
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PACKAGES="packages/sdk packages/backend packages/kit-hermes packages/cli"
@@ -33,13 +36,15 @@ if [ "${1:-}" = "--check" ]; then
   exit 0
 fi
 
-# Publication is its own act, cut from the publish branch the owner merged, never from main or a tree with edits.
-[ "$(git symbolic-ref --quiet --short HEAD)" = publish ] || { echo "Publication requires a checkout of the publish branch" >&2; exit 2; }
-[ "${VOLTER_PUBLICATION_AUTHORIZED:-}" = 1 ] || { echo "Explicit publication authorization is required (VOLTER_PUBLICATION_AUTHORIZED=1)" >&2; exit 2; }
-[ -z "$(git status --porcelain)" ] || { echo "The publish checkout has uncommitted changes; nothing is published" >&2; exit 2; }
-git fetch --quiet --tags origin publish </dev/null
-[ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" ] || { echo "HEAD is not origin/publish; nothing is published" >&2; exit 2; }
-head=$(git rev-parse HEAD)
+# Publication is its own act: the permitted commit, named in full, reviewed onto main, checked out clean. It never
+# reads or moves `publish`, so an npm release deploys nothing.
+permitted="${VOLTER_NPM_RELEASE_COMMIT:-}"
+[[ "$permitted" =~ ^[0-9a-f]{40}$ ]] || { echo "Name the permitted commit in full (VOLTER_NPM_RELEASE_COMMIT=<40-hex sha>); nothing is published" >&2; exit 2; }
+[ -z "$(git status --porcelain)" ] || { echo "The checkout has uncommitted changes; nothing is published" >&2; exit 2; }
+[ "$(git rev-parse HEAD)" = "$permitted" ] || { echo "HEAD is not the permitted commit $permitted; nothing is published" >&2; exit 2; }
+git fetch --quiet --tags origin main </dev/null
+git merge-base --is-ancestor "$permitted" FETCH_HEAD || { echo "The permitted commit is not on origin/main (only reviewed main is released); nothing is published" >&2; exit 2; }
+head=$permitted
 
 # 1. The release scan, before anything installs.
 since=$(git describe --tags --abbrev=0 --match 'release-v*' HEAD 2>/dev/null) || { echo "No release-v* tag to scan the lockfiles against; nothing is published" >&2; exit 1; }

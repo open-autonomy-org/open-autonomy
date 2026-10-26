@@ -98,8 +98,9 @@ platform needs the full `Dockerfile` image.
 ## From npm
 
 Four packages publish from this repository: `@open-autonomy/sdk`, `@open-autonomy/backend`, `create-open-autonomy` and `@open-autonomy/cli`, each at its own version.
-`scripts/npm-publish-missing.sh` publishes each version npm lacks, run from a checkout of the `publish` branch at
-`origin/publish` with `VOLTER_PUBLICATION_AUTHORIZED=1`, as the machine's own npm login (`--check` lists what it would
+`scripts/npm-publish-missing.sh` publishes each version npm lacks, run from a clean checkout of the commit the manager
+permitted (on `origin/main`, named in full as `VOLTER_NPM_RELEASE_COMMIT`), as the machine's own npm login; it never
+pushes `publish`, so it deploys nothing (ADR 0033) (`--check` lists what it would
 publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
 from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
 (`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys (`scripts/npm-keys-sweep.mjs`: gitleaks,
