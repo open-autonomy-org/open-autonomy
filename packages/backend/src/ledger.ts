@@ -201,7 +201,8 @@ export interface Sale {
 
 export interface Flow {
   // `allocate`: the project's own money set aside for one roadmap item (its card's envelope); the total is unchanged.
-  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate';
+  // `refund`: a sale reversed by its seller, the sale's net taken back out of the project's money.
+  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate' | 'refund';
   id?: string;
   to: string;
   from?: string;
@@ -217,6 +218,8 @@ export interface Flow {
   envelope_id?: string;
   item?: string;
   sale?: Sale;
+  // On a refund: what of the sale's net the project's free money could not cover (already spent or set aside).
+  shortfall_usd_cents?: number;
   ts: string;
   // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
   private?: true;
@@ -457,6 +460,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
         if (body.sale !== undefined && !saleOf(body.sale)) return json({ ok: false, error: 'invalid_sale', message: 'A sale names its seller, order and product, and its gross and fee in whole cents, the fee below the gross.' });
         return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)));
       }
+      case 'refund': return json(await this.refund(s('account'), s('seller'), s('order'), typeof body.reason === 'string' ? body.reason : undefined));
       case 'allocate': return json(await this.allocate(s('account'), Number(body.amount_usd_cents), s('item'), body.key ? s('key') : undefined, typeof body.by === 'string' ? body.by : undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
@@ -579,6 +583,31 @@ export class LimitLedger implements DurableObject, LedgerCore {
     this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
     await this.save();
     return { ok: true, account, balance_usd_cents: this.balanceOf(account) };
+  }
+
+  // A sale reversed (its seller refunded the buyer): the sale's net leaves the project's books, once per order. It comes out
+  // of the sale's own envelope first, then the project's other free money; what is already spent or set aside for a card
+  // is not taken back, and the refund records that part as its shortfall.
+  async refund(account: string, seller: string, order: string, reason?: string): Promise<Record<string, unknown>> {
+    const saleId = `sale:${seller}:${order}`, key = `refund:${seller}:${order}`;
+    const sold = this.state.flows.find((f) => f.kind === 'mint' && f.id === saleId && f.to === account && f.sale);
+    if (!sold?.sale) return { ok: false, error: 'no_sale', message: 'No sale by this seller under this order is on these books.' };
+    if (this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
+    const a = this.ensureAcct(account);
+    const own = a.envelopes.filter((e) => e.id === sold.envelope_id);
+    const free = a.envelopes.filter((e) => e.id !== sold.envelope_id && e.purpose.type === 'unrestricted');
+    let debit = sold.amount_usd_cents;
+    for (const envelope of [...own, ...free]) {
+      const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id)));
+      envelope.balance_usd_cents -= take; debit -= take;
+      if (!debit) break;
+    }
+    const taken = sold.amount_usd_cents - debit;
+    this.applyKey(key);
+    a.granted_in_usd_cents -= taken;
+    this.recordFlow({ kind: 'refund', id: key, from: account, to: `@${seller}`, amount_usd_cents: taken, sale: sold.sale, ...(debit ? { shortfall_usd_cents: debit } : {}), ...(reason ? { note: reason.slice(0, 300) } : {}) });
+    await this.save();
+    return { ok: true, account, refunded_usd_cents: taken, shortfall_usd_cents: debit, balance_usd_cents: this.balanceOf(account) };
   }
 
   // The owner sets part of the project's own money aside for one roadmap item: unrestricted envelopes give it up to a
@@ -1980,6 +2009,7 @@ export class LedgerClient {
   docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string, id?: string) { return this.call<{ ok: boolean; error?: string; idempotent?: boolean; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at, id }); }
   item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
+  refund(account: string, seller: string, order: string, reason?: string) { return this.call<{ ok: boolean; idempotent?: boolean; error?: string; message?: string; refunded_usd_cents?: number; shortfall_usd_cents?: number; balance_usd_cents?: number }>('refund', { account, seller, order, reason }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
   roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
   roadmapRevisions(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[]; next?: string }>('roadmap_revisions', { account, limit, before }); }
