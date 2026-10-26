@@ -93,7 +93,7 @@ async function call(base: string, path: string, init: { method?: string; body?: 
 }
 const room = (path: string, init: Parameters<typeof call>[2] = {}) => call(game.workplace, path, { ...init, headers: { authorization: `Bearer ${key('workplace.token')}`, origin: game.workplace, 'x-rh2-organization': game.organization, ...init.headers } });
 const books = (path: string, keyName: string, init: Parameters<typeof call>[2] = {}) => call(platform, path, { ...init, headers: { authorization: `Bearer ${key(keyName)}`, ...init.headers } });
-const post = (conversation: string, body: string, correlationId = crypto.randomUUID()) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId } });
+const post = (conversation: string, body: string, correlationId: string = crypto.randomUUID()) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId } });
 const messages = async (conversation: string): Promise<any[]> => { const r = await room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages?limit=100`); return r.messages ?? r.items ?? (Array.isArray(r) ? r : []); };
 const textOf = (m: any): string => String(m.body ?? m.text ?? m.content ?? '');
 const idOf = (m: any): string => String(m.messageId ?? m.id);
