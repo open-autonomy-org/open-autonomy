@@ -819,7 +819,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     }
     const available = amount - Math.max(0, remainder);
     if (remainder > 0) {
-      if (bound) return { ok: false, error: 'insufficient_funds', message: `Card ${bound}'s budget has ${formatCents(available)} left and this ${rail} spend needs ${formatCents(amount)}. This key spends only that card's budget; the owner sets more aside for it to go on.`, account, item: bound, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: available, needed_usd_cents: amount };
+      if (bound) return { ok: false, error: 'insufficient_funds', message: `Card ${bound}'s budget has ${formatFine(available)} left and this ${rail} spend needs ${formatFine(amount)}. This key spends only that card's budget; the owner sets more aside for it to go on.`, account, item: bound, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: available, needed_usd_cents: amount };
       const remaining = (this.acct(account)?.envelopes ?? []).filter((e) => e.balance_usd_cents - this.reservedFrom(account, e.id) > 0 && !qualifies(e.purpose, context));
       const earmarked = remaining.reduce((sum, e) => sum + e.balance_usd_cents - this.reservedFrom(account, e.id), 0);
       const detail = remaining.map((e) => `${formatCents(e.balance_usd_cents - this.reservedFrom(account, e.id))} for ${purposeWords(e.purpose)}`).join(', ');
@@ -1776,6 +1776,8 @@ function qualifies(purpose: EnvelopePurpose, spend: { rail: Rail; model?: string
 }
 function purposeWords(purpose: EnvelopePurpose): string { return purpose.type === 'item' ? `roadmap item ${purpose.item}` : purpose.type === 'models' ? `model calls on ${purpose.models.join(', ')}` : purpose.type === 'model' ? 'model calls only' : purpose.type === 'any' ? 'any spend' : 'whatever the project needs'; }
 function formatCents(cents: number): string { return `$${(cents / 100).toFixed(2)}`; }
+// (to a hundredth of a cent where that tells two figures apart: a card's last cents against a call's reservation)
+function formatFine(cents: number): string { return Math.round(cents) === cents ? formatCents(cents) : `$${(cents / 100).toFixed(4)}`; }
 // Daily spend (idle days as 0), oldest to today, over the trailing 14 days: the evidence for the runway estimate.
 function dailySpendSeries(days: Record<string, Tally>): number[] {
   const daily: Record<string, number> = Object.fromEntries(Object.entries(days).map(([d, t]) => [d, t.u]));
