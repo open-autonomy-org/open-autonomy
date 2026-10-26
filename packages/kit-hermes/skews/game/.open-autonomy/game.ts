@@ -17,14 +17,13 @@
 //   bun .open-autonomy/game.ts questions                    lines in `build` the agent has not answered
 //   bun .open-autonomy/game.ts answer <messageId> <text>    answer a line in `build`, quoting it
 //   bun .open-autonomy/game.ts ask <id> <prompt>            one model call paid from the card's budget, on its key
-//   bun .open-autonomy/game.ts check <id> [--goal <goal>]   the game's bot plays its goal on this checkout's build
+//   bun .open-autonomy/game.ts check <id> [--goal <goal>] [--url <dev run>]   the game's bot plays its goal in a dev run
 //   bun .open-autonomy/game.ts release <id> <version> --members | --public    the build to members first, then everyone
 //   bun .open-autonomy/game.ts ship <id>                    (owner) the card is done: shipped on the roadmap
 //   bun .open-autonomy/game.ts end <id> [done|failed]       the card's session ends
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { extname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
 
 const HERE = import.meta.dir, ROOT = resolve(HERE, '..'), KEYS = join(HERE, 'keys'), STATE = join(HERE, 'game-state.json');
 interface Game {
@@ -192,40 +191,38 @@ switch (command) {
     break;
   }
   case 'check': {
-    // The release candidate's automated play: this checkout built with the game's bot kept, served on loopback, played
-    // in game-std's headless Chrome with `?bot=<goal>`, read back from the page's console. Recorded on the release later.
+    // The release candidate's automated play: this checkout in a dev run (its bot kept, its signaling on this machine),
+    // played in game-std's headless Chrome with `?bot=<goal>`, read back from the page's console. Recorded on the release.
     const [id] = args, goal = flag('--goal') ?? game.goal ?? 'do the quest', minutes = Number(flag('--minutes') ?? 6);
     if (!game.std) throw new Error('config.yaml `game.std` names the game-std checkout the game builds against');
     const commit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
-    const out = join(ROOT, 'build', 'check', 'web');
-    rmSync(out, { recursive: true, force: true });
-    const built = spawnSync('node', [join(game.std, 'packages/web/run/dev.ts'), ROOT, '--build', '--dev-console', '--out-dir', out], { cwd: game.std, stdio: 'inherit' });
-    if (built.status !== 0) throw new Error('the bot build failed');
-    const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png', '.glb': 'model/gltf-binary', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
-    const server = createServer((req, res) => {
-      const path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
-      const file = join(out, path.endsWith('/') ? `${path}index.html` : path);
-      if (!file.startsWith(out) || !existsSync(file)) { res.writeHead(404).end(); return; }
-      res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' }).end(readFileSync(file));
-    }).listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
-    const port = (server.address() as { port: number }).port;
+    // `--url`: the dev run already serving this checkout (the one shown in the Room); else one of its own, stopped after.
+    const given = flag('--url');
+    const dev = given ? undefined : spawn('node', [join(game.std, 'packages/web/run/dev.ts'), ROOT], { cwd: game.std, stdio: ['ignore', 'pipe', 'pipe'] });
+    let printed = '';
+    const address = given ?? await new Promise<string>((resolveUrl, reject) => {
+      const timer = setTimeout(() => reject(new Error(`the dev run printed no address in 3 minutes:\n${printed.slice(-800)}`)), 180_000);
+      const read = (chunk: Buffer) => { printed += chunk; const m = /host at (http:\/\/\S+)/.exec(printed); if (m) { clearTimeout(timer); resolveUrl(m[1]); } };
+      dev!.stdout.on('data', read); dev!.stderr.on('data', read);
+      dev!.on('exit', (code) => { clearTimeout(timer); reject(new Error(`the dev run ended (${code}):\n${printed.slice(-800)}`)); });
+    });
+    const url = new URL(address); url.searchParams.set('name', 'Bot'); url.searchParams.set('bot', goal);
     const { HeadlessPage } = await import(join(game.std, 'packages/tools/headless.ts'));
-    const page = await HeadlessPage.open(`http://127.0.0.1:${port}/?bot=${encodeURIComponent(goal)}`, join(ROOT, 'build', 'check', 'chrome'));
+    const page = await HeadlessPage.open(url.href, join(ROOT, 'build', 'check', 'chrome'));
     const until = Date.now() + minutes * 60_000;
-    let result: 'passed' | 'failed' = 'failed', detail = `no “Quest done” within ${minutes} minutes`;
-    const started = Date.now();
+    // The game's bot says each goal's end on the page's console: `[bot] ✓ <goal> (<time>)` or `[bot] ✗ <goal> (<time>): why`.
+    let result: 'passed' | 'failed' = 'failed', detail = `the bot had not finished “${goal}” after ${minutes} minutes`;
     while (Date.now() < until) {
-      if (page.console.some((line: string) => /Quest done/.test(line))) { result = 'passed'; detail = `Quest done in ${Math.round((Date.now() - started) / 1000)} s`; break; }
-      const failed = page.console.find((line: string) => /bot: (gave up|failed)|Uncaught/.test(line));
-      if (failed) { detail = failed.slice(0, 300); break; }
+      const done = page.console.find((line: string) => line.includes(`[bot] ✓ ${goal}`) || line.includes(`[bot] ✗ ${goal}`));
+      if (done) { result = done.includes('✓') ? 'passed' : 'failed'; detail = done.slice(done.indexOf('[bot]') + 6).trim().slice(0, 300); break; }
       await new Promise((r) => setTimeout(r, 1000));
     }
-    page.close(); server.close();
+    page.close(); dev?.kill('SIGTERM');
     remember({ checks: { ...(state().checks ?? {}), [id]: { goal, result, detail, commit, at: new Date().toISOString() } } });
     console.log(`The bot played “${goal}” on ${commit.slice(0, 7)}: ${result} (${detail}).`);
     if (session(id)) await event('org.open-autonomy.item.update', id, { text: `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} (${detail}).`, session: session(id) }, id).catch(() => {});
-    break;
+    await post(game.conversations.build, `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} · ${detail}.`).catch(() => {});
+    process.exit(0);
   }
   case 'release': {
     // Members first: the build uploaded to the store and set on the Members beta channel. Then everyone: the same build
