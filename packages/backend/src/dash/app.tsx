@@ -14,7 +14,7 @@ import { sees, type Role } from '../page/model.js';
 import { standing as claimsOf, today as dayOf, type StatementTone } from '@open-autonomy/sdk/statements';
 import type { TeamMember } from '@open-autonomy/sdk/team';
 import { at, nameOf, ownerOf, standingOf, standingWord, type Standing } from '../page/parts.js';
-import { boardOf, entriesOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
+import { boardOf, entriesOf, harnessNamed, harnessOf, jobsOf, lastSeq, paused, rowOf, runsOf, taskOf, uiState, PAGES, type DashData, type DashPage } from './model.js';
 
 const href = (a: string, p: DashPage, ...rest: string[]) => (p === 'overview' && !rest.length ? at(a, 'dashboard') : at(a, 'dashboard', p, ...rest));
 const go = (url: string) => { if (typeof location !== 'undefined') location.assign(url); };
@@ -105,7 +105,7 @@ export function Shell({ d, title, children }: { d: DashData; title: string; chil
     <div class="oa-dash">
       <aside class="oa-rail">
         <a class="oa-brand" href="/" dangerouslySetInnerHTML={{ __html: `<img src="${d.logo.replace(/"/g, '&quot;')}" alt=""><span>${d.brand}</span>` }} />
-        <div class="oa-proj"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
+        <div class="oa-proj"><HarnessLogo id={harnessOf(d.v)} activity={standing === 'live' ? 'working' : standing === 'running' ? 'idle' : 'finished'} size={26} /><div><div class="n">{nameOf(a)}</div><div class="o">{ownerOf(a)}</div></div></div>
         <nav>{pages.map((p, i) => <a class={p.id === d.page ? 'on' : ''} aria-current={p.id === d.page ? 'page' : undefined} href={href(a, p.id)}><span class="t">{p.label}</span>{counts[p.id] !== undefined ? <span class="c">{counts[p.id]}</span> : null}<kbd>{i + 1}</kbd></a>)}</nav>
         {d.statements?.length ? <div class="oa-stated"><h3>Stated by the owner</h3><nav>{d.statements.map((st) => { const n = claimsOf(st, dayOf(d.now)).standing.length;
           return <a class={d.page === 'statements' && d.statement === st.id ? 'on' : ''} aria-current={d.page === 'statements' && d.statement === st.id ? 'page' : undefined} href={at(a, 'dashboard', 'statements', st.id)}><span class="t">{st.title}</span>{n ? <span class="c">{n}</span> : null}</a>; })}</nav></div> : null}
@@ -167,6 +167,9 @@ function Spend({ d }: { d: DashData }) {
   );
 }
 
+// A project that names no harness: its agent listens, by no harness's name.
+const UNNAMED: Partial<MessengerLabels> = { listening: 'The agent is listening. Say something.' };
+
 // The conversation of one session, live when it is: the kit's transcript over the stream's turns.
 function Transcript({ d, s, state, adapter }: { d: DashData; s: { key: string; turns: Array<Record<string, unknown>>; status?: string }; state: SupercodeUiState; adapter: UiAdapter }) {
   const a = d.v.account;
@@ -175,7 +178,7 @@ function Transcript({ d, s, state, adapter }: { d: DashData; s: { key: string; t
   const [arrived, setArrived] = useState<Array<Record<string, unknown>>>([]);
   useLive(a, s.key, lastSeq(s.turns as never), live, (t) => setArrived((x) => [...x, t]), later);
   const s2 = useMemo(() => (arrived.length ? { ...state, transcript: entriesOf([...s.turns, ...arrived] as never, live) } : state), [state, arrived, s.turns, live]);
-  return <Conversation state={s2} adapter={adapter} slots={SLOTS} />;
+  return <Conversation state={s2} adapter={adapter} slots={SLOTS} labels={harnessNamed(d.v) ? undefined : UNNAMED} />;
 }
 const SLOTS: MessengerSlots = { header: () => null, footer: () => null };
 
@@ -344,7 +347,7 @@ export function Agent({ d }: { d: DashData }) {
     <Shell d={d} title="Agent">
       <div class="oa-grid">
         <Panel title="The agent" span={4}>
-          <div class="oa-ident"><HarnessLogo id={d.v.profile.agent_harness ?? 'hermes'} size={44} /><div><b>{d.v.profile.agent_harness ?? 'its agent'}</b><span>{d.v.profile.agent_model ?? 'model unknown'}</span></div></div>
+          <div class="oa-ident"><HarnessLogo id={harnessOf(d.v)} size={44} /><div><b>{d.v.profile.agent_harness || 'its agent'}</b><span>{d.v.profile.agent_model ?? 'model unknown'}</span></div></div>
           <ul class="oa-rows">
             <li><span class="t">standing</span><span class="n">{paused(d.v) ? `paused by ${c?.desired?.from?.slice(1) ?? 'the owner'}` : 'running'}</span></li>
             <li><span class="t">last said</span><span class="n">{c?.observed ? `${c.observed.state} · ${fmtAgo(c.observed.at, d.now)}` : 'nothing yet'}</span></li>

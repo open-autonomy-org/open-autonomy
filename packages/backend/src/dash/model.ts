@@ -51,7 +51,10 @@ export const PAGES: Array<{ id: DashPage; label: string; panel: keyof Visibility
 ];
 export interface Schedule { name?: string; schedule?: string }
 export const scheduleOf = (v: ProjectView): Schedule[] => { try { const j = JSON.parse(v.profile.schedule_json ?? '{}') as { jobs?: Schedule[] }; return Array.isArray(j.jobs) ? j.jobs : []; } catch { return []; } };
-export const harnessOf = (v: ProjectView): string => v.profile.agent_harness ?? 'hermes';
+// The harness the project names; a project that names none (a runtime-neutral skew's) is worked by "the agent", never a
+// harness it does not run.
+export const harnessOf = (v: ProjectView): string => v.profile.agent_harness || 'agent';
+export const harnessNamed = (v: ProjectView): boolean => !!v.profile.agent_harness;
 export const itemTitle = (roadmap: Roadmap, id: string | undefined): string | undefined => (id ? roadmap.items.find((i) => i.id === id)?.title : undefined);
 // A report's first line as plain words: a preview is a line of text, so its markdown marks come off.
 const plain = (s: string): string => s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|\*|`)(?=\S)([^*`]*?\S)\1/g, '$2').replace(/^#+\s*/, '');
