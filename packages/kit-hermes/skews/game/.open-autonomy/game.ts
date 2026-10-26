@@ -149,7 +149,7 @@ switch (command) {
     if (!id || !title || !Number.isInteger(cents) || cents < 1) throw new Error('card <id> <title> <budget in cents> [--task <taskId>] [--model <model>]');
     if (game.board) native('create', `[${game.board.project}] ${title}`, '--readable-id', id,
       '--idempotency-key', `game:${account}:${id}`, '--assignee', game.board.profile,
-      '--initial-status', 'ready', '--no-start', '--tag', `project:${game.board.project}`,
+      '--no-start', '--tag', `project:${game.board.project}`,
       '--body', `Owner card: ${title}\nBudget: ${usd(cents)}. The card's envelope and metered spend are on the game's Open Autonomy books.`);
     const road = await roadmap();
     if (!road.items.some((item: any) => item.id === id)) road.items.push({ id, title, tense: 'future', status: 'planned', proposed_at: new Date().toISOString(), by: 'owner', acceptance: [] });
