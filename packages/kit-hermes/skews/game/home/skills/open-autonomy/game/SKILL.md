@@ -15,7 +15,9 @@ means and how to build it are your judgment and the owners'.
   player's line, and the player is told it is with the owners. You never promise it will be built.
 
 ## 2. Only the owners' cards are built
-- An owner turns a Task into a card: `bun .open-autonomy/game.ts card <id> <title> <budget in cents> --task <taskId>`.
+- An owner turns a Task into a card: `bun .open-autonomy/game.ts card <id> <title> <budget in cents> --task <taskId> --owner <dir>`
+  (the owner's credentials live in that directory, never in the checkout; you hold only your Workplace token and the
+  card keys the owners give you).
   That puts it on the roadmap (the game page's What's next), sets its budget aside from the game's money and mints
   the card's key. You never make a card yourself, and you build nothing that is not a card.
 - `bun .open-autonomy/game.ts cards` shows each card's budget, spend and what is left.
@@ -36,7 +38,8 @@ means and how to build it are your judgment and the owners'.
 ## 4. Release
 - On the release candidate's commit: `bun .open-autonomy/game.ts check <id>` (the game's bot plays its goal, by default
   `do the quest`, in a headless browser). A failed check is fixed before a release.
-- Members first: `bun .open-autonomy/game.ts release <id> <version> --members` (the store's Members channel; the bot's
-  result is recorded beside the build). After the members' day: `--public`.
-- The owner ships the card: `bun .open-autonomy/game.ts ship <id>`; you end your session with
+- Releases are the owners': when the check passes, ask in `build` for the release. The owner runs
+  `bun .open-autonomy/game.ts release <id> <version> --members --owner <dir>` (the store's Members channel; the bot's
+  result recorded beside the build), and after the members' day `--public`.
+- The owner ships the card: `bun .open-autonomy/game.ts ship <id> --owner <dir>`; you end your session with
   `bun .open-autonomy/game.ts end <id> done` and add the change to `CHANGELOG.md`.

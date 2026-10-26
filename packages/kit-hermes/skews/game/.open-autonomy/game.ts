@@ -9,7 +9,7 @@
 //   bun .open-autonomy/game.ts asks                         new lines in `feedback` since the last look
 //   bun .open-autonomy/game.ts queue <messageId> <title>    file the ask as a Task in each owner's Inbox
 //   bun .open-autonomy/game.ts tasks                        the owners' queue: open Tasks in the Room
-//   bun .open-autonomy/game.ts card <id> <title> <cents> [--task <taskId>] [--model <m>]   (owner) roadmap + budget + key
+//   bun .open-autonomy/game.ts card <id> <title> <cents> --owner <dir> [--task <taskId>] [--model <m>]   (owner) roadmap + budget + key
 //   bun .open-autonomy/game.ts cards                        the roadmap, each card's budget, spend and what is left
 //   bun .open-autonomy/game.ts start <id>                   the card's work begins: its session on the books, a line in `build`
 //   bun .open-autonomy/game.ts say <id> <text>              progress: an update on the card and a line in `build`
@@ -18,8 +18,8 @@
 //   bun .open-autonomy/game.ts answer <messageId> <text>    answer a line in `build`, quoting it
 //   bun .open-autonomy/game.ts ask <id> <prompt>            one model call paid from the card's budget, on its key
 //   bun .open-autonomy/game.ts check <id> [--goal <goal>] [--url <dev run>]   the game's bot plays its goal in a dev run
-//   bun .open-autonomy/game.ts release <id> <version> --members | --public    the build to members first, then everyone
-//   bun .open-autonomy/game.ts ship <id>                    (owner) the card is done: shipped on the roadmap
+//   bun .open-autonomy/game.ts release <id> <version> --members | --public --owner <dir>   (owner) members first, then everyone
+//   bun .open-autonomy/game.ts ship <id> --owner <dir>      (owner) the card is done: shipped on the roadmap
 //   bun .open-autonomy/game.ts end <id> [done|failed]       the card's session ends
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -41,10 +41,17 @@ const game = { ...JSON.parse(/^game:\s*(\{.*\})\s*$/m.exec(yaml)?.[1] ?? 'null')
 if (!game.workplace || !game.room) throw new Error('.open-autonomy/config.yaml (or game.local.json) names no `game:` Room: the store, the Room and the books this game lives on');
 const account = game.account ?? /^account:\s*(\S+)/m.exec(yaml)?.[1];
 const platform = (game.platform ?? /^platform:\s*(\S+)/m.exec(yaml)?.[1]).replace(/\/$/, '');
+// The owner's credentials (the steer key, the store's publisher session) are never in this checkout: an owner's act
+// (card, ship, release) names the directory that holds them, `--owner <dir>`, kept wherever the owner keeps it. The
+// agent's own are here: its Workplace token and the keys of the cards the owners made.
+const OWNER_ONLY = new Set(['steer.key', 'store.session']);
+const ownerAt = (() => { const i = process.argv.indexOf('--owner'); if (i < 0) return undefined; const dir = process.argv[i + 1]; process.argv.splice(i, 2); return dir; })();
 const key = (name: string, needed = true): string => {
-  const file = join(KEYS, name);
+  if (OWNER_ONLY.has(name) && !ownerAt) throw new Error(`${name === 'steer.key' ? "the owner's steer key" : "the owner's store session"} is the owner's: run this as the owner, with --owner <the directory holding it>`);
+  const file = join(OWNER_ONLY.has(name) ? resolve(ownerAt!) : KEYS, name);
+  if (OWNER_ONLY.has(name) && resolve(ownerAt!).startsWith(ROOT)) throw new Error("the owner's credentials are kept outside this checkout");
   if (existsSync(file)) return readFileSync(file, 'utf8').trim();
-  if (needed) throw new Error(`.open-autonomy/keys/${name} is missing (${name === 'steer.key' ? "the owner's steer key: an owner's act" : name.startsWith('card-') ? 'this card has no key yet: the owner makes the card with `card`' : name === 'workplace.token' ? "the agent's Workplace token" : "the owner's store session"})`);
+  if (needed) throw new Error(`${file} is missing (${name.startsWith('card-') ? 'this card has no key yet: the owner makes the card with `card`' : name === 'workplace.token' ? "the agent's Workplace token" : "the owner's credential"})`);
   return '';
 };
 const state = (): Record<string, any> => (existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : {});

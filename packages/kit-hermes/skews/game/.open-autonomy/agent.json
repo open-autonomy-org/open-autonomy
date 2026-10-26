@@ -1,5 +1,4 @@
 {
-  "$schema": "agent.schema.json",
   "profiles": {
     "default": {
       "schema_version": 1,

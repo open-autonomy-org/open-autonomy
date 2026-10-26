@@ -22,8 +22,9 @@ that card's budget. Any coding agent at the computer works the game (the owner: 
    the item. The registry holds the binding, and the ledger's reservation draws only that item's envelopes for it, so
    the key is refused, naming the card, once the budget is spent. It narrates only its card's updates and sessions.
    Card keys are limited per card (two), not by the account's three slots.
-4. **The `game` skew** of create-open-autonomy is runtime-neutral: on the IR kit's engine with no `hermes/` and no
-   harness named, it ships `AGENTS.md`, a `game` skill and `.open-autonomy/game.ts`, the doors an agent and the owners
+4. **The `game` skew** of create-open-autonomy is runtime-neutral: on the IR kit's engine it takes only the base's
+   licence and branding (no `hermes/`, no container, no Hermes setup or reporter) and names no harness; the owners'
+   credentials stay out of the agent's checkout (owner acts name `--owner <dir>`); it ships `AGENTS.md`, a `game` skill and `.open-autonomy/game.ts`, the doors an agent and the owners
    use (asks from the Room's `feedback` into owners' Inbox Tasks, cards with budgets and keys, progress and answers in
    `build`, metered calls on the card's key, the bot's check, members-first then public releases, shipping).
 5. `GET /v1/accounts/:account/flows` serves the books' money movements behind the books panel; an item's view carries

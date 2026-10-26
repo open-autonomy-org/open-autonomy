@@ -15,6 +15,8 @@
   (`node <game-std>/packages/web/run/dev.ts .`) and, for a release candidate, `bun .open-autonomy/game.ts check <id>`.
 - **Git.** Never push to main or rewrite history. Work on a branch named for the card, open a pull request, and wait for
   an owner's review before a release.
-- **Secrets.** Never read, print or commit anything under `.open-autonomy/keys/` or any `.env`. Your work in `build` and
+- **Secrets.** Never read, print or commit anything under `.open-autonomy/keys/` or any `.env`. The owners'
+  credentials (their steer key, the store's publisher session) are never in this checkout: cards, releases and
+  shipping are the owners' acts. Your work in `build` and
   on the books is public.
 - **Do not edit** `LICENSE`, `.open-autonomy/game.ts` or anything the kit owns unless a card asks for it.

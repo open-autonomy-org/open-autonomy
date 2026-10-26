@@ -36,6 +36,7 @@ export const kitOf = (skew: Skew): KitName => KIT_OF[skew] ?? 'hermes';
 // A child's copy of a parent's or base's file replaces it whole: change the copy whenever the original changes
 // (soc2 carries PRODUCTION.md and project-communications with the seams text added).
 const PARENT: Partial<Record<Skew, Skew>> = { soc2: 'self-build' };
+const BASE_KEEP: Partial<Record<Skew, RegExp>> = { game: /^(LICENSE|branding\/)/ };
 const lineage = (skew: Skew): Skew[] => [...(PARENT[skew] ? lineage(PARENT[skew]!) : []), skew];
 const BASE = resolve(import.meta.dir, '..', 'base');
 const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
@@ -104,6 +105,9 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   for (const dir of [BASE, ...lineage(skew).map(SKEW_DIR)]) for (const rel of walk(dir)) {
     // The IR kit's agent content is its skew's home/; the Hermes kit's hermes/ is not part of it.
     if (kit === 'ir' && dir === BASE && rel.startsWith('hermes/')) continue;
+    // A skew may take only part of the base (the runtime-neutral game skew lays down no container, Hermes setup or
+    // reporter: only the licence and the branding, beside its own files and the SDK).
+    if (dir === BASE && BASE_KEEP[skew] && !BASE_KEEP[skew]!.test(rel)) continue;
     const raw = readFileSync(join(dir, rel));
     const text = raw.toString('utf8');
     // The template ships its gitignore as `_gitignore`: a `.gitignore` never survives npm's pack rules.
