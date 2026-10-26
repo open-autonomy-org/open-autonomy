@@ -321,7 +321,7 @@ export interface CallRecord {
 // `source` what started it (the schedule job's name, a channel). It ends with an optional outcome: a run
 // has a verdict, a chat does not. Several can be live at once.
 export type SessionEvent =
-  | { kind: 'started'; key: string; session_kind?: string; title?: string; item_id?: string; source?: string; model_provider?: string; started_at?: string }
+  | { kind: 'started'; key: string; session_kind?: string; title?: string; item_id?: string; source?: string; harness?: string; model_provider?: string; started_at?: string }
   | { kind: 'turns'; key: string; turns: unknown[]; item_id?: string; seq?: number }
   | { kind: 'ended'; key: string; outcome?: 'done' | 'failed'; report?: string; commit_sha?: string; item_id?: string; ended_at?: string };
 export interface Turn {
@@ -342,6 +342,9 @@ export interface SessionRecord {
   title?: string;
   item_id?: string;
   source?: string;
+  // The session's own harness id (`claude-code`, `codex`, `hermes`, ...) as its reporter observed it; absent when the
+  // reporter did not say. Never the project's harness: one project's sessions can run on several.
+  harness?: string;
   // The non-secret provider id observed for this session. `open-autonomy` means the project's metered rail;
   // another value means the owner's provider account funded it.
   model_provider?: string;
@@ -975,7 +978,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       const pending = await this.ctx.storage.get<{ usd_cents: number; calls: number }>(pendingKey);
       session = {
         key: ev.key, account, kind: sessionKind(ev.session_kind), status: 'live',
-        title: clipText(ev.title, 200), item_id: itemId(ev.item_id), source: clipText(ev.source, 80), model_provider: clipText(ev.model_provider, 80),
+        title: clipText(ev.title, 200), item_id: itemId(ev.item_id), source: clipText(ev.source, 80), harness: clipText(ev.harness, 40), model_provider: clipText(ev.model_provider, 80),
         started_at: new Date(startedMs).toISOString(), turns: [], turn_count: 0, next_seq: 0,
         usd_cents: pending?.usd_cents ?? 0, calls: pending?.calls ?? 0, updated_at: new Date(now).toISOString(),
       };
