@@ -268,11 +268,14 @@ switch (command) {
       if (!build) throw new Error('the upload did not finish; its journal keeps its progress, run release again');
       remember({ releases: { ...releases, [version]: build } });
     }
-    if (!state().recorded?.[build]) {
+    // The bot's result goes on the store beside the build once it is public (the store lists results on released builds
+    // only), with the owner's reason when it failed.
+    const recordCheck = async () => {
+      if (state().recorded?.[build!]) return;
       const detail = despite ? `${check.detail} · released by the owner despite it: ${despite}` : check.detail;
       await store(`/developers/apps/${game.storeGame}/builds/${build}/checks`, { method: 'POST', body: { goal: check.goal, result: check.result, detail, commit: check.commit } });
-      remember({ recorded: { ...(state().recorded ?? {}), [build]: true } });
-    }
+      remember({ recorded: { ...(state().recorded ?? {}), [build!]: true } });
+    };
     if (members) {
       const listed = await store(`/developers/apps/${game.storeGame}/betas`);
       const channel = (listed.channels ?? listed.items ?? listed.betas ?? []).find((c: any) => c.name === 'Members');
@@ -286,6 +289,7 @@ switch (command) {
         build, currentBuild: app.submission.build, publisherGeneration: app.storePage.ownerGeneration, releaseRevision: app.submission.releaseRevision, executeAt: 0,
         notes: `${version}: ${(await roadmap()).items.find((x: any) => x.id === id)?.title ?? id}${check ? ` · the bot played “${check.goal}”: ${check.result}` : ''}` } });
       await post(game.conversations.build, `${version} is out for everyone.`);
+      await recordCheck();
       console.log(`${version} (${build}) is released to everyone.`);
     }
     break;
