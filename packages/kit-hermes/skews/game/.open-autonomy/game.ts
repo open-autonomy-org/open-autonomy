@@ -11,7 +11,7 @@
 //   bun .open-autonomy/game.ts tasks                        the owners' queue: open Tasks in the Room
 //   bun .open-autonomy/game.ts card <id> <title> <cents> --owner <dir> [--task <taskId>] [--model <m>]   (owner) roadmap + budget + key
 //   bun .open-autonomy/game.ts cards                        the roadmap, each card's budget, spend and what is left
-//   bun .open-autonomy/game.ts start <id>                   the card's work begins: its session on the books, a line in `build`
+//   bun .open-autonomy/game.ts start <id> [--session <published session>]  the card's work begins: its session on the books, a line in `build`
 //   bun .open-autonomy/game.ts say <id> <text>              progress: an update on the card and a line in `build`
 //   bun .open-autonomy/game.ts show <key> <url> <name>      a page every member of the Room sees (the game running, the session)
 //   bun .open-autonomy/game.ts questions                    lines in `build` the agent has not answered
@@ -149,7 +149,7 @@ switch (command) {
     if (!id || !title || !Number.isInteger(cents) || cents < 1) throw new Error('card <id> <title> <budget in cents> [--task <taskId>] [--model <model>]');
     if (game.board) native('create', `[${game.board.project}] ${title}`, '--readable-id', id,
       '--idempotency-key', `game:${account}:${id}`, '--assignee', game.board.profile,
-      '--initial-status', 'running', '--tag', `project:${game.board.project}`,
+      '--initial-status', 'ready', '--no-start', '--tag', `project:${game.board.project}`,
       '--body', `Owner card: ${title}\nBudget: ${usd(cents)}. The card's envelope and metered spend are on the game's Open Autonomy books.`);
     const road = await roadmap();
     if (!road.items.some((item: any) => item.id === id)) road.items.push({ id, title, tense: 'future', status: 'planned', proposed_at: new Date().toISOString(), by: 'owner', acceptance: [] });
@@ -171,8 +171,23 @@ switch (command) {
     break;
   }
   case 'start': {
+    const liveSession = flag('--session');
     const [id] = args, item = (await roadmap()).items.find((x: any) => x.id === id);
     if (!item) throw new Error(`no card ${id} on the roadmap`);
+    if (game.board) {
+      const cardId = nativeId(id);
+      // External harnesses already exist. Taking a card never launches or signs in to one.
+      native('goto', cardId, 'running');
+      native('deliver');
+      if (liveSession) {
+        const frames = native('events', '--once', '--json').split('\n').filter(Boolean).map(line => JSON.parse(line));
+        const card = frames.find(frame => frame.type === 'snapshot_item' && frame.data?.card?.id === cardId)?.data.card;
+        const agent = card?.agents?.find((row: any) => row.role === 'implementer' && row.state === 'active');
+        if (!agent) throw new Error('The native card has no declared implementer yet. Deliver its pending declaration and retry start.');
+        const recorded = spawnSync(game.board.program, ['teams', 'agent', 'record', '--session', liveSession, '--agent', agent.id, '--main', '--context', game.board.context], {cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','pipe']});
+        if (recorded.status !== 0) throw new Error(`The existing session could not join its native card agent: ${String(recorded.stderr || recorded.stdout).slice(-700)}`);
+      }
+    }
     const key = `game-${id}-${Date.now().toString(36)}`;
     await event('org.open-autonomy.session.started', key, { session_kind: 'run', title: item.title, source: 'game', item_id: id }, id);
     remember({ sessions: { ...(state().sessions ?? {}), [id]: key } });
