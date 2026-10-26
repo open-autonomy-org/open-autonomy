@@ -24,13 +24,14 @@ means and how to build it are your judgment and the owners'.
 - `bun .open-autonomy/game.ts start <id>` opens the card's session on the books and says so in `build`.
 - Say what you are doing as you go: `bun .open-autonomy/game.ts say <id> "<what changed and why>"` (an update on the
   card, shown live on the game page to players in the Room, and a line in `build`).
-- Read `bun .open-autonomy/game.ts questions` between steps and answer each in its thread:
+- Read `bun .open-autonomy/game.ts questions` between steps and answer each (your answer quotes it):
   `bun .open-autonomy/game.ts answer <messageId> "<answer>"`. Answer what you know; say plainly what you don't.
 - Model calls paid for by the card go on its key: point your provider at the platform's model rail
   (`OPEN_AUTONOMY_BASE_URL` = the platform's `/v1`, `OPEN_AUTONOMY_KEY` = the card's key) or make one call with
   `bun .open-autonomy/game.ts ask <id> "<prompt>"`. When the rail refuses because the budget is spent, stop, say so in
   `build`, and leave the card for the owners.
-- Show your work in the Room: publish your terminal and the running game as Surfaces of the Room when your harness can.
+- Show your work in the Room: the running game (your dev run's address) and the card's session on the books
+  (`<platform>/<account>/sessions/<session>`), each with `bun .open-autonomy/game.ts show <key> <url> <name>`.
 
 ## 4. Release
 - On the release candidate's commit: `bun .open-autonomy/game.ts check <id>` (the game's bot plays its goal, by default

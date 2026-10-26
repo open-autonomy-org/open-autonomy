@@ -8,12 +8,14 @@
 //
 //   bun .open-autonomy/game.ts asks                         new lines in `feedback` since the last look
 //   bun .open-autonomy/game.ts queue <messageId> <title>    file the ask as a Task in each owner's Inbox
+//   bun .open-autonomy/game.ts tasks                        the owners' queue: open Tasks in the Room
 //   bun .open-autonomy/game.ts card <id> <title> <cents> [--task <taskId>] [--model <m>]   (owner) roadmap + budget + key
 //   bun .open-autonomy/game.ts cards                        the roadmap, each card's budget, spend and what is left
 //   bun .open-autonomy/game.ts start <id>                   the card's work begins: its session on the books, a line in `build`
 //   bun .open-autonomy/game.ts say <id> <text>              progress: an update on the card and a line in `build`
+//   bun .open-autonomy/game.ts show <key> <url> <name>      a page every member of the Room sees (the game running, the session)
 //   bun .open-autonomy/game.ts questions                    lines in `build` the agent has not answered
-//   bun .open-autonomy/game.ts answer <messageId> <text>    answer in the line's thread in `build`
+//   bun .open-autonomy/game.ts answer <messageId> <text>    answer a line in `build`, quoting it
 //   bun .open-autonomy/game.ts ask <id> <prompt>            one model call paid from the card's budget, on its key
 //   bun .open-autonomy/game.ts check <id> [--goal <goal>]   the game's bot plays its goal on this checkout's build
 //   bun .open-autonomy/game.ts release <id> <version> --members | --public    the build to members first, then everyone
@@ -28,7 +30,7 @@ const HERE = import.meta.dir, ROOT = resolve(HERE, '..'), KEYS = join(HERE, 'key
 interface Game {
   platform: string; account: string;
   store: string; storeGame: string; uploader?: string;
-  workplace: string; organization: string; room: string; owners: string[];
+  workplace: string; organization: string; room: string; owners: string[]; self?: string;
   conversations: { general: string; feedback: string; build: string };
   std?: string; goal?: string; models?: string[];
 }
@@ -59,7 +61,7 @@ async function call(base: string, path: string, init: { method?: string; body?: 
 }
 const room = (path: string, init: Parameters<typeof call>[2] = {}) => call(game.workplace, path, { ...init, headers: { authorization: `Bearer ${key('workplace.token')}`, origin: game.workplace, 'x-rh2-organization': game.organization, ...init.headers } });
 const books = (path: string, keyName: string, init: Parameters<typeof call>[2] = {}) => call(platform, path, { ...init, headers: { authorization: `Bearer ${key(keyName)}`, ...init.headers } });
-const post = (conversation: string, body: string, parentMessageId?: string) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId: crypto.randomUUID(), ...(parentMessageId ? { parentMessageId } : {}) } });
+const post = (conversation: string, body: string) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId: crypto.randomUUID() } });
 const messages = async (conversation: string): Promise<any[]> => { const r = await room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages?limit=100`); return r.messages ?? r.items ?? (Array.isArray(r) ? r : []); };
 const textOf = (m: any): string => String(m.body ?? m.text ?? m.content ?? '');
 const idOf = (m: any): string => String(m.messageId ?? m.id);
@@ -68,7 +70,10 @@ const usd = (cents: number) => `$${(Number(cents) / 100).toFixed(2)}`;
 const event = (type: string, subject: string, data: Record<string, unknown>, item: string) =>
   books('/v1/agent/events', `card-${item}.key`, { method: 'POST', body: { specversion: '1.0', id: crypto.randomUUID(), source: `game/${account}`, type, subject, time: new Date().toISOString(), data } });
 const session = (item: string) => state().sessions?.[item] as string | undefined;
-const me = async () => { const r = await room(`/api/v3/rooms/${game.room}`); return String(r.viewer?.principalId ?? r.you?.principalId ?? r.principalId ?? state().self ?? ''); };
+// The agent's own principal in the Room (game.local.json or config `self`): its own lines are never questions to it.
+const me = async () => game.self ?? '';
+const who = (m: any): string => String(m.author?.name ?? m.author?.displayName ?? m.authorPrincipalId ?? '?');
+const authorOf = (m: any): string => String(m.authorPrincipalId ?? m.author?.principalId ?? '');
 
 const [command, ...args] = process.argv.slice(2);
 const flag = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args.splice(i, 2)[1] : undefined; };
@@ -79,7 +84,7 @@ switch (command) {
     // What players asked in `feedback` since the last look. Which of them are asks for the owners is the agent's call.
     const seen = new Set<string>(state().asksSeen ?? []);
     const fresh = (await messages(game.conversations.feedback)).filter((m) => !seen.has(idOf(m)) && !m.deletedAt);
-    for (const m of fresh) console.log(`${idOf(m)}  ${m.author?.displayName ?? m.authorName ?? m.principalId ?? '?'}: ${textOf(m).replace(/\s+/g, ' ').slice(0, 400)}`);
+    for (const m of fresh) console.log(`${idOf(m)}  ${who(m)}: ${textOf(m).replace(/\s+/g, ' ').slice(0, 400)}`);
     if (!fresh.length) console.log('No new lines in feedback.');
     remember({ asksSeen: [...seen, ...fresh.map(idOf)].slice(-1000) });
     break;
@@ -91,8 +96,18 @@ switch (command) {
     for (const owner of game.owners) await room(`/api/v3/rooms/${game.room}/tasks`, { method: 'POST', body: { messageId, title: title.join(' '),
       instructions: 'A player asked for this in feedback. If it should be built, make it a card with a budget: `bun .open-autonomy/game.ts card <id> <title> <cents> --task <this task>`. If not, close this Task and say why in the thread.',
       target: { kind: 'principal', principalId: owner } } });
-    await post(game.conversations.feedback, `Thanks. This is in the owners' queue as “${title.join(' ')}”. They decide what gets built; if they make it a card, it shows on the game's page under What's next.`, messageId);
+    // The answer goes in the conversation, naming whose ask it was: a bot's line in a player's thread is not the Room's to allow.
+    const ask = (await messages(game.conversations.feedback)).find((m) => idOf(m) === messageId);
+    await post(game.conversations.feedback, `${ask ? `${who(ask)}, thanks` : 'Thanks'}: your ask is in the owners' queue as “${title.join(' ')}”. They decide what gets built; if they make it a card, it shows on the game's page under What's next.`);
     console.log(`Queued for ${game.owners.length} owner(s).`);
+    break;
+  }
+  case 'tasks': {
+    // The owners' queue: open Tasks in the Room, each at the line it was filed at.
+    const r = await room(`/api/v3/rooms/${game.room}/tasks`);
+    const open = (r.tasks ?? []).filter((t: any) => !t.ended && true);
+    for (const t of open) console.log(`${t.taskId}  ${t.status ?? 'todo'}  ${t.title}`);
+    if (!open.length) console.log("The owners' queue is empty.");
     break;
   }
   case 'card': {
@@ -137,20 +152,29 @@ switch (command) {
     console.log('Said on the card and in build.');
     break;
   }
+  case 'show': {
+    // Show something to the Room as a page every member frames: the running game, the card's session on the books.
+    const [key, url, ...name] = args;
+    if (!key || !url || !name.length) throw new Error('show <key> <url> <name>');
+    await room(`/api/v3/rooms/${game.room}/surfaces`, { method: 'POST', body: { key, kind: 'page', name: name.join(' '), config: { url, on: 'everyone' } } });
+    console.log(`${name.join(' ')} is shown in the Room.`);
+    break;
+  }
   case 'questions': {
     // Lines in `build` from someone else that nobody has answered in their thread yet.
     const self = await me(), answered = new Set<string>(state().answered ?? []);
-    const open = (await messages(game.conversations.build)).filter((m) => String(m.principalId ?? m.author?.principalId ?? '') !== self && !answered.has(idOf(m)) && !m.parentMessageId && !(m.replyCount > 0));
-    for (const m of open) console.log(`${idOf(m)}  ${m.author?.displayName ?? m.authorName ?? m.principalId ?? '?'}: ${textOf(m).replace(/\s+/g, ' ').slice(0, 400)}`);
+    const open = (await messages(game.conversations.build)).filter((m) => authorOf(m) !== self && m.author?.kind !== 'automation' && !answered.has(idOf(m)) && !m.deletedAt);
+    for (const m of open) console.log(`${idOf(m)}  ${who(m)}: ${textOf(m).replace(/\s+/g, ' ').slice(0, 400)}`);
     if (!open.length) console.log('No unanswered lines in build.');
     break;
   }
   case 'answer': {
     const [messageId, ...words] = args;
     if (!messageId || !words.length) throw new Error('answer <messageId> <text>');
-    await post(game.conversations.build, words.join(' '), messageId);
+    const question = (await messages(game.conversations.build)).find((m) => idOf(m) === messageId);
+    await post(game.conversations.build, `${question ? `${who(question)} asked “${textOf(question).replace(/\s+/g, ' ').slice(0, 140)}”: ` : ''}${words.join(' ')}`);
     remember({ answered: [...(state().answered ?? []), messageId].slice(-1000) });
-    console.log('Answered in the thread.');
+    console.log('Answered in build.');
     break;
   }
   case 'ask': {

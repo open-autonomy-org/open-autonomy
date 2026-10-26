@@ -28,6 +28,7 @@ spend:
     - { window: 30d, usd_cents: 6000 }
     - { window: 1m, calls: 60 }
 
-# The roadmap, the books and the work are public; transcripts and calls are the team's.
+# Built in the open: the roadmap, the books, the work, the agent's sessions and transcripts and every metered call are
+# public, so players watch the agent work.
 dashboard:
-  visibility: roadmap
+  visibility: open
