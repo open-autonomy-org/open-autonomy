@@ -32,6 +32,7 @@ interface Game {
   workplace: string; organization: string; room: string; owners: string[]; self?: string;
   conversations: { general: string; feedback: string; build: string };
   std?: string; signaling?: string; goal?: string; models?: string[];
+  board?: {root: string; program: string; context: string; profile: string; project: string};
 }
 const yaml = readFileSync(join(HERE, 'config.yaml'), 'utf8');
 // A computer's own values (a local World's addresses and ids) may stand beside it in .open-autonomy/game.local.json,
@@ -61,6 +62,26 @@ const state = (): Record<string, any> => {
   return kept.storeGame === game.storeGame ? kept : {};
 };
 const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.stringify({ ...state(), ...patch, storeGame: game.storeGame }, null, 2) + '\n');
+
+// The native board is optional for an adopter; when configured it owns the cards.
+// Open Autonomy owns their allocations, keys and metered spend. Workplace apps
+// project the native board through Teams; this kit creates no projection itself.
+const native = (...args: string[]): string => {
+  if (!game.board) return '';
+  const run = spawnSync(game.board.program, ['workflow', '--root', game.board.root, ...args], {
+    cwd: ROOT, encoding: 'utf8', env: {...process.env, SUPERCODE_CONTEXT: game.board.context},
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (run.status !== 0) throw new Error(`Native board ${args[0]}: ${String(run.stderr || run.stdout).trim().slice(-700)}`);
+  return run.stdout.trim();
+};
+const nativeId = (id: string): string => {
+  const value = JSON.parse(native('list', '--json'));
+  const cards = Array.isArray(value) ? value : value.tasks ?? value.cards ?? [];
+  const card = cards.find((item: any) => item.readable_id === id);
+  if (!card) throw new Error(`Native card ${id} is missing`);
+  return card.id;
+};
 
 async function call(base: string, path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; ok?: number[] } = {}): Promise<any> {
   const response = await fetch(base.replace(/\/$/, '') + path, { method: init.method ?? 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000),
@@ -126,6 +147,10 @@ switch (command) {
     const task = flag('--task'), model = flag('--model');
     const [id, ...rest] = args, cents = Number(rest.pop()), title = rest.join(' ');
     if (!id || !title || !Number.isInteger(cents) || cents < 1) throw new Error('card <id> <title> <budget in cents> [--task <taskId>] [--model <model>]');
+    if (game.board) native('create', `[${game.board.project}] ${title}`, '--readable-id', id,
+      '--idempotency-key', `game:${account}:${id}`, '--assignee', game.board.profile,
+      '--initial-status', 'running', '--tag', `project:${game.board.project}`,
+      '--body', `Owner card: ${title}\nBudget: ${usd(cents)}. The card's envelope and metered spend are on the game's Open Autonomy books.`);
     const road = await roadmap();
     if (!road.items.some((item: any) => item.id === id)) road.items.push({ id, title, tense: 'future', status: 'planned', proposed_at: new Date().toISOString(), by: 'owner', acceptance: [] });
     await books('/v1/agent/roadmap', 'steer.key', { method: 'POST', body: { source: 'game', roadmap: road, by: 'owner' } });
@@ -160,6 +185,7 @@ switch (command) {
     if (!id || !text) throw new Error('say <id> <text>');
     await event('org.open-autonomy.item.update', id, { text, ...(session(id) ? { session: session(id) } : {}) }, id);
     await post(game.conversations.build, text);
+    if (game.board) native('comment', nativeId(id), text);
     console.log('Said on the card and in build.');
     break;
   }
@@ -301,6 +327,7 @@ switch (command) {
     if (!item) throw new Error(`no card ${id} on the roadmap`);
     Object.assign(item, { status: 'done', tense: 'past', done_at: new Date().toISOString() });
     await books('/v1/agent/roadmap', 'steer.key', { method: 'POST', body: { source: 'game', roadmap: road, by: 'owner' } });
+    if (game.board) native('complete', nativeId(id), '--result', 'Shipped to members, then released to everyone.');
     console.log(`${id} is shipped on What's next.`);
     break;
   }
