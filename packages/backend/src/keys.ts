@@ -17,7 +17,7 @@ export const CLAIM_FILE = '.open-autonomy-claim';
 export const DEFAULT_MODELS = ['zai/glm-5.3-flash'];
 // A rotated-away key keeps working this long so a running stack can pick up the new one on its own time.
 export const ROTATE_GRACE_MS = 24 * 3600 * 1000;
-const SCOPES: KeyScope[] = ['spend', 'pay', 'narrate', 'steer', 'give'];
+const SCOPES: KeyScope[] = ['spend', 'pay', 'narrate', 'steer', 'give', 'sell'];
 const ACCOUNT_RE = /^[^/\s]+\/[^/\s]+$/;
 // A funder is a person or an org: `@<github login>` on the books, proven by the claim file in a repository they own
 // (an org's in `<org>/.github`, ADR 0010).
@@ -52,9 +52,10 @@ export async function verifyKey(env: Env, token: string | null): Promise<KeyClai
   if (typeof claims.kid !== 'string' || !claims.kid || typeof claims.account !== 'string' || !(ACCOUNT_RE.test(claims.account) || FUNDER_ACCOUNT_RE.test(claims.account))) return null;
   if (!Array.isArray(claims.models) || claims.models.some((m) => typeof m !== 'string' || !m)) return null;
   // A name's key (a funder's give, an org's steer: ADR 0010) buys nothing, so it carries no models.
-  const nameOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give' || x === 'steer');
+  const nameOnly = Array.isArray(claims.scopes) && claims.scopes.length > 0 && claims.scopes.every((x) => x === 'give' || x === 'steer' || x === 'sell');
   if (!claims.models.length && !nameOnly) return null;
   if (claims.scopes !== undefined && (!Array.isArray(claims.scopes) || claims.scopes.some((x) => !SCOPES.includes(x)))) return null;
+  if (claims.item !== undefined && (typeof claims.item !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(claims.item))) return null;
   if (!(Date.parse(claims.exp) > Date.now())) return null;
   return claims;
 }

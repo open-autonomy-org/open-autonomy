@@ -187,8 +187,19 @@ export interface AccountProfile {
 }
 const PROFILE_KEYS = ['tagline', 'avatar_url', 'cover_url', 'homepage', 'synced_at', 'tagline_override', 'cover_override', 'about_md', 'schedule_json', 'setup_md', 'soul_md', 'agent_harness', 'agent_model', 'agent_provider', 'agent_skills', 'agent_runtime', 'config_yaml'] as const;
 
+// A sale behind a mint: who sold what to whom, by the seller's own order, and the money's three figures. The mint
+// itself is the net, what reached the project; gross and fee stay on the entry so the books read it as a sale.
+export interface Sale {
+  seller: string;
+  order: string;
+  product: string;
+  gross_usd_cents: number;
+  fee_usd_cents: number;
+}
+
 export interface Flow {
-  kind: 'mint' | 'grant' | 'consume' | 'release';
+  // `allocate`: the project's own money set aside for one roadmap item (its card's envelope); the total is unchanged.
+  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate';
   id?: string;
   to: string;
   from?: string;
@@ -203,6 +214,7 @@ export interface Flow {
   purpose?: EnvelopePurpose;
   envelope_id?: string;
   item?: string;
+  sale?: Sale;
   ts: string;
   // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
   private?: true;
@@ -394,7 +406,7 @@ export interface LedgerCore {
   applyKey(key?: string): boolean;
   recordFlow(flow: Omit<Flow, 'ts'>): Flow;
   addEnvelope(account: string, amount: number, purpose: EnvelopePurpose, from?: string, giftId?: string): Envelope;
-  mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>>;
+  mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown, sale?: Sale): Promise<Record<string, unknown>>;
   grant(from: string, to: string, amount: number, key?: string, note?: string, rawFor?: unknown, by?: string): Promise<Record<string, unknown>>;
   fundingSnapshot(account: string): FundingSnapshot;
   entryFor(account: string): DirectoryEntry;
@@ -430,7 +442,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'reserve': return json(await this.reserve(s('request_id'), s('account'), s('kid'), Number(body.amount_usd_cents), Number(body.daily_cap_usd_cents), typeof body.model === 'string' ? body.model : '', Number(body.estimated_tokens) || 0, typeof body.rail === 'string' ? body.rail as Rail : 'model', typeof body.item === 'string' ? body.item : undefined, typeof body.session === 'string' ? body.session : undefined));
       case 'consume': await this.consume(s('request_id'), Number(body.actual_usd_cents), body.event as UsageEvent | undefined); return json({ ok: true });
       case 'release': await this.release(s('request_id')); return json({ ok: true });
-      case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for));
+      case 'mint': return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)));
+      case 'allocate': return json(await this.allocate(s('account'), Number(body.amount_usd_cents), s('item'), body.key ? s('key') : undefined, typeof body.by === 'string' ? body.by : undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
       case 'funder': return json(await this.funderView(s('account'), body?.own === true));
@@ -540,17 +553,43 @@ export class LimitLedger implements DurableObject, LedgerCore {
   }
 
   // Money enters: the only operation that increases the total.
-  async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown): Promise<Record<string, unknown>> {
+  async mint(account: string, amount: number, key?: string, sponsor?: Sponsor, rawFor?: unknown, sale?: Sale): Promise<Record<string, unknown>> {
     if (!account || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_amount' };
+    if (sale && sale.gross_usd_cents - sale.fee_usd_cents !== Math.floor(amount)) return { ok: false, error: 'invalid_sale', message: 'A sale mints its net: gross less fee.' };
     const marked = await this.earmark(account, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
-    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id });
+    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
     await this.save();
     return { ok: true, account, balance_usd_cents: this.balanceOf(account) };
+  }
+
+  // The owner sets part of the project's own money aside for one roadmap item: unrestricted envelopes give it up to a
+  // new item envelope, which only that item's spend may draw (a key bound to the item draws nothing else). The total is
+  // unchanged; the item must be on the roadmap and not done.
+  async allocate(account: string, amount: number, item: string, key?: string, by?: string): Promise<Record<string, unknown>> {
+    if (!account || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'invalid_amount' };
+    const marked = await this.earmark(account, { type: 'item', item });
+    if (!marked.ok || !marked.purpose) return marked;
+    if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, item, envelope_usd_cents: this.itemBalance(account, item) };
+    const source = this.ensureAcct(account).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
+    const free = source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(account, e.id)), 0);
+    if (free < amount) return { ok: false, error: 'insufficient_balance', message: `${formatCents(free)} is free to set aside and the card needs ${formatCents(amount)}.`, available_usd_cents: free };
+    this.applyKey(key);
+    let debit = Math.floor(amount);
+    for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
+    const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, by, key);
+    this.recordFlow({ kind: 'allocate', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), purpose: marked.purpose, envelope_id: envelope.id, item, ...(by ? { by } : {}) });
+    await this.save();
+    return { ok: true, account, item, envelope_usd_cents: this.itemBalance(account, item), balance_usd_cents: this.balanceOf(account) };
+  }
+
+  /** What an item's envelopes hold now. */
+  itemBalance(account: string, item: string): number {
+    return (this.acct(account)?.envelopes ?? []).filter((e) => e.purpose.type === 'item' && e.purpose.item === item).reduce((sum, e) => sum + e.balance_usd_cents, 0);
   }
 
   // Money moves down the tree: conserves the total, refused if the source lacks the balance.
@@ -1751,7 +1790,16 @@ function clipText(v: unknown, max: number): string | undefined {
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
 // A work item id as the substrate names it (a file's slug, a board's task id): short, and never a storage-key separator.
-function itemId(v: unknown): string | undefined {
+/** A sale as a mint carries it, or undefined when the body names none or names it malformed. */
+function saleOf(raw: unknown): Sale | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const v = raw as Record<string, unknown>;
+  const text = (x: unknown, n: number) => typeof x === 'string' && x.length > 0 && x.length <= n ? x : undefined;
+  const cents = (x: unknown) => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 ? x : undefined;
+  const sale = { seller: text(v.seller, 120), order: text(v.order, 200), product: text(v.product, 120), gross_usd_cents: cents(v.gross_usd_cents), fee_usd_cents: cents(v.fee_usd_cents) };
+  return Object.values(sale).every((x) => x !== undefined) && sale.fee_usd_cents! < sale.gross_usd_cents! ? sale as Sale : undefined;
+}
+export function itemId(v: unknown): string | undefined {
   return typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(v) ? v : undefined;
 }
 function sessionKind(v: unknown): string {
@@ -1872,8 +1920,11 @@ export class LedgerClient {
   }
   consume(requestId: string, actualUsdCents: number, event?: UsageEvent) { return this.call<{ ok: true }>('consume', { request_id: requestId, actual_usd_cents: actualUsdCents, event }); }
   release(requestId: string) { return this.call<{ ok: true }>('release', { request_id: requestId }); }
-  mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown) {
-    return this.call<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose });
+  mint(account: string, amountUsdCents: number, key?: string, sponsor?: Sponsor, purpose?: unknown, sale?: Sale) {
+    return this.call<{ ok: boolean; idempotent?: boolean; account?: string; balance_usd_cents?: number; error?: string; message?: string }>('mint', { account, amount_usd_cents: amountUsdCents, key, sponsor, for: purpose, sale });
+  }
+  allocate(account: string, amountUsdCents: number, item: string, key?: string, by?: string) {
+    return this.call<{ ok: boolean; idempotent?: boolean; error?: string; message?: string; envelope_usd_cents?: number; balance_usd_cents?: number }>('allocate', { account, amount_usd_cents: amountUsdCents, item, key, by });
   }
   grant(from: string, to: string, amountUsdCents: number, key?: string, note?: string, purpose?: unknown, by?: string) {
     return this.call<{ ok: boolean; idempotent?: boolean; from_balance_usd_cents?: number; to_balance_usd_cents?: number; error?: string }>('grant', { from, to, amount_usd_cents: amountUsdCents, key, note, for: purpose, by });
