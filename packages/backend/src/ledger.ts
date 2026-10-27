@@ -579,6 +579,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (sale && sale.gross_usd_cents - sale.fee_usd_cents !== Math.floor(amount)) return { ok: false, error: 'invalid_sale', message: 'A sale mints its net: gross less fee.' };
     const marked = await this.earmark(account, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
+    // A sale already minted answers as one even after its key has left the bounded list (its record is durable).
+    if (sale && key && await this.ctx.storage.get(`salerecord:${key}`)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
