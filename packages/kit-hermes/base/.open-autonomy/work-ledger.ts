@@ -1,5 +1,6 @@
 // Kit work observations use the selected machine SDK; the universal OA wire has no host dependency.
 import { harnessSdkModule } from './machine-supercode.ts';
+import { readFileSync } from 'node:fs';
 
 type Result = { ok?: boolean; ms?: number; units?: Record<string, number> };
 type Operation = { kind: string; operation: string };
@@ -30,6 +31,15 @@ function unavailable(code: Diagnostic): void {
   state.diagnostics ??= new Set();
   if (!state.diagnostics.has(code)) { state.diagnostics.add(code); console.error(`work-ledger: ${code}; kit work coverage unavailable`); }
 }
+function kitBuild(): string {
+  for (const path of ['./kit.json', '../../package.json']) {
+    try {
+      const version = JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')).version;
+      if (typeof version === 'string' && /^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?$/.test(version)) return `oa-kit-${version}`;
+    } catch { /* A rendered install and a packaged/retained host have different metadata doors. */ }
+  }
+  return 'oa-kit-unknown';
+}
 /** Existing native identities are hashed by the recorder; never pass keys, argv or request content here. */
 export async function initializeWorkLedger(role: string, scope: { kind: string; id: string }, build?: string): Promise<void> {
   state.loading ??= (async () => {
@@ -47,7 +57,7 @@ export async function initializeWorkLedger(role: string, scope: { kind: string; 
     } catch { unavailable('recorder-failed'); }
   })();
   await state.loading;
-  try { state.recorder?.registerWorkService({ role, scope, build }); } catch { unavailable('recorder-failed'); }
+  try { state.recorder?.registerWorkService({ role, scope, build: build ?? kitBuild() }); } catch { unavailable('recorder-failed'); }
 }
 export function startWork(kind: string, operation: string): (result?: Result) => void {
   try {

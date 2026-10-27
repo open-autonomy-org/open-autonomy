@@ -11,7 +11,7 @@ type Identity = { service: string; protocol: number; binding: string; instance: 
 // A later npm install may replace the kit's directory. Retain precisely the service's sources, without credentials
 // or the keeper's environment, so its supervisor can restart the listener after the kit that launched it is gone.
 function retainService(directory: string): string {
-  const files = ['keeper/codex-service.ts', 'keeper/codex-supervisor.ts',
+  const files = ['package.json', 'keeper/codex-service.ts', 'keeper/codex-supervisor.ts',
     ...['codex-proxy.ts', 'codex-auth.ts', 'work-ledger.ts', 'machine-supercode.ts', 'install-runtime.ts', 'source-program.ts'].map(file => `base/.open-autonomy/${file}`)];
   const sources = files.map(file => [file, readFileSync(resolve(import.meta.dir, '..', file))] as const);
   const digest = createHash('sha256');
