@@ -113,6 +113,8 @@ const bindProjectionState = (config, state) => {
 };
 
 const [configPath, flag] = process.argv.slice(2);
+const disconnecting = flag === '--disconnect';
+if (flag && !['--once', '--disconnect'].includes(flag)) throw new Error('use --once or --disconnect');
 if (!configPath) { process.stderr.write('usage: main.mjs <config.json> [--once]\n'); process.exit(1); }
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 // Every key the rh2 section may hold (`issuer` is what a connection's generated config names); any other is refused by name.
@@ -141,7 +143,7 @@ const log = (event, data = {}) => process.stdout.write(`${JSON.stringify({ t: ne
 process.stdout.on('error', () => {});
 
 async function door(path, { body, method } = {}) {
-  if (!sourceAdmitted || !state.ready) throw new Error('the board source has no admitted complete reading');
+  if (!disconnecting && (!sourceAdmitted || !state.ready)) throw new Error('the board source has no admitted complete reading');
   const response = await fetch(`${base}${path}`, {
     method: method ?? (body === undefined ? 'GET' : 'POST'), signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(9000)]),
     headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
@@ -885,6 +887,27 @@ function drain() {
   return draining;
 }
 // the minute's retry; the stream's own bounds (readingBounds) end a reading that hangs
+if (disconnecting) {
+  const previousCleanup = state.cleanupReady;
+  try {
+    const who = await door('/api/v3/session/test');
+    if (who.principalId !== self) throw new Error('the connection credential names another app');
+    state.cleanupReady = true;
+    const pending = [];
+    for (const roomId of new Set([...Object.values(state.projects), ...Object.keys(state.runSeats)])) {
+      try {
+        const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`);
+        await keepAgentSeats(view, new Map(), { roomId }, { pending });
+      } catch (error) { pending.push(`${roomId}: ${error.code ?? 'cleanup failed'}`); }
+    }
+    if (pending.length) throw Object.assign(new Error(`${pending.length} Room withdrawals remain owed`), { code: 'withdrawal-pending' });
+    state.disconnectedAt = new Date().toISOString(); log('projection-withdrawn');
+  } catch (error) { log('withdrawal-pending', { code: error.code ?? null, message: String(error.message).slice(0, 200) }); process.exitCode = 1; }
+  finally { state.cleanupReady = previousCleanup; flushState(); }
+  if (writeRefused) process.exitCode = 1;
+  process.exit(process.exitCode ?? 0);
+}
+
 const retrying = setInterval(() => { sweepRequested = true; void drain(); }, 60_000);
 while (!stopping) {
   if (state.streamRetryAt > Date.now()) { await new Promise((resolve) => setTimeout(resolve, Math.min(5000, state.streamRetryAt - Date.now()))); continue; }
