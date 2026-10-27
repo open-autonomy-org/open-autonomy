@@ -214,6 +214,18 @@ export async function route(req: Request, env: Env, ctx: ExecutionContext, app: 
     return json({ ...r, net_usd_cents: net }, { status: r.ok ? 200 : 400 });
   }
 
+  // A refund of that sale, on the same seller's key: the sale's net leaves the books, once per order ({order, reason?}).
+  if (path === '/v1/sales/refund') {
+    if (req.method !== 'POST') return methodNotAllowed();
+    const claims = await authedClaims(req, env);
+    if (!claims) return error('auth_failed', 401);
+    if (!hasScope(claims, 'sell') || !claims.seller) return error('scope_required', 403, { scope: 'sell' });
+    const body = parseJson<Record<string, unknown>>(await req.text()) ?? {};
+    if (typeof body.order !== 'string' || !body.order) return error('invalid_request');
+    const r = await ledger.refund(claims.account, claims.seller, body.order, typeof body.reason === 'string' ? body.reason : undefined);
+    return json(r, { status: r.ok ? 200 : r.error === 'no_sale' ? 404 : 400 });
+  }
+
   // ---- the development stream ----
   if (path === '/v1/agent/events') return agentEvents(req, env);
   // An owner-side driver's push: the normalized roadmap, on a steer-scoped key. The account is the key's. What the

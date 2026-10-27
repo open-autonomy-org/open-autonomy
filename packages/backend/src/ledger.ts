@@ -104,6 +104,9 @@ export interface Account {
   stripe_cardholder?: string;
   // Bonus credits: the part of a giver's balance that may only be granted to accounts the giver does not own.
   bonus_usd_cents?: number;
+  // Owed by refunds: the part of refunded sales the project's free money could not cover (already spent or set aside
+  // for a card) when the refund came. The account's next money in settles it first (ADR 0034).
+  refund_owed_usd_cents?: number;
   // What the account's calls used, by the minute (the last hour), the hour (the last day) and the day (the last month):
   // money, calls and tokens, and each model's share — what the project's spend limits are held against.
   usage: Usage;
@@ -201,7 +204,8 @@ export interface Sale {
 
 export interface Flow {
   // `allocate`: the project's own money set aside for one roadmap item (its card's envelope); the total is unchanged.
-  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate';
+  // `refund`: a sale reversed by its seller, the sale's net taken back out of the project's money.
+  kind: 'mint' | 'grant' | 'consume' | 'release' | 'allocate' | 'refund';
   id?: string;
   to: string;
   from?: string;
@@ -217,6 +221,10 @@ export interface Flow {
   envelope_id?: string;
   item?: string;
   sale?: Sale;
+  // On a refund: what of the sale's net the project's free money could not cover (already spent or set aside).
+  shortfall_usd_cents?: number;
+  // On a refund flow: it settles what an earlier refund left owed (ADR 0034), rather than reversing a sale itself.
+  settles?: boolean;
   ts: string;
   // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
   private?: true;
@@ -455,8 +463,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'mint': {
         // A sale that does not read is refused, never minted as plain credits.
         if (body.sale !== undefined && !saleOf(body.sale)) return json({ ok: false, error: 'invalid_sale', message: 'A sale names its seller, order and product, and its gross and fee in whole cents, the fee below the gross.' });
-        return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)));
+        // Both change state before they write it: a failed write reloads what is stored, so a retry is never answered
+        // as already applied when nothing was kept.
+        return json(await this.ctx.blockConcurrencyWhile(async () => {
+          try { return await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)); }
+          catch (cause) { this.loaded = false; await this.load(); throw cause; }
+        }));
       }
+      case 'refund': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.refund(s('account'), s('seller'), s('order'), typeof body.reason === 'string' ? body.reason : undefined); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
       case 'allocate': return json(await this.allocate(s('account'), Number(body.amount_usd_cents), s('item'), body.key ? s('key') : undefined, typeof body.by === 'string' ? body.by : undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
@@ -531,6 +548,30 @@ export class LimitLedger implements DurableObject, LedgerCore {
     for (const r of Object.values(this.state.reservations)) if (r.account === id) total += r.amount;
     return total;
   }
+  /** What an account may not spend, grant or set aside: its reservations, and what earlier refunds left owed (ADR 0034).
+   *  What is owed is held against its unrestricted money only (unrestrictedFree), so a card in flight keeps its budget;
+   *  money freed later (a released reservation, a done card's remainder) stays held while anything is owed. */
+  private heldFor(id: string): number {
+    return this.reservedFor(id) + (this.acct(id)?.refund_owed_usd_cents ?? 0);
+  }
+  /** The account's unrestricted money that is free: its unrestricted envelopes less what is reserved from them, less what
+   *  earlier refunds left owed (ADR 0034 decision 4: the account can neither spend, grant nor set aside it). */
+  private unrestrictedFree(id: string): number {
+    const free = (this.acct(id)?.envelopes ?? []).filter((e) => e.purpose.type === 'unrestricted')
+      .reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(id, e.id)), 0);
+    return Math.max(0, free - (this.acct(id)?.refund_owed_usd_cents ?? 0));
+  }
+  /** A sale's income settles what earlier refunds left owed, before anything may spend it (ADR 0034): from an
+   *  unrestricted envelope only, since money given for a purpose is left to it, as a refund leaves it. */
+  private settleOwed(account: string, envelope: Envelope, id: string): void {
+    const a = this.ensureAcct(account), owed = a.refund_owed_usd_cents ?? 0;
+    if (!owed || envelope.purpose.type !== 'unrestricted') return;
+    const settled = Math.min(owed, envelope.balance_usd_cents);
+    if (settled <= 0) return;
+    envelope.balance_usd_cents -= settled; a.granted_in_usd_cents -= settled;
+    a.refund_owed_usd_cents = owed - settled || undefined;
+    this.recordFlow({ kind: 'refund', id: `settle:${id}`, from: account, to: '@refunds', amount_usd_cents: settled, settles: true, note: 'Settles an earlier refund the project could not cover when it came.' });
+  }
   private reservedFrom(id: string, envelopeId: string): number {
     let total = 0;
     for (const r of Object.values(this.state.reservations)) if (r.account === id) for (const part of r.allocations) if (part.envelope_id === envelopeId) total += part.amount;
@@ -572,13 +613,49 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (sale && sale.gross_usd_cents - sale.fee_usd_cents !== Math.floor(amount)) return { ok: false, error: 'invalid_sale', message: 'A sale mints its net: gross less fee.' };
     const marked = await this.earmark(account, rawFor);
     if (!marked.ok || !marked.purpose) return marked;
+    // A sale already minted answers as one even after its key has left the bounded list (its record is durable).
+    if (sale && key && await this.ctx.storage.get(`salerecord:${key}`)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     if (key && this.applyKey(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
-    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
-    await this.save();
+    const minted = this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
+    // Only the game's own sales income settles what its refunds left owed: patronage, grants and matching never do.
+    if (sale) this.settleOwed(account, envelope, String(minted.id ?? envelope.id));
+    // A sale is kept under its own key: a refund finds it however long ago it was made.
+    if (sale && key) await this.ctx.storage.put({ state: this.state, [`salerecord:${key}`]: minted });
+    else await this.save();
     return { ok: true, account, balance_usd_cents: this.balanceOf(account) };
+  }
+
+  // A sale reversed (its seller refunded the buyer): the sale's net leaves the project's books, once per order. It comes out
+  // of the sale's own envelope first, then the project's other free money; what is already spent or set aside for a card
+  // is not taken back, and the refund records that part as its shortfall.
+  async refund(account: string, seller: string, order: string, reason?: string): Promise<Record<string, unknown>> {
+    const saleId = `sale:${seller}:${order}`, key = `refund:${seller}:${order}`;
+    // A completed refund answers as one, whether or not its key or its sale is still in the bounded lists.
+    if (this.state.applied_keys.includes(key) || await this.ctx.storage.get(`refundrecord:${key}`)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
+    const listed = this.state.flows.find((f) => f.kind === 'mint' && f.id === saleId && f.to === account && f.sale);
+    const kept = listed ?? await this.ctx.storage.get<Flow>(`salerecord:${saleId}`);
+    const sold = kept && kept.kind === 'mint' && kept.to === account && kept.sale ? kept : undefined;
+    if (!sold?.sale) return { ok: false, error: 'no_sale', message: 'No sale by this seller under this order is on these books.' };
+    const a = this.ensureAcct(account);
+    const own = a.envelopes.filter((e) => e.id === sold.envelope_id);
+    const free = a.envelopes.filter((e) => e.id !== sold.envelope_id && e.purpose.type === 'unrestricted');
+    let debit = sold.amount_usd_cents;
+    for (const envelope of [...own, ...free]) {
+      const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id)));
+      envelope.balance_usd_cents -= take; debit -= take;
+      if (!debit) break;
+    }
+    const taken = sold.amount_usd_cents - debit;
+    this.applyKey(key);
+    a.granted_in_usd_cents -= taken;
+    // What could not be taken back now is owed, and the account's next money in settles it (ADR 0034).
+    if (debit) a.refund_owed_usd_cents = (a.refund_owed_usd_cents ?? 0) + debit;
+    const refunded = this.recordFlow({ kind: 'refund', id: key, from: account, to: `@${seller}`, amount_usd_cents: taken, sale: sold.sale, ...(debit ? { shortfall_usd_cents: debit } : {}), ...(reason ? { note: reason.slice(0, 300) } : {}) });
+    await this.ctx.storage.put({ state: this.state, [`refundrecord:${key}`]: refunded });
+    return { ok: true, account, refunded_usd_cents: taken, shortfall_usd_cents: debit, balance_usd_cents: this.balanceOf(account) };
   }
 
   // The owner sets part of the project's own money aside for one roadmap item: unrestricted envelopes give it up to a
@@ -590,7 +667,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (!marked.ok || !marked.purpose) return marked;
     if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, item, envelope_usd_cents: this.itemBalance(account, item) };
     const source = this.ensureAcct(account).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
-    const free = source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(account, e.id)), 0);
+    // (what earlier refunds left owed is held: it is not free to set aside, ADR 0034)
+    const free = this.unrestrictedFree(account);
     if (free < amount) return { ok: false, error: 'insufficient_balance', message: `${formatCents(free)} is free to set aside and the card needs ${formatCents(amount)}.`, available_usd_cents: free };
     this.applyKey(key);
     let debit = Math.floor(amount);
@@ -619,9 +697,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
       const own = to.split('/')[0].toLowerCase() === from.slice(1).toLowerCase();
       if (own && this.balanceOf(from) - bonus < amount) return { ok: false, error: 'bonus_only_for_others', bonus_usd_cents: bonus };
     }
-    if (this.balanceOf(from) - this.reservedFor(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from) };
+    // A grant draws on unrestricted money that is free: neither a card's envelope nor what earlier refunds left owed.
+    if (this.unrestrictedFree(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from), ...(this.acct(from)?.refund_owed_usd_cents ? { refund_owed_usd_cents: this.acct(from)!.refund_owed_usd_cents } : {}) };
     const source = this.ensureAcct(from).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
-    if (source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(from, e.id)), 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
     this.applyKey(key);
     let debit = Math.floor(amount);
     for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(from, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
@@ -808,13 +886,18 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const context = { rail, model, item: spendItem };
     // The funding hard-stop stands above the envelopes: settled spend plus in-flight reservations may never exceed
     // the balance the totals say, whatever the envelopes add up to (they can only drift by rounding or an overage).
+    // What earlier refunds left owed is not taken from a card's envelope here: it comes off unrestricted envelopes below.
     const ceiling = this.balanceOf(account) - this.reservedFor(account);
     if (amount > ceiling) return { ok: false, error: 'insufficient_funds', message: `This account has ${formatCents(Math.max(0, ceiling))} available and this ${rail} spend needs ${formatCents(amount)}.`, account, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: Math.max(0, ceiling), needed_usd_cents: amount };
     const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context) && (!bound || e.purpose.type === 'item')).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
     const allocations: ReservationAllocation[] = [];
     let remainder = amount;
+    // What earlier refunds left owed is held in the account's unrestricted envelopes (ADR 0034 decision 4): an unbound
+    // spend that qualifies on one draws only what is free past it; an item's envelope keeps its whole budget.
+    let owedLeft = this.acct(account)?.refund_owed_usd_cents ?? 0;
     for (const envelope of candidates) {
-      const free = Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id));
+      let free = Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id));
+      if (envelope.purpose.type === 'unrestricted' && owedLeft > 0) { const held = Math.min(free, owedLeft); free -= held; owedLeft -= held; }
       const take = Math.min(remainder, free);
       if (take > 0) allocations.push({ envelope_id: envelope.id, amount: take });
       remainder -= take;
@@ -862,7 +945,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     this.ensureAcct(account);
     if (durable) await this.ctx.storage.put({ ...durable, state: this.state });
     else await this.save();
-    return { ok: true, balance_usd_cents: this.balanceOf(account) - this.reservedFor(account) };
+    return { ok: true, balance_usd_cents: this.balanceOf(account) - this.heldFor(account) };
   }
 
   private async consume(requestId: string, actual: number, event?: UsageEvent, durable?: Record<string, unknown>): Promise<void> {
@@ -1471,7 +1554,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return {
       account, funded, exhausted: funded && balance <= 0,
       balance_usd_cents: balance, granted_in_usd_cents: grantedIn, granted_out_usd_cents: grantedOut, consumed_usd_cents: consumed,
-      reserved_usd_cents: reserved, spendable_usd_cents: balance - reserved,
+      reserved_usd_cents: reserved, spendable_usd_cents: balance - reserved - (a?.refund_owed_usd_cents ?? 0),
+      ...(a?.refund_owed_usd_cents ? { refund_owed_usd_cents: a.refund_owed_usd_cents } : {}),
       usable_usd_cents: usable, envelopes: (a?.envelopes ?? []).filter((e) => e.balance_usd_cents > 0).map((e) => ({ ...e, purpose: clonePurpose(e.purpose) })),
       burn_per_day_usd_cents: est.burn_per_day_usd_cents,
       runway_days: funded ? est.runway_days : null, runway_lo_days: funded ? est.runway_lo_days : null, runway_hi_days: funded ? est.runway_hi_days : null,
@@ -1682,6 +1766,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
     if (typeof a.bonus_usd_cents === 'number') acct.bonus_usd_cents = a.bonus_usd_cents;
+    if (typeof a.refund_owed_usd_cents === 'number' && a.refund_owed_usd_cents > 0) acct.refund_owed_usd_cents = a.refund_owed_usd_cents;
     acct.usage = emptyUsage();
     const u = (a as { usage?: Partial<Usage> }).usage;
     for (const grain of ['minutes', 'hours', 'days'] as const) if (u?.[grain] && typeof u[grain] === 'object') acct.usage[grain] = u[grain] as Record<string, Tally>;
@@ -1734,7 +1819,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     }
   }
   state.applied_keys = Array.isArray(stored.applied_keys) ? stored.applied_keys.filter((k) => typeof k === 'string') : [];
-  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate')) : [];
+  state.flows = Array.isArray(stored.flows) ? stored.flows.filter((f) => f && (f.kind === 'mint' || f.kind === 'grant' || f.kind === 'consume' || f.kind === 'release' || f.kind === 'allocate' || f.kind === 'refund')) : [];
   state.keys = stored.keys && typeof stored.keys === 'object' ? stored.keys : {};
   for (const [k, v] of Object.entries(stored as Record<string, unknown>)) if (!CORE_STATE_KEYS.has(k) && v !== undefined) state[k] = v;
   return state;
@@ -1871,6 +1956,8 @@ export interface FundingSnapshot {
   granted_out_usd_cents: number;
   consumed_usd_cents: number;
   reserved_usd_cents: number;
+  // What refunds could not take back and the account's next money in will settle (ADR 0034); absent when nothing is owed.
+  refund_owed_usd_cents?: number;
   spendable_usd_cents: number;
   usable_usd_cents: number;
   envelopes: Envelope[];
@@ -1980,6 +2067,7 @@ export class LedgerClient {
   docsPut(account: string, docs: Record<string, unknown>) { return this.call<{ ok: boolean; error?: string }>('docs_put', { account, docs }); }
   postUpdate(account: string, itemId: string, text: string, session?: string, at?: string, id?: string) { return this.call<{ ok: boolean; error?: string; idempotent?: boolean; update?: UpdateRecord }>('update_post', { account, item_id: itemId, text, session, at, id }); }
   item(account: string, itemId: string) { return this.call<ItemView>('item', { account, item_id: itemId }); }
+  refund(account: string, seller: string, order: string, reason?: string) { return this.call<{ ok: boolean; idempotent?: boolean; error?: string; message?: string; refunded_usd_cents?: number; shortfall_usd_cents?: number; balance_usd_cents?: number }>('refund', { account, seller, order, reason }); }
   roadmapSet(account: string, roadmap: Roadmap, source: string, by?: string) { return this.call<{ ok: boolean; error?: string; unchanged?: boolean; revision?: RoadmapRevision }>('roadmap_set', { account, roadmap, source, by }); }
   roadmap(account: string) { return this.call<{ ok: boolean; error?: string; revision?: RoadmapRevision }>('roadmap', { account }); }
   roadmapRevisions(account: string, limit?: number, before?: string) { return this.call<{ ok: true; account: string; revisions: RoadmapRevision[]; next?: string }>('roadmap_revisions', { account, limit, before }); }

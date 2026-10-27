@@ -2,7 +2,7 @@ import type { ServerContribution } from '@runhuman/workplace/contributions/serve
 const list = (model: Record<string, unknown>, name: string): Array<Record<string, unknown>> => Array.isArray(model[name]) ? model[name] as Array<Record<string, unknown>> : [];
 export const contribution: ServerContribution = { id: '@open-autonomy/workplace', kinds: { books: {
     // Legacy giver identities remain a private accepted field during publisher upgrades; they confer no authority.
-    privateFields: ["givers"], lists: { daily: 400, envelopes: 200, flows: 500, givers: 1000, limits: 100, statements: 100 }, objects: ["summary"],
+    privateFields: ["givers"], lists: { cards: 200, daily: 400, envelopes: 200, flows: 500, givers: 1000, limits: 100, statements: 100 }, objects: ["summary"],
     read: "books.read", actions: ["freeze", "unfreeze"],
     // What an admin reads on a Workplace install page for these actions (runhuman-2 ADR 0055 decision 1).
     noun: "books, statements and runway",

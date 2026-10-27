@@ -36,8 +36,11 @@ means and how to build it are your judgment and the owners'.
   (`<platform>/<account>/sessions/<session>`), each with `bun .open-autonomy/game.ts show <key> <url> <name>`.
 
 ## 4. Release
-- On the release candidate's commit: `bun .open-autonomy/game.ts check <id>` (the game's bot plays its goal, by default
-  `do the quest`, in a headless browser). A failed check is fixed before a release.
+- After coding is complete, start the actual game dev run and open its recorded browser tab with `?autopilot=do%20the%20quest`.
+  Keep every take and show the candidate commit. Once the bot has finished, read its retained console once with
+  `bun .open-autonomy/game.ts check <id> --cdp http://127.0.0.1:<port> --target <tab id> --commit <full SHA>`.
+  The command finishes within the ten-second checking bound; it never waits for a goal or starts a browser. A missing
+  outcome remains unproven. A failed outcome is fixed before a release.
 - Releases are the owners': when the check passes, ask in `build` for the release. The owner runs
   `bun .open-autonomy/game.ts release <id> <version> --members --owner <dir>` (the store's Members channel; the bot's
   result recorded beside the build), and after the members' day `--public`. A release follows a passing check of the

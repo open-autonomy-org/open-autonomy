@@ -118,3 +118,5 @@ This map adds no audience default, cross-organization sharing rule, account fede
 decision. Current public-books policy and the OA dashboard's owner controls and books remain as decided.
 
 The proposed [contribution and role-grant boundary](decisions/0029-workplace-contribution-and-explicit-giver-grants.md) moves the funding views to `packages/workplace` and replaces snapshot-derived giver authority with explicit requests through Workplace's role door.
+
+When the game kit is configured with a native `board`, allocating a card creates it ready without launching a harness. `game.ts start` moves it to running and delivers its native agent declaration. An already running, explicitly published harness session can be bound with `start ID --session SESSION`; the Teams agent-record door binds that real session as the card agent’s main session. Neither the kit nor the integration fabricates a transcript or launches an additional harness. The World’s connector may discover only explicitly selected worker homes, under an independent supercode/Teams home and socket. The integration’s three installations remain separate and consented.

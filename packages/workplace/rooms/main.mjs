@@ -331,10 +331,13 @@ function leadAgentsOf(card) {
 }
 
 // ---- the project Room's guidance and its cards' visible updates (runhuman-2 ADR 0063 decisions 7 and 8) -------------
-/** What a project Room's agents are told it is for, unless the app's config says otherwise. */
+/** What a project Room's agents are told it is for, unless the app's config says otherwise (volter-org decision "project
+ * Rooms are co-working calls: their guidance"). */
 export const PROJECT_GUIDANCE = [
-  'This Room is the project\'s: its cards being worked now, and the agents working them.',
-  'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
+  'This Room is the project\'s co-working call: its cards being worked now, and the agents working them.',
+  'People may be watching and supervising at any time; work as you would with them in the room.',
+  'Share to the Room\'s stage what you\'d share on a co-working call: the thing you\'re building, as a Surface while it runs. Stop each share as soon as it no longer shows live work.',
+  'Attach each still update (a screenshot, a recording) to your card; it appears here by itself.'
 ];
 const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
 /** A card's images and videos, as its snapshot lists them (`attachments`): what its Room shows of its updates. */
@@ -345,7 +348,11 @@ const visibleFilesOf = (card) => (Array.isArray(card.attachments) ? card.attachm
 const typeOf = (file) => file.contentType && /^(image|video)\//.test(file.contentType) ? file.contentType
   : ({ avif: 'image/avif', gif: 'image/gif', jpeg: 'image/jpeg', jpg: 'image/jpeg', m4v: 'video/mp4', mov: 'video/quicktime', mp4: 'video/mp4', png: 'image/png', svg: 'image/svg+xml', webm: 'video/webm', webp: 'image/webp' })[file.name.split('.').pop().toLowerCase()] ?? 'application/octet-stream';
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const run = promisify(execFile);
+const execFileAsync = promisify(execFile);
+// A supercode given as its Node script (Windows cannot execute npm's shell shim) runs under supercode's own Node.
+const run = (program, args, options) => /\.[cm]?js$/i.test(program)
+  ? execFileAsync(process.env.SUPERCODE_NODE_BIN || process.execPath, [program, ...args], options)
+  : execFileAsync(program, args, options);
 /** A card file's bytes, read with the board's own CLI on the machine that keeps it (`attachment-read`, a mebibyte at a
  * time), never from where the board stores them: each part after the first is held to the version the first names, so a
  * file replaced mid-read is refused rather than spliced. */
