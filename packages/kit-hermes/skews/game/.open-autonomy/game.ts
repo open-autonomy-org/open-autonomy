@@ -11,19 +11,19 @@
 //   bun .open-autonomy/game.ts tasks                        the owners' queue: open Tasks in the Room
 //   bun .open-autonomy/game.ts card <id> <title> <cents> --owner <dir> [--task <taskId>] [--model <m>]   (owner) roadmap + budget + key
 //   bun .open-autonomy/game.ts cards                        the roadmap, each card's budget, spend and what is left
-//   bun .open-autonomy/game.ts start <id>                   the card's work begins: its session on the books, a line in `build`
+//   bun .open-autonomy/game.ts start <id> [--session <published session>]  the card's work begins: its session on the books, a line in `build`
 //   bun .open-autonomy/game.ts say <id> <text>              progress: an update on the card and a line in `build`
 //   bun .open-autonomy/game.ts show <key> <url> <name>      a page every member of the Room sees (the game running, the session)
 //   bun .open-autonomy/game.ts questions                    lines in `build` the agent has not answered
 //   bun .open-autonomy/game.ts answer <messageId> <text>    answer a line in `build`, quoting it
 //   bun .open-autonomy/game.ts ask <id> <prompt>            one model call paid from the card's budget, on its key
-//   bun .open-autonomy/game.ts check <id> [--goal <goal>] [--url <dev run>]   the game's bot plays its goal in a dev run
+//   bun .open-autonomy/game.ts check <id> --cdp <browser origin> --target <tab id> --commit <SHA> [--goal <goal>]   read the bot's retained outcome once
 //   bun .open-autonomy/game.ts release <id> <version> --members | --public --owner <dir>   (owner) members first, then everyone
 //   bun .open-autonomy/game.ts ship <id> --owner <dir>      (owner) the card is done: shipped on the roadmap
 //   bun .open-autonomy/game.ts end <id> [done|failed]       the card's session ends
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 const HERE = import.meta.dir, ROOT = resolve(HERE, '..'), KEYS = join(HERE, 'keys'), STATE = join(HERE, 'game-state.json');
 interface Game {
@@ -32,6 +32,7 @@ interface Game {
   workplace: string; organization: string; room: string; owners: string[]; self?: string;
   conversations: { general: string; feedback: string; build: string };
   std?: string; signaling?: string; goal?: string; models?: string[];
+  board?: {root: string; program: string; context: string; profile: string; project: string};
 }
 const yaml = readFileSync(join(HERE, 'config.yaml'), 'utf8');
 // A computer's own values (a local World's addresses and ids) may stand beside it in .open-autonomy/game.local.json,
@@ -62,6 +63,29 @@ const state = (): Record<string, any> => {
 };
 const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.stringify({ ...state(), ...patch, storeGame: game.storeGame }, null, 2) + '\n');
 
+// The native board is optional for an adopter; when configured it owns the cards.
+// Open Autonomy owns their allocations, keys and metered spend. Workplace apps
+// project the native board through Teams; this kit creates no projection itself.
+// A supercode given as its Node script (Windows cannot execute npm's shell shim) runs under supercode's own Node.
+const supercode = (program: string, args: string[]): [string, string[]] =>
+  /\.[cm]?js$/i.test(program) ? [process.env.SUPERCODE_NODE_BIN || 'node', [program, ...args]] : [program, args];
+const native = (...args: string[]): string => {
+  if (!game.board) return '';
+  const run = spawnSync(...supercode(game.board.program, ['workflow', '--root', game.board.root, ...args]), {
+    cwd: ROOT, encoding: 'utf8', env: {...process.env, SUPERCODE_CONTEXT: game.board.context},
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (run.status !== 0) throw new Error(`Native board ${args[0]}: ${String(run.stderr || run.stdout).trim().slice(-700)}`);
+  return run.stdout.trim();
+};
+const nativeId = (id: string): string => {
+  const value = JSON.parse(native('list', '--json'));
+  const cards = Array.isArray(value) ? value : value.tasks ?? value.cards ?? [];
+  const card = cards.find((item: any) => item.readable_id === id);
+  if (!card) throw new Error(`Native card ${id} is missing`);
+  return card.id;
+};
+
 async function call(base: string, path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; ok?: number[] } = {}): Promise<any> {
   const response = await fetch(base.replace(/\/$/, '') + path, { method: init.method ?? 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000),
     headers: { 'content-type': 'application/json', ...init.headers }, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
@@ -72,7 +96,7 @@ async function call(base: string, path: string, init: { method?: string; body?: 
 }
 const room = (path: string, init: Parameters<typeof call>[2] = {}) => call(game.workplace, path, { ...init, headers: { authorization: `Bearer ${key('workplace.token')}`, origin: game.workplace, 'x-rh2-organization': game.organization, ...init.headers } });
 const books = (path: string, keyName: string, init: Parameters<typeof call>[2] = {}) => call(platform, path, { ...init, headers: { authorization: `Bearer ${key(keyName)}`, ...init.headers } });
-const post = (conversation: string, body: string) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId: crypto.randomUUID() } });
+const post = (conversation: string, body: string, correlationId: string = crypto.randomUUID()) => room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages`, { method: 'POST', body: { body, correlationId } });
 const messages = async (conversation: string): Promise<any[]> => { const r = await room(`/api/v3/rooms/${game.room}/conversations/${encodeURIComponent(conversation)}/messages?limit=100`); return r.messages ?? r.items ?? (Array.isArray(r) ? r : []); };
 const textOf = (m: any): string => String(m.body ?? m.text ?? m.content ?? '');
 const idOf = (m: any): string => String(m.messageId ?? m.id);
@@ -126,6 +150,10 @@ switch (command) {
     const task = flag('--task'), model = flag('--model');
     const [id, ...rest] = args, cents = Number(rest.pop()), title = rest.join(' ');
     if (!id || !title || !Number.isInteger(cents) || cents < 1) throw new Error('card <id> <title> <budget in cents> [--task <taskId>] [--model <model>]');
+    if (game.board) native('create', `[${game.board.project}] ${title}`, '--readable-id', id,
+      '--idempotency-key', `game:${account}:${id}`, '--assignee', game.board.profile,
+      '--no-start', '--tag', `project:${game.board.project}`,
+      '--body', `Owner card: ${title}\nBudget: ${usd(cents)}. The card's envelope and metered spend are on the game's Open Autonomy books.`);
     const road = await roadmap();
     if (!road.items.some((item: any) => item.id === id)) road.items.push({ id, title, tense: 'future', status: 'planned', proposed_at: new Date().toISOString(), by: 'owner', acceptance: [] });
     await books('/v1/agent/roadmap', 'steer.key', { method: 'POST', body: { source: 'game', roadmap: road, by: 'owner' } });
@@ -146,12 +174,34 @@ switch (command) {
     break;
   }
   case 'start': {
+    const liveSession = flag('--session');
     const [id] = args, item = (await roadmap()).items.find((x: any) => x.id === id);
     if (!item) throw new Error(`no card ${id} on the roadmap`);
-    const key = `game-${id}-${Date.now().toString(36)}`;
-    await event('org.open-autonomy.session.started', key, { session_kind: 'run', title: item.title, source: 'game', item_id: id }, id);
+    if (game.board) {
+      const cardId = nativeId(id);
+      // External harnesses already exist. Taking a card never launches or signs in to one.
+      const listing = JSON.parse(native('list', '--json'));
+      const current = (Array.isArray(listing) ? listing : listing.tasks ?? listing.cards ?? []).find((row: any) => row.id === cardId);
+      if (current?.status !== 'running') native('claim', cardId);
+      native('deliver');
+      if (liveSession) {
+        const frames = native('events', '--once', '--json').split('\n').filter(Boolean).map(line => JSON.parse(line));
+        const card = frames.find(frame => frame.type === 'snapshot_item' && frame.data?.card?.id === cardId)?.data.card;
+        const agent = card?.agents?.find((row: any) => row.role === 'implementer' && row.state === 'active');
+        if (!agent) throw new Error('The native card has no declared implementer yet. Deliver its pending declaration and retry start.');
+        const recorded = spawnSync(...supercode(game.board.program, ['teams', 'agent', 'record', '--session', liveSession, '--agent', agent.id, '--main', '--context', game.board.context]), {cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','pipe']});
+        if (recorded.status !== 0) throw new Error(`The existing session could not join its native card agent: ${String(recorded.stderr || recorded.stdout).slice(-700)}`);
+      }
+    }
+    const existing = session(id);
+    const key = existing && !state().endedSessions?.[existing] ? existing : `game-${id}-${crypto.randomUUID()}`;
+    // Retain the subject before the request: OA's session-start door is idempotent by this key.
     remember({ sessions: { ...(state().sessions ?? {}), [id]: key } });
-    await post(game.conversations.build, `Starting “${item.title}”. I post what I do here; ask me anything in this conversation.`);
+    await event('org.open-autonomy.session.started', key, { session_kind: 'run', title: item.title, source: 'game', item_id: id }, id);
+    if (!state().announcedSessions?.[key]) {
+      await post(game.conversations.build, `Starting “${item.title}”. I post what I do here; ask me anything in this conversation.`, `start:${key}`);
+      remember({announcedSessions: {...(state().announcedSessions ?? {}), [key]: true}});
+    }
     console.log(`Session ${key} is live on the card.`);
     break;
   }
@@ -160,6 +210,7 @@ switch (command) {
     if (!id || !text) throw new Error('say <id> <text>');
     await event('org.open-autonomy.item.update', id, { text, ...(session(id) ? { session: session(id) } : {}) }, id);
     await post(game.conversations.build, text);
+    if (game.board) native('comment', nativeId(id), text);
     console.log('Said on the card and in build.');
     break;
   }
@@ -203,38 +254,38 @@ switch (command) {
     break;
   }
   case 'check': {
-    // The release candidate's automated play: this checkout in a dev run (its bot kept, its signaling on this machine),
-    // played in game-std's headless Chrome with `?bot=<goal>`, read back from the page's console. Recorded on the release.
-    const [id] = args, goal = flag('--goal') ?? game.goal ?? 'do the quest', minutes = Number(flag('--minutes') ?? 6);
-    if (!game.std) throw new Error('config.yaml `game.std` names the game-std checkout the game builds against');
-    const commit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
-    // `--url`: the dev run already serving this checkout (the one shown in the Room); else one of its own, stopped after.
-    const given = flag('--url');
-    const dev = given ? undefined : spawn('node', [join(game.std, 'packages/web/run/dev.ts'), ROOT], { cwd: game.std, stdio: ['ignore', 'pipe', 'pipe'] });
-    let printed = '';
-    const address = given ?? await new Promise<string>((resolveUrl, reject) => {
-      const timer = setTimeout(() => reject(new Error(`the dev run printed no address in 3 minutes:\n${printed.slice(-800)}`)), 180_000);
-      const read = (chunk: Buffer) => { printed += chunk; const m = /host at (http:\/\/\S+)/.exec(printed); if (m) { clearTimeout(timer); resolveUrl(m[1]); } };
-      dev!.stdout.on('data', read); dev!.stderr.on('data', read);
-      dev!.on('exit', (code) => { clearTimeout(timer); reject(new Error(`the dev run ended (${code}):\n${printed.slice(-800)}`)); });
+    // Read an already-running bot's retained console once. The operator starts and records the real dev tab;
+    // this command never launches a browser, waits for a goal, polls, or turns a missing result into a failure.
+    const cdp = flag('--cdp'), target = flag('--target'), commit = flag('--commit');
+    const goal = flag('--goal') ?? game.goal ?? 'do the quest', [id] = args;
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: ROOT, encoding: 'utf8'}).stdout.trim();
+    if (!id || !cdp || !target || commit !== head) throw new Error('check <id> --cdp <http://127.0.0.1:port> --target <recorded tab id> --commit <current full SHA> [--goal <goal>]');
+    const browser = new URL(cdp);
+    if (browser.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(browser.hostname)) throw new Error('Read only the operator’s local browser.');
+    const tabs = await fetch(new URL('/json/list', browser), {signal: AbortSignal.timeout(2000)}).then(r => r.json()) as any[];
+    const tab = tabs.find(row => row.id === target && row.type === 'page');
+    if (!tab?.webSocketDebuggerUrl || new URL(tab.url).searchParams.get('autopilot') !== goal) throw new Error('Choose the recorded game tab running this exact autopilot goal.');
+    const lines = await new Promise<string[]>((resolveLines, reject) => {
+      const socket = new WebSocket(tab.webSocketDebuggerUrl), lines: string[] = [];
+      const timer = setTimeout(() => { socket.close(); reject(new Error('The browser supplied no retained console within five seconds.')); }, 5000);
+      const finish = (error?: Error) => { clearTimeout(timer); socket.close(); if (error) reject(error); else resolveLines(lines); };
+      socket.onopen = () => socket.send(JSON.stringify({id: 1, method: 'Runtime.enable'}));
+      socket.onerror = () => finish(new Error('The browser console connection failed.'));
+      socket.onmessage = event => {
+        const message = JSON.parse(String(event.data));
+        if (message.method === 'Runtime.consoleAPICalled') lines.push(message.params.args.map((arg: any) => arg.value ?? arg.description ?? '').join(' '));
+        // Runtime.enable replays retained console entries before its reply. No goal watcher is installed.
+        if (message.id === 1) finish(message.error ? new Error(message.error.message) : undefined);
+      };
     });
-    const url = new URL(address); url.searchParams.set('name', 'Bot'); url.searchParams.set('bot', goal);
-    const { HeadlessPage } = await import(join(game.std, 'packages/tools/headless.ts'));
-    const page = await HeadlessPage.open(url.href, join(ROOT, 'build', 'check', 'chrome'));
-    const until = Date.now() + minutes * 60_000;
-    // The game's bot says each goal's end on the page's console: `[bot] ✓ <goal> (<time>)` or `[bot] ✗ <goal> (<time>): why`.
-    let result: 'passed' | 'failed' = 'failed', detail = `the bot had not finished “${goal}” after ${minutes} minutes`;
-    while (Date.now() < until) {
-      const done = page.console.find((line: string) => line.includes(`[bot] ✓ ${goal}`) || line.includes(`[bot] ✗ ${goal}`));
-      if (done) { result = done.includes('✓') ? 'passed' : 'failed'; detail = done.slice(done.indexOf('[bot]') + 6).trim().slice(0, 300); break; }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    page.close(); dev?.kill('SIGTERM');
-    remember({ checks: { ...(state().checks ?? {}), [id]: { goal, result, detail, commit, at: new Date().toISOString() } } });
+    // A served client's console wraps game output in these runtime tags; bare native output has none.
+    const gameLines = lines.map(line => line.replace(/^(?:\[(?:client|log|dev)\] )+/, ''));
+    const outcome = gameLines.findLast(line => line.startsWith(`[autopilot] ✓ ${goal} (`) || line.startsWith(`[autopilot] ✗ ${goal} (`) || line.startsWith(`[bot] ✓ ${goal} (`) || line.startsWith(`[bot] ✗ ${goal} (`));
+    if (!outcome) throw new Error('This tab has no completed outcome for the goal. Keep its take; read again only after the bot has finished.');
+    const result = outcome.includes('] ✓ ') ? 'passed' : 'failed', detail = outcome.replace(/^\[\w+\] /, '').slice(0, 300);
+    remember({checks: {...(state().checks ?? {}), [id]: {goal, result, detail, commit, at: new Date().toISOString(), target, url: tab.url}}});
     console.log(`The bot played “${goal}” on ${commit.slice(0, 7)}: ${result} (${detail}).`);
-    if (session(id)) await event('org.open-autonomy.item.update', id, { text: `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} (${detail}).`, session: session(id) }, id).catch(() => {});
-    await post(game.conversations.build, `The bot played “${goal}” on the release candidate ${commit.slice(0, 7)}: ${result} · ${detail}.`).catch(() => {});
-    process.exit(0);
+    break;
   }
   case 'release': {
     // Members first: the build uploaded to the store and set on the Members beta channel. Then everyone: the same build
@@ -300,6 +351,7 @@ switch (command) {
     if (!item) throw new Error(`no card ${id} on the roadmap`);
     Object.assign(item, { status: 'done', tense: 'past', done_at: new Date().toISOString() });
     await books('/v1/agent/roadmap', 'steer.key', { method: 'POST', body: { source: 'game', roadmap: road, by: 'owner' } });
+    if (game.board) native('complete', nativeId(id), '--summary', 'Shipped to members, then released to everyone; the release carries its observed bot result.');
     console.log(`${id} is shipped on What's next.`);
     break;
   }
@@ -307,6 +359,7 @@ switch (command) {
     const [id, outcome = 'done'] = args;
     if (!session(id)) throw new Error(`card ${id} has no session started here`);
     await event('org.open-autonomy.session.ended', session(id)!, { outcome, item_id: id }, id);
+    remember({endedSessions: {...(state().endedSessions ?? {}), [session(id)!]: true}});
     console.log(`Session ${session(id)} ended (${outcome}).`);
     break;
   }

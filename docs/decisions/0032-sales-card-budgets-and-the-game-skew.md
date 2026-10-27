@@ -32,5 +32,5 @@ that card's budget. Any coding agent at the computer works the game (the owner: 
 
 ## Consequences
 
-Patronage, grants and the other skews are unchanged. A sale's refund does not yet reverse it. The skew's release
+Patronage, grants and the other skews are unchanged. A sale's refund reverses it once per order; what the refund cannot take back is owed and settled from the next money in (ADR 0034). The skew's release
 door calls a store's folder uploader named in the game's configuration.
