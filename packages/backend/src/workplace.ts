@@ -207,7 +207,10 @@ export async function workplaceCardsOf(ledger: LedgerClient, account: string): P
   const cards: Array<Record<string, unknown>> = [];
   for (const item of items.slice(0, 200)) {
     const budget = (await ledger.item(account, item.id).catch(() => undefined))?.budget;
-    if (budget) cards.push({ key: item.id, allocatedUsdCents: budget.allocated_usd_cents, spentUsdCents: budget.spent_usd_cents, leftUsdCents: budget.left_usd_cents });
+    // The native card the item links (a `card:<id>` link, the id its Workplace Task names), so a page joins a card's
+    // Task to its money by the card itself.
+    const card = (item.links ?? []).find((link) => link.url.startsWith('card:'))?.url.slice('card:'.length);
+    if (budget) cards.push({ key: item.id, ...(card ? { card } : {}), allocatedUsdCents: budget.allocated_usd_cents, spentUsdCents: budget.spent_usd_cents, leftUsdCents: budget.left_usd_cents });
   }
   return cards;
 }
