@@ -104,6 +104,9 @@ export interface Account {
   stripe_cardholder?: string;
   // Bonus credits: the part of a giver's balance that may only be granted to accounts the giver does not own.
   bonus_usd_cents?: number;
+  // Owed by refunds: the part of refunded sales the project's free money could not cover (already spent or set aside
+  // for a card) when the refund came. The account's next money in settles it first (ADR 0034).
+  refund_owed_usd_cents?: number;
   // What the account's calls used, by the minute (the last hour), the hour (the last day) and the day (the last month):
   // money, calls and tokens, and each model's share — what the project's spend limits are held against.
   usage: Usage;
@@ -580,8 +583,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const a = this.ensureAcct(account);
     a.granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
-    this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
-    await this.save();
+    const minted = this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
+    // Money in settles what earlier refunds could not take back, before anything else may spend it (ADR 0034).
+    const owed = a.refund_owed_usd_cents ?? 0, settled = Math.min(owed, envelope.balance_usd_cents);
+    if (settled > 0) {
+      envelope.balance_usd_cents -= settled; a.granted_in_usd_cents -= settled;
+      a.refund_owed_usd_cents = owed - settled || undefined;
+      this.recordFlow({ kind: 'refund', id: `settle:${minted.id ?? envelope.id}`, from: account, to: '@refunds', amount_usd_cents: settled, note: 'Settles an earlier refund the project could not cover when it came.' });
+    }
+    // A sale is kept under its own key: a refund finds it however long ago it was made.
+    if (sale && key) await this.ctx.storage.put({ state: this.state, [`salerecord:${key}`]: minted });
+    else await this.save();
     return { ok: true, account, balance_usd_cents: this.balanceOf(account) };
   }
 
@@ -590,9 +602,12 @@ export class LimitLedger implements DurableObject, LedgerCore {
   // is not taken back, and the refund records that part as its shortfall.
   async refund(account: string, seller: string, order: string, reason?: string): Promise<Record<string, unknown>> {
     const saleId = `sale:${seller}:${order}`, key = `refund:${seller}:${order}`;
-    const sold = this.state.flows.find((f) => f.kind === 'mint' && f.id === saleId && f.to === account && f.sale);
+    // A completed refund answers as one, whether or not its key or its sale is still in the bounded lists.
+    if (this.state.applied_keys.includes(key) || await this.ctx.storage.get(`refundrecord:${key}`)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
+    const listed = this.state.flows.find((f) => f.kind === 'mint' && f.id === saleId && f.to === account && f.sale);
+    const kept = listed ?? await this.ctx.storage.get<Flow>(`salerecord:${saleId}`);
+    const sold = kept && kept.kind === 'mint' && kept.to === account && kept.sale ? kept : undefined;
     if (!sold?.sale) return { ok: false, error: 'no_sale', message: 'No sale by this seller under this order is on these books.' };
-    if (this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, balance_usd_cents: this.balanceOf(account) };
     const a = this.ensureAcct(account);
     const own = a.envelopes.filter((e) => e.id === sold.envelope_id);
     const free = a.envelopes.filter((e) => e.id !== sold.envelope_id && e.purpose.type === 'unrestricted');
@@ -605,8 +620,10 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const taken = sold.amount_usd_cents - debit;
     this.applyKey(key);
     a.granted_in_usd_cents -= taken;
-    this.recordFlow({ kind: 'refund', id: key, from: account, to: `@${seller}`, amount_usd_cents: taken, sale: sold.sale, ...(debit ? { shortfall_usd_cents: debit } : {}), ...(reason ? { note: reason.slice(0, 300) } : {}) });
-    await this.save();
+    // What could not be taken back now is owed, and the account's next money in settles it (ADR 0034).
+    if (debit) a.refund_owed_usd_cents = (a.refund_owed_usd_cents ?? 0) + debit;
+    const refunded = this.recordFlow({ kind: 'refund', id: key, from: account, to: `@${seller}`, amount_usd_cents: taken, sale: sold.sale, ...(debit ? { shortfall_usd_cents: debit } : {}), ...(reason ? { note: reason.slice(0, 300) } : {}) });
+    await this.ctx.storage.put({ state: this.state, [`refundrecord:${key}`]: refunded });
     return { ok: true, account, refunded_usd_cents: taken, shortfall_usd_cents: debit, balance_usd_cents: this.balanceOf(account) };
   }
 
@@ -1501,6 +1518,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
       account, funded, exhausted: funded && balance <= 0,
       balance_usd_cents: balance, granted_in_usd_cents: grantedIn, granted_out_usd_cents: grantedOut, consumed_usd_cents: consumed,
       reserved_usd_cents: reserved, spendable_usd_cents: balance - reserved,
+      ...(a?.refund_owed_usd_cents ? { refund_owed_usd_cents: a.refund_owed_usd_cents } : {}),
       usable_usd_cents: usable, envelopes: (a?.envelopes ?? []).filter((e) => e.balance_usd_cents > 0).map((e) => ({ ...e, purpose: clonePurpose(e.purpose) })),
       burn_per_day_usd_cents: est.burn_per_day_usd_cents,
       runway_days: funded ? est.runway_days : null, runway_lo_days: funded ? est.runway_lo_days : null, runway_hi_days: funded ? est.runway_hi_days : null,
@@ -1711,6 +1729,7 @@ function normalizeState(stored: Partial<LedgerState>): LedgerState {
     if (typeof a.roadmap_revision === 'number') acct.roadmap_revision = a.roadmap_revision;
     if (typeof a.stripe_cardholder === 'string') acct.stripe_cardholder = a.stripe_cardholder;
     if (typeof a.bonus_usd_cents === 'number') acct.bonus_usd_cents = a.bonus_usd_cents;
+    if (typeof a.refund_owed_usd_cents === 'number' && a.refund_owed_usd_cents > 0) acct.refund_owed_usd_cents = a.refund_owed_usd_cents;
     acct.usage = emptyUsage();
     const u = (a as { usage?: Partial<Usage> }).usage;
     for (const grain of ['minutes', 'hours', 'days'] as const) if (u?.[grain] && typeof u[grain] === 'object') acct.usage[grain] = u[grain] as Record<string, Tally>;
@@ -1900,6 +1919,8 @@ export interface FundingSnapshot {
   granted_out_usd_cents: number;
   consumed_usd_cents: number;
   reserved_usd_cents: number;
+  // What refunds could not take back and the account's next money in will settle (ADR 0034); absent when nothing is owed.
+  refund_owed_usd_cents?: number;
   spendable_usd_cents: number;
   usable_usd_cents: number;
   envelopes: Envelope[];
