@@ -771,11 +771,12 @@ async function setup(): Promise<void> {
 }
 // A pass publishes what changed since the last one: native declarations when a source change invalidated them, the board
 // when a delivery changed it, the sessions whose inputs changed (sessions()), the documents when committed main may have
-// moved, and the timeline when the board or its revision interval did. Passes run one at a time through the publication
-// writer. A change marks what it touched and asks for a pass (requestTick); every change that arrives before that pass
-// starts folds into it, and the pass starts once its burst has settled: SETTLE after the latest change, and never
-// later than SETTLE_MAX after the first. A board delivery runs its own pass at once, folding whatever else is pending,
-// and acknowledges its cursor after it. SETTLE_MAX is the five seconds the board poll this replaced ran at.
+// moved, and the timeline when the board, a project's committed main or the revision interval did. Passes run one at a
+// time through the publication writer. A change marks what it touched and asks for a pass (requestTick); every change
+// that arrives before that pass starts folds into it, and the pass starts once its burst has settled: SETTLE after the
+// latest change, and never later than SETTLE_MAX after the first. A board delivery runs its own pass at once, folding
+// whatever else is pending, and acknowledges its cursor after it. SETTLE_MAX is the five seconds the board poll this
+// replaced ran at.
 const SETTLE = 1000, SETTLE_MAX = 5000;
 let dirty=false, boardDirty=true, documentsDirty=true, timelineStale=false, boardReady=false, queued=false;
 let boardItems: RoadmapItem[] | undefined;
@@ -790,7 +791,14 @@ async function pass(): Promise<void> {
     await nativeState();
     if (boardDirty) { boardItems = await board(); boardDirty = false; timelineStale = true; }
     sessions();
-    if (documentsDirty) { await refreshMain(); await docs(); await setup(); documentsDirty = false; }
+    if (documentsDirty) {
+      const revision = mainRevision;
+      await refreshMain();
+      // A project's timeline folds main's CHANGELOG.md and ROADMAP.md into the board (timeline()), so a moved main is a
+      // timeline change too; an organization's timeline is its board alone.
+      if (!organization && mainRevision !== revision) timelineStale = true;
+      await docs(); await setup(); documentsDirty = false;
+    }
     if (timelineStale || timelineDue) { await timeline(boardItems); timelineStale = false; }
   } catch (error) { dirty = true; throw error; }
   finally { passes++; passMs += performance.now() - began; }

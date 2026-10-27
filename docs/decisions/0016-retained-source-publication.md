@@ -84,7 +84,8 @@ Changes fold into one pass once their burst settles (one second after the latest
 first, the cadence of the board poll this record replaced); a board delivery runs its pass at once and acknowledges
 its cursor after it, as before. A pass publishes what changed: the board's notes for the cards whose source rows
 changed, the sessions whose descriptor, transcript, card or native record changed, documents when main may have
-moved, the timeline when the board or its revision interval did. The source validates and freezes a card once, when
-its frame arrives, and every later inventory shares that immutable row. Keys, item IDs, association preflight of the
-whole observation, the observed-card view of a pass, retained obligations and cursor acknowledgement are unchanged.
+moved, the timeline when the board, a project's committed main (its CHANGELOG.md and ROADMAP.md) or its revision
+interval did. The source validates and freezes a card once, when its frame arrives, and every later inventory shares
+that immutable row. Keys, item IDs, association preflight of the whole observation, the observed-card view of a pass,
+retained obligations and cursor acknowledgement are unchanged.
 This changes no audience, spend authority, credentials or native lifecycle evidence.

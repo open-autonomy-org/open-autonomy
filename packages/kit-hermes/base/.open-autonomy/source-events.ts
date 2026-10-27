@@ -66,7 +66,9 @@ function streamChild(command: string[], env: Record<string, string>, log: (messa
     try {
       if (closed && alive() === false) { finish(); return; }
       if (Date.now() >= deadline) {
-        if (!escalated) {
+        // A group whose state is unknown (EPERM) at the deadline is never sent SIGKILL: retirement is refused instead.
+        if (!escalated && alive() === undefined) finish(new Error('Native stream retirement could not be confirmed; stop/reconnect refused'));
+        else if (!escalated) {
           escalated = true; signal('SIGKILL'); closeReader(); child.stdout?.destroy(); deadline = Date.now() + 1000;
         } else finish(new Error('Native stream retirement could not be confirmed; stop/reconnect refused'));
       }
