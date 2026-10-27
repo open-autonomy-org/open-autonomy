@@ -174,6 +174,9 @@ are persisted before the cache commits cards/cursor and clears the pending obser
 window recovers by receipt/obligation identity. Resync preserves pending obligations and mappings while obtaining
 the next full snapshot; source absence does not fabricate a task or session end.
 
+A publication pass reads the cards the resolver has registered (the last observation the callback resolved), never the
+cache's staged observation, so no pass names a card that has no association yet.
+
 One publisher owns the state and selected account timeline. Narrative state writes, source callbacks, retry delivery
 and session-binding changes run through one serial queue. Owner controls use the independent queue and canonical
 control file specified in ADR 0026; narrative failure never blocks that queue. The same verified local lease fences
