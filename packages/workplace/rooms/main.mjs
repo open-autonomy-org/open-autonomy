@@ -771,7 +771,8 @@ saveState();
 let sweepRequested = true;
 /**
  * The minute's sweep over the organization's open Rooms: a Room this app opened for a project that has no live arc any
- * more is owed its close, and each project with a live arc is kept again hourly.
+ * more is owed its close. Run demand and unfinished placements are read again each minute: their RH2 representation
+ * can change without a native card event. Other live projects are kept again hourly.
  */
 async function sweepRooms() {
   if (!sourceAdmitted || !state.ready || !state.cleanupReady) return;
@@ -779,8 +780,11 @@ async function sweepRooms() {
   if (!Array.isArray(answer.rooms)) throw new Error('the active Room list returned no Rooms array');
   const open = new Set(answer.rooms.filter((room) => room.state === 'active').map((room) => room.roomId));
   const liveProjects = new Set(Object.values(state.cards).filter((card) => card.live && card.project).map((card) => card.project));
-  for (const [project, roomId] of Object.entries(state.projects)) if (open.has(roomId) && !liveProjects.has(project)) state.projectsOwed[project] = true;
-  for (const project of liveProjects) if (Date.now() - (state.projectsKept[project] ?? 0) >= 3_600_000) state.projectsOwed[project] = true;
+  const runProjects = new Set(Object.values(state.cards).filter(card => card.live && card.project && card.run).map(card => card.project));
+  for (const [project, roomId] of Object.entries(state.projects)) {
+    if (Object.keys(state.runSeats[roomId] ?? {}).length || open.has(roomId) && !liveProjects.has(project)) state.projectsOwed[project] = true;
+  }
+  for (const project of liveProjects) if (runProjects.has(project) || Date.now() - (state.projectsKept[project] ?? 0) >= 3_600_000) state.projectsOwed[project] = true;
   saveState();
 }
 let stopping = false, sourceAdmitted = false;
