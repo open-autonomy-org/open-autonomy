@@ -25,14 +25,16 @@ free money. What is already spent, or set aside for a card, is not taken back: t
    flows feed and the key list stay bounded; they are no longer the only record.
 2. **What a refund cannot take back is owed.** Its shortfall adds to the account's `refund_owed_usd_cents`. Money already
    spent or set aside for a card is left where it is: cards in flight keep their budgets.
-3. **The account's next money in settles what is owed, first.** Any mint or grant into an account that owes refunds
-   takes the owed part out of the new envelope before anything may spend it, and records a `refund` flow to `@refunds`
-   noting that it settles an earlier refund. A sale, a grant from patronage, a funder's grant or coupon, a matching
-   bonus and a grants-pool grant all settle it the same way. Money given for a purpose (an earmarked envelope) is left
-   to that purpose, as a refund leaves it; only unrestricted money settles.
+3. **The game's own next sales settle what is owed, first.** A sale's mint into an account that owes refunds takes the
+   owed part out of the new envelope before anything may spend it, and records a `refund` flow to `@refunds` noting that
+   it settles an earlier refund. Only sales income settles: a refund reverses a sale, and a game's sales are "not
+   patronage" (ADR 0032), so a patron's gift, a funder's grant or coupon, Open Autonomy's matching bonus and a
+   grants-pool grant never pay a buyer's refund back. ADR 0032's "patronage, grants and the other skews are
+   unchanged" holds. Money given for a purpose (an earmarked envelope) is left to it, as a refund leaves it.
 4. **Until it is settled, what is owed is held.** The account can neither spend, grant nor set aside for a card the
    owed amount, so money freed later (a released reservation, a done card's remainder) stays held rather than
-   becoming spendable while the debt stands.
+   becoming spendable while the debt stands. Holding takes nothing: a game with no further sales keeps its other money
+   in its envelopes, and only its spendable amount stands below the debt until sales settle it.
 5. **The books show it.** The funding snapshot carries `refund_owed_usd_cents` while anything is owed, beside
    `reserved_usd_cents`, and `spendable_usd_cents` excludes it.
 

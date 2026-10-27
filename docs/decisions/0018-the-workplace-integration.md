@@ -41,7 +41,8 @@ rather each sub systems have their own alerts that go up to the alerts system".
    ended condition is always cleared. No person is named here; the workspace's roles say who.
 3. **The books are published there, and a spending freeze asked there is taken here.** Every tick publishes the
    project's books in the workspace's `books` format (standing, put in, given out, spent, balance, burn and runway against
-   its goal, earmarks, spending caps with their use, the owner's statements, the daily metered spend) and works the
+   its goal, earmarks, each roadmap card's budget by its card key (set aside, spent, left: an earmark under the card's key; the
+   card itself is its Task), spending caps with their use, the owner's statements, the daily metered spend) and works the
    controls asked of them. The one control is the **spending freeze**, the owner's words "a spending freeze, which could be
    combined with spending caps": a cap of zero on every rail, kept on the account (`freeze`), checked by `reserve` before
    anything else, so no model call, card or partner charge is reserved while it stands. It is the project's own or its

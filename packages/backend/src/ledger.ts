@@ -543,8 +543,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
   private heldFor(id: string): number {
     return this.reservedFor(id) + (this.acct(id)?.refund_owed_usd_cents ?? 0);
   }
-  /** Money in settles what earlier refunds left owed, before anything may spend it (ADR 0034): from an unrestricted
-   *  envelope only, since money given for a purpose is left to it, as a refund leaves it. */
+  /** A sale's income settles what earlier refunds left owed, before anything may spend it (ADR 0034): from an
+   *  unrestricted envelope only, since money given for a purpose is left to it, as a refund leaves it. */
   private settleOwed(account: string, envelope: Envelope, id: string): void {
     const a = this.ensureAcct(account), owed = a.refund_owed_usd_cents ?? 0;
     if (!owed || envelope.purpose.type !== 'unrestricted') return;
@@ -602,7 +602,8 @@ export class LimitLedger implements DurableObject, LedgerCore {
     a.granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(account, Math.floor(amount), marked.purpose, sponsor?.login, key);
     const minted = this.recordFlow({ kind: 'mint', id: key ?? envelope.id, to: account, amount_usd_cents: Math.floor(amount), sponsor_login: sponsor?.login, purpose: marked.purpose, envelope_id: envelope.id, ...(sale ? { sale } : {}) });
-    this.settleOwed(account, envelope, String(minted.id ?? envelope.id));
+    // Only the game's own sales income settles what its refunds left owed: patronage, grants and matching never do.
+    if (sale) this.settleOwed(account, envelope, String(minted.id ?? envelope.id));
     // A sale is kept under its own key: a refund finds it however long ago it was made.
     if (sale && key) await this.ctx.storage.put({ state: this.state, [`salerecord:${key}`]: minted });
     else await this.save();
@@ -688,7 +689,6 @@ export class LimitLedger implements DurableObject, LedgerCore {
     this.ensureAcct(to).granted_in_usd_cents += Math.floor(amount);
     const envelope = this.addEnvelope(to, Math.floor(amount), marked.purpose, from, key);
     const gift = this.recordFlow({ kind: 'grant', id: key ?? envelope.id, from, to, amount_usd_cents: Math.floor(amount), purpose: marked.purpose, envelope_id: envelope.id, ...(note ? { note: note.slice(0, 280) } : {}), ...(by ? { by } : {}) });
-    this.settleOwed(to, envelope, String(gift.id ?? envelope.id));
     if (from.startsWith('@') && to.split('/')[0].toLowerCase() !== from.slice(1).toLowerCase()) { const acct = this.ensureAcct(from); acct.bonus_usd_cents = Math.max(0, (acct.bonus_usd_cents ?? 0) - Math.floor(amount)); }
     // The state feed is a quick trailing window; each gift also has one durable record so giver and
     // organization-pool pages can show their complete flow history.
