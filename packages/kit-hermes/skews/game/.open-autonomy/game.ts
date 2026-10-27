@@ -68,7 +68,7 @@ const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.strin
 // project the native board through Teams; this kit creates no projection itself.
 // A supercode given as its Node script (Windows cannot execute npm's shell shim) runs under supercode's own Node.
 const supercode = (program: string, args: string[]): [string, string[]] =>
-  /.[cm]?js$/i.test(program) ? [process.env.SUPERCODE_NODE_BIN || 'node', [program, ...args]] : [program, args];
+  /\.[cm]?js$/i.test(program) ? [process.env.SUPERCODE_NODE_BIN || 'node', [program, ...args]] : [program, args];
 const native = (...args: string[]): string => {
   if (!game.board) return '';
   const run = spawnSync(...supercode(game.board.program, ['workflow', '--root', game.board.root, ...args]), {
