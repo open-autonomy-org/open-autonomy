@@ -328,6 +328,16 @@ export class PublicationStore {
   private closed = false;
   private closing = false;
   private observation?: SourceSnapshot;
+  // The retained associations by key. Every pass looks up each card's and each note's association, so a scan of the
+  // list (with the key's hash recomputed per entry) cost about 11 s of CPU per pass on a 4,217-association board. The list
+  // only grows (resolveCards, legacy adoption), so the index follows it by identity and length.
+  private keyed?: { list: Association[]; size: number; map: Map<string, Association> };
+  private associated(key: string): Association | undefined {
+    const list = this.data.associations;
+    if (this.keyed?.list !== list || this.keyed.size > list.length) this.keyed = { list, size: 0, map: new Map() };
+    for (; this.keyed.size < list.length; this.keyed.size++) this.keyed.map.set(list[this.keyed.size].key, list[this.keyed.size]);
+    return this.keyed.map.get(key);
+  }
   constructor(private readonly options: PublicationOptions) {
     this.config = checkConfig(options.publication); this.sourceContextId = this.config.source_context;
     this.lock = `${resolve(options.stateFile)}.lock`;
@@ -431,7 +441,7 @@ export class PublicationStore {
     const markers = new Set<string>(prior.noted ?? []);
     for (const entry of adoption.notes) {
       if (!nonempty(entry.legacyKey) || !markers.has(entry.legacyKey)) throw new Error('Legacy note adoption must retain an exact acknowledged marker');
-      const a = this.data.associations.find(a => a.key === entry.associationKey);
+      const a = this.associated(entry.associationKey);
       if (!a) throw new Error('Legacy note adoption names an unknown item association');
       const store = this.config.stores.find(store => store.context === a.tuple[3])!;
       const card: any = cached.get(JSON.stringify([store.backing_board, a.tuple[4]]));
@@ -482,7 +492,7 @@ export class PublicationStore {
       if (!nonempty(id)) throw new Error('Native card identity missing');
       const tuple: Association['tuple'] = ['oa.native-item', 1, this.sourceContextId, store, id], key = publicationHash(JSON.stringify(tuple));
       if (seen.has(key)) throw new Error('Duplicate native association in source inventory'); seen.add(key);
-      const old = this.data.associations.find(a => a.key === key);
+      const old = this.associated(key);
       if (old && !eq(old.tuple, tuple)) throw new Error('OA association hash collision');
       if (!old) additions.push({ key, tuple, itemId: `oa_${key}` });
     }
@@ -497,7 +507,7 @@ export class PublicationStore {
   }
   association(board: string, cardId: string): Association {
     const tuple = ['oa.native-item', 1, this.sourceContextId, this.storeContext(board), cardId];
-    const a = this.data.associations.find(a => a.key === publicationHash(JSON.stringify(tuple)));
+    const a = this.associated(publicationHash(JSON.stringify(tuple)));
     if (!a || !eq(a.tuple, tuple)) throw new Error('Item association must be preflighted before any effect');
     return a;
   }
@@ -509,7 +519,7 @@ export class PublicationStore {
     if (!Array.isArray(events) || events.length !== 1 || JSON.stringify(events) !== p.wire || events[0]?.specversion !== '1.0' || !nonempty(events[0]?.id)) throw new Error('Retained publication bytes cannot be replayed identically');
     const e = events[0];
     if (p.kind === 'note') {
-      const a = this.data.associations.find(a => a.key === p.associationKey);
+      const a = this.associated(p.associationKey);
       if (!a || e.type !== EVENT_TYPES.update || e.id !== p.obligationId || e.subject !== a.itemId || p.expected?.id !== e.id || p.expected?.account !== this.options.account || p.expected?.item_id !== e.subject || p.expected?.ts !== e.time || !eq(e.data, { text: p.expected?.text, ...(p.expected?.session ? { session: p.expected.session } : {}) }) || !eq(redactDeep(e.data), e.data)) throw new Error('Retained note request differs from its account/item/content binding');
     } else if (p.obligationId !== `oat_${publicationHash(p.wire)}` || e.type !== TIMELINE_EVENT_TYPE || e.subject !== 'project' || !eq(e.data, p.expected) || !eq(normalizeRoadmap(redactDeep(e.data.roadmap)), e.data.roadmap)) throw new Error('Retained timeline request differs from normalized expected document');
     return events[0];
@@ -583,7 +593,7 @@ export class PublicationStore {
   async sessionItem(binding: SessionBinding, oa: OpenAutonomy): Promise<string | undefined> {
     if (!nonempty(binding.platformKey) || binding.platformKey.length > 200 || binding.platformKey.includes(':') || redactSecrets(binding.platformKey) !== binding.platformKey || !nonempty(binding.nativeSessionId) || !nonempty(binding.evidence)) throw new Error('Session binding needs valid unchanged platform/native identity and positive evidence');
     if (binding.itemId && (!itemId.test(binding.itemId) || redactSecrets(binding.itemId) !== binding.itemId)) throw new Error('Session item reference would be transformed');
-    if (binding.associationKey && this.data.associations.find(a => a.key === binding.associationKey)?.itemId !== binding.itemId) throw new Error('Session item differs from its proven association');
+    if (binding.associationKey && this.associated(binding.associationKey)?.itemId !== binding.itemId) throw new Error('Session item differs from its proven association');
     const old = this.data.sessionBindings.find(b => b.platformKey === binding.platformKey);
     const continuation = (key: string): number | undefined => {
       if (key === binding.nativeSessionId) return 0;
@@ -605,7 +615,7 @@ export class PublicationStore {
     if (remote?.item_id && remote.item_id !== proposed) throw new Error('Existing remote session item is not the proved frozen binding');
     if (remote && !old) throw new Error('Existing session without retained binding needs explicit adoption, not current uniqueness');
     if (remote && !remote.item_id && !old?.itemId && proposed && !inherited) {
-      const a = this.data.associations.find(a => a.key === binding.associationKey);
+      const a = this.associated(binding.associationKey);
       const proof = this.observation?.cards.find(row => a && this.storeContext(row.board) === a.tuple[3] && row.card.id === a.tuple[4]);
       const attemptId = binding.evidence.startsWith('native-attempt:') ? binding.evidence.slice('native-attempt:'.length) : undefined;
       const attempt = attemptId && proof?.card.attempts?.find((attempt: any) => String(attempt.id) === attemptId && (attempt.session?.session_id ?? attempt.session?.id) === binding.nativeSessionId);
