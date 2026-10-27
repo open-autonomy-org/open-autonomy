@@ -176,8 +176,8 @@ export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, state
   const moved = (v.feed ?? []).filter((flow) => flow.kind === 'grant' || flow.kind === 'mint' || flow.kind === 'refund');
   const flows = moved.filter((flow) => flow.to === v.account || flow.from === v.account).slice(-200).map((flow, index) => {
     const out = (flow.kind === 'grant' || flow.kind === 'refund') && flow.from === v.account;
-    const party = out ? flow.to : flow.from ? flow.from.replace(/^@/, '') : flow.sponsor_login ?? 'the operator';
-    const what = flow.kind === 'refund' ? `a refund · ${flow.sale?.product ?? 'a sale'}` : flow.sale ? `a sale · ${flow.sale.product}` : flow.kind === 'mint' ? (flow.coupon ? 'a coupon' : flow.sponsor_login ? 'sponsorship' : 'credits') : flow.note ? `a grant · "${flow.note}"` : 'a grant';
+    const party = flow.settles ? 'earlier refunds' : out ? flow.to : flow.from ? flow.from.replace(/^@/, '') : flow.sponsor_login ?? 'the operator';
+    const what = flow.settles ? 'settles an earlier refund' : flow.kind === 'refund' ? `a refund · ${flow.sale?.product ?? 'a sale'}` : flow.sale ? `a sale · ${flow.sale.product}` : flow.kind === 'mint' ? (flow.coupon ? 'a coupon' : flow.sponsor_login ? 'sponsorship' : 'credits') : flow.note ? `a grant · "${flow.note}"` : 'a grant';
     return { key: flow.id ?? `${flow.ts}-${index}`, at: flow.ts, direction: out ? 'out' : 'in', party, what, usdCents: flow.amount_usd_cents, ...(flow.sale ? { sale: { product: flow.sale.product, grossUsdCents: flow.sale.gross_usd_cents, feeUsdCents: flow.sale.fee_usd_cents } } : {}) };
   });
   const days = funding.daily_spend_usd_cents ?? [];
@@ -187,6 +187,8 @@ export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, state
       account: v.account, standing, balanceUsdCents: v.balance_usd_cents, inUsdCents: v.granted_in_usd_cents, outUsdCents: v.granted_out_usd_cents ?? 0,
       spentUsdCents: v.consumed_usd_cents, burnPerDayUsdCents: v.burn_per_day_usd_cents, runwayDays: v.runway_days === null || !Number.isFinite(v.runway_days) ? null : Math.round(v.runway_days),
       runwayConfident: v.runway_confident, goalDays: v.goal_days, freeze: v.freeze ?? null, canFreeze: !v.freeze?.from, giveUrl: `${origin}/give?to=${encodeURIComponent(v.account)}`,
+      // what earlier refunds left owed, held until sales settle it (ADR 0034 decision 5: the books show it)
+      ...(funding.refund_owed_usd_cents ? { refundOwedUsdCents: funding.refund_owed_usd_cents } : {}),
     },
     flows,
     envelopes: v.envelopes.map((envelope) => ({ key: envelope.id, purpose: purposeWords(envelope.purpose), ...(envelope.from ? { from: envelope.from } : {}), balanceUsdCents: envelope.balance_usd_cents })),

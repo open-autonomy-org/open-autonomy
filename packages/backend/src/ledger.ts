@@ -223,6 +223,8 @@ export interface Flow {
   sale?: Sale;
   // On a refund: what of the sale's net the project's free money could not cover (already spent or set aside).
   shortfall_usd_cents?: number;
+  // On a refund flow: it settles what an earlier refund left owed (ADR 0034), rather than reversing a sale itself.
+  settles?: boolean;
   ts: string;
   // On a funder's public books: the other side is a project not listed where everyone looks, so its name is withheld.
   private?: true;
@@ -461,9 +463,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
       case 'mint': {
         // A sale that does not read is refused, never minted as plain credits.
         if (body.sale !== undefined && !saleOf(body.sale)) return json({ ok: false, error: 'invalid_sale', message: 'A sale names its seller, order and product, and its gross and fee in whole cents, the fee below the gross.' });
-        return json(await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)));
+        // Both change state before they write it: a failed write reloads what is stored, so a retry is never answered
+        // as already applied when nothing was kept.
+        return json(await this.ctx.blockConcurrencyWhile(async () => {
+          try { return await this.mint(s('account'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, body.sponsor as Sponsor | undefined, body.for, saleOf(body.sale)); }
+          catch (cause) { this.loaded = false; await this.load(); throw cause; }
+        }));
       }
-      case 'refund': return json(await this.refund(s('account'), s('seller'), s('order'), typeof body.reason === 'string' ? body.reason : undefined));
+      case 'refund': return json(await this.ctx.blockConcurrencyWhile(async () => {
+        try { return await this.refund(s('account'), s('seller'), s('order'), typeof body.reason === 'string' ? body.reason : undefined); }
+        catch (cause) { this.loaded = false; await this.load(); throw cause; }
+      }));
       case 'allocate': return json(await this.allocate(s('account'), Number(body.amount_usd_cents), s('item'), body.key ? s('key') : undefined, typeof body.by === 'string' ? body.by : undefined));
       case 'grant': return json(await this.grant(s('from'), s('to'), Number(body.amount_usd_cents), body.key ? s('key') : undefined, typeof body.note === 'string' ? body.note : undefined, body.for, typeof body.by === 'string' ? body.by : undefined));
       case 'earmark': return json(await this.earmark(s('account'), body.for));
@@ -539,9 +549,17 @@ export class LimitLedger implements DurableObject, LedgerCore {
     return total;
   }
   /** What an account may not spend, grant or set aside: its reservations, and what earlier refunds left owed (ADR 0034).
-   *  Money freed later (a released reservation, a done card's remainder) stays held while anything is owed. */
+   *  What is owed is held against its unrestricted money only (unrestrictedFree), so a card in flight keeps its budget;
+   *  money freed later (a released reservation, a done card's remainder) stays held while anything is owed. */
   private heldFor(id: string): number {
     return this.reservedFor(id) + (this.acct(id)?.refund_owed_usd_cents ?? 0);
+  }
+  /** The account's unrestricted money that is free: its unrestricted envelopes less what is reserved from them, less what
+   *  earlier refunds left owed (ADR 0034 decision 4: the account can neither spend, grant nor set aside it). */
+  private unrestrictedFree(id: string): number {
+    const free = (this.acct(id)?.envelopes ?? []).filter((e) => e.purpose.type === 'unrestricted')
+      .reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(id, e.id)), 0);
+    return Math.max(0, free - (this.acct(id)?.refund_owed_usd_cents ?? 0));
   }
   /** A sale's income settles what earlier refunds left owed, before anything may spend it (ADR 0034): from an
    *  unrestricted envelope only, since money given for a purpose is left to it, as a refund leaves it. */
@@ -552,7 +570,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (settled <= 0) return;
     envelope.balance_usd_cents -= settled; a.granted_in_usd_cents -= settled;
     a.refund_owed_usd_cents = owed - settled || undefined;
-    this.recordFlow({ kind: 'refund', id: `settle:${id}`, from: account, to: '@refunds', amount_usd_cents: settled, note: 'Settles an earlier refund the project could not cover when it came.' });
+    this.recordFlow({ kind: 'refund', id: `settle:${id}`, from: account, to: '@refunds', amount_usd_cents: settled, settles: true, note: 'Settles an earlier refund the project could not cover when it came.' });
   }
   private reservedFrom(id: string, envelopeId: string): number {
     let total = 0;
@@ -650,7 +668,7 @@ export class LimitLedger implements DurableObject, LedgerCore {
     if (key && this.state.applied_keys.includes(key)) return { ok: true, idempotent: true, account, item, envelope_usd_cents: this.itemBalance(account, item) };
     const source = this.ensureAcct(account).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
     // (what earlier refunds left owed is held: it is not free to set aside, ADR 0034)
-    const free = Math.max(0, source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(account, e.id)), 0) - (this.acct(account)?.refund_owed_usd_cents ?? 0));
+    const free = this.unrestrictedFree(account);
     if (free < amount) return { ok: false, error: 'insufficient_balance', message: `${formatCents(free)} is free to set aside and the card needs ${formatCents(amount)}.`, available_usd_cents: free };
     this.applyKey(key);
     let debit = Math.floor(amount);
@@ -679,9 +697,9 @@ export class LimitLedger implements DurableObject, LedgerCore {
       const own = to.split('/')[0].toLowerCase() === from.slice(1).toLowerCase();
       if (own && this.balanceOf(from) - bonus < amount) return { ok: false, error: 'bonus_only_for_others', bonus_usd_cents: bonus };
     }
-    if (this.balanceOf(from) - this.heldFor(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from) };
+    // A grant draws on unrestricted money that is free: neither a card's envelope nor what earlier refunds left owed.
+    if (this.unrestrictedFree(from) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from), reserved_usd_cents: this.reservedFor(from), ...(this.acct(from)?.refund_owed_usd_cents ? { refund_owed_usd_cents: this.acct(from)!.refund_owed_usd_cents } : {}) };
     const source = this.ensureAcct(from).envelopes.filter((e) => e.purpose.type === 'unrestricted' && e.balance_usd_cents > 0);
-    if (source.reduce((sum, e) => sum + Math.max(0, e.balance_usd_cents - this.reservedFrom(from, e.id)), 0) < amount) return { ok: false, error: 'insufficient_balance', from_balance_usd_cents: this.balanceOf(from) };
     this.applyKey(key);
     let debit = Math.floor(amount);
     for (const envelope of source) { const take = Math.min(debit, Math.max(0, envelope.balance_usd_cents - this.reservedFrom(from, envelope.id))); envelope.balance_usd_cents -= take; debit -= take; if (!debit) break; }
@@ -868,13 +886,18 @@ export class LimitLedger implements DurableObject, LedgerCore {
     const context = { rail, model, item: spendItem };
     // The funding hard-stop stands above the envelopes: settled spend plus in-flight reservations may never exceed
     // the balance the totals say, whatever the envelopes add up to (they can only drift by rounding or an overage).
-    const ceiling = this.balanceOf(account) - this.heldFor(account);
+    // What earlier refunds left owed is not taken from a card's envelope here: it comes off unrestricted envelopes below.
+    const ceiling = this.balanceOf(account) - this.reservedFor(account);
     if (amount > ceiling) return { ok: false, error: 'insufficient_funds', message: `This account has ${formatCents(Math.max(0, ceiling))} available and this ${rail} spend needs ${formatCents(amount)}.`, account, balance_usd_cents: this.balanceOf(account), earmarked_usd_cents: 0, reserved_usd_cents: this.reservedFor(account), available_usd_cents: Math.max(0, ceiling), needed_usd_cents: amount };
     const candidates = [...(this.acct(account)?.envelopes ?? [])].filter((e) => qualifies(e.purpose, context) && (!bound || e.purpose.type === 'item')).sort((a, b) => specificity(b.purpose) - specificity(a.purpose));
     const allocations: ReservationAllocation[] = [];
     let remainder = amount;
+    // What earlier refunds left owed is held in the account's unrestricted envelopes (ADR 0034 decision 4): an unbound
+    // spend that qualifies on one draws only what is free past it; an item's envelope keeps its whole budget.
+    let owedLeft = this.acct(account)?.refund_owed_usd_cents ?? 0;
     for (const envelope of candidates) {
-      const free = Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id));
+      let free = Math.max(0, envelope.balance_usd_cents - this.reservedFrom(account, envelope.id));
+      if (envelope.purpose.type === 'unrestricted' && owedLeft > 0) { const held = Math.min(free, owedLeft); free -= held; owedLeft -= held; }
       const take = Math.min(remainder, free);
       if (take > 0) allocations.push({ envelope_id: envelope.id, amount: take });
       remainder -= take;
