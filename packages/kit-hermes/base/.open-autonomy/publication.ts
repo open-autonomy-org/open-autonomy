@@ -489,6 +489,12 @@ export class PublicationStore {
     for (const a of additions) if (this.data.associations.some(old => old.itemId === a.itemId && old.key !== a.key)) throw new Error('Conflicting destination item alias');
     if (additions.length) { this.data.associations.push(...additions); this.save(); }
   }
+  // The cards this store has registered: the last observation `observe` resolved. The source cache's own `cards` also
+  // holds a staged observation before its callback has resolved it; a pass reads this view, so every card it names
+  // has an association (docs/decisions/0027).
+  observedCards(): ReadonlyMap<string, Readonly<Record<string, any>>> {
+    return new Map((this.observation?.cards ?? []).map(row => [JSON.stringify([this.storeContext(row.board), row.card.id]), Object.freeze({ ...row.card, board: row.board })]));
+  }
   association(board: string, cardId: string): Association {
     const tuple = ['oa.native-item', 1, this.sourceContextId, this.storeContext(board), cardId];
     const a = this.data.associations.find(a => a.key === publicationHash(JSON.stringify(tuple)));

@@ -493,7 +493,7 @@ let timelineTimer: ReturnType<typeof setTimeout> | undefined;
 async function board(): Promise<RoadmapItem[] | undefined> {
   // This app's cache is rebuilt only from the retained source stream. An organization's board has no root profile's
   // tasks: every card is a profile's (docs/decisions/0017), and a project's reporter publishes its tenant's.
-  boardTasksAll = [...source.cards.values()].map((t) => ({ ...t, lane: t.archived ? 'archived' : t.status,
+  boardTasksAll = [...publication.observedCards().values()].map((t) => ({ ...t, lane: t.archived ? 'archived' : t.status,
     // A done or cancelled card resumes no session. The board normalizes a cancelled card's status to todo; its raw lane keeps it.
     closed: t.status === 'done' || t.lane === 'cancelled' || t.board_status === 'cancelled' }) as BoardTask)
     .filter((t) => t.lane !== 'archived' && (organization || (t.assignee ?? 'default') === 'default'))
