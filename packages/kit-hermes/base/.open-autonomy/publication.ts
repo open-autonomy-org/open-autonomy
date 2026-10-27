@@ -328,8 +328,6 @@ export class PublicationStore {
   private closed = false;
   private closing = false;
   private observation?: SourceSnapshot;
-  private observed?: { observation?: SourceSnapshot; cards: ReadonlyMap<string, Readonly<Record<string, any>>> };
-  private readonly views = new WeakMap<SourceCard, Readonly<Record<string, any>>>();
   // The retained associations by key. Every pass looks up each card's and each note's association, so a scan of the
   // list (with the key's hash recomputed per entry) cost about 11 s of CPU per pass on a 4,217-association board. The list
   // only grows (resolveCards, legacy adoption), so the index follows it by identity and length.
@@ -504,18 +502,8 @@ export class PublicationStore {
   // The cards this store has registered: the last observation `observe` resolved. The source cache's own `cards` also
   // holds a staged observation before its callback has resolved it; a pass reads this view, so every card it names
   // has an association (docs/decisions/0027).
-  // The source shares each unchanged row between its observations (source-events.ts), and each row keeps one view here,
-  // so a pass tells a changed card from an unchanged one by identity; the map is built once per observation.
   observedCards(): ReadonlyMap<string, Readonly<Record<string, any>>> {
-    if (!this.observed || this.observed.observation !== this.observation) {
-      const view = (row: SourceCard): Readonly<Record<string, any>> => {
-        let card = this.views.get(row);
-        if (!card) { card = Object.freeze({ ...row.card, board: row.board }); this.views.set(row, card); }
-        return card;
-      };
-      this.observed = { observation: this.observation, cards: new Map((this.observation?.cards ?? []).map(row => [JSON.stringify([this.storeContext(row.board), row.card.id]), view(row)])) };
-    }
-    return this.observed.cards;
+    return new Map((this.observation?.cards ?? []).map(row => [JSON.stringify([this.storeContext(row.board), row.card.id]), Object.freeze({ ...row.card, board: row.board })]));
   }
   association(board: string, cardId: string): Association {
     const tuple = ['oa.native-item', 1, this.sourceContextId, this.storeContext(board), cardId];
