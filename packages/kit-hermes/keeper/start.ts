@@ -43,6 +43,7 @@
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
 //   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
+import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyncWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
@@ -68,16 +69,18 @@ const arg = (name: string): string | undefined => { const i = argv.indexOf(name)
 // A managed executor keeps credentials, reporting and supervision on this host.
 // The bare entrypoint below remains the development/rehearsal path.
 if (arg('--fleet')) {
+  await initializeWorkLedger('oa-keeper', { kind: 'install', id: resolve(arg('--fleet')!) });
   const { startFleet } = await import(resolve(host, 'fleet.ts'));
   const runtime = await startFleet({ definition: resolve(arg('--fleet')!), port: Number(arg('--valve') ?? 8787), secretsRoot: arg('--secrets-root'), stateRoot: arg('--state-root') });
-  process.exit(await runtime.exited);
+  const code = await runtime.exited; await closeWorkLedger(); process.exit(code);
 }
 if (arg('--container')) {
+  await initializeWorkLedger('oa-keeper', { kind: 'install', id: arg('--container')! });
   const { startContainer } = await import(resolve(host, 'container.ts'));
   const runtime = await startContainer({ container: arg('--container')!, project: arg('--project'),
     home: arg('--home'), secrets: arg('--secrets'), state: arg('--state'),
     config: arg('--config'), port: Number(arg('--valve') ?? 8787) });
-  process.exit(await runtime.exited);
+  const code = await runtime.exited; await closeWorkLedger(); process.exit(code);
 }
 const project = resolve(arg('--project') ?? resolve(host, '..'));
 // The agent's content: the IR kit's native folder, home/ (docs/decisions/0017), or the Hermes kit's hermes/.
@@ -97,7 +100,12 @@ const home = resolve(arg('--home') ?? process.env.AGENT_HOME ?? resolve(homedir(
 const initialSetup = existsSync(resolve(project, '.open-autonomy/agent.json')) ? readAgent(project) : null;
 const initialKit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
 const retainedInstall = !arg('--as') && process.platform !== 'win32' && (initialKit.kit === 'ir' || (initialSetup && agentHarness(initialSetup) !== 'hermes'));
-if (retainedInstall && !argv.includes('--stack-child')) process.exit(await serveInstallOwner({ project, home, argv }));
+const ledgerRole = !argv.includes('--stack-child') ? (retainedInstall ? 'oa-install-owner' : 'oa-keeper-supervisor') : 'oa-keeper';
+await initializeWorkLedger(ledgerRole, { kind: 'install', id: home }, initialKit.version);
+if (retainedInstall && !argv.includes('--stack-child')) {
+  let code: number; try { code = await serveInstallOwner({ project, home, argv }); } finally { await closeWorkLedger(); }
+  process.exit(code);
+}
 if (!retainedInstall && !argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
@@ -105,12 +113,12 @@ if (!retainedInstall && !argv.includes('--stack-child')) {
   for (const signal of stopSignals) process.on(signal, () => { stopping = true; child?.kill(constants.signals[signal]); });
   let entry = Bun.main;
   while (!stopping) {
-    child = Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] });
+    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }));
     const code = await child.exited;
-    if (stopping || code !== 75) process.exit(stopping ? 0 : code);
+    if (stopping || code !== 75) { await closeWorkLedger(); process.exit(stopping ? 0 : code); }
     entry = resolve(project, '.open-autonomy/start.ts');
   }
-  process.exit(0);
+  await closeWorkLedger(); process.exit(0);
 }
 const prepared = process.env.OPEN_AUTONOMY_INSTALL_RECEIPT ? readInstall(process.env.OPEN_AUTONOMY_INSTALL_RECEIPT, home) : null;
 if (retainedInstall && (!prepared || prepared.project !== realpathSync(project))) throw new Error('native kit stacks start only from their owned prepared install receipt');
@@ -134,22 +142,22 @@ if (!paying && existsSync(resolve(secrets, 'treasurer.env'))) say(`${resolve(sec
 const sock = resolve(home, 'ssh-agent.sock');
 
 // Who the agent's processes run as: you, or with --as the named user (root drops to it; the secrets stay root's).
-const user = as ? (() => { const r = Bun.spawnSync({ cmd: ['id', '-u', as], stdout: 'pipe', stderr: 'pipe' }); const g = Bun.spawnSync({ cmd: ['id', '-g', as], stdout: 'pipe' }); if (r.exitCode !== 0) throw new Error(`start: no such user ${as}`); return { name: as, uid: Number(r.stdout.toString().trim()), gid: Number(g.stdout.toString().trim()) }; })() : null;
+const user = as ? (() => { const r = spawnSyncWork(() => Bun.spawnSync({ cmd: ['id', '-u', as], stdout: 'pipe', stderr: 'pipe' })); const g = spawnSyncWork(() => Bun.spawnSync({ cmd: ['id', '-g', as], stdout: 'pipe' })); if (r.exitCode !== 0) throw new Error(`start: no such user ${as}`); return { name: as, uid: Number(r.stdout.toString().trim()), gid: Number(g.stdout.toString().trim()) }; })() : null;
 const drop = (cmd: string[]): string[] => (user ? ['setpriv', `--reuid=${user.uid}`, `--regid=${user.gid}`, '--clear-groups', ...cmd] : cmd);
 // The host's credentials must remain inaccessible
 // to the agent UID: refuse before starting children, including when host/container UIDs happen to match.
 if (user) {
   let isolated = false;
   try {
-    isolated = Bun.spawnSync({ cmd: drop(['sh', '-c', 'for path do if [ -r "$path" ] || [ -w "$path" ]; then exit 1; fi; done', 'credential-isolation', secrets,
-      resolve(process.env.CODEX_HOME ?? resolve(homedir(), '.codex')), ...['agent.env', 'treasurer.env', 'deploy_key', 'github-app.json'].map((name) => resolve(secrets, name))]), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
+    isolated = spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['sh', '-c', 'for path do if [ -r "$path" ] || [ -w "$path" ]; then exit 1; fi; done', 'credential-isolation', secrets,
+      resolve(process.env.CODEX_HOME ?? resolve(homedir(), '.codex')), ...['agent.env', 'treasurer.env', 'deploy_key', 'github-app.json'].map((name) => resolve(secrets, name))]), stdout: 'pipe', stderr: 'pipe' })).exitCode === 0;
   } catch { /* An unavailable privilege-drop tool cannot establish isolation. */ }
   if (!isolated) {
     console.error('start: cannot establish credential isolation from the agent user. Use owner-only storage owned by a different UID; verify setpriv is available. No services were started.');
     process.exit(1);
   }
 }
-const own = (path: string) => { if (user) Bun.spawnSync({ cmd: ['chown', '-R', `${user.uid}:${user.gid}`, path] }); };
+const own = (path: string) => { if (user) spawnSyncWork(() => Bun.spawnSync({ cmd: ['chown', '-R', `${user.uid}:${user.gid}`, path] })); };
 // The agent's environment is what this script says. Nothing Hermes set on the process that started this one comes
 // through: a start from inside another agent's worker (a project's world, brought up by a task) would otherwise inherit
 // that worker's HERMES_KANBAN_DB, HERMES_KANBAN_HOME, its task and run, and file its work on the outer board.
@@ -188,7 +196,7 @@ process.on('exit', () => {
 });
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
-  const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' });
+  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }));
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
@@ -213,7 +221,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
     for (const c of children) if (c.proc !== proc) c.proc.kill();
     await Promise.all(children.map((c) => c.proc.exited));
     // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
-    process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
+    await closeWorkLedger(); process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
   return proc;
 }
@@ -230,7 +238,7 @@ for (const sig of stopSignals) process.on(sig, async () => {
   const bound = new Promise<void>((done) => setTimeout(done, 15_000));
   await Promise.race([Promise.all(live.map((proc) => proc.exited)), bound]);
   for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
-  process.exit(0);
+  await closeWorkLedger(); process.exit(0);
 });
 // The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
 // when what it already started has exited). Startup code between two awaits runs whole, so these are the only places a
@@ -241,7 +249,7 @@ const halted = (): Promise<void> => (ending ? new Promise<never>(() => {}) : Pro
 // an agent holding a key) and hangs is stopped at its bound and reads as failed, so the start never waits forever.
 async function command(cmd: string[], opts: { cwd: string; env: Record<string, string>; boundMs: number }): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   await halted();
-  const proc = Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+  const proc = spawnWork(() => Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' }));
   helpers.add(proc);
   publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid, deadline_ms: Date.now() + opts.boundMs + 5000 });
   let overran = false;
@@ -286,7 +294,7 @@ if (!existsSync(resolve(project, '.git'))) {
   // (the skills, the schedule, the documents the reporter publishes). A dirty one — a killed attempt's work — is
   // left as it is; the next attempt starts from a fresh main itself. A failed fetch or snapshot stops startup:
   // the supervisor can retry, but unlanded configuration must not become the running home.
-  const git = (...args: string[]) => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+  const git = (...args: string[]) => spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', ...args]), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }));
   // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked
   // changes are a killed attempt's work.
   const status = git('status', '--porcelain', '--untracked-files=no');
@@ -299,7 +307,7 @@ if (!existsSync(resolve(project, '.git'))) {
     process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
     own(dir);
     const archive = git('archive', '--format=tar', 'origin/main', content);
-    const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
+    const extracted = archive.exitCode === 0 && spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' })).exitCode === 0;
     if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); process.exit(1); }
     committedFrom = resolve(dir, content);
     say(`checkout ${project} has uncommitted changes; preserved, using ${content} configuration from origin/main`);
@@ -318,7 +326,7 @@ const reload = async () => {
   ending = true;
   for (const child of children) child.proc.kill();
   await Promise.all(children.map((child) => child.proc.exited));
-  process.exit(75);
+  await closeWorkLedger(); process.exit(75);
 };
 if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loadedEntry) await reload();
 // The host's dependencies (the kit with this keeper, Volter Harness, the orchestrator, the reporter's) are installed when
@@ -329,7 +337,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 {
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
   // this host's scratch, and the install brings it up to package.json instead of refusing on it.
-  const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+  const committed = (file: string) => spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' })).exitCode === 0;
   const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
   const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package') };
@@ -361,7 +369,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
 // A project still carrying hermes/config.yaml has not taken the upgrade that derives it.
 const agentSetup: Setup | null = (() => {
   if (!committedFrom) return readAgent(project);
-  const shown = Bun.spawnSync({ cmd: drop(['git', 'show', 'origin/main:.open-autonomy/agent.json']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
+  const shown = spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'show', 'origin/main:.open-autonomy/agent.json']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }));
   return shown.exitCode === 0 ? parseAgent(shown.stdout.toString(), 'origin/main:.open-autonomy/agent.json') : null;
 })();
 if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
@@ -496,7 +504,7 @@ say(`home ${home} synced from ${committed}`);
 const runningKit = JSON.parse(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
 // The revision this stack runs: the main the home was rendered from (a dirty checkout's home comes from origin/main too).
 // `maintain.ts restart` measures a move of main from it.
-const startedRevision = prepared?.revision ?? Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+const startedRevision = prepared?.revision ?? spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' })).stdout.toString().trim();
 writeFileSync(resolve(home, 'running-kit.json'), JSON.stringify({ version: runningKit.version, revision: startedRevision, receipt: prepared?.receipt, sourceProject: prepared?.sourceProject }));
 const homeReadme = resolve(home, 'README.md');
 // The site renders the setup's opening paragraphs; put the running version there, where the home has a README (the
@@ -607,7 +615,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   const checkout = resolve(home, '..', 'board');
   if (!existsSync(resolve(checkout, '.git'))) {
     // The origin as the project configures it (`get-url` would hand over an insteadOf rewrite's target instead).
-    const from = Bun.spawnSync({ cmd: drop(['git', 'config', '--get', 'remote.origin.url']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).stdout.toString().trim();
+    const from = spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'config', '--get', 'remote.origin.url']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' })).stdout.toString().trim();
     if (!from) stopStart(`the board's checkout ${checkout} cannot be made: ${project} names no origin`);
     // Something already at the checkout's path that is not a checkout is never this start's to remove.
     if (existsSync(checkout)) stopStart(`the board's checkout ${checkout} cannot be made: ${checkout} is there and is not a checkout of ${from}`);
@@ -632,8 +640,8 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
       stopStart('the retained board differs from the repository declaration');
     say('board: retained native owner and declared ztrack backing');
   } else {
-  const init = Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
-    cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  const init = spawnSyncWork(() => Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
+    cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' }));
   let answer: { kept?: boolean; path?: string } | undefined;
   try { answer = JSON.parse(init.stdout.toString()); } catch { /* no answer */ }
   if (init.exitCode !== 0 || !answer) {
@@ -780,7 +788,10 @@ else {
 const restartRequest = resolve(home, 'kit-restart.json');
 let restarting = false;
 setInterval(() => {
-  if (ending || restarting || !existsSync(restartRequest)) return;
+  if (ending || restarting) return;
+  const finish = startWork('pass', 'keeper.restart-check');
+  try {
+  if (!existsSync(restartRequest)) return;
   let request: { version?: string; revision?: string } | undefined;
   try { request = JSON.parse(readFileSync(restartRequest, 'utf8')); }
   catch { say('cannot decode kit-restart.json; repair the request before restarting'); return; }
@@ -795,6 +806,8 @@ setInterval(() => {
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
   process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1);
+  } catch (error) { finish({ ok: false }); throw error; }
+  finally { finish(); }
 }, 5000);
 
 }
@@ -806,7 +819,7 @@ let watching = false, watchRefusal = '';
 setInterval(() => {
   if (ending || watching) return;
   watching = true;
-  void (async () => {
+  void measureWork('pass', 'keeper.service-check', async () => {
     if (onCodex && !codexTwin) {
       const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
       if (proxy.instance !== codexInstance) say(`Codex proxy :${codexPort} had ended; serving again independently (pid ${proxy.pid})`);
@@ -818,7 +831,7 @@ setInterval(() => {
       say('native board owner serving again');
     }
     watchRefusal = '';
-  })().catch(error => {
+  }).catch(error => {
     // A refusal is said once, not every five seconds while it holds.
     const line = `independent service not reacquired: ${(error as Error).message}`;
     if (line !== watchRefusal) say(line);

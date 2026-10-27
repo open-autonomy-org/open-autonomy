@@ -19,6 +19,7 @@
 // .open-autonomy/agent.json entry, applied into its home before the gateway starts. A fleet opens no treasurer door:
 // work is routed to a profile by its bare name, which a composed <repo>-treasurer is not, so nothing in a fleet pays;
 // every profile's pay address is its key's, which spends and stops at zero.
+import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -80,7 +81,7 @@ export async function startFleet(options: { definition: string; port: number; se
   const onSignal = () => { void stop(0); };
   process.on('SIGTERM', onSignal); process.on('SIGINT', onSignal);
   const own = (name: string, cmd: string[], extra: { env?: Record<string, string | undefined>; ipc?: (message: any) => void } = {}) => {
-    const proc = Bun.spawn({ cmd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', ...extra });
+    const proc = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', ...extra }));
     services.push(proc);
     void proc.exited.then((code) => { if (!ending) { console.error(`fleet: ${name} ended (${code})`); void stop(1); } });
   };
@@ -89,7 +90,7 @@ export async function startFleet(options: { definition: string; port: number; se
     while (!ending && Date.now() < deadline) { if (await check()) return; await Bun.sleep(100); }
     throw new Error(`the host did not establish ${name}; Hermes was not started`);
   };
-  const healthy = async (p: number) => { try { return (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text().then((t) => t.startsWith('ok')); } catch { return false; } };
+  const healthy = async (p: number) => { try { return (await responseWork('call', 'keeper.health', () => fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) }))).text().then((t) => t.startsWith('ok')); } catch { return false; } };
   const host = 'http://host.docker.internal';
 
   try {
@@ -128,7 +129,7 @@ export async function startFleet(options: { definition: string; port: number; se
         // finds this profile's own state.db through the link (Volter Harness reads every profile's store), and each later
         // sync of hermes/ writes through it. A link already in place is kept.
         const script = 'if [ -L "$1" ] && [ -e "$1" ]; then exit 0; fi; mkdir -p "$2" && { [ -L "$1" ] || cp -a "$1/." "$2/"; } && rm -rf "$1" && ln -s "../../$3" "$1"';
-        const copy = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'sh', '-c', script, 'compose', `${p.home}/profiles/${profile}`, profileHome(p, profile), flat], stdout: 'pipe', stderr: 'pipe', timeout: 30_000 });
+        const copy = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'sh', '-c', script, 'compose', `${p.home}/profiles/${profile}`, profileHome(p, profile), flat], stdout: 'pipe', stderr: 'pipe', timeout: 30_000 }));
         if (copy.exitCode !== 0) throw new Error(`${p.account}: composing ${flat} failed: ${copy.stderr.toString().trim()}`);
       }
       configs.set(p.name, prepared.config);
@@ -159,7 +160,7 @@ export async function startFleet(options: { definition: string; port: number; se
     //    gateway needs to boot, the first project's). It answers no channel and runs no job.
     const model = ((Bun.YAML.parse(readProfileConfig(container, projects[0].home)) as any)?.model ?? {}) as Record<string, string>;
     const modelBlock = Object.keys(model).length ? `model:\n${Object.entries(model).filter(([, v]) => typeof v === 'string').map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join('\n')}\n` : '';
-    const imageSeed = Bun.spawnSync({ cmd: ['docker', 'exec', container, 'sh', '-c', 'cat /opt/hermes/cli-config.yaml.example 2>/dev/null || true'], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    const imageSeed = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'exec', container, 'sh', '-c', 'cat /opt/hermes/cli-config.yaml.example 2>/dev/null || true'], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }));
     const disabled = ((Bun.YAML.parse(imageSeed.stdout.toString() || '{}') as any)?.plugins?.disabled ?? []) as string[];
     const pluginsBlock = disabled.length ? `plugins:\n  disabled:\n${disabled.map((k) => `    - ${JSON.stringify(k)}`).join('\n')}\n` : '';
     await writeContainerText({ container, home: fleetHome, name: 'config.yaml', text: `# The fleet's default profile: composed by the host, never a project's. Every project is a profile beside it.\ngateway:\n  multiplex_profiles: true\n${modelBlock}memory:\n  memory_enabled: false\n  user_profile_enabled: false\n${pluginsBlock}` });
@@ -172,7 +173,7 @@ export async function startFleet(options: { definition: string; port: number; se
     await ready(async () => (await Promise.all(projects.map((p) => healthy(p.key)))).every(Boolean), 'the credential valves');
     // 7. One reporter per project, each watching its own profile home (its composed profiles linked inside it),
     //    publishing to its own account.
-    const inspected = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    const inspected = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }));
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname(), fleet: container });
     const readiness: Promise<void>[] = [];
     for (const p of projects) {
@@ -198,6 +199,6 @@ export async function startFleet(options: { definition: string; port: number; se
 
 // A profile's committed config, read back from the home the executor just synced (the host holds no checkout).
 function readProfileConfig(container: string, home: string): string {
-  const r = Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'cat', `${home}/config.yaml`], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+  const r = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'exec', '--user', 'hermes', container, 'cat', `${home}/config.yaml`], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }));
   return r.exitCode === 0 ? r.stdout.toString() : '';
 }

@@ -10,6 +10,7 @@
 // names: a worktree there would run the developer's Git hooks, and a log on the board's volume would put the
 // treasurer's transcript (a card's number among it) where the developer reads. The owner's bounds it reads before paying
 // (.open-autonomy/config.yaml) are the host's committed copy, written into that workspace; the platform enforces them.
+import { spawnWork } from './work-ledger.ts';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -38,7 +39,7 @@ export function treasurerPersona(kitDir: string): Record<string, string> | null 
 
 function python(container: string, script: string, input: unknown): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('A container name or ID is required.');
-  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] }), 'node');
   child.stdin.on('error', () => {});
   child.stdin.end(JSON.stringify(input));
   const output: Buffer[] = [];

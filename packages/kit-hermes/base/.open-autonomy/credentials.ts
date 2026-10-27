@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Owner-side credential handoff, independent of any checkout or agent runtime. The browser agent
 // supplies provider configuration; this process alone receives, exchanges and saves the secret.
+import { spawnSyncWork } from './work-ledger.ts';
 import { spawnSync } from 'node:child_process';
 import { createPrivateKey, randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
@@ -15,7 +16,7 @@ export function checkCredentialDirectory(directory: string): string {
   // Git hooks and callers may pin another checkout with GIT_DIR/GIT_WORK_TREE or
   // stop discovery with GIT_CEILING_DIRECTORIES. Inspect the destination itself.
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
-  const git = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: realpathSync(parent), encoding: 'utf8', env: { ...env, LC_ALL: 'C' } });
+  const git = spawnSyncWork(() => spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: realpathSync(parent), encoding: 'utf8', env: { ...env, LC_ALL: 'C' } }), 'node');
   if (git.error) throw new Error('Git must be available to verify that the credential destination is outside a repository.');
   if (git.status === 0) throw new Error('Credentials cannot be saved inside a repository. Choose the runtime host’s protected credential directory.');
   if (!git.stderr.includes('not a git repository')) throw new Error('Cannot verify the credential destination’s Git boundary. Resolve the Git error before receiving a secret.');

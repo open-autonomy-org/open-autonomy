@@ -33,6 +33,7 @@
 import { createPrivateKey, sign, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { serveCodex } from './codex-proxy.ts';
+import { initializeWorkLedger, flushWorkOnSignals, responseWork } from './work-ledger.ts';
 
 // Each key file is served on its own port: `--key <file>:<port>`, repeatable. A file is re-read when it changes,
 // so a rotated key is picked up without a restart.
@@ -59,6 +60,8 @@ const codexArg = process.argv.includes('--codex') ? String(process.argv[process.
 const githubApps: Array<{ file: string; port: number }> = [];
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--github-app') { const [file, port] = String(process.argv[i + 1]).split(':'); githubApps.push({ file, port: Number(port || 8790 + githubApps.length) }); }
 if (!keys.length && !codexArg && !githubApps.length) { console.error('usage: bun .open-autonomy/valve.ts --key <file>:<port> [--key <file>:<port> …] [--codex <port>] [--github-app <app.json>:<port> [--github-app <app.json>:<port> …]]'); process.exit(2); }
+await initializeWorkLedger('oa-valve', { kind: 'install', id: process.env.OPEN_AUTONOMY_LEDGER_SCOPE ?? JSON.stringify([...keys, ...githubApps].map(({ file, port }) => [file, port]).sort()) + (codexArg ?? '') });
+flushWorkOnSignals();
 const caches = new Map<string, { at: number; env: Record<string, string> }>();
 function keyEnv(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -101,6 +104,7 @@ for (const { file, port } of keys) Bun.serve({
   port,
   idleTimeout: 255,
   async fetch(req) {
+    return responseWork('door', 'valve.request', async () => {
     const url = new URL(req.url);
     if (url.pathname === '/healthz') return new Response(key(file) ? `ok · ${status(file)}` : 'no key yet');
     const caller = callers.get(port);
@@ -115,11 +119,12 @@ for (const { file, port } of keys) Bun.serve({
     headers.set('authorization', `Bearer ${bearer}`);
     headers.set('user-agent', 'open-autonomy-valve');
     const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
-    const upstream = await fetch(`${base(file)}${url.pathname.replace(/^\/v1/, '')}${url.search}`, { method: req.method, headers, body });
+    const upstream = await responseWork('call', 'valve.upstream', () => fetch(`${base(file)}${url.pathname.replace(/^\/v1/, '')}${url.search}`, { method: req.method, headers, body }), body?.byteLength);
     const out = new Headers(upstream.headers);
     out.delete('content-encoding');
     out.delete('content-length');
     return new Response(upstream.body, { status: upstream.status, headers: out });
+    });
   },
 });
 for (const { file, port } of keys) console.log(`valve: ${file} → ${base(file)} on :${port}${callers.has(port) ? ' for its own agent only' : ''}; forwarding ${[...FORWARDED].join(', ')}`);
@@ -161,13 +166,13 @@ for (const { file, port } of githubApps) {
       if (!installationId) {
         // Manifest handoff saves the app key before installation. Credential use discovers the
         // installed app through GitHub; neither the saver nor the browser agent needs to edit a key file.
-        const lookup = await fetch(`${upstream()}/repos/${app.repository}/installation`, { headers, signal: AbortSignal.timeout(30_000) });
+        const lookup = await responseWork('call', 'valve.upstream', () => fetch(`${upstream()}/repos/${app.repository}/installation`, { headers, signal: AbortSignal.timeout(30_000) }));
         if (!lookup.ok) throw new Error(`github-app: repository installation unavailable (${lookup.status}); complete installation in the browser`);
         const installation = await lookup.json() as { id: number; app_id: number; suspended_at?: string | null };
         if (!Number.isSafeInteger(installation.id) || installation.id <= 0 || String(installation.app_id) !== String(app.app_id) || installation.suspended_at) throw new Error('github-app: repository installation does not identify an active installation of this app');
         installationId = installation.id;
       }
-      const res = await fetch(`${upstream()}/app/installations/${installationId}/access_tokens`, { method: 'POST', headers, body: JSON.stringify({ repositories: [name] }) });
+      const res = await responseWork('call', 'valve.upstream', () => fetch(`${upstream()}/app/installations/${installationId}/access_tokens`, { method: 'POST', headers, body: JSON.stringify({ repositories: [name] }) }));
       const body = await res.json().catch(() => ({})) as { token?: string; expires_at?: string; message?: string; permissions?: { contents?: string } };
       if (!res.ok || !body.token) throw new Error(`github-app: installation token refused (${res.status} ${body.message ?? ''})`);
       token = { value: body.token, expiresAt: Date.parse(body.expires_at ?? '') || Date.now() + 55 * 60_000, contents: body.permissions?.contents };
@@ -213,6 +218,7 @@ for (const { file, port } of githubApps) {
   Bun.serve({
     hostname: '127.0.0.1', port, idleTimeout: 255,
     async fetch(req) {
+      return responseWork('door', 'valve.request', async () => {
       const u = new URL(req.url);
       if (u.pathname === '/healthz') { try { const app = read(); return new Response(`ok · github app ${app.app_id} on ${app.repository}${token ? ` · installation token expires ${new Date(token.expiresAt).toISOString()} · contents ${token.contents ?? 'unknown'}` : ''}\n`); } catch (e) { return new Response(`unavailable: ${(e as Error).message}\n`, { status: 503 }); } }
       try {
@@ -231,7 +237,7 @@ for (const { file, port } of githubApps) {
           headers.set('authorization', git ? `Basic ${Buffer.from('x-access-token:' + credential.value).toString('base64')}` : `Bearer ${credential.value}`);
           headers.set('user-agent', 'open-autonomy-valve');
           if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json');
-          return fetch(`${git ? gitUpstream() : upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual' });
+          return responseWork('call', 'valve.upstream', () => fetch(`${git ? gitUpstream() : upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual' }), body?.byteLength);
         };
         let res = await forward(t);
         if (res.status === 401) { t = await mint(); res = await forward(t); }
@@ -239,6 +245,7 @@ for (const { file, port } of githubApps) {
         const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
         return new Response(res.body, { status: res.status, headers: out });
       } catch (e) { return new Response(JSON.stringify({ message: (e as Error).message }), { status: 502, headers: { 'content-type': 'application/json' } }); }
+      });
     },
   });
   try { const app = read(); console.log(`github-app: ${file} → ${upstream()} on :${port} (app ${app.app_id}, installation ${app.installation_id ?? 'discovered on use'}, ${app.repository})`); } catch (e) { console.error(`github-app: ${(e as Error).message}`); process.exit(2); }

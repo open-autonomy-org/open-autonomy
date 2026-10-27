@@ -1,4 +1,5 @@
 // Acquire the native board's lifetime owner. It is detached from kit stacks; only native handover changes its writer.
+import { startWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -12,7 +13,13 @@ async function door(options: Options) {
   // The owner refuses a card verb whose request names no Teams context (@volter/teams/board-owner: `facts`); the
   // keeper names the one its environment carries, else `local`, as the owner's own handover readback does.
   const facts = { SUPERCODE_CONTEXT: options.env.SUPERCODE_CONTEXT || 'local' };
-  return (argv: string[]) => module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
+  return async (argv: string[]) => {
+    const finish = startWork('call', 'keeper.board');
+    try {
+      const answer = await module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
+      finish({ ok: answer.code === 0 && !answer.unanswered }); return answer;
+    } catch (error) { finish({ ok: false }); throw error; }
+  };
 }
 async function probe(options: Options): Promise<any | null> {
   const answer = await (await door(options))(['handover', '--action', 'status']);
@@ -45,9 +52,9 @@ export async function acquireBoard(options: Options): Promise<void> {
   mkdirSync(resolve(options.home, 'logs'), { recursive: true });
   const log = openSync(resolve(options.home, 'logs/board-owner.log'), 'a', 0o600);
   const command = options.command([options.env.SUPERCODE_NODE_BIN || Bun.which('node')!, options.entry, 'workflow', 'serve', '--root', options.home]);
-  const child = spawn(command[0]!, command.slice(1), { cwd: options.home,
+  const child = spawnWork(() => spawn(command[0]!, command.slice(1), { cwd: options.home,
     env: { ...options.env, SUPERCODE_BOARD_START_OWNER: String(process.pid) }, detached: true,
-    stdio: ['ignore', log, log, 'ipc'] });
+    stdio: ['ignore', log, log, 'ipc'] }), 'node');
   closeSync(log);
   // A startup contender may lose the lifetime lock to another keeper. Only the public native receipt admits reuse.
   try {

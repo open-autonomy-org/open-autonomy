@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline';
 import { closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { savePublicationBytes, sourceJournalFile, type SourceCard, type SourceSnapshot } from './publication.ts';
+import { startWork, spawnWork } from './work-ledger.ts';
 export type { SourceCard, SourceSnapshot } from './publication.ts';
 interface SourceOptions {
   command: string[]; stateFile: string; env: Record<string, string>;
@@ -32,7 +33,7 @@ interface StreamChild { child: ChildProcess; retire: () => Promise<void> }
 // command group, rather than treating the wrapper's exit as reader completion.
 function streamChild(command: string[], env: Record<string, string>, log: (message: string) => void, closeReader: () => void): StreamChild {
   const grouped = process.platform !== 'win32';
-  const child = spawn(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = spawnWork(() => spawn(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'inherit'] }), 'node');
   let closed = false, stopping = false, escalated = false, settled = false;
   let deadline = 0, timer: ReturnType<typeof setInterval> | undefined;
   let resolveRetired!: () => void, rejectRetired!: (error: Error) => void;
@@ -306,7 +307,11 @@ export class BoardEventSource {
       try {
         for await (const line of lines) {
           if (this.closed) break;
-          lines.pause(); const frame = JSON.parse(line);
+          lines.pause();
+          const finish = startWork('load', 'publisher.source-frame');
+          let frame: any;
+          try { frame = JSON.parse(line); finish({ ok: true, units: { events: 1, bytes: Buffer.byteLength(line) } }); }
+          catch (error) { finish({ ok: false, units: { bytes: Buffer.byteLength(line) } }); throw error; }
           if (frame.type === 'resync_required') { this.legacyCursor ??= this.cursor; this.cursor = undefined; this.compact(); this.options.log(`native source requests full snapshot: ${frame.reason}`); break; }
           if (frame.type === 'snapshot_begin') { if (staged) throw new Error('Nested native snapshot'); staged = new Map(); snapshotKeys = new Set(); }
           else if (frame.type === 'snapshot_item' || frame.type === 'event') {

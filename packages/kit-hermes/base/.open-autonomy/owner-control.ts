@@ -10,6 +10,7 @@ import { harnessSdkModule } from './machine-supercode.ts';
 const { SupercodeRpcError: RpcError } = await import(harnessSdkModule());
 import { acquirePublicationLease, savePublicationFile, type PublicationOwnerLease, type LocalPublicationLease } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
+import { measureWork } from './work-ledger.ts';
 export type ControlScope = { account: string; apiBase: string; nativeRuntime: { kind: string; root: string } };
 export type ControlDisposition = 'retain-owned' | 'relinquish' | 'relinquish-absent';
 export type ControlSelection = { operation: string; effectDigest: string; disposition: ControlDisposition };
@@ -199,7 +200,7 @@ export class OwnerController {
     this.work = (async () => {
       while (this.again && !this.stopping) {
         this.again = false;
-        try { await this.pass(); } catch (error) { this.options.log(this.stopping ? 'owner control not finished: the reporter is stopping; retained intent waits' : `owner control pending: ${(error as Error).message}`); }
+        try { await measureWork('pass', 'owner-control.pass', () => this.pass()); } catch (error) { this.options.log(this.stopping ? 'owner control not finished: the reporter is stopping; retained intent waits' : `owner control pending: ${(error as Error).message}`); }
       }
     })().finally(() => { this.work = undefined; });
     return this.work;

@@ -20,7 +20,7 @@ and supplies its native home from the company skew.
 | `hermes` | `manage-project` | Stock Hermes by default; `hermes/` | Daily PM plan and record for human executors; no board dispatch |
 | `hermes` | `manage-organization` | Stock Hermes by default; `hermes/` | Daily organization cycle; requests sent to its projects |
 | `hermes` | `soc2` | Self-build runtime; `hermes/` plus [compliance records](skews/soc2/records/README.md) and [Evidence Desk program](skews/soc2/COMPLIANCE.md) | Self-build with declared human seams and release gates ([ADR 0008](../../docs/decisions/0008-human-seams.md)) |
-| `ir` | `game` | Runtime-neutral: no harness named, no `hermes/`; any coding agent at the computer reads `AGENTS.md` and [home/skills/open-autonomy/game](skews/game/home/skills/open-autonomy/game/SKILL.md) and works through `.open-autonomy/game.ts` | A game's own repository: the Room's asks to the owners' queue, only owners' funded cards built on a key bound to the card's budget, progress and answers in `build`, the bot's check, members first then everyone |
+| `ir` | `game` | Runtime-neutral: no harness named, no `hermes/`; any coding agent at the computer reads `AGENTS.md` and [home/skills/open-autonomy/game](skews/game/home/skills/open-autonomy/game/SKILL.md) and works through [the game host tool](skews/game/.open-autonomy/game.ts) | A game's own repository: the Room's asks to the owners' queue, only owners' funded cards built on a key bound to the card's budget, progress and answers in `build`, the bot's check, members first then everyone |
 | `ir` | `company` | Supercode orchestrator, Claude Code default and Codex profiles; [home/](skews/company/home/) | Organization layer and a profile per job; one product or go-to-market lane per install, cards tagged by project ([ADR 0017](../../docs/decisions/0017-the-ir-native-kit.md), [ADR 0020](../../docs/decisions/0020-the-company-skew-runs-lanes.md)); records register in the organization's record repository ([ADR 0022](../../docs/decisions/0022-the-records-register.md)) |
 
 The setup in `.open-autonomy/agent.json` selects the harness; another supported harness can run on the
@@ -237,6 +237,13 @@ First boot and the keeper's dependency refresh use `install-runtime.ts`. With a 
 the runtime user's Supercode home, the installer links declared `file:` packages inside the locked tree back to their
 sources after Bun installs normally. The install stamp includes that lock and the linking policy; a pin
 move refreshes the install, and only a successful install gets a new stamp. Supercode still enforces the lock itself.
+
+The publisher, keeper, retained owners, valve, Codex services and Hookline adapter report minute work through the
+selected machine SDK's `./work-ledger` export. Install/project scopes remain separate across service restarts;
+the recorder hashes their native identity and retains only fixed operations and numeric units. Use
+`supercode work history`, `regressions` and `coverage` to read the local observations. HTTP durations end at response
+headers, leaving streaming bodies with their existing owner. An older or unavailable SDK emits a typed coverage
+diagnostic; recorder failure preserves the service's operation and shutdown result.
 
 Paying container installs use the treasurer's separate executor and host-held key under
 [ADR 0021](../../docs/decisions/0021-the-pay-boundary.md). A bare start opens a pay port only for a synthetic

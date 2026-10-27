@@ -1,4 +1,5 @@
 // The bounded native setup mapping in ADR 0026. Native codecs/jobs and applier ownership remain external.
+import { spawnWork } from './work-ledger.ts';
 import type { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { harnessSdkModule, orchestratorModule, supercodeBin, supercodeCommand } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
@@ -189,9 +190,9 @@ process.stdout.write(JSON.stringify({ok:true,result})); }
 catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(error.message).slice(0,2048)})); process.exitCode=1; }
 finally { await client?.close(); }`;
   const child = (() => {
-    try { return Bun.spawn({ cmd: [...prefix, 'node', '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
+    try { return spawnWork(() => Bun.spawn({ cmd: [...prefix, 'node', '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
       env: { ...process.env, SUPERCODE_BIN: supercodeBin() },
-      detached: true, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }); }
+      detached: true, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })); }
     catch (error) { if (request.operation !== 'validate') safety.blocked = 'Native job transport unavailable; no further effects allowed'; throw error; }
   })();
   let interrupted = false, expired = false, settled = false, terminating = false, killTimer: ReturnType<typeof setTimeout> | undefined;
