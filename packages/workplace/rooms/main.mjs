@@ -41,10 +41,10 @@
 // onto the card. The program may place it only because its custodian handed it to the board by adopting it, a grant
 // supercode's integration records for this app (runhuman-2 ADR 0046 decision 6). It is never bound to a card agent's
 // seat and gains no agent identity (VO-3751); a run in an agent's current session links that agent, whose seats stay its
-// own. It is seated while its card is worked or in review and neither paused nor blocked, under the same rule (every line
+// own, and that exact main-session agent is seated in the linked card's project too. It is seated while its card is worked or in review and neither paused nor blocked, under the same rule (every line
 // on a card a lead works, else the lines naming it), and leaves when the run ends or the card pauses, blocks or closes;
-// the program unseats only the sessions it seated. For RUN_LINK_WAIT_MS from the run's start the project stays owed until
-// its link and handover are there; after that a session it cannot place is said once and holds nothing up.
+// the program removes only its additional run placements. Missing links, refused joins and unconfirmed cleanup remain
+// owed through backoff and restart, while unrelated placement continues.
 // A state write the disk refuses is retried each minute while the program works from memory.
 //
 // Each project Room's rules carry its guidance (runhuman-2 ADR 0063 decision 7, `guidance`, the rules command): what its
@@ -79,7 +79,7 @@ import { promisify } from 'node:util';
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 6;
+const ARC_ROOM_LIFECYCLE_VERSION = 7;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -223,10 +223,6 @@ const runOf = (card) => {
   if (typeof session.harness !== 'string' || !session.harness || typeof session.session_id !== 'string' || !session.session_id) return null;
   return { run: `${session.harness}:${session.session_id}`, runSince: typeof attempt.started_at === 'string' ? attempt.started_at : null };
 };
-/** How long after a run starts its project waits for the run's link and handover (supercode's integration writes them on
- * its own turn, after the same card event): the project stays owed, tried again on its backoff, so the session is seated
- * within minutes rather than at the hourly pass. */
-const RUN_LINK_WAIT_MS = 10 * 60_000;
 const kept = (card) => {
   const out = Object.fromEntries(KEPT.filter((key) => card[key] !== undefined).map((key) => [key, card[key]]));
   // A card as published names its run by its attempts; one already kept carries `run`.
@@ -296,10 +292,17 @@ async function createRoomOf(project) {
 async function closeOwnRoom(roomId) {
   const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch((error) => { if (error.status === 404) return null; throw error; });
   const room = view?.room ?? null;
-  if (!room || (room.placements ?? []).length === 0) return false;
+  if (!room || (room.placements ?? []).length === 0) {
+    if (Object.keys(state.runSeats[roomId] ?? {}).length) throw Object.assign(new Error('run placement cleanup still requires this Room'), { code: 'cleanup-pending' });
+    return false;
+  }
   const closed = room.state === 'active';
   if (closed) await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/close`, { body: { expectedVersion: room.version } });
-  if (state.cleanupReady) await keepAgentSeats(view, new Map(), { roomId });
+  if (state.cleanupReady) {
+    const pending = [];
+    await keepAgentSeats(view, new Map(), { roomId }, { pending });
+    if (pending.length) throw Object.assign(new Error(`waiting for ${pending.join('; ')}`), { code: 'cleanup-pending' });
+  }
   return closed;
 }
 
@@ -421,77 +424,91 @@ async function peopleOf(view) {
  */
 // The run sessions said once as not placeable (keepAgentSeats), by principal and refusal.
 const unplaced = new Set();
+const sameSession = (a, b) => a?.registration === b?.registration && a?.reference && b?.reference
+  && JSON.stringify(Object.entries(a.reference).sort()) === JSON.stringify(Object.entries(b.reference).sort());
 async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat = true, held = [], sessions = new Map(), pending = [] } = {}) {
-  // `held`: agents working a card whose assignment on its Task is not there yet. One already seated keeps its seat, and
-  // none is brought in, until the assignment is (a new run's assignment lagging the board unseated its implementer and
-  // the reviewer five times in minutes, each leave told, VO-3602 t_ab4e09ab).
   const roomId = view.room.roomId, missing = [...unresolved], principals = new Set(held);
-  const inRoom = new Set((view.members ?? []).map((member) => member.principalId));
-  const base = view.conversations?.find((item) => item.conversationId === view.room.defaultConversationId);
-  const receives = new Map((base?.agentParticipants ?? []).map((participant) => [participant.principalId, participant.answers]));
+  const members = new Map((view.members ?? []).map(member => [member.principalId, member]));
+  const base = view.conversations?.find(item => item.conversationId === view.room.defaultConversationId);
+  const receives = new Map((base?.agentParticipants ?? []).map(participant => [participant.principalId, participant.answers]));
   const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
-  for (const [agentId, { answers, roleKeys }] of wanted) {
+  const placements = state.runSeats[roomId] ??= {};
+  const borrowed = state.borrowedRunSeats[roomId] ??= {};
+  const people = await peopleOf(view);
+  // Role and run demand stay separate; only their placement/receive requirement is combined.
+  const roles = new Map();
+  for (const [agentId, demand] of wanted) {
     const principalId = await agentPrincipalOf(agentId);
     if (!principalId) { missing.push(agentId); continue; }
-    principals.add(principalId);
-    const joined = inRoom.has(principalId);
-    if (joined && (!answers || !base || receives.get(principalId) === answers)) continue;
-    try {
-      await door(`${room}/join`, { body: { principalId, roleKeys, ...(answers ? { answers } : {}), ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}) } });
-    } catch (error) {
-      // A principal that no longer stands (ended in the Workplace) is resolved again next time.
-      if (['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.agentPrincipals[agentId];
-      throw error;
-    }
-    log(joined ? 'agent-receives' : 'agent-joined', { ...label, agent: agentId, principalId, roomId, ...(answers ? { answers } : {}) });
+    roles.set(principalId, { ...demand, agentId }); principals.add(principalId);
   }
-  // Each card's run session (`sessions`: principal → { answers, roleKeys, card }), by the same join command. The
-  // Workplace seats a session only for whoever controls it (requirePlacer): a session handed to the board is this app's to
-  // place, and one not handed yet (supercode's integration records the handover on its own turn) is refused and waits,
-  // without holding up any other seat.
-  for (const [principalId, { answers, card, roleKeys, young }] of sessions) {
+  for (const principalId of Object.keys(borrowed)) if (!members.has(principalId)) { delete borrowed[principalId]; saveState(); }
+  const desired = new Map(roles);
+  for (const [principalId, demand] of sessions) {
+    const role = desired.get(principalId);
+    desired.set(principalId, { ...demand, ...(role ?? {}), answers: role?.answers === 'all' || demand.answers === 'all' ? 'all' : 'mentions' });
     principals.add(principalId);
-    const joined = inRoom.has(principalId);
-    if (joined && (!answers || !base || receives.get(principalId) === answers)) continue;
-    try {
-      await door(`${room}/join`, { body: { principalId, roleKeys, ...(answers ? { answers } : {}), ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}) } });
-    } catch (error) {
-      if (!['session-not-yours', 'session-ended', 'session-unknown', 'principal-not-active', 'principal-unknown', 'seat-unavailable'].includes(error.code)) throw error;
-      if (young) pending.push(`${card}: its run's session ${principalId} (${error.code})`);
-      else if (!unplaced.has(`${principalId}:${error.code}`)) { unplaced.add(`${principalId}:${error.code}`); log('session-not-placed', { ...label, card, principalId, roomId, code: error.code }); }
+  }
+  for (const [principalId, demand] of desired) {
+    const member = members.get(principalId), role = roles.has(principalId), run = sessions.get(principalId);
+    // Reuse a run's pre-existing seat as-is. Neither its placer nor its receive setting belongs to this demand.
+    if (member && (people.has(member.seatedBy) || !role && !placements[principalId])) {
+      if (!role) { borrowed[principalId] = member.seatedBy ?? null; saveState(); }
+      if (run && !sameSession(member.sessionBinding, run.session)) pending.push(`${run.card}: its seat has not reached the linked session`);
       continue;
     }
-    // Kept, so it leaves even once the Room's member list no longer shows it to this app (a restricted session is shown
-    // to whoever controls it, and the handover is taken back when the run ends, before this app unseats it).
-    const seated = state.seatedSessions[roomId] ??= [];
-    if (!seated.includes(principalId)) { seated.push(principalId); saveState(); }
-    log(joined ? 'session-receives' : 'session-joined', { ...label, card, principalId, roomId, ...(answers ? { answers } : {}) });
-  }
-  if (mayUnseat && !missing.length && state.cleanupReady) {
-    // An agent, whoever brought it in; a session only where this app seated it (a person's or its custodian's placing stands).
-    const shown = new Set((view.members ?? []).map((member) => member.principalId));
-    const leaving = [...(view.members ?? []).filter((member) => (member.kind === 'agent' || member.kind === 'session' && member.seatedBy === self) && !principals.has(member.principalId)),
-      // A session this app seated that the list no longer shows it.
-      ...(state.seatedSessions[roomId] ?? []).filter((principalId) => !shown.has(principalId) && !principals.has(principalId)).map((principalId) => ({ kind: 'session', principalId, recorded: true, seatedBy: self }))];
-    const people = leaving.length ? await peopleOf(view) : new Set();
-    for (const member of leaving) {
-      if (people.has(member.seatedBy)) continue;
-      // Named by who brought it in, so a person who brings it in again meanwhile is not undone.
-      try {
-        await door(`${room}/leave`, { body: { principalId: member.principalId, ...(member.seatedBy ? { expectedSeatedBy: member.seatedBy } : {}) } });
-      } catch (error) {
-        // One the list does not show may be gone already (its seat ended with it): it is no longer this app's to keep.
-        if (!member.recorded) throw error;
-        log('session-leave-refused', { ...label, principalId: member.principalId, roomId, code: error.code ?? null });
+    if (member && member.seatedBy !== self && placements[principalId]) {
+      delete placements[principalId]; borrowed[principalId] = member.seatedBy ?? null; saveState();
+      if (run && !sameSession(member.sessionBinding, run.session)) pending.push(`${run.card}: its seat has not reached the linked session`);
+      continue;
+    }
+    if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
+    if (!member && run && !placements[principalId]) {
+      // Keep the intent before the effect: an answer lost to restart still leaves a conditional cleanup obligation.
+      placements[principalId] = { kind: run.kind, session: run.session }; saveState();
+    }
+    if (!member && run) {
+      flushState();
+      if (writeRefused) throw Object.assign(new Error('placement intent could not be persisted'), { code: 'state-write-refused' });
+    }
+    try {
+      const placed = await door(`${room}/join`, { body: { principalId, roleKeys: demand.roleKeys, answers: demand.answers,
+        ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}),
+        ...(run ? { expectedSession: run.session } : {}),
+        ...(!member ? { preserveExisting: true } : { expectedSeatedBy: self }) } });
+      if (placed.seatedBy !== self) {
+        if (placements[principalId]) delete placements[principalId];
+        borrowed[principalId] = placed.seatedBy ?? null; saveState();
       }
-      if (member.kind === 'session' && state.seatedSessions[roomId]) {
-        state.seatedSessions[roomId] = state.seatedSessions[roomId].filter((each) => each !== member.principalId);
-        if (!state.seatedSessions[roomId].length) delete state.seatedSessions[roomId];
-        saveState();
-      }
-      log(member.kind === 'session' ? 'session-left' : 'agent-left', { ...label, principalId: member.principalId, roomId, seatedBy: member.seatedBy ?? null });
+      log(member ? 'participant-receives' : 'participant-joined', { ...label, principalId, roomId, card: run?.card ?? null, answers: demand.answers });
+    } catch (error) {
+      if (role && ['principal-unknown', 'principal-not-active', 'seat-unavailable'].includes(error.code)) delete state.agentPrincipals[demand.agentId];
+      if (!run) { missing.push(demand.agentId); pending.push(`${demand.agentId}: ${error.code ?? 'join failed'}`); continue; }
+      pending.push(`${run.card}: its run session (${error.code ?? 'join failed'})`);
+      const key = `${principalId}:${error.code ?? error.message}`;
+      if (!unplaced.has(key)) { unplaced.add(key); log('session-not-placed', { ...label, card: run.card, principalId, roomId, code: error.code ?? null }); }
     }
   }
+  if (mayUnseat && !missing.length && state.cleanupReady) {
+    const leaving = new Map([...members.values()].filter(member => !principals.has(member.principalId)
+      && member.seatedBy === self && !Object.hasOwn(borrowed, member.principalId)
+      && (member.kind === 'agent' || member.kind === 'session' && placements[member.principalId])).map(member => [member.principalId, member]));
+    for (const [principalId, placement] of Object.entries(placements)) if (!principals.has(principalId)) leaving.set(principalId, { ...placement, principalId, seatedBy: self });
+    for (const [principalId, member] of leaving) {
+      try {
+        // A successful conditional leave proves removal, absence, or replacement. A refusal proves none of them.
+        await door(`${room}/leave`, { body: { principalId, expectedSeatedBy: self } });
+        delete placements[principalId]; saveState();
+        log('participant-left', { ...label, principalId, roomId });
+      } catch (error) {
+        pending.push(`${principalId}: cleanup (${error.code ?? 'leave failed'})`);
+        log('participant-leave-pending', { ...label, principalId, roomId, code: error.code ?? null });
+      }
+    }
+  }
+  if (!Object.keys(placements).length) delete state.runSeats[roomId];
+  if (!Object.keys(borrowed).length) delete state.borrowedRunSeats[roomId];
+  saveState();
   if (missing.length) throw Object.assign(new Error(`the supercode integration has provided no Workplace agent yet for ${missing.join(', ')}`), { code: 'agent-not-provided' });
 }
 // The card's Task (by the correlation the Cards → Tasks registration makes it under), read once per pass with the Task
@@ -521,17 +538,15 @@ async function projectAgentsOf(project, cards) {
   let mayUnseat = true;
   for (const card of cards) {
     const task = card.run || Array.isArray(card.agents) ? await taskOfCard(card.id) : null;
-    // Its run's session: the session participant its Task shows as its work (the card's own `card-run` link), seated
-    // beside its agents. A run in an agent's current session links that agent, whose seats stay its own: a card agent's
-    // is kept below by its role, and no other agent is seated for it. A run started within RUN_LINK_WAIT_MS whose Task
-    // shows no work yet (supercode's integration links it on its own turn) keeps the project owed.
+    // Work must name this run, this provider and its exact session representation. A stale Task link is not demand.
     if (card.run) {
-      const young = Date.parse(card.runSince ?? '') > Date.now() - RUN_LINK_WAIT_MS;
-      const work = (task?.work ?? []).filter((each) => typeof each?.principalId === 'string');
-      if (!work.length && young) waiting.push(`${card.id}: its run's session`);
-      for (const each of work.filter((linked) => linked.kind === 'session')) {
+      const work = (task?.work ?? []).filter(each => typeof each?.principalId === 'string'
+        && ['session', 'agent'].includes(each.kind) && each.source?.registration === config.rh2.agentsRegistration
+        && each.source?.reference?.native === card.run && each.session?.registration === config.rh2.agentsRegistration);
+      if (!work.length) waiting.push(`${card.id}: its exact run session`);
+      for (const each of work) {
         const answers = card.leads?.length || sessions.get(each.principalId)?.answers === 'all' ? 'all' : 'mentions';
-        sessions.set(each.principalId, { answers, card: card.id, roleKeys: AGENT_ROLE_KEYS, young: young || Boolean(sessions.get(each.principalId)?.young) });
+        sessions.set(each.principalId, { answers, card: card.id, roleKeys: AGENT_ROLE_KEYS, session: each.session, kind: each.kind });
       }
     }
     if (!Array.isArray(card.agents)) { mayUnseat = false; continue; }
@@ -715,7 +730,13 @@ bindProjectionState(config,state);
 state.projects ??= {}; state.projectsOwed ??= {}; state.projectsKept ??= {};
 state.pending ??= {};
 state.agents ??= {}; state.agentPrincipals ??= {}; // Teams agent → { ended }; → its Workplace principal (resolve door)
-state.seatedSessions ??= {}; // Room → the run sessions this app seated there (keepAgentSeats)
+state.runSeats ??= {}; // Room → exact run placements (including unresolved join/leave effects)
+state.borrowedRunSeats ??= {}; // Pre-existing run seats, which this projection never takes over
+for (const [roomId, ids] of Object.entries(state.seatedSessions ?? {})) {
+  const seats = state.runSeats[roomId] ??= {};
+  for (const id of ids) seats[id] ??= { kind: 'session' };
+}
+delete state.seatedSessions;
 // Each card's files its Room has shown (or that predate its first reading of them), and when the app first reposted any:
 // a file attached before then is never posted.
 state.reposted ??= {}; state.repostSince ??= Date.now();
