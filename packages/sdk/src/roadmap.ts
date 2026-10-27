@@ -14,7 +14,9 @@
 //   by            who: an agent profile, a login
 //   commit        the proof: the commit that landed it
 //   links         every record it is tied to, typed: the ticket that asked, the issue, the pull request, the branch, the
-//                 recording, the roadmap section, the discussion — as many as the publisher knows
+//                 recording, the roadmap section, the discussion — as many as the publisher knows; each an https
+//                 address, or `card:<id>` for the native board card the item is (the id its Workplace Task names),
+//                 which is a reference for joining records, never an address a page opens
 //   acceptance    the lines that define done
 
 export const ROADMAP_SCHEMA = 'open-autonomy.timeline.v1';
@@ -114,7 +116,7 @@ export function normalizeRoadmap(r: unknown): Roadmap | undefined {
       home: shortOrNone(it.home, 40), phase: shortOrNone(it.phase, 20), priority: shortOrNone(it.priority, 20), release: shortOrNone(it.release, 80),
       proposed_at: isoOrNone(it.proposed_at), started_at: isoOrNone(it.started_at), done_at: isoOrNone(it.done_at),
       by: shortOrNone(it.by, 80), commit: typeof it.commit === 'string' && /^[0-9a-f]{7,40}$/.test(it.commit) ? it.commit : undefined,
-      links: Array.isArray(it.links) ? (it.links as unknown[]).filter((l): l is { kind?: unknown; url: string; label?: unknown } => !!l && typeof l === 'object' && typeof (l as { url?: unknown }).url === 'string' && /^https:\/\/[^\s]{1,400}$/.test((l as { url: string }).url)).slice(0, 20).map((l) => ({ kind: (typeof l.kind === 'string' && (LINK_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'other') as LinkKind, url: l.url, ...(typeof l.label === 'string' && l.label.trim() ? { label: l.label.trim().slice(0, 120) } : {}) })) : undefined,
+      links: Array.isArray(it.links) ? (it.links as unknown[]).filter((l): l is { kind?: unknown; url: string; label?: unknown } => !!l && typeof l === 'object' && typeof (l as { url?: unknown }).url === 'string' && /^(?:https:\/\/[^\s]{1,400}|card:[A-Za-z0-9._:-]{1,120})$/.test((l as { url: string }).url)).slice(0, 20).map((l) => ({ kind: (typeof l.kind === 'string' && (LINK_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'other') as LinkKind, url: l.url, ...(typeof l.label === 'string' && l.label.trim() ? { label: l.label.trim().slice(0, 120) } : {}) })) : undefined,
     };
     items.push({
       id: it.id, title: it.title.slice(0, 200), tense: tenseOf({ status, tense: it.tense }), status,
