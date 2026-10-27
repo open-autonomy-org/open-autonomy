@@ -2,7 +2,7 @@
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
 // another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
-import { startWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
+import { startWork, responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -79,7 +79,7 @@ export async function startContainer(options: {
     // Git must be available before fetching the committed model/configuration.
     own('github valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', '--github-app', `${github}:${port + 3}`]);
     await ready(async () => {
-      try { return (await fetch(`http://127.0.0.1:${port + 3}/healthz`, { signal: AbortSignal.timeout(1000) })).ok; }
+      try { return (await responseWork('call', 'keeper.health', () => fetch(`http://127.0.0.1:${port + 3}/healthz`, { signal: AbortSignal.timeout(1000) }))).ok; }
       catch { return false; }
     }, 'GitHub valve');
     const host = 'http://host.docker.internal';
@@ -120,7 +120,7 @@ export async function startContainer(options: {
     if (onCodex && !twin) args.push('--codex', String(port + 2));
     own('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...args], { env: { ...process.env, ...(payKey ? { [`OPEN_AUTONOMY_VALVE_CALLER_${port + 1}`]: payKey } : {}) } });
     await ready(async () => {
-      try { return (await Promise.all(ports.map(async p => (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text()))).every(s => s.startsWith('ok')); }
+      try { return (await Promise.all(ports.map(async p => (await responseWork('call', 'keeper.health', () => fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) }))).text()))).every(s => s.startsWith('ok')); }
       catch { return false; }
     }, 'credential valves');
     const channelsFile = resolve(secrets, 'channels.env');

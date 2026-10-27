@@ -1,5 +1,5 @@
 // Acquire the native board's lifetime owner. It is detached from kit stacks; only native handover changes its writer.
-import { spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { startWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -13,7 +13,13 @@ async function door(options: Options) {
   // The owner refuses a card verb whose request names no Teams context (@volter/teams/board-owner: `facts`); the
   // keeper names the one its environment carries, else `local`, as the owner's own handover readback does.
   const facts = { SUPERCODE_CONTEXT: options.env.SUPERCODE_CONTEXT || 'local' };
-  return (argv: string[]) => module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
+  return async (argv: string[]) => {
+    const finish = startWork('call', 'keeper.board');
+    try {
+      const answer = await module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
+      finish({ ok: answer.code === 0 && !answer.unanswered }); return answer;
+    } catch (error) { finish({ ok: false }); throw error; }
+  };
 }
 async function probe(options: Options): Promise<any | null> {
   const answer = await (await door(options))(['handover', '--action', 'status']);

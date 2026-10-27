@@ -19,7 +19,7 @@
 // .open-autonomy/agent.json entry, applied into its home before the gateway starts. A fleet opens no treasurer door:
 // work is routed to a profile by its bare name, which a composed <repo>-treasurer is not, so nothing in a fleet pays;
 // every profile's pay address is its key's, which spends and stops at zero.
-import { spawnSyncWork, spawnWork } from './work-ledger.ts';
+import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -90,7 +90,7 @@ export async function startFleet(options: { definition: string; port: number; se
     while (!ending && Date.now() < deadline) { if (await check()) return; await Bun.sleep(100); }
     throw new Error(`the host did not establish ${name}; Hermes was not started`);
   };
-  const healthy = async (p: number) => { try { return (await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) })).text().then((t) => t.startsWith('ok')); } catch { return false; } };
+  const healthy = async (p: number) => { try { return (await responseWork('call', 'keeper.health', () => fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(1000) }))).text().then((t) => t.startsWith('ok')); } catch { return false; } };
   const host = 'http://host.docker.internal';
 
   try {

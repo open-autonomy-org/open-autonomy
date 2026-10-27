@@ -22,8 +22,8 @@ const operations: Operation[] = [
     'publisher.delivery', 'owner-control.pass', 'keeper.restart-check', 'keeper.service-check',
     'supervisor.restart', 'hookline.event', 'hookline.attach'].map(operation => ({ kind: 'pass', operation })),
   ...['publisher.window', 'publisher.source-frame'].map(operation => ({ kind: 'load', operation })),
-  ...['publisher.upstream', 'valve.upstream', 'codex.upstream'].map(operation => ({ kind: 'call', operation })),
-  ...['valve.request', 'codex.request', 'keeper.request'].map(operation => ({ kind: 'door', operation })),
+  ...['publisher.upstream', 'valve.upstream', 'codex.upstream', 'keeper.health', 'keeper.board', 'keeper.registry-upstream'].map(operation => ({ kind: 'call', operation })),
+  ...['valve.request', 'codex.request', 'keeper.request', 'keeper.registry-request'].map(operation => ({ kind: 'door', operation })),
   ...['bun.start', 'bun.sync', 'node.start', 'node.sync'].map(operation => ({ kind: 'child', operation })),
 ];
 function unavailable(code: Diagnostic): void {

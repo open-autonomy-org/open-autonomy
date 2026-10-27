@@ -1,5 +1,5 @@
 // Acquire the independently serving host proxy. The kernel arbitrates the port; a failed contender owns no listener.
-import { spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { responseWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ export async function ensureCodexService({ port, directory, environment }: { por
   const binding = createHash('sha256').update(codexHome).digest('hex');
   const ready = async (): Promise<Identity | null> => {
     let response: Response;
-    try { response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal: AbortSignal.timeout(1000) }); }
+    try { response = await responseWork('call', 'keeper.health', () => fetch(`http://127.0.0.1:${port}/readyz`, { signal: AbortSignal.timeout(1000) })); }
     catch (error) {
       // Only a refused connection means no listener. A timeout is never permission to replace a serving process.
       if ((error as { cause?: { code?: string }; code?: string }).cause?.code === 'ECONNREFUSED' || ['ConnectionRefused', 'ECONNREFUSED'].includes((error as { code?: string }).code ?? '')) return null;

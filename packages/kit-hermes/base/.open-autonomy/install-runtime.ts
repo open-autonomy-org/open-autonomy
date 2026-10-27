@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
-import { spawnSyncWork, spawnWork } from './work-ledger.ts';
+import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -182,6 +182,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
   // No source override or alternate event implementation enters the consumer process.
   const server = artifacts.size ? Bun.serve({ hostname: '127.0.0.1', port: 0,
     async fetch(request, server) {
+      return responseWork('door', 'keeper.registry-request', async () => {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
       const pathname = decodeURIComponent(new URL(request.url).pathname);
       for (const [name, artifact] of artifacts) {
@@ -193,7 +194,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
           if (pathname !== `/${name}`) return Response.json(version);
           const upstreamUrl = new URL(registry);
           upstreamUrl.pathname = `${registry.pathname.replace(/\/$/, '')}/${encodeURIComponent(name)}`;
-          const response = await fetch(upstreamUrl);
+          const response = await responseWork('call', 'keeper.registry-upstream', () => fetch(upstreamUrl));
           if (!response.ok && response.status !== 404) throw new Error(`Runtime registry metadata returned HTTP ${response.status}`);
           const upstream = response.ok ? await response.json() as any : {};
           return Response.json({ ...upstream, name,
@@ -204,11 +205,12 @@ export async function installHostRuntime(options: Options): Promise<void> {
       const target = new URL(registry);
       target.pathname = `${registry.pathname.replace(/\/$/, '')}${new URL(request.url).pathname}`;
       target.search = new URL(request.url).search;
-      const response = await fetch(target, { method: request.method });
+      const response = await responseWork('call', 'keeper.registry-upstream', () => fetch(target, { method: request.method }));
       // fetch decodes compressed responses; preserve the decoded stream without its wire encoding headers.
       const headers = new Headers(response.headers);
       headers.delete('content-encoding'); headers.delete('content-length');
       return new Response(response.body, { status: response.status, headers });
+      });
     }
   }) : undefined;
   const lockPath = join(options.directory, 'bun.lock');
