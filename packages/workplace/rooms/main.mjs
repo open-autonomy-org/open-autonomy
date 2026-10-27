@@ -787,7 +787,8 @@ async function sweepRooms() {
   const liveProjects = new Set(Object.values(state.cards).filter((card) => card.live && card.project).map((card) => card.project));
   const runProjects = new Set(Object.values(state.cards).filter(card => card.live && card.project && card.run).map(card => card.project));
   for (const [project, roomId] of Object.entries(state.projects)) {
-    if (Object.keys(state.runSeats[roomId] ?? {}).length || open.has(roomId) && !liveProjects.has(project)) state.projectsOwed[project] = true;
+    if (Object.keys(state.runSeats[roomId] ?? {}).length || Object.values(state.borrowedRunSeats[roomId] ?? {}).includes(self)
+      || open.has(roomId) && !liveProjects.has(project)) state.projectsOwed[project] = true;
   }
   for (const project of liveProjects) if (runProjects.has(project) || Date.now() - (state.projectsKept[project] ?? 0) >= 3_600_000) state.projectsOwed[project] = true;
   saveState();
