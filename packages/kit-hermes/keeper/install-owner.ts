@@ -1,5 +1,6 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
+import { startWork, spawnSyncWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { sourceReceiptProgram, publishedProgram, sourceJson } from '../base/.open-autonomy/source-program.ts';
 import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
@@ -71,9 +72,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     const receipt = validate(selected), ready = resolve(home, `.kit-ready-${randomUUID()}.json`);
     const args = [...argv];
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
-    const child = Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
+    const child = spawnWork(() => Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
       env: { ...envFor(selected), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
-        OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' });
+        OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }));
     const stack = { process: child, selected, ready }; starting = stack; restartSelection = selected;
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
@@ -140,7 +141,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       sourceDecision(request.transaction, selected, active.selected, 'prepare');
       validate(selected); pending = { id: request.transaction, selected, predecessor: active.selected, phase: 'prepared' }; write(); return status();
     }
-    if (pending?.id !== request.transaction) throw new Error('kit holds no matching handover transaction');
+    if (!pending || pending.id !== request.transaction) throw new Error('kit holds no matching handover transaction');
     sourceDecision(request.transaction, pending.selected, pending.predecessor, action);
     if (action === 'rollback' || action === 'abort') return rollback(progress);
     if (action === 'activate') {
@@ -165,10 +166,12 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     let input = '';
     socket.on('data', chunk => { input += chunk; if (input.length > 65536) return socket.destroy(); if (!input.includes('\n')) return;
       socket.removeAllListeners('data');
-      let request: any; try { request = JSON.parse(input.trim()); } catch { socket.end(JSON.stringify({ error: 'invalid kit request' }) + '\n'); return; }
+      const finish = startWork('door', 'keeper.request');
+      const units = { bytes: Buffer.byteLength(input), events: 1 };
+      let request: any; try { request = JSON.parse(input.trim()); } catch { finish({ ok: false, units }); socket.end(JSON.stringify({ error: 'invalid kit request' }) + '\n'); return; }
       const progress = (phase: string) => { if (!socket.destroyed) socket.write(JSON.stringify({ progress: phase }) + '\n'); };
-      const respond = (work: Promise<unknown>) => { void work.then(result => { if (!socket.destroyed) socket.end(JSON.stringify({ result }) + '\n'); },
-        error => { if (!socket.destroyed) socket.end(JSON.stringify({ error: error.message }) + '\n'); }); };
+      const respond = (work: Promise<unknown>) => { void work.then(result => { finish({ ok: true, units }); if (!socket.destroyed) socket.end(JSON.stringify({ result }) + '\n'); },
+        error => { finish({ ok: false, units }); if (!socket.destroyed) socket.end(JSON.stringify({ error: error.message }) + '\n'); }); };
       if (request.action === 'status') return respond(Promise.resolve(status()));
       // A rollback of the held transaction waits behind the transition in flight (its own bound ends it) and says so,
       // so recovery after a lost coordinator is never refused for arriving while the kit was still activating.
@@ -214,7 +217,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       initial = { receipt: prepared.receipt, source: prepared.source, release: prepared.release, native: prepared.source ? sourceProgram(prepared.source) : prepared.release ? publishedProgram(json(prepared.release)) : process.env.SUPERCODE_BIN ?? null };
       validate(initial);
     } else {
-      const head = Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']);
+      const head = spawnSyncWork(() => Bun.spawnSync(['git','-C',project,'rev-parse','HEAD']));
       if (head.exitCode !== 0) throw new Error('kit owner needs an existing committed project');
       const prepared = await prepareInstall({ project, home, revision: head.stdout.toString().trim(), source: process.env.SUPERCODE_SOURCE_CANDIDATE ?? null,
         registry: argv[argv.indexOf('--runtime-registry') + 1] && argv.includes('--runtime-registry') ? argv[argv.indexOf('--runtime-registry') + 1] : undefined,
@@ -229,7 +232,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     }
     return 0;
   } finally {
-    stopping = true; await busy?.catch(() => {}); await stopStack(starting); await stopStack(active); server.close(); rmSync(socketPath, { force: true });
+    stopping = true;
+    try { await busy; } catch { /* The transition's original caller retains its failure. */ }
+    await stopStack(starting); await stopStack(active); server.close(); rmSync(socketPath, { force: true });
     for (const signal of ['SIGTERM','SIGINT','SIGHUP'] as const) process.off(signal, stop);
   }
   } finally { lifetime.close(); }

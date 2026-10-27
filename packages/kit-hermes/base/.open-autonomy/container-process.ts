@@ -1,5 +1,6 @@
 // A Docker exec client is not the lifetime of the process it starts. Keep stdin
 // open as a lease; EOF (including host death) stops the owned container process group.
+import { spawnWork } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
 const RUNNER = String.raw`
@@ -36,8 +37,8 @@ export function startContainerProcess(options: {
   container: string; command: string[]; cwd: string; env?: Record<string, string>;
 }) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container)) throw new Error('A container name or ID is required.');
-  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', options.container,
-    'python3', '-u', '-c', RUNNER], { stdio: ['pipe', 'inherit', 'inherit'] });
+  const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', options.container,
+    'python3', '-u', '-c', RUNNER], { stdio: ['pipe', 'inherit', 'inherit'] }), 'node');
   let ended = false;
   const exited = new Promise<number>(resolve => {
     child.once('error', () => { ended = true; resolve(1); });

@@ -1,5 +1,6 @@
 // Latest work per native session, with one independent native reader per active lane. A large source holds only
 // its own lane; its network delivery and reconstruction never own the board publication writer or another reader.
+import { recordWork } from './work-ledger.ts';
 export class TranscriptQueue<Reader> {
   private readonly pending = new Set<string>();
   private readonly running = new Map<string, Promise<void>>();
@@ -12,6 +13,7 @@ export class TranscriptQueue<Reader> {
 
   enqueue(key: string): void {
     if (this.stopped) return;
+    if (!this.pending.has(key)) recordWork('pass', 'publisher.transcript-queued');
     this.pending.add(key); this.drain();
   }
   private drain(): void {

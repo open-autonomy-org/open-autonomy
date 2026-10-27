@@ -1,5 +1,6 @@
 // Prepare one immutable kit/project input before asking a serving keeper to change. No home, port or service is
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
+import { spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -90,7 +91,7 @@ export async function installInitiator(environment: Record<string, string | unde
     session: null, session_error: 'not read: no initiator was relayed to this preparation', claims: environment, ancestry: [], ancestry_error: 'not read' })!;
 }
 const run = async (cmd: string[], cwd: string): Promise<string> => {
-  const child = Bun.spawn({ cmd, cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+  const child = spawnWork(() => Bun.spawn({ cmd, cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' }));
   const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   if (code !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed (${code}): ${err.trim()}`);
   return out.trim();
@@ -143,9 +144,9 @@ export function readInstall(path: string, home: string): InstallReceipt {
     || dirname(dirname(path)) !== realpathSync(resolve(home, '..', 'installs'))
     || receipt.project !== resolve(dirname(path), 'project') || realpathSync(receipt.project) !== receipt.project
     || receipt.entry !== resolve(receipt.project, '.open-autonomy/start.ts')) throw new Error('kit receipt is not an install prepared for this home');
-  const metadata = Bun.spawnSync(['git', '-C', receipt.project, 'rev-parse', 'HEAD']);
+  const metadata = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'rev-parse', 'HEAD']));
   if (metadata.exitCode !== 0 || metadata.stdout.toString().trim() !== receipt.revision) throw new Error('prepared kit project commit changed');
-  const status = Bun.spawnSync(['git', '-C', receipt.project, 'status', '--porcelain', '--untracked-files=no']);
+  const status = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'status', '--porcelain', '--untracked-files=no']));
   if (status.exitCode !== 0 || status.stdout.toString().trim()) throw new Error('prepared kit tracked inputs changed');
   return receipt;
 }

@@ -1,10 +1,11 @@
 // Prepare the existing container checkout and native Hermes home before startup.
 // Values travel on Docker stdin, never command arguments or inherited host env.
+import { spawnWork } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
 async function python(container: string, script: string, input: unknown, bound = 60_000, failed = 'Executor preparation failed; Hermes was not started.'): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('A container name or ID is required.');
-  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] }), 'node');
   child.stdin.on('error', () => {});
   child.stdin.end(JSON.stringify(input));
   const output: Buffer[] = [];

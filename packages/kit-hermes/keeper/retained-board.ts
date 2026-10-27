@@ -1,4 +1,5 @@
 // Acquire the native board's lifetime owner. It is detached from kit stacks; only native handover changes its writer.
+import { spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -45,9 +46,9 @@ export async function acquireBoard(options: Options): Promise<void> {
   mkdirSync(resolve(options.home, 'logs'), { recursive: true });
   const log = openSync(resolve(options.home, 'logs/board-owner.log'), 'a', 0o600);
   const command = options.command([options.env.SUPERCODE_NODE_BIN || Bun.which('node')!, options.entry, 'workflow', 'serve', '--root', options.home]);
-  const child = spawn(command[0]!, command.slice(1), { cwd: options.home,
+  const child = spawnWork(() => spawn(command[0]!, command.slice(1), { cwd: options.home,
     env: { ...options.env, SUPERCODE_BOARD_START_OWNER: String(process.pid) }, detached: true,
-    stdio: ['ignore', log, log, 'ipc'] });
+    stdio: ['ignore', log, log, 'ipc'] }), 'node');
   closeSync(log);
   // A startup contender may lose the lifetime lock to another keeper. Only the public native receipt admits reuse.
   try {

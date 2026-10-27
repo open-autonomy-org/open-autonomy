@@ -1,6 +1,7 @@
 // Host-only authentication through the installed Codex. Codex owns its credential
 // store and refresh; OA never reads, copies or writes the login. A short-lived
 // app-server reads the current login on every acquisition, including account switches.
+import { spawnWork } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
@@ -25,12 +26,12 @@ export function codexAccess(options: AccessOptions = {}): Promise<CodexAccess> {
 
 async function acquire(options: AccessOptions): Promise<CodexAccess> {
   let phase: Phase = 'startup';
-  const child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
+  const child = spawnWork(() => spawn('codex', ['app-server', '--listen', 'stdio://'], {
     env: { ...process.env, ...(options.home ? { CODEX_HOME: options.home } : {}) },
     // Neither Codex diagnostics nor protocol bodies may enter the public stream.
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: process.platform !== 'win32',
-  });
+  }), 'node');
   const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
   const lines = createInterface({ input: child.stdout });
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();

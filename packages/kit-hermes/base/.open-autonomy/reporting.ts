@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
+import { startWork, recordWork, measureWork } from './work-ledger.ts';
 
 export interface PublicationPolicy { runs: boolean; chats: boolean; private: string[] }
 export function publicationPolicy(value: unknown): PublicationPolicy {
@@ -68,14 +69,22 @@ export class TranscriptPublisher {
   publish(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
     if (this.checkpoint?.endedAt) return Promise.resolve(this.checkpoint); // ended and published: append-only, so nothing more can follow
     if (this.pending) return this.pending; // the next observation carries any newer completion
-    const work = this.reconcile(completion);
+    const work = measureWork('pass', 'publisher.transcript-reconcile', () => this.reconcile(completion));
     this.pending = work;
     void work.finally(() => { this.pending = undefined; }).catch(() => {});
     return work;
   }
+  private async readWindow(options: Parameters<SupercodeHarnessClient['loadWindow']>[1]) {
+    const finish = startWork('load', 'publisher.window');
+    try {
+      const page = await this.sc.loadWindow(this.descriptor.locator, options);
+      finish({ ok: true, units: { pages: 1, messages: page.session.messages.length } });
+      return page;
+    } catch (error) { finish({ ok: false }); throw error; }
+  }
   // The source in one small read: its message count, its native end and its last message, beside the recorded completion.
   private async fingerprint(completion?: RecordedCompletion): Promise<string> {
-    const tail = await this.sc.loadWindow(this.descriptor.locator, { message_tail: 1, inline_media: 'metadata' });
+    const tail = await this.readWindow({ message_tail: 1, inline_media: 'metadata' });
     const native = tail.session as typeof tail.session & { ended_at?: string | null; end_reason?: string | null };
     const last = tail.session.messages.at(-1);
     return JSON.stringify([tail.window.total_messages, native.ended_at ?? null, native.end_reason ?? null, completion?.endedAt ?? null, completion?.outcome ?? null,
@@ -85,7 +94,7 @@ export class TranscriptPublisher {
     // The platform's key: the session's own id, or a continuation of it (`<id>~<n>`) once its source was rewritten.
     const key = this.start.key;
     const observed = await this.fingerprint(completion);
-    if (this.checkpoint && observed === this.observed) { volume.unchanged++; return this.checkpoint; }
+    if (this.checkpoint && observed === this.observed) { volume.unchanged++; recordWork('pass', 'publisher.transcript-unchanged', { units: { unchanged: 1 } }); return this.checkpoint; }
     volume.reconciled++;
     const remote = await this.oa.session(this.account, key);
     const seq = remote?.next_seq ?? 0;
@@ -114,7 +123,9 @@ export class TranscriptPublisher {
     // verify against the platform's retained tail, never an unbounded blind gap.
     const send = async (batch: Turn[]) => {
       const to = await destination();
-      await to.turns(batch, this.start.item);
+      const finish = startWork('pass', 'publisher.delivery');
+      try { await to.turns(batch, this.start.item); finish({ ok: true, units: { messages: batch.length } }); }
+      catch (error) { finish({ ok: false }); throw error; }
       for (const t of batch) prefix.add(t);
       if (to.seq !== prefix.count) throw new Error(`${key}: destination acknowledged ${to.seq} turns for ${prefix.count}; retry reconciliation`);
       this.checkpoint = { seq: to.seq, digest: prefix.digest() };
@@ -122,7 +133,7 @@ export class TranscriptPublisher {
     };
     let offset = 0, report: string | undefined, nativeCompletion: RecordedCompletion | undefined;
     for (;;) {
-      const page = await this.sc.loadWindow(this.descriptor.locator, { ...WINDOW, message_offset: offset });
+      const page = await this.readWindow({ ...WINDOW, message_offset: offset });
       if (page.window.offset !== offset) throw new Error(`${key}: source window moved; retry reconciliation`);
       volume.windows++; volume.messages += page.window.returned;
       for (const turn of page.session.messages.flatMap(m => turnsOf(m, this.descriptor.locator.harness))) {

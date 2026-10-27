@@ -52,6 +52,7 @@ import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 import { TranscriptQueue } from './transcript-queue.ts';
+import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork } from './work-ledger.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -75,6 +76,7 @@ const shown = (t: { tenant?: string; tags?: string[] }): boolean => {
 };
 const selectedRuntime = nativeRuntime(cfg);
 const home = selectedRuntime.root;
+await initializeWorkLedger('oa-publisher', { kind: tenant ? 'project' : 'install', id: `${cfg.account}\0${home}\0${tenant ?? ''}` });
 const container = arg('--container');
 if (container && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('Invalid container');
 if (container && cfg.seats) throw new Error('Host Claude seats require their own reporter');
@@ -92,7 +94,7 @@ const commandFailures = new Set<Error>();
 const oa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve', fetch: ((input, init) => {
   if (quitting) throw new Error('Narrative stopping; publication intent retained');
   ownerState.assert(stateFile);
-  return fetch(input, { ...init, signal: AbortSignal.any([narrativeAbort.signal, AbortSignal.timeout(10_000), ...(init?.signal ? [init.signal] : [])]) });
+  return responseWork('call', 'publisher.upstream', () => fetch(input, { ...init, signal: AbortSignal.any([narrativeAbort.signal, AbortSignal.timeout(10_000), ...(init?.signal ? [init.signal] : [])]) }));
 }) as typeof fetch });
 const log = (message: string) => console.log(`publisher: ${message}`);
 // What runs the agent, as the start script says (mode, kit, executor, host): published with the setup, never a credential.
@@ -108,7 +110,7 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   ownerState.assert(stateFile);
   const command = container ? inContainer(cmd) : cmd;
   const grouped = process.platform !== 'win32';
-  const child = spawnCommand(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawnWork(() => spawnCommand(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'pipe'] }), 'node');
   let timedOut = false, stdout = '', stderr = '', closed = false;
   let retirement: Promise<void> | undefined;
   const alive = (): boolean => {
@@ -179,7 +181,7 @@ let quitting = false;
 const controlAbort = new AbortController();
 const ownerOa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?? 'valve', fetch: ((input, init) => {
   ownerState.assert(stateFile);
-  return fetch(input, { ...init, signal: AbortSignal.any([controlAbort.signal, AbortSignal.timeout(20_000), ...(init?.signal ? [init.signal] : [])]) });
+  return responseWork('call', 'publisher.upstream', () => fetch(input, { ...init, signal: AbortSignal.any([controlAbort.signal, AbortSignal.timeout(20_000), ...(init?.signal ? [init.signal] : [])]) }));
 }) as typeof fetch });
 const controller = new OwnerController({ state: ownerState, runtime, sc, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log });
 let activePublication: PublicationStore | undefined, activeSource: BoardEventSource | undefined;
@@ -199,8 +201,9 @@ function shutdown(code: number): Promise<void> {
       await Promise.allSettled(commands);
       if (commandFailures.size) throw [...commandFailures][0];
     }
-    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); await sc.close(); process.exit(1); }
-    await sc.close(); ownerState.close(); process.exit(code);
+    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); try { await sc.close(); } finally { await closeWorkLedger(); } process.exit(1); }
+    try { await sc.close(); ownerState.close(); } finally { await closeWorkLedger(); }
+    process.exit(code);
   })();
   return shutdownWork;
 }
@@ -325,8 +328,8 @@ async function nativeState(): Promise<void> {
     runtime.load(narrativeRead), runtime.runs(narrativeRead),
   ]);
   let result: Awaited<ReturnType<typeof read>>;
-  try { result = await read(); }
-  catch (e) { if (!/No such file or directory/.test((e as Error).message)) throw e; await Bun.sleep(300); result = await read(); }
+  try { result = await measureWork('pass', 'publisher.native-refresh', read); }
+  catch (e) { if (!/No such file or directory/.test((e as Error).message)) throw e; await Bun.sleep(300); result = await measureWork('pass', 'publisher.native-refresh', read); }
   const [orchestration, history] = result;
   if (history.sources.some(s => s.state === 'unreadable')) throw new Error('Native run ledger unreadable');
   const next = orchestration.profiles as Record<string, Profile>;
@@ -732,6 +735,7 @@ const passWaiters: Array<{pass:number;resolve:()=>void;reject:(error:unknown)=>v
 const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
 stopNarrative = () => { configWatch.close(); clearTimeout(retry); for (const watcher of documentWatchers) watcher.close(); };
 function tick(): Promise<void> {
+  recordWork('pass', 'publisher.wakeup');
   dirty=true;
   if(!boardReady||quitting)return Promise.resolve();
   // A caller needs the pass that observes its change, not an indefinitely quiet source. Session-index events can
@@ -741,11 +745,13 @@ function tick(): Promise<void> {
     try {
       while(dirty&&!quitting){
         dirty=false;const pass=++passesStarted;
-        await nativeState();
-        const present=await board();
-        sessions();
-        if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
-        await timeline(present);
+        await measureWork('pass', 'publisher.pass', async () => {
+          await nativeState();
+          const present=await measureWork('pass', 'publisher.board-refresh', board);
+          sessions();
+          if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
+          await timeline(present);
+        });
         for(let i=passWaiters.length-1;i>=0;i--)if(passWaiters[i].pass<=pass)passWaiters.splice(i,1)[0].resolve();
       }
     } catch(error) { for(const waiter of passWaiters.splice(0))waiter.reject(error); }

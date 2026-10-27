@@ -13,6 +13,7 @@
 // once its message is sent, or nack to be sent again on the inbox's schedule. Hookline delivers each event exactly once
 // and in order. A replay (X-Hookline-Replay) or a re-send of an event already told is acknowledged and not told again:
 // the event ids already told are kept in --state. Events that are not about a pull request are acknowledged and left.
+import { initializeWorkLedger, closeWorkLedger, startWork, spawnWork } from './work-ledger.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
@@ -30,6 +31,7 @@ const target = setting('HOOKLINE_TARGET') ?? 'install';
 const mailTo = setting('HOOKLINE_MAIL_TO') ?? 'manager';
 const supercode = process.env.SUPERCODE_BIN || 'supercode';
 const stateFile = arg('--state');
+await initializeWorkLedger('oa-hookline', { kind: 'install', id: process.env.OPEN_AUTONOMY_LEDGER_SCOPE ?? stateFile ?? envFile ?? target });
 const say = (m: string) => console.log(`hookline: ${m}`);
 if (!inbox || !/^wss?:\/\//.test(inbox) || !token) { say(`${envFile ?? 'its env'} names no HOOKLINE_INBOX (ws:// or wss://) and HOOKLINE_READ_TOKEN; nothing to attach to`); process.exit(2); }
 
@@ -69,7 +71,7 @@ const locator = /^sc:[^:]+:([^:]+):(.+)$/.exec(mailTo) ? { harness: mailTo.split
 /** One request to supercode's session service from a named sender (`hookline`), as the skew's no-model jobs send: a
  *  service is no session, so `message send` (which answers from the calling session) cannot carry it. */
 async function tell(event: string, line: string): Promise<boolean> {
-  const serve = Bun.spawn({ cmd: [supercode, 'harness', 'serve'], stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  const serve = spawnWork(() => Bun.spawn({ cmd: [supercode, 'harness', 'serve'], stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }));
   const request = { jsonrpc: '2.0', id: 1, method: 'harness.v1.sessions.message', params: { locator, text: `${line}\n\n(hookline event ${event})`, from_name: 'hookline', subject: line.split('\n')[0]!.slice(0, 120) } };
   serve.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'harness.v1.capabilities', params: {} })}\n${JSON.stringify(request)}\n`);
   serve.stdin.flush();
@@ -94,11 +96,15 @@ async function tell(event: string, line: string): Promise<boolean> {
 
 let socket: WebSocket | undefined;
 const attach = (): void => {
+  const attached = startWork('pass', 'hookline.attach');
   const ws = new WebSocket(`${inbox}/targets/${encodeURIComponent(target)}/socket?token=${encodeURIComponent(token)}`);
   socket = ws;
-  ws.onopen = () => say(`attached to ${inbox} as ${JSON.stringify(target)}; telling ${mailTo}`);
+  ws.onopen = () => { attached({ ok: true }); say(`attached to ${inbox} as ${JSON.stringify(target)}; telling ${mailTo}`); };
   ws.onmessage = async (message) => {
     if (typeof message.data !== 'string') return;
+    const finish = startWork('pass', 'hookline.event');
+    let acknowledged = false;
+    try {
     let f: { delivery?: number; attempt?: number; event?: string; headers?: Headers; body?: string };
     try { f = JSON.parse(message.data); } catch { say('a frame is not JSON; ignored'); return; }
     if (!Number.isInteger(f.delivery) || !Number.isInteger(f.attempt) || typeof f.event !== 'string' || !Array.isArray(f.headers) || typeof f.body !== 'string') { say('a malformed frame; ignored'); return; }
@@ -117,9 +123,11 @@ const attach = (): void => {
     } else say(`${f.event}: already told${header(f.headers, 'X-Hookline-Replay') === 'true' ? ' (a replay)' : ''}; acknowledged`);
     if (socket?.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify(ok ? { v: 1, ack: f.delivery, attempt: f.attempt, status } : { v: 1, nack: f.delivery, attempt: f.attempt, status, error: `could not tell ${mailTo}` }));
+    acknowledged = ok;
+    } finally { finish({ ok: acknowledged, units: { events: 1, bytes: Buffer.byteLength(message.data) } }); }
   };
-  ws.onclose = () => { if (socket !== ws) return; socket = undefined; setTimeout(attach, 1000); };
-  ws.onerror = () => say('the socket errored; reattaching');
+  ws.onclose = () => { attached({ ok: false }); if (socket !== ws) return; socket = undefined; setTimeout(attach, 1000); };
+  ws.onerror = () => { attached({ ok: false }); say('the socket errored; reattaching'); };
 };
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { socket?.close(1000, 'stopping'); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, async () => { socket?.close(1000, 'stopping'); await closeWorkLedger(); process.exit(0); });
 attach();

@@ -11,9 +11,11 @@ type Recorder = {
   observeChild(child: unknown, operation: string, options?: { mechanism: string }): unknown;
   closeWorkLedger(): Promise<unknown>;
 };
-let recorder: Recorder | undefined;
-let loading: Promise<void> | undefined;
-let warned = false;
+// Rendered host modules and the packaged keeper may import separate copies in one process.
+// They share one selected recorder, just as the SDK shares its process-local counters.
+type Diagnostic = 'sdk-selection-unavailable' | 'sdk-import-failed' | 'unsupported-sdk-export' | 'recorder-failed';
+type State = { recorder?: Recorder; loading?: Promise<void>; diagnostics?: Set<Diagnostic> };
+const state = ((globalThis as unknown as Record<symbol, State>)[Symbol.for('open-autonomy.work-ledger.v1')] ??= {});
 const operations: Operation[] = [
   ...['publisher.pass', 'publisher.wakeup', 'publisher.native-refresh', 'publisher.board-refresh',
     'publisher.transcript-reconcile', 'publisher.transcript-queued', 'publisher.transcript-unchanged',
@@ -24,29 +26,38 @@ const operations: Operation[] = [
   ...['valve.request', 'codex.request', 'keeper.request'].map(operation => ({ kind: 'door', operation })),
   ...['bun.start', 'bun.sync', 'node.start', 'node.sync'].map(operation => ({ kind: 'child', operation })),
 ];
-function unavailable(): void {
-  if (!warned) { warned = true; console.error('work-ledger: unsupported-sdk-export; kit work coverage unavailable'); }
+function unavailable(code: Diagnostic): void {
+  state.diagnostics ??= new Set();
+  if (!state.diagnostics.has(code)) { state.diagnostics.add(code); console.error(`work-ledger: ${code}; kit work coverage unavailable`); }
 }
 /** Existing native identities are hashed by the recorder; never pass keys, argv or request content here. */
 export async function initializeWorkLedger(role: string, scope: { kind: string; id: string }, build?: string): Promise<void> {
-  loading ??= (async () => {
+  state.loading ??= (async () => {
+    let selected: string;
+    try { selected = harnessSdkModule('./work-ledger'); }
+    catch (error) { unavailable(error instanceof Error && /exports no \.\/work-ledger$/.test(error.message) ? 'unsupported-sdk-export' : 'sdk-selection-unavailable'); return; }
+    let loaded: Recorder;
+    try { loaded = await import(selected) as Recorder; } catch { unavailable('sdk-import-failed'); return; }
+    if (typeof loaded.registerWorkService !== 'function' || typeof loaded.registerWorkOperations !== 'function'
+      || typeof loaded.startWork !== 'function' || typeof loaded.recordWork !== 'function'
+      || typeof loaded.observeChild !== 'function' || typeof loaded.closeWorkLedger !== 'function') { unavailable('unsupported-sdk-export'); return; }
     try {
-      const loaded = await import(harnessSdkModule('./work-ledger')) as Recorder;
-      if (typeof loaded.registerWorkService !== 'function' || typeof loaded.registerWorkOperations !== 'function'
-        || typeof loaded.startWork !== 'function' || typeof loaded.recordWork !== 'function'
-        || typeof loaded.observeChild !== 'function' || typeof loaded.closeWorkLedger !== 'function') { unavailable(); return; }
       loaded.registerWorkOperations(operations);
-      recorder = loaded;
-    } catch { unavailable(); }
+      state.recorder = loaded;
+    } catch { unavailable('recorder-failed'); }
   })();
-  await loading;
-  try { recorder?.registerWorkService({ role, scope, build }); } catch { unavailable(); }
+  await state.loading;
+  try { state.recorder?.registerWorkService({ role, scope, build }); } catch { unavailable('recorder-failed'); }
 }
 export function startWork(kind: string, operation: string): (result?: Result) => void {
-  try { return recorder?.startWork(kind, operation) ?? (() => {}); } catch { unavailable(); return () => {}; }
+  try {
+    const finish = state.recorder?.startWork(kind, operation);
+    let finished = false;
+    return result => { if (finished) return; finished = true; try { finish?.(result); } catch { unavailable('recorder-failed'); } };
+  } catch { unavailable('recorder-failed'); return () => {}; }
 }
 export function recordWork(kind: string, operation: string, result?: Result): void {
-  try { recorder?.recordWork(kind, operation, result); } catch { unavailable(); }
+  try { state.recorder?.recordWork(kind, operation, result); } catch { unavailable('recorder-failed'); }
 }
 export async function measureWork<T>(kind: string, operation: string, work: () => T | Promise<T>): Promise<T> {
   const finish = startWork(kind, operation);
@@ -57,29 +68,29 @@ export async function measureWork<T>(kind: string, operation: string, work: () =
 export async function responseWork(kind: 'door' | 'call', operation: string, work: () => Response | Promise<Response>, bytes = 0): Promise<Response> {
   const finish = startWork(kind, operation);
   try { const response = await work(); finish({ ok: response.ok, ...(bytes ? { units: { bytes } } : {}) }); return response; }
-  catch (error) { finish({ ok: false }); throw error; }
+  catch (error) { finish({ ok: false, ...(bytes ? { units: { bytes } } : {}) }); throw error; }
 }
 /** Bun's spawn APIs need explicit observation; no monkey patch or launch arguments enter the recorder. */
 export function spawnWork<T>(work: () => T, mechanism: 'bun' | 'node' = 'bun'): T {
   const operation = mechanism === 'bun' ? 'bun.start' : 'node.start';
   try {
     const child = work();
-    try { recorder?.observeChild(child, operation, { mechanism }); } catch { unavailable(); }
+    try { state.recorder?.observeChild(child, operation, { mechanism }); } catch { unavailable('recorder-failed'); }
     return child;
-  } catch (error) { recordWork('child', operation, { ok: false }); throw error; }
+  } catch (error) { recordWork('child', operation, { ok: false, units: { attempts: 1 } }); throw error; }
 }
 export function spawnSyncWork<T extends { exitCode?: number | null; status?: number | null; pid?: number; error?: unknown }>(work: () => T, mechanism: 'bun' | 'node' = 'bun'): T {
   const finish = startWork('child', mechanism === 'bun' ? 'bun.sync' : 'node.sync');
   try {
     const result = work();
     const started = typeof result.pid === 'number' ? result.pid > 0 : !result.error;
-    finish({ ok: (result.exitCode ?? result.status) === 0 && !result.error, ...(started ? { units: { children_started: 1 } } : {}) });
+    finish({ ok: (result.exitCode ?? result.status) === 0 && !result.error, units: { attempts: 1, children_started: started ? 1 : 0 } });
     return result;
-  } catch (error) { finish({ ok: false }); throw error; }
+  } catch (error) { finish({ ok: false, units: { attempts: 1 } }); throw error; }
 }
 /** Logging failure is observational: callers retain their original shutdown result. */
 export async function closeWorkLedger(): Promise<void> {
-  try { await recorder?.closeWorkLedger(); } catch { console.error('work-ledger: flush-failed; final coverage incomplete'); }
+  try { await state.recorder?.closeWorkLedger(); } catch { console.error('work-ledger: flush-failed; final coverage incomplete'); }
 }
 /** Services with default signal termination retain that termination after the observational flush. */
 export function flushWorkOnSignals(): void {

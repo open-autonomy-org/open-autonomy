@@ -1,4 +1,5 @@
 // Acquire the independently serving host proxy. The kernel arbitrates the port; a failed contender owns no listener.
+import { spawnWork } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,7 +11,8 @@ type Identity = { service: string; protocol: number; binding: string; instance: 
 // A later npm install may replace the kit's directory. Retain precisely the service's sources, without credentials
 // or the keeper's environment, so its supervisor can restart the listener after the kit that launched it is gone.
 function retainService(directory: string): string {
-  const files = ['keeper/codex-service.ts', 'keeper/codex-supervisor.ts', 'base/.open-autonomy/codex-proxy.ts', 'base/.open-autonomy/codex-auth.ts'];
+  const files = ['keeper/codex-service.ts', 'keeper/codex-supervisor.ts',
+    ...['codex-proxy.ts', 'codex-auth.ts', 'work-ledger.ts', 'machine-supercode.ts', 'install-runtime.ts', 'source-program.ts'].map(file => `base/.open-autonomy/${file}`)];
   const sources = files.map(file => [file, readFileSync(resolve(import.meta.dir, '..', file))] as const);
   const digest = createHash('sha256');
   for (const [file, bytes] of sources) digest.update(file).update('\0').update(bytes).update('\0');
@@ -56,9 +58,9 @@ export async function ensureCodexService({ port, directory, environment }: { por
   const entry = retainService(directory);
   const log = openSync(resolve(directory, 'codex-proxy.log'), 'a', 0o600);
   const instance = randomUUID();
-  const child = spawn(process.execPath, [entry, String(port), binding, instance], {
+  const child = spawnWork(() => spawn(process.execPath, [entry, String(port), binding, instance], {
     env: environment, cwd: directory, detached: true, stdio: ['ignore', log, log],
-  });
+  }), 'node');
   closeSync(log);
   // Readiness is one bounded startup operation. Neither this acquisition nor a keeper stop kills an existing proxy.
   let failed: Error | undefined;

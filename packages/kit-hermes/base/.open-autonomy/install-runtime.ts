@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
+import { spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -164,7 +165,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
   }
   const artifacts = new Map<string, { manifest: any; bytes: Buffer; sha256: string; integrity: string }>();
   for (const path of archivePaths(options.archive)) {
-    const packed = Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']);
+    const packed = spawnSyncWork(() => Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']));
     if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
     const manifest = JSON.parse(packed.stdout.toString());
     if ((manifest.name !== 'create-open-autonomy' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
@@ -216,9 +217,9 @@ export async function installHostRuntime(options: Options): Promise<void> {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
     const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
-    const child = Bun.spawn((options.command ?? (args => args))(args), {
+    const child = spawnWork(() => Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
-    });
+    }));
     options.started?.(child);
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);

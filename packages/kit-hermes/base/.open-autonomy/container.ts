@@ -2,6 +2,7 @@
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
 // another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
+import { startWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -55,7 +56,7 @@ export async function startContainer(options: {
   const onSignal = () => { void stop(0); };
   process.on('SIGTERM', onSignal); process.on('SIGINT', onSignal);
   const own = (name: string, cmd: string[], extra: { env?: Record<string, string | undefined>; ipc?: (message: any) => void } = {}) => {
-    const proc = Bun.spawn({ cmd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', ...extra });
+    const proc = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit', ...extra }));
     services.push(proc);
     void proc.exited.then(code => {
       if (ending) return;
@@ -99,7 +100,7 @@ export async function startContainer(options: {
     const trusted = readAgent(resolve(import.meta.dir, '..'));
     const persona = treasurerPersona(import.meta.dir);
     const seat = treasurerContainer(container);
-    const seated = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.State.Running}}', seat], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }).stdout.toString().trim() === 'true';
+    const seated = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.State.Running}}', seat], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 })).stdout.toString().trim() === 'true';
     const unpaid = !existsSync(treasurerKey) ? `no ${treasurerKey}`
       : !trusted?.profiles[TREASURER] || !persona ? 'this host\'s copy of the kit has no treasurer (.open-autonomy/agent.json and its persona)'
       : !seated ? `no ${seat} executor runs; \`create-open-autonomy runtime\` adds it to the World definition`
@@ -165,7 +166,7 @@ export async function startContainer(options: {
     const reportConfig = resolve(state, 'project-config.yaml');
     writeFileSync(reportConfig, prepared.config, { mode: 0o600 });
     // What runs the agent, for its page: the mode, the kit, the executor's image, this host. Never a credential.
-    const inspected = Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    const inspected = spawnSyncWork(() => Bun.spawnSync({ cmd: ['docker', 'inspect', '--format', '{{.Config.Image}}', container], stdout: 'pipe', stderr: 'pipe', timeout: 10_000 }));
     const runtime = JSON.stringify({ mode: 'container', kit: kit.version, executor: inspected.exitCode === 0 ? inspected.stdout.toString().trim() : undefined, host: hostname() });
     let reportReady!: () => void;
     const reporterReady = new Promise<void>(resolve => { reportReady = resolve; });
@@ -195,6 +196,7 @@ export async function startContainer(options: {
     mainWatch = setInterval(async () => {
       if (ending || watching || restartAsked) return;
       watching = true;
+      const finish = startWork('pass', 'keeper.restart-check');
       try {
         const seen = await containerMainMoved({ container, home, workspace, since: startedMain });
         if (!seen.main || seen.main === startedMain) return;
@@ -204,8 +206,9 @@ export async function startContainer(options: {
         restartAsked = true;
         restart();
       } catch (error) {
+        finish({ ok: false });
         console.error(`host: ${error instanceof Error ? error.message : String(error)} The watch tries again in ten minutes.`);
-      } finally { watching = false; }
+      } finally { finish(); watching = false; }
     }, 10 * 60_000);
     return { exited, close: () => stop(0), restart };
   } catch (error) { await stop(1); throw error; }
