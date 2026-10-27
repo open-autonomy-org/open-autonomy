@@ -289,10 +289,13 @@ function leadAgentsOf(card) {
 }
 
 // ---- the project Room's guidance and its cards' visible updates (runhuman-2 ADR 0063 decisions 7 and 8) -------------
-/** What a project Room's agents are told it is for, unless the app's config says otherwise. */
+/** What a project Room's agents are told it is for, unless the app's config says otherwise (volter-org decision "project
+ * Rooms are co-working calls: their guidance"). */
 export const PROJECT_GUIDANCE = [
-  'This Room is the project\'s: its cards being worked now, and the agents working them.',
-  'Attach each visible update (a screenshot, a screen recording) to your card with the board\'s attach command; it appears in this Room by itself, so post it nowhere else.'
+  'This Room is the project\'s co-working call: its cards being worked now, and the agents working them.',
+  'People may be watching and supervising at any time; work as you would with them in the room.',
+  'Share to the Room\'s stage what you\'d share on a co-working call: the thing you\'re building, as a Surface while it runs. Stop each share as soon as it no longer shows live work.',
+  'Attach each still update (a screenshot, a recording) to your card; it appears here by itself.'
 ];
 const guidance = Array.isArray(config.guidance) ? config.guidance.map(String).slice(0, 4) : PROJECT_GUIDANCE;
 /** A card's images and videos, as its snapshot lists them (`attachments`): what its Room shows of its updates. */
