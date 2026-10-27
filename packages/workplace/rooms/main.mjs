@@ -102,7 +102,8 @@ const projectionKey = (config, kind, identity) => {
   if (!namespace) return `${kind}-${String(identity).toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.slice(0, 64).replace(/-+$/, '');
   if (!/^cx[0-9a-f]{24}$/.test(namespace)) throw new Error('invalid connection source namespace');
   const prefix = `${kind}-${namespace}-`;
-  return `${prefix}${createHash('sha256').update(String(identity)).digest('hex').slice(0, Math.min(32, 64 - prefix.length))}`;
+  // The Room declaration parser uses TASK_KEY (63 characters), before the command's 64-character key check.
+  return `${prefix}${createHash('sha256').update(String(identity)).digest('hex').slice(0, Math.min(32, 63 - prefix.length))}`;
 };
 const bindProjectionState = (config, state) => {
   const namespace = config.source?.namespace;
