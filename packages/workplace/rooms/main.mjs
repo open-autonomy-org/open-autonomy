@@ -453,7 +453,11 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     if (!principalId) { missing.push(agentId); continue; }
     roles.set(principalId, { ...demand, agentId }); principals.add(principalId);
   }
-  for (const principalId of Object.keys(borrowed)) if (!members.has(principalId)) { delete borrowed[principalId]; saveState(); }
+  for (const principalId of Object.keys(borrowed)) if (!members.has(principalId) || borrowed[principalId] === self) {
+    // Older state mistook our role seat for an independent placement when its role ended before its run.
+    // The roster still owns seater provenance; a self-borrowed marker must never exempt our seat from cleanup.
+    delete borrowed[principalId]; saveState();
+  }
   const desired = new Map(roles);
   for (const [principalId, demand] of sessions) {
     const role = desired.get(principalId);
@@ -463,7 +467,7 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
   for (const [principalId, demand] of desired) {
     const member = members.get(principalId), role = roles.has(principalId), run = sessions.get(principalId);
     // Reuse a run's pre-existing seat as-is. Neither its placer nor its receive setting belongs to this demand.
-    if (member && (people.has(member.seatedBy) || !role && !placements[principalId])) {
+    if (member && (people.has(member.seatedBy) || !role && member.seatedBy !== self && !placements[principalId])) {
       if (!role) { borrowed[principalId] = member.seatedBy ?? null; saveState(); }
       if (run && !sameSession(member.sessionBinding, run.session)) pending.push(`${run.card}: its seat has not reached the linked session`);
       continue;
@@ -473,11 +477,12 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
       if (run && !sameSession(member.sessionBinding, run.session)) pending.push(`${run.card}: its seat has not reached the linked session`);
       continue;
     }
-    if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
-    if (!member && run && !placements[principalId]) {
+    if (run && (!member || member.seatedBy === self) && !placements[principalId]) {
       // Keep the intent before the effect: an answer lost to restart still leaves a conditional cleanup obligation.
+      // A role-owned seat also owes cleanup when the last role ends while run demand still keeps it here.
       placements[principalId] = { kind: run.kind, session: run.session }; saveState();
     }
+    if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
     if (!member && run) {
       flushState();
       if (writeRefused) throw Object.assign(new Error('placement intent could not be persisted'), { code: 'state-write-refused' });
