@@ -66,9 +66,12 @@ const remember = (patch: Record<string, any>) => writeFileSync(STATE, JSON.strin
 // The native board is optional for an adopter; when configured it owns the cards.
 // Open Autonomy owns their allocations, keys and metered spend. Workplace apps
 // project the native board through Teams; this kit creates no projection itself.
+// A supercode given as its Node script (Windows cannot execute npm's shell shim) runs under supercode's own Node.
+const supercode = (program: string, args: string[]): [string, string[]] =>
+  /.[cm]?js$/i.test(program) ? [process.env.SUPERCODE_NODE_BIN || 'node', [program, ...args]] : [program, args];
 const native = (...args: string[]): string => {
   if (!game.board) return '';
-  const run = spawnSync(game.board.program, ['workflow', '--root', game.board.root, ...args], {
+  const run = spawnSync(...supercode(game.board.program, ['workflow', '--root', game.board.root, ...args]), {
     cwd: ROOT, encoding: 'utf8', env: {...process.env, SUPERCODE_CONTEXT: game.board.context},
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -186,7 +189,7 @@ switch (command) {
         const card = frames.find(frame => frame.type === 'snapshot_item' && frame.data?.card?.id === cardId)?.data.card;
         const agent = card?.agents?.find((row: any) => row.role === 'implementer' && row.state === 'active');
         if (!agent) throw new Error('The native card has no declared implementer yet. Deliver its pending declaration and retry start.');
-        const recorded = spawnSync(game.board.program, ['teams', 'agent', 'record', '--session', liveSession, '--agent', agent.id, '--main', '--context', game.board.context], {cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','pipe']});
+        const recorded = spawnSync(...supercode(game.board.program, ['teams', 'agent', 'record', '--session', liveSession, '--agent', agent.id, '--main', '--context', game.board.context]), {cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','pipe']});
         if (recorded.status !== 0) throw new Error(`The existing session could not join its native card agent: ${String(recorded.stderr || recorded.stdout).slice(-700)}`);
       }
     }

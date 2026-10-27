@@ -303,7 +303,11 @@ const visibleFilesOf = (card) => (Array.isArray(card.attachments) ? card.attachm
 const typeOf = (file) => file.contentType && /^(image|video)\//.test(file.contentType) ? file.contentType
   : ({ avif: 'image/avif', gif: 'image/gif', jpeg: 'image/jpeg', jpg: 'image/jpeg', m4v: 'video/mp4', mov: 'video/quicktime', mp4: 'video/mp4', png: 'image/png', svg: 'image/svg+xml', webm: 'video/webm', webp: 'image/webp' })[file.name.split('.').pop().toLowerCase()] ?? 'application/octet-stream';
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const run = promisify(execFile);
+const execFileAsync = promisify(execFile);
+// A supercode given as its Node script (Windows cannot execute npm's shell shim) runs under supercode's own Node.
+const run = (program, args, options) => /\.[cm]?js$/i.test(program)
+  ? execFileAsync(process.env.SUPERCODE_NODE_BIN || process.execPath, [program, ...args], options)
+  : execFileAsync(program, args, options);
 /** A card file's bytes, read with the board's own CLI on the machine that keeps it (`attachment-read`, a mebibyte at a
  * time), never from where the board stores them: each part after the first is held to the version the first names, so a
  * file replaced mid-read is refused rather than spliced. */
