@@ -196,23 +196,16 @@ export function workplaceBooksOf(v: ProjectView, funding: FundingSnapshot, state
   };
 }
 
-/** The owners' cards on the roadmap, each with its budget (its envelope: set aside, spent, left) and where it stands: the
- *  roadmap the workspace and the pages that read it show beside the books. */
+/** Each roadmap card's budget (its envelope: set aside, spent, left), keyed by the card. Only the money is a books fact:
+ *  a card's title, state and work reach the Workplace as its Task (docs/workplace-mapping.md, Cards to Tasks), where the
+ *  pages that show the roadmap read them. */
 export async function workplaceCardsOf(ledger: LedgerClient, account: string): Promise<Array<Record<string, unknown>>> {
   const road = await ledger.roadmap(account);
   const items = road.ok ? road.revision?.roadmap.items ?? [] : [];
   const cards: Array<Record<string, unknown>> = [];
   for (const item of items.slice(0, 200)) {
-    const view = await ledger.item(account, item.id).catch(() => undefined);
-    const budget = view?.budget;
-    const last = view?.updates?.at(-1);
-    cards.push({
-      key: item.id, title: item.title, status: item.status, shipped: item.status === 'done',
-      ...(item.done_at ? { doneAt: item.done_at } : {}), ...(item.started_at ? { startedAt: item.started_at } : {}),
-      ...(budget ? { allocatedUsdCents: budget.allocated_usd_cents, spentUsdCents: budget.spent_usd_cents, leftUsdCents: budget.left_usd_cents } : {}),
-      live: view?.live?.length ?? 0,
-      ...(last ? { lastUpdate: { at: last.ts, text: String(last.text ?? '').slice(0, 600) } } : {}),
-    });
+    const budget = (await ledger.item(account, item.id).catch(() => undefined))?.budget;
+    if (budget) cards.push({ key: item.id, allocatedUsdCents: budget.allocated_usd_cents, spentUsdCents: budget.spent_usd_cents, leftUsdCents: budget.left_usd_cents });
   }
   return cards;
 }
