@@ -190,7 +190,7 @@ owns that policy; the shared team roster owns identities and authority.
 
 Application dependencies run in the local world. Production provisioning is a later explicit `--with
 production` step: the `owners` team, the `prod` branch the standing Release pull request merges into, the
-`production` environment that admits it, and for a Cloudflare Worker the token and the generated `.github/workflows/deploy.yml`. Package
+`production` environment that admits it, and for a Cloudflare Worker the token and the generated deployment workflow. Package
 release automation is not yet implemented; `--with release` refuses before mutation and points to the reviewed
 publication procedure. Other live application connections are established at deployment or customer
 activation.
