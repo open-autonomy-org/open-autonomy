@@ -17,7 +17,7 @@ import { createInterface } from 'node:readline';
 import { closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { savePublicationBytes, sourceJournalFile, type SourceCard, type SourceSnapshot } from './publication.ts';
-import { startWork, spawnWork } from './work-ledger.ts';
+import { startWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 export type { SourceCard, SourceSnapshot } from './publication.ts';
 interface SourceOptions {
   command: string[]; stateFile: string; env: Record<string, string>;
@@ -54,7 +54,7 @@ function streamChild(command: string[], env: Record<string, string>, log: (messa
   };
   const signal = (value: NodeJS.Signals): void => {
     if (!child.pid) return;
-    try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
+    try { stopWorkChild(child, () => grouped ? process.kill(-child.pid!, value) : child.kill(value), { signal: value }); }
     catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code !== 'ESRCH' && code !== 'EPERM') throw error; }
   };
   const finish = (error?: Error): void => {

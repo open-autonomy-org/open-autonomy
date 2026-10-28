@@ -1,5 +1,5 @@
 // Acquire the native board's lifetime owner. It is detached from kit stacks; only native handover changes its writer.
-import { startWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { startWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -68,6 +68,6 @@ export async function acquireBoard(options: Options): Promise<void> {
     });
     if (!await retainedBoard(options)) throw new Error('the native board ended before reporting serving readiness');
     child.unref();
-  } catch (error) { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); throw error; }
+  } catch (error) { if (child.exitCode === null && child.signalCode === null) stopWorkChild(child, () => child.kill('SIGTERM'), { signal: 'SIGTERM' }); throw error; }
   finally { if (child.connected) child.disconnect(); }
 }

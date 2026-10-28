@@ -10,6 +10,7 @@ type Recorder = {
   startWork(kind: string, operation: string): (result?: Result) => void;
   recordWork(kind: string, operation: string, result?: Result): unknown;
   observeChild(child: unknown, operation: string, options?: { mechanism: string }): unknown;
+  stopWorkChild?<T>(child: unknown, stop: () => T, options?: { signal?: string | number }): T;
   closeWorkLedger(): Promise<unknown>;
 };
 // Rendered host modules and the packaged keeper may import separate copies in one process.
@@ -88,6 +89,13 @@ export function spawnWork<T>(work: () => T, mechanism: 'bun' | 'node' = 'bun'): 
     try { state.recorder?.observeChild(child, operation, { mechanism }); } catch { unavailable('recorder-failed'); }
     return child;
   } catch (error) { recordWork('child', operation, { ok: false, units: { attempts: 1 } }); throw error; }
+}
+/** The owner requests a stop; the recorder completes its lifetime only when the child actually exits. */
+export function stopWorkChild<T>(child: unknown, stop: () => T, options?: { signal?: string | number }): T {
+  if (typeof state.recorder?.stopWorkChild === 'function') return state.recorder.stopWorkChild(child, stop, options);
+  // An older recorder can still observe ordinary work, but cannot distinguish an intentional stop.
+  if (state.recorder) unavailable('unsupported-sdk-export');
+  return stop();
 }
 export function spawnSyncWork<T extends { exitCode?: number | null; status?: number | null; pid?: number; error?: unknown }>(work: () => T, mechanism: 'bun' | 'node' = 'bun'): T {
   const finish = startWork('child', mechanism === 'bun' ? 'bun.sync' : 'node.sync');

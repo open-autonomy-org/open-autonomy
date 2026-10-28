@@ -52,7 +52,7 @@ import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 import { TranscriptQueue } from './transcript-queue.ts';
-import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork } from './work-ledger.ts';
+import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -123,7 +123,7 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   };
   const kill = (value: NodeJS.Signals): void => {
     if (!child.pid) return;
-    try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
+    try { stopWorkChild(child, () => grouped ? process.kill(-child.pid!, value) : child.kill(value), { signal: value }); }
     catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code !== 'ESRCH' && code !== 'EPERM') throw error; }
   };
   const retire = (): Promise<void> => retirement ??= (async () => {

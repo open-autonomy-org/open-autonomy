@@ -1,7 +1,7 @@
 // Host-only authentication through the installed Codex. Codex owns its credential
 // store and refresh; OA never reads, copies or writes the login. A short-lived
 // app-server reads the current login on every acquisition, including account switches.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
@@ -60,7 +60,7 @@ async function acquire(options: AccessOptions): Promise<CodexAccess> {
     send({ id: key, method, params });
   });
   const stop = () => {
-    try { if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch { /* already exited */ }
+    try { stopWorkChild(child, () => process.platform !== 'win32' && child.pid ? process.kill(-child.pid, 'SIGKILL') : child.kill('SIGKILL'), { signal: 'SIGKILL' }); } catch { /* already exited */ }
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Codex may run its own database maintenance before initialize responds. Do not

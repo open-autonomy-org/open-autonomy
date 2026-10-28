@@ -2,7 +2,7 @@
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
 // another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
-import { startWork, responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
+import { startWork, responseWork, spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
@@ -46,8 +46,8 @@ export async function startContainer(options: {
     clearInterval(mainWatch);
     await gateway?.close();
     await treasurer?.close();
-    for (const proc of services) if (proc.exitCode === null) proc.kill();
-    const force = setTimeout(() => { for (const proc of services) if (proc.exitCode === null) proc.kill('SIGKILL'); }, 5000);
+    for (const proc of services) if (proc.exitCode === null) stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' });
+    const force = setTimeout(() => { for (const proc of services) if (proc.exitCode === null) stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }); }, 5000);
     await Promise.all(services.map(proc => proc.exited));
     clearTimeout(force);
     process.off('SIGTERM', onSignal); process.off('SIGINT', onSignal);

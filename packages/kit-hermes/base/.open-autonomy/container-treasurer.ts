@@ -10,7 +10,7 @@
 // names: a worktree there would run the developer's Git hooks, and a log on the board's volume would put the
 // treasurer's transcript (a card's number among it) where the developer reads. The owner's bounds it reads before paying
 // (.open-autonomy/config.yaml) are the host's committed copy, written into that workspace; the platform enforces them.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -46,7 +46,7 @@ function python(container: string, script: string, input: unknown): Promise<stri
   child.stdout.on('data', (chunk) => output.push(chunk));
   let diagnostic = '';
   child.stderr.on('data', (chunk) => { diagnostic = (diagnostic + chunk.toString()).slice(-2000); });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
+  const timer = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), 60_000);
   return new Promise<string>((done, fail) => {
     child.once('error', () => { clearTimeout(timer); fail(new Error('The treasurer\'s executor could not be prepared; nothing pays.')); });
     child.once('exit', (code) => { clearTimeout(timer); if (code === 0) done(Buffer.concat(output).toString()); else fail(new Error(`The treasurer's executor could not be prepared; nothing pays. ${diagnostic.trim()}`)); });

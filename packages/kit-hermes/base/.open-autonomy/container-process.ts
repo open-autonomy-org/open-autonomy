@@ -1,6 +1,6 @@
 // A Docker exec client is not the lifetime of the process it starts. Keep stdin
 // open as a lease; EOF (including host death) stops the owned container process group.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
 const RUNNER = String.raw`
@@ -49,7 +49,7 @@ export function startContainerProcess(options: {
   return {
     exited,
     restart() { if (!ended) child.stdin.write('restart\n'); },
-    async close() { if (!ended) child.stdin.end(); await exited; },
+    async close() { if (!ended) stopWorkChild(child, () => child.stdin.end()); await exited; },
   };
 }
 

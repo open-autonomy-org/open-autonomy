@@ -1,6 +1,6 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
-import { startWork, spawnSyncWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { startWork, spawnSyncWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import { sourceReceiptProgram, publishedProgram, sourceJson } from '../base/.open-autonomy/source-program.ts';
 import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
@@ -103,9 +103,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
 
   const stopStack = async (stack: Stack | null) => {
     if (!stack) return;
-    stack.process.kill(constants.signals.SIGTERM);
+    stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
     // The inner stack gives every exact child its own stop and bounded cleanup. It never owns the board or proxy.
-    const bound = setTimeout(() => stack.process.kill('SIGKILL'), 18000);
+    const bound = setTimeout(() => stopWorkChild(stack.process, () => stack.process.kill('SIGKILL'), { signal: 'SIGKILL' }), 18000);
     try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',

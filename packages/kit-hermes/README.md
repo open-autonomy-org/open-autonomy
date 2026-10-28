@@ -244,6 +244,11 @@ the recorder hashes their native identity and retains only fixed operations and 
 `supercode work history`, `regressions` and `coverage` to read the local observations. HTTP durations end at response
 headers, leaving streaming bodies with their existing owner. An older or unavailable SDK emits a typed coverage
 diagnostic; recorder failure preserves the service's operation and shutdown result.
+Owners record an accepted deliberate child stop as the fixed `child.stopped` event after a normal exit or an exit
+matching the requested signal, without counting that retirement as a child failure. The child remains in flight
+until exit; a failed launch, failed stop request, unrelated nonzero exit or outcome already observed stays failed.
+Timeout and operation errors still reach their callers.
+An older SDK preserves the original stop behavior and emits a coverage diagnostic instead of claiming stop coverage.
 
 Paying container installs use the treasurer's separate executor and host-held key under
 [ADR 0021](../../docs/decisions/0021-the-pay-boundary.md). A bare start opens a pay port only for a synthetic

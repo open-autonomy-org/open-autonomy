@@ -1,6 +1,6 @@
 // Prepare the existing container checkout and native Hermes home before startup.
 // Values travel on Docker stdin, never command arguments or inherited host env.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
 async function python(container: string, script: string, input: unknown, bound = 60_000, failed = 'Executor preparation failed; Hermes was not started.'): Promise<string> {
@@ -13,7 +13,7 @@ async function python(container: string, script: string, input: unknown, bound =
   // Scripts print only fixed diagnostics; input and environment values never appear.
   let diagnostic = '';
   child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString()).slice(-2000); });
-  const timer = setTimeout(() => child.kill('SIGKILL'), bound);
+  const timer = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), bound);
   try {
     const code = await new Promise<number>(resolve => { child.once('error', () => resolve(1)); child.once('exit', code => resolve(code ?? 1)); });
     if (code !== 0) throw new Error(`${failed} ${diagnostic.trim()}`);
