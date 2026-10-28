@@ -206,6 +206,41 @@ dependent predecessor restart and reservation release, in ADR 0031/0243's order.
 artifact is never substituted into this in-progress selection. Future selection of new program
 bytes is a separately prepared, qualified complete transaction.
 
+### Proposed boundary: native explicit recovery after maintenance
+
+Native task `t_34940ac5` proposes the separate explicit phase contract in
+[Supercode ADR 0243](https://github.com/volter-ai/supercode/pull/2534). It requires a new paired
+typed PLAN verdict; neither the earlier live-custody pass nor this publisher implementation
+authorizes native recovery code. The existing machine coordinator retains the original transaction,
+lease, immutable program vector and source decision. Its durable barrier stays `recovery_required`
+while source-qualified native owners admit only the exact current recovery phase. Ordinary starts,
+renewal, config writes and automatic recovery remain excluded. Native owns outcome classification,
+source-first restoration, scoped predecessor restart/readiness and final exclusion retirement.
+
+This changes no publisher maintenance act. The original applied audit is read under its original
+custody invocation; a later native recovery invocation may validate that outcome but cannot adopt
+the audit under a new lease, rerun the offline edit, manufacture a terminal result or clear debt.
+The native classifier must independently reconstruct the exact permitted intent removal and
+current bytes. A missing joined child terminal, prepared-only audit, uncertain effect, changed
+input or unsupported owner retains the hold. The final publisher metadata must bind the exact
+reviewed native source/runtime composition after that protocol is implemented, not an earlier
+source hash or a proposed capability.
+
+Any later compensation still belongs to the unchanged selected program. Its old expected-seater
+callback is unqualified when S0 becomes S1 through the principal's door or role demand arrives
+after a read. Native local admission, the no-effect audit and a fresh roster cannot fence those
+remote changes. The proposed native recovery therefore refuses before that callback's effect
+unless a separate reviewed publisher/product contract actually available to the immutable
+selection supplies placement and independent demand safety. No such fence or old-artifact
+capability is added by this amendment. OA `t_2ca9da74` and native `t_0dddb9de` retain that obligation;
+an empty/debt-free native path or a refusal proof does not complete populated recovery.
+
+The paired native plan must record compensation/source/native/dependent ordering, recovery-only
+runner admission and complete durable phase readbacks before any exclusion or reservation is
+retired. Its proof uses fresh disposable actual owners and preserves every failed take. Retained
+transaction `42286159` is untouched; this cross-product boundary grants no first-adoption,
+publication, cutover or Workplace Acceptance outcome.
+
 ## Existing decision dispositions
 
 | Existing decision | Proposed disposition |
@@ -218,6 +253,7 @@ bytes is a separately prepared, qualified complete transaction.
 | Supercode ADR 0243 decision 4: preserve role, independent/person and unrelated run demand | **Preserves by sending no recovery mutation and retaining all placement debt.** Session/demand changes after observation remain untouched; a later old-program compensation act is separately unqualified by this proposal. |
 | RH2 ordinary leave: remove only an active seat with the expected seater | **Unchanged and insufficient for an exact-session retry.** This proposal neither extends that generic door nor claims its seater guard fences session/version or external role-demand changes. Any future effectful retry requires its own product-owned decision and review. |
 | OA/RH2 consent and connection custody | **Preserves.** Only existing app credentials and product doors are used. The command cannot add grants, replace an installation, copy custody or change namespace. |
+| Supercode ADR 0243 proposed explicit recovery after maintenance | **Defines the publisher boundary; native implementation needs its new typed plan pass.** Native may validate the original exact audit but cannot replay it across leases or derive remote compensation safety. Source restoration and predecessor restart still wait for separately qualified compensation by the unchanged selected program. |
 
 ## Alternatives and consequences
 
