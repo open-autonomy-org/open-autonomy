@@ -1,12 +1,17 @@
 // Durable app-owned observations of the public native workflow stream. The cursor
 // stays opaque; OA enrollment supplies adapter context, never native home/log identity.
 // Pending complete inventory precedes effects; committed cursors follow durable receipts.
-// Transcript checkpoints remain a separate obligation.
+// Transcript checkpoints remain a separate obligation. Incoming frames are folded
+// into one current inventory while a frozen pending observation awaits receipts.
 // Durability costs what changed, not the board: the cache file holds the whole inventory as of its generation, and
 // each delivery appends only its changed cards (pending) and then its cursor (commit) to the cache's journal. The
 // cache is rewritten whole only when the journal outgrows it, at a resync, and when the source stops. A running
 // card's liveness re-publishes the whole card about once a minute, so a whole-cache write per delivery rewrote a
 // 44 MB cache several times a minute.
+// Memory and CPU cost what changed too: a card is validated, copied and deeply frozen once, when its frame arrives,
+// and from then on every inventory (the current one, the pending observation, the committed rows, the publication's
+// observation) shares that immutable row. A delivery copies the inventory's list of rows, never the rows: copying and
+// freezing every card twice per delivery cost 0.8-2.9 s of one core per delivery on a 4,219-card (95 MB) board.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -39,16 +44,18 @@ function streamChild(command: string[], env: Record<string, string>, log: (messa
   let resolveRetired!: () => void, rejectRetired!: (error: Error) => void;
   const retired = new Promise<void>((resolve, reject) => { resolveRetired = resolve; rejectRetired = reject; });
   void retired.catch(() => {}); // follow()/stop() owns the eventual refusal
-  const alive = (): boolean => {
+  // macOS answers EPERM for a group whose members have all exited but are not yet reaped: that is unknown, neither
+  // a live group nor a refusal to report, so it neither retires the group nor fails retirement before the deadline.
+  const alive = (): boolean | undefined => {
     if (!child.pid) return false;
     if (!grouped) return !closed;
     try { process.kill(-child.pid, 0); return true; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+    catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code === 'ESRCH') return false; if (code === 'EPERM') return undefined; throw error; }
   };
   const signal = (value: NodeJS.Signals): void => {
     if (!child.pid) return;
     try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+    catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code !== 'ESRCH' && code !== 'EPERM') throw error; }
   };
   const finish = (error?: Error): void => {
     settled = true; if (timer) clearInterval(timer);
@@ -58,9 +65,11 @@ function streamChild(command: string[], env: Record<string, string>, log: (messa
   const check = (): void => {
     if (settled) return;
     try {
-      if (closed && !alive()) { finish(); return; }
+      if (closed && alive() === false) { finish(); return; }
       if (Date.now() >= deadline) {
-        if (!escalated) {
+        // A group whose state is unknown (EPERM) at the deadline is never sent SIGKILL: retirement is refused instead.
+        if (!escalated && alive() === undefined) finish(new Error('Native stream retirement could not be confirmed; stop/reconnect refused'));
+        else if (!escalated) {
           escalated = true; signal('SIGKILL'); closeReader(); child.stdout?.destroy(); deadline = Date.now() + 1000;
         } else finish(new Error('Native stream retirement could not be confirmed; stop/reconnect refused'));
       }
@@ -81,8 +90,9 @@ function streamChild(command: string[], env: Record<string, string>, log: (messa
   child.once('close', () => { closed = true; if (stopping) check(); });
   return { child, retire };
 }
+// Deep, children first: a frozen object here is already deeply frozen, so a shared row is never walked again.
 const freeze = <T>(value: T): T => {
-  if (value && typeof value === 'object') { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
   return value;
 };
 export class BoardEventSource {
@@ -95,6 +105,9 @@ export class BoardEventSource {
   private closed = false;
   private started = false;
   private followTask?: Promise<void>;
+  private reader = 0;
+  private applied?: { rows: Map<string, SourceCard>; cursor: string; reader: number };
+  private delivering?: Promise<void>;
   // The cache generation the journal extends; whether disk holds exactly the committed rows, cursor and pending in
   // memory (else the next persistence writes the cache whole); the pending observation the journal already holds.
   private generation = 0;
@@ -195,9 +208,11 @@ export class BoardEventSource {
     for (const value of values) { const row = this.row(value), key = this.key(row); if (inventory.has(key)) throw new Error('Duplicate native card association in complete inventory'); inventory.set(key, row); }
     return inventory;
   }
-  private snapshot(values: unknown, cursor: unknown): SourceSnapshot {
+  private snapshot(values: unknown, cursor: unknown): SourceSnapshot { return this.observation(this.inventory(values).values(), cursor); }
+  // An observation of rows this source already validated and froze (one per card association, from its own inventory).
+  private observation(rows: Iterable<SourceCard>, cursor: unknown): SourceSnapshot {
     if (typeof cursor !== 'string' || !cursor) throw new Error('Native source cursor is missing');
-    return freeze({ sourceContextId: this.options.sourceContextId, cards: [...this.inventory(values).values()], proposedCursor: cursor });
+    return freeze({ sourceContextId: this.options.sourceContextId, cards: [...rows], proposedCursor: cursor });
   }
   private state(): CacheState { return { version: 2, sourceContextId: this.options.sourceContextId, cards: [...this.rows.values()], ...(this.cursor ? { cursor: this.cursor } : {}), ...(this.pending ? { pending: this.pending } : {}), ...(this.legacyCursor ? { legacyCursor: this.legacyCursor } : {}) }; }
   // The whole cache, as the next generation; the older generation's journal entries are then inert, and removed.
@@ -269,7 +284,7 @@ export class BoardEventSource {
       const timer = setTimeout(done, 5000); this.wake = done; if (this.closed) done();
     });
   }
-  private async publish(): Promise<void> {
+  private async publish(reader?: number): Promise<void> {
     if (!this.pending) throw new Error('Native delivery has no retained observation');
     const observation = this.pending;
     while (!this.closed) {
@@ -277,8 +292,12 @@ export class BoardEventSource {
         this.persistPending(observation); // also retries uncertain pending-state persistence before any effect
         await this.options.changed(observation);
         if (this.closed) return;
-        this.persistCommit(observation, observation.proposedCursor);
-        this.rows = this.inventory(observation.cards); this.cursor = observation.proposedCursor; this.pending = undefined; this.journaled = undefined;
+        // A resync or interrupted reader can retire while its exact pending
+        // observation is being delivered. Keep the receipts, but never advance
+        // that retired reader's cursor over the successor's replay boundary.
+        const cursor = reader === undefined || reader === this.reader ? observation.proposedCursor : this.cursor;
+        this.persistCommit(observation, cursor);
+        this.rows = new Map(observation.cards.map(row => [this.key(row), row])); this.cursor = cursor; this.pending = undefined; this.journaled = undefined;
         this.fold();
         this.ready(); return;
       } catch (error) {
@@ -290,8 +309,21 @@ export class BoardEventSource {
     // Intentional close cancels delivery, preserving pending bytes. Readiness is
     // still refused by follow(); stop() separately proves reader retirement.
   }
-  private async stage(rows: Map<string, SourceCard>, cursor: unknown): Promise<void> {
-    this.pending = this.snapshot([...rows.values()], cursor); await this.publish();
+  private deliver(): void {
+    if (this.delivering || this.closed) return;
+    this.delivering = (async () => {
+      while (this.applied && !this.closed) {
+        const batch = this.applied; this.applied = undefined;
+        if (batch.reader !== this.reader) continue;
+        // Freeze one exact observation before any effects. The line listener
+        // continues replacing rows in its current inventory while this awaits
+        // remote receipts; it retains no queue of repeated whole-card frames.
+        this.pending = this.observation(batch.rows.values(), batch.cursor);
+        await this.publish(batch.reader);
+      }
+    })().finally(() => { this.delivering = undefined; });
+    // follow() owns this failure and proves reader retirement before returning.
+    void this.delivering.catch(error => { this.options.log(`native delivery interrupted: ${(error as Error).message}`); this.lines?.close(); void this.child?.retire(); });
   }
   private async follow(): Promise<void> {
     while (!this.closed) {
@@ -303,36 +335,58 @@ export class BoardEventSource {
       let reader: ReturnType<typeof createInterface> | undefined;
       const stream = streamChild(command, this.options.env, this.options.log, () => reader?.close()); this.child = stream;
       const lines = createInterface({ input: stream.child.stdout! }); reader = lines; this.lines = lines;
+      const generation = ++this.reader;
+      let current = new Map(this.rows), interrupted = false;
       let staged: Map<string, SourceCard> | undefined, snapshotKeys: Set<string> | undefined;
+      const invalidate = (): void => { interrupted = true; this.reader++; this.applied = undefined; lines.close(); void stream.retire(); };
+      const apply = (cursor: unknown): void => {
+        if (typeof cursor !== 'string' || !cursor) throw new Error('Native source cursor is missing');
+        this.applied = { rows: current, cursor, reader: generation }; this.deliver();
+      };
       try {
-        for await (const line of lines) {
-          if (this.closed) break;
-          lines.pause();
-          const finish = startWork('load', 'publisher.source-frame');
-          let frame: any;
-          try { frame = JSON.parse(line); finish({ ok: true, units: { events: 1, bytes: Buffer.byteLength(line) } }); }
-          catch (error) { finish({ ok: false, units: { bytes: Buffer.byteLength(line) } }); throw error; }
-          if (frame.type === 'resync_required') { this.legacyCursor ??= this.cursor; this.cursor = undefined; this.compact(); this.options.log(`native source requests full snapshot: ${frame.reason}`); break; }
-          if (frame.type === 'snapshot_begin') { if (staged) throw new Error('Nested native snapshot'); staged = new Map(); snapshotKeys = new Set(); }
-          else if (frame.type === 'snapshot_item' || frame.type === 'event') {
-            if (frame.type === 'snapshot_item' && !staged) throw new Error('Native snapshot item outside snapshot');
-            if (frame.type === 'event' && staged) throw new Error('Native live event inside snapshot');
-            const row = this.row({ publicationId: frame.id, sequence: frame.sequence, board: frame.data?.board, card: frame.data?.card }), key = this.key(row);
-            if (snapshotKeys?.has(key)) throw new Error('Duplicate card in native snapshot'); snapshotKeys?.add(key);
-            const next = staged ?? new Map(this.rows);
-            if (row.card.removed) next.delete(key); else next.set(key, row);
-            if (frame.type === 'event') await this.stage(next, frame.cursor);
-          } else if (frame.type === 'snapshot_end') {
-            if (!staged) throw new Error('Snapshot ended without its inventory');
-            await this.stage(staged, frame.cursor); staged = undefined; snapshotKeys = undefined;
-          } else if (frame.type === 'checkpoint') {
-            if (staged) throw new Error('Checkpoint inside native snapshot');
-            await this.stage(this.rows, frame.cursor);
-          } else if (frame.type !== 'snapshot_begin') throw new Error(`Unsupported native stream frame ${frame.type}`);
-          lines.resume();
-        }
+        // Consume synchronously with line events, not readline's async iterator:
+        // Bun buffers behind a paused iterator even while publication is stalled.
+        // Only the current inventory, a partial native snapshot and one frozen
+        // durable pending observation survive across asynchronous delivery.
+        await new Promise<void>(resolve => {
+          lines.once('close', resolve);
+          lines.on('line', line => {
+            if (this.closed || interrupted) return;
+            try {
+            const finish = startWork('load', 'publisher.source-frame');
+            let frame: any;
+            try { frame = JSON.parse(line); finish({ ok: true, units: { events: 1, bytes: Buffer.byteLength(line) } }); }
+            catch (error) { finish({ ok: false, units: { bytes: Buffer.byteLength(line) } }); throw error; }
+            if (frame.type === 'resync_required') { this.legacyCursor ??= this.cursor; this.cursor = undefined; invalidate(); this.compact(); this.options.log(`native source requests full snapshot: ${frame.reason}`); return; }
+            if (frame.type === 'snapshot_begin') { if (staged) throw new Error('Nested native snapshot'); staged = new Map(); snapshotKeys = new Set(); }
+            else if (frame.type === 'snapshot_item' || frame.type === 'event') {
+              if (frame.type === 'snapshot_item' && !staged) throw new Error('Native snapshot item outside snapshot');
+              if (frame.type === 'event' && staged) throw new Error('Native live event inside snapshot');
+              const row = this.row({ publicationId: frame.id, sequence: frame.sequence, board: frame.data?.board, card: frame.data?.card }), key = this.key(row);
+              if (snapshotKeys?.has(key)) throw new Error('Duplicate card in native snapshot'); snapshotKeys?.add(key);
+              if (frame.type === 'event' && (typeof frame.cursor !== 'string' || !frame.cursor)) throw new Error('Native source cursor is missing');
+              const next = staged ?? current;
+              if (row.card.removed) next.delete(key); else next.set(key, row);
+              if (frame.type === 'event') apply(frame.cursor);
+            } else if (frame.type === 'snapshot_end') {
+              if (!staged) throw new Error('Snapshot ended without its inventory');
+              current = staged; staged = undefined; snapshotKeys = undefined; apply(frame.cursor);
+            } else if (frame.type === 'checkpoint') {
+              if (staged) throw new Error('Checkpoint inside native snapshot');
+              apply(frame.cursor);
+            } else if (frame.type !== 'snapshot_begin') throw new Error(`Unsupported native stream frame ${frame.type}`);
+            } catch (error) { if (!this.closed) this.options.log(`native source interrupted: ${(error as Error).message}`); invalidate(); }
+          });
+        });
       } catch (error) { if (!this.closed) this.options.log(`native source interrupted: ${(error as Error).message}`); }
-      finally { lines.close(); this.lines = undefined; stream.child.stdout?.resume(); await stream.retire(); this.child = undefined; }
+      finally {
+        lines.close(); this.lines = undefined; stream.child.stdout?.resume();
+        await stream.retire(); this.child = undefined;
+        // Finish the pending receipt and coalesced tail before opening another
+        // reader. On close, publish() preserves pending bytes without advancing.
+        await this.delivering?.catch(() => {}); // its failure is logged where it is caught
+        this.applied = undefined;
+      }
       if (!this.closed) await this.delay();
     }
     this.refuseReady(new Error('Native source stopped before readiness'));
