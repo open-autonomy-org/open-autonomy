@@ -70,3 +70,33 @@ with Supercode and bounded concurrency with this publication adapter. This
 changes no audience, spend authority, credentials or native lifecycle evidence
 and follows the constitution's “The platform shows; it does not steer.” The
 card's independent review judges this amendment; it is not an owner ruling.
+
+## Coalesced, incremental passes (proposed)
+
+Every session-index event, followed-transcript event and board delivery queued its own full pass (native
+declarations, the whole board with every card's notes, every session, documents, timeline) behind the publication
+writer, and each board delivery deep-copied and froze the whole card inventory twice. On the volter-org board (4,219
+cards, 95 MB) a pass cost about 1 s of the publisher's main thread and a delivery 0.8-2.9 s, measured on copies of
+its retained state; the trigger stream kept one core busy.
+
+A change now marks what it touched (the board, a session, native declarations, documents) and asks for a pass.
+Changes fold into one pass once their burst settles (one second after the latest, at most five seconds after the
+first, the cadence of the board poll this record replaced); a board delivery runs its pass at once and acknowledges
+its cursor after it, as before. A pass publishes what changed: the board's notes for the cards whose source rows
+changed, the sessions whose descriptor, transcript, card or native record changed, documents when main may have
+moved, the timeline when the board, a project's committed main (its CHANGELOG.md and ROADMAP.md) or its revision
+interval did. The source validates and freezes a card once, when its frame arrives, and every later inventory shares
+that immutable row. Keys, item IDs, association preflight of the whole observation, the observed-card view of a pass,
+retained obligations and cursor acknowledgement are unchanged.
+
+The session index is a session's only change signal. A transcript that grows or is rewritten changes its descriptor
+(a Claude Code or Codex row's `updated_at_ms`, a Hermes row's `message_count`), and the index says it `updated`; read on the volter-org MacBook, one Codex home's index said 8
+`updated` in 5 s across its 4 live sessions. The publisher no longer follows each published session as well. Those
+follows were one more subscription per live session on the shared harness reader, and each opening read its source in
+that reader's single harness serve. When this record's first coalesced release reached volter-org, the follow openings
+passed their 30 s request timeout (54 times), each was reopened 5 s later while the serve still worked the abandoned
+one, and the reader's subscription cap (800 refusals) and the serve's waiting-caller cap (121 refusals) filled, so every
+pass's native reads were refused and board deliveries stopped committing. A transcript change marks its session and
+native declarations; a session that appeared or left, or a change to the profiles' declarations, also marks documents,
+since documents read the home's profiles, jobs and skills and committed main, never a transcript.
+This changes no audience, spend authority, credentials or native lifecycle evidence.

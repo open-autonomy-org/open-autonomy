@@ -1,5 +1,5 @@
 // The bounded native setup mapping in ADR 0026. Native codecs/jobs and applier ownership remain external.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import type { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { harnessSdkModule, orchestratorModule, supercodeBin, supercodeCommand } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
@@ -197,7 +197,7 @@ finally { await client?.close(); }`;
   })();
   let interrupted = false, expired = false, settled = false, terminating = false, killTimer: ReturnType<typeof setTimeout> | undefined;
   const signalOwned = (signal: 'SIGTERM' | 'SIGKILL') => {
-    try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch { /* already exited */ } }
+    try { stopWorkChild(child, () => process.kill(-child.pid, signal), { signal }); } catch { try { stopWorkChild(child, () => child.kill(signal), { signal }); } catch { /* already exited */ } }
   };
   const terminate = () => {
     terminating = true;

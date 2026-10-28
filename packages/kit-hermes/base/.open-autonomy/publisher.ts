@@ -52,7 +52,7 @@ import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 import { TranscriptQueue } from './transcript-queue.ts';
-import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork } from './work-ledger.ts';
+import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const configPath = resolve(arg('--config') ?? resolve(import.meta.dir, 'config.yaml'));
@@ -113,35 +113,33 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   const child = spawnWork(() => spawnCommand(command[0], command.slice(1), { env, detached: grouped, stdio: ['ignore', 'pipe', 'pipe'] }), 'node');
   let timedOut = false, stdout = '', stderr = '', closed = false;
   let retirement: Promise<void> | undefined;
-  const alive = (): boolean => {
+  // macOS answers EPERM, to the probe and to a signal alike, for a group whose members have all exited but are not yet
+  // reaped (a command's descendants just after it exits). That is unknown: never absence, never authority to escalate.
+  const alive = (): boolean | undefined => {
     if (!child.pid) return !closed;
     if (!grouped) return !closed;
     try { process.kill(-child.pid, 0); return true; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; throw error; }
+    catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code === 'ESRCH') return false; if (code === 'EPERM') return undefined; throw error; }
   };
   const kill = (value: NodeJS.Signals): void => {
     if (!child.pid) return;
-    try { if (grouped) process.kill(-child.pid, value); else child.kill(value); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+    try { stopWorkChild(child, () => grouped ? process.kill(-child.pid!, value) : child.kill(value), { signal: value }); }
+    catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code !== 'ESRCH' && code !== 'EPERM') throw error; }
   };
   const retire = (): Promise<void> => retirement ??= (async () => {
-    const gone = async (duration: number): Promise<boolean> => {
+    const uncertain = (): never => { const error = new Error('Publisher command retirement is uncertain; local ownership retained'); commandFailures.add(error); throw error; };
+    // The group's state at the deadline: gone, live, or unknown.
+    const settle = async (duration: number): Promise<boolean | undefined> => {
       const end = Date.now() + duration;
-      while (Date.now() < end) {
-        try { if (!alive()) return true; }
-        catch (error) {
-          // macOS can report EPERM for a just-terminated, unreaped private
-          // child. That is unknown, never absence or authority to escalate.
-          if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
-        }
-        await Bun.sleep(25);
-      }
-      return !alive(); // unknown at the deadline still refuses retirement
+      while (Date.now() < end) { if (alive() === false) return false; await Bun.sleep(25); }
+      return alive();
     };
     kill('SIGTERM');
-    if (await gone(1000)) return;
+    const afterTerm = await settle(1000);
+    if (afterTerm === false) return;
+    if (afterTerm === undefined) uncertain();
     kill('SIGKILL'); // the preceding probe positively observed a live group
-    if (!await gone(1000)) { const error = new Error('Publisher command retirement is uncertain; local ownership retained'); commandFailures.add(error); throw error; }
+    if (await settle(1000) !== false) uncertain();
   })();
   const abort = () => { void retire().catch(error => { commandFailures.add(error); child.stdout?.destroy(); child.stderr?.destroy(); }); };
   signal.addEventListener('abort', abort, { once: true });
@@ -265,8 +263,11 @@ const jobNames = new Map<string, string>();
 const descriptors = new Map<string, SessionDescriptor>();
 const publishers = new Map<string, TranscriptPublisher>();
 const publisherItems = new Map<string, string | undefined>();
-const watching = new Set<string>();
 const stopped = new Set<string>();
+// The sessions a pass reconciles: those whose descriptor, transcript, card or native record changed since the last pass,
+// or every session (the first pass, or a change every session reads). An unchanged session is not read again.
+const sessionsDue = new Set<string>();
+let allSessionsDue = true;
 const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-code' && !!cfg.seats && !!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(cfg.seats)}/`);
 // Under the orchestrator a worker is a Claude Code or Codex session the orchestrator opened: a card's, in the card's
 // workspace, or a job's, in its profile's folder under the home. (A Claude session elsewhere is a seat or not the install's.)
@@ -278,8 +279,11 @@ const isSeat = (d: SessionDescriptor): boolean => d.locator.harness === 'claude-
 type BoardAttempt = NonNullable<BoardTask['attempts']>[number];
 class SessionRefused extends Error {}
 const ran = (attempt: BoardAttempt): boolean => attempt.status !== 'spawn_failed' && attempt.outcome !== 'spawn_failed';
+// board() indexes the board's attempts by the session they name, in board order, and the workspaces its cards hold.
+let attemptsBySession = new Map<string, Array<{ task: BoardTask; attempt: BoardAttempt }>>();
+let cardWorkspaces = new Set<string>();
 const attemptOf = (sessionId: string): { task: BoardTask; first: BoardAttempt; attempt: BoardAttempt } | undefined => {
-  const matches = boardTasksAll.flatMap(task => (task.attempts ?? []).filter(attempt => (attempt.session?.session_id ?? attempt.session?.id) === sessionId).map(attempt => ({ task, attempt })));
+  const matches = attemptsBySession.get(sessionId) ?? [];
   if (new Set(matches.map(match => `${match.task.board}\0${match.task.id}`)).size > 1) throw new SessionRefused(`Native session ${sessionId} has multiple positive task/attempt associations; publication remains pending`);
   const latest = [...matches].reverse().find(match => ran(match.attempt)) ?? matches.at(-1);
   return latest ? { task: latest.task, first: matches[0].attempt, attempt: latest.attempt } : undefined;
@@ -290,7 +294,7 @@ const resumedAfter = (sessionId: string, endedAt: string): boolean => {
   const served = attemptOf(sessionId)?.attempt;
   return !!served?.started_at && ran(served) && Date.parse(served.started_at) > Date.parse(endedAt);
 };
-const cardAt = (cwd: string | null | undefined): boolean => !!cwd && boardTasksAll.some((t) => t.workspace?.path === cwd);
+const cardAt = (cwd: string | null | undefined): boolean => !!cwd && cardWorkspaces.has(cwd);
 const isWorker = (d: SessionDescriptor): boolean => onOrchestrator && (d.locator.harness === 'claude-code' || d.locator.harness === 'codex') && !isSeat(d)
   && (bindings.has(d.locator.session_id) || !!attemptOf(d.locator.session_id) || cardAt(d.cwd ?? d.workspace?.value) || (!!d.cwd && `${resolve(d.cwd)}/`.startsWith(`${resolve(home)}/`)));
 const kindOf = (d: SessionDescriptor): 'run' | 'chat' => isSeat(d) || isWorker(d) || ['cron', 'heartbeat', 'task'].includes(d.trigger ?? '') ? 'run' : 'chat';
@@ -320,7 +324,7 @@ function completionOf(d: SessionDescriptor): RecordedCompletion | undefined {
   return undefined;
 }
 // Read native declarations on startup and source changes; never on an observation timer.
-let nativeOk = false;
+let nativeOk = false, declarations = '';
 async function nativeState(): Promise<void> {
   if (nativeOk) return;
   nativeOk = false;
@@ -334,28 +338,19 @@ async function nativeState(): Promise<void> {
   if (history.sources.some(s => s.state === 'unreadable')) throw new Error('Native run ledger unreadable');
   const next = orchestration.profiles as Record<string, Profile>;
   if (!next || !next.default) throw new Error('Native profile state unavailable');
+  const priorBindings = bindings, priorRuns = runs, priorDeclarations = declarations;
   profiles = next;
   bindings = new Map(Object.values(profiles).flatMap(p => Object.values(p.bindings).filter(b => b.worker.session_id).map(b => [b.worker.session_id!, b] as const)));
   runs = new Map(history.runs.filter(r => r.session_id).map(r => [r.session_id!, r]));
   jobNames.clear();
   for (const profile of Object.values(profiles)) for (const [id, job] of Object.entries(profile.jobs)) jobNames.set(id, job.residue?.name ?? id);
+  // A session's publication reads its own binding and run; every session's reads the profiles and job names.
+  declarations = JSON.stringify(Object.entries(profiles).map(([name, { bindings: _bindings, ...profile }]) => [name, profile]));
+  // The setup document reads the profiles' declarations (persona, model, jobs), so a change to them is a documents change too.
+  if (declarations !== priorDeclarations) { allSessionsDue = true; documentsDirty = true; }
+  else for (const [before, after] of [[priorBindings, bindings], [priorRuns, runs]] as Array<[Map<string, unknown>, Map<string, unknown>]>)
+    for (const id of new Set([...before.keys(), ...after.keys()])) if (JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id))) sessionsDue.add(id);
   nativeOk = true;
-}
-async function watch(d: SessionDescriptor): Promise<void> {
-  if (quitting) return;
-  const key = d.locator.session_id;
-  if (watching.has(key)) return;
-  watching.add(key);
-  try {
-    for await (const ev of sc.session(d.locator).follow({ signal: narrativeAbort.signal, view: { tailMessages: 1, maxMessageChars: 1, includeSubagents: false, displayHistory: true } })) {
-      if (stopped.has(key)) break;
-      if (ev.type === 'watch_error') log(`${key}: ${ev.message}`);
-      // Snapshots (including history_rewritten/sequence_gap_recovered) and appends
-      // both reconcile against the complete SDK window sequence and server receipt.
-      nativeOk=false;requestTick();
-    }
-  } catch (e) { log(quitting ? `${key}: watch ended: the reporter is stopping` : `${key}: watch interrupted (${(e as Error).message}); a retained source change or reconnect retries`); }
-  finally { watching.delete(key);if(!stopped.has(key))later(()=>{const current=descriptors.get(key);if(current)void watch(current);},5000); }
 }
 // A publication that failed waits before the next attempt, a minute after its first failure and twice as long after each
 // failure since, up to half an hour. One timer per session carries its retry; a tick that
@@ -384,16 +379,24 @@ function refuse(key: string, error: SessionRefused): void {
   refused.set(key, error.message);
 }
 function sessions(only?: string): void {
-  for (const [key, d] of descriptors) {
+  const keys = only !== undefined ? [only] : allSessionsDue ? [...descriptors.keys()] : [...sessionsDue];
+  if (only === undefined) { allSessionsDue = false; sessionsDue.clear(); }
+  for (const [at, key] of keys.entries()) {
     if (quitting) return;
-    if (only && key !== only) continue;
+    const d = descriptors.get(key);
+    if (!d) continue;
     try {
       if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
       // Published to its end: nothing to read, nothing to send, unless its card has since resumed it (a reopened card).
       // That resume is checked against the source when its publication runs (publishSession).
       const ended = checkpoints[platformKey(key)]?.endedAt;
       if (ended && resumedAfter(key, ended)) stopped.delete(key); else if (ended) stopped.add(key);
-    } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); continue; } throw error; }
+    } catch (error) {
+      if (error instanceof SessionRefused) { refuse(key, error); continue; }
+      // A pass that fails here leaves this session and every one after it due for the next pass.
+      if (only === undefined) for (const left of keys.slice(at)) sessionsDue.add(left);
+      throw error;
+    }
     refused.delete(key);
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
@@ -457,10 +460,9 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     const receipt = await publisher.publish(completion);
     retryAt.delete(key); failures.delete(key);
     if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
-    else void watch(d);
   } catch (e) {
     if (e instanceof SessionRefused) { refuse(key, e); return; }
-    if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); requestTick(); return; }
+    if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); sessionsDue.add(key); requestTick(); return; }
     // A publication its own stop cut short is not a failure: this reporter retries nothing, and its successor reads the
     // retained intent afresh (a kit handover's retiring stack aborted every publication in flight, said as failures).
     if (quitting) { log(`${key}: publication not finished: the reporter is stopping; its intent is retained`); return; }
@@ -493,32 +495,60 @@ let nativeTasks: BoardTask[] = [];
 let boardTasksAll: BoardTask[] = [];
 let timelineDigest = '', timelineBounded = -1, timelineContent = '', timelineDue = false;
 let timelineTimer: ReturnType<typeof setTimeout> | undefined;
+// An unchanged card keeps its view (publication.observedCards), so it keeps its task, its item and the knowledge that its
+// notes are published: a board change costs the cards it changed.
+const taskOf = new WeakMap<object, BoardTask>(), itemOf = new WeakMap<BoardTask, RoadmapItem>(), notedTasks = new WeakSet<BoardTask>();
 async function board(): Promise<RoadmapItem[] | undefined> {
   // This app's cache is rebuilt only from the retained source stream. An organization's board has no root profile's
   // tasks: every card is a profile's (docs/decisions/0017), and a project's reporter publishes its tenant's.
-  boardTasksAll = [...publication.observedCards().values()].map((t) => ({ ...t, lane: t.archived ? 'archived' : t.status,
-    // A done or cancelled card resumes no session. The board normalizes a cancelled card's status to todo; its raw lane keeps it.
-    closed: t.status === 'done' || t.lane === 'cancelled' || t.board_status === 'cancelled' }) as BoardTask)
+  const previous = boardTasksAll;
+  boardTasksAll = [...publication.observedCards().values()].map((t) => {
+    let task = taskOf.get(t);
+    if (!task) taskOf.set(t, task = { ...t, lane: t.archived ? 'archived' : t.status,
+      // A done or cancelled card resumes no session. The board normalizes a cancelled card's status to todo; its raw lane keeps it.
+      closed: t.status === 'done' || t.lane === 'cancelled' || t.board_status === 'cancelled' } as BoardTask);
+    return task;
+  })
     .filter((t) => t.lane !== 'archived' && (organization || (t.assignee ?? 'default') === 'default'))
     .sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  attemptsBySession = new Map(); cardWorkspaces = new Set();
+  for (const task of boardTasksAll) {
+    if (task.workspace?.path) cardWorkspaces.add(task.workspace.path);
+    for (const attempt of task.attempts ?? []) {
+      const id = attempt.session?.session_id ?? attempt.session?.id;
+      if (id) { const named = attemptsBySession.get(id); if (named) named.push({ task, attempt }); else attemptsBySession.set(id, [{ task, attempt }]); }
+    }
+  }
+  // A session is due when a card that names it, or holds its workspace, changed, arrived or left.
+  const before = new Set(previous), after = new Set(boardTasksAll), workspaces = new Set<string>();
+  for (const task of [...boardTasksAll.filter(t => !before.has(t)), ...previous.filter(t => !after.has(t))]) {
+    if (task.workspace?.path) workspaces.add(task.workspace.path);
+    for (const attempt of task.attempts ?? []) { const id = attempt.session?.session_id ?? attempt.session?.id; if (id) sessionsDue.add(id); }
+  }
+  if (workspaces.size) for (const [key, d] of descriptors) if (workspaces.has((d.cwd ?? d.workspace?.value) as string)) sessionsDue.add(key);
   const tasks = organization ? boardTasksAll.filter(shown) : boardTasksAll;
   nativeTasks = tasks;
   const items: RoadmapItem[] = tasks.map((t) => {
+    const cached = itemOf.get(t);
+    if (cached) return cached;
     const attempts = t.attempts ?? [];
     const first = attempts.find((a) => a.started_at);
     const last = [...attempts].reverse().find((a) => a.handoff) ?? attempts[attempts.length - 1];
-    return defined({
+    const item = defined({
       id: publication.item(t.board, t.id), title: t.title ?? t.id, tense: t.lane === 'done' ? 'past' : 'present', status: statusOf(t.lane), home: 'kanban', phase: /<!-- roadmap:([A-Za-z0-9][A-Za-z0-9._-]{0,79}):/.exec(t.body ?? '')?.[1],
       priority: t.priority !== undefined ? String(t.priority) : undefined, proposed_at: t.created_at, started_at: first?.started_at, done_at: t.lane === 'done' ? t.completed_at ?? last?.ended_at : undefined,
       by: last?.profile, commit: commitOf(t),
       links: dedupe([...linksIn(t.body ?? ''), ...(last?.handoff?.metadata?.branch ? [linkOf(`https://github.com/${cfg.account}/tree/${last.handoff.metadata!.branch}`, last.handoff.metadata!.branch)] : [])]),
       acceptance: (t.body ?? '').split('\n').filter((l) => /^- /.test(l)).map((l) => l.slice(2).trim()),
     }) as RoadmapItem;
+    itemOf.set(t, item);
+    return item;
   });
   // The board's lane is the item's status and its attempts are the item's sessions; what the timeline cannot say, a
   // review's verdict and an attempt's handoff, is a progress note on the item, published once each: the note's key is the
   // update's identity on the platform, so a retry after a lost acknowledgement, or a restart, lands on the same record.
   for (const t of tasks) {
+    if (notedTasks.has(t)) continue;
     const notes: Array<{ key: string; kind: 'review' | 'handoff'; effectId: string | number; text: string; at?: string }> = [];
     // A review's position in the board's append-only list keeps two rounds with the same verdict apart when the harness stamps no time.
     (t.reviews ?? []).forEach((r, i) => notes.push({ key: `${t.id}:review:${i}:${r.at ?? ''}:${r.verdict}`, kind: 'review', effectId: r.id, text: `review ${r.verdict}${r.by ? ` by ${r.by}` : ''}${r.reason ? `: ${r.reason}` : ''}`, at: r.at }));
@@ -527,6 +557,7 @@ async function board(): Promise<RoadmapItem[] | undefined> {
       try { await publication.note({ board: t.board, cardId: t.id, kind: n.kind, effectId: n.effectId, text: n.text, at: n.at, legacyKey: n.key }, oa); }
       catch (e) { throw new Error(`board note pending for ${t.id}: ${(e as Error).message}`); }
     }
+    notedTasks.add(t);
   }
   return items;
 }
@@ -729,52 +760,80 @@ async function setup(): Promise<void> {
   const digest = JSON.stringify(s);
   if(digest!==setupDigest){const result=await oa.setup(s);if(!result.ok)throw new Error(`Setup publication refused: ${result.status}`);setupDigest=digest;}
 }
-let work: Promise<void>|null=null, dirty=false, documentsDirty=true, boardReady=false;
-let passesStarted=0;
-const passWaiters: Array<{pass:number;resolve:()=>void;reject:(error:unknown)=>void}>=[];
+// A pass publishes what changed since the last one: native declarations when a source change invalidated them, the board
+// when a delivery changed it, the sessions whose inputs changed (sessions()), the documents when committed main may have
+// moved, and the timeline when the board, a project's committed main or the revision interval did. Passes run one at a
+// time through the publication writer. A change marks what it touched and asks for a pass (requestTick); every change
+// that arrives before that pass starts folds into it, and the pass starts once its burst has settled: SETTLE after the
+// latest change, and never later than SETTLE_MAX after the first. A board delivery runs its own pass at once, folding
+// whatever else is pending, and acknowledges its cursor after it. SETTLE_MAX is the five seconds the board poll this
+// replaced ran at.
+const SETTLE = 1000, SETTLE_MAX = 5000;
+let dirty=false, boardDirty=true, documentsDirty=true, timelineStale=false, boardReady=false, queued=false;
+let boardItems: RoadmapItem[] | undefined;
+let settle: ReturnType<typeof setTimeout> | undefined, burstAt = 0;
+let passes = 0, passMs = 0;
 const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
 stopNarrative = () => { configWatch.close(); clearTimeout(retry); for (const watcher of documentWatchers) watcher.close(); };
-function tick(): Promise<void> {
-  recordWork('pass', 'publisher.wakeup');
-  dirty=true;
-  if(!boardReady||quitting)return Promise.resolve();
-  // A caller needs the pass that observes its change, not an indefinitely quiet source. Session-index events can
-  // dirty the reporter during every pass; waiting for the whole loop then starves native cursor acknowledgement.
-  const receipt=new Promise<void>((resolve,reject)=>passWaiters.push({pass:passesStarted+1,resolve,reject}));
-  if(!work)work=(async()=>{
-    try {
-      while(dirty&&!quitting){
-        dirty=false;const pass=++passesStarted;
-        await measureWork('pass', 'publisher.pass', async () => {
-          await nativeState();
-          const present=await measureWork('pass', 'publisher.board-refresh', board);
-          sessions();
-          if(documentsDirty){await refreshMain();await docs();await setup();documentsDirty=false;}
-          await timeline(present);
-        });
-        for(let i=passWaiters.length-1;i>=0;i--)if(passWaiters[i].pass<=pass)passWaiters.splice(i,1)[0].resolve();
+async function pass(): Promise<void> {
+  dirty = false;
+  const began = performance.now();
+  try {
+    await measureWork('pass', 'publisher.pass', async () => {
+      await nativeState();
+      if (boardDirty) { boardItems = await measureWork('pass', 'publisher.board-refresh', board); boardDirty = false; timelineStale = true; }
+      sessions();
+      if (documentsDirty) {
+        const revision = mainRevision;
+        await refreshMain();
+        // A project's timeline folds main's CHANGELOG.md and ROADMAP.md into the board (timeline()), so a moved main is a
+        // timeline change too; an organization's timeline is its board alone.
+        if (!organization && mainRevision !== revision) timelineStale = true;
+        await docs(); await setup(); documentsDirty = false;
       }
-    } catch(error) { for(const waiter of passWaiters.splice(0))waiter.reject(error); }
-    finally { if(quitting)for(const waiter of passWaiters.splice(0))waiter.reject(new Error('Publisher stopped before its pass completed')); }
-  })().finally(()=>{work=null;});
-  return receipt;
+      if (timelineStale || timelineDue) { await timeline(boardItems); timelineStale = false; }
+    });
+  } catch (error) { dirty = true; throw error; }
+  finally { passes++; passMs += performance.now() - began; }
+}
+function flush(): void {
+  settle = undefined;
+  if (queued || quitting) return;
+  queued = true;
+  void publication.run(async () => { queued = false; if (dirty && !quitting) await pass(); }).catch(error => {
+    queued = false;
+    if (quitting) return;
+    log(`publication pending (${error.message}); retaining acknowledgement`);
+    clearTimeout(retry); if (retry) narrativeTimers.delete(retry); retry = later(requestTick, 5000);
+  });
 }
 let retry: ReturnType<typeof setTimeout>|undefined;
 function requestTick(): void {
-  if(quitting)return;
-  void publication.run(()=>tick()).catch(error=>{
-    log(`publication pending (${error.message}); retaining acknowledgement`);
-    if(!quitting){clearTimeout(retry);if(retry)narrativeTimers.delete(retry);retry=later(requestTick,5000);}
-  });
+  recordWork('pass', 'publisher.wakeup');
+  dirty = true;
+  if (quitting || !boardReady) return;
+  const now = Date.now();
+  if (settle) { clearTimeout(settle); narrativeTimers.delete(settle); } else burstAt = now;
+  settle = later(flush, Math.max(0, Math.min(SETTLE, burstAt + SETTLE_MAX - now)));
 }
+// The session index is how a session's change reaches the publisher. A transcript that grows or is rewritten changes its
+// descriptor (a Claude Code or Codex row's updated_at_ms, a Hermes row's message_count), so the index says it `updated`,
+// and that session alone is due. No session is followed as well: a follow opened one more subscription per live session
+// on the shared reader, each opening read its source in the reader's one harness serve, and a backlog of them (follow
+// opens past their 30 s timeout, reopened every 5 s while the serve still worked the abandoned ones) filled the reader's
+// subscription cap and the serve's waiting callers, which then refused every pass its native reads. A session that
+// appeared or left can change the declarations and documents.
 sc.on('sessionIndexEvent', ev => {
   if(quitting)return;
   if ('error' in ev) { log(`index unavailable: ${ev.error.message}`); return; }
-  for (const c of ev.changes) if (c.kind === 'removed') descriptors.delete(c.key.session_id); else {
+  let membership = false;
+  for (const c of ev.changes) if (c.kind === 'removed') { descriptors.delete(c.key.session_id); membership = true; } else {
     descriptors.set(c.descriptor.locator.session_id, c.descriptor);
     stopped.delete(c.descriptor.locator.session_id);
+    sessionsDue.add(c.descriptor.locator.session_id);
+    if (c.kind === 'added') membership = true;
   }
-  nativeOk=false;documentsDirty=true;requestTick();
+  nativeOk=false; if (membership) documentsDirty=true; requestTick();
 });
 const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
@@ -783,7 +842,7 @@ const eventCommand=container
 const source=activeSource=await retryStartup('source cache',()=>new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:nativeEnvironment,
   sourceContextId:publication.sourceContextId,storeContext:board=>publication.storeContext(board),allowLegacyUpgrade:publication.legacyAdopted,forceSnapshot:publication.requiresSnapshot,
-  changed:snapshot=>publication.run(async()=>{publication.observe(snapshot);boardReady=true;nativeOk=false;await publication.retry(oa);await tick();publication.snapshotAcknowledged();}),log}));
+  changed:snapshot=>publication.run(async()=>{publication.observe(snapshot);boardReady=true;nativeOk=false;boardDirty=true;await publication.retry(oa);await pass();publication.snapshotAcknowledged();}),log}));
 
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
@@ -825,7 +884,8 @@ log(`watching ${home} for ${cfg.account}`);
 // Every ten minutes, what transcript reconciliation read from the sources and what the publisher holds per session.
 const readings = (): void => {
   const v = takeReadVolume();
-  log(`last 10 min: ${v.reconciled} transcripts reconciled (${v.windows} source windows, ${v.messages} messages), ${v.unchanged} unchanged; holding ${descriptors.size} sessions, ${publishers.size} transcript publishers, ${watching.size} followed, ${retryTimers.size} awaiting retry`);
+  log(`last 10 min: ${passes} passes (${(passMs / 1000).toFixed(1)} s), ${v.reconciled} transcripts reconciled (${v.windows} source windows, ${v.messages} messages), ${v.unchanged} unchanged; holding ${descriptors.size} sessions, ${publishers.size} transcript publishers, ${retryTimers.size} awaiting retry`);
+  passes = 0; passMs = 0;
   later(readings, 600_000);
 };
 later(readings, 600_000);

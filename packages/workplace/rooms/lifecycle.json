@@ -1,0 +1,20 @@
+{
+  "protocol": 1,
+  "transport": "node-ipc",
+  "state": { "arcVersion": 7, "journalVersion": 1 },
+  "withdrawal": { "protocol": 1, "transport": "command", "argument": "--disconnect", "scope": "all-owned-placements" },
+  "files": ["main.mjs", "lifecycle.mjs", "lifecycle.json", "rh2-app.json", "teams-app.json"],
+  "compensation": {
+    "protocol": 1,
+    "scope": "run-only",
+    "predecessors": [{
+      "revision": "9a1c4549356ad5f59c085aeb873d7d4ae65fdb27",
+      "arcVersion": 5,
+      "files": [
+        { "path": "main.mjs", "sha256": "9e2cced5959a83b09b6cdaf4853e4ce8b857a10e0db04099531377b5205013a9" },
+        { "path": "rh2-app.json", "sha256": "d5ca88ed2e6812cad365666a6c539b0332a1998a51da5203dec7d2704f76044b" },
+        { "path": "teams-app.json", "sha256": "7fede7b6315791827b04437f21be866dfec7ac8f73a1dfb8bb4cb8fc1412e997" }
+      ]
+    }]
+  }
+}

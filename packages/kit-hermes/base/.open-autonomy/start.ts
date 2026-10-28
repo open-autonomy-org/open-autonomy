@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
+import { stopWorkChild } from './work-ledger.ts';
 
 const keeper = resolve(import.meta.dir, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');
 if (!existsSync(keeper)) {
@@ -25,11 +26,11 @@ if (!existsSync(keeper)) {
   // The install is a child this start waits on, so a stop signal reaches it too, and this start exits once it has.
   let install: { kill(signal?: number | NodeJS.Signals): void } | undefined;
   let stopped = false;
-  const stop = () => { stopped = true; install?.kill('SIGTERM'); };
+  const stop = () => { stopped = true; const live = install; if (live) stopWorkChild(live, () => live.kill('SIGTERM'), { signal: 'SIGTERM' }); };
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, stop);
   console.log(`start: the kit's keeper is not installed; installing ${import.meta.dir}'s dependencies`);
   try {
-    await installHostRuntime({ ...options, frozen: lock, started: (child) => { install = child; if (stopped) child.kill('SIGTERM'); } });
+    await installHostRuntime({ ...options, frozen: lock, started: (child) => { install = child; if (stopped) stopWorkChild(child, () => child.kill('SIGTERM'), { signal: 'SIGTERM' }); } });
   } catch (error) {
     if (stopped) process.exit(0);
     console.error(`start: ${(error as Error).message}. Finalize the adopter-owned host lock inside its World with bun .open-autonomy/install-runtime.ts --update-lock, review/commit it, then retry. A committed lock stays frozen. Nothing was started.`);

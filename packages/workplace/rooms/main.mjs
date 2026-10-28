@@ -45,7 +45,7 @@
 // on a card a lead works, else the lines naming it), and leaves when the run ends or the card pauses, blocks or closes;
 // the program removes only its additional run placements. Missing links, refused joins and unconfirmed cleanup remain
 // owed through backoff and restart, while unrelated placement continues.
-// A state write the disk refuses is retried each minute while the program works from memory.
+// A refused cache write retries each minute. A product mutation requires its journal to persist and re-read first.
 //
 // Each project Room's rules carry its guidance (runhuman-2 ADR 0063 decision 7, `guidance`, the rules command): what its
 // agents are told it is for. Each image or video a live card's agent attaches to the card (the card's published
@@ -73,7 +73,9 @@
 // }
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { fstatSync, futimesSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, fsyncSync, fstatSync, futimesSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createLifecycle, digest } from './lifecycle.mjs';
 import { promisify } from 'node:util';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
@@ -124,7 +126,8 @@ for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization'
   process.stderr.write(`project-rooms: unknown config key rh2.${key}\n`); process.exit(1);
 }
 const shutdown = new AbortController();
-process.on('SIGTERM',()=>shutdown.abort());process.on('SIGINT',()=>shutdown.abort());
+let fileReading = new AbortController();
+let lifecycle, compensationReading = false;
 const custody = (name) => {
   if (process.env[name]) return process.env[name];
   if (!config.envFile) return '';
@@ -145,17 +148,21 @@ const log = (event, data = {}) => process.stdout.write(`${JSON.stringify({ t: ne
 process.stdout.on('error', () => {});
 
 async function door(path, { body, method } = {}) {
-  if (!disconnecting && (!sourceAdmitted || !state.ready)) throw new Error('the board source has no admitted complete reading');
-  const response = await fetch(`${base}${path}`, {
-    method: method ?? (body === undefined ? 'GET' : 'POST'), signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(9000)]),
-    headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  // A refusal's details travel with it: the cleanup warning's are the counts and the Rooms of oldest activity it asks
-  // someone to review, which the log otherwise loses.
-  if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { code: payload?.error?.code, details: payload?.error?.details, status: response.status });
-  return payload.data;
+  if (!disconnecting && !compensationReading && (!sourceAdmitted || !state.ready || lifecycle?.paused)) throw new Error('the board source has no admitted complete reading or projection is quiesced');
+  const verb = method ?? (body === undefined ? 'GET' : 'POST');
+  const request = async () => {
+    // Quiesce joins writes rather than aborting them. Every request has its own finite bound.
+    const response = await fetch(`${base}${path}`, {
+      method: verb, signal: AbortSignal.timeout(9000),
+      headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { remoteSettled: response.status >= 400 && response.status < 500 && response.status !== 408 && typeof payload?.error?.code === 'string', code: payload?.error?.code, details: payload?.error?.details, status: response.status });
+    if (!payload || !Object.hasOwn(payload, 'data')) throw new Error('Workplace returned no product acknowledgement');
+    return payload.data;
+  };
+  return verb === 'GET' ? request() : lifecycle.mutate({ method: verb, path, body }, request);
 }
 
 // ---- the project and its Room ---------------------------------------------------------------------------------------
@@ -196,19 +203,32 @@ function loadState() {
 // disk refuses (full, unwritable) is said once and tried again each minute while the app keeps working from memory: an
 // uncaught refusal ended the process, and with it every change to the Floor until someone started it again.
 let written = null, flushing = null, writeRefused = null;
-function flushState() {
+function flushState(strict = false) {
   clearTimeout(flushing); flushing = null;
   const text = `${JSON.stringify(state)}\n`;
-  if (text === written) return;
+  if (text === written) {
+    if (strict) {
+      const fd = openSync(config.stateFile, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+      const directory = openSync(dirname(config.stateFile), 'r'); try { fsyncSync(directory); } finally { closeSync(directory); }
+      if (readFileSync(config.stateFile, 'utf8') !== text) throw new Error('persisted projection state differs from memory');
+    }
+    return;
+  }
   const pending = `${config.stateFile}.${process.pid}.tmp`;
   try {
     writeFileSync(pending, text, { mode: 0o600 });
+    if (strict) { const fd = openSync(pending, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
     renameSync(pending, config.stateFile);
+    if (strict) {
+      const fd = openSync(dirname(config.stateFile), 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+      if (readFileSync(config.stateFile, 'utf8') !== text) throw new Error('projection state did not re-read after persistence');
+    }
   } catch (error) {
     try { rmSync(pending, { force: true }); } catch { /* the next write replaces it */ }
     if (writeRefused !== error.code) log('state-write-refused', { code: error.code ?? null, message: String(error.message).slice(0, 200) });
     writeRefused = error.code ?? 'error';
     flushing = setTimeout(flushState, 60_000);
+    if (strict) throw error;
     return;
   }
   if (writeRefused) { log('state-write-recovered'); writeRefused = null; }
@@ -364,7 +384,7 @@ async function cardFileBytes(cardId, file) {
   const parts = [];
   let offset = 0, version = null;
   for (;;) {
-    const { stdout } = await run(config.board.supercode ?? 'supercode', ['workflow', '--root', config.board.root, 'attachment-read', cardId, String(file.id), '--offset', String(offset), '--length', String(PART_BYTES), ...(version ? ['--version', version] : [])], { timeout: 60_000, maxBuffer: 4 * PART_BYTES, signal: shutdown.signal });
+    const { stdout } = await run(config.board.supercode ?? 'supercode', ['workflow', '--root', config.board.root, 'attachment-read', cardId, String(file.id), '--offset', String(offset), '--length', String(PART_BYTES), ...(version ? ['--version', version] : [])], { timeout: 9000, maxBuffer: 4 * PART_BYTES, signal: fileReading.signal });
     const part = JSON.parse(stdout);
     version ??= part.version;
     parts.push(Buffer.from(part.content_base64 ?? '', 'base64'));
@@ -387,13 +407,18 @@ async function repostCardFiles(roomId, conversationId, card) {
     if (file.size > MAX_FILE_BYTES) body = `${where}: ${file.name} was attached to the card (too large to show here; it is on the card).`;
     else {
       const bytes = await cardFileBytes(card.id, file);
-      const response = await fetch(`${base}/api/v3/rooms/${encodeURIComponent(roomId)}/files`, {
-        method: 'POST', body: bytes, signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(60_000)]),
-        headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, 'content-type': typeOf(file), 'x-rh2-artifact-name-uri': encodeURIComponent(file.name) },
+      const path = `/api/v3/rooms/${encodeURIComponent(roomId)}/files`;
+      const uploaded = await lifecycle.mutate({ method: 'POST', path, bytes: bytes.length, sha256: digest(bytes), contentType: typeOf(file), name: file.name }, async () => {
+        const response = await fetch(`${base}${path}`, {
+          method: 'POST', body: bytes, signal: AbortSignal.timeout(9000),
+          headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, 'content-type': typeOf(file), 'x-rh2-artifact-name-uri': encodeURIComponent(file.name) },
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { remoteSettled: response.status >= 400 && response.status < 500 && response.status !== 408 && typeof payload?.error?.code === 'string', code: payload?.error?.code, status: response.status });
+        if (!payload || !Object.hasOwn(payload, 'data')) throw new Error('Workplace returned no upload acknowledgement');
+        return payload.data;
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { code: payload?.error?.code, status: response.status });
-      files = [payload.data.artifact.artifactId];
+      files = [uploaded.artifact.artifactId];
       body = `${where}${file.by ? `, from ${file.by}` : ''}: ${file.name}`;
     }
     await door(`/api/v3/rooms/${encodeURIComponent(roomId)}/conversations/${encodeURIComponent(conversationId)}/messages`, {
@@ -480,13 +505,11 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     if (run && (!member || member.seatedBy === self) && !placements[principalId]) {
       // Keep the intent before the effect: an answer lost to restart still leaves a conditional cleanup obligation.
       // A role-owned seat also owes cleanup when the last role ends while run demand still keeps it here.
-      placements[principalId] = { kind: run.kind, session: run.session }; saveState();
+      placements[principalId] = { kind: run.kind, session: run.session, owner: lifecycle.selection }; flushState(true);
     }
     if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
-    if (!member && run) {
-      flushState();
-      if (writeRefused) throw Object.assign(new Error('placement intent could not be persisted'), { code: 'state-write-refused' });
-    }
+    // Existing-member session and receive rewrites have the same durable obligation as a new join.
+    if (run) flushState(true);
     try {
       const placed = await door(`${room}/join`, { body: { principalId, roleKeys: demand.roleKeys, answers: demand.answers,
         ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}),
@@ -692,11 +715,11 @@ function readingBounds(connection) {
     done() { clearTimeout(connect); clearTimeout(silent); clearTimeout(stall); },
   };
 }
-async function* follow(after) {
+async function* follow(after, recovery = false) {
   let from = after, continuation = false;
   for (;;) {
     let next = null;
-    for await (const frame of followReading(from, continuation)) {
+    for await (const frame of followReading(from, continuation, recovery)) {
       if ((frame.type === 'snapshot_continue' || frame.type === 'stream_continue') && typeof frame.cursor === 'string') { next = frame.cursor; break; }
       yield frame;
     }
@@ -704,13 +727,14 @@ async function* follow(after) {
     from = next; continuation = true;
   }
 }
-async function* followReading(after, continuation) {
+async function* followReading(after, continuation, recovery = false) {
   // Agent events are the team's own, under no board's source, so the stream names no source and the board's cards are
   // kept by their resource id (the loop below): an arc's agents are unseated when Teams ends them.
   const kinds = 'task.created,task.changed,task.started,task.review_requested,task.changes_requested,task.completed,task.cancelled,task.reopened,task.blocked,task.unblocked,task.paused,task.resumed,task.assigned,task.linked,task.unlinked,task.commented,task.specified,agent.declared,agent.changed,agent.reassigned,agent.reparented,agent.ended';
   const url = `${config.teams.server.replace(/\/+$/, '')}/api/v1/teams/${encodeURIComponent(config.teams.team)}/events?kinds=${kinds}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
   // This connection's own end beside the app's, which its bounds (readingBounds) use to end a reading that hangs.
   const connection = new AbortController();
+  connection.signal.addEventListener('abort', () => { if (!recovery) { sourceAdmitted = false; lifecycle?.announce(); } }, { once: true });
   stream = { connection, heardAt: Date.now() };
   // a fresh reading (no cursor) is a snapshot from its start; a continuation of one carries it on
   if (!after) snapshotOpen = true;
@@ -725,8 +749,11 @@ async function* followReading(after, continuation) {
       const retryMs = Math.min(Math.max(Number.isFinite(headerMs) ? headerMs : 0, Number.isFinite(bodyMs) ? bodyMs : 0) || 60_000, STREAM_RETRY_MAX_MS);
       throw Object.assign(new Error(payload?.error?.message ?? `Teams events ${response.status}`), { status: response.status, retryMs });
     }
-    sourceAdmitted = true;
-    if (after && !continuation) void drain();
+    if (!recovery) {
+      sourceAdmitted = true;
+      lifecycle?.announce();
+      if (after && !continuation) void drain();
+    }
     let buffer = '';
     for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
       stream.heardAt = Date.now(); bounds.bytes();
@@ -737,7 +764,10 @@ async function* followReading(after, continuation) {
         if (data) { const frame = JSON.parse(data); bounds.frame(frame?.type); yield frame; }
       }
     }
-  } finally { bounds.done(); }
+  } finally {
+    bounds.done();
+    if (!recovery) { sourceAdmitted = false; lifecycle?.announce(); }
+  }
 }
 
 const state = loadState();
@@ -795,11 +825,11 @@ async function sweepRooms() {
 }
 let stopping = false, sourceAdmitted = false;
 // The event stream connected now (follow): its own end, when it was last heard, and whether it has ended.
-let stream = null;
+let stream = null, readingDone = Promise.resolve(), endReading;
 function invalidateSource() {
-  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState();
+  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState(); lifecycle?.announce();
 }
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopping = true; flushState(); process.exit(0); });
+
 // A card RH2 refuses waits before it is tried again (a minute, doubling to an hour), unless a newer version of it arrives.
 // Newer is what the app reads of the card (`kept`), compared by value: every resync re-delivers each card as a new object
 // with the same content, and comparing objects let each resync retry every refused card at once (351 of 805 refusals in
@@ -820,7 +850,7 @@ function settle(card) {
 // Each owed project's pass, each on its own backoff when RH2 refuses it.
 async function keepOwedProjects() {
   for (const project of Object.keys(state.projectsOwed)) {
-    if (stopping || !sourceAdmitted || !state.ready) return;
+    if (stopping || lifecycle?.paused || !sourceAdmitted || !state.ready) return;
     const id = `project:${project}`, held = backoff.get(id);
     if (held && held.until > Date.now()) continue;
     try {
@@ -888,10 +918,10 @@ const due = (id, card) => {
 let draining;
 function drain() {
   draining ??= (async () => {
-    if (!sourceAdmitted || !state.ready) return;
+    if (lifecycle?.paused || !sourceAdmitted || !state.ready) return;
     projectFloor = undefined; passTasks = undefined; passPeople = undefined;
     const tried = new Map();
-    for (let next; !stopping && sourceAdmitted && state.ready && (next = Object.entries(state.pending).find(([id, card]) => tried.get(id) !== versionOf(card) && due(id, card)));) {
+    for (let next; !stopping && !lifecycle?.paused && sourceAdmitted && state.ready && (next = Object.entries(state.pending).find(([id, card]) => tried.get(id) !== versionOf(card) && due(id, card)));) {
       tried.set(next[0], versionOf(next[1]));
       settle(next[1]);
     }
@@ -905,6 +935,121 @@ function drain() {
   })().finally(() => { draining = undefined; });
   return draining;
 }
+/** A compensation reading is a whole current board snapshot, independent of the retained cursor. It never drains. */
+async function currentRoleCards() {
+  const cards = {}, agents = {};
+  let begun = false, complete = false, cursor = null;
+  for await (const frame of follow(null, true)) {
+    if (frame.type === 'snapshot_begin') { begun = true; }
+    if (frame.type === 'resync_required' || frame.type === 'access_revoked') throw new Error('the compensation role reading was revoked');
+    const event = frame.data;
+    if (frame.type === 'snapshot_item' && event?.resource?.kind === 'task' && event.data?.card
+      && String(event.resource.id).startsWith(`${config.teams.source}:`)) {
+      const card = kept(event.data.card); cards[card.id] = registryOf(card);
+    }
+    if (frame.type === 'snapshot_item' && event?.resource?.kind === 'agent' && typeof event.data?.id === 'string') agents[event.data.id] = { ended: event.data.state === 'ended' };
+    if (frame.type === 'snapshot_end') { complete = begun; cursor = frame.cursor ?? null; break; }
+  }
+  if (!complete) throw new Error('compensation needs a complete fresh board role reading');
+  // Current committed state is retained for the predecessor. No previous state-file bytes are restored.
+  state.cards = cards; state.agents = agents; state.agentPrincipals = {};
+  state.cursor = cursor; state.ready = true; state.pending = {};
+  state.cleanupReady = Object.keys(cards).length > 0;
+  flushState(true);
+  return Object.values(cards);
+}
+async function compensateRunPlacements({ selection }) {
+  compensationReading = true;
+  try {
+    const who = await door('/api/v3/session/test');
+    if (who.principalId !== self) throw new Error('compensation credential names another app');
+    const cards = await currentRoleCards();
+    passTasks = undefined; passPeople = undefined;
+    // Resolve ALL relevant role demand before the first cleanup effect. An unresolved role cannot be mistaken for none.
+    const rolesByRoom = new Map(), viewsByRoom = new Map();
+    const rooms = new Set([...Object.values(state.projects), ...Object.keys(state.runSeats), ...Object.keys(state.borrowedRunSeats)]);
+    for (const roomId of rooms) {
+      const projects = Object.keys(state.projects).filter(project => state.projects[project] === roomId);
+      if (projects.length !== 1) throw new Error(`run placement Room ${roomId} has no unique project`);
+      const roleCards = cards.filter(card => card.live && card.project === projects[0]).map(card => ({ ...card, run: null }));
+      const demand = await projectAgentsOf(projects[0], roleCards);
+      if (!demand.mayUnseat || demand.unresolved.length || demand.waiting.length || demand.held.length) throw new Error(`current role demand for ${projects[0]} is unresolved`);
+      const roles = new Map();
+      for (const [agentId, role] of demand.wanted) {
+        const principalId = await agentPrincipalOf(agentId);
+        if (!principalId) throw new Error(`current role ${agentId} has no principal`);
+        roles.set(principalId, role);
+      }
+      rolesByRoom.set(roomId, roles);
+      const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch(error => {
+        if (error.status === 404 && !Object.keys(state.runSeats[roomId] ?? {}).length) return null;
+        throw error;
+      });
+      if (!view) continue;
+      viewsByRoom.set(roomId, view);
+      const people = await peopleOf(view);
+      const channel = view.conversations?.find(item => item.conversationId === view.room.defaultConversationId);
+      const receives = new Map((channel?.agentParticipants ?? []).map(participant => [participant.principalId, participant.answers]));
+      for (const member of view.members ?? []) {
+        if (member.kind !== 'agent' || member.seatedBy === self) continue;
+        const role = roles.get(member.principalId);
+        // Exact v5 unseats other apps' non-role agents and unconditionally rewrites role receives.
+        // Its restart is ineligible while either act would undo a currently independent placement.
+        if (!role && !people.has(member.seatedBy)) throw Object.assign(new Error(`predecessor would remove borrowed agent ${member.principalId} in ${roomId}`), { code: 'predecessor-borrowed-agent' });
+        if (role && channel && receives.get(member.principalId) !== role.answers) throw Object.assign(new Error(`predecessor would rewrite independent receive for ${member.principalId} in ${roomId}: ${receives.get(member.principalId) ?? 'none'} to ${role.answers}`), { code: 'predecessor-independent-receive' });
+      }
+    }
+    for (const [roomId, placements] of Object.entries(state.runSeats)) {
+      const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
+      const view = viewsByRoom.get(roomId);
+      if (!view) throw new Error(`run placement Room ${roomId} has no current roster`);
+      const members = new Map((view.members ?? []).map(member => [member.principalId, member]));
+      const people = await peopleOf(view);
+      for (const [principalId, placement] of Object.entries(placements)) {
+        if (placement.owner !== selection) throw new Error(`run placement ${principalId} belongs to another or unknown selection`);
+        const role = rolesByRoom.get(roomId).get(principalId), member = members.get(principalId);
+        const independent = member && (people.has(member.seatedBy) || member.seatedBy !== self);
+        if (role && !independent) {
+          // Retain the current role seat and restore its current receive requirement through a conditional acknowledgement.
+          const placed = await door(`${room}/join`, { body: { principalId, roleKeys: role.roleKeys, answers: role.answers,
+            ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}),
+            ...(!member ? { preserveExisting: true } : { expectedSeatedBy: self }) } });
+          if (placed.seatedBy !== self) (state.borrowedRunSeats[roomId] ??= {})[principalId] = placed.seatedBy ?? null;
+        } else {
+          // The conditional command also acknowledges absence/replacement without touching a person's or borrowed seat.
+          await door(`${room}/leave`, { body: { principalId, expectedSeatedBy: self } });
+          if (independent) (state.borrowedRunSeats[roomId] ??= {})[principalId] = member.seatedBy ?? null;
+        }
+        delete placements[principalId]; flushState(true);
+        log('run-placement-compensated', { roomId, principalId, rolePreserved: Boolean(role), independentPreserved: Boolean(independent) });
+      }
+      if (!Object.keys(placements).length) delete state.runSeats[roomId];
+    }
+    flushState(true);
+  } finally { compensationReading = false; sourceAdmitted = false; }
+}
+
+lifecycle = createLifecycle({ state, configPath, statePath: config.stateFile, persist: () => flushState(true), log,
+  readiness: () => ({ loaded: true, sourceAdmitted: Boolean(sourceAdmitted && state.ready && !lifecycle?.paused),
+    placementOwed: Object.keys(state.pending).length + Object.keys(state.projectsOwed).length }),
+  pause: async () => {
+    stream?.connection.abort(new Error('projection quiescing'));
+    fileReading.abort(new Error('projection quiescing'));
+    await readingDone; await draining;
+    sourceAdmitted = false; flushState(true);
+  },
+  resume: () => { fileReading = new AbortController(); },
+  compensate: compensateRunPlacements,
+  parentDisconnected: error => { stopping = true; if (error) process.exitCode = 1; },
+});
+lifecycle.announce();
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
+  stopping = true;
+  void lifecycle.quiesce().then(() => { shutdown.abort(); }, error => {
+    log('quiesce-failed', { message: error.message }); process.exitCode = 1; shutdown.abort();
+  });
+});
+
 // the minute's retry; the stream's own bounds (readingBounds) end a reading that hangs
 if (disconnecting) {
   const previousCleanup = state.cleanupReady;
@@ -920,6 +1065,8 @@ if (disconnecting) {
       } catch (error) { pending.push(`${roomId}: ${error.code ?? 'cleanup failed'}`); }
     }
     if (pending.length) throw Object.assign(new Error(`${pending.length} Room withdrawals remain owed`), { code: 'withdrawal-pending' });
+    const debt = lifecycle.debt();
+    if (debt.outstanding || debt.unknown || debt.run) throw Object.assign(new Error('unanswered product effects or run placements retain withdrawal debt'), { code: 'withdrawal-pending' });
     state.disconnectedAt = new Date().toISOString(); log('projection-withdrawn');
   } catch (error) { log('withdrawal-pending', { code: error.code ?? null, message: String(error.message).slice(0, 200) }); process.exitCode = 1; }
   finally { state.cleanupReady = previousCleanup; flushState(); }
@@ -929,17 +1076,20 @@ if (disconnecting) {
 
 const retrying = setInterval(() => { sweepRequested = true; void drain(); }, 60_000);
 while (!stopping) {
+  if (lifecycle.paused) { await new Promise(resolve => setTimeout(resolve, 100)); continue; }
   if (state.streamRetryAt > Date.now()) { await new Promise((resolve) => setTimeout(resolve, Math.min(5000, state.streamRetryAt - Date.now()))); continue; }
-  let named = null;
-  if (!state.cursor || flag === '--once') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; saveState(); }
+  let named = null, snapshotBegun = false;
+  if (!state.cursor || flag === '--once') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; saveState(); lifecycle.announce(); }
   await drain();
+  if (lifecycle.paused || stopping) continue;
+  readingDone = new Promise(resolve => { endReading = resolve; });
   try {
     // A connection with no cursor is answered with the board's whole list first. Only such a list, read to its end,
     // says what the board no longer carries; a resumed stream names only what changed.
     const after = flag === '--once' ? null : state.cursor;
     for await (const frame of follow(after)) {
-      if (stopping) break;
-      if (frame.type === 'snapshot_begin') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); }
+      if (stopping || lifecycle.paused) break;
+      if (frame.type === 'snapshot_begin') { snapshotBegun = true; named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); lifecycle.announce(); }
       if (frame.type === 'resync_required' || frame.type === 'access_revoked') { invalidateSource(); log(frame.type, { reason: frame.reason }); break; }
       const event = frame.data;
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'task' && event.data?.card
@@ -958,6 +1108,7 @@ while (!stopping) {
         if (ended !== was) for (const held of Object.values(state.cards)) if (held.live && held.project && held.agents?.includes(event.data.id)) state.projectsOwed[held.project] = true;
       }
       if (frame.type === 'snapshot_end' && named) {
+        if (!snapshotBegun) throw new Error('a complete board reading needs its snapshot begin before its end');
         state.ready = true; state.cleanupReady = named.size > 0;
         if (named.size) {
           for (const card of Object.values(state.cards)) if (!named.has(card.id)) {
@@ -970,21 +1121,25 @@ while (!stopping) {
         named = null;
       } else if (!named && state.ready && state.cleanupReady && frame.cursor) state.cursor = frame.cursor;
       saveState(state);
+      if (frame.type === 'snapshot_end') { flushState(true); lifecycle.announce(); }
       if (flag === '--once' && frame.type === 'snapshot_end') { await drain(); stopping = true; break; }
       void drain();
     }
   } catch (error) {
+    sourceAdmitted = false; lifecycle.announce();
     if (stream) stream.ended = true;
     // HTTP authentication/access refusal invalidates the baseline as an explicit revocation frame does.
-    if (named || [401, 403, 409].includes(error.status)) invalidateSource();
+    if (!lifecycle.paused && (named || [401, 403, 409].includes(error.status))) invalidateSource();
     if (error.status === 429) { state.streamRetryAt = Date.now() + error.retryMs + 250; flushState(); }
-    log('event-stream-failed', { message: String(error.message).slice(0, 200) });
+    if (!lifecycle.paused && !stopping) log('event-stream-failed', { message: String(error.message).slice(0, 200) });
   }
   if (stream) stream.ended = true;
-  sourceAdmitted = false;
-  if (named) invalidateSource();
-  if (!stopping) await new Promise((resolve) => setTimeout(resolve, 5000));
+  sourceAdmitted = false; lifecycle.announce();
+  if (named && !lifecycle.paused) invalidateSource();
+  endReading();
+  if (!stopping && !lifecycle.paused) await new Promise((resolve) => setTimeout(resolve, 5000));
 }
 clearInterval(retrying);
-await draining;
-flushState();
+await lifecycle.quiesce();
+flushState(true);
+if (process.connected) process.disconnect();

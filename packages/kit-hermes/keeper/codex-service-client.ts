@@ -1,5 +1,5 @@
 // Acquire the independently serving host proxy. The kernel arbitrates the port; a failed contender owns no listener.
-import { responseWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { responseWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -73,7 +73,7 @@ export async function ensureCodexService({ port, directory, environment }: { por
     if (identity) {
       // Another keeper may have won the port between our absent read and spawn. Retire only our redundant
       // supervisor; leaving it retrying could take that port later without another acquisition.
-      if (identity.instance !== instance) child.kill('SIGTERM');
+      if (identity.instance !== instance) stopWorkChild(child, () => child.kill('SIGTERM'), { signal: 'SIGTERM' });
       return identity;
     }
     if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Codex proxy start ended (${child.exitCode ?? child.signalCode}); inspect ${resolve(directory, 'codex-proxy.log')}. No serving process was stopped.`);

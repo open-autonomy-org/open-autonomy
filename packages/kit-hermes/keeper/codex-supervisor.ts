@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Supervise only this host proxy's own listener. This retained process is outside every keeper generation.
-import { initializeWorkLedger, closeWorkLedger, recordWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { initializeWorkLedger, closeWorkLedger, recordWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -8,7 +8,7 @@ const [port, binding, instance] = process.argv.slice(2);
 if (!binding || !instance || !Number.isInteger(Number(port))) throw new Error('Codex supervisor needs port, binding and instance');
 await initializeWorkLedger('oa-codex-supervisor', { kind: 'machine', id: `${binding}\0${port}` });
 let stopping = false, child: ChildProcess | undefined;
-const stop = () => { stopping = true; child?.kill('SIGTERM'); };
+const stop = () => { stopping = true; const live = child; if (live) stopWorkChild(live, () => live.kill('SIGTERM'), { signal: 'SIGTERM' }); };
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, stop);
 while (!stopping) {
   const began = Date.now();

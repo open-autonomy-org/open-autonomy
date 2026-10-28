@@ -120,3 +120,10 @@ decision. Current public-books policy and the OA dashboard's owner controls and 
 The proposed [contribution and role-grant boundary](decisions/0029-workplace-contribution-and-explicit-giver-grants.md) moves the funding views to `packages/workplace` and replaces snapshot-derived giver authority with explicit requests through Workplace's role door.
 
 When the game kit is configured with a native `board`, allocating a card creates it ready without launching a harness. `game.ts start` moves it to running and delivers its native agent declaration. An already running, explicitly published harness session can be bound with `start ID --session SESSION`; the Teams agent-record door binds that real session as the card agent’s main session. Neither the kit nor the integration fabricates a transcript or launches an additional harness. The World’s connector may discover only explicitly selected worker homes, under an independent supercode/Teams home and socket. The integration’s three installations remain separate and consented.
+
+Project Rooms program updates follow [ADR 0035](decisions/0035-project-rooms-program-receipts.md):
+the publisher prepares an immutable complete Git artifact and explicitly qualifies its exact recovery
+pair; the native connection owns admission, selection, its IPC child and the complete generation
+transaction. Loaded/source-admitted readiness is separate from placement debt. Graceful quiesce
+joins writes, and run-only compensation preserves current role and independent/person placements;
+unknown remote effects remain durable debt and cannot authorize predecessor restart.
