@@ -246,7 +246,8 @@ headers, leaving streaming bodies with their existing owner. An older or unavail
 diagnostic; recorder failure preserves the service's operation and shutdown result.
 Owners record an accepted deliberate child stop as the fixed `child.stopped` event after a normal exit or an exit
 matching the requested signal, without counting that retirement as a child failure. The child remains in flight
-until exit; a failed launch, failed stop request, unrelated nonzero exit or outcome already observed stays failed.
+until exit. Failed launches and unrelated nonzero exits remain failures; failed stop requests and outcomes already
+observed never establish stop intent.
 Timeout and operation errors still reach their callers.
 An older SDK preserves the original stop behavior and emits a coverage diagnostic instead of claiming stop coverage.
 
