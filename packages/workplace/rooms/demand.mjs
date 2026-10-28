@@ -37,17 +37,55 @@ export function runOf(card) {
   return { run: `${session.harness}:${session.session_id}`, runSince: typeof attempt.started_at === 'string' ? attempt.started_at : null };
 }
 
+// Recovery reads the complete native history. The event projector's runOf()
+// intentionally names its latest attempt; it cannot supply this positive cut.
+function recoveryRuns(card, pinned) {
+  if (!Array.isArray(card.agents) || !Array.isArray(card.attempts) || card.omitted?.attempts != null && card.omitted.attempts !== 0) refuse(`native card ${card.id} has incomplete declaration or run history`);
+  for (const agent of card.agents) {
+    if (!agent || typeof agent.id !== 'string' || !agent.id || !['active', 'ended'].includes(agent.state)
+      || typeof agent.role !== 'string' || !agent.role || !pinned.has(agent.id)) refuse(`native card ${card.id} has an unresolved or unpinned declared identity`);
+  }
+  const runs = new Set(), attempts = new Set();
+  for (const attempt of card.attempts) {
+    if (!attempt || typeof attempt !== 'object' || Array.isArray(attempt)
+      || typeof attempt.id !== 'string' || !attempt.id || attempts.has(attempt.id)) refuse(`native card ${card.id} has an ambiguous attempt identity`);
+    attempts.add(attempt.id);
+    const session = attempt.session;
+    if (session != null && (typeof session !== 'object' || Array.isArray(session))) refuse(`native card ${card.id} has an unresolved native session`);
+    // The full native cardSnapshot publishes session.agent, including agents
+    // of old attempts. Pin every name before applying lane/project filters.
+    if (session?.agent != null && (typeof session.agent !== 'string' || !session.agent || !pinned.has(session.agent))) refuse(`native card ${card.id} has an unpinned run identity`);
+    if (attempt.ended_at != null && (typeof attempt.ended_at !== 'string' || !Number.isFinite(Date.parse(attempt.ended_at)))) refuse(`native card ${card.id} has an unresolved attempt terminal`);
+    // cardSnapshot formats SQL run timestamps as ISO strings but preserves
+    // native metadata's closed/detached timestamps as integer epoch seconds.
+    for (const value of [session?.closed_at, session?.detached_at]) if (value != null
+      && !(Number.isSafeInteger(value) && value >= 0)
+      && !(typeof value === 'string' && Number.isFinite(Date.parse(value)))) refuse(`native card ${card.id} has an unresolved session terminal`);
+    if (attempt.ended_at || session?.closed_at || session?.detached_at) continue;
+    if (typeof session?.harness !== 'string' || !session.harness || session.harness.includes(':')
+      || typeof session.session_id !== 'string' || !session.session_id
+      || /[\u0000-\u0020]/.test(session.harness) || /[\u0000-\u001f]/.test(session.session_id)) refuse(`native card ${card.id} has an unresolved exact run session`);
+    runs.add(`${session.harness}:${session.session_id}`);
+  }
+  return [...runs].sort();
+}
+
 /** Only invoked on a fresh live native-owner cut plus the original actual Teams T cut. */
 export function positiveDemand({ cards, candidateAgentIds, endedCut, config }) {
   if (!Array.isArray(cards) || !Array.isArray(candidateAgentIds) || !Array.isArray(endedCut)
     || new Set(candidateAgentIds).size !== candidateAgentIds.length || candidateAgentIds.some(id => typeof id !== 'string' || !id)
-    || new Set(cards.map(card => card.id)).size !== cards.length || cards.some(card => typeof card.id !== 'string' || !card.id)) refuse('native cut has ambiguous cards or candidate identities');
+    || cards.some(card => !card || typeof card !== 'object' || Array.isArray(card) || typeof card.id !== 'string' || !card.id)
+    || new Set(cards.map(card => card.id)).size !== cards.length) refuse('native cut has ambiguous cards or candidate identities');
   const pinned = new Map();
   for (const row of endedCut) {
     if (typeof row?.id !== 'string' || !candidateAgentIds.includes(row.id) || typeof row.ended !== 'boolean' || pinned.has(row.id)) refuse('Teams cut is not the exact fixed identity/ended predicate');
     pinned.set(row.id, row.ended);
   }
   if (pinned.size !== candidateAgentIds.length) refuse('Teams cut omits a native candidate identity');
+  // Validate the complete candidate/run closure before any negative filter.
+  // The native set may also contain historical assignment/event identities
+  // which no current card lists; their exact T predicate is still required.
+  const runsByCard = new Map(cards.map(card => [card.id, recoveryRuns(card, pinned)]));
   const closed = new Set(config.closedLanes ?? [...ENDED_LANES]), leads = new Set(config.leadProfiles ?? ['lead']);
   const roles = new Map(), runs = [], projects = new Set();
   for (const original of cards) {
@@ -56,7 +94,6 @@ export function positiveDemand({ cards, candidateAgentIds, endedCut, config }) {
     const project = projectOf(card);
     if (!project) continue;
     projects.add(project);
-    if (!Array.isArray(card.agents)) refuse(`native card ${card.id} has unresolved agent declarations`);
     const declared = activeAgents(card).filter(agent => worksNow(card, agent));
     if (declared.some(agent => !pinned.has(agent.id))) refuse(`native card ${card.id} has an unpinned positive identity`);
     const working = declared.filter(agent => !pinned.get(agent.id));
@@ -67,12 +104,9 @@ export function positiveDemand({ cards, candidateAgentIds, endedCut, config }) {
         roleKeys: [...(config.agentRoleKeys ?? ['member'])], cards: [...new Set([...(old?.cards ?? []), card.id])].sort() });
     }
     if (cardRunsNow(card)) {
-      const run = runOf(card);
-      // A declared nonterminal attempt with an incomplete address is positive
-      // unresolved demand, never proof that this card owes no run placement.
-      const attempt = card.attempts?.at(-1);
-      if (attempt && !attempt.ended_at && !attempt.session?.closed_at && !attempt.session?.detached_at && !run) refuse(`native card ${card.id} has an unresolved exact run session`);
-      if (run) runs.push({ project, cardId: card.id, native: run.run, answers: working.some(agent => leads.has(agent.profile)) ? 'all' : 'mentions',
+      // T-ended negates an agent's role above. It does not prove this exact
+      // still-linked session absent, so independent run demand stays positive.
+      for (const native of runsByCard.get(card.id)) runs.push({ project, cardId: card.id, native, answers: working.some(agent => leads.has(agent.profile)) ? 'all' : 'mentions',
         roleKeys: [...(config.agentRoleKeys ?? ['member'])] });
     }
   }
