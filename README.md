@@ -26,9 +26,11 @@ You need [Bun](https://bun.sh) 1.3 or newer, a repository in a GitHub organizati
 setup, and model access for the project's agent (your own Codex subscription, or funds on its Open Autonomy account).
 
 ```bash
-pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account <your-org>/my-project
-cd my-project && pnpm --config.package-import-method=hardlink dlx create-open-autonomy check .
+pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account <your-org>/my-project
+cd my-project && pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy check .
 ```
+
+The native hoisted linker keeps lifecycle-bearing packages on the hardlink import path too. The isolated linker changes those packages to private clones or copies. Every workspace and generated host commits `nodeLinker: hoisted` and `packageImportMethod: hardlink`.
 
 `check` confirms the new repository is on the current kit. Then hand
 [`.open-autonomy/SETUP.md`](.open-autonomy/SETUP.md) to your coding agent: it agrees the project's brief and

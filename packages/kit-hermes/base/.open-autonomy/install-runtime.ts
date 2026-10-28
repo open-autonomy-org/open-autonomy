@@ -228,7 +228,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
     const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
     const overrides = { ...manifest.overrides, ...Object.fromEntries(links.map(({ name, target }) => [name, `link:${relative(options.directory, target).split(sep).join('/') || '.'}`])) };
-    const args = ['pnpm', ...(links.length ? [`--config.overrides=${JSON.stringify(overrides)}`] : []), 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    const args = ['pnpm', '--config.nodeLinker=hoisted', ...(links.length ? [`--config.overrides=${JSON.stringify(overrides)}`] : []), 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = spawnWork(() => Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     }));

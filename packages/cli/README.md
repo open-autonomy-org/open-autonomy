@@ -5,7 +5,7 @@ read; the owner's pause and resume to say; keys to mint. Nothing here runs or up
 [`create-open-autonomy`](../kit-hermes/README.md)'s), and nothing here is a door the platform lacks.
 
 ```sh
-pnpm --config.package-import-method=hardlink dlx @open-autonomy/cli status open-autonomy-org/hookline      # or: pnpm add -g --package-import-method hardlink @open-autonomy/cli; oa status …
+pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx @open-autonomy/cli status open-autonomy-org/hookline      # or: pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink @open-autonomy/cli; oa status …
 ```
 
 ```text

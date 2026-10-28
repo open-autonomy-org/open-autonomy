@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
 # A failed hard link must refuse rather than duplicate a package on this volume.
+nodeLinker: hoisted
 packageImportMethod: hardlink
 shamefullyHoist: true
 enablePrePostScripts: true

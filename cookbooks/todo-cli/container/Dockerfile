@@ -15,7 +15,7 @@ RUN curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 SHELL=/bin/
 # Codex, for a project whose setup picks it: the orchestrator runs it as each profile's worker, its model through the
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
-RUN pnpm add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version
+RUN pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 ARG RUNTIME_REGISTRY=https://registry.npmjs.org

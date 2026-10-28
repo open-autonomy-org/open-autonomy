@@ -21,7 +21,7 @@ import { delimiter, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** The one command that installs, or upgrades, the four at one release. */
-export const INSTALL = 'pnpm add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode';
+export const INSTALL = 'pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode';
 
 /** What a machine's supercode is made of: its command, and its release's orchestrator entry and harness SDK folder. */
 export type MachineSupercode = { bin: string; orchestratorEntry: string; harnessSdk: string; release: string | null };

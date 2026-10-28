@@ -1,4 +1,5 @@
 packages: []
+nodeLinker: hoisted
 packageImportMethod: hardlink
 shamefullyHoist: true
 autoInstallPeers: false

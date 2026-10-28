@@ -135,7 +135,7 @@ if (command === 'ship') {
   writeFileSync(resolve(home, 'kit-restart.json'), JSON.stringify({ version: landed }));
   console.log(`Kit ${landed} landed; the supervisor will drain the gateway and restart the complete stack.`);
 } else if (command === 'status' || command === 'upgrade') {
-  const latest = run(['pnpm', 'view', 'create-open-autonomy', 'version']).trim();
+  const latest = run(['pnpm', '--config.nodeLinker=hoisted', 'view', 'create-open-autonomy', 'version']).trim();
   console.log(JSON.stringify({ installed, running, latest }));
   if (command === 'status' || !newer(latest, installed)) process.exit(0);
   git('fetch', '-q', 'origin', 'main');
@@ -157,18 +157,18 @@ if (command === 'ship') {
   if (stagedVersion !== latest) {
     // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
     // session; the next `maintain.ts upgrade` resumes here, and the kit's check below refuses to push a marked file.
-    const up = Bun.spawnSync({ cmd: ['pnpm', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env: packageEnv, stdout: 'pipe', stderr: 'pipe' });
+    const up = Bun.spawnSync({ cmd: ['pnpm', '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env: packageEnv, stdout: 'pipe', stderr: 'pipe' });
     const said = `${up.stdout.toString()}${up.stderr.toString()}`.trim();
     if (up.exitCode === 2) { console.log(`${said}\nThe upgrade left conflicts in ${worktree}. Resolve each marked file there, keeping this project's intent and the kit's change, then run \`maintain.ts upgrade\` again.`); process.exit(2); }
     if (up.exitCode !== 0) throw new Error(`create-open-autonomy@${latest} upgrade failed: ${said}`);
     console.log(said);
   }
-  run(['pnpm', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
+  run(['pnpm', '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
   // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
   // kit's own package too (soc2 is self-build with a layer), and its template ships the typecheck that proves the
   // kit's sources still compile.
   if (['self-build', 'soc2'].includes(record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).skew ?? '')) {
-    run(['pnpm', 'install', '--frozen-lockfile', '--package-import-method', 'hardlink'], worktree);
+    run(['pnpm', '--config.nodeLinker=hoisted', 'install', '--frozen-lockfile', '--package-import-method', 'hardlink'], worktree);
     run(['bun', 'run', 'check'], worktree);
   }
   run(['git', 'add', '-A'], worktree);

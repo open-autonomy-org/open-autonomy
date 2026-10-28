@@ -1,7 +1,7 @@
 {
   "name": "create-open-autonomy",
-  "version": "3.26.18",
-  "description": "Open Autonomy starter kits: complete owner-run Hermes and native IR repositories with the SDK wired in. `pnpm --config.package-import-method=hardlink dlx create-open-autonomy <dir>` scaffolds one.",
+  "version": "3.26.19",
+  "description": "Open Autonomy starter kits: complete owner-run Hermes and native IR repositories with the SDK wired in. `pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy <dir>` scaffolds one.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

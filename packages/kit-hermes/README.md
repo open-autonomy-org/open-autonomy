@@ -61,8 +61,8 @@ filesystems, unsafe providers, cross-namespace handoff and ambiguous mandatory i
 runtime evidence, public x86_64/Linux contract proof and actual additional OS execution remain separately identified.
 
 ```bash
-pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account owner/my-project
-pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-company --project my-company --account owner/company --skew company
+pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account owner/my-project
+pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy my-company --project my-company --account owner/company --skew company
 create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
 create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
 create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
