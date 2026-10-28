@@ -805,7 +805,7 @@ setInterval(() => {
   // Hermes drains on SIGUSR1; the orchestrator stops on SIGTERM, recording each conversation's session to resume.
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
-  stopWorkChild(gateway, () => process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1), { signal: onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1 });
+  stopWorkChild(gateway, () => process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1), { signal: onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1, exitCode: onNative ? 0 : 75 });
   } catch (error) { finish({ ok: false }); throw error; }
   finally { finish(); }
 }, 5000);
