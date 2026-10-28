@@ -90,13 +90,13 @@ that immutable row. Keys, item IDs, association preflight of the whole observati
 retained obligations and cursor acknowledgement are unchanged.
 
 The session index is a session's only change signal. A transcript that grows or is rewritten changes its descriptor
-(`updated_at_ms`), and the index says it `updated`; read on the volter-org MacBook, one Codex home's index said 8
+(a Claude Code or Codex row's `updated_at_ms`, a Hermes row's `message_count`), and the index says it `updated`; read on the volter-org MacBook, one Codex home's index said 8
 `updated` in 5 s across its 4 live sessions. The publisher no longer follows each published session as well. Those
 follows were one more subscription per live session on the shared harness reader, and each opening read its source in
 that reader's single harness serve. When this record's first coalesced release reached volter-org, the follow openings
 passed their 30 s request timeout (54 times), each was reopened 5 s later while the serve still worked the abandoned
 one, and the reader's subscription cap (800 refusals) and the serve's waiting-caller cap (121 refusals) filled, so every
 pass's native reads were refused and board deliveries stopped committing. A transcript change marks its session and
-native declarations; only a session that appeared or left also marks documents, since documents read the home's
-profiles, jobs and skills and committed main, never a transcript.
+native declarations; a session that appeared or left, or a change to the profiles' declarations, also marks documents,
+since documents read the home's profiles, jobs and skills and committed main, never a transcript.
 This changes no audience, spend authority, credentials or native lifecycle evidence.

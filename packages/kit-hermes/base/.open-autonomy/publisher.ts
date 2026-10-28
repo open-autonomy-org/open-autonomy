@@ -346,7 +346,8 @@ async function nativeState(): Promise<void> {
   for (const profile of Object.values(profiles)) for (const [id, job] of Object.entries(profile.jobs)) jobNames.set(id, job.residue?.name ?? id);
   // A session's publication reads its own binding and run; every session's reads the profiles and job names.
   declarations = JSON.stringify(Object.entries(profiles).map(([name, { bindings: _bindings, ...profile }]) => [name, profile]));
-  if (declarations !== priorDeclarations) allSessionsDue = true;
+  // The setup document reads the profiles' declarations (persona, model, jobs), so a change to them is a documents change too.
+  if (declarations !== priorDeclarations) { allSessionsDue = true; documentsDirty = true; }
   else for (const [before, after] of [[priorBindings, bindings], [priorRuns, runs]] as Array<[Map<string, unknown>, Map<string, unknown>]>)
     for (const id of new Set([...before.keys(), ...after.keys()])) if (JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id))) sessionsDue.add(id);
   nativeOk = true;
@@ -380,7 +381,7 @@ function refuse(key: string, error: SessionRefused): void {
 function sessions(only?: string): void {
   const keys = only !== undefined ? [only] : allSessionsDue ? [...descriptors.keys()] : [...sessionsDue];
   if (only === undefined) { allSessionsDue = false; sessionsDue.clear(); }
-  for (const key of keys) {
+  for (const [at, key] of keys.entries()) {
     if (quitting) return;
     const d = descriptors.get(key);
     if (!d) continue;
@@ -390,7 +391,12 @@ function sessions(only?: string): void {
       // That resume is checked against the source when its publication runs (publishSession).
       const ended = checkpoints[platformKey(key)]?.endedAt;
       if (ended && resumedAfter(key, ended)) stopped.delete(key); else if (ended) stopped.add(key);
-    } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); continue; } throw error; }
+    } catch (error) {
+      if (error instanceof SessionRefused) { refuse(key, error); continue; }
+      // A pass that fails here leaves this session and every one after it due for the next pass.
+      if (only === undefined) for (const left of keys.slice(at)) sessionsDue.add(left);
+      throw error;
+    }
     refused.delete(key);
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
@@ -811,11 +817,12 @@ function requestTick(): void {
   settle = later(flush, Math.max(0, Math.min(SETTLE, burstAt + SETTLE_MAX - now)));
 }
 // The session index is how a session's change reaches the publisher. A transcript that grows or is rewritten changes its
-// descriptor (its updated_at_ms), so the index says it `updated`, and that session alone is due. No session is followed
-// as well: a follow opened one more subscription per live session on the shared reader, each opening read its source in
-// the reader's one harness serve, and a backlog of them (follow opens past their 30 s timeout, reopened every 5 s while
-// the serve still worked the abandoned ones) filled the reader's subscription cap and the serve's waiting callers, which
-// then refused every pass its native reads. A session that appeared or left can change the declarations and documents.
+// descriptor (a Claude Code or Codex row's updated_at_ms, a Hermes row's message_count), so the index says it `updated`,
+// and that session alone is due. No session is followed as well: a follow opened one more subscription per live session
+// on the shared reader, each opening read its source in the reader's one harness serve, and a backlog of them (follow
+// opens past their 30 s timeout, reopened every 5 s while the serve still worked the abandoned ones) filled the reader's
+// subscription cap and the serve's waiting callers, which then refused every pass its native reads. A session that
+// appeared or left can change the declarations and documents.
 sc.on('sessionIndexEvent', ev => {
   if(quitting)return;
   if ('error' in ev) { log(`index unavailable: ${ev.error.message}`); return; }
