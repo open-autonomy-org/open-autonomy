@@ -188,7 +188,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
   if (options.archive && artifacts.size === 0) throw new Error('Runtime artifact directory contains no npm-pack archives');
   // The installer serves immutable archives on loopback; all other locked dependencies use the normal registry.
   // No source override or alternate event implementation enters the consumer process.
-  const server = artifacts.size ? Bun.serve({ hostname: '127.0.0.1', port: 0,
+  const server = artifacts.size ? Bun.serve({ hostname: '127.0.0.1', port: 0, idleTimeout: 0,
     async fetch(request, server) {
       return responseWork('door', 'keeper.registry-request', async () => {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
