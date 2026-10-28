@@ -38,18 +38,46 @@ export function createRecovery({ journal, owner, rooms, binding, selection, conf
       || !same(cut.teams.control, identity.controls.T) || !Array.isArray(cut.providers)) refuse('native/Teams/source closure cut is incomplete or belongs to another operation');
     return positiveDemand({ cards: cut.native.cards, candidateAgentIds: cut.native.candidateAgentIds, endedCut: cut.teams.endedCut, config });
   }
+  function protectedProviders(identity, expectedOwners) {
+    // These descriptors came from the actual original native owner, not a
+    // candidate argument. Match the complete issuer vector even on commit,
+    // where no rollback inverse would otherwise resolve Agents and Cards.
+    const control = identity.controls.L;
+    if (control?.contract !== 'rh2-provider-source-closure/v1' || !Array.isArray(control.owners)
+      || control.owners.length !== 2 || !Array.isArray(expectedOwners) || expectedOwners.length !== control.owners.length
+      || new Set(expectedOwners.map(value => canonical(value))).size !== expectedOwners.length
+      || control.owners.some(row => !row?.identity || row.identity.organizationId !== config.rh2.organization
+        || ['authorityId', 'organizationId', 'appId', 'principalId', 'installationId'].some(key => typeof row.identity[key] !== 'string' || !row.identity[key])
+        || expectedOwners.filter(expected => same(expected, row.identity)).length !== 1)) refuse('the protected original L omits or changes an issuing provider');
+    const agents = control.owners.filter(row => row.catalogue === 'agents-v1' && row.identity.appId === config.rh2.agentsRegistration);
+    const cards = control.owners.filter(row => row.catalogue === 'cards-v1'
+      && (!config.rh2.cardsPrincipalId || row.identity.principalId === config.rh2.cardsPrincipalId));
+    if (agents.length !== 1 || cards.length !== 1
+      || new Set(control.owners.map(row => canonical(row.identity))).size !== control.owners.length) refuse('protected L does not bind the exact Agents and Cards issuers');
+    for (const descriptor of control.owners) {
+      const request = descriptor.seal, body = request?.body;
+      const path = `/api/v3/organizations/${encodeURIComponent(descriptor.identity.organizationId)}/automation/apps/${encodeURIComponent(descriptor.identity.appId)}/projection-controls`;
+      if (request?.method !== 'POST' || request.path !== path || body?.version !== 1 || body.action !== 'seal'
+        || typeof body.id !== 'string' || !/^[a-f0-9]{32}$/.test(body.id)
+        || typeof body.expectedGeneration !== 'string' || !/^[1-9][0-9]{0,18}$/.test(body.expectedGeneration)
+        || body.phase?.registration !== 'supercode-canonical-recovery/v1'
+        || body.phase.reference !== digestValue({ operationId: identity.operation, sourceDecision: identity.sourceDecision })) refuse('protected L has no exact original issuer seal request');
+    }
+    return control.owners;
+  }
   async function providerClosure(status, identity, expectedOwners) {
+    const descriptors = protectedProviders(identity, expectedOwners);
     const result = await owner('provider-closure', { operation: identity.operation, expectedRevision: status.revision });
     // The actual native phase owner calls each issuing Agents/Cards actor's
     // qualified closure door. A file or recover() argument cannot supply this.
-    if (result?.protocol !== 1 || result.operation !== identity.operation || !same(result.controls, identity.controls)
+    if (result?.protocol !== 1 || result.operation !== identity.operation || result.revision !== status.revision || !same(result.controls, identity.controls)
       || !Array.isArray(result.owners) || result.owners.length !== expectedOwners.length) refuse('issuing provider closure inventory is unavailable');
     const seen = new Set();
     for (const expected of expectedOwners) {
       const found = result.owners.filter(row => same(row.identity, expected));
       if (found.length !== 1 || seen.has(canonical(expected))) refuse('provider owner/epoch inventory differs');
       seen.add(canonical(expected));
-      const row = found[0];
+      const row = found[0], descriptor = descriptors.find(value => same(value.identity, expected));
       if (row.contract !== 'rh2-provider-source-closure/v1' || !Array.isArray(row.manifests)
         || !Array.isArray(row.closedStatuses) || row.manifests.length !== row.closedStatuses.length
         || !row.sourceSeal || !row.catalogue || !row.representations || row.inventoryDigest !== digestValue({ identity: row.identity,
@@ -57,7 +85,11 @@ export function createRecovery({ journal, owner, rooms, binding, selection, conf
           closedStatuses: row.closedStatuses, representations: row.representations })) refuse('provider closure has no exact owner-bound sealed inventory');
       const current = row.sourceSeal.current, map = row.representations;
       if (row.sourceSeal.state !== 'terminal' || row.sourceSeal.original?.action !== 'seal'
-        || current?.state !== 'held' || current.authority_id !== row.identity.authorityId
+        || row.sourceSeal.original.controlId !== descriptor.seal.body.id
+        || row.catalogue.controlId !== descriptor.seal.body.id || current?.catalogue !== descriptor.catalogue
+        || String(current.generation) !== String(BigInt(descriptor.seal.body.expectedGeneration) + 1n)
+        || row.sourceSeal.original.partition?.epoch !== current.epoch
+        || current.state !== 'held' || current.authority_id !== row.identity.authorityId
         || current.organization_id !== row.identity.organizationId || current.organization_id !== config.rh2.organization
         || current.app_id !== row.identity.appId || current.principal_id !== row.identity.principalId
         || current.installation_id !== row.identity.installationId || row.sourceSeal.original.controlId !== row.catalogue.controlId
@@ -227,7 +259,9 @@ export function createRecovery({ journal, owner, rooms, binding, selection, conf
     if (old.length) {
       if (old.some(entry => entry.value.branch !== branch)) refuse('source branch cannot change under an original acknowledgement');
       const z = old.at(-1).value;
-      const providers = await providerClosure(status, identity, (await owner('recovery-cut', { operation, expectedRevision: status.revision })).providers);
+      const currentCut = await owner('recovery-cut', { operation, expectedRevision: status.revision });
+      validateCut(currentCut, status, identity);
+      const providers = await providerClosure(status, identity, currentCut.providers);
       const roomInventory = await rooms.closeAll();
       if (digestValue(roomInventory) !== z.roomInventoryDigest || !same(providers.owners.map(row => ({ identity: row.identity, digest: row.inventoryDigest })), z.ownerInventoryDigests)) refuse('fresh current inventory differs from the retained acknowledgement');
       const final = await owner('recovery-status', { operation, expectedRevision: status.revision });
