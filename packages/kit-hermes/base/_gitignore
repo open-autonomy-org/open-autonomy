@@ -73,7 +73,7 @@ hermes/.skills_prompt_snapshot.json
 .open-autonomy/*.custody-*.json
 .open-autonomy/*.lock/
 .open-autonomy/*.tmp
-.open-autonomy/bun.lock
+# The adopter commits .open-autonomy/pnpm-lock.yaml before activation.
 
 # PM runtime notes, cursors and preserved planning worktree (when the home is in the repo)
 hermes/scrum-intake/

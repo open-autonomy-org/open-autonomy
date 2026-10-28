@@ -17,5 +17,13 @@
     "@volter/twin-discord": "^2.0.5",
     "@volter/twin-jira": "^2.0.5",
     "@volter/twin-slack": "^2.0.5"
+  },
+  "packageManager": "pnpm@12.15.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

@@ -9,7 +9,7 @@ boilerplate — and itself an Open Autonomy project. **Every spend is metered on
   partners), the key registry, the development stream (sessions, updates, items), the timeline, a project's page,
   the widgets, the docs sync. `apps/platform/` mounts it with patronage around it (Sponsors, Polar, grant credits,
   coupons, explore); `apps/self-host/` mounts it bare: the deployment anyone copies to run their own, private or not.
-  Deploys and admin ops go through GitHub only. Deploying the platform (`deploy.yml`) and publishing the docs
+  Deploys and admin ops go through GitHub only. The retired platform workflow (`.github/retired-workflows/deploy.yml.txt`) and publishing the docs
   (`pages.yml`) run only on a push to `publish`, the dedicated publication branch, which moves only on the owner's
   explicit publication authorization. npm packages are released apart from the site, from a clean
   checkout of the commit the manager permitted, on reviewed `main`, by `scripts/npm-publish-missing.sh` (pack once,

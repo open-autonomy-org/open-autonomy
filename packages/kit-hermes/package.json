@@ -1,7 +1,7 @@
 {
   "name": "create-open-autonomy",
-  "version": "3.26.17",
-  "description": "Open Autonomy starter kits: complete owner-run Hermes and native IR repositories with the SDK wired in. `bun create open-autonomy <dir>` scaffolds one.",
+  "version": "3.26.18",
+  "description": "Open Autonomy starter kits: complete owner-run Hermes and native IR repositories with the SDK wired in. `pnpm --config.package-import-method=hardlink dlx create-open-autonomy <dir>` scaffolds one.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -32,10 +32,17 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@open-autonomy/sdk": "4.1.0"
+    "@open-autonomy/sdk": "workspace:4.1.0"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
     "typescript": "^5.9.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

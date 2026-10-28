@@ -30,11 +30,11 @@
     "README.md"
   ],
   "scripts": {
-    "typecheck": "bunx tsc --noEmit",
-    "check": "bunx tsc --noEmit"
+    "typecheck": "pnpm exec tsc --noEmit",
+    "check": "pnpm exec tsc --noEmit"
   },
   "dependencies": {
-    "@open-autonomy/sdk": "workspace:*",
+    "@open-autonomy/sdk": "workspace:4.1.0",
     "@volter/supercode-ui": "^0.1.105",
     "hono": "^4.13.11",
     "preact": "^10",
@@ -50,5 +50,12 @@
   },
   "bin": {
     "open-autonomy-dash-assets": "scripts/build-dash.ts"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

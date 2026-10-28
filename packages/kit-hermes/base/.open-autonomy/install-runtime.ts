@@ -3,7 +3,7 @@
 import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -16,7 +16,7 @@ type Options = {
   archive?: string;
   lockOnly?: boolean;
   // Told of the install's child the moment it starts, so a caller that stops on a signal can stop it too, rather than
-  // leave a `bun install` running with nobody waiting on it.
+  // leave a `pnpm install` running with nobody waiting on it.
   started?: (child: ReturnType<typeof Bun.spawn>) => void;
 };
 
@@ -105,8 +105,8 @@ export function machinePublishedBinding(environment: Record<string, string | und
   return { ...receipt, program, receipt: path };
 }
 
-// Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
-// on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
+// pnpm owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
+// on-disk representation: native link overrides to that tree, never installed copies. Leave registry packages on pnpm's native store
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
   const file = sourceLock(options.environment);
@@ -133,13 +133,17 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
         JSON.parse(readFileSync(join(target, 'package.json'), 'utf8')).name !== name) {
       throw new Error(`Source-linked dependency ${name} must name its package at ${target}`);
     }
+    const actual = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
+    if (matches.length && actual.version !== matches[0].version) throw new Error(`Source-linked dependency ${name} version ${actual.version} does not match its binding ${matches[0].version}`);
     return [{ name, target }];
   });
 }
 
 export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
-  const hash = createHash('sha256').update(readFileSync(join(options.directory, 'package.json')));
-  for (const name of ['bun.lock', 'bun.lockb']) {
+  const hash = createHash('sha256').update('pnpm-hardlink-v1').update(readFileSync(join(options.directory, 'package.json')));
+  const workspace = join(options.directory, 'pnpm-workspace.yaml');
+  if (existsSync(workspace)) hash.update(readFileSync(workspace));
+  for (const name of ['pnpm-lock.yaml']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
   }
@@ -168,8 +172,8 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const packed = spawnSyncWork(() => Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']));
     if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
     const manifest = JSON.parse(packed.stdout.toString());
-    if ((manifest.name !== 'create-open-autonomy' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
-      throw new Error('Runtime archive must be a versioned kit or @volter package');
+    if ((manifest.name !== 'create-open-autonomy' && manifest.name !== '@open-autonomy/sdk' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
+      throw new Error('Runtime archive must be a versioned kit, SDK or @volter package');
     }
     if (artifacts.has(manifest.name)) throw new Error(`Duplicate candidate package ${manifest.name}`);
     const bytes = readFileSync(path);
@@ -213,37 +217,33 @@ export async function installHostRuntime(options: Options): Promise<void> {
       });
     }
   }) : undefined;
-  const lockPath = join(options.directory, 'bun.lock');
+  const lockPath = join(options.directory, 'pnpm-lock.yaml');
   const previousLock = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : undefined;
   try {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
-    const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    const overrides = { ...manifest.overrides, ...Object.fromEntries(links.map(({ name, target }) => [name, `link:${target}`])) };
+    const args = ['pnpm', ...(links.length ? [`--config.overrides=${JSON.stringify(overrides)}`] : []), 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = spawnWork(() => Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     }));
     options.started?.(child);
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);
-    if (!options.lockOnly) for (const { name, target } of links) {
-      const installed = join(options.directory, 'node_modules', name);
-      rmSync(installed, { recursive: true, force: true });
-      mkdirSync(dirname(installed), { recursive: true });
-      symlinkSync(target, installed, process.platform === 'win32' ? 'junction' : 'dir');
-      console.log(`runtime source link: ${name} -> ${target}`);
-    }
     // Commit registry-neutral resolution with the candidate integrity, never an ephemeral review listener.
     if (server && existsSync(lockPath)) {
       const original = readFileSync(lockPath, 'utf8');
       let normalized = original;
       for (const [name, artifact] of artifacts) {
         const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
-        normalized = normalized.replaceAll(JSON.stringify(url), '""');
+        normalized = normalized.replaceAll(`, tarball: ${url}`, '').replaceAll(`tarball: ${url}, `, '');
       }
       if (normalized !== original) writeFileSync(lockPath, normalized);
     }
   } catch (error) {
     if (previousLock !== undefined) writeFileSync(lockPath, previousLock);
+    else rmSync(lockPath, { force: true });
     throw error;
   } finally { server?.stop(true); }
 }

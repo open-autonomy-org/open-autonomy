@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 type Options = {
@@ -23,8 +23,10 @@ function archivePaths(archive?: string): string[] {
 }
 
 export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'>): string {
-  const hash = createHash('sha256').update(readFileSync(join(options.directory, 'package.json')));
-  for (const name of ['bun.lock', 'bun.lockb']) {
+  const hash = createHash('sha256').update('pnpm-hardlink-v1').update(readFileSync(join(options.directory, 'package.json')));
+  const workspace = join(options.directory, 'pnpm-workspace.yaml');
+  if (existsSync(workspace)) hash.update(readFileSync(workspace));
+  for (const name of ['pnpm-lock.yaml']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
   }
@@ -86,12 +88,12 @@ export async function installHostRuntime(options: Options): Promise<void> {
       return new Response(response.body, { status: response.status, headers });
     }
   }) : undefined;
-  const lockPath = join(options.directory, 'bun.lock');
+  const lockPath = join(options.directory, 'pnpm-lock.yaml');
   const previousLock = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : undefined;
   try {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
-    const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    const args = ['pnpm', 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     });
@@ -103,12 +105,13 @@ export async function installHostRuntime(options: Options): Promise<void> {
       let normalized = original;
       for (const [name, artifact] of artifacts) {
         const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/')[1]}-${artifact.manifest.version}.tgz`;
-        normalized = normalized.replaceAll(JSON.stringify(url), '""');
+        normalized = normalized.replaceAll(`, tarball: ${url}`, '').replaceAll(`tarball: ${url}, `, '');
       }
       if (normalized !== original) writeFileSync(lockPath, normalized);
     }
   } catch (error) {
     if (previousLock !== undefined) writeFileSync(lockPath, previousLock);
+    else rmSync(lockPath, { force: true });
     throw error;
   } finally { server?.stop(true); }
 }

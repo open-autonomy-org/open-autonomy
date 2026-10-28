@@ -1,0 +1,10 @@
+packages: []
+packageImportMethod: hardlink
+shamefullyHoist: true
+autoInstallPeers: false
+strictPeerDependencies: false
+enablePrePostScripts: true
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true

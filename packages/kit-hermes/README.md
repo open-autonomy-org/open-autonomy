@@ -61,8 +61,8 @@ filesystems, unsafe providers, cross-namespace handoff and ambiguous mandatory i
 runtime evidence, public x86_64/Linux contract proof and actual additional OS execution remain separately identified.
 
 ```bash
-bun create open-autonomy my-project --project my-project --account owner/my-project
-bun create open-autonomy my-company --project my-company --account owner/company --skew company
+pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account owner/my-project
+pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-company --project my-company --account owner/company --skew company
 create-open-autonomy adopt .   --project my-project --account owner/my-project --skew manage-project   # into an existing repository
 create-open-autonomy check .     # where the project stands against the kit: version, files it changed, unresolved merges
 create-open-autonomy upgrade .   # merge the kit's change into the project's files three-way; conflicts stay marked for an agent
@@ -190,7 +190,7 @@ owns that policy; the shared team roster owns identities and authority.
 
 Application dependencies run in the local world. Production provisioning is a later explicit `--with
 production` step: the `owners` team, the `prod` branch the standing Release pull request merges into, the
-`production` environment that admits it, and for a Cloudflare Worker the token and `deploy.yml`. Package
+`production` environment that admits it, and for a Cloudflare Worker the token and the generated `.github/workflows/deploy.yml`. Package
 release automation is not yet implemented; `--with release` refuses before mutation and points to the reviewed
 publication procedure. Other live application connections are established at deployment or customer
 activation.

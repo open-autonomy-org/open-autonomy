@@ -78,8 +78,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     if (archive.status !== 0) throw new Error(`could not archive the kit at ${rev.slice(0, 8)}: ${archive.stderr?.toString().trim()}`);
     const extract = spawnSync('tar', ['-x', '-C', release], { input: archive.stdout });
     if (extract.status !== 0) throw new Error(`could not extract the kit into ${release}: ${extract.stderr?.toString().trim()}`);
-    const install = run(['bun', 'install', '--no-save'], kitDir, 300_000);
-    if (!ok(install)) throw new Error(`bun install in ${kitDir} failed: ${(install.stderr ?? '').trim()}`);
+    const install = run(['pnpm', 'install', '--frozen-lockfile', '--package-import-method', 'hardlink'], kitDir, 300_000);
+    if (!ok(install)) throw new Error(`pnpm install in ${kitDir} failed: ${(install.stderr ?? '').trim()}`);
     writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: KIT.version }, null, 2)}\n`);
     say(`release: ${release}`);
   } else say(`release: ${release} (already cut)`);

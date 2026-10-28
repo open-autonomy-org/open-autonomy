@@ -26,8 +26,8 @@ You need [Bun](https://bun.sh) 1.3 or newer, a repository in a GitHub organizati
 setup, and model access for the project's agent (your own Codex subscription, or funds on its Open Autonomy account).
 
 ```bash
-bun create open-autonomy my-project --project my-project --account <your-org>/my-project
-cd my-project && bunx create-open-autonomy check .
+pnpm --config.package-import-method=hardlink dlx create-open-autonomy my-project --project my-project --account <your-org>/my-project
+cd my-project && pnpm --config.package-import-method=hardlink dlx create-open-autonomy check .
 ```
 
 `check` confirms the new repository is on the current kit. Then hand
@@ -102,3 +102,5 @@ bun world/prepare.ts   # prepare the scenario; prints ordinary World up/attach/d
 
 The setup agent prepares a provisional project identity in [branding](branding/README.md): a name,
 short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
+
+Use pnpm 12.15.0 for dependency installation (`pnpm install --frozen-lockfile`). The native store follows the checkout volume; workspace configuration requires hard links and refuses copying. Bun remains the TypeScript runtime. npm installs refuse through `devEngines`. The host kit keeps its separate adopter-owned `.open-autonomy/pnpm-lock.yaml`; generate and review it through `bun .open-autonomy/install-runtime.ts --update-lock` before activation.

@@ -1,0 +1,6 @@
+packages: []
+packageImportMethod: hardlink
+shamefullyHoist: true
+autoInstallPeers: false
+strictPeerDependencies: false
+enablePrePostScripts: true

@@ -43,7 +43,7 @@ for (const item of packages) {
     writeFileSync(join(work, 'package.json'), JSON.stringify({ name: 'npm-verify', private: true }));
     // the release pins this run's packages to exact versions, so npm takes each sibling's tarball given here
     const beside = [...siblings(item.name)].filter((name) => name !== item.name).map((name) => packages.find((other) => other.name === name).tarball);
-    const install = spawnSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-save', item.tarball, ...beside], { cwd: work, encoding: 'utf8', timeout: INSTALL_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] });
+    const install = spawnSync('pnpm', ['add', '--ignore-scripts', '--package-import-method', 'hardlink', '--config.auto-install-peers=false', '--config.shamefully-hoist=true', item.tarball, ...beside], { cwd: work, encoding: 'utf8', timeout: INSTALL_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] });
     if (install.status !== 0) { failures.push(`${item.name}@${item.version}: its tarball does not install${install.error ? ` (${install.error.message})` : ''}: ${String(install.stderr ?? '').trim().split('\n').slice(-6).join(' | ')}`); continue; }
     const root = join(work, 'node_modules', ...item.name.split('/'));
     const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));

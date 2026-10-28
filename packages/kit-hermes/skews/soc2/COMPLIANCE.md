@@ -8,7 +8,7 @@ The compliance program itself lives in an [Evidence Desk](https://github.com/ope
 workspace that the owner keeps in a private place of their choosing, never in this public repository: evidence such
 as user listings and signed attestations is confidential.
 
-From an Evidence Desk checkout (`bun install` once):
+From an Evidence Desk checkout (`pnpm install --frozen-lockfile` once):
 
 1. Once the owner is on the roster in `.open-autonomy/config.yaml`, create the workspace and read this project into
    it; the import takes the roster, seams, agents, schedules and production rules from `.open-autonomy/`:

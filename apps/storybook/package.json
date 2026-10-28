@@ -12,5 +12,12 @@
     "preact": "^10",
     "storybook": "10.6.2",
     "vite": "^6.4.4"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

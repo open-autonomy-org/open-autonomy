@@ -17,7 +17,7 @@ body:
       description: Include exact commands, issue/PR links, workflow run ids, and relevant logs.
       value: |
         ```bash
-        bun install
+        pnpm install --frozen-lockfile
         bun run check
         ```
     validations:

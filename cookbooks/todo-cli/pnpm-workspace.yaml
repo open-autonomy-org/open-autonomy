@@ -1,0 +1,4 @@
+packages: []
+packageImportMethod: hardlink
+autoInstallPeers: false
+strictPeerDependencies: false

@@ -17,7 +17,7 @@
 // no network, an unreadable lockfile) stops the release too.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
@@ -84,8 +84,11 @@ function baseCopy(sha, file) {
     const fetched = spawnSync('git', ['fetch', '--no-tags', '--depth=1', 'origin', sha], { encoding: 'utf8' });
     if (fetched.status !== 0) stop(`could not fetch the last release ${sha}: ${fetched.stderr.trim()}`);
   }
-  const shown = spawnSync('git', ['show', `${sha}:./${file}`], { maxBuffer: 1 << 30 });
-  return shown.status === 0 ? shown.stdout : null;
+  for (const name of [file, ...(basename(file) === 'pnpm-lock.yaml' ? [file.replace(/pnpm-lock\.yaml$/u, 'bun.lock')] : [])]) {
+    const shown = spawnSync('git', ['show', `${sha}:./${name}`], { maxBuffer: 1 << 30 });
+    if (shown.status === 0) return { bytes: shown.stdout, name: basename(name) };
+  }
+  return null;
 }
 
 async function scanner() {
@@ -118,6 +121,29 @@ async function scanner() {
 
 // pkg@version (ecosystem) -> the advisories OSV reports on it, as { ids, aliases, severity, summary } groups.
 function scan(binary, file) {
+  // pnpm 12 has a bootstrap document before its workspace document. Give OSV each document under its native
+  // filename so a scanner that reads only one YAML document cannot silently omit the workspace dependencies.
+  if (basename(file) === 'pnpm-lock.yaml') {
+    const documents = readFileSync(file, 'utf8').split(/^---[ \t]*\r?$/mu).filter((text) => text.trim());
+    if (documents.length > 1) {
+      const temporary = mkdtempSync(join(tmpdir(), 'release-scan-pnpm-'));
+      const found = new Map();
+      try {
+        for (const [index, document] of documents.entries()) {
+          const directory = join(temporary, String(index));
+          mkdirSync(directory);
+          const path = join(directory, 'pnpm-lock.yaml');
+          writeFileSync(path, document);
+          for (const [key, advisories] of scanDocument(binary, path)) found.set(key, [...(found.get(key) ?? []), ...advisories]);
+        }
+        return found;
+      } finally { rmSync(temporary, { recursive: true, force: true }); }
+    }
+  }
+  return scanDocument(binary, file);
+}
+
+function scanDocument(binary, file) {
   const run = spawnSync(binary, ['scan', 'source', '--lockfile', file, '--format', 'json'], { encoding: 'utf8', maxBuffer: 1 << 30 });
   if (run.status !== 0 && run.status !== 1) stop(`OSV-Scanner could not scan ${file} (exit ${run.status}): ${run.stderr.trim().split('\n').slice(-3).join(' ')}`);
   let report;
@@ -149,7 +175,7 @@ console.log(release ? `release-scan: the last release is ${release.sha} (${relea
 const changed = [];
 for (const file of lockfiles) {
   const base = release ? baseCopy(release.sha, file) : null;
-  if (base && Buffer.compare(base, readFileSync(file)) === 0) console.log(`release-scan: ${file} is unchanged since the last release`);
+  if (base && Buffer.compare(base.bytes, readFileSync(file)) === 0) console.log(`release-scan: ${file} is unchanged since the last release`);
   else changed.push({ file, base });
 }
 if (changed.length === 0) {
@@ -165,9 +191,9 @@ for (const [index, { file, base }] of changed.entries()) {
   let before = new Map();
   if (base) {
     // OSV-Scanner knows a lockfile by its name, so the last release's copy keeps it.
-    const copy = join(work, String(index), basename(file));
+    const copy = join(work, String(index), base.name);
     mkdirSync(join(work, String(index)), { recursive: true });
-    writeFileSync(copy, base);
+    writeFileSync(copy, base.bytes);
     before = scan(binary, copy);
   }
   const known = new Set([...before].flatMap(([key, advisories]) => advisories.flatMap((a) => a.ids.map((id) => `${key} ${id}`))));

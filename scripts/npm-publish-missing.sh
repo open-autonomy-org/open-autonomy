@@ -26,7 +26,7 @@ PACKAGES="packages/sdk packages/backend packages/kit-hermes packages/cli"
 REGISTRY=https://registry.npmjs.org/
 version_of() { node -p "require('./$1/package.json').version"; }
 name_of() { node -p "require('./$1/package.json').name"; }
-on_npm() { npm view "$1@$2" version --registry "$REGISTRY" --fetch-retries=0 --fetch-timeout=15000 >/dev/null 2>&1 </dev/null; }
+on_npm() { pnpm view "$1@$2" version --registry "$REGISTRY" --fetch-retries=0 --fetch-timeout=15000 >/dev/null 2>&1 </dev/null; }
 
 if [ "${1:-}" = "--check" ]; then
   for p in $PACKAGES; do
@@ -48,7 +48,7 @@ head=$permitted
 
 # 1. The release scan, before anything installs.
 since=$(git describe --tags --abbrev=0 --match 'release-v*' HEAD 2>/dev/null) || { echo "No release-v* tag to scan the lockfiles against; nothing is published" >&2; exit 1; }
-RELEASE_SCAN_SINCE=$(git rev-list -n 1 "$since") node .github/release-scan.mjs bun.lock packages/kit-hermes/base/.open-autonomy/bun.lock </dev/null
+RELEASE_SCAN_SINCE=$(git rev-list -n 1 "$since") node .github/release-scan.mjs pnpm-lock.yaml </dev/null
 
 # 2. Pack each version npm lacks, once.
 T=$(mktemp -d)
@@ -75,10 +75,10 @@ for p in $PACKAGES; do
     }
     fs.writeFileSync(file, JSON.stringify(m, null, 2) + "\n");
   ' "$p" "$src"
-  # `bun pm pack` copies each file's mode from disk: group and other lose write, so the tarball's modes are git's
+  # `pnpm pack` copies each file's mode from disk: group and other lose write, so the tarball's modes are git's
   # (0644, or 0755 where git marks a file executable) on every machine.
   find "$src" -exec chmod go-w {} +
-  d=$(mktemp -d "$T/pack.XXXXXX"); (cd "$src" && bun pm pack --destination "$d" </dev/null)
+  d=$(mktemp -d "$T/pack.XXXXXX"); (cd "$src" && pnpm pack --out "$d/package.tgz" </dev/null)
   set -- "$d"/*.tgz
   [ "$#" = 1 ] && [ -f "$1" ] || { echo "bun pm pack left no single tarball for $name@$v" >&2; exit 1; }
   kept="$T/$(printf '%s' "$name" | tr / +)@$v.tgz"; mv "$1" "$kept"
@@ -91,13 +91,13 @@ node scripts/npm-verify-tarballs.mjs "$T" </dev/null
 node scripts/npm-keys-sweep.mjs "$T" </dev/null
 
 # Upload the swept tarballs, and only them.
-echo "publishing as $(npm whoami --registry "$REGISTRY" </dev/null)"
+echo "publishing as $(pnpm whoami --registry "$REGISTRY" </dev/null)"
 kit_version=""
 while IFS="$(printf '\t')" read -r p name v; do
   file="$T/$(printf '%s' "$name" | tr / +)@$v.tgz"
   integrity="sha512-$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)"
-  (cd "$T" && npm publish "$file" --access public --registry "$REGISTRY" </dev/null)
-  served=$(npm view "$name@$v" dist.integrity --registry "$REGISTRY" --prefer-online </dev/null 2>/dev/null || true)
+  (cd "$T" && pnpm publish "$file" --no-git-checks --access public --registry "$REGISTRY" </dev/null)
+  served=$(pnpm view "$name@$v" dist.integrity --registry "$REGISTRY" --prefer-online </dev/null 2>/dev/null || true)
   if [ "$served" = "$integrity" ]; then echo "npm serves the swept bytes: $name@$v $integrity"
   elif [ -z "$served" ]; then echo "uploaded, not yet readable on npm: $name@$v (expect $integrity)"
   else echo "npm serves other bytes for $name@$v: $served, not the swept $integrity" >&2; exit 1; fi

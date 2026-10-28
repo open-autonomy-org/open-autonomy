@@ -672,7 +672,7 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 ## Prepare the host and application's world
 
 Before activation, finalize the adopter-owned host lock through the existing installer in that project's World:
-`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/bun.lock` against the
+`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/pnpm-lock.yaml` against the
 exact declared host manifest, then use frozen installation for startup. The template's native dependency lock
 cannot contain the integrity of the kit archive that contains it. An unresolved committed template lock refuses;
 startup never silently unfreezes it. Unpublished candidates require explicitly supplied reviewed package artifacts
@@ -748,7 +748,7 @@ its record or issuing replacements. Reconcile the intended host/directory and re
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
 a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
-one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode @volter/supercode`,
+one its machine daemon runs: `pnpm add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode`,
 which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
 alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
 the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
