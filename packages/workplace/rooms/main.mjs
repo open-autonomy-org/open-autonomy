@@ -1076,7 +1076,7 @@ const retrying = setInterval(() => { sweepRequested = true; void drain(); }, 60_
 while (!stopping) {
   if (lifecycle.paused) { await new Promise(resolve => setTimeout(resolve, 100)); continue; }
   if (state.streamRetryAt > Date.now()) { await new Promise((resolve) => setTimeout(resolve, Math.min(5000, state.streamRetryAt - Date.now()))); continue; }
-  let named = null;
+  let named = null, snapshotBegun = false;
   if (!state.cursor || flag === '--once') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; saveState(); lifecycle.announce(); }
   await drain();
   if (lifecycle.paused || stopping) continue;
@@ -1087,7 +1087,7 @@ while (!stopping) {
     const after = flag === '--once' ? null : state.cursor;
     for await (const frame of follow(after)) {
       if (stopping || lifecycle.paused) break;
-      if (frame.type === 'snapshot_begin') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); lifecycle.announce(); }
+      if (frame.type === 'snapshot_begin') { snapshotBegun = true; named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); lifecycle.announce(); }
       if (frame.type === 'resync_required' || frame.type === 'access_revoked') { invalidateSource(); log(frame.type, { reason: frame.reason }); break; }
       const event = frame.data;
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'task' && event.data?.card
@@ -1106,6 +1106,7 @@ while (!stopping) {
         if (ended !== was) for (const held of Object.values(state.cards)) if (held.live && held.project && held.agents?.includes(event.data.id)) state.projectsOwed[held.project] = true;
       }
       if (frame.type === 'snapshot_end' && named) {
+        if (!snapshotBegun) throw new Error('a complete board reading needs its snapshot begin before its end');
         state.ready = true; state.cleanupReady = named.size > 0;
         if (named.size) {
           for (const card of Object.values(state.cards)) if (!named.has(card.id)) {
