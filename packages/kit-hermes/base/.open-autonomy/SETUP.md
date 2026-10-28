@@ -845,3 +845,5 @@ landing and subsequent PM reconciliation before claiming the development loop wo
 release still ships only on the owner's approval of the Release. Local applications and packages ship through the
 same Release (`.open-autonomy/PRODUCTION.md`); a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.
+
+Legacy hosts can declare a machine-source package as `workspace:<exact-version>`. The runtime install door requires one matching package in the selected complete source graph, checks its actual name and version, and asks pnpm to link it. A source-bound host lock uses paths relative to that host. Keep canonical sibling checkouts together (for example, `runhuman-2` and `supercode`); relocating the selected graph requires an explicit `bun .open-autonomy/install-runtime.ts --update-lock` and review of the changed lock before activation. Frozen entry refuses a different binding.
