@@ -2,6 +2,10 @@
 
 Status: Proposed; implementation follows the independently passed amendment to Supercode ADR 0243. OA acceptance remains subject to independent review and merge.
 
+[ADR 0037](0037-fresh-rooms-generations-close-their-original-effects.md) proposes receipt-driven
+compensation and branch-specific closure for fresh capable selections. It adds no capability to
+this record's old selected programs and requires its own paired PLAN and implementation review.
+
 ## Context and decision
 
 [Supercode ADR 0243](https://github.com/volter-ai/supercode/blob/main/docs/adr/0243-card-run-sessions-in-project-rooms.md),
