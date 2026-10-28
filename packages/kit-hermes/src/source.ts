@@ -12,8 +12,12 @@ export function sourceMode(): boolean {
   return process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE || !!layout(resolve(import.meta.dir, '..'));
 }
 export function sourceEnvironment(): Record<string, string> {
+  const selected = sourceMode();
   return Object.fromEntries(['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+    .flatMap((name) => {
+      const value = process.env[name];
+      return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
+    }));
 }
 export function kitSource(version: string, directory: string | undefined) {
   if (!directory?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE: the selected Open Autonomy source checkout; registry code is never a fallback');
@@ -60,16 +64,18 @@ export function executingSource(version: string): string | undefined {
   // An installed registry package is never a substitute for the selected source, even at the same version.
   if (!root) throw new Error('kit source mode requires execution from the owning packages/kit-hermes source; registry code is never a fallback');
   const source = kitSource(version, root);
-  if (process.env.OPEN_AUTONOMY_SOURCE && realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE)) !== source.root) {
+  const selectedRoot = process.env.OPEN_AUTONOMY_SOURCE ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE)) : source.root;
+  if (selectedRoot !== source.root) {
     // A historical renderer may itself enforce source mode. Only its already validated, versioned source-cache
     // link permits that import; keep the selected current source in the environment for subsequent upgrades.
-    const selectedVersion = JSON.parse(readFileSync(resolve(process.env.OPEN_AUTONOMY_SOURCE, 'packages/kit-hermes/package.json'), 'utf8')).version;
-    kitSource(selectedVersion, process.env.OPEN_AUTONOMY_SOURCE);
+    const selectedVersion = JSON.parse(readFileSync(resolve(selectedRoot, 'packages/kit-hermes/package.json'), 'utf8')).version;
+    kitSource(selectedVersion, selectedRoot);
     if (selectedVersion === version || ancestorSource(version).kit !== source.kit)
       throw new Error(`executing kit ${source.kit} is outside selected OPEN_AUTONOMY_SOURCE ${process.env.OPEN_AUTONOMY_SOURCE}`);
   }
   const sdk = preparedKitSource(source);
   process.env.OPEN_AUTONOMY_SOURCE_ONLY = '1';
-  process.env.OPEN_AUTONOMY_SOURCE ??= source.root;
+  process.env.OPEN_AUTONOMY_SOURCE = selectedRoot;
+  if (process.env.OPEN_AUTONOMY_KIT_CACHE) process.env.OPEN_AUTONOMY_KIT_CACHE = resolve(process.env.OPEN_AUTONOMY_KIT_CACHE);
   return sdk;
 }

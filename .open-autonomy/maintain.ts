@@ -197,7 +197,8 @@ if (command === 'ship') {
   const kitCwd = source?.root ?? worktree;
   const cacheDir = resolve(dirname(run(['pnpm', 'store', 'path'], kitCwd)), 'cache');
   const native = ['pnpm', `--config.cacheDir=${cacheDir}`, '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink'];
-  const kitEnv = source ? { ...packageEnv, OPEN_AUTONOMY_SOURCE_ONLY: '1', OPEN_AUTONOMY_SOURCE: source.root } : packageEnv;
+  const kitEnv = source ? { ...packageEnv, OPEN_AUTONOMY_SOURCE_ONLY: '1', OPEN_AUTONOMY_SOURCE: source.root,
+    ...(process.env.OPEN_AUTONOMY_KIT_CACHE ? { OPEN_AUTONOMY_KIT_CACHE: resolve(process.env.OPEN_AUTONOMY_KIT_CACHE) } : {}) } : packageEnv;
   if (source) {
     run([...native, 'install', '--frozen-lockfile'], source.root);
     preparedKitSource(kitSource(latest, source.root));

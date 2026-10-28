@@ -32,9 +32,15 @@ import { agentHarness, agentModels, applyAgent, parseAgent, type Setup } from '.
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/; // Hermes's own profile id rule
 type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; github?: number };
 
-const sourceEnvironment = (): Record<string, string> => Object.fromEntries(
-  ['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+function sourceEnvironment(): Record<string, string> {
+  const selected = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE;
+  const values = Object.fromEntries(['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
+    .flatMap((name) => {
+      const value = process.env[name];
+      return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
+    }));
+  return values;
+}
 
 export async function startFleet(options: { definition: string; port: number; secretsRoot?: string; stateRoot?: string }) {
   const def = JSON.parse(readFileSync(options.definition, 'utf8')) as { container?: string; projects?: Array<{ account?: string; origin?: string }> };

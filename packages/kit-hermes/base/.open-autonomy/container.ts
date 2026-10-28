@@ -15,9 +15,15 @@ import { containerMainMoved, mergeImageDenylist, openContainerCodexSandbox, prep
 import { agentHarness, agentModels, applyAgent, parseAgent, readAgent } from './agent.ts';
 import { TREASURER, prepareTreasurerHome, treasurerBoardEnvironment, treasurerContainer, treasurerDispatch, treasurerPersona } from './container-treasurer.ts';
 
-const sourceEnvironment = (): Record<string, string> => Object.fromEntries(
-  ['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+function sourceEnvironment(): Record<string, string> {
+  const selected = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE;
+  const values = Object.fromEntries(['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
+    .flatMap((name) => {
+      const value = process.env[name];
+      return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
+    }));
+  return values;
+}
 
 export async function startContainer(options: {
   container: string; project?: string; home?: string; secrets?: string; state?: string; config?: string; port: number;
