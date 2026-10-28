@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
+import { executingSource } from './source.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
@@ -86,7 +87,7 @@ function walk(dir: string, base = dir): string[] {
 // first whose session start carries the session's own harness, which the publisher sends.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
 const SDK_MIN = '4.1.0';
-const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
+const SDK_PKG = executingSource(KIT.version) ?? Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };

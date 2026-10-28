@@ -697,6 +697,32 @@ the reviewed procedure in `.open-autonomy/PRODUCTION.md`; `--with release` repor
 is not implemented and refuses before collecting a credential. Other deployment targets use their own
 documented setup. Optional sponsorship setup is also separate, explicitly selected with `--with sponsors`.
 
+## Kit upgrade source
+
+Public package installations keep the package upgrade default. An installation that runs our source must keep
+`OPEN_AUTONOMY_SOURCE_ONLY=1` in its maintainer and runtime environment, and set `OPEN_AUTONOMY_SOURCE` to the
+owning Open Autonomy checkout at the exact selected kit release. The source-only flag makes a missing source
+refuse instead of selecting a registry executable. Setting `OPEN_AUTONOMY_SOURCE` also selects source mode.
+This repository's own maintainer and the todo-cli cookbook always require source. Direct execution from the
+kit's `packages/kit-hermes/src` layout selects source mode automatically, even if Git or the SDK is missing.
+
+The kit and its exact declared `@open-autonomy/sdk` must be tracked under the same owning Git checkout at
+`packages/kit-hermes` and `packages/sdk`; the kit's native SDK resolution must reach that SDK. Maintenance
+prepares that workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle policy, using the
+cache beside the source volume's native pnpm store, then runs its native Bun CLI with the upgrade target explicit.
+The registry discovers the release version; source mode never executes its kit or SDK as a fallback.
+
+For an older ancestor, set `OPEN_AUTONOMY_KIT_CACHE` to the existing versioned cache and link
+`<cache>/<old-kit-version>/node_modules/create-open-autonomy` to that version's owning `packages/kit-hermes`,
+and `<cache>/<old-kit-version>/node_modules/@open-autonomy/sdk` to its `packages/sdk`. Prepare that historical
+source's native dependencies first. Upgrade and fleet upgrade validate both source links, the kit version, its
+exact SDK version and actual SDK resolution before importing the old renderer; missing or registry-backed
+ancestors refuse without installing a package. The current kit version needs no ancestor import.
+
+Runtime and fleet environment records retain the source-only decision and selected source/cache values.
+Those paths must exist inside the runtime where maintenance runs; the kit does not invent mounts or translate
+host paths. Configure the runtime's existing source routes before activation. A missing route fails closed.
+
 ## Verify, resume and hand off
 
 Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing

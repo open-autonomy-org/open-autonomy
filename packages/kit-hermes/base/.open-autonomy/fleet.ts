@@ -32,6 +32,10 @@ import { agentHarness, agentModels, applyAgent, parseAgent, type Setup } from '.
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/; // Hermes's own profile id rule
 type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; github?: number };
 
+const sourceEnvironment = (): Record<string, string> => Object.fromEntries(
+  ['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
+    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+
 export async function startFleet(options: { definition: string; port: number; secretsRoot?: string; stateRoot?: string }) {
   const def = JSON.parse(readFileSync(options.definition, 'utf8')) as { container?: string; projects?: Array<{ account?: string; origin?: string }> };
   const container = def.container ?? '';
@@ -146,7 +150,7 @@ export async function startFleet(options: { definition: string; port: number; se
         const home = profileHome(p, profile);
         if (onCodex) await prepareContainerSubscription({ container, home, baseUrl: codexBase });
         await writeContainerEnvironment({ container, home, env: {
-          HOME: home, HERMES_HOME: home, TERMINAL_CWD: p.workspace, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${home}/codex-home-none`,
+          ...sourceEnvironment(), HOME: home, HERMES_HOME: home, TERMINAL_CWD: p.workspace, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${home}/codex-home-none`,
           OPEN_AUTONOMY_BASE_URL: `${host}:${p.key}/v1`, OPEN_AUTONOMY_PAY_URL: `${host}:${p.key}/v1`, OPEN_AUTONOMY_KEY: 'valve',
           HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':'),
           ...(p.github ? { GITHUB_API_URL: `${host}:${p.github}`, GITHUB_TOKEN: 'valve' } : {}) } });
@@ -164,7 +168,7 @@ export async function startFleet(options: { definition: string; port: number; se
     const disabled = ((Bun.YAML.parse(imageSeed.stdout.toString() || '{}') as any)?.plugins?.disabled ?? []) as string[];
     const pluginsBlock = disabled.length ? `plugins:\n  disabled:\n${disabled.map((k) => `    - ${JSON.stringify(k)}`).join('\n')}\n` : '';
     await writeContainerText({ container, home: fleetHome, name: 'config.yaml', text: `# The fleet's default profile: composed by the host, never a project's. Every project is a profile beside it.\ngateway:\n  multiplex_profiles: true\n${modelBlock}memory:\n  memory_enabled: false\n  user_profile_enabled: false\n${pluginsBlock}` });
-    await writeContainerEnvironment({ container, home: fleetHome, env: { HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none` } });
+    await writeContainerEnvironment({ container, home: fleetHome, env: { ...sourceEnvironment(), HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none` } });
     if (onCodex) await prepareContainerSubscription({ container, home: fleetHome, baseUrl: codexBase });
     // 6. The valve: every project's key on its own port, the Codex forward once.
     const keyArgs = projects.flatMap((p) => ['--key', `${resolve(p.secrets, 'agent.env')}:${p.key}`]);
@@ -188,7 +192,7 @@ export async function startFleet(options: { definition: string; port: number; se
     if (ending) throw new Error('a host service stopped during preparation');
     // 8. One gateway over the composed home (every profile's schedule is already applied).
     gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], stoppedExitCodes: [75], env: {
-      HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
+      ...sourceEnvironment(), HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
       // Every checkout is a place the agents write; the image names only the project shape's.
       HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':') } });
     void gateway.exited.then((code) => { if (!ending) void stop(code === 75 ? 75 : 1); });

@@ -26,6 +26,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { KIT, check, readKit } from './kit.ts';
 import { worldConfig } from './world-config.ts';
+import { sourceEnvironment } from './source.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
@@ -114,7 +115,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   const executor = join(release, 'container', 'executor.ts');
   const world = worldConfig({ id: `${project}-runtime`, description: `${account}: native Hermes in the agent's executor and the treasurer in its own; the credential valves and the SDK reporter on this host as World's foreground command.`,
     strip: ['HERMES_*', 'OPENAI_*'],
-    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
+    env: { ...sourceEnvironment(), OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: image, OA_EXECUTOR_VOLUMES: volumes.join(','), ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
     service: [
       { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] },
       { id: 'treasurer', up: ['bun', executor, 'up', 'treasurer'], status: ['bun', executor, 'status', 'treasurer'], down: ['bun', executor, 'down', 'treasurer'] },
@@ -144,7 +145,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   <key>Label</key><string>${label}</string>
   <key>ProgramArguments</key><array>${command.map((a) => `<string>${xml(a)}</string>`).join('')}</array>
   <key>WorkingDirectory</key><string>${xml(runtimeDir)}</string>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(path)}</string></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(path)}</string>${Object.entries(sourceEnvironment()).map(([name, value]) => `<key>${xml(name)}</key><string>${xml(value)}</string>`).join('')}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ThrottleInterval</key><integer>60</integer>
