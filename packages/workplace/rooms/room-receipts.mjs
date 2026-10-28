@@ -11,7 +11,22 @@ const wireDigest = value => {
 };
 
 export function createRoomReceipts({ journal, selection, binding, source, actor, organization, transport }) {
-  const batches = () => journal.entries('room-manifest').map(entry => entry.value);
+  function imports() { return journal.entries('room-lineage-import').map(entry => entry.value); }
+  function batches() {
+    const retained = new Map();
+    for (const batch of [...journal.entries('room-manifest').map(entry => entry.value), ...imports().flatMap(value => value.offer.originalInventory.batches)]) {
+      const old = retained.get(batch.namespace.id);
+      if (old && canonical(old) !== canonical(batch)) refuse('an inherited immutable Room manifest changed');
+      retained.set(batch.namespace.id, batch);
+    }
+    return [...retained.values()];
+  }
+  function terminals(namespace) {
+    return [...imports().flatMap(value => value.offer.originalInventory.roomInventory.flatMap(row => row.inventory.operations
+      .filter(operation => row.manifest.id === namespace && operation.result)
+      .map(operation => ({ value: { namespace, operationId: operation.id, disposition: operation.disposition, result: operation.result } })))),
+    ...journal.entries('room-terminal').filter(entry => entry.value.namespace === namespace)];
+  }
   const batchOf = id => {
     const found = batches().filter(batch => batch.namespace.id === id);
     if (found.length !== 1) refuse('unknown or duplicate original Room manifest');
@@ -19,8 +34,7 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
   };
   function observe(batch, result, via) {
     const disposition = terminalDisposition(result, batch.namespace.id, batch.operationId);
-    const old = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id
-      && entry.value.disposition !== 'unreadable');
+    const old = terminals(batch.namespace.id).filter(entry => entry.value.disposition !== 'unreadable');
     if (disposition !== 'unreadable' && old.some(entry => canonical(entry.value.result) !== canonical(result))) refuse('immutable terminal receipt changed');
     journal.append('room-terminal', { namespace: batch.namespace.id, operationId: batch.operationId, via, disposition, result });
     return disposition;
@@ -37,11 +51,16 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
   function originals(roomId, principalId) {
     const found = [];
     const retired = new Set(journal.entries('room-disposition').flatMap(entry => entry.value.originalEffects.map(ref => canonical(ref))));
+    const retainedInverse = new Set(journal.entries('room-retained-lineage').map(entry => entry.value.inverse.namespace));
+    const local = new Set(journal.entries('room-manifest').map(entry => entry.value.namespace.id));
+    const imported = new Set(imports().flatMap(value => value.offer.originalInventory.batches.filter(batch => !local.has(batch.namespace.id)).map(batch => batch.namespace.id)));
+    const accepted = new Set(imports().flatMap(value => value.offer.originalInventory.activeLineage.flatMap(row => row.originalEffects.map(ref => canonical(ref)))));
     for (const batch of batches()) {
       if (batch.roomId !== roomId || batch.input.principalId !== principalId) continue;
       const reference = { namespace: batch.namespace.id, operationId: batch.operationId };
-      if (retired.has(canonical(reference)) || batch.purpose.endsWith('-inverse')) continue;
-      const receipts = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id);
+      if (retired.has(canonical(reference)) || imported.has(batch.namespace.id) && !accepted.has(canonical(reference))
+        || batch.purpose.endsWith('-inverse') && !retainedInverse.has(batch.namespace.id) && !accepted.has(canonical(reference))) continue;
+      const receipts = terminals(batch.namespace.id);
       if (!receipts.length) {
         const closure = journal.entries('room-closed').filter(entry => entry.value.namespace === batch.namespace.id).at(-1);
         if (closure?.value.inventory.operations.every(operation => operation.disposition === 'never-admitted')) continue;
@@ -138,36 +157,75 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
     await close(batch);
     return closedInventory(await status(batch), batch.namespace);
   }
-  function dispose(batch) {
+  function dispose(batch, { retained = false } = {}) {
     if (!batch.purpose.endsWith('-inverse') || !batch.body.conditional.originalEffects.length) refuse('disposition needs a manifested inverse and original identities');
     const closure = journal.entries('room-closed').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value.inventory;
-    const terminal = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value;
+    const terminal = terminals(batch.namespace.id).at(-1)?.value;
     if (!closure || !['applied', 'original-effect-absent'].includes(terminal?.disposition)) refuse('an unreadable or unresolved inverse cannot retire original effects');
     const value = { roomId: batch.roomId, principalId: batch.input.principalId,
       originalEffects: copy(batch.body.conditional.originalEffects), inverse: { namespace: batch.namespace.id, operationId: batch.operationId },
       disposition: terminal.disposition, closureDigest: digestValue(closure) };
-    const old = journal.entries('room-disposition').find(entry => entry.value.inverse.namespace === batch.namespace.id);
+    const kind = retained ? 'room-retained-lineage' : 'room-disposition';
+    const old = journal.entries(kind).find(entry => entry.value.inverse.namespace === batch.namespace.id);
     if (old && canonical(old.value) !== canonical(value)) refuse('original disposition changed');
-    if (!old) journal.append('room-disposition', value);
+    if (!old) journal.append(kind, value);
     return copy(value);
   }
   function reconcileDispositions() {
     // A crash between the remote inverse and the local disposition does not
     // create a second inverse. Its exact now-readable closed receipt settles it.
     for (const batch of batches().filter(batch => batch.purpose.endsWith('-inverse'))) {
-      const terminal = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value;
-      if (['applied', 'original-effect-absent'].includes(terminal?.disposition)) dispose(batch);
+      const terminal = terminals(batch.namespace.id).at(-1)?.value;
+      if (['applied', 'original-effect-absent'].includes(terminal?.disposition)) dispose(batch, { retained: batch.expected?.retainsLineage === true });
     }
   }
   async function settlePlacement(roomId, principalId) {
     for (const batch of batches().filter(batch => batch.roomId === roomId && batch.input.principalId === principalId)) await finish(batch);
     reconcileDispositions();
   }
+  async function inspectLineage(inventory) {
+    if (!Array.isArray(inventory?.batches) || !Array.isArray(inventory.roomInventory) || !Array.isArray(inventory.activeLineage)
+      || inventory.batches.length !== inventory.roomInventory.length) refuse('inherited original inventory is incomplete');
+    const ids = new Set();
+    for (const batch of inventory.batches) {
+      if (batch.actor !== actor || batch.organization !== organization || ids.has(batch.namespace?.id)
+        || !Array.isArray(batch.namespace?.operations) || batch.namespace.operations.length !== 1
+        || canonical(batch.body?.conditional?.namespace) !== canonical(batch.namespace)
+        || batch.body.conditional.operationId !== batch.operationId || batch.body.conditional.version !== 1
+        || canonical(batch.input) !== canonical(Object.fromEntries(Object.entries(batch.body).filter(([key]) => key !== 'conditional')))) refuse('inherited Room body/actor/manifest differs');
+      ids.add(batch.namespace.id);
+      const { operations, ...namespace } = batch.namespace;
+      if (operations[0].id !== batch.operationId || operations[0].command !== commandOf(batch.action)
+        || operations[0].digest !== wireDigest({ command: commandOf(batch.action), input: { ...batch.input, roomId: batch.roomId },
+          conditional: { ...batch.body.conditional, namespace } })) refuse('inherited Room operation digest differs');
+      const rows = inventory.roomInventory.filter(row => row.manifest.id === batch.namespace.id);
+      if (rows.length !== 1 || rows[0].actor !== actor || rows[0].roomId !== batch.roomId
+        || canonical(rows[0].manifest) !== canonical(batch.namespace)) refuse('inherited Room closure partition differs');
+      const read = await transport(`${pathOf(batch.roomId)}/command-receipts?namespace=${encodeURIComponent(canonical(batch.namespace))}`);
+      if (canonical(closedInventory(read, batch.namespace)) !== canonical(rows[0].inventory)) refuse('current predecessor authority cannot verify the exact closed original result');
+    }
+    for (const placement of inventory.activeLineage) for (const ref of placement.originalEffects) {
+      const batch = inventory.batches.find(batch => batch.namespace.id === ref.namespace && batch.operationId === ref.operationId);
+      const receipt = inventory.roomInventory.find(row => row.manifest.id === ref.namespace)?.inventory.operations.find(row => row.id === ref.operationId);
+      if (!batch || batch.roomId !== placement.roomId || batch.input.principalId !== placement.principalId
+        || receipt?.disposition !== 'applied') refuse('accepted active lineage has no exact readable applied original effect');
+    }
+    return digestValue(inventory);
+  }
+  function adoptLineage(offer, acknowledgement, readiness) {
+    if (offer.predecessor?.selection !== selection || offer.predecessor.artifact !== binding.artifact
+      || readiness.readiness?.selection !== selection || offer.actor !== actor) refuse('lineage adoption is outside this admitted predecessor');
+    const old = imports().find(value => value.offer.operation === offer.operation);
+    const value = { offer, acknowledgement, readiness };
+    if (old && digestValue(old.offer) !== digestValue(offer)) refuse('admitted original lineage cannot change');
+    if (!old) journal.append('room-lineage-import', value);
+  }
   const debt = () => {
     let unknown = 0, unreadable = 0, unclosed = 0;
     for (const batch of batches()) {
-      const last = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value;
-      const closure = journal.entries('room-closed').some(entry => entry.value.namespace === batch.namespace.id);
+      const last = terminals(batch.namespace.id).at(-1)?.value;
+      const closure = journal.entries('room-closed').some(entry => entry.value.namespace === batch.namespace.id)
+        || imports().some(value => value.offer.originalInventory.roomInventory.some(row => row.manifest.id === batch.namespace.id));
       if (!last) {
         if (!closure) unknown++;
       } else if (last.disposition === 'unreadable') unreadable++;
@@ -175,5 +233,5 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
     }
     return { unknown, unreadable, unclosed };
   };
-  return { basis, originals, prepare, dispatch, status, close, closeAll, finish, dispose, reconcileDispositions, settlePlacement, debt, batches };
+  return { basis, originals, prepare, dispatch, status, close, closeAll, finish, dispose, reconcileDispositions, settlePlacement, inspectLineage, adoptLineage, debt, batches };
 }

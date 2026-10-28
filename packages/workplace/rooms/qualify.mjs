@@ -16,6 +16,7 @@ function sealed(path, expected) {
 export function qualifyRooms({ candidate, predecessor, evidence, out }) {
   const next = readArtifact(candidate, { verifySource: true }), previous = readArtifact(predecessor, { verifySource: true });
   const capability = next.value.lifecycle?.compensation;
+  if (capability?.protocol === 2) fail('protocol 2 remains unqualified: actual composed branch serving/readback proof is not implemented; prepared bytes and receipt structure do not establish that outcome');
   const supported = capability?.predecessors?.find(row => row.revision === previous.value.source.revision);
   if (capability?.protocol !== 1 || capability?.scope !== 'run-only' || !supported
     || supported.arcVersion !== previous.value.lifecycle?.state?.arcVersion || supported.files.length !== previous.value.files.length

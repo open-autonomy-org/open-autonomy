@@ -76,7 +76,7 @@ import { execFile } from 'node:child_process';
 import { closeSync, fsyncSync, fstatSync, futimesSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createLifecycle, digest } from './lifecycle.mjs';
-import { arcRoomExpected, cardHoldOf, projectOf, runOf, cardRunsNow, cardAgentsOf, leadAgentsOf as selectLeads } from './demand.mjs';
+import { arcRoomExpected, cardHoldOf, projectOf, projectRoomKey, runOf, cardRunsNow, cardAgentsOf, leadAgentsOf as selectLeads } from './demand.mjs';
 import { createRoomReceipts } from './room-receipts.mjs';
 import { createRecovery } from './recovery.mjs';
 import { canonical as canonicalJson, digestValue } from './recovery-journal.mjs';
@@ -87,15 +87,6 @@ export { projectOf } from './demand.mjs';
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
 const ARC_ROOM_LIFECYCLE_VERSION = 8;
-// A key the program writes in the Workplace, scoped to its connection when its config names one (`source.namespace`).
-const projectionKey = (config, kind, identity) => {
-  const namespace = config.source?.namespace;
-  if (!namespace) return `${kind}-${String(identity).toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.slice(0, 64).replace(/-+$/, '');
-  if (!/^cx[0-9a-f]{24}$/.test(namespace)) throw new Error('invalid connection source namespace');
-  const prefix = `${kind}-${namespace}-`;
-  // The Room declaration parser uses TASK_KEY (63 characters), before the command's 64-character key check.
-  return `${prefix}${createHash('sha256').update(String(identity)).digest('hex').slice(0, Math.min(32, 63 - prefix.length))}`;
-};
 const bindProjectionState = (config, state) => {
   const namespace = config.source?.namespace;
   if (!namespace) return;
@@ -183,7 +174,7 @@ async function placementCommand(action, roomId, body, context = {}) {
 
 // ---- the project and its Room ---------------------------------------------------------------------------------------
 // A project's Room key: one Room per project.
-export const projectKeyOf = (project) => projectionKey(config, 'project', project);
+export const projectKeyOf = (project) => projectRoomKey(config, project);
 const titleOf = (card) => (String(card.title ?? card.id).trim() || String(card.id)).slice(0, 500);
 // What an arc is, for its line in the project Room's topic: the sentence after its `[project]` prefix and its `<slug>:`, to
 // its first parenthesis and at most 60 characters on a word, never the slug alone (the owner, "Rooms are named for what
@@ -504,7 +495,8 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
       // A role-owned seat also owes cleanup when the last role ends while run demand still keeps it here.
       placements[principalId] = { kind: run.kind, session: run.session, owner: lifecycle.selection }; flushState(true);
     }
-    if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
+    if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)
+      && (!run || placements[principalId]?.owner === lifecycle.selection && (placements[principalId].receipt || placements[principalId].lineage))) continue;
     // Existing-member session and receive rewrites have the same durable obligation as a new join.
     if (run) flushState(true);
     try {
@@ -515,6 +507,9 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
       if (placed.seatedBy !== self) {
         if (placements[principalId]) delete placements[principalId];
         borrowed[principalId] = placed.seatedBy ?? null; saveState();
+      } else if (run && placements[principalId]?.owner === lifecycle.selection) {
+        placements[principalId].receipt = { namespace: placed.conditional.namespace, operationId: placed.conditional.operationId };
+        flushState(true);
       }
       log(member ? 'participant-receives' : 'participant-joined', { ...label, principalId, roomId, card: run?.card ?? null, answers: demand.answers });
     } catch (error) {
@@ -948,6 +943,8 @@ lifecycle = createLifecycle({ state, configPath, statePath: config.stateFile, pe
     try { return await recovery.recover(request); }
     finally { compensationReading = false; sourceAdmitted = false; }
   },
+  acceptLineage: request => recovery.acceptLineage(request),
+  adoptLineage: actual => recovery.adoptLineage(actual),
   roomDebt: () => roomReceipts?.debt() ?? { unknown: 0, unreadable: 0, unclosed: 0 },
   parentDisconnected: error => { stopping = true; if (error) process.exitCode = 1; },
 });
@@ -957,7 +954,7 @@ if (lifecycle.binding) {
     actor: self, organization: config.rh2.organization, transport: rawDoor });
   recovery = createRecovery({ journal: lifecycle.journal, owner: lifecycle.owner, rooms: roomReceipts,
     binding: lifecycle.binding, selection: lifecycle.selection, config, configDigest: digestValue(config),
-    state, actor: self, persist: () => flushState(true), transport: rawDoor });
+    state, actor: self, persist: () => flushState(true) });
 }
 lifecycle.announce();
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {

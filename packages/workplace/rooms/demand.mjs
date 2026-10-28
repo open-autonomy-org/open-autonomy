@@ -1,5 +1,13 @@
 // Shared native-card selectors. Recovery receives held native records, never an event-stream absence claim.
-import { canonical, refuse } from './recovery-journal.mjs';
+import { canonical, hash, refuse } from './recovery-journal.mjs';
+
+export function projectRoomKey(config, project) {
+  const namespace = config.source?.namespace;
+  if (!namespace) return `project-${String(project).toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.slice(0, 64).replace(/-+$/, '');
+  if (!/^cx[0-9a-f]{24}$/.test(namespace)) refuse('invalid connection source namespace');
+  const prefix = `project-${namespace}-`;
+  return `${prefix}${hash(String(project)).slice(0, Math.min(32, 63 - prefix.length))}`;
+}
 
 export const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 export const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)

@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { canonical, copy, refuse } from './recovery-journal.mjs';
 
-const ACTIONS = new Set(['recovery-status', 'recovery-cut', 'provider-closure', 'recovery-readiness']);
+const ACTIONS = new Set(['recovery-status', 'recovery-cut', 'provider-closure', 'recovery-readiness', 'recovery-lineage-offer', 'recovery-lineage-ack']);
 export function createParentOwner(binding) {
   if (!binding || !process.send || !process.connected) refuse('the retained native parent channel is absent');
   const pending = new Map();

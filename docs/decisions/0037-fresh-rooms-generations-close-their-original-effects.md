@@ -154,6 +154,47 @@ the complete branch outcome/readiness. A later failure resumes only that remaini
 it never reuses the released cut, old compensation or a closed namespace. Ordinary admitted publishers
 receive a new qualified epoch/batches, not reopened old identities.
 
+### Explicit capable-predecessor lineage handoff
+
+The fresh artifact declares lifecycle protocol 2, arc state 8/journal 2, compensation protocol 2
+(`original-field-effects`) and owner/Room/lineage protocol 1. Its file closure contains every imported
+module. Transport bindings remain protocol 1 Node IPC. The retained parent alone provides recovery
+status, the held native/Teams cut, issuing-provider closure and ordered branch readiness.
+
+A legacy version 5 predecessor cannot inherit surviving owned run demand; that case retains debt.
+For an exact predecessor that separately advertises lineage protocol 1, retain the full positive
+role/run union and its actual original field chain. The selected child first performs and closes
+its required guarded reductions, then returns a durable `lineage-pending` offer rather than Z.
+That offer binds the original operation/admission revision, source decision, invocation, N/T/L/R,
+actor/config semantics, both exact artifact/selection identities, every immutable manifested body
+and current closed receipt, and the exact active original-effect references for each retained
+placement. The complete offer is bounded to 4 MiB inside the private 8 MiB protocol; overflow refuses.
+
+Native records only an offer returned by its actual retained selected ChildProcess. It asks the
+actual exact quiesced capable predecessor to validate it, without granting ordinary startup.
+That predecessor reads the offer through `recovery-lineage-offer`, independently reads every
+namespace through its own current RH2 installation, and returns its exact acceptance/inventory
+digest. Native persists that actual-child acceptance in the single protected original operation
+and reads it back. A predecessor does not claim persistence from a local write beneath a held
+read-only backing or from a separate policy journal. `recovery-lineage-ack` exposes only that
+original protected acknowledgement; absent or unreadable acceptance keeps the candidate pending.
+
+Only after the candidate reads the exact native-persisted acceptance, rechecks current closure
+and original admission, may its Z bind the offer and acceptance digests. Release and readiness
+remain separate native phases. On later admitted precommit startup, the predecessor reads the
+original offer/acceptance again, verifies current receipt reading, and durably imports precisely
+the accepted original references before ordinary projection. It neither reopens their namespaces
+nor claims equal-valued or foreign fields. A new inverse uses new immutable namespaces while RH2
+continues to enforce the original actor, incarnation and field-owner chain. The committed branch
+does not perform a predecessor handoff or rollback inverse.
+
+The provider capsule also binds a separate current `representations` read to the exact held seal,
+complete paginated catalogue digest and current partition generation. Native session names come
+from the qualified provider work reference (`native`); the Workplace session address is its own
+registration-qualified `{id,team}` reference. Every held positive role/run must resolve in that
+current map. Missing, ambiguous, stale or unreadable representations remain positive unresolved
+debt; a projected absence never proves that demand ended.
+
 ## Dispositions, alternatives and consequences
 
 | Decision or existing path | Disposition |

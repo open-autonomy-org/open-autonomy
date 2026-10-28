@@ -37,7 +37,7 @@ export function readProgram(receiptPath, expected) {
   return { receipt, sha256: digest(bytes), value };
 }
 
-export function createLifecycle({ state, configPath, statePath, persist, pause, resume, recover, roomDebt = () => ({ unknown: 0, unreadable: 0, unclosed: 0 }), readiness, parentDisconnected, log }) {
+export function createLifecycle({ state, configPath, statePath, persist, pause, resume, recover, acceptLineage, adoptLineage, roomDebt = () => ({ unknown: 0, unreadable: 0, unclosed: 0 }), readiness, parentDisconnected, log }) {
   const encoded = process.env.SUPERCODE_CONNECTION_PROGRAM_BINDING;
   const binding = encoded ? JSON.parse(encoded) : null;
   const directory = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +53,7 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     const metadata = JSON.parse(readFileSync(join(directory, 'lifecycle.json')));
     if (metadata.protocol !== 2 || metadata.transport !== 'node-ipc' || metadata.state?.journalVersion !== 2
       || metadata.state.arcVersion !== 8 || metadata.compensation?.protocol !== 2 || metadata.compensation.scope !== 'original-field-effects'
+      || metadata.compensation.ownerProtocol !== 1 || metadata.compensation.roomProtocol !== 1 || metadata.compensation.lineageProtocol !== 1
       || metadata.withdrawal?.protocol !== 1 || metadata.withdrawal.transport !== 'command'
       || metadata.withdrawal.argument !== '--disconnect' || metadata.withdrawal.scope !== 'all-owned-placements'
       || JSON.stringify(metadata) !== JSON.stringify(artifact.value.lifecycle)
@@ -119,8 +120,17 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
       let Z;
       try { Z = await recover({ operation: frame.operation, expectedRevision: frame.expectedRevision, predecessor }); }
       finally { status = 'quiesced'; }
+      if (Z?.kind === 'lineage-pending') {
+        persistReceipt({ protocol: 2, quiesced: true, persisted: true, predecessor: predecessor.sha256, lineage: Z });
+        return snapshot();
+      }
       persistReceipt({ protocol: 2, quiesced: true, persisted: true, predecessor: predecessor.sha256, Z, digest: digestValue(Z) });
       return snapshot();
+    }
+    if (frame.action === 'lineage-accept') {
+      if (status !== 'quiesced' || frame.protocol !== 2 || !owner || typeof frame.operation !== 'string'
+        || !Number.isSafeInteger(frame.expectedRevision) || typeof acceptLineage !== 'function') fail('lineage validation needs the exact quiesced capable predecessor');
+      return { ...snapshot(), lineage: await acceptLineage({ operation: frame.operation, expectedRevision: frame.expectedRevision }) };
     }
     if (frame.action === 'resume') {
       if (status !== 'quiesced') fail('resume requires a quiesced child');
@@ -137,6 +147,7 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
           || ack.operation !== frame.operation || ack.sourceDecisionDigest !== actual.sourceDecision.digest
           || ack.selection !== selection || ack.inventoryDigest !== ready.inventoryDigest || typeof ack.reference !== 'string' || !ack.reference) fail('native ordered branch readiness does not admit this exact child');
         journal.append('native-readiness', actual);
+        if (branch === 'precommit') await adoptLineage(actual);
       }
       receipt = null; journal.append('lifecycle-resume', { binding });
       status = 'running'; resume(); announce();

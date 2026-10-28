@@ -21,7 +21,8 @@
     "room-receipts.mjs",
     "parent-owner.mjs",
     "demand.mjs",
-    "recovery.mjs"
+    "recovery.mjs",
+    "lineage.mjs"
   ],
   "compensation": {
     "protocol": 2,
@@ -47,6 +48,7 @@
       }
     ],
     "ownerProtocol": 1,
-    "roomProtocol": 1
+    "roomProtocol": 1,
+    "lineageProtocol": 1
   }
 }

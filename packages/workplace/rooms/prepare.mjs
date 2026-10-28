@@ -66,8 +66,8 @@ export function readArtifact(receiptPath, { verifySource = false } = {}) {
     if (metadata.transport !== 'node-ipc' || metadata.compensation?.protocol !== (capable ? 2 : 1)
       || metadata.compensation.scope !== (capable ? 'original-field-effects' : 'run-only')
       || capable && (metadata.state?.arcVersion !== 8 || metadata.state.journalVersion !== 2
-        || metadata.compensation.ownerProtocol !== 1 || metadata.compensation.roomProtocol !== 1
-        || ['recovery-journal.mjs', 'room-receipts.mjs', 'parent-owner.mjs', 'demand.mjs', 'recovery.mjs'].some(file => !names.has(file)))) fail('unsupported lifecycle contract');
+        || metadata.compensation.ownerProtocol !== 1 || metadata.compensation.roomProtocol !== 1 || metadata.compensation.lineageProtocol !== 1
+        || ['recovery-journal.mjs', 'room-receipts.mjs', 'parent-owner.mjs', 'demand.mjs', 'recovery.mjs', 'lineage.mjs'].some(file => !names.has(file)))) fail('unsupported lifecycle contract');
     if (metadata.withdrawal?.protocol !== 1 || metadata.withdrawal.transport !== 'command'
       || metadata.withdrawal.argument !== '--disconnect' || metadata.withdrawal.scope !== 'all-owned-placements') fail('unsupported withdrawal contract');
     if (JSON.stringify([...metadata.files].sort()) !== JSON.stringify([...names].sort())) fail('runtime closure differs from lifecycle metadata');
