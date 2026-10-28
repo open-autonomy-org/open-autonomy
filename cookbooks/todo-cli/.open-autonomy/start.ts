@@ -348,13 +348,13 @@ const env = agentEnv();
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
   // this host's scratch, and the install brings it up to package.json instead of refusing on it.
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
-  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
+  const lock = ['pnpm-lock.yaml'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
   const runtimeOptions = { directory: import.meta.dir, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
-    writeFileSync(stamp, `${want}\n`);
+    writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
 }

@@ -3,14 +3,14 @@
 // run by the emitted .github/workflows/security.yml. Two model-independent layers over the install's
 // dependency lockfiles:
 //   1. Lockfile integrity — every external resolution must come from the official npm registry and carry a
-//      sha integrity hash. Catches a bun.lock repointed at a malicious host/tarball, a git+/http:/github:/
-//      file: source, or a missing hash — the classes `bun audit` (CVE-only) misses and lockfile-lint/OSV
-//      can't parse on bun. Local `@workspace:` packages are exempt (no registry resolution).
-//   2. `bun audit` — known-CVE scan against the npm advisory DB, per lockfile.
+//      sha integrity hash. Catches a lockfile repointed at a malicious host/tarball, a git+/http:/github:/
+//      file: source, or a missing hash — the classes advisory-only scans miss. Local `@workspace:` packages are exempt (no registry resolution).
+//   2. Native package-manager audit — known-CVE scan against the npm advisory DB, per lockfile.
 //
-// Auto-discovers every bun.lock in the install (excluding node_modules), so it covers a profile's own
+// Auto-discovers native pnpm and legacy Bun locks in the install (excluding node_modules), so it covers a profile's own
 // packages + any service package without a hardcoded path list.
 
+import { parseAllDocuments } from 'yaml';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -22,12 +22,12 @@ function findLockfiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
-      if (name === 'node_modules' || name === '.git') continue;
+      if (name === 'node_modules' || name === '.git' || name === '.worktrees') continue;
       const full = join(dir, name);
       let s;
       try { s = statSync(full); } catch { continue; }
       if (s.isDirectory()) walk(full);
-      else if (name === 'bun.lock') out.push(full);
+      else if (name === 'bun.lock' || name === 'pnpm-lock.yaml') out.push(full);
     }
   };
   walk(root);
@@ -45,48 +45,49 @@ const fail = (msg: string) => { console.error(`  ✗ ${msg}`); failures++; };
 
 const lockfiles = findLockfiles(process.cwd());
 if (lockfiles.length === 0) {
-  console.log('check:supply-chain: no bun.lock found — nothing to verify.');
+  console.log('check:supply-chain: no dependency lock found — nothing to verify.');
   process.exit(0);
 }
 
 for (const lock of lockfiles) {
   const rel = lock.replace(process.cwd() + '/', '');
   console.log(`• ${rel}`);
-  const l = parseLock(await Bun.file(lock).text());
-  const packages: Record<string, unknown[]> = l.packages ?? {};
-
-  for (const [key, value] of Object.entries(packages)) {
+  const text = await Bun.file(lock).text();
+  if (lock.endsWith('pnpm-lock.yaml')) {
+    const documents = parseAllDocuments(text);
+    for (const document of documents) {
+      if (document.errors.length) throw document.errors[0];
+      for (const [key, pkg] of Object.entries(document.toJS()?.packages ?? {}) as Array<[string, any]>) {
+        const resolution = pkg.resolution ?? {};
+        if (resolution.tarball && !resolution.tarball.startsWith(ALLOWED_REGISTRY) || resolution.repo || resolution.directory || resolution.type === 'git') {
+          fail(`${rel}: "${key}" resolves to a non-registry source: ${JSON.stringify(resolution)}`);
+        } else if (typeof resolution.integrity !== 'string' || !INTEGRITY.test(resolution.integrity)) {
+          fail(`${rel}: "${key}" is missing a sha integrity hash`);
+        }
+      }
+    }
+  } else for (const [key, value] of Object.entries(parseLock(text).packages ?? {}) as Array<[string, unknown[]]>) {
     const spec = String(value[0] ?? '');
-    if (spec.includes('@workspace:')) continue; // local workspace package — no registry resolution
-    const resolution = String(value[1] ?? '');
-    const integrity = value[value.length - 1];
-
-    if (resolution !== '' && !resolution.startsWith(ALLOWED_REGISTRY)) {
+    if (spec.includes('@workspace:')) continue;
+    const resolution = String(value[1] ?? ''), integrity = value[value.length - 1];
+    if (resolution !== '' && !resolution.startsWith(ALLOWED_REGISTRY) || /(?:^|["\s])(git\+|github:|file:|http:\/\/)/.test(JSON.stringify(value))) {
       fail(`${rel}: "${key}" resolves to a non-registry source: ${resolution}`);
-      continue;
-    }
-    if (/(?:^|["\s])(git\+|github:|file:|http:\/\/)/.test(JSON.stringify(value))) {
-      fail(`${rel}: "${key}" uses a non-registry protocol (git/github/file/http)`);
-      continue;
-    }
-    if (typeof integrity !== 'string' || !INTEGRITY.test(integrity)) {
-      fail(`${rel}: "${key}" (${spec}) is missing a sha integrity hash`);
-    }
+    } else if (typeof integrity !== 'string' || !INTEGRITY.test(integrity)) fail(`${rel}: "${key}" (${spec}) is missing a sha integrity hash`);
   }
 
   // `bun audit` exits non-zero both for real advisories and for a registry it could not reach. Only the
   // first is a supply-chain finding: a timeout is the advisory service being down, and failing the gate on
   // it would block every merge on npm's availability while telling us nothing. Retry, then say so plainly.
-  let audit = spawnSync('bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
+  let audit = spawnSync(lock.endsWith('pnpm-lock.yaml') ? 'pnpm' : 'bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
   for (let attempt = 1; attempt < 3 && auditUnreachable(audit); attempt += 1) {
     Bun.sleepSync(2000 * attempt);
-    audit = spawnSync('bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
+    audit = spawnSync(lock.endsWith('pnpm-lock.yaml') ? 'pnpm' : 'bun', ['audit'], { cwd: dirname(lock), encoding: 'utf8' });
   }
   if (auditUnreachable(audit)) {
     unreachable += 1;
     console.warn(`  ! ${rel}: the npm advisory service is unreachable — advisories UNKNOWN for this run`);
   } else if (audit.status !== 0) {
-    fail(`${rel}: bun audit reported advisories\n${audit.stdout}${audit.stderr}`);
+    fail(`${rel}: dependency audit reported advisories\n${audit.stdout}${audit.stderr}`);
   }
 }
 

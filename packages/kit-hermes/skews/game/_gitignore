@@ -12,6 +12,6 @@ build/
 .open-autonomy/*.control.json
 .open-autonomy/publication-private/
 .open-autonomy/*.tmp
-.open-autonomy/bun.lock
+# The adopter commits .open-autonomy/pnpm-lock.yaml before activation.
 .volter/
 .worktrees/

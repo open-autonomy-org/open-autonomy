@@ -22,9 +22,9 @@ Cloudflare account:
 
 ```bash
 cd apps/self-host
-bunx wrangler secret put AGENT_PROXY_ADMIN_TOKEN
-bunx wrangler secret put AGENT_PROXY_HMAC_SECRET
-bunx wrangler secret put MODEL_GATEWAY_API_KEY
+pnpm exec wrangler secret put AGENT_PROXY_ADMIN_TOKEN
+pnpm exec wrangler secret put AGENT_PROXY_HMAC_SECRET
+pnpm exec wrangler secret put MODEL_GATEWAY_API_KEY
 bun run deploy
 ```
 

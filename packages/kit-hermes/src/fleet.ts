@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { KIT, readKit, upgrade } from './kit.ts';
 import { worldConfig } from './world-config.ts';
+import { sourceEnvironment } from './source.ts';
 
 // create-open-autonomy upgrade --fleet <fleet.json>: every project of a fleet onto this kit, from this kit. Each
 // project is cloned fresh from its origin, upgraded (the same three-way merge as `upgrade`), committed and landed the
@@ -96,7 +97,7 @@ export function fleet(dir: string, opts: { name: string; image: string; projects
   const memory = opts.memory ?? '3g';
   if (!/^\d+[kmg]?$/.test(memory)) throw new Error('--memory takes Docker\'s own value, e.g. 3g');
   const world = worldConfig({ id: `${opts.name}-fleet`, description: `The ${opts.name} fleet: one executor, ${projects.length} project(s)`, strip: ['HERMES_*', 'OPENAI_*'],
-    env: { OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: memory, OA_EXECUTOR_CPUS: opts.cpus ?? '2',
+    env: { ...sourceEnvironment(), OA_EXECUTOR_CONTAINER: container, OA_EXECUTOR_IMAGE: opts.image, OA_EXECUTOR_VOLUMES: mounts.join(','), OA_EXECUTOR_MEMORY: memory, OA_EXECUTOR_CPUS: opts.cpus ?? '2',
       ...(opts.provider ? { OA_EXECUTOR_PROVIDER: opts.provider } : {}), ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) },
     service: { id: 'executor', up: ['bun', executor, 'up'], status: ['bun', executor, 'status'], down: ['bun', executor, 'down'] } });
   writeFileSync(join(runtimeDir, 'world.json'), `${JSON.stringify(world, null, 2)}\n`);

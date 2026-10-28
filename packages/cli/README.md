@@ -5,8 +5,12 @@ read; the owner's pause and resume to say; keys to mint. Nothing here runs or up
 [`create-open-autonomy`](../kit-hermes/README.md)'s), and nothing here is a door the platform lacks.
 
 ```sh
-bunx @open-autonomy/cli status open-autonomy-org/hookline      # or: bun add -g @open-autonomy/cli; oa status …
+OA_PNPM_STORE="$(pnpm store path)"
+OA_PNPM_CACHE_DIR="$(dirname "$OA_PNPM_STORE")/cache"
+pnpm --config.cacheDir="$OA_PNPM_CACHE_DIR" --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx @open-autonomy/cli status open-autonomy-org/hookline      # or: pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink @open-autonomy/cli; oa status …
 ```
+
+The native `cacheDir` keeps the temporary tool environment beside the selected store on the same volume; the explicit hoisted/hardlink flags apply there too.
 
 ```text
 oa status   [org|owner/project]        a project: the word, the money, what is running, the board;

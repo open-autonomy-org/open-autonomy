@@ -9,14 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 ARG BUN_VERSION=1.3.10
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
     && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
+# Native pnpm uses one hard-linked content store on this executor volume.
+ENV PNPM_HOME=/opt/pnpm
+ENV PATH="/opt/pnpm/bin:${PATH}"
+RUN curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 SHELL=/bin/bash sh -
 # Codex, for a project whose setup picks it: the orchestrator runs it as each profile's worker, its model through the
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
-RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
 # The start script and the reporter's dependencies, from the image — the checkout arrives after the first boot.
 COPY .open-autonomy /opt/agent/.open-autonomy
 ARG RUNTIME_REGISTRY=https://registry.npmjs.org
-RUN cd /opt/agent/.open-autonomy && bun install-runtime.ts --runtime-registry "$RUNTIME_REGISTRY"
+# Install into one writable image layer so OverlayFS does not copy up shared store files.
+RUN pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version \
+    && cd /opt/agent/.open-autonomy && bun install-runtime.ts --runtime-registry "$RUNTIME_REGISTRY"
 # Login shells use /usr/local/bin; expose the installed World CLI there too.
 RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data

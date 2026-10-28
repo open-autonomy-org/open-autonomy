@@ -410,19 +410,21 @@ jobs:
             objects.githubusercontent.com:443
             release-assets.githubusercontent.com:443
             registry.npmjs.org:443
+            get.pnpm.io:443
             api.cloudflare.com:443
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.10
           no-cache: true
-      - run: bun install --frozen-lockfile
+      - run: curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 PNPM_HOME="$HOME/.local/share/pnpm" SHELL=/bin/bash sh -
+      - run: $HOME/.local/share/pnpm/bin/pnpm install --frozen-lockfile --package-import-method hardlink
       - name: Deploy (the lockfile-pinned wrangler)
         env:
           CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: \${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
-        run: bunx wrangler deploy
+        run: $HOME/.local/share/pnpm/bin/pnpm exec wrangler deploy
   # The record: each deploy is a \`deploy-v<date>.<n>\` tag on the commit it shipped, in its own job so the write
   # permission never meets the Cloudflare token.
   record:

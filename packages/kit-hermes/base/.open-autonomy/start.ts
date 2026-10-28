@@ -21,7 +21,7 @@ if (!existsSync(keeper)) {
   if (arg('--as')) { console.error(`start: the kit's keeper is not installed in ${import.meta.dir}; install it as the agent's user first (bun .open-autonomy/install-runtime.ts). Nothing was started.`); process.exit(1); }
   // A committed lock pins the install. One git does not track is this host's scratch.
   const tracked = (file: string) => { try { execFileSync('git', ['ls-files', '--error-unmatch', relative(resolve(import.meta.dir, '..'), file)], { cwd: resolve(import.meta.dir, '..'), stdio: 'ignore' }); return true; } catch { return false; } };
-  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(import.meta.dir, file)).some((file) => existsSync(file) && tracked(file));
+  const lock = ['pnpm-lock.yaml'].map((file) => resolve(import.meta.dir, file)).some((file) => existsSync(file) && tracked(file));
   const options = { directory: import.meta.dir, environment: process.env as Record<string, string>, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   // The install is a child this start waits on, so a stop signal reaches it too, and this start exits once it has.
   let install: { kill(signal?: number | NodeJS.Signals): void } | undefined;

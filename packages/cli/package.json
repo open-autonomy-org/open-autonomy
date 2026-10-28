@@ -17,16 +17,23 @@
     "README.md"
   ],
   "scripts": {
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "pnpm exec tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.0",
-    "@open-autonomy/sdk": "workspace:*",
+    "@open-autonomy/sdk": "workspace:4.1.0",
     "commander": "^15.0.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
     "typescript": "^5.9.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

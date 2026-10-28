@@ -27,10 +27,17 @@
     "access": "public"
   },
   "scripts": {
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "pnpm exec tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
     "typescript": "^5.9.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

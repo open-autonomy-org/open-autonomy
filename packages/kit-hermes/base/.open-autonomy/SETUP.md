@@ -672,7 +672,7 @@ authorized SSH tunnel; never expose it as a public secret endpoint.
 ## Prepare the host and application's world
 
 Before activation, finalize the adopter-owned host lock through the existing installer in that project's World:
-`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/bun.lock` against the
+`bun .open-autonomy/install-runtime.ts --update-lock`. Review and commit `.open-autonomy/pnpm-lock.yaml` against the
 exact declared host manifest, then use frozen installation for startup. The template's native dependency lock
 cannot contain the integrity of the kit archive that contains it. An unresolved committed template lock refuses;
 startup never silently unfreezes it. Unpublished candidates require explicitly supplied reviewed package artifacts
@@ -737,6 +737,39 @@ After the first start has rendered the home, run the pass once by hand, then sch
 start: a launchd job with `StartInterval` 600 (or a cron line) running that command in the checkout, with the start's
 `--home` as `HERMES_HOME`. A project with a keep job of its own may run the pass from it instead.
 
+## Kit upgrade source
+
+Public package installations keep the package upgrade default. An installation that runs our source must keep
+`OPEN_AUTONOMY_SOURCE_ONLY=1` in its maintainer and runtime environment, and set `OPEN_AUTONOMY_SOURCE` to the
+owning Open Autonomy checkout at the exact selected kit release. The source-only flag makes a missing source
+refuse instead of selecting a registry executable. Setting `OPEN_AUTONOMY_SOURCE` also selects source mode.
+This repository's own maintainer and the todo-cli cookbook always require source. Direct execution from the
+kit's `packages/kit-hermes/src` layout selects source mode automatically, even if Git or the SDK is missing.
+
+The kit and its exact declared `@open-autonomy/sdk` must be tracked under the same owning Git checkout at
+`packages/kit-hermes` and `packages/sdk`; the kit's native SDK resolution must reach that SDK. Maintenance
+prepares that workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle policy, using the
+cache beside the source volume's native pnpm store, then runs its native Bun CLI with the upgrade target explicit.
+The registry discovers the release version; source mode never executes its kit or SDK as a fallback.
+
+For an older ancestor, set `OPEN_AUTONOMY_KIT_CACHE` to the existing versioned cache and link
+`<cache>/<old-kit-version>/node_modules/create-open-autonomy` to that version's owning `packages/kit-hermes`,
+and `<cache>/<old-kit-version>/node_modules/@open-autonomy/sdk` to its `packages/sdk`. Prepare that historical
+source's native dependencies first. Upgrade and fleet upgrade validate both source links, the kit version, its
+exact SDK version and actual SDK resolution before importing the old renderer; missing or registry-backed
+ancestors refuse without installing a package. The current kit version needs no ancestor import.
+
+Runtime and fleet environment records retain the source-only decision and selected source/cache values.
+Those paths must exist inside the runtime where maintenance runs; the kit does not invent mounts or translate
+host paths. Run the source CLI with the host checkout selected, so its own provenance check can pass. Before
+activation, edit the generated runtime directory's `<runtime>/world.json`: under `runtime.environment.values`, keep
+`OPEN_AUTONOMY_SOURCE_ONLY` as `"1"` and set `OPEN_AUTONOMY_SOURCE` and `OPEN_AUTONOMY_KIT_CACHE` to the owning
+source checkout and historical source-link cache visible to the executor (for example `/work/open-autonomy`).
+World's declared values override the host service's inherited environment for the host start command, which
+copies them into the executor's profile environment. A host-run maintainer instead needs the host-visible paths
+in its own scheduled environment. Regenerating the runtime writes the CLI's host values again: reconcile its
+`<runtime>/world.json` before activation. Configure the existing runtime source routes first; a missing route fails closed.
+
 ## Verify, resume and hand off
 
 Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing
@@ -748,7 +781,7 @@ its record or issuing replacements. Reconcile the intended host/directory and re
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
 a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
-one its machine daemon runs: `npm install -g --allow-scripts=@homebridge/node-pty-prebuilt-multiarch,@volter/supercode @volter/supercode`,
+one its machine daemon runs: `pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode`,
 which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
 alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
 the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
@@ -845,3 +878,5 @@ landing and subsequent PM reconciliation before claiming the development loop wo
 release still ships only on the owner's approval of the Release. Local applications and packages ship through the
 same Release (`.open-autonomy/PRODUCTION.md`); a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.
+
+Legacy hosts can declare a machine-source package as `workspace:<exact-version>`. The runtime install door requires one matching package in the selected complete source graph, checks its actual name and version, and asks pnpm to link it. A source-bound host lock uses paths relative to that host. Keep canonical sibling checkouts together (for example, `runhuman-2` and `supercode`); relocating the selected graph requires an explicit `bun .open-autonomy/install-runtime.ts --update-lock` and review of the changed lock before activation. Frozen entry refuses a different binding.

@@ -3,7 +3,7 @@
 import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -16,7 +16,7 @@ type Options = {
   archive?: string;
   lockOnly?: boolean;
   // Told of the install's child the moment it starts, so a caller that stops on a signal can stop it too, rather than
-  // leave a `bun install` running with nobody waiting on it.
+  // leave a `pnpm install` running with nobody waiting on it.
   started?: (child: ReturnType<typeof Bun.spawn>) => void;
 };
 
@@ -105,27 +105,53 @@ export function machinePublishedBinding(environment: Record<string, string | und
   return { ...receipt, program, receipt: path };
 }
 
-// Bun owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
-// on-disk representation: links to that tree, never installed copies. Leave registry packages on Bun's normal backend
+function nativeHostWorkspaces(directory: string, environment: Record<string, string | undefined>): Array<{ name: string; version: string; path: string }> {
+  directory = realpathSync(directory);
+  const listed = spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', directory, 'list', '-r', '--depth', '-1', '--json'], { env: environment }));
+  if (listed.exitCode !== 0) throw new Error(`Cannot read native host source workspaces: ${listed.stderr.toString()}`);
+  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(directory + sep));
+}
+
+// pnpm owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
+// on-disk representation: native link overrides to that tree, never installed copies. Leave registry packages on pnpm's native store
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
+  const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+  const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
+  const workspace = Object.entries(declarations).filter(([, value]) => typeof value === 'string' && value.startsWith('workspace:'));
+  // Host-owned source workspaces have their own Git pins. Let native pnpm
+  // select them only beneath this canonical host; the machine's Supercode
+  // packages still require its complete graph, even if a local copy exists.
+  const local = new Set<string>();
+  if (workspace.length && existsSync(join(options.directory, 'pnpm-workspace.yaml'))) {
+    const packages = nativeHostWorkspaces(options.directory, options.environment);
+    for (const [name, value] of workspace) {
+      if (name === '@volter/supercode' || name.startsWith('@volter/supercode-')) continue;
+      const candidates = packages.filter(pkg => pkg.name === name);
+      if (!candidates.length) continue;
+      const expected = /^workspace:(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(value as string)?.[1];
+      if (!expected || !candidates.some(pkg => pkg.version === expected)) throw new Error(`Host source dependency ${name} does not match exact workspace version ${value}`);
+      local.add(name);
+    }
+  }
+  const machine = workspace.filter(([name]) => !local.has(name));
   const file = sourceLock(options.environment);
+  if (!file && machine.length) throw new Error(`Workspace source dependencies ${machine.map(([name]) => name).join(', ')} need a selected complete Supercode source graph`);
   if (!file) {
     const published = machinePublishedBinding(options.environment);
     if (!published) return [];
-    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
-    const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
     return ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams'].filter(name => declarations[name]).map(name => ({ name, target: realpathSync(join(published.root, 'node_modules', name)) }));
   }
   const lock = selectedSource(file, options.environment);
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
-  const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
-  const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   return Object.entries(declarations).flatMap(([name, value]) => {
-    if (typeof value !== 'string' || !value.startsWith('file:')) return [];
+    if (typeof value !== 'string' || local.has(name)) return [];
+    const expected = value.startsWith('workspace:') ? /^workspace:(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(value)?.[1] : undefined;
+    if (value.startsWith('workspace:') && !expected) throw new Error(`Source dependency ${name} needs an exact workspace version, received ${value}`);
+    if (!expected && !value.startsWith('file:')) return [];
     const matches = Object.values(lock.graph?.instances ?? {}).filter((instance: any) => instance.package === name) as any[];
-    if (matches.length > 1) throw new Error(`Source dependency ${name} needs one exact package instance`);
+    if (matches.length > 1 || expected && matches.length !== 1) throw new Error(`Source dependency ${name} needs one exact package instance in the selected complete graph`);
     const target = realpathSync(matches.length ? resolve(matches[0].root, matches[0].dir) : resolve(options.directory, value.slice(5)));
     const path = relative(root, target);
     if (!matches.length && (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path))) return [];
@@ -133,13 +159,25 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
         JSON.parse(readFileSync(join(target, 'package.json'), 'utf8')).name !== name) {
       throw new Error(`Source-linked dependency ${name} must name its package at ${target}`);
     }
+    const actual = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
+    if (matches.length && actual.version !== matches[0].version) throw new Error(`Source-linked dependency ${name} version ${actual.version} does not match its binding ${matches[0].version}`);
+    if (expected && actual.version !== expected) throw new Error(`Source-linked dependency ${name} version ${actual.version} does not match declared workspace version ${expected}`);
     return [{ name, target }];
   });
 }
 
 export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
-  const hash = createHash('sha256').update(readFileSync(join(options.directory, 'package.json')));
-  for (const name of ['bun.lock', 'bun.lockb']) {
+  const hash = createHash('sha256').update('pnpm-hardlink-v1').update(readFileSync(join(options.directory, 'package.json')));
+  const workspace = join(options.directory, 'pnpm-workspace.yaml');
+  if (existsSync(workspace)) {
+    hash.update(readFileSync(workspace));
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    if (Object.values({ ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies }).some(value => typeof value === 'string' && value.startsWith('workspace:'))) {
+      for (const pkg of nativeHostWorkspaces(options.directory, options.environment ?? process.env))
+        hash.update(relative(options.directory, pkg.path)).update(readFileSync(join(pkg.path, 'package.json')));
+    }
+  }
+  for (const name of ['pnpm-lock.yaml']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
   }
@@ -168,8 +206,8 @@ export async function installHostRuntime(options: Options): Promise<void> {
     const packed = spawnSyncWork(() => Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']));
     if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
     const manifest = JSON.parse(packed.stdout.toString());
-    if ((manifest.name !== 'create-open-autonomy' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
-      throw new Error('Runtime archive must be a versioned kit or @volter package');
+    if ((manifest.name !== 'create-open-autonomy' && manifest.name !== '@open-autonomy/sdk' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
+      throw new Error('Runtime archive must be a versioned kit, SDK or @volter package');
     }
     if (artifacts.has(manifest.name)) throw new Error(`Duplicate candidate package ${manifest.name}`);
     const bytes = readFileSync(path);
@@ -180,7 +218,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
   if (options.archive && artifacts.size === 0) throw new Error('Runtime artifact directory contains no npm-pack archives');
   // The installer serves immutable archives on loopback; all other locked dependencies use the normal registry.
   // No source override or alternate event implementation enters the consumer process.
-  const server = artifacts.size ? Bun.serve({ hostname: '127.0.0.1', port: 0,
+  const server = artifacts.size ? Bun.serve({ hostname: '127.0.0.1', port: 0, idleTimeout: 0,
     async fetch(request, server) {
       return responseWork('door', 'keeper.registry-request', async () => {
       if (!['GET', 'HEAD'].includes(request.method)) return new Response('Read only', { status: 405 });
@@ -213,37 +251,37 @@ export async function installHostRuntime(options: Options): Promise<void> {
       });
     }
   }) : undefined;
-  const lockPath = join(options.directory, 'bun.lock');
+  const lockPath = join(options.directory, 'pnpm-lock.yaml');
   const previousLock = existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : undefined;
   try {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
-    const args = ['bun', 'install', '--registry', endpoint, ...(server ? ['--no-cache'] : []), ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    const configured = links.length ? spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', options.directory, 'config', 'get', 'overrides', '--json'], { env: options.environment })) : undefined;
+    if (configured && configured.exitCode !== 0) throw new Error(`Cannot read native host workspace overrides: ${configured.stderr.toString()}`);
+    const text = configured?.stdout.toString().trim();
+    const overrides = { ...(text && text !== 'undefined' ? JSON.parse(text) : {}), ...manifest.overrides,
+      ...Object.fromEntries(links.map(({ name, target }) => [name, `link:${relative(options.directory, target).split(sep).join('/') || '.'}`])) };
+    const args = ['pnpm', '--config.nodeLinker=hoisted', ...(links.length ? [`--config.overrides=${JSON.stringify(overrides)}`] : []), 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = spawnWork(() => Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'
     }));
     options.started?.(child);
     const code = await child.exited;
     if (code !== 0) throw new Error(`Runtime dependency installation exited ${code}`);
-    if (!options.lockOnly) for (const { name, target } of links) {
-      const installed = join(options.directory, 'node_modules', name);
-      rmSync(installed, { recursive: true, force: true });
-      mkdirSync(dirname(installed), { recursive: true });
-      symlinkSync(target, installed, process.platform === 'win32' ? 'junction' : 'dir');
-      console.log(`runtime source link: ${name} -> ${target}`);
-    }
     // Commit registry-neutral resolution with the candidate integrity, never an ephemeral review listener.
     if (server && existsSync(lockPath)) {
       const original = readFileSync(lockPath, 'utf8');
       let normalized = original;
       for (const [name, artifact] of artifacts) {
         const url = `http://127.0.0.1:${server.port}/${name}/-/${name.split('/').at(-1)}-${artifact.manifest.version}.tgz`;
-        normalized = normalized.replaceAll(JSON.stringify(url), '""');
+        normalized = normalized.replaceAll(`, tarball: ${url}`, '').replaceAll(`tarball: ${url}, `, '');
       }
       if (normalized !== original) writeFileSync(lockPath, normalized);
     }
   } catch (error) {
     if (previousLock !== undefined) writeFileSync(lockPath, previousLock);
+    else rmSync(lockPath, { force: true });
     throw error;
   } finally { server?.stop(true); }
 }

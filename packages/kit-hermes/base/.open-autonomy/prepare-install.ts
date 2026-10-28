@@ -121,7 +121,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   if (source) env.SUPERCODE_SOURCE_CANDIDATE = realpathSync(source);
   if (release) env.SUPERCODE_RELEASE_RECEIPT = release;
   release = machinePublishedBinding(env)?.receipt ?? null;
-  await installHostRuntime({ directory: host, environment: env, frozen: existsSync(resolve(host, 'bun.lock')) || existsSync(resolve(host, 'bun.lockb')),
+  await installHostRuntime({ directory: host, environment: env, frozen: existsSync(resolve(host, 'pnpm-lock.yaml')),
     registry, archive });
   const keeper = resolve(host, 'node_modules/create-open-autonomy/keeper/install-owner.ts');
   if (!existsSync(keeper)) throw new Error('the prepared kit predates serving install handovers');

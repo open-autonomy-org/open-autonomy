@@ -13,7 +13,7 @@ if (!dir || !existsSync(join(dir, '.open-autonomy', 'kit.json'))) { console.erro
 const rec = JSON.parse(readFileSync(join(dir, '.open-autonomy', 'kit.json'), 'utf8')) as { params: { project: string; account: string } };
 const walk = (root: string, at = root): string[] => readdirSync(at).flatMap((name) => {
   const p = join(at, name);
-  if (name === 'node_modules' || name === '.git' || name === 'bun.lock') return [];
+  if (name === 'node_modules' || name === '.git' || name === 'pnpm-lock.yaml' || name === 'bun.lock') return [];
   return statSync(p).isDirectory() ? walk(root, p) : [relative(root, p)];
 });
 const made = mkdtempSync(join(tmpdir(), 'oa-cookbook-'));

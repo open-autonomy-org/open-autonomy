@@ -8,8 +8,9 @@ landed. The PM's `maintain.ts ship` keeps one pull request open from `main` to `
 changes compound until the owner reads the whole diff and merges it (a merge commit, so `publish` never drifts from
 `main`). `ship` never merges it and never pushes to `publish`. The `publish-protected` ruleset allows no creation or
 update of `publish` but a merged pull request that the `owners` team (the owner) has approved, and only that team
-bypasses it: the owner's merge is the publication authorization. On a push to `publish`,
-`deploy.yml` deploys the platform and tags the commit `deploy-v<date>.<n>`. npm packages are released apart from the site:
+bypasses it: the owner's merge is the publication authorization.
+
+The platform publication workflow is retired in `.github/retired-workflows/deploy.yml.txt`: run 40166913763 lasted 48 minutes, beyond the owner's 60-second end-to-end policy. No active workflow publishes the platform; restoring a compliant publication door is separate work. npm packages are released apart from the site:
 every package version not yet on npm is published from a clean checkout of the commit the manager permitted, on
 reviewed `main`, by `scripts/npm-publish-missing.sh` (packed once, keys-swept, that tarball uploaded; ADR 0033), which
 records a new kit version as a `release-v<version>` tag and GitHub release, and never pushes `publish`.

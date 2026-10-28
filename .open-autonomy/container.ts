@@ -14,6 +14,16 @@ import { containerMainMoved, mergeImageDenylist, openContainerCodexSandbox, prep
 import { agentHarness, agentModels, applyAgent, parseAgent, readAgent } from './agent.ts';
 import { TREASURER, prepareTreasurerHome, treasurerBoardEnvironment, treasurerContainer, treasurerDispatch, treasurerPersona } from './container-treasurer.ts';
 
+function sourceEnvironment(): Record<string, string> {
+  const selected = true;
+  const values = Object.fromEntries(['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
+    .flatMap((name) => {
+      const value = process.env[name];
+      return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
+    }));
+  return { ...values, OPEN_AUTONOMY_SOURCE_ONLY: '1' };
+}
+
 export async function startContainer(options: {
   container: string; project?: string; home?: string; secrets?: string; state?: string; config?: string; port: number;
 }) {
@@ -124,7 +134,7 @@ export async function startContainer(options: {
     }, 'credential valves');
     const channelsFile = resolve(secrets, 'channels.env');
     const channels = existsSync(channelsFile) ? parseEnv(readFileSync(channelsFile, 'utf8')) : {};
-    const env = { ...channels, HOME: home, HERMES_HOME: home, TERMINAL_CWD: workspace,
+    const env = { ...channels, ...sourceEnvironment(), HOME: home, HERMES_HOME: home, TERMINAL_CWD: workspace,
       HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${home}/codex-home-none`,
       OPEN_AUTONOMY_BASE_URL: `${host}:${port}/v1`, OPEN_AUTONOMY_KEY: 'valve',
       GITHUB_API_URL: `${host}:${port + 3}`, GITHUB_TOKEN: 'valve' };

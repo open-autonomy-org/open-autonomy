@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
+import { executingSource } from './source.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
@@ -55,7 +56,7 @@ export function validateSkew(s: unknown): Skew {
 // three-way merge, the project's own edits kept. Generated private-state ignore rules use that same merge.
 // Every program the kit ships in .open-autonomy/ is kit-owned, so an upgraded program never imports one left behind;
 // a project's own program there is in no template and is never touched.
-const OWNED = [/^\.gitignore$/, /^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/([^/]+\.ts$|agent\.json|agent\.schema\.json|PUBLICATION\.md|SETUP\.md|PRODUCTION\.md|package\.json|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
+const OWNED = [/^\.gitignore$/, /^hermes\/(?!kanban\.seed\.json$|cron\/webhooks\.seed\.json$|skills\/(?!open-autonomy\/))/, /^home\/(?!skills\/(?!open-autonomy\/))/, /^\.open-autonomy\/([^/]+\.ts$|agent\.json|agent\.schema\.json|PUBLICATION\.md|SETUP\.md|PRODUCTION\.md|package\.json|pnpm-workspace\.yaml|sdk\/|rehearsal\/)/, /^container\//, /^\.github\/workflows\/(ci|land|pages)\.yml$/];
 export const isOwned = (rel: string): boolean => OWNED.some((re) => re.test(rel));
 
 export function validateParams(p: Partial<KitParams>): KitParams {
@@ -86,7 +87,7 @@ function walk(dir: string, base = dir): string[] {
 // first whose session start carries the session's own harness, which the publisher sends.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
 const SDK_MIN = '4.1.0';
-const SDK_PKG = Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
+const SDK_PKG = executingSource(KIT.version) ?? Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
@@ -265,12 +266,24 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   // A project that commits its host package's lockfile: the start installs it frozen, so a package.json the
   // upgrade changed with the lock left behind would stop every start. The lock is re-resolved here, beside it.
   const hostPackage = '.open-autonomy/package.json';
-  const lock = join(dir, '.open-autonomy', 'bun.lock');
-  if (existsSync(lock) && [...out.written, ...out.merged].includes(hostPackage)) {
-    const r = spawnSync('bun', ['install', '--lockfile-only'], { cwd: join(dir, '.open-autonomy'), encoding: 'utf8', timeout: 120_000 });
-    if (r.status === 0) out.written.push('.open-autonomy/bun.lock');
-    // a lock left stale is a start that refuses: held like a conflict, so nothing lands until it is re-resolved
-    else out.conflicts.push(`.open-autonomy/bun.lock (could not be re-resolved: ${(r.stderr || r.error?.message || '').trim().slice(-200)}; run \`bun install\` in .open-autonomy)`);
+  const host = join(dir, '.open-autonomy'), lock = join(host, 'pnpm-lock.yaml');
+  const legacy = join(host, 'bun.lock'), yarn = join(host, 'yarn.lock');
+  const migration = existsSync(legacy) && !existsSync(lock);
+  if ((migration || existsSync(lock) && [...out.written, ...out.merged].includes(hostPackage)) && !out.conflicts.includes(hostPackage)) {
+    const hadYarn = existsSync(yarn);
+    try {
+      if (migration) {
+        // Export Bun's exact resolutions and let pnpm import them; neither command installs packages.
+        const exported = spawnSync('bun', ['install', '--yarn', '--dry-run', '--ignore-scripts', '--frozen-lockfile'], { cwd: host, encoding: 'utf8', timeout: 120_000 });
+        if (exported.status !== 0) throw new Error((exported.stderr || exported.error?.message || 'Bun lock export failed').trim());
+      }
+      const imported = spawnSync('pnpm', migration ? ['import'] : ['install', '--lockfile-only', '--ignore-scripts'], { cwd: host, encoding: 'utf8', timeout: 120_000 });
+      if (imported.status !== 0) throw new Error((imported.stderr || imported.error?.message || 'pnpm lock resolution failed').trim());
+      out.written.push('.open-autonomy/pnpm-lock.yaml');
+      if (migration) { rmSync(legacy); out.retired.push('.open-autonomy/bun.lock'); }
+    } catch (error) {
+      out.conflicts.push(`.open-autonomy/pnpm-lock.yaml (could not be resolved: ${(error as Error).message.slice(-300)}; run \`bun .open-autonomy/install-runtime.ts --update-lock\` in the project's World)`);
+    } finally { if (!hadYarn) rmSync(yarn, { force: true }); }
   }
   // Repair the exact empty-list spelling emitted by older kits. Other project
   // policy, including malformed custom values, remains the owner's to resolve.

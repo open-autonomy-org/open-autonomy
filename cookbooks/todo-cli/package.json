@@ -5,5 +5,13 @@
   "scripts": {
     "todo": "bun src/cli.ts",
     "check": "bun build src/cli.ts examples/notes-http.ts --target=bun --outdir=.build"
+  },
+  "packageManager": "pnpm@12.15.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.15.0",
+      "onFail": "error"
+    }
   }
 }

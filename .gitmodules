@@ -1,0 +1,33 @@
+[submodule ".open-autonomy/sources/twin"]
+	path = .open-autonomy/sources/twin
+	url = https://github.com/volter-ai/twin.git
+[submodule "sources/supercode-runtime"]
+	path = sources/supercode-runtime
+	url = https://github.com/volter-ai/supercode.git
+[submodule "sources/supercode-ui"]
+	path = sources/supercode-ui
+	url = https://github.com/volter-ai/supercode.git
+[submodule "sources/supercode-ui-development"]
+	path = sources/supercode-ui-development
+	url = https://github.com/volter-ai/supercode.git
+[submodule "sources/teams"]
+	path = sources/teams
+	url = https://github.com/volter-ai/supercode.git
+[submodule "sources/identity-platform"]
+	path = sources/identity-platform
+	url = https://github.com/volter-ai/identity.git
+[submodule "sources/identity-teams"]
+	path = sources/identity-teams
+	url = https://github.com/volter-ai/identity.git
+[submodule "sources/ztrack"]
+	path = sources/ztrack
+	url = https://github.com/volter-ai/ztrack.git
+[submodule "sources/twin-runtime"]
+	path = sources/twin-runtime
+	url = https://github.com/volter-ai/twin.git
+[submodule "sources/twin-packs"]
+	path = sources/twin-packs
+	url = https://github.com/volter-ai/twin.git
+[submodule "sources/twin-ztrack-development"]
+	path = sources/twin-ztrack-development
+	url = https://github.com/volter-ai/twin.git

@@ -338,7 +338,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
   // this host's scratch, and the install brings it up to package.json instead of refusing on it.
   const committed = (file: string) => spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' })).exitCode === 0;
-  const lock = ['bun.lock', 'bun.lockb'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
+  const lock = ['pnpm-lock.yaml'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
   const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
@@ -353,7 +353,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
       await installHostRuntime({ ...runtimeOptions, command: drop, frozen: !!lock, started: (child) => { install = child; helpers.add(child); } });
     } catch (error) {
       await halted();
-      throw new Error(`${(error as Error).message}. Resolve the adopter's exact host manifest before activation: run bun .open-autonomy/install-runtime.ts --update-lock from the project inside its World, review/commit .open-autonomy/bun.lock, then retry. Startup does not unfreeze a committed lock.`);
+      throw new Error(`${(error as Error).message}. Resolve the adopter's exact host manifest before activation: run bun .open-autonomy/install-runtime.ts --update-lock from the project inside its World, review/commit .open-autonomy/pnpm-lock.yaml, then retry. Startup does not unfreeze a committed lock.`);
     } finally { if (install) helpers.delete(install); }
     await halted();
     writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);

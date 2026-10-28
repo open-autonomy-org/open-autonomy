@@ -697,6 +697,39 @@ the reviewed procedure in `.open-autonomy/PRODUCTION.md`; `--with release` repor
 is not implemented and refuses before collecting a credential. Other deployment targets use their own
 documented setup. Optional sponsorship setup is also separate, explicitly selected with `--with sponsors`.
 
+## Kit upgrade source
+
+Public package installations keep the package upgrade default. An installation that runs our source must keep
+`OPEN_AUTONOMY_SOURCE_ONLY=1` in its maintainer and runtime environment, and set `OPEN_AUTONOMY_SOURCE` to the
+owning Open Autonomy checkout at the exact selected kit release. The source-only flag makes a missing source
+refuse instead of selecting a registry executable. Setting `OPEN_AUTONOMY_SOURCE` also selects source mode.
+This repository's own maintainer and the todo-cli cookbook always require source. Direct execution from the
+kit's `packages/kit-hermes/src` layout selects source mode automatically, even if Git or the SDK is missing.
+
+The kit and its exact declared `@open-autonomy/sdk` must be tracked under the same owning Git checkout at
+`packages/kit-hermes` and `packages/sdk`; the kit's native SDK resolution must reach that SDK. Maintenance
+prepares that workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle policy, using the
+cache beside the source volume's native pnpm store, then runs its native Bun CLI with the upgrade target explicit.
+The registry discovers the release version; source mode never executes its kit or SDK as a fallback.
+
+For an older ancestor, set `OPEN_AUTONOMY_KIT_CACHE` to the existing versioned cache and link
+`<cache>/<old-kit-version>/node_modules/create-open-autonomy` to that version's owning `packages/kit-hermes`,
+and `<cache>/<old-kit-version>/node_modules/@open-autonomy/sdk` to its `packages/sdk`. Prepare that historical
+source's native dependencies first. Upgrade and fleet upgrade validate both source links, the kit version, its
+exact SDK version and actual SDK resolution before importing the old renderer; missing or registry-backed
+ancestors refuse without installing a package. The current kit version needs no ancestor import.
+
+Runtime and fleet environment records retain the source-only decision and selected source/cache values.
+Those paths must exist inside the runtime where maintenance runs; the kit does not invent mounts or translate
+host paths. Run the source CLI with the host checkout selected, so its own provenance check can pass. Before
+activation, edit the generated runtime directory's `<runtime>/world.json`: under `runtime.environment.values`, keep
+`OPEN_AUTONOMY_SOURCE_ONLY` as `"1"` and set `OPEN_AUTONOMY_SOURCE` and `OPEN_AUTONOMY_KIT_CACHE` to the owning
+source checkout and historical source-link cache visible to the executor (for example `/work/open-autonomy`).
+World's declared values override the host service's inherited environment for the host start command, which
+copies them into the executor's profile environment. A host-run maintainer instead needs the host-visible paths
+in its own scheduled environment. Regenerating the runtime writes the CLI's host values again: reconcile its
+`<runtime>/world.json` before activation. Configure the existing runtime source routes first; a missing route fails closed.
+
 ## Verify, resume and hand off
 
 Record non-secret application IDs, completed setup steps and remaining setup gaps in the existing
@@ -800,3 +833,14 @@ landing and subsequent PM reconciliation before claiming the development loop wo
 release still ships only on the owner's approval of the Release. Local applications and packages ship through the
 same Release (`.open-autonomy/PRODUCTION.md`); a missing live-service address does not prevent their release
 planning. Later production provisioning is not an initial development-setup blocker.
+
+This repository retains its existing World 2 topology through the native Git pin
+`.open-autonomy/sources/twin` at `8ebeb0dc081677103200e72ee4ae5aad086e02c8`.
+Initialize it with `git submodule update --init .open-autonomy/sources/twin`.
+Exact native workspace versions keep Core 2.0.15, Runtime 2.0.26, GitHub 2.0.17,
+OpenAI/Discord/Jira/Slack 2.0.15, Access 2.0.2, UI/MongoDB 0.1.15 and private
+Tooling 0.1.0. The host's three Supercode declarations bind to the selected
+complete machine source graph; preparation checks actual names and versions.
+The legacy host keeps its project-owned start and channel dependencies while
+its adapter uses that graph's Node program, runtime, SDK and orchestrator.
+Moving its source graph requires explicit lock preparation before activation.
