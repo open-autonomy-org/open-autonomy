@@ -377,7 +377,7 @@ const env = agentEnv();
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
-    writeFileSync(stamp, `${want}\n`);
+    writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
 }
