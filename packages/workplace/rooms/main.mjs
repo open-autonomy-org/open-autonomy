@@ -1065,6 +1065,8 @@ if (disconnecting) {
       } catch (error) { pending.push(`${roomId}: ${error.code ?? 'cleanup failed'}`); }
     }
     if (pending.length) throw Object.assign(new Error(`${pending.length} Room withdrawals remain owed`), { code: 'withdrawal-pending' });
+    const debt = lifecycle.debt();
+    if (debt.outstanding || debt.unknown || debt.run) throw Object.assign(new Error('unanswered product effects or run placements retain withdrawal debt'), { code: 'withdrawal-pending' });
     state.disconnectedAt = new Date().toISOString(); log('projection-withdrawn');
   } catch (error) { log('withdrawal-pending', { code: error.code ?? null, message: String(error.message).slice(0, 200) }); process.exitCode = 1; }
   finally { state.cleanupReady = previousCleanup; flushState(); }

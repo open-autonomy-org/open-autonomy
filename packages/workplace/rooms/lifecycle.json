@@ -2,6 +2,7 @@
   "protocol": 1,
   "transport": "node-ipc",
   "state": { "arcVersion": 7, "journalVersion": 1 },
+  "withdrawal": { "protocol": 1, "transport": "command", "argument": "--disconnect", "scope": "all-owned-placements" },
   "files": ["main.mjs", "lifecycle.mjs", "lifecycle.json", "rh2-app.json", "teams-app.json"],
   "compensation": {
     "protocol": 1,

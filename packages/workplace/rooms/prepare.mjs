@@ -63,6 +63,8 @@ export function readArtifact(receiptPath, { verifySource = false } = {}) {
     const metadata = json(join(value.directory, 'lifecycle.json'));
     if (JSON.stringify(metadata) !== JSON.stringify(value.lifecycle)) fail('lifecycle metadata changed');
     if (metadata.transport !== 'node-ipc' || metadata.compensation?.protocol !== 1 || metadata.compensation.scope !== 'run-only') fail('unsupported lifecycle contract');
+    if (metadata.withdrawal?.protocol !== 1 || metadata.withdrawal.transport !== 'command'
+      || metadata.withdrawal.argument !== '--disconnect' || metadata.withdrawal.scope !== 'all-owned-placements') fail('unsupported withdrawal contract');
     if (JSON.stringify([...metadata.files].sort()) !== JSON.stringify([...names].sort())) fail('runtime closure differs from lifecycle metadata');
   } else if (value.source.revision !== LEGACY || value.lifecycle?.protocol !== null || value.lifecycle?.state?.arcVersion !== 5
     || JSON.stringify([...names].sort()) !== JSON.stringify([...LEGACY_FILES].sort())

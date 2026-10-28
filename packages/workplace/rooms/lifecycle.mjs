@@ -50,6 +50,8 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     artifact = readProgram(join(directory, 'artifact.json'), binding.artifact);
     const metadata = JSON.parse(readFileSync(join(directory, 'lifecycle.json')));
     if (metadata.protocol !== 1 || metadata.transport !== 'node-ipc' || metadata.state?.journalVersion !== 1
+      || metadata.withdrawal?.protocol !== 1 || metadata.withdrawal.transport !== 'command'
+      || metadata.withdrawal.argument !== '--disconnect' || metadata.withdrawal.scope !== 'all-owned-placements'
       || JSON.stringify(metadata) !== JSON.stringify(artifact.value.lifecycle)
       || JSON.stringify([...metadata.files].sort()) !== JSON.stringify(artifact.value.files.map(file => file.path).sort())) fail('unsupported artifact lifecycle');
   }

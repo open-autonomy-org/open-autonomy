@@ -14,6 +14,11 @@ closure and both consent manifests into a new immutable artifact. Its exact-byte
 receipt binds source, files, entrypoint and lifecycle capability. Existing differing artifacts refuse.
 Preparation never selects or starts a program and never copies state, config or custody.
 
+The runtime metadata separately declares the command withdrawal capability: protocol 1, `--disconnect`,
+scope `all-owned-placements`. The command conditionally removes owned role and run seats, preserves
+independent seats, and refuses completion while unanswered product effects or run debt remain. Exact
+version 5 declares no such capability and is ineligible for native command withdrawal.
+
 The existing connection owner supplies its child with a transaction, connection/app, artifact digest,
 canonical config/state paths and fresh child generation over the existing Node IPC parent channel.
 The program verifies its immutable closure and reports loaded and source-admitted readiness separately
