@@ -734,6 +734,7 @@ async function* followReading(after, continuation, recovery = false) {
   const url = `${config.teams.server.replace(/\/+$/, '')}/api/v1/teams/${encodeURIComponent(config.teams.team)}/events?kinds=${kinds}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
   // This connection's own end beside the app's, which its bounds (readingBounds) use to end a reading that hangs.
   const connection = new AbortController();
+  connection.signal.addEventListener('abort', () => { if (!recovery) { sourceAdmitted = false; lifecycle?.announce(); } }, { once: true });
   stream = { connection, heardAt: Date.now() };
   // a fresh reading (no cursor) is a snapshot from its start; a continuation of one carries it on
   if (!after) snapshotOpen = true;
@@ -763,7 +764,10 @@ async function* followReading(after, continuation, recovery = false) {
         if (data) { const frame = JSON.parse(data); bounds.frame(frame?.type); yield frame; }
       }
     }
-  } finally { bounds.done(); }
+  } finally {
+    bounds.done();
+    if (!recovery) { sourceAdmitted = false; lifecycle?.announce(); }
+  }
 }
 
 const state = loadState();
@@ -823,7 +827,7 @@ let stopping = false, sourceAdmitted = false;
 // The event stream connected now (follow): its own end, when it was last heard, and whether it has ended.
 let stream = null, readingDone = Promise.resolve(), endReading;
 function invalidateSource() {
-  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState();
+  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState(); lifecycle?.announce();
 }
 
 // A card RH2 refuses waits before it is tried again (a minute, doubling to an hour), unless a newer version of it arrives.
@@ -1073,7 +1077,7 @@ while (!stopping) {
   if (lifecycle.paused) { await new Promise(resolve => setTimeout(resolve, 100)); continue; }
   if (state.streamRetryAt > Date.now()) { await new Promise((resolve) => setTimeout(resolve, Math.min(5000, state.streamRetryAt - Date.now()))); continue; }
   let named = null;
-  if (!state.cursor || flag === '--once') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; saveState(); }
+  if (!state.cursor || flag === '--once') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; saveState(); lifecycle.announce(); }
   await drain();
   if (lifecycle.paused || stopping) continue;
   readingDone = new Promise(resolve => { endReading = resolve; });
@@ -1083,7 +1087,7 @@ while (!stopping) {
     const after = flag === '--once' ? null : state.cursor;
     for await (const frame of follow(after)) {
       if (stopping || lifecycle.paused) break;
-      if (frame.type === 'snapshot_begin') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); }
+      if (frame.type === 'snapshot_begin') { named = new Set(); state.ready = false; state.cleanupReady = false; state.pending = {}; state.cursor = null; saveState(); lifecycle.announce(); }
       if (frame.type === 'resync_required' || frame.type === 'access_revoked') { invalidateSource(); log(frame.type, { reason: frame.reason }); break; }
       const event = frame.data;
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'task' && event.data?.card
@@ -1119,6 +1123,7 @@ while (!stopping) {
       void drain();
     }
   } catch (error) {
+    sourceAdmitted = false; lifecycle.announce();
     if (stream) stream.ended = true;
     // HTTP authentication/access refusal invalidates the baseline as an explicit revocation frame does.
     if (!lifecycle.paused && (named || [401, 403, 409].includes(error.status))) invalidateSource();
@@ -1126,7 +1131,7 @@ while (!stopping) {
     if (!lifecycle.paused && !stopping) log('event-stream-failed', { message: String(error.message).slice(0, 200) });
   }
   if (stream) stream.ended = true;
-  sourceAdmitted = false;
+  sourceAdmitted = false; lifecycle.announce();
   if (named && !lifecycle.paused) invalidateSource();
   endReading();
   if (!stopping && !lifecycle.paused) await new Promise((resolve) => setTimeout(resolve, 5000));

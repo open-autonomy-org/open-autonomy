@@ -82,13 +82,14 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
   }
   async function quiesce() {
     if (status !== 'quiesced') {
-      status = 'quiescing';
+      status = 'quiescing'; announce();
       await pause();
       await Promise.allSettled([...active]);
       status = 'quiesced';
     }
     if (receipt?.compensated && debt().outstanding === 0) persist();
     else persistReceipt({ quiesced: true, persisted: true });
+    announce();
     return snapshot();
   }
   async function control(frame) {
@@ -147,13 +148,13 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     const work = (async () => {
       try {
         const result = await effect();
-        delete journal.intents[id]; persist();
+        delete journal.intents[id]; persist(); announce();
         return result;
       } catch (error) {
         if (error.remoteSettled === true) delete journal.intents[id];
         else { intent.phase = 'unknown'; journal.intents[id] = intent; }
         try { persist(); } catch (persistenceError) { intent.phase = 'unknown'; journal.intents[id] = intent; throw persistenceError; }
-        throw error;
+        announce(); throw error;
       }
     })();
     active.add(work);
