@@ -103,7 +103,7 @@ jobs:
         run: curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 PNPM_HOME="$HOME/.local/share/pnpm" SHELL=/bin/bash sh -
       - name: Install the worker's pinned wrangler
         if: inputs.op == 'sync-admin-token' || inputs.op == 'sync-secrets'
-        run: $HOME/.local/share/pnpm/pnpm install --frozen-lockfile --package-import-method hardlink
+        run: $HOME/.local/share/pnpm/bin/pnpm install --frozen-lockfile --package-import-method hardlink
       - name: Install the environment's admin token as the worker's secret
         if: inputs.op == 'sync-admin-token'
         working-directory: apps/platform
@@ -112,7 +112,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
           ADMIN: ${{ secrets.AGENT_PROXY_ADMIN_TOKEN }}
-        run: printf '%s' "$ADMIN" | "$HOME/.local/share/pnpm/pnpm" exec wrangler secret put AGENT_PROXY_ADMIN_TOKEN
+        run: printf '%s' "$ADMIN" | "$HOME/.local/share/pnpm/bin/pnpm" exec wrangler secret put AGENT_PROXY_ADMIN_TOKEN
       # The money paths' and the sign-in's secrets, same rule: a maintainer sets them as production environment
       # secrets, this op installs whichever are set as the worker's. Nothing is typed into a machine by hand.
       - name: Install the money paths' and the sign-in's secrets the environment holds
@@ -142,6 +142,6 @@ jobs:
           for name in POLAR_ACCESS_TOKEN POLAR_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET GITHUB_SPONSORS_WEBHOOK_SECRET GITHUB_OAUTH_CLIENT_ID GITHUB_OAUTH_CLIENT_SECRET GIVE_SESSION_HMAC_SECRET VOLTER_ISSUER VOLTER_CLIENT_ID VOLTER_CLIENT_SECRET WORKPLACE_CLIENT_SECRET; do
             v="${!name:-}"
             if [ -z "$v" ]; then echo "$name: not set in the production environment; skipped"; continue; fi
-            printf '%s' "$v" | "$HOME/.local/share/pnpm/pnpm" exec wrangler secret put "$name"; n=$((n+1))
+            printf '%s' "$v" | "$HOME/.local/share/pnpm/bin/pnpm" exec wrangler secret put "$name"; n=$((n+1))
           done
           echo "installed $n secret(s)"

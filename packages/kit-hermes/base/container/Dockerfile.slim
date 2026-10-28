@@ -90,7 +90,8 @@ ARG BUN_VERSION=1.3.10
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" \
     && ln -sf /usr/local/bin/bun /usr/local/bin/bunx && bun --version
 # Native pnpm owns one hard-linked dependency store on this executor volume.
-ENV PNPM_HOME=/usr/local/bin
+ENV PNPM_HOME=/opt/pnpm
+ENV PATH="/opt/pnpm/bin:${PATH}"
 RUN curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 SHELL=/bin/bash sh -
 # Codex, for a project whose setup picks it: the orchestrator runs it as each profile's worker, its model through the
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
@@ -205,7 +206,8 @@ ENV HERMES_DISABLE_LAZY_INSTALLS=1
 ENV HERMES_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV npm_config_install_links=false
-ENV PNPM_HOME=/usr/local/bin
+ENV PNPM_HOME=/opt/pnpm
+ENV PATH="/opt/pnpm/bin:${PATH}"
 # Keep native file writes within the Hermes home and this project checkout.
 ENV HERMES_WRITE_SAFE_ROOT="/opt/data:/work/project"
 ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

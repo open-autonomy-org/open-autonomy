@@ -418,13 +418,13 @@ jobs:
           bun-version: 1.3.10
           no-cache: true
       - run: curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 PNPM_HOME="$HOME/.local/share/pnpm" SHELL=/bin/bash sh -
-      - run: $HOME/.local/share/pnpm/pnpm install --frozen-lockfile --package-import-method hardlink
+      - run: $HOME/.local/share/pnpm/bin/pnpm install --frozen-lockfile --package-import-method hardlink
       - name: Deploy (the lockfile-pinned wrangler)
         env:
           CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: \${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
-        run: $HOME/.local/share/pnpm/pnpm exec wrangler deploy
+        run: $HOME/.local/share/pnpm/bin/pnpm exec wrangler deploy
   # The record: each deploy is a \`deploy-v<date>.<n>\` tag on the commit it shipped, in its own job so the write
   # permission never meets the Cloudflare token.
   record:
