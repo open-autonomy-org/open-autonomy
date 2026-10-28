@@ -101,6 +101,42 @@ A process scan alone is not that fence. If the custodian cannot exclude another 
 maintenance, this door is unsupported and refuses. Shared/copied homes or a foreign machine are
 not automatically qualified. Final input/process readback and durable audit precede lock release.
 
+### Proposed amendment: consume live native maintenance custody
+
+The passed no-remote-mutation scope above remains unchanged. Native task `t_b2b063ab` proposes
+an additional prerequisite in [Supercode ADR 0243](https://github.com/volter-ai/supercode/blob/main/docs/adr/0243-card-run-sessions-in-project-rooms.md):
+the native owner supplies a qualified live maintenance lease/channel for the exact canonical
+home, connection, state, retained transaction, selected program and predecessor. This paired
+amendment needs its own typed PLAN PASS before either repository implements the protocol.
+It does not treat the existing runner lock or a list of stopped PIDs as restart exclusion.
+
+The native owner must gate every bound writer and every supported start/restart admission path
+before granting custody, retire the exact earlier process incarnations, and retain a durable
+maintenance hold. OA's separate recovery executable consumes that authority; it does not emulate
+the native gate, retire its owners, or create its own equivalent from operator assertions,
+World ownership, process scans, a sealed file or an absent socket. Unknown admission coverage,
+an incompatible native runtime or an unqualified lease refuses before state disposition.
+
+OA holds and validates the live lease/channel throughout its invocation, including the complete
+mutable-input reading, audit preparation, state replacement, final audit and exact readback. Its
+existing local lock still excludes other offline recovery invocations; it cannot substitute for
+the native fence. OA checks the lease's exact identity and continued validity before each write
+and through final readback. Loss, expiry, a changed generation or an unknown answer stops further
+writes and retains uncertainty; it never manufactures a successful disposition from the last
+observed lease state. A lost channel leaves the native durable hold in place. Normal release of
+the lease likewise leaves a recovery-required native barrier: it authorizes no automatic start,
+compensation, source restoration or reservation release.
+
+The eventual protocol must define the native/OA lifetime and failure ordering, including how
+the native hold excludes admission when OA is between a lease check and a local write. A check
+alone does not supply that guarantee. Its exact version, binding, qualification and refusal
+semantics are reviewed as a paired contract before any positive implementation or fixture proof.
+Manual evidence must cover attempted starts/restarts while the lease is held, lease/channel loss
+at each durable boundary, changed bindings, and release with the native recovery barrier retained.
+OA task `t_2ca9da74` owns consumption and publisher durability; native `t_b2b063ab` owns the live
+gate, admission coverage and durable hold. Until that contract is implemented and qualified, the
+offline command has no successful disposition path and the retained intent and placement debt stay.
+
 ### Only the original request's proved terminal no-effect outcome is eligible
 
 The first implementation supports only an original recorded POST to one exact Room's ordinary
