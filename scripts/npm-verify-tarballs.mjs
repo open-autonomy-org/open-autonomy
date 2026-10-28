@@ -102,7 +102,8 @@ function exportOf(exports, subpath) {
 }
 
 /** What one module reaches: its imports and re-exports that survive type erasure (`import … from`, `import '…'`,
- *  `export … from`, `require('…')`), its dynamic imports of a literal (`import('…')`), and the files it names beside
+ *  `export … from`, `require('…')`), its dynamic imports of a literal (`import('…')`, never a `typeof import('…')` type
+ *  query), and the files it names beside
  *  itself (`new URL('…', import.meta.url)`). A dynamic import may be guarded (an optional sibling), so one of a package
  *  it does not depend on is passed over; one inside its package is held to its files, as an asset named by `new URL` is. */
 function references(text) {
@@ -115,7 +116,12 @@ function references(text) {
     out.push({ specifier: match[3], kind: 'static' });
   }
   for (const match of code.matchAll(/(?:^|[^.\w#$])require\(\s*['"]([^'"\n]+)['"]\s*\)/g)) out.push({ specifier: match[1], kind: 'static' });
-  for (const match of code.matchAll(/(?:^|[^.\w])import\(\s*['"]([^'"\n]+)['"]\s*\)/g)) out.push({ specifier: match[1], kind: 'dynamic' });
+  // `typeof import('…')` is a type query (the keeper's `const x: typeof import('../base/…') = await import(host file)`),
+  // erased with the types: it loads nothing, so it is passed over like `import type`.
+  for (const match of code.matchAll(/(?:^|[^.\w])import\(\s*['"]([^'"\n]+)['"]\s*\)/g)) {
+    if (/\btypeof\s*$/.test(code.slice(Math.max(0, match.index - 16), match.index + 1))) continue;
+    out.push({ specifier: match[1], kind: 'dynamic' });
+  }
   for (const match of code.matchAll(/new URL\(\s*['"](\.{1,2}\/[^'"\n]+)['"]\s*,\s*import\.meta\.url\s*\)/g)) out.push({ specifier: match[1], kind: 'asset' });
   return out;
 }
