@@ -201,7 +201,7 @@ ENV PNPM_HOME=/opt/pnpm
 ENV PATH="/opt/pnpm/bin:${PATH}"
 # Keep native file writes within the Hermes home and this project checkout.
 ENV HERMES_WRITE_SAFE_ROOT="/opt/data:/work/project"
-ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV PATH="/opt/agent/.open-autonomy/node_modules/.bin:/opt/pnpm/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 WORKDIR /opt/hermes
 VOLUME [ "/opt/data" ]
 USER root
