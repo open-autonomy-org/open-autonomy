@@ -43,7 +43,7 @@
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
 //   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
-import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyncWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyncWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
@@ -110,10 +110,10 @@ if (!retainedInstall && !argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
   // The stack below stops on the same signal and exits once its children have; this process leaves when it does.
-  for (const signal of stopSignals) process.on(signal, () => { stopping = true; child?.kill(constants.signals[signal]); });
+  for (const signal of stopSignals) process.on(signal, () => { stopping = true; const live = child; if (live) stopWorkChild(live, () => live.kill(constants.signals[signal]), { signal: constants.signals[signal] }); });
   let entry = Bun.main;
   while (!stopping) {
-    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }));
+    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }), 'bun', { stoppedExitCodes: [75] });
     const code = await child.exited;
     if (stopping || code !== 75) { await closeWorkLedger(); process.exit(stopping ? 0 : code); }
     entry = resolve(project, '.open-autonomy/start.ts');
@@ -192,11 +192,11 @@ const publishReady = () => { if (stackConfigured && nativeGatewayReady) { kitSer
 publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 let restartAsked = false;
 process.on('exit', () => {
-  for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { proc.kill(); } catch { /* already gone */ } }
+  for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ } }
 });
-function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean }) {
+function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
-  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }));
+  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
@@ -218,7 +218,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
     }
     ending = true;
     say(`${name} ended (${code}); stopping the rest`);
-    for (const c of children) if (c.proc !== proc) c.proc.kill();
+    for (const c of children) if (c.proc !== proc) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' });
     await Promise.all(children.map((c) => c.proc.exited));
     // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
     await closeWorkLedger(); process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
@@ -234,10 +234,10 @@ for (const sig of stopSignals) process.on(sig, async () => {
   ending = true;
   say(`${sig}: stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
   const live = [...children.map((c) => c.proc), ...helpers];
-  for (const proc of live) proc.kill(constants.signals.SIGTERM);
+  for (const proc of live) stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
   const bound = new Promise<void>((done) => setTimeout(done, 15_000));
   await Promise.race([Promise.all(live.map((proc) => proc.exited)), bound]);
-  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' });
   await closeWorkLedger(); process.exit(0);
 });
 // The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
@@ -253,7 +253,7 @@ async function command(cmd: string[], opts: { cwd: string; env: Record<string, s
   helpers.add(proc);
   publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid, deadline_ms: Date.now() + opts.boundMs + 5000 });
   let overran = false;
-  const bound = setTimeout(() => { overran = true; proc.kill(constants.signals.SIGTERM); setTimeout(() => proc.kill('SIGKILL'), 5000).unref(); }, opts.boundMs);
+  const bound = setTimeout(() => { overran = true; stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM }); setTimeout(() => stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }), 5000).unref(); }, opts.boundMs);
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   clearTimeout(bound);
   helpers.delete(proc);
@@ -324,7 +324,7 @@ if (!existsSync(resolve(project, '.git'))) {
 // the landed code before claiming its version is running, rather than continuing the previous one with a new record.
 const reload = async () => {
   ending = true;
-  for (const child of children) child.proc.kill();
+  for (const child of children) stopWorkChild(child.proc, () => child.proc.kill(), { signal: 'SIGTERM' });
   await Promise.all(children.map((child) => child.proc.exited));
   await closeWorkLedger(); process.exit(75);
 };
@@ -361,7 +361,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   }
   }
   const keeper = resolve(host, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');
-  if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; for (const c of children) c.proc.kill(); process.exit(1); }
+  if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; for (const c of children) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' }); process.exit(1); }
   if (readFileSync(keeper, 'utf8') !== loadedKeeper) await reload();
 }
 
@@ -605,7 +605,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 const stopStart = (why: string): never => {
   console.error(`start: ${why}; startup stopped`);
   ending = true;
-  for (const c of children) c.proc.kill();
+  for (const c of children) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' });
   process.exit(1);
 };
 const boardOptions = { home, entry: orchestratorBin, native: supercodeBin, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, command: drop };
@@ -689,7 +689,7 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). The board's one
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
-  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
+  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, stoppedExitCodes: [75], env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
@@ -805,7 +805,7 @@ setInterval(() => {
   // Hermes drains on SIGUSR1; the orchestrator stops on SIGTERM, recording each conversation's session to resume.
   // Bun's Subprocess.kill string mapping uses the Linux number on some macOS
   // releases. Use the host's signal constant: SIGUSR1 is 30 on macOS, 10 on Linux.
-  process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1);
+  stopWorkChild(gateway, () => process.kill(gateway.pid, onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1), { signal: onNative ? constants.signals.SIGTERM : constants.signals.SIGUSR1, exitCode: onNative ? 0 : 75 });
   } catch (error) { finish({ ok: false }); throw error; }
   finally { finish(); }
 }, 5000);

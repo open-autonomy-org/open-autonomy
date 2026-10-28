@@ -19,7 +19,7 @@
 // .open-autonomy/agent.json entry, applied into its home before the gateway starts. A fleet opens no treasurer door:
 // work is routed to a profile by its bare name, which a composed <repo>-treasurer is not, so nothing in a fleet pays;
 // every profile's pay address is its key's, which spends and stops at zero.
-import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
+import { responseWork, spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { resolve } from 'node:path';
@@ -71,8 +71,8 @@ export async function startFleet(options: { definition: string; port: number; se
   const exited = new Promise<number>((r) => { finish = r; });
   const stop = (code: number): Promise<void> => ending ??= (async () => {
     await gateway?.close();
-    for (const proc of services) if (proc.exitCode === null) proc.kill();
-    const force = setTimeout(() => { for (const proc of services) if (proc.exitCode === null) proc.kill('SIGKILL'); }, 5000);
+    for (const proc of services) if (proc.exitCode === null) stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' });
+    const force = setTimeout(() => { for (const proc of services) if (proc.exitCode === null) stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }); }, 5000);
     await Promise.all(services.map((proc) => proc.exited));
     clearTimeout(force);
     process.off('SIGTERM', onSignal); process.off('SIGINT', onSignal);
@@ -187,7 +187,7 @@ export async function startFleet(options: { definition: string; port: number; se
     await Promise.race([Promise.all(readiness), exited.then(() => { throw new Error('the runtime stopped before the reporters were ready'); })]);
     if (ending) throw new Error('a host service stopped during preparation');
     // 8. One gateway over the composed home (every profile's schedule is already applied).
-    gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], env: {
+    gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], stoppedExitCodes: [75], env: {
       HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
       // Every checkout is a place the agents write; the image names only the project shape's.
       HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':') } });

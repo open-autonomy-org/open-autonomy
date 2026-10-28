@@ -1,6 +1,6 @@
 // The keeper's retained lifecycle door. Kit stacks may restart; their board owner and host Codex listener are acquired
 // independent services and are never in a stack's child list. The native machine owner coordinates their selections.
-import { startWork, spawnSyncWork, spawnWork } from '../base/.open-autonomy/work-ledger.ts';
+import { startWork, spawnSyncWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import { sourceReceiptProgram, publishedProgram, sourceJson } from '../base/.open-autonomy/source-program.ts';
 import { Database } from 'bun:sqlite';
 import { createServer } from 'node:net';
@@ -74,7 +74,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
     const child = spawnWork(() => Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
       env: { ...envFor(selected), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
-        OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }));
+        OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }), 'bun', { stoppedExitCodes: [75] });
     const stack = { process: child, selected, ready }; starting = stack; restartSelection = selected;
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
@@ -103,9 +103,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
 
   const stopStack = async (stack: Stack | null) => {
     if (!stack) return;
-    stack.process.kill(constants.signals.SIGTERM);
+    stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
     // The inner stack gives every exact child its own stop and bounded cleanup. It never owns the board or proxy.
-    const bound = setTimeout(() => stack.process.kill('SIGKILL'), 18000);
+    const bound = setTimeout(() => stopWorkChild(stack.process, () => stack.process.kill('SIGKILL'), { signal: 'SIGKILL' }), 18000);
     try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',

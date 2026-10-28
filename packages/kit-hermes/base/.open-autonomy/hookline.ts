@@ -13,7 +13,7 @@
 // once its message is sent, or nack to be sent again on the inbox's schedule. Hookline delivers each event exactly once
 // and in order. A replay (X-Hookline-Replay) or a re-send of an event already told is acknowledged and not told again:
 // the event ids already told are kept in --state. Events that are not about a pull request are acknowledged and left.
-import { initializeWorkLedger, closeWorkLedger, startWork, spawnWork } from './work-ledger.ts';
+import { initializeWorkLedger, closeWorkLedger, startWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
@@ -79,7 +79,7 @@ async function tell(event: string, line: string): Promise<boolean> {
   const reader = serve.stdout.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  const deadline = setTimeout(() => serve.kill(), 60_000);
+  const deadline = setTimeout(() => stopWorkChild(serve, () => serve.kill(), { signal: 'SIGTERM' }), 60_000);
   try {
     while (!answer) {
       const { value, done } = await reader.read();
@@ -88,7 +88,7 @@ async function tell(event: string, line: string): Promise<boolean> {
       for (const row of buffer.split('\n')) { try { const parsed = JSON.parse(row); if (parsed.id === 1) answer = parsed; } catch { /* a partial line */ } }
       buffer = buffer.slice(buffer.lastIndexOf('\n') + 1);
     }
-  } finally { clearTimeout(deadline); serve.kill(); }
+  } finally { clearTimeout(deadline); stopWorkChild(serve, () => serve.kill(), { signal: 'SIGTERM' }); }
   if (answer?.result?.delivered_to_bus === true) return true;
   say(`telling ${mailTo} about ${event} failed: ${answer?.error?.message ?? answer?.result?.refusal?.message ?? 'no answer from supercode harness serve'}`);
   return false;

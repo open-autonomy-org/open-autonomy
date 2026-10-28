@@ -1,6 +1,6 @@
 // A Docker exec client is not the lifetime of the process it starts. Keep stdin
 // open as a lease; EOF (including host death) stops the owned container process group.
-import { spawnWork } from './work-ledger.ts';
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
 const RUNNER = String.raw`
@@ -34,11 +34,11 @@ sys.exit(0 if stopping else child.returncode if child.returncode >= 0 else 1)
 
 /** No host environment is forwarded: Docker supplies the container environment. */
 export function startContainerProcess(options: {
-  container: string; command: string[]; cwd: string; env?: Record<string, string>;
+  container: string; command: string[]; cwd: string; env?: Record<string, string>; stoppedExitCodes?: readonly number[];
 }) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(options.container)) throw new Error('A container name or ID is required.');
   const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', options.container,
-    'python3', '-u', '-c', RUNNER], { stdio: ['pipe', 'inherit', 'inherit'] }), 'node');
+    'python3', '-u', '-c', RUNNER], { stdio: ['pipe', 'inherit', 'inherit'] }), 'node', { stoppedExitCodes: options.stoppedExitCodes });
   let ended = false;
   const exited = new Promise<number>(resolve => {
     child.once('error', () => { ended = true; resolve(1); });
@@ -49,7 +49,7 @@ export function startContainerProcess(options: {
   return {
     exited,
     restart() { if (!ended) child.stdin.write('restart\n'); },
-    async close() { if (!ended) child.stdin.end(); await exited; },
+    async close() { if (!ended) stopWorkChild(child, () => child.stdin.end()); await exited; },
   };
 }
 
