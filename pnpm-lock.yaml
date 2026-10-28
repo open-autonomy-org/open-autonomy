@@ -198,6 +198,9 @@ importers:
 
   .:
     devDependencies:
+      '@volter/supercode-client':
+        specifier: workspace:0.3.61
+        version: link:sources/supercode-runtime/sdk/client
       '@volter/supercode-harness-sdk':
         specifier: workspace:0.3.64
         version: link:sources/supercode-runtime/sdk/typescript
