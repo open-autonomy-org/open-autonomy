@@ -26,6 +26,11 @@ its prepared-program amendment and six-case proof plan. The actual World refusal
 runner recovery, cleared-fault repeat and safe offline retention are supplied with this PR's
 evidence. They demonstrate retention, not successful settlement or qualified populated recovery.
 
+The paired native proposal is the explicit offline-settlement amendment to ADR 0243 at
+[Supercode `fdbd688c17f795372979884e3071f48a686d3b9c`](https://github.com/volter-ai/supercode/blob/fdbd688c17f795372979884e3071f48a686d3b9c/docs/adr/0243-card-run-sessions-in-project-rooms.md#proposed-amendment-settle-an-eligible-retained-intent-while-its-owner-is-stopped).
+Both records form the proposed decision set for typed PLAN review; neither a pushed commit nor
+the counterpart's cross-link supplies approval to implement this additional recovery door.
+
 RH2's examined Room leave door accepts a principal and expected seater. It exposes no request
 idempotency key, request-status receipt, expected session or expected seat version. Its SQL guard
 matches an active seat by seater alone. A delayed old leave could therefore remove a later seat
