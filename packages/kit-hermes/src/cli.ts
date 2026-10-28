@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // create-open-autonomy: the Hermes kit's door.
 //
-//   pnpm --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2|company|game]
+//   pnpm --config.cacheDir="$(dirname "$(pnpm store path)")/cache" --config.nodeLinker=hoisted --config.package-import-method=hardlink dlx create-open-autonomy <dir> --project <name> --account <owner/repo> [--skew self-build|manage-project|manage-organization|soc2|company|game]
 //   create-open-autonomy adopt <dir> --project <name> --account <owner/repo> [--skew …]  # into an existing one; only what is missing
 //   create-open-autonomy check <dir>      # where the project stands against the kit (exit 1 behind it or mid-merge)
 //   create-open-autonomy upgrade <dir>    # merge the kit's change into the project's files three-way (exit 2 on conflicts)

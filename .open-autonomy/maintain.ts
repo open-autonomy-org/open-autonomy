@@ -2,7 +2,7 @@
 // The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
 // release on the Release pull request. Never deploys, tags or publishes.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 const project = resolve(import.meta.dir, '..');
 const home = process.env.HERMES_HOME;
@@ -154,17 +154,18 @@ if (command === 'ship') {
     if (run(['git', 'branch', '--show-current'], worktree) !== branch) throw new Error(`${worktree} is not the expected upgrade branch ${branch}`);
     console.log(`Resuming the preserved upgrade at ${worktree}.`);
   } else git('worktree', 'add', '-b', branch, worktree, 'origin/main');
+  const cacheDir = resolve(dirname(run(['pnpm', 'store', 'path'], worktree)), 'cache');
   const stagedVersion = record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).version;
   if (stagedVersion !== latest) {
     // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
     // session; the next `maintain.ts upgrade` resumes here, and the kit's check below refuses to push a marked file.
-    const up = Bun.spawnSync({ cmd: ['pnpm', '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env: packageEnv, stdout: 'pipe', stderr: 'pipe' });
+    const up = Bun.spawnSync({ cmd: ['pnpm', `--config.cacheDir=${cacheDir}`, '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'upgrade', '.'], cwd: worktree, env: packageEnv, stdout: 'pipe', stderr: 'pipe' });
     const said = `${up.stdout.toString()}${up.stderr.toString()}`.trim();
     if (up.exitCode === 2) { console.log(`${said}\nThe upgrade left conflicts in ${worktree}. Resolve each marked file there, keeping this project's intent and the kit's change, then run \`maintain.ts upgrade\` again.`); process.exit(2); }
     if (up.exitCode !== 0) throw new Error(`create-open-autonomy@${latest} upgrade failed: ${said}`);
     console.log(said);
   }
-  run(['pnpm', '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
+  run(['pnpm', `--config.cacheDir=${cacheDir}`, '--config.nodeLinker=hoisted', '--config.package-import-method=hardlink', 'dlx', `create-open-autonomy@${latest}`, 'check', '.'], worktree);
   // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
   // kit's own package too (soc2 is self-build with a layer), and its template ships the typecheck that proves the
   // kit's sources still compile.
