@@ -1,4 +1,4 @@
-# ADR 0036: Project Rooms can settle a retained leave intent offline
+# ADR 0036: Project Rooms can record a terminal no-effect leave outcome offline
 
 Status: Proposed. Documentation only; typed PLAN PASS and independent constitution review are
 required before implementation. Neither this proposal nor the merged implementation of
@@ -26,16 +26,21 @@ its prepared-program amendment and six-case proof plan. The actual World refusal
 runner recovery, cleared-fault repeat and safe offline retention are supplied with this PR's
 evidence. They demonstrate retention, not successful settlement or qualified populated recovery.
 
-The paired native proposal is the explicit offline-settlement amendment to ADR 0243 at
-[Supercode `fdbd688c17f795372979884e3071f48a686d3b9c`](https://github.com/volter-ai/supercode/blob/fdbd688c17f795372979884e3071f48a686d3b9c/docs/adr/0243-card-run-sessions-in-project-rooms.md#proposed-amendment-settle-an-eligible-retained-intent-while-its-owner-is-stopped).
-Both records form the proposed decision set for typed PLAN review; neither a pushed commit nor
-the counterpart's cross-link supplies approval to implement this additional recovery door.
+The paired native proposal is the offline-settlement amendment to ADR 0243 at
+[Supercode `153b6f664eaefaebbe32d4fe6acb5e18afa4be1d`](https://github.com/volter-ai/supercode/blob/153b6f664eaefaebbe32d4fe6acb5e18afa4be1d/docs/adr/0243-card-run-sessions-in-project-rooms.md#proposed-amendment-settle-an-eligible-retained-intent-while-its-owner-is-stopped)
+in [PR 2534](https://github.com/volter-ai/supercode/pull/2534). PLAN finding F1 returned the earlier
+proposal because its new expected-seater leave could remove a changed-session seat. This revision
+and that exact native revision form the proposed decision set; the review request must name both
+exact pushed revisions. Neither a pushed commit nor this cross-link approves implementation.
 
 RH2's examined Room leave door accepts a principal and expected seater. It exposes no request
 idempotency key, request-status receipt, expected session or expected seat version. Its SQL guard
 matches an active seat by seater alone. A delayed old leave could therefore remove a later seat
 made by that same app. An absent seat, an unchanged seater, process death, a client timeout, or a
 second successful leave alone cannot prove that the original request has become terminal.
+Even after that proof, a fresh session or role-demand read is not a remote fence: a principal
+can change S0 to S1 through its own door while the seater stays the app, or role demand can
+arrive before a new leave. A later read cannot undo that wrong removal.
 
 ## Decision
 
@@ -43,8 +48,10 @@ second successful leave alone cannot prove that the original request has become 
 
 Add one explicit offline recovery command to the Rooms publisher's immutable closure. It runs
 only under the connection custodian's existing local authority, after all bound writers and their
-restart owners have stopped. It settles only the eligible conditional leave intents below. It
-does not project the board, serve IPC as the old module, or coordinate a native transition.
+restart owners have stopped. It records only a conclusively terminal no-effect outcome for an
+original conditional leave attempt. It sends no recovery leave or other remote mutation, projects
+no board state, serves no old-module IPC, and neither resumes compensation nor coordinates a
+native transition. New effectful retries are explicitly unsupported by this proposal.
 
 The invocation names a private, durable recovery plan and both exact artifact receipts: the old
 selected program whose state is being repaired and the independently reviewed recovery executable.
@@ -94,79 +101,80 @@ A process scan alone is not that fence. If the custodian cannot exclude another 
 maintenance, this door is unsupported and refuses. Shared/copied homes or a foreign machine are
 not automatically qualified. Final input/process readback and durable audit precede lock release.
 
-### Only independently terminal, exact conditional leaves are eligible
+### Only the original request's proved terminal no-effect outcome is eligible
 
-The first implementation supports only a recorded POST to one exact Room's ordinary leave door,
-with exactly the recorded principal and expected seater equal to this app. A corresponding retained
+The first implementation supports only an original recorded POST to one exact Room's ordinary
+leave door, with exactly the recorded principal and expected seater equal to this app. The retained
 run-placement record must bind that principal, Room, exact old logical selection and native session.
-Joins, receive/session rewrites, Room creation/rules, uploads and other mutations remain unknown;
-there is no generic replay, JSON edit, "clear unknown" or caller-selected arbitrary operation.
+The command may record that original attempt as terminal without effect only when independently
+verified evidence proves it did not dispatch, or an authoritative receipt correlated to that exact
+request proves a terminal failure with no effect. The proof must cover the original attempt's
+whole lifetime: no effect occurred, no work remains pending, and no deferred or later dispatch
+can apply it. An HTTP status alone, operator assertion, client timeout,
+recording alone or uncorrelated audit is insufficient. Uncertain or uncorrelated evidence refuses.
 
-Before reissuing even this narrow command, independently establish that the original request can
-no longer apply. Eligible evidence is either an authoritative terminal receipt correlated to the
-exact original request, or independently verifiable terminal non-dispatch evidence bound to that
-exact intent and operation. An operator's assertion, a client error code or a recording alone is
-not that proof. The command validates the evidence and its provenance; uncertain or uncorrelated
-evidence refuses. A definitive failure may settle the old request's uncertainty without claiming
-the run placement has been removed.
+Authoritative successful/effected outcomes, generally lost or delayed requests, partly applied
+effects and outcomes not proved to have no effect remain unsupported and retain the original
+intent. Joins, receive/session rewrites, Room creation/rules, uploads and other mutation kinds are
+also unsupported. There is no generic replay, arbitrary JSON edit, "clear unknown", or new leave
+request, including when terminal no-effect evidence is valid and a fresh roster appears eligible.
 
-The current public RH2 door supplies no such correlated status/fence for a generally lost request.
-This proposal adds none and cannot recover that case. In the retained World case, the transport
-fault intercepted the exact leave before upstream dispatch; its exact source, invocation and raw
-audit can support a non-dispatch proof only if independently verified and bound by the reviewed
-recovery contract. That fixture-specific fact cannot be generalized to a production HTTP503.
-If source/runtime evidence cannot establish non-dispatch or a terminal outcome, the fixture stays
-held too. A future public request fence/receipt needs RH2's own decision and review.
+The present public RH2 door supplies no correlated request-status receipt for a generally lost
+request. This proposal adds none. In the retained World, the transport fault intercepted the exact
+leave before upstream dispatch; its exact source, invocation and raw audit can prove non-dispatch
+only if independently verified and bound by the reviewed recovery contract. That fixture-specific
+fact cannot be generalized to a production HTTP503. If that proof is unavailable, the fixture
+stays held too.
 
-After terminal proof, obtain a fresh complete board/Task role-demand reading and exact public
-Room/session/seater readback using the existing installation's custody. No unresolved role demand
-may be interpreted as absence. For the supported retry, the current seat must still carry the
-retained native session, be owned by the expected app, and have no current role demand. A changed
-session, seater, principal representation or authority, an unavailable Room/roster, a role seat,
-an absent seat or insufficient visibility retains the intent for a separately proved disposition.
-The command never uses an absent-seat reading to declare an unknown remote write settled.
-
-With these fences held, durably record the one exact recovery attempt before dispatching the
-ordinary expected-seater leave with the existing grant. Require a successful concrete product
-acknowledgement and an independent subsequent Room reading confirming that the exact owned seat
-is gone, while role/person/borrowed placements and receive settings remain correct. Revalidate
-the terminal proof, session/custody fences and local inputs before accepting the disposition.
-A changed or ambiguous reading, a refused leave, lost answer or failed persistence remains debt.
-The second request's success is not a substitute for the original request's terminal proof.
+Fresh Room/session/seater and board/Task role-demand observations are never treated as exclusion
+fences. S0 may become S1 with the same seater, role demand may arrive after an observation, and a
+person or another app may replace a placement. The maintenance command sends no remote mutation
+in any of those interleavings and changes no seat, session, role, receive setting or placement
+debt. A future effectful retry requires its own RH2-owned atomic guard or verifiable remote
+exclusion, together with a contract fencing changes to independently owned role demand. An
+expected session alone cannot fence a new board/Task assignment. Neither facility is added or
+attributed to the existing product by this proposal.
 
 ### Settlement is not compensation or a source decision
 
-Persist and re-read the original intent, old binding, recovery executable identity, terminal proof,
-guarded attempt/acknowledgement and independent readback in an owner audit. Write the disposition
-atomically with file and directory durability, preserving every unrelated current state field.
-An interruption must leave either the old unknown debt or a durable exact disposition recoverable
-under the same plan. A lost recovery answer is resolved from this retained audit and readback;
-it never permits blindly issuing another mutation. A conflicting current state refuses. Any audit
-snapshot preserves evidence only; it is never copied over current state to perform rollback.
+Persist and re-read the complete original intent, old binding, recovery executable identity and
+verified terminal no-effect proof in an owner audit. Record that the original attempt had no
+effect; do not record a successful leave. Write the disposition atomically with file and directory
+durability, preserving every unrelated current state field. An interruption must leave either
+the original unknown intent or a durable exact no-effect disposition recoverable under the same
+plan. A lost local answer resolves only from that audit and exact state readback. Failed persistence
+or conflicting state retains uncertainty and never permits a remote retry. An audit snapshot
+preserves evidence only; it is never copied over current state to perform rollback.
 
-Only the individually proved intent is removed from the old journal. Run-placement records,
-native obligations and reservation remain owed. Do not write a compensated/zero-debt receipt,
-forge the old child's generation, change the old journal version or recast the new executable as
-the old selected program. Existing old-program state keys and bindings remain readable unchanged.
+Only the individually proved terminal no-effect intent is removed from the old journal.
+Run-placement records, native obligations and reservation remain owed and unchanged. Do not write
+a compensated/zero-debt receipt, forge the old child's generation, change the old journal version
+or recast the new executable as the old selected program. Existing old-program state keys and
+bindings remain readable unchanged.
 
-After the command exits and releases its lock, the existing native owner resumes the same journal
-and starts its same immutable selected program in recovery-only mode. That program rechecks the
-current board/roles and completes its ordinary compensation through product doors, with its own
-exact old-selection acknowledgement. Only then may native recovery restore and verify source,
-read back native predecessors, restart dependent predecessors and release the reservation, in
-ADR 0031/0243's order. A new recovery artifact is not installed into this in-progress selection.
-Future selection of new program bytes is a separately prepared, qualified complete transaction.
+The maintenance command exits and releases its lock without starting another program. Any later
+native recovery is a separate act by the existing native owner using the same journal and immutable
+selected program in recovery-only mode. Its existing compensation still needs its own current
+board/role reading, product acknowledgements and safety proof. Removing uncertainty about one
+no-effect request strengthens none of that old code's session or demand guards and establishes
+no race-free compensation or populated-recovery capability. If those prerequisites cannot be
+proved, run-placement debt and the native reservation remain held. Only the old program's own
+valid compensation acknowledgement can permit source restoration, native predecessor readback,
+dependent predecessor restart and reservation release, in ADR 0031/0243's order. A new recovery
+artifact is never substituted into this in-progress selection. Future selection of new program
+bytes is a separately prepared, qualified complete transaction.
 
 ## Existing decision dispositions
 
 | Existing decision | Proposed disposition |
 | --- | --- |
-| OA ADR 0035: durable intents and unknown effects prevent zero debt | **Extends the publisher's supported recovery command; preserves the debt rule.** Individually proved settlement is a new explicit owner act, never blanket clearing or retroactive old-program capability. All unsupported/ambiguous effects remain debt. |
-| OA ADR 0035: exact immutable artifacts and lifecycle acknowledgements | **Preserves immutable identity.** New reviewed code repairs compatible old state offline under a distinct receipt. The old selected artifact/binding stays unchanged and later supplies its own compensation acknowledgement. |
+| OA ADR 0035: durable intents and unknown effects prevent zero debt | **Extends only local recording of a terminal no-effect original request.** The exact proof resolves that attempt's uncertainty, never its run-placement obligation. Successful/effected, ambiguous and unsupported outcomes remain debt. |
+| OA ADR 0035: exact immutable artifacts and lifecycle acknowledgements | **Preserves immutable identity.** New reviewed code repairs compatible old state offline under a distinct receipt. The old selected artifact/binding stays unchanged; any later compensation requires that program's own separately proved acknowledgement. |
 | OA ADR 0031: one writer, exact native source decision and restoration before predecessor restart | **Adds a stopped-writer maintenance prerequisite; preserves native ownership/order.** The command changes no source ledger, selection, reservation, config, custody or native journal. It cannot make a committed transaction eligible for compensation. |
-| Supercode ADR 0243: "A process exit, forced stop, aborted fetch or absent seat read alone does not prove an unknown remote write settled" | **Preserves without exception.** Exact terminal-request proof plus guarded acknowledged settlement and independent readback are required; same-app absence alone remains insufficient because the public leave door has no request/session fence. |
-| Supercode ADR 0243: compensation only through the connection owner; "A different recovery design requires revising this plan before coding it" | **Proposes one explicit specialization requiring typed PLAN PASS.** The new publisher command is not old IPC compensation or a second selector. Native recovery remains held, then resumes that same old program/transaction after eligible intent settlement. The native ADR must link this reviewed specialization before dependent implementation is accepted. |
-| Supercode ADR 0243 decision 4: preserve role, independent/person and unrelated run demand | **Preserves.** Fresh full demand and exact session/seater reads precede any retry. Role or changed-session cases refuse in this narrow command; independent seats/settings are read back rather than rewritten. |
+| Supercode ADR 0243: "A process exit, forced stop, aborted fetch or absent seat read alone does not prove an unknown remote write settled" | **Preserves without exception.** Independently verified exact original terminal no-effect proof is mandatory. No new leave is sent; current absence, session, seater or role observations cannot replace the proof. |
+| Supercode ADR 0243: compensation only through the connection owner; "A different recovery design requires revising this plan before coding it" | **Proposes one explicit specialization requiring typed PLAN PASS.** The local command is neither old IPC compensation nor a selector or restart controller. Native recovery stays held unless separately qualified; a later attempt retains the same old program/transaction. The paired native revision must be reviewed before dependent implementation is accepted. |
+| Supercode ADR 0243 decision 4: preserve role, independent/person and unrelated run demand | **Preserves by sending no recovery mutation and retaining all placement debt.** Session/demand changes after observation remain untouched; a later old-program compensation act is separately unqualified by this proposal. |
+| RH2 ordinary leave: remove only an active seat with the expected seater | **Unchanged and insufficient for an exact-session retry.** This proposal neither extends that generic door nor claims its seater guard fences session/version or external role-demand changes. Any future effectful retry requires its own product-owned decision and review. |
 | OA/RH2 consent and connection custody | **Preserves.** Only existing app credentials and product doors are used. The command cannot add grants, replace an installation, copy custody or change namespace. |
 
 ## Alternatives and consequences
@@ -178,11 +186,11 @@ Discarding debt after process exit or an absent roster would permit an incapable
 restart while old effects remain possible. A new connection or copied snapshot would abandon the
 existing obligation. All are rejected.
 
-The narrow offline command can settle only independently terminal, unchanged-session leaves.
-General transport ambiguity, changed session/authority, incompatible state or unproved exclusion
-still blocks recovery. That limit is intentional and visible. A public correlated request fence
-could broaden safe recovery later through its own owner; this proposal neither invents that
-capability nor claims a general liveness guarantee.
+The narrow offline command can record only an independently proved original terminal no-effect
+outcome. It cannot remove a placement or complete compensation. General transport ambiguity,
+effected outcomes, incompatible state or unproved local exclusion remain held. A product-owned
+request/seat fence and a role-demand exclusion contract could broaden safe recovery in a future
+proposal; this one neither invents them nor claims a general liveness guarantee.
 
 ## Constitution assessment and manual proof plan
 
@@ -196,13 +204,25 @@ develops against a real API": implementation evidence will be manual isolated Wo
 Independent constitution review must judge this proposal and its exact implementation separately.
 
 After typed PLAN PASS, implement under the existing OA Rooms task, then request its exact pushed
-head review. Before that review, manually demonstrate eligible non-dispatch settlement on the
-retained populated journal; refusal for uncorrelated/actually ambiguous effects, changed sessions,
-another seater, role demand, held/unknown writers, changed inputs and incompatible old artifacts;
-lost recovery answers and persistence interruption; and independently preserved role/person/borrowed
-seats. Resume the old immutable program's actual compensation, read zero debt, and capture source
-restoration before predecessor restart and reservation release. Preserve failed takes and exact
-raw/source mappings. Failure to settle any prerequisite remains a named open obligation.
+head review. Before that review, manually demonstrate exact original non-dispatch/no-effect
+disposition on the retained journal, with the run-placement debt and every unrelated state field
+unchanged. Record refusals for uncorrelated, actually ambiguous, successful/effected or partial
+outcomes, held/unknown writers, changed inputs and incompatible old artifacts; record lost local
+answers and persistence interruption without a remote retry.
+
+For F1, observe S0, change it to S1 through the principal's product door while retaining the same
+app seater, then invoke maintenance. Separately, introduce current role demand after a no-role
+observation and before maintenance. Record that neither interleaving sends a recovery leave,
+both changed placements and receive settings survive, and all run-placement debt remains. An
+explicit request to perform a new retry must refuse before outbound dispatch even when original
+terminal no-effect proof is valid. Include person/borrowed replacements and independent reads;
+a post-effect refusal is never counted as preservation.
+
+The maintenance proof claims no old-program compensation, zero placement debt, source restoration
+or predecessor restart. Proving those through the unchanged old selected program and native
+owner remains a separate open obligation; any stronger session/demand safety requirement absent
+from that program retains the reservation until separately designed and reviewed. Preserve every
+failed take and exact raw/source mappings.
 
 The parent native proof packet may retain its completed independent cases with this populated
 recovery prerequisite explicitly unresolved. No new door is implemented or exercised by this PR;
