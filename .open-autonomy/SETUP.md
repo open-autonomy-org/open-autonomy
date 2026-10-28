@@ -724,7 +724,7 @@ Those paths must exist inside the runtime where maintenance runs; the kit does n
 host paths. Run the source CLI with the host checkout selected, so its own provenance check can pass. Before
 activation, edit the generated runtime directory's `world.json`: under `runtime.environment.values`, keep
 `OPEN_AUTONOMY_SOURCE_ONLY` as `"1"` and set `OPEN_AUTONOMY_SOURCE` and `OPEN_AUTONOMY_KIT_CACHE` to the owning
-source checkout and historical source-link cache visible to the executor (for example a checkout under `/work/`).
+source checkout and historical source-link cache visible to the executor (for example `/work/open-autonomy`).
 World's declared values override the host service's inherited environment for the host start command, which
 copies them into the executor's profile environment. A host-run maintainer instead needs the host-visible paths
 in its own scheduled environment. Regenerating the runtime writes the CLI's host values again: reconcile its
