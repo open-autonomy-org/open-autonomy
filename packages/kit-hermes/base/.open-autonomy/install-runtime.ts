@@ -109,23 +109,26 @@ export function machinePublishedBinding(environment: Record<string, string | und
 // on-disk representation: native link overrides to that tree, never installed copies. Leave registry packages on pnpm's native store
 // so their scripts and Node imports retain ordinary node_modules resolution.
 function sourceLinks(options: Options): Array<{ name: string; target: string }> {
+  const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+  const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
+  const workspace = Object.entries(declarations).filter(([, value]) => typeof value === 'string' && value.startsWith('workspace:'));
   const file = sourceLock(options.environment);
+  if (!file && workspace.length) throw new Error(`Workspace source dependencies ${workspace.map(([name]) => name).join(', ')} need a selected complete Supercode source graph`);
   if (!file) {
     const published = machinePublishedBinding(options.environment);
     if (!published) return [];
-    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
-    const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
     return ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams'].filter(name => declarations[name]).map(name => ({ name, target: realpathSync(join(published.root, 'node_modules', name)) }));
   }
   const lock = selectedSource(file, options.environment);
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
-  const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
-  const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   return Object.entries(declarations).flatMap(([name, value]) => {
-    if (typeof value !== 'string' || !value.startsWith('file:')) return [];
+    if (typeof value !== 'string') return [];
+    const expected = value.startsWith('workspace:') ? /^workspace:(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(value)?.[1] : undefined;
+    if (value.startsWith('workspace:') && !expected) throw new Error(`Source dependency ${name} needs an exact workspace version, received ${value}`);
+    if (!expected && !value.startsWith('file:')) return [];
     const matches = Object.values(lock.graph?.instances ?? {}).filter((instance: any) => instance.package === name) as any[];
-    if (matches.length > 1) throw new Error(`Source dependency ${name} needs one exact package instance`);
+    if (matches.length > 1 || expected && matches.length !== 1) throw new Error(`Source dependency ${name} needs one exact package instance in the selected complete graph`);
     const target = realpathSync(matches.length ? resolve(matches[0].root, matches[0].dir) : resolve(options.directory, value.slice(5)));
     const path = relative(root, target);
     if (!matches.length && (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path))) return [];
@@ -135,6 +138,7 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
     }
     const actual = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
     if (matches.length && actual.version !== matches[0].version) throw new Error(`Source-linked dependency ${name} version ${actual.version} does not match its binding ${matches[0].version}`);
+    if (expected && actual.version !== expected) throw new Error(`Source-linked dependency ${name} version ${actual.version} does not match declared workspace version ${expected}`);
     return [{ name, target }];
   });
 }
