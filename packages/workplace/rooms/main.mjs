@@ -76,28 +76,17 @@ import { execFile } from 'node:child_process';
 import { closeSync, fsyncSync, fstatSync, futimesSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createLifecycle, digest } from './lifecycle.mjs';
+import { arcRoomExpected, cardHoldOf, projectOf, runOf, cardRunsNow, cardAgentsOf, leadAgentsOf as selectLeads } from './demand.mjs';
+import { createRoomReceipts } from './room-receipts.mjs';
+import { createRecovery } from './recovery.mjs';
+import { canonical as canonicalJson, digestValue } from './recovery-journal.mjs';
 import { promisify } from 'node:util';
+export { projectOf } from './demand.mjs';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 7;
-const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
-const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
-  && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
-// A card's project, the organization's convention: a `project:<name>` tag, else its title's `[name]` prefix (every open
-// card carries one: `[twins]`, `[voice]`, `[workplace]`…), lower case; null when the card names none.
-export const projectOf = (card) => {
-  const tag = (card.tags ?? []).find((value) => typeof value === 'string' && value.startsWith('project:') && value.slice(8).trim());
-  const name = tag ? tag.slice(8) : /^\s*\[([^\]]{1,60})\]/.exec(String(card.title ?? ''))?.[1];
-  return name && name.trim() ? name.trim().toLowerCase() : null;
-};
-// The board publishes only its active blockers, naming a card or a message: a card waiting on either stands so.
-const cardHoldOf = (card) => {
-  const blockers = card.blocked_by ?? [];
-  const blocked = blockers.some((blocker) => blocker.kind === 'card'), waiting = blockers.some((blocker) => blocker.kind === 'message');
-  return { state: card.paused || waiting ? 'paused' : blocked ? 'blocked' : null };
-};
+const ARC_ROOM_LIFECYCLE_VERSION = 8;
 // A key the program writes in the Workplace, scoped to its connection when its config names one (`source.namespace`).
 const projectionKey = (config, kind, identity) => {
   const namespace = config.source?.namespace;
@@ -127,7 +116,7 @@ for (const key of Object.keys(config.rh2 ?? {})) if (!['baseUrl', 'organization'
 }
 const shutdown = new AbortController();
 let fileReading = new AbortController();
-let lifecycle, compensationReading = false;
+let lifecycle, roomReceipts, recovery, compensationReading = false;
 const custody = (name) => {
   if (process.env[name]) return process.env[name];
   if (!config.envFile) return '';
@@ -147,10 +136,8 @@ const log = (event, data = {}) => process.stdout.write(`${JSON.stringify({ t: ne
 // A log line the disk refuses is lost, never the process: the app's work goes on (flushState says a refused state write).
 process.stdout.on('error', () => {});
 
-async function door(path, { body, method } = {}) {
-  if (!disconnecting && !compensationReading && (!sourceAdmitted || !state.ready || lifecycle?.paused)) throw new Error('the board source has no admitted complete reading or projection is quiesced');
+async function rawDoor(path, { body, method } = {}) {
   const verb = method ?? (body === undefined ? 'GET' : 'POST');
-  const request = async () => {
     // Quiesce joins writes rather than aborting them. Every request has its own finite bound.
     const response = await fetch(`${base}${path}`, {
       method: verb, signal: AbortSignal.timeout(9000),
@@ -158,11 +145,40 @@ async function door(path, { body, method } = {}) {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const payload = await response.json().catch(() => null);
-    if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { remoteSettled: response.status >= 400 && response.status < 500 && response.status !== 408 && typeof payload?.error?.code === 'string', code: payload?.error?.code, details: payload?.error?.details, status: response.status });
+    if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { code: payload?.error?.code, details: payload?.error?.details, status: response.status });
     if (!payload || !Object.hasOwn(payload, 'data')) throw new Error('Workplace returned no product acknowledgement');
     return payload.data;
-  };
-  return verb === 'GET' ? request() : lifecycle.mutate({ method: verb, path, body }, request);
+}
+function admitProjection() {
+  if (!disconnecting && !compensationReading && (!sourceAdmitted || !state.ready || lifecycle?.paused)) throw new Error('the board source has no admitted complete reading or projection is quiesced');
+}
+async function door(path, { body, method } = {}) {
+  admitProjection();
+  const verb = method ?? (body === undefined ? 'GET' : 'POST');
+  return verb === 'GET' ? rawDoor(path, { body, method }) : lifecycle.mutate({ method: verb, path, body }, () => rawDoor(path, { body, method }));
+}
+async function placementCommand(action, roomId, body, context = {}) {
+  admitProjection();
+  if (!roomReceipts) throw new Error('conditional Room placement requires the retained selected-program parent binding');
+  return lifecycle.conditional(async () => {
+    await roomReceipts.settlePlacement(roomId, body.principalId);
+    const originalEffects = action === 'leave' ? roomReceipts.originals(roomId, body.principalId) : [];
+    const purpose = action === 'leave' ? 'projection-inverse' : context.run ? 'projection-run' : 'projection-role';
+    if (action === 'leave') {
+      if (!originalEffects.length) throw new Error('Room withdrawal has no original selected-program server effect');
+      const original = roomReceipts.batches().filter(batch => originalEffects.some(ref => ref.namespace === batch.namespace.id));
+      const sessions = original.map(batch => batch.input.expectedSession).filter(Boolean);
+      if (!sessions.length || sessions.some(session => canonicalJson(session) !== canonicalJson(sessions[0]))) throw new Error('Room withdrawal has no single original exact session');
+      body = { ...body, expectedSession: sessions[0] };
+    }
+    const batch = await roomReceipts.prepare(action, roomId, body, { originalEffects, purpose,
+      expected: { context, fieldVector: body } });
+    const result = await roomReceipts.dispatch(batch);
+    await roomReceipts.finish(batch);
+    if (!['applied', 'original-effect-absent'].includes(result.conditional.outcome)) throw Object.assign(new Error(`conditional Room placement refused: ${result.conditional.code}`), { code: result.conditional.code });
+    if (action === 'leave') roomReceipts.dispose(batch);
+    return result;
+  });
 }
 
 // ---- the project and its Room ---------------------------------------------------------------------------------------
@@ -241,12 +257,6 @@ const KEPT = ['id', 'ref', 'readable_id', 'title', 'project', 'lane', 'status', 
  * latest attempt (`attempts`, supercode sdk/teams/board-events.mjs) while that run has not ended and its session was
  * neither closed nor detached, the same reading as supercode's cardRunOf. The card's Task shows as its `work` the
  * principal supercode's integration links to that session. */
-const runOf = (card) => {
-  const attempt = Array.isArray(card.attempts) ? card.attempts.at(-1) : null, session = attempt?.session;
-  if (!session || attempt.ended_at || session.closed_at || session.detached_at) return null;
-  if (typeof session.harness !== 'string' || !session.harness || typeof session.session_id !== 'string' || !session.session_id) return null;
-  return { run: `${session.harness}:${session.session_id}`, runSince: typeof attempt.started_at === 'string' ? attempt.started_at : null };
-};
 const kept = (card) => {
   const out = Object.fromEntries(KEPT.filter((key) => card[key] !== undefined).map((key) => [key, card[key]]));
   // A card as published names its run by its attempts; one already kept carries `run`.
@@ -333,24 +343,12 @@ async function closeOwnRoom(roomId) {
 // ---- the arcs' agents (ADR 0050 decision 12) ------------------------------------------------------------------------
 const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
-const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
 /** Whether an agent of the card works it right now, in its role: its implementer while the card is worked (`running`),
  * its reviewer while it is in review, any other role while either; none while the card is paused or blocked. */
-const WORKING_LANES = { implementer: ['running'], reviewer: ['review'] };
-const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
-/** Whether the card's run session is in its Room now: the card worked or in review, neither paused nor blocked. */
-const cardRunsNow = (card) => !cardHoldOf(card).state && ['running', 'review'].includes(card.lane ?? card.status);
 /** The ids of the agents working the card right now (the board's `card.agents`, active, in the role its card is in now),
  * or null when the card publishes none. */
-function cardAgentsOf(card) {
-  const agents = activeAgents(card);
-  return agents === null ? null : [...new Set(agents.filter((agent) => worksNow(card, agent)).map((agent) => agent.id))].sort();
-}
 /** The card's agents declared under a lead profile: the project's lead, which holds its Room's conversation. */
-function leadAgentsOf(card) {
-  const lane = card.archived ? 'archived' : card.lane ?? card.status;
-  return [...new Set((activeAgents(card) ?? []).filter((agent) => LEAD_PROFILES.has(agent.profile) && worksNow({ ...card, lane }, agent)).map((agent) => agent.id))].sort();
-}
+const leadAgentsOf = card => selectLeads(card, LEAD_PROFILES);
 
 // ---- the project Room's guidance and its cards' visible updates (runhuman-2 ADR 0063 decisions 7 and 8) -------------
 /** What a project Room's agents are told it is for, unless the app's config says otherwise (volter-org decision "project
@@ -414,7 +412,7 @@ async function repostCardFiles(roomId, conversationId, card) {
           headers: { accept: 'application/json', authorization: `Bearer ${rh2Token}`, origin: base, 'x-rh2-organization': config.rh2.organization, 'content-type': typeOf(file), 'x-rh2-artifact-name-uri': encodeURIComponent(file.name) },
         });
         const payload = await response.json().catch(() => null);
-        if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { remoteSettled: response.status >= 400 && response.status < 500 && response.status !== 408 && typeof payload?.error?.code === 'string', code: payload?.error?.code, status: response.status });
+        if (!response.ok) throw Object.assign(new Error(payload?.error?.message ?? `${response.status}`), { code: payload?.error?.code, status: response.status });
         if (!payload || !Object.hasOwn(payload, 'data')) throw new Error('Workplace returned no upload acknowledgement');
         return payload.data;
       });
@@ -467,7 +465,6 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
   const members = new Map((view.members ?? []).map(member => [member.principalId, member]));
   const base = view.conversations?.find(item => item.conversationId === view.room.defaultConversationId);
   const receives = new Map((base?.agentParticipants ?? []).map(participant => [participant.principalId, participant.answers]));
-  const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
   const placements = state.runSeats[roomId] ??= {};
   const borrowed = state.borrowedRunSeats[roomId] ??= {};
   const people = await peopleOf(view);
@@ -511,10 +508,10 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     // Existing-member session and receive rewrites have the same durable obligation as a new join.
     if (run) flushState(true);
     try {
-      const placed = await door(`${room}/join`, { body: { principalId, roleKeys: demand.roleKeys, answers: demand.answers,
+      const placed = await placementCommand('join', roomId, { principalId, roleKeys: demand.roleKeys, answers: demand.answers,
         ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}),
         ...(run ? { expectedSession: run.session } : {}),
-        ...(!member ? { preserveExisting: true } : { expectedSeatedBy: self }) } });
+        ...(!member ? { preserveExisting: true } : { expectedSeatedBy: self }) }, { run: run ?? null });
       if (placed.seatedBy !== self) {
         if (placements[principalId]) delete placements[principalId];
         borrowed[principalId] = placed.seatedBy ?? null; saveState();
@@ -536,7 +533,7 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     for (const [principalId, member] of leaving) {
       try {
         // A successful conditional leave proves removal, absence, or replacement. A refusal proves none of them.
-        await door(`${room}/leave`, { body: { principalId, expectedSeatedBy: self } });
+        await placementCommand('leave', roomId, { principalId, expectedSeatedBy: self });
         delete placements[principalId]; saveState();
         log('participant-left', { ...label, principalId, roomId });
       } catch (error) {
@@ -585,7 +582,7 @@ async function projectAgentsOf(project, cards) {
       if (!work.length) waiting.push(`${card.id}: its exact run session`);
       for (const each of work) {
         const answers = card.leads?.length || sessions.get(each.principalId)?.answers === 'all' ? 'all' : 'mentions';
-        sessions.set(each.principalId, { answers, card: card.id, roleKeys: AGENT_ROLE_KEYS, session: each.session, kind: each.kind });
+        sessions.set(each.principalId, { answers, card: card.id, native: card.run, roleKeys: AGENT_ROLE_KEYS, session: each.session, kind: each.kind });
       }
     }
     if (!Array.isArray(card.agents)) { mayUnseat = false; continue; }
@@ -935,100 +932,6 @@ function drain() {
   })().finally(() => { draining = undefined; });
   return draining;
 }
-/** A compensation reading is a whole current board snapshot, independent of the retained cursor. It never drains. */
-async function currentRoleCards() {
-  const cards = {}, agents = {};
-  let begun = false, complete = false, cursor = null;
-  for await (const frame of follow(null, true)) {
-    if (frame.type === 'snapshot_begin') { begun = true; }
-    if (frame.type === 'resync_required' || frame.type === 'access_revoked') throw new Error('the compensation role reading was revoked');
-    const event = frame.data;
-    if (frame.type === 'snapshot_item' && event?.resource?.kind === 'task' && event.data?.card
-      && String(event.resource.id).startsWith(`${config.teams.source}:`)) {
-      const card = kept(event.data.card); cards[card.id] = registryOf(card);
-    }
-    if (frame.type === 'snapshot_item' && event?.resource?.kind === 'agent' && typeof event.data?.id === 'string') agents[event.data.id] = { ended: event.data.state === 'ended' };
-    if (frame.type === 'snapshot_end') { complete = begun; cursor = frame.cursor ?? null; break; }
-  }
-  if (!complete) throw new Error('compensation needs a complete fresh board role reading');
-  // Current committed state is retained for the predecessor. No previous state-file bytes are restored.
-  state.cards = cards; state.agents = agents; state.agentPrincipals = {};
-  state.cursor = cursor; state.ready = true; state.pending = {};
-  state.cleanupReady = Object.keys(cards).length > 0;
-  flushState(true);
-  return Object.values(cards);
-}
-async function compensateRunPlacements({ selection }) {
-  compensationReading = true;
-  try {
-    const who = await door('/api/v3/session/test');
-    if (who.principalId !== self) throw new Error('compensation credential names another app');
-    const cards = await currentRoleCards();
-    passTasks = undefined; passPeople = undefined;
-    // Resolve ALL relevant role demand before the first cleanup effect. An unresolved role cannot be mistaken for none.
-    const rolesByRoom = new Map(), viewsByRoom = new Map();
-    const rooms = new Set([...Object.values(state.projects), ...Object.keys(state.runSeats), ...Object.keys(state.borrowedRunSeats)]);
-    for (const roomId of rooms) {
-      const projects = Object.keys(state.projects).filter(project => state.projects[project] === roomId);
-      if (projects.length !== 1) throw new Error(`run placement Room ${roomId} has no unique project`);
-      const roleCards = cards.filter(card => card.live && card.project === projects[0]).map(card => ({ ...card, run: null }));
-      const demand = await projectAgentsOf(projects[0], roleCards);
-      if (!demand.mayUnseat || demand.unresolved.length || demand.waiting.length || demand.held.length) throw new Error(`current role demand for ${projects[0]} is unresolved`);
-      const roles = new Map();
-      for (const [agentId, role] of demand.wanted) {
-        const principalId = await agentPrincipalOf(agentId);
-        if (!principalId) throw new Error(`current role ${agentId} has no principal`);
-        roles.set(principalId, role);
-      }
-      rolesByRoom.set(roomId, roles);
-      const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch(error => {
-        if (error.status === 404 && !Object.keys(state.runSeats[roomId] ?? {}).length) return null;
-        throw error;
-      });
-      if (!view) continue;
-      viewsByRoom.set(roomId, view);
-      const people = await peopleOf(view);
-      const channel = view.conversations?.find(item => item.conversationId === view.room.defaultConversationId);
-      const receives = new Map((channel?.agentParticipants ?? []).map(participant => [participant.principalId, participant.answers]));
-      for (const member of view.members ?? []) {
-        if (member.kind !== 'agent' || member.seatedBy === self) continue;
-        const role = roles.get(member.principalId);
-        // Exact v5 unseats other apps' non-role agents and unconditionally rewrites role receives.
-        // Its restart is ineligible while either act would undo a currently independent placement.
-        if (!role && !people.has(member.seatedBy)) throw Object.assign(new Error(`predecessor would remove borrowed agent ${member.principalId} in ${roomId}`), { code: 'predecessor-borrowed-agent' });
-        if (role && channel && receives.get(member.principalId) !== role.answers) throw Object.assign(new Error(`predecessor would rewrite independent receive for ${member.principalId} in ${roomId}: ${receives.get(member.principalId) ?? 'none'} to ${role.answers}`), { code: 'predecessor-independent-receive' });
-      }
-    }
-    for (const [roomId, placements] of Object.entries(state.runSeats)) {
-      const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
-      const view = viewsByRoom.get(roomId);
-      if (!view) throw new Error(`run placement Room ${roomId} has no current roster`);
-      const members = new Map((view.members ?? []).map(member => [member.principalId, member]));
-      const people = await peopleOf(view);
-      for (const [principalId, placement] of Object.entries(placements)) {
-        if (placement.owner !== selection) throw new Error(`run placement ${principalId} belongs to another or unknown selection`);
-        const role = rolesByRoom.get(roomId).get(principalId), member = members.get(principalId);
-        const independent = member && (people.has(member.seatedBy) || member.seatedBy !== self);
-        if (role && !independent) {
-          // Retain the current role seat and restore its current receive requirement through a conditional acknowledgement.
-          const placed = await door(`${room}/join`, { body: { principalId, roleKeys: role.roleKeys, answers: role.answers,
-            ...(config.postRoleKeys ? { postRoleKeys: config.postRoleKeys } : {}),
-            ...(!member ? { preserveExisting: true } : { expectedSeatedBy: self }) } });
-          if (placed.seatedBy !== self) (state.borrowedRunSeats[roomId] ??= {})[principalId] = placed.seatedBy ?? null;
-        } else {
-          // The conditional command also acknowledges absence/replacement without touching a person's or borrowed seat.
-          await door(`${room}/leave`, { body: { principalId, expectedSeatedBy: self } });
-          if (independent) (state.borrowedRunSeats[roomId] ??= {})[principalId] = member.seatedBy ?? null;
-        }
-        delete placements[principalId]; flushState(true);
-        log('run-placement-compensated', { roomId, principalId, rolePreserved: Boolean(role), independentPreserved: Boolean(independent) });
-      }
-      if (!Object.keys(placements).length) delete state.runSeats[roomId];
-    }
-    flushState(true);
-  } finally { compensationReading = false; sourceAdmitted = false; }
-}
-
 lifecycle = createLifecycle({ state, configPath, statePath: config.stateFile, persist: () => flushState(true), log,
   readiness: () => ({ loaded: true, sourceAdmitted: Boolean(sourceAdmitted && state.ready && !lifecycle?.paused),
     placementOwed: Object.keys(state.pending).length + Object.keys(state.projectsOwed).length }),
@@ -1039,9 +942,23 @@ lifecycle = createLifecycle({ state, configPath, statePath: config.stateFile, pe
     sourceAdmitted = false; flushState(true);
   },
   resume: () => { fileReading = new AbortController(); },
-  compensate: compensateRunPlacements,
+  recover: async request => {
+    if (!recovery) throw new Error('the exact selected recovery owner is unavailable');
+    compensationReading = true;
+    try { return await recovery.recover(request); }
+    finally { compensationReading = false; sourceAdmitted = false; }
+  },
+  roomDebt: () => roomReceipts?.debt() ?? { unknown: 0, unreadable: 0, unclosed: 0 },
   parentDisconnected: error => { stopping = true; if (error) process.exitCode = 1; },
 });
+if (lifecycle.binding) {
+  roomReceipts = createRoomReceipts({ journal: lifecycle.journal, selection: lifecycle.selection, binding: lifecycle.binding,
+    source: { connection: lifecycle.binding.connection, namespace: config.source?.namespace ?? null, source: config.teams.source },
+    actor: self, organization: config.rh2.organization, transport: rawDoor });
+  recovery = createRecovery({ journal: lifecycle.journal, owner: lifecycle.owner, rooms: roomReceipts,
+    binding: lifecycle.binding, selection: lifecycle.selection, config, configDigest: digestValue(config),
+    state, actor: self, persist: () => flushState(true), transport: rawDoor });
+}
 lifecycle.announce();
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
   stopping = true;

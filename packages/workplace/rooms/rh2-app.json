@@ -15,7 +15,11 @@
     "members.manage",
     "conversations.manage",
     "principals.resolve",
-    "task.read"
+    "task.read",
+    "room.conditional.read",
+    "room.command-receipts.read",
+    "room.command-receipts.close",
+    "grant.read"
   ],
   "contributions": [
     "@open-autonomy/workplace"

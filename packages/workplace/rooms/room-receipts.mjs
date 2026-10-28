@@ -36,8 +36,11 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
   }
   function originals(roomId, principalId) {
     const found = [];
+    const retired = new Set(journal.entries('room-disposition').flatMap(entry => entry.value.originalEffects.map(ref => canonical(ref))));
     for (const batch of batches()) {
       if (batch.roomId !== roomId || batch.input.principalId !== principalId) continue;
+      const reference = { namespace: batch.namespace.id, operationId: batch.operationId };
+      if (retired.has(canonical(reference)) || batch.purpose.endsWith('-inverse')) continue;
       const receipts = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id);
       if (!receipts.length) {
         const closure = journal.entries('room-closed').filter(entry => entry.value.namespace === batch.namespace.id).at(-1);
@@ -46,19 +49,21 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
       }
       if (receipts.at(-1).value.disposition === 'unreadable') refuse('an original Room effect is currently unreadable');
       const terminal = receipts.at(-1).value;
-      if (terminal.disposition === 'applied') found.push({ namespace: batch.namespace.id, operationId: batch.operationId });
+      if (terminal.disposition === 'applied') found.push(reference);
     }
     return found;
   }
-  async function prepare(action, roomId, supplied, { originalEffects = [], invocation = binding.generation, purpose = 'projection', expected = null } = {}) {
+  async function prepare(action, roomId, supplied, { originalEffects = [], invocation = binding.generation, purpose = 'projection-role', expected = null, issuedBasis } = {}) {
     const input = copy(supplied);
-    const current = await basis(roomId, input.principalId);
+    const current = issuedBasis === undefined ? await basis(roomId, input.principalId) : copy(issuedBasis);
+    if (current.scope?.roomId !== roomId || current.actor?.principalId !== actor
+      || !current.principalIds?.includes(input.principalId) || current.complete !== true) refuse('the issued basis does not name this exact effect');
     if (input.expectedSession === undefined) {
       const principal = current.inputs.principals?.find(row => row.principal_id === input.principalId);
       if (['agent', 'session'].includes(principal?.kind)) {
         // Normal projection keeps the actual atomic remote address; it never
         // ranks native activity. Recovery must supply its original exact S.
-        if (purpose !== 'projection') refuse('inverse has no original exact session');
+        if (!['projection-role', 'projection-run'].includes(purpose)) refuse('inverse has no original exact session');
         const address = principal.kind === 'agent' ? principal.current_session : principal.participant;
         if (typeof address?.registration !== 'string' || address.reference === undefined) refuse('current representation has no exact address');
         input.expectedSession = { registration: address.registration, reference: address.reference };
@@ -129,6 +134,35 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
     }
     return inventory;
   }
+  async function finish(batch) {
+    await close(batch);
+    return closedInventory(await status(batch), batch.namespace);
+  }
+  function dispose(batch) {
+    if (!batch.purpose.endsWith('-inverse') || !batch.body.conditional.originalEffects.length) refuse('disposition needs a manifested inverse and original identities');
+    const closure = journal.entries('room-closed').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value.inventory;
+    const terminal = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value;
+    if (!closure || !['applied', 'original-effect-absent'].includes(terminal?.disposition)) refuse('an unreadable or unresolved inverse cannot retire original effects');
+    const value = { roomId: batch.roomId, principalId: batch.input.principalId,
+      originalEffects: copy(batch.body.conditional.originalEffects), inverse: { namespace: batch.namespace.id, operationId: batch.operationId },
+      disposition: terminal.disposition, closureDigest: digestValue(closure) };
+    const old = journal.entries('room-disposition').find(entry => entry.value.inverse.namespace === batch.namespace.id);
+    if (old && canonical(old.value) !== canonical(value)) refuse('original disposition changed');
+    if (!old) journal.append('room-disposition', value);
+    return copy(value);
+  }
+  function reconcileDispositions() {
+    // A crash between the remote inverse and the local disposition does not
+    // create a second inverse. Its exact now-readable closed receipt settles it.
+    for (const batch of batches().filter(batch => batch.purpose.endsWith('-inverse'))) {
+      const terminal = journal.entries('room-terminal').filter(entry => entry.value.namespace === batch.namespace.id).at(-1)?.value;
+      if (['applied', 'original-effect-absent'].includes(terminal?.disposition)) dispose(batch);
+    }
+  }
+  async function settlePlacement(roomId, principalId) {
+    for (const batch of batches().filter(batch => batch.roomId === roomId && batch.input.principalId === principalId)) await finish(batch);
+    reconcileDispositions();
+  }
   const debt = () => {
     let unknown = 0, unreadable = 0, unclosed = 0;
     for (const batch of batches()) {
@@ -141,5 +175,5 @@ export function createRoomReceipts({ journal, selection, binding, source, actor,
     }
     return { unknown, unreadable, unclosed };
   };
-  return { basis, originals, prepare, dispatch, status, close, closeAll, debt, batches };
+  return { basis, originals, prepare, dispatch, status, close, closeAll, finish, dispose, reconcileDispositions, settlePlacement, debt, batches };
 }
