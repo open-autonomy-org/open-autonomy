@@ -249,6 +249,9 @@ matching the requested signal or an explicitly declared retirement code (Hermes 
 retirement as a child failure. The child remains in flight
 until exit. Failed launches and unrelated nonzero exits remain failures; failed stop requests and outcomes already
 observed never establish stop intent.
+The keeper and Hermes gateway also declare their existing reserved restart status 75 before observing those specific
+children, so their intentional self-retirement is stopped even without a parent signal. Other children keep their
+ordinary exit-status classification.
 Timeout and operation errors still reach their callers.
 An older SDK preserves the original stop behavior and emits a coverage diagnostic instead of claiming stop coverage.
 

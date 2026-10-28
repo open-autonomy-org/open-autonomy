@@ -180,7 +180,7 @@ export async function startContainer(options: {
     await writeContainerKitRecord({ container, home, version: kit.version });
     // the orchestrator and Volter Harness are the image's own, installed globally there: the container's machine (D215)
     gateway = harness === 'hermes'
-      ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
+      ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env, stoppedExitCodes: [75] })
       : startContainerProcess({ container, cwd: workspace, command: ['supercode-orchestrator', '--root', home],
         // the executor is the boundary: a gated Codex worker keeps the kit's sandbox setting there (supercode activation.mjs)
         env: { ...env, SUPERCODE_BIN: 'supercode', SUPERCODE_CODEX_SANDBOX: 'executor' } });

@@ -187,7 +187,7 @@ export async function startFleet(options: { definition: string; port: number; se
     await Promise.race([Promise.all(readiness), exited.then(() => { throw new Error('the runtime stopped before the reporters were ready'); })]);
     if (ending) throw new Error('a host service stopped during preparation');
     // 8. One gateway over the composed home (every profile's schedule is already applied).
-    gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], env: {
+    gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], stoppedExitCodes: [75], env: {
       HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
       // Every checkout is a place the agents write; the image names only the project shape's.
       HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':') } });

@@ -113,7 +113,7 @@ if (!retainedInstall && !argv.includes('--stack-child')) {
   for (const signal of stopSignals) process.on(signal, () => { stopping = true; const live = child; if (live) stopWorkChild(live, () => live.kill(constants.signals[signal]), { signal: constants.signals[signal] }); });
   let entry = Bun.main;
   while (!stopping) {
-    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }));
+    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }), 'bun', { stoppedExitCodes: [75] });
     const code = await child.exited;
     if (stopping || code !== 75) { await closeWorkLedger(); process.exit(stopping ? 0 : code); }
     entry = resolve(project, '.open-autonomy/start.ts');
@@ -194,9 +194,9 @@ let restartAsked = false;
 process.on('exit', () => {
   for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ } }
 });
-function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean }) {
+function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
-  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }));
+  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
   children.push({ name, proc });
   proc.exited.then(async (code) => {
     if (ending) return;
@@ -689,7 +689,7 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). The board's one
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
-  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
+  ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, stoppedExitCodes: [75], env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
