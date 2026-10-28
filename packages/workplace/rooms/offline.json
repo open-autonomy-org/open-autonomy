@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "kind": "project-rooms-offline-maintenance",
+  "entry": "offline.mjs",
+  "scope": "original-terminal-no-effect-intent-only",
+  "remoteMutations": false,
+  "nativeControls": false,
+  "files": ["offline.mjs", "offline-files.mjs", "offline.json"],
+  "custodyProtocols": [],
+  "terminalEvidenceProfiles": [],
+  "supports": [{
+    "revision": "0da04c17ea898758409ae1487972e8f327b3a9e6",
+    "journalVersion": 1,
+    "arcVersion": 7,
+    "files": [
+      {"path":"main.mjs","sha256":"6259aa279322fd6ed37b29b5b4d61762059d3f2636fa806a6f601d773f12f53f"},
+      {"path":"lifecycle.mjs","sha256":"58dc0a4d8ed7aadbd2a9f981d88c1db677640a6b0f596195b1417c01342fabf2"},
+      {"path":"lifecycle.json","sha256":"6c5256baa7bfaff3546eafe75b6db1fff2012ee7515b15c9e6a6eb44ddc79f95"},
+      {"path":"rh2-app.json","sha256":"d5ca88ed2e6812cad365666a6c539b0332a1998a51da5203dec7d2704f76044b"},
+      {"path":"teams-app.json","sha256":"7fede7b6315791827b04437f21be866dfec7ac8f73a1dfb8bb4cb8fc1412e997"}
+    ]
+  }]
+}

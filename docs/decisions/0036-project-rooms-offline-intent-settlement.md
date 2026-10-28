@@ -1,8 +1,9 @@
 # ADR 0036: Project Rooms can record a terminal no-effect leave outcome offline
 
-Status: Proposed. Documentation only; typed PLAN PASS and independent constitution review are
-required before implementation. Neither this proposal nor the merged implementation of
-[ADR 0035](0035-project-rooms-program-receipts.md) establishes this new capability.
+Status: Proposed. The narrow no-effect plan and paired live-custody amendment passed typed plan
+review; source acceptance still requires independent constitution and implementation review.
+Neither this proposal nor the merged implementation of [ADR 0035](0035-project-rooms-program-receipts.md)
+establishes a qualified successful recovery capability.
 
 ## Context and evidence sources
 
@@ -265,6 +266,13 @@ owner remains a separate open obligation; any stronger session/demand safety req
 from that program retains the reservation until separately designed and reviewed. Preserve every
 failed take and exact raw/source mappings.
 
+The candidate supplies the separate source-only preparation entry
+`packages/workplace/rooms/prepare-offline.mjs` and the immutable offline `--plan` entry. Its
+maintenance metadata currently declares no supported native custody protocol or terminal-evidence
+profile, so it refuses before mutable product-input reads or any state/audit write. A source
+scaffold does not qualify either prerequisite; positive disposition requires their actual reviewed
+implementations and independently qualified evidence.
+
 The parent native proof packet may retain its completed independent cases with this populated
-recovery prerequisite explicitly unresolved. No new door is implemented or exercised by this PR;
-no populated-recovery, release, fleet cutover or Workplace Acceptance PASS is claimed.
+recovery prerequisite explicitly unresolved. No populated-recovery, release, fleet cutover or
+Workplace Acceptance PASS is claimed.
