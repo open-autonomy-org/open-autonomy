@@ -118,7 +118,7 @@ export function prepareRooms({ source, revision, out, legacy = false }) {
   return readArtifact(join(out, 'artifact.json'), { verifySource: true });
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2), options = {};
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--legacy') options.legacy = true;

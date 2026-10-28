@@ -50,7 +50,7 @@ export function qualifyRooms({ candidate, predecessor, evidence, out }) {
   return { qualification: realpathSync(out), sha256: sha256(bytes), ...value };
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && existsSync(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2), options = {};
   for (let i = 0; i < args.length; i++) {
     if (['--candidate', '--predecessor', '--evidence', '--out'].includes(args[i]) && args[i + 1]) options[args[i].slice(2)] = args[++i];
