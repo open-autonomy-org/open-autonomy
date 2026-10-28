@@ -19,7 +19,7 @@ export function prepareOffline({ source, revision, out }) {
     || metadata.scope !== 'original-terminal-no-effect-intent-only' || metadata.remoteMutations !== false || metadata.nativeControls !== false
     || !Array.isArray(metadata.files) || !metadata.files.includes('offline.json') || !metadata.files.includes(metadata.entry)
     || !Array.isArray(metadata.supports) || !metadata.supports.length || !Array.isArray(metadata.custodyProtocols)
-    || !Array.isArray(metadata.terminalEvidenceProfiles)
+    || !Array.isArray(metadata.terminalEvidenceProfiles) || !Array.isArray(metadata.custodySources)
     || new Set(metadata.files).size !== metadata.files.length || metadata.files.some(path => !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(path))) refuse('offline source metadata differs');
   const files = metadata.files.map(path => {
     const content = git(source, ['show', `${revision}:${directory}/${path}`]);

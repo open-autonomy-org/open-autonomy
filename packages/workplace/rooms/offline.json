@@ -5,8 +5,9 @@
   "scope": "original-terminal-no-effect-intent-only",
   "remoteMutations": false,
   "nativeControls": false,
-  "files": ["offline.mjs", "offline-files.mjs", "offline.json"],
-  "custodyProtocols": [],
+  "files": ["offline.mjs", "offline-files.mjs", "offline-custody.mjs", "offline-terminal.mjs", "offline.json"],
+  "custodyProtocols": ["connection-native-maintenance-v1"],
+  "custodySources": [],
   "terminalEvidenceProfiles": [],
   "supports": [{
     "revision": "0da04c17ea898758409ae1487972e8f327b3a9e6",

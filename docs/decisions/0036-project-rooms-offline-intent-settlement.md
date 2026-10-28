@@ -268,10 +268,20 @@ failed take and exact raw/source mappings.
 
 The candidate supplies the separate source-only preparation entry
 `packages/workplace/rooms/prepare-offline.mjs` and the immutable offline `--plan` entry. Its
-maintenance metadata currently declares no supported native custody protocol or terminal-evidence
-profile, so it refuses before mutable product-input reads or any state/audit write. A source
-scaffold does not qualify either prerequisite; positive disposition requires their actual reviewed
+maintenance metadata names the inherited native IPC protocol but currently qualifies no native
+source/runtime or terminal-evidence profile, so it refuses before mutable product-input reads or
+any state/audit write. A source scaffold does not qualify either prerequisite; positive disposition requires their actual reviewed
 implementations and independently qualified evidence.
+
+The consumer binds the actual native parent, its loaded source vector, Node bytes, platform,
+architecture, flags and sole qualified preload to the plan and durable hold through fresh IPC
+challenges. Both restart owners must supply live source-qualified acknowledgements with stable
+opaque incarnations. A preload, when present, has the same sealed two-file closure as the terminal
+profile; arbitrary imports or flags are unsupported. Original startup provenance and joined
+retirement must belong to this same native parent and runtime. The terminal profile reads the
+whole original observer history, including repeated or malformed attempts, and rechecks its
+source and bytes before each persistence boundary. An existing audit can repeat only under its
+exact original live custody invocation; it never authorizes a new lease, hold release or replay.
 
 The parent native proof packet may retain its completed independent cases with this populated
 recovery prerequisite explicitly unresolved. No populated-recovery, release, fleet cutover or

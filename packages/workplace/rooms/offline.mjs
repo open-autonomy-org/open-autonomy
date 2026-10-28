@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readTerminalEvidence, qualifyTerminalRetirement } from './offline-terminal.mjs';
+import { acquireCustody } from './offline-custody.mjs';
 import { canonical, digestPattern, durableWrite, exactKeys, jsonDocument, privateDirectory, readBound, readFile,
   refuse, removeIntent, same, sha256, stable, syncDirectory, uuidPattern } from './offline-files.mjs';
 
@@ -25,7 +27,7 @@ export function readOfflineArtifact(path, expected) {
   if (metadata?.version !== 1 || metadata.kind !== 'project-rooms-offline-maintenance' || metadata.entry !== value.entry
     || metadata.scope !== 'original-terminal-no-effect-intent-only' || metadata.remoteMutations !== false || metadata.nativeControls !== false
     || !Array.isArray(metadata.files) || !Array.isArray(metadata.supports) || !Array.isArray(metadata.custodyProtocols)
-    || !Array.isArray(metadata.terminalEvidenceProfiles) || !Array.isArray(value.files) || !value.files.length
+    || !Array.isArray(metadata.terminalEvidenceProfiles) || !Array.isArray(metadata.custodySources) || !Array.isArray(value.files) || !value.files.length
     || new Set(value.files.map(file => file.path)).size !== value.files.length
     || !same([...metadata.files].sort(), value.files.map(file => file.path).sort())
     || !same(readdirSync(value.directory).sort(), ['offline-artifact.json', ...metadata.files].sort())) refuse('offline artifact closure differs');
@@ -212,38 +214,35 @@ function exactIntent(plan, artifact, config, bytes) {
   return removed;
 }
 
-// Native stopped-home exclusion needs its own reviewed owner protocol. Scans, sealed booleans and the old runner lock
-// cannot fence restart owners. Until that dependency is implemented, this executable has NO successful disposition path.
-function requireCustody(_plan, metadata) {
-  if (metadata.custodyProtocols.length) refuse('declared custody protocol is not implemented by this executable');
-  refuse('unsupported stopped-home custody: no reviewed native exclusion protocol is available; intent and placement debt retained');
-}
-function requireTerminalProof(_plan, metadata) {
-  if (metadata.terminalEvidenceProfiles.length) refuse('declared terminal evidence profile is not implemented by this executable');
-  refuse('unsupported original terminal evidence profile; intent and placement debt retained');
+function requireTerminalProof(plan, metadata, originalIntent, custody) {
+  return qualifyTerminalRetirement(readTerminalEvidence(plan, metadata, originalIntent), custody);
 }
 
-export function settleNoEffect(planPath) {
+export async function settleNoEffect(planPath) {
   if (!['darwin', 'linux'].includes(process.platform) || !process.getuid) refuse('mandatory local ownership/durability facilities are unavailable');
   const planFile = readFile(planPath, undefined, { privateFile: true }); privateDirectory(dirname(planPath));
   const plan = validatePlan(parse(planFile)), self = readOfflineArtifact(join(directory, 'offline-artifact.json'));
   if (plan.recoveryArtifact.path !== self.path || plan.recoveryArtifact.sha256 !== self.sha256) refuse('plan names another recovery executable');
-  // The native hold must precede every mutable product input read. No protocol is implemented yet.
-  const custody = requireCustody(plan, self.value.maintenance);
+  // The inherited source-qualified native hold must precede every mutable product input read.
+  const custody = await acquireCustody(plan, self.value.maintenance, {path:planFile.path,sha256:planFile.sha256}, self.value.program);
+  try {
   const folder = privateDirectory(join(plan.home, 'apps', 'connections', plan.connection));
   const stateFolder = privateDirectory(join(folder, 'project-rooms'));
   if (plan.state.path !== join(stateFolder, 'state.json') || plan.config.path !== join(stateFolder, 'config.json')) refuse('plan state/config are outside the exact connection');
   const lock = join(stateFolder, 'offline-recovery.lock'), token = Buffer.from(`${JSON.stringify({ version: 1, pid: process.pid, nonce: randomUUID(), plan: plan.id, planSha256: planFile.sha256 })}\n`);
+  await custody.recheck();
   let fd;
   try { fd = openSync(lock, 'wx', 0o600); } catch (error) { if (error.code === 'EEXIST') refuse('recovery lock is held or needs independently proved owner retirement; no stale stealing'); throw error; }
   try {
     writeFileSync(fd, token); fsyncSync(fd); syncDirectory(stateFolder);
     const artifact = readOldArtifact(plan.oldArtifact, self.value.maintenance), config = configuration(plan);
     const native = nativeInputs(plan, artifact, config);
+    custody.assertInputs(native);
     const state = readFile(plan.state.path, undefined, { privateFile: true });
     if ((state.stat.mode & 0o777) !== 0o600) refuse('state mode differs from its supported private format');
     const auditFolder = join(stateFolder, 'offline-recovery'), auditPath = join(auditFolder, `${plan.id}.json`);
-    const audit = existsSync(auditPath) ? parse(readFile(auditPath, undefined, { privateFile: true })) : null;
+    let auditFile = existsSync(auditPath) ? readFile(auditPath, undefined, { privateFile: true }) : null;
+    const audit = auditFile ? parse(auditFile) : null;
     if (audit && (audit.version !== 1 || audit.kind !== 'project-rooms-original-no-effect-disposition' || audit.planSha256 !== planFile.sha256
       || !['prepared', 'applied'].includes(audit.phase) || audit.beforeSha256 !== plan.state.sha256
       || audit.oldArtifact?.sha256 !== artifact.sha256 || audit.recoveryArtifact?.sha256 !== self.sha256
@@ -267,22 +266,30 @@ export function settleNoEffect(planPath) {
     if (audit && (!same(audit.oldArtifact, plan.oldArtifact) || !same(audit.recoveryArtifact, plan.recoveryArtifact)
       || audit.originalIntent.encoding !== 'base64' || audit.originalIntent.bytes !== removal.originalIntent.toString('base64')
       || audit.afterSha256 !== sha256(removal.after) || !same(audit.removal, removal.removed))) refuse('audit does not preserve the complete exact original intent and outcome');
-    const terminal = requireTerminalProof(plan, self.value.maintenance);
-    // This block remains inaccessible until independently reviewed dependency implementations return actual proofs.
-    const recheck = () => {
-      custody.recheck();
+    const terminal = requireTerminalProof(plan, self.value.maintenance, removal.originalIntent, custody);
+    if (audit && (!same(audit.terminal, terminal) || !same(audit.custody, custody.receipt)))
+      refuse('retained audit requires its exact original live custody invocation; no cross-lease replay');
+    const recheck = async () => {
+      await custody.recheck();
       readFile(planPath, planFile.sha256, { privateFile: true }); readBound(plan.config, { privateFile: true });
       for (const input of Object.values(native.inputs)) {
         const current = readFile(input.path, input.sha256);
         if ((current.stat.mode & 0o777) !== (input.stat.mode & 0o777)) refuse('a retained native input mode changed');
       }
       readOldArtifact(plan.oldArtifact, self.value.maintenance); readOfflineArtifact(self.path, self.sha256);
+      if (!same(requireTerminalProof(plan, self.value.maintenance, removal.originalIntent, custody), terminal))
+        refuse('original terminal source/history changed during custody');
+      if (auditFile) readFile(auditPath,auditFile.sha256,{privateFile:true});
       if (!readFileSync(lock).equals(token)) refuse('recovery lock ownership changed');
     };
-    recheck();
+    await recheck();
     if (audit && state.sha256 === audit.afterSha256) {
-      if (audit.phase !== 'applied') durableWrite(auditPath, Buffer.from(`${JSON.stringify({ ...audit, phase: 'applied' })}\n`));
-      recheck(); return { plan: plan.id, disposition: 'original-terminal-no-effect', repeated: true, stateSha256: state.sha256, placementDebtRetained: true };
+      if (audit.phase !== 'applied') {
+        const bytes=Buffer.from(`${JSON.stringify({ ...audit, phase: 'applied' })}\n`);
+        durableWrite(auditPath,bytes); auditFile=readFile(auditPath,sha256(bytes),{privateFile:true});
+      }
+      await recheck(); readFile(plan.state.path, state.sha256, {privateFile:true});
+      return { plan: plan.id, disposition: 'original-terminal-no-effect', repeated: true, stateSha256: state.sha256, placementDebtRetained: true };
     }
     if (!removal) refuse('original intent cannot be exactly derived');
     const next = { version: 1, kind: 'project-rooms-original-no-effect-disposition', phase: 'prepared', planSha256: planFile.sha256,
@@ -292,23 +299,28 @@ export function settleNoEffect(planPath) {
     if (audit && !same({ ...audit, phase: 'prepared' }, next)) refuse('prepared audit differs from the exact disposition');
     if (!existsSync(auditFolder)) { mkdirSync(auditFolder, { mode: 0o700 }); syncDirectory(stateFolder); }
     privateDirectory(auditFolder);
-    if (!audit) durableWrite(auditPath, Buffer.from(`${JSON.stringify(next)}\n`), { create: true });
-    recheck(); readFile(plan.state.path, state.sha256, { privateFile: true });
+    if (!audit) {
+      const bytes=Buffer.from(`${JSON.stringify(next)}\n`);
+      durableWrite(auditPath,bytes,{create:true}); auditFile=readFile(auditPath,sha256(bytes),{privateFile:true});
+    }
+    await recheck(); readFile(plan.state.path, state.sha256, { privateFile: true });
     durableWrite(plan.state.path, removal.after);
-    recheck(); readFile(plan.state.path, next.afterSha256, { privateFile: true });
-    durableWrite(auditPath, Buffer.from(`${JSON.stringify({ ...next, phase: 'applied' })}\n`));
-    recheck(); readFile(plan.state.path, next.afterSha256, { privateFile: true });
+    await recheck(); readFile(plan.state.path, next.afterSha256, { privateFile: true });
+    const applied=Buffer.from(`${JSON.stringify({ ...next, phase: 'applied' })}\n`);
+    durableWrite(auditPath,applied); auditFile=readFile(auditPath,sha256(applied),{privateFile:true});
+    await recheck(); readFile(plan.state.path, next.afterSha256, { privateFile: true });
     return { plan: plan.id, disposition: 'original-terminal-no-effect', repeated: false, stateSha256: next.afterSha256, placementDebtRetained: true };
   } finally {
     closeSync(fd);
     // Only this invocation's exact lock is removed. A failed/crashed owner's lock is not guessed stale.
     if (existsSync(lock) && readFileSync(lock).equals(token)) { unlinkSync(lock); syncDirectory(stateFolder); }
   }
+  } finally { custody.finish(); }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     if (process.argv.length !== 4 || process.argv[2] !== '--plan') refuse('use --plan PRIVATE_JSON; remote retry/control options are unsupported');
-    process.stdout.write(`${JSON.stringify(settleNoEffect(process.argv[3]))}\n`);
+    process.stdout.write(`${JSON.stringify(await settleNoEffect(process.argv[3]))}\n`);
   } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
 }
