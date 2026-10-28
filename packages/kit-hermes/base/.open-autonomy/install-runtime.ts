@@ -105,6 +105,13 @@ export function machinePublishedBinding(environment: Record<string, string | und
   return { ...receipt, program, receipt: path };
 }
 
+function nativeHostWorkspaces(directory: string, environment: Record<string, string | undefined>): Array<{ name: string; version: string; path: string }> {
+  directory = realpathSync(directory);
+  const listed = spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', directory, 'list', '-r', '--depth', '-1', '--json'], { env: environment }));
+  if (listed.exitCode !== 0) throw new Error(`Cannot read native host source workspaces: ${listed.stderr.toString()}`);
+  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(directory + sep));
+}
+
 // pnpm owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
 // on-disk representation: native link overrides to that tree, never installed copies. Leave registry packages on pnpm's native store
 // so their scripts and Node imports retain ordinary node_modules resolution.
@@ -112,8 +119,24 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
   const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
   const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   const workspace = Object.entries(declarations).filter(([, value]) => typeof value === 'string' && value.startsWith('workspace:'));
+  // Host-owned source workspaces have their own Git pins. Let native pnpm
+  // select them only beneath this canonical host; the machine's Supercode
+  // packages still require its complete graph, even if a local copy exists.
+  const local = new Set<string>();
+  if (workspace.length && existsSync(join(options.directory, 'pnpm-workspace.yaml'))) {
+    const packages = nativeHostWorkspaces(options.directory, options.environment);
+    for (const [name, value] of workspace) {
+      if (name === '@volter/supercode' || name.startsWith('@volter/supercode-')) continue;
+      const candidates = packages.filter(pkg => pkg.name === name);
+      if (!candidates.length) continue;
+      const expected = /^workspace:(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(value as string)?.[1];
+      if (!expected || !candidates.some(pkg => pkg.version === expected)) throw new Error(`Host source dependency ${name} does not match exact workspace version ${value}`);
+      local.add(name);
+    }
+  }
+  const machine = workspace.filter(([name]) => !local.has(name));
   const file = sourceLock(options.environment);
-  if (!file && workspace.length) throw new Error(`Workspace source dependencies ${workspace.map(([name]) => name).join(', ')} need a selected complete Supercode source graph`);
+  if (!file && machine.length) throw new Error(`Workspace source dependencies ${machine.map(([name]) => name).join(', ')} need a selected complete Supercode source graph`);
   if (!file) {
     const published = machinePublishedBinding(options.environment);
     if (!published) return [];
@@ -123,7 +146,7 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
   if (typeof lock.root !== 'string' || !isAbsolute(lock.root)) throw new Error(`Supercode source lock ${file} needs an absolute root`);
   const root = realpathSync(lock.root);
   return Object.entries(declarations).flatMap(([name, value]) => {
-    if (typeof value !== 'string') return [];
+    if (typeof value !== 'string' || local.has(name)) return [];
     const expected = value.startsWith('workspace:') ? /^workspace:(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(value)?.[1] : undefined;
     if (value.startsWith('workspace:') && !expected) throw new Error(`Source dependency ${name} needs an exact workspace version, received ${value}`);
     if (!expected && !value.startsWith('file:')) return [];
@@ -146,7 +169,14 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
 export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
   const hash = createHash('sha256').update('pnpm-hardlink-v1').update(readFileSync(join(options.directory, 'package.json')));
   const workspace = join(options.directory, 'pnpm-workspace.yaml');
-  if (existsSync(workspace)) hash.update(readFileSync(workspace));
+  if (existsSync(workspace)) {
+    hash.update(readFileSync(workspace));
+    const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
+    if (Object.values({ ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies }).some(value => typeof value === 'string' && value.startsWith('workspace:'))) {
+      for (const pkg of nativeHostWorkspaces(options.directory, options.environment ?? process.env))
+        hash.update(relative(options.directory, pkg.path)).update(readFileSync(join(pkg.path, 'package.json')));
+    }
+  }
   for (const name of ['pnpm-lock.yaml']) {
     const path = join(options.directory, name);
     if (existsSync(path)) hash.update(name).update(readFileSync(path));
@@ -227,7 +257,11 @@ export async function installHostRuntime(options: Options): Promise<void> {
     for (const [name, artifact] of artifacts) console.log(`runtime candidate: ${name}@${artifact.manifest.version} sha256=${artifact.sha256}`);
     const endpoint = server ? `http://127.0.0.1:${server.port}` : registry.href;
     const manifest = JSON.parse(readFileSync(join(options.directory, 'package.json'), 'utf8'));
-    const overrides = { ...manifest.overrides, ...Object.fromEntries(links.map(({ name, target }) => [name, `link:${relative(options.directory, target).split(sep).join('/') || '.'}`])) };
+    const configured = links.length ? spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', options.directory, 'config', 'get', 'overrides', '--json'], { env: options.environment })) : undefined;
+    if (configured && configured.exitCode !== 0) throw new Error(`Cannot read native host workspace overrides: ${configured.stderr.toString()}`);
+    const text = configured?.stdout.toString().trim();
+    const overrides = { ...(text && text !== 'undefined' ? JSON.parse(text) : {}), ...manifest.overrides,
+      ...Object.fromEntries(links.map(({ name, target }) => [name, `link:${relative(options.directory, target).split(sep).join('/') || '.'}`])) };
     const args = ['pnpm', '--config.nodeLinker=hoisted', ...(links.length ? [`--config.overrides=${JSON.stringify(overrides)}`] : []), 'install', '--registry', endpoint, '--package-import-method', 'hardlink', ...(options.frozen ? ['--frozen-lockfile'] : []), ...(options.lockOnly ? ['--lockfile-only'] : [])];
     const child = spawnWork(() => Bun.spawn((options.command ?? (args => args))(args), {
       cwd: options.directory, env: options.environment, stdout: 'inherit', stderr: 'inherit'

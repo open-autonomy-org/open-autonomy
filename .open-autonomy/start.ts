@@ -33,6 +33,7 @@
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
+import { machineSupercode, machineNode, supercodeCommand } from './machine-supercode.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { Database } from 'bun:sqlite';
@@ -367,13 +368,15 @@ spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...ke
 //    lockfile is not the identity: a clone may carry none.) An install that is already complete
 //    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
+const selectedMachine = machineSupercode();
+env.SUPERCODE_NODE_BIN = machineNode();
 {
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
   // this host's scratch, and the install brings it up to package.json instead of refusing on it.
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['pnpm-lock.yaml'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: import.meta.dir, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: import.meta.dir, environment: env, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
@@ -398,8 +401,8 @@ try {
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
-const orchestratorBin = process.env.OPEN_AUTONOMY_ORCHESTRATOR_BIN || resolve(import.meta.dir, 'node_modules', '@volter', 'supercode-orchestrator', 'bin', 'orchestrator.mjs');
-const supercodeBin = process.env.OPEN_AUTONOMY_SUPERCODE_BIN || resolve(import.meta.dir, 'node_modules', '.bin', 'supercode');
+const orchestratorBin = selectedMachine.orchestratorEntry;
+const supercodeBin = selectedMachine.bin;
 spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
 // and their sessions only, through the project's own key.
@@ -415,15 +418,15 @@ for (const p of projectReporters) {
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [Bun.which('node')!, orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
-if (boardDeclared) spawn('board', [Bun.which('node')!, orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // The install's own checkout in this machine's workspace map, so its board's cards on its own repository
 // (`worktree:<owner>/<repo>`) get their solo worktrees from it (supercode docs/guides/teams.md, machine workspace maps).
 if (harness !== 'hermes') {
-  const registered = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'workspace', 'register', project]), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
+  const registered = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'workspace', 'register', project], supercodeBin)), cwd: project, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   say(registered.exitCode === 0 ? `the checkout ${project} is in this machine's workspace map` : `the checkout is not in this machine's workspace map: ${registered.stderr.toString().trim().split('\n').at(-1)}`);
 }
 // The agents with mailboxes (supercode docs/adr/0008): each one's main session in a pane on this machine, opened once
@@ -435,7 +438,7 @@ if (harness !== 'hermes') {
  * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
  * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
 function homeAgent(name: string, profile: string): string | null {
-  const shown = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'context', 'show', '--json']), cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+  const shown = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'context', 'show', '--json'], supercodeBin)), cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
   let context: { origin?: string; team_id?: string };
   try { context = JSON.parse(shown.stdout.toString()); } catch { return null; }
   const file = resolve(home, 'agent-state.sqlite');
@@ -458,11 +461,11 @@ agentLayer.agents = { ...(agentLayer.agents ?? {}), ...Object.fromEntries(Object
 if (Object.keys(agentLayer.agents).length) writeFileSync(agentLayerFile, `${JSON.stringify(agentLayer, null, 2)}\n`);
 for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   const folder = resolve(home, 'profiles', mailAgent.profile);
-  const declare = [supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
+  const declare = supercodeCommand(['agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', folder,
     '--input', `You are the main session of agent ${name}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
     ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
     ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
-    ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])];
+    ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])], supercodeBin);
   const declared = Bun.spawnSync({ cmd: drop(declare), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' });
   if (declared.exitCode !== 0) { say(`agent ${name} not declared: ${declared.stderr.toString().trim()}`); continue; }
   say(declared.stdout.toString().trim());
@@ -474,20 +477,20 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
   if (!main) say(`agent ${name}: its declaration named no main session, so none is recorded as its agent's in Teams`);
   else if (!profileAgent) say(`agent ${name}: this home declared no Teams agent for it or its profile ${mailAgent.profile}, so its main session ${main} is not recorded as one's`);
   else {
-    const recorded = Bun.spawnSync({ cmd: drop([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    const recorded = Bun.spawnSync({ cmd: drop(supercodeCommand(['agent', 'record', '--session', main, '--agent', profileAgent, '--main'], supercodeBin)), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
     say(recorded.exitCode === 0 ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${recorded.stderr.toString().trim().split('\n').at(-1)}`);
   }
   // An agent with an instance on every enrolled machine: its session there, opened once by its launch key, declares itself
   // that machine's agent of this name, so a machine's own mail (its probe's alarms) reaches only its own instance.
   if (mailAgent.every_machine) {
-    const listed = Bun.spawnSync({ cmd: drop([supercodeBin, 'teams', 'machines', 'list', '--json']), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
+    const listed = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'machines', 'list', '--json'], supercodeBin)), cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
     // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
     const here = /sc:([^:\s]+):agent:/.exec(declared.stdout.toString())?.[1];
     const machines = listed.exitCode === 0 ? ((JSON.parse(listed.stdout.toString() || '{}').items ?? []) as Array<{ name?: string }>).map((m) => m.name).filter((m): m is string => !!m && m !== here) : [];
     if (listed.exitCode !== 0) say(`agent ${name}: no enrolled machines read (${listed.stderr.toString().trim().split('\n').at(-1)}); its instance is this machine's only`);
     for (const machine of machines) {
-      const opened = Bun.spawnSync({ cmd: drop([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
-        '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`]),
+      const opened = Bun.spawnSync({ cmd: drop(supercodeCommand(['open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', folder, '--detach',
+        '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(folder, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${folder}.`], supercodeBin)),
         cwd: folder, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
       say(opened.exitCode === 0 ? `agent ${name} on ${machine}: ${opened.stdout.toString().trim().split('\n').at(-1)}` : `agent ${name} not opened on ${machine}: ${opened.stderr.toString().trim().split('\n').at(-1)}`);
     }
