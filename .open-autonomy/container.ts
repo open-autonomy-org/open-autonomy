@@ -14,9 +14,9 @@ import { containerMainMoved, mergeImageDenylist, openContainerCodexSandbox, prep
 import { agentHarness, agentModels, applyAgent, parseAgent, readAgent } from './agent.ts';
 import { TREASURER, prepareTreasurerHome, treasurerBoardEnvironment, treasurerContainer, treasurerDispatch, treasurerPersona } from './container-treasurer.ts';
 
-const sourceEnvironment = (): Record<string, string> => Object.fromEntries(
+const sourceEnvironment = (): Record<string, string> => ({ ...Object.fromEntries(
   ['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]])), OPEN_AUTONOMY_SOURCE_ONLY: '1' });
 
 export async function startContainer(options: {
   container: string; project?: string; home?: string; secrets?: string; state?: string; config?: string; port: number;
@@ -154,7 +154,7 @@ export async function startContainer(options: {
         homeId: account, stateRoot: resolve(state, 'apply-treasurer'), workspace: `${treasurerHome}/work`, container: seat,
       })) console.log(`host: treasurer: ${line}`);
       if (codexBase) await prepareContainerSubscription({ container: seat, home: '/opt/data', baseUrl: codexBase });
-      const treasurerEnv = { ...treasurerBoardEnvironment, ...sourceEnvironment(), HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: '/opt/data/codex-home-none', OPEN_AUTONOMY_PAY_URL: `${host}:${port + 1}/v1` };
+      const treasurerEnv = { ...treasurerBoardEnvironment, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: '/opt/data/codex-home-none', OPEN_AUTONOMY_PAY_URL: `${host}:${port + 1}/v1` };
       await writeContainerEnvironment({ container: seat, home: '/opt/data', env: treasurerEnv });
       await writeContainerEnvironment({ container: seat, home: treasurerHome, env: { OPEN_AUTONOMY_PAY_KEY: payKey } });
       await mergeImageDenylist({ container: seat, home: '/opt/data' });

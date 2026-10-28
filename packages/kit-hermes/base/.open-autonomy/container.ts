@@ -155,7 +155,7 @@ export async function startContainer(options: {
         homeId: account, stateRoot: resolve(state, 'apply-treasurer'), workspace: `${treasurerHome}/work`, container: seat,
       })) console.log(`host: treasurer: ${line}`);
       if (codexBase) await prepareContainerSubscription({ container: seat, home: '/opt/data', baseUrl: codexBase });
-      const treasurerEnv = { ...treasurerBoardEnvironment, ...sourceEnvironment(), HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: '/opt/data/codex-home-none', OPEN_AUTONOMY_PAY_URL: `${host}:${port + 1}/v1` };
+      const treasurerEnv = { ...treasurerBoardEnvironment, HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: '/opt/data/codex-home-none', OPEN_AUTONOMY_PAY_URL: `${host}:${port + 1}/v1` };
       await writeContainerEnvironment({ container: seat, home: '/opt/data', env: treasurerEnv });
       await writeContainerEnvironment({ container: seat, home: treasurerHome, env: { OPEN_AUTONOMY_PAY_KEY: payKey } });
       await mergeImageDenylist({ container: seat, home: '/opt/data' });

@@ -31,9 +31,9 @@ import { agentHarness, agentModels, applyAgent, parseAgent, type Setup } from '.
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/; // Hermes's own profile id rule
 type Project = { account: string; origin: string; name: string; secrets: string; state: string; home: string; workspace: string; key: number; github?: number };
 
-const sourceEnvironment = (): Record<string, string> => Object.fromEntries(
+const sourceEnvironment = (): Record<string, string> => ({ ...Object.fromEntries(
   ['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]]));
+    .flatMap((name) => process.env[name] === undefined ? [] : [[name, process.env[name]!]])), OPEN_AUTONOMY_SOURCE_ONLY: '1' });
 
 export async function startFleet(options: { definition: string; port: number; secretsRoot?: string; stateRoot?: string }) {
   const def = JSON.parse(readFileSync(options.definition, 'utf8')) as { container?: string; projects?: Array<{ account?: string; origin?: string }> };
@@ -191,7 +191,7 @@ export async function startFleet(options: { definition: string; port: number; se
     if (ending) throw new Error('a host service stopped during preparation');
     // 8. One gateway over the composed home (every profile's schedule is already applied).
     gateway = startContainerProcess({ container, cwd: '/work', command: ['hermes', 'gateway', 'run'], env: {
-      HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
+      ...sourceEnvironment(), HOME: fleetHome, HERMES_HOME: fleetHome, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1', GATEWAY_MULTIPLEX_PROFILES: 'true', HERMES_CODEX_BASE_URL: codexBase, CODEX_HOME: `${fleetHome}/codex-home-none`,
       // Every checkout is a place the agents write; the image names only the project shape's.
       HERMES_WRITE_SAFE_ROOT: [fleetHome, ...projects.map((q) => q.workspace)].join(':') } });
     void gateway.exited.then((code) => { if (!ending) void stop(code === 75 ? 75 : 1); });
