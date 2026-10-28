@@ -39,7 +39,11 @@ admitting that pair; independent review judges what the recording establishes.
 
 `--disconnect` also removes role placements and cannot serve as compensation. Process exit, aborted
 fetches and absent-seat reads cannot settle unknown remote writes. Restarting an incapable predecessor
-would strand cleanup; failed recovery therefore retains the native reservation instead.
+would strand cleanup; failed recovery therefore retains the native reservation instead. The exact version-5 predecessor also removes another app's non-role
+agent and rewrites an independently seated role agent's differing receive setting. Compensation therefore
+refuses before cleanup while a current roster would expose either act; it identifies that principal
+and keeps recovery held. Borrowed session seats and independently seated agents whose current
+role/receive survives the predecessor remain eligible.
 
 “Only the SDK is real” and “The platform shows; it does not steer”: the publisher projects existing
 native records through consented Workplace doors, with no scheduling or native runtime ownership.

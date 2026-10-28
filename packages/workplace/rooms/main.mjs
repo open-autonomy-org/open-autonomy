@@ -962,8 +962,9 @@ async function compensateRunPlacements({ selection }) {
     const cards = await currentRoleCards();
     passTasks = undefined; passPeople = undefined;
     // Resolve ALL relevant role demand before the first cleanup effect. An unresolved role cannot be mistaken for none.
-    const rolesByRoom = new Map();
-    for (const roomId of Object.keys(state.runSeats)) {
+    const rolesByRoom = new Map(), viewsByRoom = new Map();
+    const rooms = new Set([...Object.values(state.projects), ...Object.keys(state.runSeats), ...Object.keys(state.borrowedRunSeats)]);
+    for (const roomId of rooms) {
       const projects = Object.keys(state.projects).filter(project => state.projects[project] === roomId);
       if (projects.length !== 1) throw new Error(`run placement Room ${roomId} has no unique project`);
       const roleCards = cards.filter(card => card.live && card.project === projects[0]).map(card => ({ ...card, run: null }));
@@ -976,10 +977,28 @@ async function compensateRunPlacements({ selection }) {
         roles.set(principalId, role);
       }
       rolesByRoom.set(roomId, roles);
+      const view = await door(`/api/v3/rooms/${encodeURIComponent(roomId)}`).catch(error => {
+        if (error.status === 404 && !Object.keys(state.runSeats[roomId] ?? {}).length) return null;
+        throw error;
+      });
+      if (!view) continue;
+      viewsByRoom.set(roomId, view);
+      const people = await peopleOf(view);
+      const channel = view.conversations?.find(item => item.conversationId === view.room.defaultConversationId);
+      const receives = new Map((channel?.agentParticipants ?? []).map(participant => [participant.principalId, participant.answers]));
+      for (const member of view.members ?? []) {
+        if (member.kind !== 'agent' || member.seatedBy === self) continue;
+        const role = roles.get(member.principalId);
+        // Exact v5 unseats other apps' non-role agents and unconditionally rewrites role receives.
+        // Its restart is ineligible while either act would undo a currently independent placement.
+        if (!role && !people.has(member.seatedBy)) throw Object.assign(new Error(`predecessor would remove borrowed agent ${member.principalId} in ${roomId}`), { code: 'predecessor-borrowed-agent' });
+        if (role && channel && receives.get(member.principalId) !== role.answers) throw Object.assign(new Error(`predecessor would rewrite independent receive for ${member.principalId} in ${roomId}: ${receives.get(member.principalId) ?? 'none'} to ${role.answers}`), { code: 'predecessor-independent-receive' });
+      }
     }
     for (const [roomId, placements] of Object.entries(state.runSeats)) {
       const room = `/api/v3/rooms/${encodeURIComponent(roomId)}`;
-      const view = await door(room);
+      const view = viewsByRoom.get(roomId);
+      if (!view) throw new Error(`run placement Room ${roomId} has no current roster`);
       const members = new Map((view.members ?? []).map(member => [member.principalId, member]));
       const people = await peopleOf(view);
       for (const [principalId, placement] of Object.entries(placements)) {
