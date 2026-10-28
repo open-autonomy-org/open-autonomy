@@ -27,11 +27,13 @@ Include: the affected component, reproduction steps, impact, and any proof-of-co
 
 ## Trust model
 
-Every boundary below is a claim the code makes and a test or a world line proves. `scripts/check-docs.ts`
-verifies each `proof:` names a line that exists (`smoke` — `apps/platform/test/smoke.test.ts`; `world` —
-`apps/platform/test/smoke.test.ts`), so a claim cannot outlive its proof; a claim with no label is exercised by
-hand in the world, through the product's doors. Reports that
-cross one of these boundaries are especially valuable.
+The boundaries below describe the trust model. Their `proof: smoke` and `proof: world` labels name
+historical scenarios from a retired automated check, not current verification. The file those labels
+referred to was removed in commit 6ffe406669b9911346b62ed8375bde050cb9e5d8. `scripts/check-docs.ts`
+checks that documented paths and routes exist; it does not verify proof labels or exercise these
+boundaries. Current verification uses source inspection and manual usage through the product's doors
+in an isolated World, as required by [CONSTITUTION.md](CONSTITUTION.md). A current verification claim
+needs its own recorded evidence. Reports that cross one of these boundaries are especially valuable.
 
 - **A key is a signed claim file.** `base64url(claims).hmac`: it verifies by signature and expiry alone, so
   it survives every redeploy, and a forged or altered key is refused. The registry can only shorten a key's
