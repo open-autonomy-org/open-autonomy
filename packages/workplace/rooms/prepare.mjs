@@ -19,20 +19,98 @@ const blob = (source, revision, file) => git(source, ['cat-file', 'blob', `${rev
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
 const modeOf = sourceMode => Number.parseInt(sourceMode, 8) & 0o111 ? 0o555 : 0o444;
 
+// Inspect JavaScript tokens, never strings/comments that happen to say import.
+// Template text is skipped; its ${...} expressions remain ordinary code.
+function sourceTokens(text) {
+  const tokens = [];
+  let at = 0;
+  const push = (type, value) => tokens.push({ type, value });
+  function code(interpolation = false) {
+    let braces = 0;
+    while (at < text.length) {
+      const c = text[at], next = text[at + 1];
+      if (/\s/.test(c)) { at++; continue; }
+      if (c === '/' && next === '/') { at += 2; while (at < text.length && !/[\r\n]/.test(text[at])) at++; continue; }
+      if (c === '/' && next === '*') {
+        const end = text.indexOf('*/', at + 2);
+        if (end < 0) fail('unterminated source comment');
+        at = end + 2; continue;
+      }
+      if (c === "'" || c === '"') {
+        const quote = c, start = ++at;
+        while (at < text.length && text[at] !== quote) { if (text[at] === '\\') at++; at++; }
+        if (at >= text.length) fail('unterminated source string');
+        push('string', text.slice(start, at++)); continue;
+      }
+      if (c === '`') {
+        push('punct', '`'); at++;
+        let closed = false;
+        while (at < text.length) {
+          if (text[at] === '\\') { at += 2; continue; }
+          if (text[at] === '`') { at++; closed = true; break; }
+          if (text[at] === '$' && text[at + 1] === '{') { at += 2; push('punct', '{'); code(true); continue; }
+          at++;
+        }
+        if (!closed) fail('unterminated source template');
+        push('punct', '`'); continue;
+      }
+      const previous = tokens.at(-1);
+      const regex = !previous || previous.type === 'punct' && /[=(:,[!&|?{};+*%~^<>-]/.test(previous.value)
+        || previous.type === 'id' && ['return', 'throw', 'case', 'yield', 'await', 'else', 'do'].includes(previous.value);
+      if (c === '/' && regex) {
+        at++; let group = false, closed = false;
+        while (at < text.length) {
+          const item = text[at++];
+          if (item === '\\') { at++; continue; }
+          if (item === '[') group = true;
+          if (item === ']') group = false;
+          if (item === '/' && !group) { closed = true; break; }
+          if (/[\r\n]/.test(item)) fail('unterminated source regular expression');
+        }
+        if (!closed) fail('unterminated source regular expression');
+        while (/[a-z]/i.test(text[at] ?? '') && at < text.length) at++;
+        push('regex', ''); continue;
+      }
+      if (/[A-Za-z_$]/.test(c)) {
+        const start = at++;
+        while (at < text.length && /[A-Za-z0-9_$]/.test(text[at])) at++;
+        push('id', text.slice(start, at)); continue;
+      }
+      if (interpolation && c === '}' && braces === 0) { at++; push('punct', '}'); return; }
+      if (c === '{') braces++;
+      if (c === '}') braces--;
+      push('punct', c); at++;
+    }
+    if (interpolation) fail('unterminated source template expression');
+  }
+  code(); return tokens;
+}
 function importsIn(file, bytes, names) {
   if (!file.endsWith('.mjs')) return;
-  const text = bytes.toString();
-  if (/\bimport\s*\(\s*(?!['"\s])/.test(text)) fail(`${file} has an unbound dynamic import`);
-  const imports = [...text.matchAll(/\b(?:from\s*|import\s*\(?\s*)['"]([^'"]+)['"]/g)].map(match => match[1]);
+  const tokens = sourceTokens(bytes.toString()), imports = [], reads = [];
+  const literal = token => {
+    if (token?.type !== 'string' || token.value.includes('\\')) fail(`${file} has an unsupported computed or escaped dependency`);
+    return token.value;
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i], next = tokens[i + 1];
+    if (token.type === 'id' && token.value === 'import' && tokens[i - 1]?.value !== '.' && next?.value !== '.') {
+      if (next?.value === '(') imports.push(literal(tokens[i + 2]));
+      else if (next?.type === 'string') imports.push(literal(next));
+    }
+    if (token.type === 'id' && token.value === 'from' && next?.type === 'string' && tokens[i - 1]?.value !== '.') imports.push(literal(next));
+    if (tokens.slice(i, i + 3).map(item => item.value).join(' ') === 'new URL (' && tokens[i + 3]?.type === 'string'
+      && tokens.slice(i + 4, i + 10).map(item => item.value).join(' ') === ', import . meta . url') reads.push(literal(tokens[i + 3]));
+  }
   for (const specifier of imports) {
     if (specifier.startsWith('node:')) continue;
     if (!specifier.startsWith('./') && !specifier.startsWith('../')) fail(`${file} imports an unbound package ${specifier}`);
     const dependency = posix.normalize(posix.join(posix.dirname(file), specifier));
     if (!relative(dependency) || !names.has(dependency)) fail(`${file} imports unshipped ${specifier}`);
   }
-  for (const match of text.matchAll(/new URL\(\s*['"](\.[^'"]+)['"]\s*,\s*import\.meta\.url/g)) {
-    const dependency = posix.normalize(posix.join(posix.dirname(file), match[1]));
-    if (!names.has(dependency)) fail(`${file} reads unshipped ${match[1]}`);
+  for (const path of reads.filter(path => path.startsWith('.'))) {
+    const dependency = posix.normalize(posix.join(posix.dirname(file), path));
+    if (!names.has(dependency)) fail(`${file} reads unshipped ${path}`);
   }
 }
 
