@@ -9,7 +9,7 @@ function sealed(path, expected) {
   const canonical = realpathSync(path), stat = lstatSync(path), bytes = readFileSync(canonical);
   if (canonical !== path || !stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o444) fail('evidence must be a canonical sealed file');
   const hash = sha256(bytes);
-  if (expected && expected !== hash) fail(`evidence digest changed: ${path}`);
+  if (expected !== undefined && (!/^[0-9a-f]{64}$/.test(expected) || expected !== hash)) fail(`evidence digest changed: ${path}`);
   return { path: canonical, sha256: hash, bytes };
 }
 
@@ -35,7 +35,10 @@ export function qualifyRooms({ candidate, predecessor, evidence, out }) {
     || measured.predecessorReadback?.program !== previous.value.program
     || measured.predecessorReadback?.state !== binding.state || measured.predecessorReadback?.currentState !== true) fail('predecessor readback against current state is absent');
   if (!Array.isArray(measured.artifacts) || measured.artifacts.length < 2) fail('raw recording and source/offset map are required');
-  for (const artifact of measured.artifacts) sealed(artifact.path, artifact.sha256);
+  for (const artifact of measured.artifacts) {
+    if (!/^[0-9a-f]{64}$/.test(artifact.sha256)) fail('every raw evidence input needs its exact digest');
+    sealed(artifact.path, artifact.sha256);
+  }
   const value = { version: 1, kind: 'connection-program-qualification', candidate: { receipt: next.receipt, sha256: next.sha256 },
     predecessor: { receipt: previous.receipt, sha256: previous.sha256 }, protocol: 1, scope: 'run-only',
     evidence: { path: proof.path, sha256: proof.sha256 } };
