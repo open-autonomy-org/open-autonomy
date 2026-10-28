@@ -2,6 +2,12 @@
 
 Status: Proposed; implementation follows the independently passed amendment to Supercode ADR 0243. OA acceptance remains subject to independent review and merge.
 
+[ADR 0036](0036-project-rooms-offline-intent-settlement.md) proposes an additional owner command for
+settling eligible retained mutation intents while the selected program is stopped. The immutable
+program described here does not implement that command. Unknown effects remain debt until the
+new contract passes plan review, its implementation passes source review, and an exact settlement
+is independently confirmed.
+
 ## Context and decision
 
 [Supercode ADR 0243](https://github.com/volter-ai/supercode/blob/main/docs/adr/0243-card-run-sessions-in-project-rooms.md),

@@ -2,6 +2,11 @@
 
 Status: Proposed. This card's proposal, subject to the board's independent constitution review and merge.
 
+[ADR 0036](0036-project-rooms-offline-intent-settlement.md) proposes a publisher-owned offline
+settlement specialization for retained Rooms mutation debt. It leaves this record's native source
+decision, compensation prerequisite and restore-before-restart order in force; implementation of
+that additional door requires its own plan and source reviews.
+
 ## Context and sources
 
 VO-3578 records the owner's question on 2026-10-22: “why does every upgrade cause an outage”. Its three acceptance
