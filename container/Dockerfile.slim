@@ -1,10 +1,11 @@
+# syntax=docker/dockerfile:1.19
 # The slim executor: the same Hermes, git, bun and .open-autonomy tools as `Dockerfile`,
 # with everything a HEADLESS daily PM agent never reaches taken back out. The daily PM
 # skews (manage-project, manage-organization) talk to a model and to git; they never open
 # a browser, never render an image or a video, never speak, never join a chat platform.
 #
-# Use this file exactly like `Dockerfile` (same build context, `packages/kit-hermes/base`):
-#     docker build -f container/Dockerfile.slim -t <tag> packages/kit-hermes/base
+# Use this file exactly like `Dockerfile` (same instance checkout build context):
+#     docker build --build-context supercode-source=<reviewed-supercode-checkout> -f container/Dockerfile.slim -t <tag> .
 #
 # ---------------------------------------------------------------------------------------
 # WHAT IS REMOVED, AND BY WHICH MECHANISM
@@ -79,9 +80,12 @@
 # are the base image's own, unchanged except where a removal above requires it.
 
 ARG HERMES_IMAGE=hermes-agent:v2026.8.31
+FROM node:26.12.0-bookworm-slim AS node-runtime
 
 FROM ${HERMES_IMAGE} AS pruned
 USER root
+# The source CLI requires Node >=26.8.1.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 # ---- identical to container/Dockerfile from here ----
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl unzip \
@@ -96,10 +100,16 @@ RUN curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 SHELL=/bin/
 # Codex, for a project whose setup picks it: the orchestrator runs it as each profile's worker, its model through the
 # host valve's Codex forward (ADR 0009, as amended); the executor holds no login.
 ARG CODEX_VERSION=0.156.1
+# Supply the exact reviewed source checkout as a named native build context.
+COPY --from=supercode-source --exclude=**/node_modules --exclude=**/.git --exclude=**/.env* --exclude=recordings --exclude=docs/evidence / /opt/supercode/
 COPY .open-autonomy /opt/agent/.open-autonomy
+COPY container/pnpm-source-workspace.yaml /opt/agent/.open-autonomy/pnpm-workspace.yaml
 # Install into one writable image layer so OverlayFS does not copy up shared store files.
 RUN pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version \
-    && cd /opt/agent/.open-autonomy && pnpm install --frozen-lockfile --package-import-method hardlink && ./node_modules/.bin/supercode --version
+    && pnpm --dir /opt/supercode --config.nodeLinker=hoisted install --frozen-lockfile --package-import-method hardlink \
+    && pnpm --dir /opt/supercode run build:sources \
+    && pnpm --dir /opt/agent/.open-autonomy install --no-frozen-lockfile --package-import-method hardlink \
+    && /opt/agent/.open-autonomy/node_modules/.bin/supercode --version
 RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
 # ---- end of the shared steps ----

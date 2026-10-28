@@ -1,0 +1,58 @@
+# The instance binds the reviewed machine source and its own native Twin context.
+packages:
+  - ../../supercode/sdk/*
+  - ../../supercode/packaging/npm
+  - ../../supercode/sources/identity/packages/identity
+  - ../../supercode/sources/ztrack
+  - ../../supercode/sources/tunnel
+  - ../../supercode/sources/tunnel/packages/core
+  - ../../supercode/sources/twin-legacy/packages/world-core
+  - ../../supercode/sources/twin-legacy/packages/twin/github
+  - ../../supercode/sources/twin-legacy/packages/world-ui
+  - ../../supercode/sources/twin-legacy/packages/world-tooling
+  - sources/twin/packages/world-core
+  - sources/twin/packages/world-runtime
+  - sources/twin/packages/world-access
+  - sources/twin/packages/world-ui
+  - sources/twin/packages/twin/github
+  - sources/twin/packages/twin/openai
+  - sources/twin/packages/twin/discord
+  - sources/twin/packages/twin/jira
+  - sources/twin/packages/twin/slack
+  - sources/twin/packages/twin/mongodb
+nodeLinker: hoisted
+packageImportMethod: hardlink
+shamefullyHoist: true
+autoInstallPeers: false
+strictPeerDependencies: false
+enablePrePostScripts: true
+linkWorkspacePackages: true
+preferWorkspacePackages: true
+allowBuilds:
+  '@homebridge/node-pty-prebuilt-multiarch': true
+  fsevents: true
+  protobufjs: true
+  '@biomejs/biome': true
+  esbuild: true
+  sharp: true
+  workerd: true
+overrides:
+  '@volter/world-core': workspace:2.0.15
+  '@volter/world-runtime': workspace:2.0.26
+  '@volter/world-access': workspace:2.0.2
+  '@volter/world-ui': workspace:0.1.15
+  '@volter/twin-github': workspace:2.0.17
+  '@volter/twin-openai': workspace:2.0.15
+  '@volter/twin-discord': workspace:2.0.15
+  '@volter/twin-jira': workspace:2.0.15
+  '@volter/twin-slack': workspace:2.0.15
+  '@volter/twin-mongodb': workspace:0.1.15
+  '@volter/tunnel-core': workspace:0.1.4
+  '@volter/supercode-client': workspace:0.3.74
+  '@volter/world-tooling': workspace:0.1.0
+  '@volter/ztrack>@volter/twin-github': workspace:2.0.5
+  '@volter/ztrack>@volter/world-core': workspace:2.0.5
+  '@volter/twin-github@2.0.5>@volter/world-core': workspace:2.0.5
+  '@volter/twin-github@2.0.5>@volter/world-ui': workspace:0.1.5
+  '@volter/world-ui@0.1.5>@volter/world-core': workspace:2.0.5
+  '@volter/world-tooling>@volter/world-core': workspace:2.0.5

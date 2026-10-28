@@ -120,3 +120,9 @@ ztrack's Jira development peer are source selections too. Native exact
 workspace overrides reject a mismatched source manifest during frozen install.
 The separately owned `.open-autonomy` host keeps its own newer World 2 source
 pin and binds its three Supercode packages to the selected machine source graph.
+
+The instance executor images use the reviewed machine Supercode source checkout:
+initialize its native submodules and this checkout’s `.open-autonomy/sources/twin`,
+then pass `--build-context supercode-source=<reviewed-supercode-checkout>` to
+`docker build -f container/Dockerfile .` (or `Dockerfile.slim`). The public kit
+templates retain their registry delivery contract.
