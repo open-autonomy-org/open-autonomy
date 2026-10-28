@@ -73,6 +73,68 @@ branch and acknowledgement. No custody bytes appear in it. Source/declaration di
 inputs; they neither decide authority nor replace the actual owner's hold. Conflicting reuse refuses;
 lost answers resolve by exact status. An invocation cannot be rebound to a replacement lease.
 
+### Retain protected typed progress and publish one fixed forward checkpoint
+
+The fresh schema3-only [protected progress contract](../plans/protected-rooms-progress-v1.md) is an
+explicit additional paired proposal, not a runtime guarantee from nativeADR0248's earlier pass or
+accepted schema2 boot amendment5199cadd7. An old artifact/operation, including42286159, is not upgraded.
+Native first fixes the bounded raw OA state baseline inline in the SAME protected original operation,
+then after actual N readback admits an awaited typed progress stream through the existing exact
+child/parent channel. The original enrolled R.state remains inside N; no outside writable state,
+manifest/blob API, generic file operation or operator-selected target is added.
+
+OA owns the immutable lossless reducer and finite schemas: selected journal initialization/append,
+atomic owned placement disposition+tombstone, atomic lineage transfer+cache retirement and actual
+accepted predecessor import. Preserve unrelated raw JSON token spans/numeric lexemes and every
+older selection/unknown intent. Replace every constructor/journal/lifecycle/manifest/dispatch/status/
+close/disposition/lineage/Z acknowledgement with an awaited exact durable barrier. Main's normal
+stream/timer/migration/heartbeat/log/signal/disconnect/final-flush writers cannot write under N.
+
+Before T/L/R effects reserve the complete composed completion, including native events/launches,
+all16 boot admissions, predecessor lineage, checkpoint/seal/release/retirement and retained lookup.
+Raw caps are OA baseline2MiB, OA event256KiB/total2MiB/512events with16facts each; native safe initial
+inventory256KiB, native events16KiB/total512KiB/256events;32Room namespaces,16placements,256native
+cards,4096candidate agents,2provider owners; native8concurrent/64total launches and128effect IDs.
+Actual serialized operation PLUS protected index and each full request/response must fit8MiB−4096.
+Combined base64 maximum6,644,060 leaves1,740,452 for ALL control/wrappers/boot/index/lineage/debt.
+Individual maxima do not promise simultaneous fit. Lifetime retention limits are16operations,
+64epoch and64source-seed selectors,65,536index bytes; v1 has no GC/eviction.
+
+Request-size/cardinality limits alone do not bound receipts/full row snapshots. Derive exact finite
+full results from complete prospective owner state or consume paired issuer-enforced result bounds
+(max196,608serialized bytes, validated atomically before effect). Missing bounds, large existing
+inventories or insufficient complete reservation refuse before any new dispatch; earlier truth/debt
+is retained, never truncated because it exceeds a local buffer. These new owner result contracts
+need the new RH2 ADR0070 proposal's fresh wire2/storage207 source/runtime/writer-floor
+qualification and paired PLAN; accepted0069/0070 v1 proofs do not qualify them.
+
+The selected child and a separately retained unprivileged exact receipt-bound OA reducer child
+(no holder FD/custody) derive the same forward output. Native validates fixed allowed edits and
+unchanged unrelated spans. After branch-specific Z/readback and actual protected predecessor import,
+seal OA headH while holding T/N/L. Native retains checkpoint intent with current before bytes/metadata
+and output digest; holder's NEW fixed-target4MiB checkpoint darkens public RO, privately mounts the
+SAME backing RW, publishes only enrolled R.state, full-syncs/readbacks and returns complete verified
+public RO before T/N release. Existing1MiB/4MiB declaration restore remains unchanged. No stale
+whole-state restore, DB/Git/custody publication or public RW interval is permitted. Exactbefore may
+retry only identical intent/output; exactafter settles by status; unrelated bytes remain refused.
+Current state after checkpoint is its output digest, never the immutable initial digest.
+
+Native protected safe inventory/progress and all effective custody/generation/source/admission
+readers remain authoritative through actual branch startup and normal readiness, including a delayed
+child close after H. Native FIFO seals only after prior callbacks/append readbacks, installs a
+non-authoritative immutable epoch link after verified thaw under its actual gates, drains queued
+closes through ordinary tracked persistence and checks readiness before final retirement. Future
+other-process start/reboot resolves the bounded protected retention index even after activeOperationId
+is null or public files are deleted/stale. No native/custody stream is exposed to an OA child.
+
+This explicitly proposes nativeADR0248 decisions4a/5a and nativeADR0032/0080 effective-reader updates.
+It complies with sole-writer ADR0041/0032: OA remains semantic state owner; native coordinates only
+operation/head/exclusion and holder fixed publication is that owner's narrow delegate. Schema3
+phase readers distinguish original cut, authorized current delta and actual released serving state;
+schema2 mixed/released refusal supplies no support. Required proof includes all inventoried writers,
+actual RO positive populated recovery, predecessor import, exact spans, budget refusal, lost append/
+checkpoint/reducer/selector/seal answers, native late close and successful other-process/reboot reads.
+
 ### Establish a complete source and earlier-effect cut
 
 The native owner first acquires N over the complete canonical source/config/registry vector and
