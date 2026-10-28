@@ -2,6 +2,12 @@
 
 Status: Proposed. This card's proposal, subject to the board's independent constitution review and merge.
 
+[ADR 0036](0036-project-rooms-offline-intent-settlement.md) proposes a publisher-owned offline
+recording of an exact original leave request's proved terminal no-effect outcome. It sends no
+recovery leave, retains all run-placement debt, and supplies no compensation or restart authority.
+This record's native source decision, compensation prerequisite and restore-before-restart order
+remain in force; the additional local door requires its own plan and source reviews.
+
 ## Context and sources
 
 VO-3578 records the owner's question on 2026-10-22: “why does every upgrade cause an outage”. Its three acceptance

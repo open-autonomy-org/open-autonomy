@@ -2,6 +2,13 @@
 
 Status: Proposed; implementation follows the independently passed amendment to Supercode ADR 0243. OA acceptance remains subject to independent review and merge.
 
+[ADR 0036](0036-project-rooms-offline-intent-settlement.md) proposes an additional owner command for
+recording an original leave request's independently proved terminal no-effect outcome while the
+selected program is stopped. It sends no recovery mutation and retains every run-placement debt.
+The immutable program described here does not implement that command or gain stronger session or
+role-demand guards from it. Unknown/effected outcomes and separately unproved compensation remain
+held; the additional local door requires its own plan and source reviews.
+
 ## Context and decision
 
 [Supercode ADR 0243](https://github.com/volter-ai/supercode/blob/main/docs/adr/0243-card-run-sessions-in-project-rooms.md),
