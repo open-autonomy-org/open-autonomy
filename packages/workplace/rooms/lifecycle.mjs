@@ -53,8 +53,8 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
       || JSON.stringify(metadata) !== JSON.stringify(artifact.value.lifecycle)
       || JSON.stringify([...metadata.files].sort()) !== JSON.stringify(artifact.value.files.map(file => file.path).sort())) fail('unsupported artifact lifecycle');
   }
-  const selection = digest(JSON.stringify(binding ? Object.fromEntries(Object.entries(binding).filter(([key]) => key !== 'generation'))
-    : { program: directory, config: canonical(resolve(configPath)), state: canonical(resolve(statePath)) }));
+  const logical = value => JSON.stringify(Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'generation').sort(([a], [b]) => a.localeCompare(b))));
+  const selection = digest(binding ? logical(binding) : JSON.stringify({ program: directory, config: canonical(resolve(configPath)), state: canonical(resolve(statePath)) }));
   state.publisherLifecycle ??= { version: 1, intents: {} };
   const journal = state.publisherLifecycle;
   if (journal.version !== 1 || !journal.intents || typeof journal.intents !== 'object') fail('unsupported durable journal');
@@ -87,7 +87,8 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
       await Promise.allSettled([...active]);
       status = 'quiesced';
     }
-    persistReceipt({ quiesced: true, persisted: true });
+    if (receipt?.compensated && debt().outstanding === 0) persist();
+    else persistReceipt({ quiesced: true, persisted: true });
     return snapshot();
   }
   async function control(frame) {
@@ -96,6 +97,7 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     if (frame.action === 'compensate') {
       await quiesce();
       if (debt().unknown || Object.keys(journal.intents).length) fail('unanswered product mutations retain recovery debt');
+      if (!/^[0-9a-f]{64}$/.test(frame.predecessor)) fail('an exact predecessor receipt digest is required');
       const predecessor = readProgram(frame.predecessorReceipt ?? frame.qualification?.predecessor?.receipt, frame.predecessor);
       const supported = artifact.value.lifecycle.compensation?.predecessors?.find(row => row.revision === predecessor.value.source.revision);
       if (!supported || predecessor.value.lifecycle?.state?.arcVersion !== supported.arcVersion
@@ -140,6 +142,7 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     const id = randomUUID();
     const intent = { selection, binding, operation, signature, phase: 'dispatched' };
     journal.intents[id] = intent;
+    receipt = null; journal.receipt = null;
     persist(); // No remote effect is dispatched until its entire intent is durable and re-read.
     const work = (async () => {
       try {
@@ -155,6 +158,11 @@ export function createLifecycle({ state, configPath, statePath, persist, pause, 
     })();
     active.add(work);
     try { return await work; } finally { active.delete(work); }
+  }
+  if (status === 'running') journal.receipt = null;
+  else if (binding && journal.receipt?.binding && logical(journal.receipt.binding) === logical(binding)) {
+    const { binding: _previousGeneration, ...retained } = journal.receipt;
+    if (!retained.compensated || debt().outstanding === 0) persistReceipt(retained);
   }
   persist();
   return { binding, selection, debt, snapshot, announce, quiesce, mutate, get paused() { return status !== 'running'; } };
