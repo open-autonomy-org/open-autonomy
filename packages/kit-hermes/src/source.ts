@@ -67,10 +67,10 @@ export function executingSource(version: string): string | undefined {
   const selectedRoot = process.env.OPEN_AUTONOMY_SOURCE ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE)) : source.root;
   if (selectedRoot !== source.root) {
     // A historical renderer may itself enforce source mode. Only its already validated, versioned source-cache
-    // link permits that import; keep the selected current source in the environment for subsequent upgrades.
+    // link permits that import, only for an older renderer; keep the selected current source for subsequent upgrades.
     const selectedVersion = JSON.parse(readFileSync(resolve(selectedRoot, 'packages/kit-hermes/package.json'), 'utf8')).version;
     kitSource(selectedVersion, selectedRoot);
-    if (selectedVersion === version || ancestorSource(version).kit !== source.kit)
+    if (Bun.semver.order(version, selectedVersion) >= 0 || ancestorSource(version).kit !== source.kit)
       throw new Error(`executing kit ${source.kit} is outside selected OPEN_AUTONOMY_SOURCE ${process.env.OPEN_AUTONOMY_SOURCE}`);
   }
   const sdk = preparedKitSource(source);
