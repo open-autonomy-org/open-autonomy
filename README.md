@@ -106,3 +106,17 @@ The setup agent prepares a provisional project identity in [branding](branding/R
 short blurb and reusable icon for project integrations. Existing branding and application IDs are preserved.
 
 Use pnpm 12.15.0 for dependency installation (`pnpm install --frozen-lockfile`). The native store follows the checkout volume; workspace configuration requires hard links and refuses copying. Bun remains the TypeScript runtime. npm installs refuse through `devEngines`. The host kit keeps its separate adopter-owned `.open-autonomy/pnpm-lock.yaml`; generate and review it through `bun .open-autonomy/install-runtime.ts --update-lock` before activation.
+
+Development checkouts initialize their exact source Gitlinks with
+`git submodule update --init --recursive`, install with
+`pnpm install --frozen-lockfile`, then run `pnpm run build:sources` for the
+Identity and ztrack exports. Native pnpm workspaces retain the declared
+Supercode SDK 0.3.64, orchestrator 0.5.47 and UI 0.1.106, Teams 0.2.18,
+ztrack 2.5.0, and both Identity 0.1.0 (platform) and 0.4.1 (Teams) contexts.
+The existing World 2.0.8 runtime/Core 2.0.6 and Twin versions also remain
+exact source selections, with both World UI 0.1.5 and 0.1.6 retained for their
+original consumers. The UI's client/terminal development packages and
+ztrack's Jira development peer are source selections too. Native exact
+workspace overrides reject a mismatched source manifest during frozen install.
+The separately owned `.open-autonomy` host keeps its own newer World 2 source
+pin and binds its three Supercode packages to the selected machine source graph.
