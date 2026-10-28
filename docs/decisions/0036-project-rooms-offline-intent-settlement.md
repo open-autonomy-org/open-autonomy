@@ -104,7 +104,7 @@ not automatically qualified. Final input/process readback and durable audit prec
 ### Proposed amendment: consume live native maintenance custody
 
 The passed no-remote-mutation scope above remains unchanged. Native task `t_b2b063ab` proposes
-an additional prerequisite in [Supercode ADR 0243](https://github.com/volter-ai/supercode/blob/main/docs/adr/0243-card-run-sessions-in-project-rooms.md):
+an additional prerequisite in [Supercode ADR 0243 at `5c5aeef6311a6eefa81dd391458e2072a8d0e7d0`](https://github.com/volter-ai/supercode/blob/5c5aeef6311a6eefa81dd391458e2072a8d0e7d0/docs/adr/0243-card-run-sessions-in-project-rooms.md):
 the native owner supplies a qualified live maintenance lease/channel for the exact canonical
 home, connection, state, retained transaction, selected program and predecessor. This paired
 amendment needs its own typed PLAN PASS before either repository implements the protocol.
@@ -127,10 +127,15 @@ observed lease state. A lost channel leaves the native durable hold in place. No
 the lease likewise leaves a recovery-required native barrier: it authorizes no automatic start,
 compensation, source restoration or reservation release.
 
-The eventual protocol must define the native/OA lifetime and failure ordering, including how
-the native hold excludes admission when OA is between a lease check and a local write. A check
-alone does not supply that guarantee. Its exact version, binding, qualification and refusal
-semantics are reviewed as a paired contract before any positive implementation or fixture proof.
+The ordering is mandatory: the native durable hold is acquired before OA reads mutable inputs;
+it survives channel or native-owner loss, excludes every bound admission path across each
+check-to-write interval, and cannot be released until the exact OA invocation is terminal and
+its audit and readbacks are complete. A lease check alone does not supply exclusion. If OA loses
+the lease while persistence is already in flight, the result remains audit uncertainty under
+that retained hold; the loss cannot authorize a competing writer or a restart. The native owner
+alone resolves or releases the retained hold under its exact-invocation recovery contract.
+The paired contract's exact version, binding, qualification and refusal semantics require review
+before any positive implementation or fixture proof; wire fields remain source/declaration authority.
 Manual evidence must cover attempted starts/restarts while the lease is held, lease/channel loss
 at each durable boundary, changed bindings, and release with the native recovery barrier retained.
 OA task `t_2ca9da74` owns consumption and publisher durability; native `t_b2b063ab` owns the live
