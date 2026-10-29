@@ -729,7 +729,7 @@ async function* follow(after) {
 async function* followReading(after, continuation) {
   // Agent events are the team's own, under no board's source, so the stream names no source and the board's cards are
   // kept by their resource id (the loop below): an arc's agents are unseated when Teams ends them.
-  const kinds = 'task.created,task.changed,task.started,task.review_requested,task.changes_requested,task.completed,task.cancelled,task.reopened,task.blocked,task.unblocked,task.paused,task.resumed,task.assigned,task.linked,task.unlinked,task.commented,task.specified,agent.declared,agent.changed,agent.reassigned,agent.reparented,agent.ended';
+  const kinds = 'task.created,task.changed,task.started,task.review_requested,task.changes_requested,task.completed,task.cancelled,task.reopened,task.blocked,task.unblocked,task.paused,task.resumed,task.assigned,task.linked,task.unlinked,task.commented,task.specified,task.pause_extended,task.backlogged,task.planned,agent.declared,agent.changed,agent.reassigned,agent.reparented,agent.ended';
   const url = `${config.teams.server.replace(/\/+$/, '')}/api/v1/teams/${encodeURIComponent(config.teams.team)}/events?kinds=${kinds}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
   // This connection's own end beside the app's, which its bounds (readingBounds) use to end a reading that hangs.
   const connection = new AbortController();
