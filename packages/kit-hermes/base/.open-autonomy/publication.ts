@@ -1,7 +1,7 @@
 // OA-owned source associations and exact pending publications. Native IDs stay opaque;
 // custody is an operator assertion, never an inferred native identity or execution grant.
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statfsSync, writeFileSync, constants } from 'node:fs';
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statfsSync, writeFileSync, constants } from 'node:fs';
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type CloudEvent, type UpdateRecord } from './sdk/client.ts';
@@ -21,6 +21,58 @@ interface NoteAlias { associationKey: string; kind: NoteKind; nativeEffectId: st
 export interface SessionBinding { platformKey: string; nativeSessionId: string; associationKey?: string; itemId?: string; evidence: string }
 interface Pending { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire: string; wireDigest: string; expected: any; sourceObservation?: SourceSnapshot }
 interface Receipt extends Omit<Pending, 'sourceObservation'> { result: any }
+// One committed change to the reporter state, as its journal holds it. A runtime entry sets one key of a runtime map
+// (a session's transcript checkpoint, its continuation count); the others are the publication's own changes.
+type StateChange = { kind: 'runtime'; field: RuntimeField; key: string; value: unknown } | { kind: 'associations'; add: Association[] }
+  | { kind: 'pending'; pending: Pending; alias?: NoteAlias } | { kind: 'receipt'; receipt: Receipt } | { kind: 'binding'; binding: SessionBinding }
+  | { kind: 'snapshot-acknowledged' };
+type RuntimeField = 'published' | 'continuations';
+const runtimeFields = new Set<string>(['published', 'continuations']);
+// The journal is folded into the state file once it is larger than the state file and than this many bytes.
+const STATE_JOURNAL_FLOOR = 8 * 1024 * 1024;
+// A pending obligation as it is retained: its request and binding. The observation it was prepared from is the source
+// cache's (retained there until its callback finishes), so the state does not carry a second copy of the whole board.
+const retainedPending = ({ sourceObservation: _observation, ...pending }: Pending): Pending => pending;
+// Applies one change to a runtime and its publication data: the store's own commit and the journal's replay are this.
+function applyChange(runtime: Record<string, any>, data: PublicationData, change: StateChange): void {
+  switch (change.kind) {
+    case 'runtime': {
+      if (!runtimeFields.has(change.field) || !nonempty(change.key)) throw new Error('Reporter runtime change names an unknown field or key');
+      const map = runtime[change.field];
+      if (map && typeof map === 'object' && !Array.isArray(map)) map[change.key] = change.value;
+      else runtime[change.field] = { [change.key]: change.value };
+      return;
+    }
+    case 'associations': {
+      if (!Array.isArray(change.add)) throw new Error('Reporter association change malformed');
+      const known = new Set(data.associations.map(a => a.key));
+      data.associations.push(...change.add.filter(a => !known.has(a?.key)));
+      return;
+    }
+    case 'pending':
+      if (!change.pending || !nonempty(change.pending.obligationId)) throw new Error('Reporter pending change malformed');
+      if (!data.pending.some(p => p.obligationId === change.pending.obligationId) && !data.receipts.some(r => r.obligationId === change.pending.obligationId)) data.pending.push(change.pending);
+      if (change.alias && !data.noteAliases.some(a => a.noteId === change.alias!.noteId)) data.noteAliases.push(change.alias);
+      return;
+    case 'receipt': {
+      const receipt = change.receipt;
+      if (!receipt || !nonempty(receipt.obligationId)) throw new Error('Reporter receipt change malformed');
+      // A timeline revision supersedes the one before it: only the account's current timeline is compared against
+      // (PublicationStore.timeline), and a superseded timeline obligation is never pending again. Keeping each receipt
+      // kept a full copy of every revision's roadmap in the state file.
+      if (receipt.kind === 'timeline') data.receipts = data.receipts.filter(r => r.kind !== 'timeline' || r.obligationId === receipt.obligationId);
+      if (!data.receipts.some(r => r.obligationId === receipt.obligationId)) data.receipts.push(receipt);
+      data.pending = data.pending.filter(other => other.obligationId !== receipt.obligationId);
+      return;
+    }
+    case 'binding':
+      if (!change.binding || !nonempty(change.binding.platformKey)) throw new Error('Reporter session binding change malformed');
+      data.sessionBindings = [...data.sessionBindings.filter(b => b.platformKey !== change.binding.platformKey), change.binding];
+      return;
+    case 'snapshot-acknowledged': data.requiresSnapshot = false; return;
+    default: throw new Error('Reporter state journal entry kind unsupported');
+  }
+}
 interface PublicationData { enrollment: { version: 1; account: string; apiBase: string; sourceContext: string; stores: StoreContext[]; selectedRuntime: NativeRuntimeSelection; custody: Custody; custodyDigest: string; adoptionDigest?: string }; associations: Association[]; noteAliases: NoteAlias[]; sessionBindings: SessionBinding[]; pending: Pending[]; receipts: Receipt[]; requiresSnapshot?: boolean }
 export interface PublicationOwnerLease { readonly stateFile: string; readonly nonce: string; assert(stateFile: string): void }
 export interface PublicationOptions { configFile: string; localDirectory?: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
@@ -46,6 +98,10 @@ export function savePublicationFile(file: string, value: unknown): void { savePu
 // written whole. A non-empty journal means the cache file alone is not the source's retained state.
 export const sourceJournalFile = (cacheFile: string): string => `${cacheFile}.journal`;
 export const sourceJournalOpen = (cacheFile: string): boolean => existsSync(sourceJournalFile(cacheFile)) && lstatSync(sourceJournalFile(cacheFile)).size > 0;
+// The reporter state's journal: the changes the publication store committed since the state file was last written whole
+// (PublicationStore). A non-empty journal means the state file alone is not the reporter's retained state.
+export const stateJournalFile = (stateFile: string): string => `${stateFile}.journal`;
+export const stateJournalOpen = (stateFile: string): boolean => existsSync(stateJournalFile(stateFile)) && lstatSync(stateJournalFile(stateFile)).size > 0;
 type ExecutorIdentity = { platform: 'darwin' | 'linux'; host: string; hostBasis?: 'machine' | 'boot'; boot: string; namespace: string };
 type WriterIdentity = ExecutorIdentity & { start: string };
 export type ControlAbsence = { kind: 'absent-control'; file: string };
@@ -328,6 +384,15 @@ export class PublicationStore {
   private closed = false;
   private closing = false;
   private observation?: SourceSnapshot;
+  // The state file holds the whole state as last written whole (`base` is its bytes' SHA-256); each change since is one
+  // line of its journal, so a change costs its own bytes, not the state's. The state is written whole at enrollment, when the journal outgrows
+  // it, and when the store closes. `durable` says disk (file and journal) holds exactly what memory holds; when it
+  // does not (a write failed, or the journal ends in a torn append), the next change writes the state whole.
+  private base = '';
+  private durable = false;
+  private torn = false;
+  private stateBytes = 0;
+  private journalBytes = 0;
   private observed?: { observation?: SourceSnapshot; cards: ReadonlyMap<string, Readonly<Record<string, any>>> };
   private readonly views = new WeakMap<SourceCard, Readonly<Record<string, any>>>();
   // The retained associations by key. Every pass looks up each card's and each note's association, so a scan of the
@@ -346,7 +411,7 @@ export class PublicationStore {
     if (options.owner) this.assertOwner();
     else this.localLease = acquirePublicationLease(options.stateFile, this.nonce);
     try {
-      const prior = existsSync(options.stateFile) ? privateJSON(options.stateFile) : undefined;
+      const prior = existsSync(options.stateFile) ? this.replay(privateJSON(options.stateFile)) : undefined;
       const cache = existsSync(options.cacheFile) ? privateJSON(options.cacheFile) : undefined;
       const custodyFile = localJSON(localDirectory(options), this.config.custody);
       const custody = privateJSON(custodyFile) as Custody, custodyDigest = retainedDigest(custodyFile);
@@ -366,7 +431,7 @@ export class PublicationStore {
         if (prior || cache) this.adopt(prior, cache);
         else if (this.config.adoption) throw new Error('Legacy adoption was supplied without retained state');
       }
-      this.save();
+      this.assertOwner(); this.compact();
     } catch (error) { if (!options.owner) this.localLease?.close(); throw error; }
   }
   private assertOwner(): void {
@@ -422,7 +487,7 @@ export class PublicationStore {
       return;
     }
     const prev = custody.previous;
-    if (custody.generation !== old.custody.generation + 1 || !prev || prev.custodyDigest !== old.custodyDigest || prev.reporterDigest !== retainedDigest(this.options.stateFile) || !existsSync(this.options.cacheFile) || prev.cacheDigest !== retainedDigest(this.options.cacheFile) || sourceJournalOpen(this.options.cacheFile) || privateJSON(this.options.cacheFile).pending || this.data.pending.length || !eq(old.stores.map(s => s.context).sort(), this.config.stores.map(s => s.context).sort())) throw new Error('Publication continuity needs exact stopped prior digests, unchanged contexts and settled obligations');
+    if (custody.generation !== old.custody.generation + 1 || !prev || prev.custodyDigest !== old.custodyDigest || prev.reporterDigest !== retainedDigest(this.options.stateFile) || stateJournalOpen(this.options.stateFile) || !existsSync(this.options.cacheFile) || prev.cacheDigest !== retainedDigest(this.options.cacheFile) || sourceJournalOpen(this.options.cacheFile) || privateJSON(this.options.cacheFile).pending || this.data.pending.length || !eq(old.stores.map(s => s.context).sort(), this.config.stores.map(s => s.context).sort())) throw new Error('Publication continuity needs exact stopped prior digests, unchanged contexts and settled obligations');
     retainExactBytes(this.options.stateFile, `${this.options.stateFile}.custody-${old.custody.generation}.json`);
     retainExactBytes(this.options.cacheFile, `${this.options.cacheFile}.custody-${old.custody.generation}.json`);
     this.data.enrollment = { ...old, custody, custodyDigest: digest, stores: this.config.stores, selectedRuntime: this.options.nativeRuntime };
@@ -475,7 +540,7 @@ export class PublicationStore {
     const at = typeof ts === 'string' ? Date.parse(ts) : NaN;
     return Number.isNaN(at) ? 0 : at;
   }
-  snapshotAcknowledged(): void { if (this.data.requiresSnapshot) { this.data.requiresSnapshot = false; this.save(); } }
+  snapshotAcknowledged(): void { if (this.data.requiresSnapshot) this.commit({ kind: 'snapshot-acknowledged' }); }
   storeContext(board: string): string {
     const store = this.config.stores.find(s => s.backing_board === board);
     if (!store) throw new Error(`Unenrolled native backing store ${board}; publication remains pending`);
@@ -485,8 +550,79 @@ export class PublicationStore {
     if (this.closed || this.closing) return Promise.reject(new Error('Publication writer closing/closed'));
     const result = this.tail.then(() => { if (this.closed || this.closing) throw new Error('Publication writer closing/closed'); this.assertOwner(); return work(); }); this.tail = result.catch(() => {}); return result;
   }
-  saveRuntime(patch: Record<string, unknown>): void { Object.assign(this.runtime, patch); this.save(); }
-  private save(): void { if (this.closed) throw new Error('Publication writer closed'); this.assertOwner(); savePublicationFile(this.options.stateFile, { ...this.runtime, version: 3, publication: this.data }); }
+  // One key of a runtime map (a session's checkpoint under `published`, its continuation count under `continuations`),
+  // written when its value changes and not otherwise.
+  saveRuntimeEntry(field: RuntimeField, key: string, value: unknown): void {
+    const map = this.runtime[field];
+    if (map && typeof map === 'object' && Object.hasOwn(map, key) && eq(map[key], value)) return;
+    this.commit({ kind: 'runtime', field, key, value });
+  }
+  // The state file as last written whole, with its journal applied in order. The journal's first line names the SHA-256
+  // of the exact state file bytes it extends; a journal whose base is not the file on disk (the file was since written
+  // whole by a process that did not replay it, such as an older publisher, or this store's fold crashed before removing
+  // it) or whose base line is torn holds nothing of this state, and is removed unread. Bytes after the last newline are
+  // an append the process did not finish (its change was never acknowledged); they stay until the state is next written
+  // whole, which removes the journal. Only version 3 state has a journal.
+  private replay(saved: any): any {
+    this.stateBytes = lstatSync(this.options.stateFile).size;
+    if (saved?.version !== 3 || !saved.publication || typeof saved.publication !== 'object') return saved;
+    const file = stateJournalFile(this.options.stateFile);
+    if (!existsSync(file)) return saved;
+    if (lstatSync(file).isSymbolicLink()) throw new Error('Reporter state journal must not be a symlink');
+    const text = readFileSync(file, 'utf8'), end = text.lastIndexOf('\n') + 1, lines = text.slice(0, end).split('\n');
+    let base: unknown;
+    try { base = JSON.parse(lines[0]).base; } catch {}
+    if (base !== retainedDigest(this.options.stateFile)) { rmSync(file, { force: true }); return saved; }
+    this.journalBytes = Buffer.byteLength(text); this.torn = end < text.length;
+    for (const list of ['associations', 'noteAliases', 'sessionBindings', 'pending', 'receipts']) if (!Array.isArray(saved.publication[list])) throw new Error('Malformed retained publication state');
+    for (const line of lines.slice(1)) {
+      if (!line) continue;
+      let entry: StateChange;
+      try { entry = JSON.parse(line); } catch { throw new Error('Reporter state journal malformed; retained state was not overwritten'); }
+      applyChange(saved, saved.publication, entry);
+    }
+    return saved;
+  }
+  // The whole state; the journal that extended the previous bytes is then inert, and removed. A whole write that failed
+  // at any step (even after its rename) leaves disk unknown: nothing is appended until a later whole write succeeds, so
+  // no journal can name a base the file on disk does not hold.
+  private compact(): void {
+    const bytes = JSON.stringify({ ...this.runtime, version: 3, publication: { ...this.data, pending: this.data.pending.map(retainedPending) } }) + '\n';
+    try {
+      savePublicationBytes(this.options.stateFile, bytes);
+      this.base = publicationHash(bytes); this.stateBytes = Buffer.byteLength(bytes);
+      rmSync(stateJournalFile(this.options.stateFile), { force: true }); this.journalBytes = 0; this.torn = false;
+    } catch (error) { this.durable = false; throw error; }
+    this.durable = true;
+  }
+  // One change, durable before it is acknowledged: appended and fsynced (its parent too when the journal is created), after
+  // the base line when the journal is new. An append the disk refused is cut back off, so the journal never holds a torn
+  // line before a whole one, and the next change writes the state whole.
+  private append(change: StateChange): void {
+    const retained = change.kind === 'pending' ? { ...change, pending: retainedPending(change.pending) } : change;
+    const file = stateJournalFile(this.options.stateFile), created = !existsSync(file);
+    let line = JSON.stringify(retained) + '\n';
+    try {
+      const fd = openSync(file, 'a', 0o600);
+      try {
+        const before = fstatSync(fd).size;
+        if (!before) line = JSON.stringify({ base: this.base }) + '\n' + line;
+        try { writeFileSync(fd, line); fsyncSync(fd); } catch (error) { try { ftruncateSync(fd, before); } catch {} throw error; }
+      } finally { closeSync(fd); }
+      if (created) { const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); } }
+    } catch (error) { this.durable = false; throw error; }
+    this.journalBytes += Buffer.byteLength(line);
+  }
+  // Applies a change and makes it durable: one journal line, or the whole state when disk is not known to hold the rest.
+  private commit(change: StateChange): void {
+    if (this.closed) throw new Error('Publication writer closed');
+    this.assertOwner();
+    applyChange(this.runtime, this.data, change);
+    if (!this.durable || this.torn) { this.compact(); return; }
+    this.append(change);
+    // Folded when the journal outgrows the state; a fold that fails leaves the journal holding every change.
+    if (this.journalBytes > Math.max(this.stateBytes, STATE_JOURNAL_FLOOR)) try { this.compact(); } catch {}
+  }
   resolveCards(rows: readonly SourceCard[]): void {
     const additions: Association[] = [], seen = new Set<string>();
     for (const row of rows) {
@@ -499,7 +635,7 @@ export class PublicationStore {
       if (!old) additions.push({ key, tuple, itemId: `oa_${key}` });
     }
     for (const a of additions) if (this.data.associations.some(old => old.itemId === a.itemId && old.key !== a.key)) throw new Error('Conflicting destination item alias');
-    if (additions.length) { this.data.associations.push(...additions); this.save(); }
+    if (additions.length) this.commit({ kind: 'associations', add: additions });
   }
   // The cards this store has registered: the last observation `observe` resolved. The source cache's own `cards` also
   // holds a staged observation before its callback has resolved it; a pass reads this view, so every card it names
@@ -559,13 +695,7 @@ export class PublicationStore {
     const receipt: Receipt = { ...prepared, result: first };
     const old = this.data.receipts.find(r => r.obligationId === p.obligationId);
     if (old && old.wireDigest !== p.wireDigest) throw new Error('Publication receipt request binding changed');
-    // A timeline revision supersedes the one before it: only the account's current timeline is compared against
-    // (timeline below), and a superseded timeline obligation is never pending again. Keeping each receipt kept a full
-    // copy of every revision's roadmap in the state file, which every save rewrites.
-    if (p.kind === 'timeline') this.data.receipts = this.data.receipts.filter(r => r.kind !== 'timeline' || r.obligationId === p.obligationId);
-    if (!old) this.data.receipts.push(receipt);
-    this.data.pending = this.data.pending.filter(other => other.obligationId !== p.obligationId);
-    this.save(); return first;
+    this.commit({ kind: 'receipt', receipt }); return first;
   }
   async retry(oa: OpenAutonomy): Promise<void> { for (const pending of [...this.data.pending]) await this.deliver(pending, oa); }
   async note(input: NoteInput, oa: OpenAutonomy): Promise<void> {
@@ -586,9 +716,8 @@ export class PublicationStore {
     const event = updateEvent({ id: noteId, item: association.itemId, text, at: ts, ...(input.session ? { session: input.session } : {}) });
     const wire = JSON.stringify([event]);
     const p: Pending = { obligationId: noteId, kind: 'note', associationKey: association.key, wire, wireDigest: publicationHash(wire), expected: { id: noteId, account: this.options.account, item_id: association.itemId, ts, text, ...(input.session ? { session: input.session } : {}) }, sourceObservation: this.observation };
-    this.data.pending.push(p);
-    if (!alias) this.data.noteAliases.push({ associationKey: association.key, kind: input.kind, nativeEffectId, noteId, effectDigest });
-    this.save(); await this.deliver(p, oa);
+    this.commit({ kind: 'pending', pending: p, ...(alias ? {} : { alias: { associationKey: association.key, kind: input.kind, nativeEffectId, noteId, effectDigest } }) });
+    await this.deliver(p, oa);
   }
   async timeline(roadmap: Roadmap, source: string, by: string | undefined, oa: OpenAutonomy): Promise<void> {
     await this.retry(oa);
@@ -600,7 +729,7 @@ export class PublicationStore {
     const event: CloudEvent = { specversion: '1.0', id: randomUUID(), source: 'open-autonomy-sdk', type: TIMELINE_EVENT_TYPE, subject: 'project', time: new Date().toISOString(), datacontenttype: 'application/json', data: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) } };
     const wire = JSON.stringify([event]), obligationId = `oat_${publicationHash(wire)}`;
     const p: Pending = { obligationId, kind: 'timeline', wire, wireDigest: publicationHash(wire), expected: { source, roadmap: model, ...(normalizedBy ? { by: normalizedBy } : {}) }, sourceObservation: this.observation };
-    this.data.pending.push(p); this.save(); await this.deliver(p, oa);
+    this.commit({ kind: 'pending', pending: p }); await this.deliver(p, oa);
   }
   async sessionItem(binding: SessionBinding, oa: OpenAutonomy): Promise<string | undefined> {
     if (!nonempty(binding.platformKey) || binding.platformKey.length > 200 || binding.platformKey.includes(':') || redactSecrets(binding.platformKey) !== binding.platformKey || !nonempty(binding.nativeSessionId) || !nonempty(binding.evidence)) throw new Error('Session binding needs valid unchanged platform/native identity and positive evidence');
@@ -636,7 +765,7 @@ export class PublicationStore {
       if (!attempt) return undefined;
     }
     const next = { ...old, ...binding, ...(proposed ? { itemId: proposed } : {}), ...(!binding.associationKey && old?.associationKey ? { associationKey: old.associationKey, evidence: old.evidence } : {}) };
-    if (!eq(old, next)) { this.data.sessionBindings = [...this.data.sessionBindings.filter(b => b.platformKey !== binding.platformKey), next]; this.save(); }
+    if (!eq(old, next)) this.commit({ kind: 'binding', binding: next });
     return proposed;
   }
   async close(): Promise<void> {
@@ -644,6 +773,9 @@ export class PublicationStore {
     await this.tail;
     if (this.closed) return;
     this.assertOwner();
+    // A stopped store leaves its state whole, so the file's digest is the state's (custody continuity, status). A fold
+    // that fails leaves the journal, which the next store replays.
+    if (this.journalBytes || this.torn || !this.durable) try { this.compact(); } catch {}
     this.closed = true;
     if (!this.options.owner) this.localLease?.close();
   }

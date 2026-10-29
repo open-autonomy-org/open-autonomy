@@ -63,7 +63,9 @@ Use `--state-file FILE`/`--cache-file FILE` when the reporter uses overrides; th
 `state_file` and that path plus `.board.json`. The cache file holds the source inventory as of its last whole write; the
 changes delivered since are appended to the cache file's `.journal`, which the reporter folds back into the cache as
 it outgrows it and when it stops. `cache.journal: true` means that journal is open, so the cache digest is not the
-source's whole state, and custody continuity refuses until the reporter has stopped cleanly.
+source's whole state, and custody continuity refuses until the reporter has stopped cleanly. The reporter state works
+the same way: each change (a transcript checkpoint, a receipt, a binding) is one line of the state file's `.journal`,
+and `reporter.journal: true` says the state digest is not yet the whole state.
 
 For original version-2 reporter state and version-1 cache, use `prepare-adoption` with the same explicit runtime,
 backing and operator arguments as fresh enrollment. It prepares configuration/custody and reports the exact input
