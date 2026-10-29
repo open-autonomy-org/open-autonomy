@@ -922,14 +922,18 @@ function passSummary() {
  *  modification time (the file behind stdout, when it is one) and nothing is appended to it. Only a pass that finished
  *  does: a pass stuck on a call, a blocked process or a stream that went silent (`retrying` ends it) leaves the log's age
  *  growing, so silence past `maxSilentMin` is a hang again. What the pass found is in `<stateFile>.heartbeat.json`,
- *  replaced each time (its size is fixed), for whoever reads why it is quiet. */
-let logIsFile;
+ *  replaced when what it says changes, else at most once a minute (its size is fixed), for whoever reads why it is quiet:
+ *  a pass runs on every frame, and a file replaced on each rewrote the disk at the stream's pace. */
+let logIsFile, beatSaid = null, beatAt = 0;
 function heartbeat(found) {
   const now = new Date();
   try {
     logIsFile ??= fstatSync(1).isFile();
     if (logIsFile) futimesSync(1, now, now);
   } catch { logIsFile = false; }
+  const said = JSON.stringify([found, stream ? !stream.ended : null]);
+  if (said === beatSaid && now - beatAt < 60_000) return;
+  beatSaid = said; beatAt = now.getTime();
   try {
     const file = `${config.stateFile}.heartbeat.json`, pending = `${file}.${process.pid}.tmp`;
     writeFileSync(pending, `${JSON.stringify({ at: now.toISOString(), pid: process.pid, ...found,
