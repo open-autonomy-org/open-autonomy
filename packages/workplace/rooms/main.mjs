@@ -213,6 +213,7 @@ let written = null, writtenOwed = null, writtenAt = 0, flushing = null, cursorFl
 const owedText = () => JSON.stringify({ ...state, cursor: undefined, projectsKept: undefined });
 function flushState(strict = false) {
   clearTimeout(flushing); flushing = null;
+  clearTimeout(cursorFlushing); cursorFlushing = null;
   const text = `${JSON.stringify(state)}\n`;
   if (text === written) {
     if (strict) {
@@ -224,10 +225,9 @@ function flushState(strict = false) {
   }
   const owed = owedText();
   if (!strict && owed === writtenOwed && Date.now() - writtenAt < CURSOR_FLUSH_MS) {
-    cursorFlushing ??= setTimeout(() => { cursorFlushing = null; flushState(); }, writtenAt + CURSOR_FLUSH_MS - Date.now());
+    cursorFlushing = setTimeout(flushState, writtenAt + CURSOR_FLUSH_MS - Date.now());
     return;
   }
-  clearTimeout(cursorFlushing); cursorFlushing = null;
   const pending = `${config.stateFile}.${process.pid}.tmp`;
   try {
     writeFileSync(pending, text, { mode: 0o600 });
