@@ -51,7 +51,7 @@ function applyChange(runtime: Record<string, any>, data: PublicationData, change
     }
     case 'pending':
       if (!change.pending || !nonempty(change.pending.obligationId)) throw new Error('Reporter pending change malformed');
-      if (!data.pending.some(p => p.obligationId === change.pending.obligationId)) data.pending.push(change.pending);
+      if (!data.pending.some(p => p.obligationId === change.pending.obligationId) && !data.receipts.some(r => r.obligationId === change.pending.obligationId)) data.pending.push(change.pending);
       if (change.alias && !data.noteAliases.some(a => a.noteId === change.alias!.noteId)) data.noteAliases.push(change.alias);
       return;
     case 'receipt': {
@@ -384,11 +384,11 @@ export class PublicationStore {
   private closed = false;
   private closing = false;
   private observation?: SourceSnapshot;
-  // The state file holds the whole state as of its generation; each change since is one line of its journal, so a
-  // change costs its own bytes, not the state's. The state is written whole at enrollment, when the journal outgrows
+  // The state file holds the whole state as last written whole (`base` is its bytes' SHA-256); each change since is one
+  // line of its journal, so a change costs its own bytes, not the state's. The state is written whole at enrollment, when the journal outgrows
   // it, and when the store closes. `durable` says disk (file and journal) holds exactly what memory holds; when it
   // does not (a write failed, or the journal ends in a torn append), the next change writes the state whole.
-  private generation = 0;
+  private base = '';
   private durable = false;
   private torn = false;
   private stateBytes = 0;
@@ -419,7 +419,7 @@ export class PublicationStore {
       if (prior && prior.version !== 2 && prior.version !== 3) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
       if (cache && cache.version !== 1 && cache.version !== 2) throw new Error(`Unsupported source cache version ${cache.version}; retained state was not overwritten`);
       this.runtime = prior ? { ...prior } : {};
-      delete this.runtime.publication; delete this.runtime.version; delete this.runtime.generation;
+      delete this.runtime.publication; delete this.runtime.version;
       if (prior?.version === 3) {
         this.data = prior.publication;
         this.checkData();
@@ -557,54 +557,56 @@ export class PublicationStore {
     if (map && typeof map === 'object' && Object.hasOwn(map, key) && eq(map[key], value)) return;
     this.commit({ kind: 'runtime', field, key, value });
   }
-  // The state file as last written whole, with its generation's journal applied in order. Bytes after the last newline
-  // are an append the process did not finish (its change was never acknowledged); they stay until the state is next
-  // written whole, which removes the journal. Only version 3 state has a journal.
+  // The state file as last written whole, with its journal applied in order. The journal's first line names the SHA-256
+  // of the exact state file bytes it extends; a journal whose base is not the file on disk (the file was since written
+  // whole by a process that did not replay it, such as an older publisher, or this store's fold crashed before removing
+  // it) or whose base line is torn holds nothing of this state, and is removed unread. Bytes after the last newline are
+  // an append the process did not finish (its change was never acknowledged); they stay until the state is next written
+  // whole, which removes the journal. Only version 3 state has a journal.
   private replay(saved: any): any {
     this.stateBytes = lstatSync(this.options.stateFile).size;
     if (saved?.version !== 3 || !saved.publication || typeof saved.publication !== 'object') return saved;
-    this.generation = Number.isSafeInteger(saved.generation) ? saved.generation : 0;
     const file = stateJournalFile(this.options.stateFile);
     if (!existsSync(file)) return saved;
     if (lstatSync(file).isSymbolicLink()) throw new Error('Reporter state journal must not be a symlink');
-    const text = readFileSync(file, 'utf8'), end = text.lastIndexOf('\n') + 1;
+    const text = readFileSync(file, 'utf8'), end = text.lastIndexOf('\n') + 1, lines = text.slice(0, end).split('\n');
+    let base: unknown;
+    try { base = JSON.parse(lines[0]).base; } catch {}
+    if (base !== retainedDigest(this.options.stateFile)) { rmSync(file, { force: true }); return saved; }
     this.journalBytes = Buffer.byteLength(text); this.torn = end < text.length;
     for (const list of ['associations', 'noteAliases', 'sessionBindings', 'pending', 'receipts']) if (!Array.isArray(saved.publication[list])) throw new Error('Malformed retained publication state');
-    for (const line of text.slice(0, end).split('\n')) {
+    for (const line of lines.slice(1)) {
       if (!line) continue;
-      let entry: StateChange & { generation: number };
+      let entry: StateChange;
       try { entry = JSON.parse(line); } catch { throw new Error('Reporter state journal malformed; retained state was not overwritten'); }
-      if (entry.generation !== this.generation) continue;
       applyChange(saved, saved.publication, entry);
     }
     return saved;
   }
-  private serialized(generation: number): string {
-    return JSON.stringify({ ...this.runtime, version: 3, generation, publication: { ...this.data, pending: this.data.pending.map(retainedPending) } }) + '\n';
-  }
-  // The whole state, as the next generation; the older generation's journal entries are then inert, and removed. A whole
-  // write that failed at any step (even after its rename) leaves disk unknown: nothing is appended until a later whole
-  // write succeeds, so no entry can name a generation the file on disk does not hold.
+  // The whole state; the journal that extended the previous bytes is then inert, and removed. A whole write that failed
+  // at any step (even after its rename) leaves disk unknown: nothing is appended until a later whole write succeeds, so
+  // no journal can name a base the file on disk does not hold.
   private compact(): void {
-    const generation = this.generation + 1, bytes = this.serialized(generation);
+    const bytes = JSON.stringify({ ...this.runtime, version: 3, publication: { ...this.data, pending: this.data.pending.map(retainedPending) } }) + '\n';
     try {
       savePublicationBytes(this.options.stateFile, bytes);
-      this.generation = generation; this.stateBytes = Buffer.byteLength(bytes);
+      this.base = publicationHash(bytes); this.stateBytes = Buffer.byteLength(bytes);
       rmSync(stateJournalFile(this.options.stateFile), { force: true }); this.journalBytes = 0; this.torn = false;
     } catch (error) { this.durable = false; throw error; }
     this.durable = true;
   }
-  // One change, durable before it is acknowledged: appended and fsynced (its parent too when the journal is created).
-  // An append the disk refused is cut back off, so the journal never holds a torn line before a whole one, and the next
-  // change writes the state whole.
+  // One change, durable before it is acknowledged: appended and fsynced (its parent too when the journal is created), after
+  // the base line when the journal is new. An append the disk refused is cut back off, so the journal never holds a torn
+  // line before a whole one, and the next change writes the state whole.
   private append(change: StateChange): void {
     const retained = change.kind === 'pending' ? { ...change, pending: retainedPending(change.pending) } : change;
-    const line = JSON.stringify({ generation: this.generation, ...retained }) + '\n', file = stateJournalFile(this.options.stateFile);
-    const created = !existsSync(file);
+    const file = stateJournalFile(this.options.stateFile), created = !existsSync(file);
+    let line = JSON.stringify(retained) + '\n';
     try {
       const fd = openSync(file, 'a', 0o600);
       try {
         const before = fstatSync(fd).size;
+        if (!before) line = JSON.stringify({ base: this.base }) + '\n' + line;
         try { writeFileSync(fd, line); fsyncSync(fd); } catch (error) { try { ftruncateSync(fd, before); } catch {} throw error; }
       } finally { closeSync(fd); }
       if (created) { const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); } }
@@ -773,7 +775,7 @@ export class PublicationStore {
     this.assertOwner();
     // A stopped store leaves its state whole, so the file's digest is the state's (custody continuity, status). A fold
     // that fails leaves the journal, which the next store replays.
-    if (this.journalBytes || this.torn) try { this.compact(); } catch {}
+    if (this.journalBytes || this.torn || !this.durable) try { this.compact(); } catch {}
     this.closed = true;
     if (!this.options.owner) this.localLease?.close();
   }
