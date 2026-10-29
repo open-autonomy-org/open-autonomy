@@ -190,16 +190,32 @@ function loadState() {
   try { return JSON.parse(readFileSync(config.stateFile, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return { cursor: null }; throw error; }
 }
-// The state file is written at most every few seconds, only when what it says changed, and once more on the way out: a
-// snapshot of thousands of cards rewrote a multi-megabyte file on every frame and every settle (68 MB/s on the Mac).
-// The cursor and the cards owed under it are one write, so an obligation is still kept before its cursor. A write the
-// disk refuses (full, unwritable) is said once and tried again each minute while the app keeps working from memory: an
-// uncaught refusal ended the process, and with it every change to the Floor until someone started it again.
-let written = null, flushing = null, writeRefused = null;
-function flushState() {
+// The state file is written at most every few seconds, only when what the app owes changed, and once more on the way
+// out: a snapshot of thousands of cards rewrote a multi-megabyte file on every frame and every settle (68 MB/s on the
+// Mac), and then the event cursor, which moves on every frame of the team's stream (other boards' events, a comment on a
+// closed card), rewrote it whole every few seconds (0.72 GB/h on the Mac, 2026-10-29). The cursor alone moving, and when
+// each project was last kept (an hourly re-keep's clock, which on loss only re-keeps sooner), ride on the next write
+// and are written by themselves at most every CURSOR_FLUSH_MS. The file is always one instant's state and its cursor
+// together, so an obligation is still kept before its cursor: a restart resumes from a cursor no later than everything
+// written with it, and reads again the frames after it, each of which the registry and the project passes apply again
+// as the board and the Rooms now stand. A strict flush (every direct call: a placement intent before its join, a source
+// invalidated, a 429's retry time, and each exit) is written now whatever changed; only the deferred saves (saveState,
+// the refusal retry) wait out the cursor's interval. A write the disk refuses (full, unwritable) is said once and tried
+// again each minute while the app keeps working from memory: an uncaught refusal ended the process, and with it every
+// change to the Floor until someone started it again.
+const CURSOR_FLUSH_MS = 10 * 60_000;
+let written = null, writtenOwed = null, writtenAt = 0, flushing = null, cursorFlushing = null, writeRefused = null;
+const owedText = () => JSON.stringify({ ...state, cursor: undefined, projectsKept: undefined });
+function flushState(strict = false) {
   clearTimeout(flushing); flushing = null;
+  clearTimeout(cursorFlushing); cursorFlushing = null;
   const text = `${JSON.stringify(state)}\n`;
   if (text === written) return;
+  const owed = owedText();
+  if (!strict && owed === writtenOwed && Date.now() - writtenAt < CURSOR_FLUSH_MS) {
+    cursorFlushing = setTimeout(flushState, writtenAt + CURSOR_FLUSH_MS - Date.now());
+    return;
+  }
   const pending = `${config.stateFile}.${process.pid}.tmp`;
   try {
     writeFileSync(pending, text, { mode: 0o600 });
@@ -212,7 +228,7 @@ function flushState() {
     return;
   }
   if (writeRefused) { log('state-write-recovered'); writeRefused = null; }
-  written = text;
+  written = text; writtenOwed = owed; writtenAt = Date.now();
 }
 function saveState() { flushing ??= setTimeout(flushState, 5_000); }
 // What the app reads of a card, kept while it is owed (a whole card carries its body and history).
@@ -237,7 +253,13 @@ const kept = (card) => {
   }
   return out;
 };
-/** What the project pass reads of a card: kept in the registry for every card of the board's latest reading. */
+/** What the project pass reads of a card. The registry (`state.cards`) keeps it while a project's Room is kept for the
+ * card (`roomKept`: live, naming a project) or while the change that ended that is still owed to its project (the card's
+ * `state.pending` entry, settled by applyCard): every reader of the registry (keepProject, sweepRooms, the agent and
+ * snapshot-end passes) acts only on live cards with a project, and the project a card leaves is owed when it leaves, so
+ * an entry past both says nothing any pass reads. The board's closed cards are read again from each snapshot, never
+ * kept. */
+const roomKept = (entry) => Boolean(entry?.live && entry.project);
 const registryOf = (card) => {
   const lane = card.archived ? 'archived' : card.lane ?? card.status;
   const people = (card.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('person:')).map((tag) => tag.slice(7).toLowerCase());
@@ -484,7 +506,7 @@ async function keepAgentSeats(view, wanted, label, { unresolved = [], mayUnseat 
     }
     if (member && (!run || sameSession(member.sessionBinding, run.session)) && (!base || receives.get(principalId) === demand.answers)) continue;
     if (!member && run) {
-      flushState();
+      flushState(true);
       if (writeRefused) throw Object.assign(new Error('placement intent could not be persisted'), { code: 'state-write-refused' });
     }
     try {
@@ -772,6 +794,10 @@ if (state.arcRoomLifecycleVersion !== ARC_ROOM_LIFECYCLE_VERSION) {
   state.arcRoomLifecycleVersion = ARC_ROOM_LIFECYCLE_VERSION;
 }
 delete state.creating; delete state.legacyCreates; delete state.unkept; delete state.rooms; delete state.settled; delete state.floors;
+// A registry entry no pass reads (registryOf) is not carried over. Only after a whole reading: a snapshot begun and not
+// finished has cleared the pending changes, and its own frames (or its end, for a card it no longer carries) owe the
+// project a card left again before the entry goes.
+if (state.ready) for (const [id, entry] of Object.entries(state.cards)) if (!roomKept(entry) && !state.pending[id]) delete state.cards[id];
 saveState();
 let sweepRequested = true;
 /**
@@ -797,9 +823,9 @@ let stopping = false, sourceAdmitted = false;
 // The event stream connected now (follow): its own end, when it was last heard, and whether it has ended.
 let stream = null;
 function invalidateSource() {
-  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState();
+  sourceAdmitted = false; state.ready = false; state.cleanupReady = false; state.cursor = null; flushState(true);
 }
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopping = true; flushState(); process.exit(0); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopping = true; flushState(true); process.exit(0); });
 // A card RH2 refuses waits before it is tried again (a minute, doubling to an hour), unless a newer version of it arrives.
 // Newer is what the app reads of the card (`kept`), compared by value: every resync re-delivers each card as a new object
 // with the same content, and comparing objects let each resync retry every refused card at once (351 of 805 refusals in
@@ -815,7 +841,12 @@ function postpone(card, version = versionOf(card)) {
 function settle(card) {
   if (!applyCard(card)) return;
   backoff.delete(card.id); standings.delete(card.id);
-  if (state.pending[card.id] && versionOf(state.pending[card.id]) === versionOf(card)) { delete state.pending[card.id]; saveState(); }
+  if (state.pending[card.id] && versionOf(state.pending[card.id]) === versionOf(card)) {
+    // Its project now owes the pass (state.projectsOwed): an entry that keeps no Room is read by no pass after this.
+    delete state.pending[card.id];
+    if (!roomKept(state.cards[card.id])) delete state.cards[card.id];
+    saveState();
+  }
 }
 // Each owed project's pass, each on its own backoff when RH2 refuses it.
 async function keepOwedProjects() {
@@ -863,14 +894,18 @@ function passSummary() {
  *  modification time (the file behind stdout, when it is one) and nothing is appended to it. Only a pass that finished
  *  does: a pass stuck on a call, a blocked process or a stream that went silent (`retrying` ends it) leaves the log's age
  *  growing, so silence past `maxSilentMin` is a hang again. What the pass found is in `<stateFile>.heartbeat.json`,
- *  replaced each time (its size is fixed), for whoever reads why it is quiet. */
-let logIsFile;
+ *  replaced when what it says changes, else at most once a minute (its size is fixed), for whoever reads why it is quiet:
+ *  a pass runs on every frame, and a file replaced on each rewrote the disk at the stream's pace. */
+let logIsFile, beatSaid = null, beatAt = 0;
 function heartbeat(found) {
   const now = new Date();
   try {
     logIsFile ??= fstatSync(1).isFile();
     if (logIsFile) futimesSync(1, now, now);
   } catch { logIsFile = false; }
+  const said = JSON.stringify([found, stream ? !stream.ended : null]);
+  if (said === beatSaid && now - beatAt < 60_000) return;
+  beatSaid = said; beatAt = now.getTime();
   try {
     const file = `${config.stateFile}.heartbeat.json`, pending = `${file}.${process.pid}.tmp`;
     writeFileSync(pending, `${JSON.stringify({ at: now.toISOString(), pid: process.pid, ...found,
@@ -922,7 +957,7 @@ if (disconnecting) {
     if (pending.length) throw Object.assign(new Error(`${pending.length} Room withdrawals remain owed`), { code: 'withdrawal-pending' });
     state.disconnectedAt = new Date().toISOString(); log('projection-withdrawn');
   } catch (error) { log('withdrawal-pending', { code: error.code ?? null, message: String(error.message).slice(0, 200) }); process.exitCode = 1; }
-  finally { state.cleanupReady = previousCleanup; flushState(); }
+  finally { state.cleanupReady = previousCleanup; flushState(true); }
   if (writeRefused) process.exitCode = 1;
   process.exit(process.exitCode ?? 0);
 }
@@ -944,11 +979,14 @@ while (!stopping) {
       const event = frame.data;
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'task' && event.data?.card
         && (!config.teams.source || String(event.resource.id).startsWith(`${config.teams.source}:`))) {
-        const card = kept(event.data.card), was = state.cards[card.id]?.project ?? null;
-        state.pending[card.id] = card;
-        state.cards[card.id] = registryOf(card);
-        // A card that moved to another project leaves the one it named before.
-        if (was && was !== state.cards[card.id].project) state.projectsOwed[was] = true;
+        const card = kept(event.data.card), was = state.cards[card.id]?.project ?? null, entry = registryOf(card);
+        // A card no Room is kept for, before or now, owes no project anything: it is named, and nothing is recorded.
+        if (state.cards[card.id] || roomKept(entry)) {
+          state.pending[card.id] = card;
+          state.cards[card.id] = entry;
+          // A card that moved to another project leaves the one it named before.
+          if (was && was !== entry.project) state.projectsOwed[was] = true;
+        }
         named?.add(card.id);
       }
       if ((frame.type === 'snapshot_item' || frame.type === 'event') && event?.resource?.kind === 'agent' && typeof event.data?.id === 'string') {
@@ -977,7 +1015,7 @@ while (!stopping) {
     if (stream) stream.ended = true;
     // HTTP authentication/access refusal invalidates the baseline as an explicit revocation frame does.
     if (named || [401, 403, 409].includes(error.status)) invalidateSource();
-    if (error.status === 429) { state.streamRetryAt = Date.now() + error.retryMs + 250; flushState(); }
+    if (error.status === 429) { state.streamRetryAt = Date.now() + error.retryMs + 250; flushState(true); }
     log('event-stream-failed', { message: String(error.message).slice(0, 200) });
   }
   if (stream) stream.ended = true;
@@ -987,4 +1025,4 @@ while (!stopping) {
 }
 clearInterval(retrying);
 await draining;
-flushState();
+flushState(true);
