@@ -634,11 +634,26 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   const declares = ['--backing', 'ztrack', '--document', resolve(checkout, boardSetup.document), '--commit',
     ...(ours.length === 1 ? ['--manager', ours[0]] : []),
     ...(archive.max_lines ? ['--archive-max-lines', String(archive.max_lines)] : []), ...(archive.period ? ['--archive-period', String(archive.period)] : [])];
-  if (servingBoard) {
+  // The declared document as supercode's ztrack backing records it: beneath its folder's real path.
+  const document = (() => { const named = resolve(checkout, boardSetup.document); try { return resolve(realpathSync(dirname(named)), basename(named)); } catch { return named; } })();
+  const declared = async (how: string) => {
     const observed = await boardDeclaration(boardOptions);
-    if (observed.backing !== 'ztrack' || resolve(observed.declared?.document ?? '/') !== resolve(checkout, boardSetup.document))
+    if (observed.backing !== 'ztrack' || resolve(observed.declared?.document ?? '/') !== document)
       stopStart('the retained board differs from the repository declaration');
-    say('board: retained native owner and declared ztrack backing');
+    say(`board: ${how} native owner and declared ztrack backing`);
+  };
+  // The ztrack board this home already has, when it is the one the repository declares (its marker names the document).
+  // A half-made home, another backing or another document is init's: it makes the board, or refuses before anything serves.
+  const madeBoard = (() => { try { return JSON.parse(readFileSync(resolve(home, 'kanban', 'ztrack.json'), 'utf8'))?.document === document; } catch { return false; } })();
+  if (servingBoard) await declared('retained');
+  else if (prepared && madeBoard) {
+    // A board this home already has is reopened by its native owner, never by `workflow init`: only the owner admits a
+    // reader for what its cards hold (a backlog, a bounded pause), and an init run beside no owner refuses them, so a
+    // home whose owner ended without a handover (the machine restarted) could never start again.
+    publishKit({ progress: 'kit-command', command: 'native-board-start', deadline_ms: Date.now() + 125000 });
+    await acquireBoard(boardOptions);
+    publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+    await declared('reopened');
   } else {
   const init = spawnSyncWork(() => Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
     cwd: home, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', stderr: 'pipe' }));
