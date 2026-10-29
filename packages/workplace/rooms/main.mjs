@@ -77,11 +77,12 @@ import { fstatSync, futimesSync, readFileSync, renameSync, rmSync, writeFileSync
 import { promisify } from 'node:util';
 
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
-// A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
-// this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 7;
+// A card is seated in its project's Room only once it has started: a prepared card owes no seat, and a backlogged card
+// (accepted, not planned to start) owes none either. Bump the version when this rule or the registry's shape changes:
+// decisions and cards read under the old one are read again from a whole snapshot.
+const ARC_ROOM_LIFECYCLE_VERSION = 8;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
-const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
+const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at) && !card.backlog
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
 // A card's project, the organization's convention: a `project:<name>` tag, else its title's `[name]` prefix (every open
 // card carries one: `[twins]`, `[voice]`, `[workplace]`…), lower case; null when the card names none.
@@ -94,7 +95,7 @@ export const projectOf = (card) => {
 const cardHoldOf = (card) => {
   const blockers = card.blocked_by ?? [];
   const blocked = blockers.some((blocker) => blocker.kind === 'card'), waiting = blockers.some((blocker) => blocker.kind === 'message');
-  return { state: card.paused || waiting ? 'paused' : blocked ? 'blocked' : null };
+  return { state: card.backlog ? 'backlog' : card.paused || waiting ? 'paused' : blocked ? 'blocked' : null };
 };
 // A key the program writes in the Workplace, scoped to its connection when its config names one (`source.namespace`).
 const projectionKey = (config, kind, identity) => {
@@ -232,7 +233,7 @@ function flushState(strict = false) {
 }
 function saveState() { flushing ??= setTimeout(flushState, 5_000); }
 // What the app reads of a card, kept while it is owed (a whole card carries its body and history).
-const KEPT = ['id', 'ref', 'readable_id', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments', 'run', 'runSince'];
+const KEPT = ['id', 'ref', 'readable_id', 'title', 'project', 'lane', 'status', 'archived', 'removed', 'every', 'subtask_of', 'started_at', 'backlog', 'tags', 'paused', 'blocked_by', 'workspace', 'agents', 'attachments', 'run', 'runSince'];
 /** The native session (`<harness>:<native id>`) the card's open board run works in and when that run started, or null: its
  * latest attempt (`attempts`, supercode sdk/teams/board-events.mjs) while that run has not ended and its session was
  * neither closed nor detached, the same reading as supercode's cardRunOf. The card's Task shows as its `work` the
