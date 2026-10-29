@@ -822,8 +822,10 @@ if (state.arcRoomLifecycleVersion !== ARC_ROOM_LIFECYCLE_VERSION) {
   state.arcRoomLifecycleVersion = ARC_ROOM_LIFECYCLE_VERSION;
 }
 delete state.creating; delete state.legacyCreates; delete state.unkept; delete state.rooms; delete state.settled; delete state.floors;
-// A registry entry no pass reads (registryOf) is not carried over.
-for (const [id, entry] of Object.entries(state.cards)) if (!roomKept(entry) && !state.pending[id]) delete state.cards[id];
+// A registry entry no pass reads (registryOf) is not carried over. Only after a whole reading: a snapshot begun and not
+// finished has cleared the pending changes, and its own frames (or its end, for a card it no longer carries) owe the
+// project a card left again before the entry goes.
+if (state.ready) for (const [id, entry] of Object.entries(state.cards)) if (!roomKept(entry) && !state.pending[id]) delete state.cards[id];
 saveState();
 let sweepRequested = true;
 /**
