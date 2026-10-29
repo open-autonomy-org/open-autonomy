@@ -244,15 +244,15 @@ const scheduler = runtime.scheduler;
 const publication = activePublication = await retryStartup('enrollment', () => new PublicationStore({ configFile: configPath, localDirectory, stateFile, cacheFile: `${stateFile}.board.json`, publication: cfg.publication,
   account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime, owner: ownerState }));
 const saved = publication.runtime;
-const checkpoints: Record<string, PublicationCheckpoint> = saved.published ?? {};
+// The runtime's own maps: the store compares each change against them and applies it.
+const checkpoints: Record<string, PublicationCheckpoint> = saved.published ??= {};
 // A session whose source was rewritten continues on the platform as `<id>~<n>`: n per native session id.
-const continuations: Record<string, number> = saved.continuations ?? {};
+const continuations: Record<string, number> = saved.continuations ??= {};
 const platformKey = (id: string): string => (continuations[id] ? `${id}~${continuations[id]}` : id);
 const nativeId = (key: string): string => key.replace(/~\d+$/, '');
-const noted = new Set<string>(Array.isArray(saved.noted) ? saved.noted.filter((k: unknown) => typeof k === 'string') : []);
-function saveState(): void {
-  publication.saveRuntime({ published: checkpoints, continuations, noted: [...noted] });
-}
+// Each change is saved as itself when it happens: a session's checkpoint when it moves, its continuation when it begins.
+function saveCheckpoint(pkey: string, checkpoint: PublicationCheckpoint): void { publication.saveRuntimeEntry('published', pkey, checkpoint); }
+function continueSession(key: string): void { publishers.delete(key); publication.saveRuntimeEntry('continuations', key, (continuations[key] ?? 0) + 1); }
 
 type Binding = { worker: { session_id?: string }; started_at?: string; ended_at?: string; end_reason?: string };
 type Profile = { persona?: { text?: string }; worker?: { model?: string; harness?: string }; jobs: Record<string, { residue?: { name?: string } }>; bindings: Record<string, Binding>; residue?: { config?: { model?: { default?: string; provider?: string; base_url?: string } } } };
@@ -434,7 +434,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     const published = checkpoints[platformKey(key)];
     if (published?.endedAt) {
       if (!await grownPast(key, d, reader, published.seq)) return;
-      continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState();
+      continueSession(key);
       log(`${key}: resumed after its published end; continues as ${platformKey(key)}`);
     }
     const pkey = platformKey(key);
@@ -453,7 +453,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     let publisher = publishers.get(key);
     if (!publisher || publisherItems.get(key) !== item) {
       publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined, harness: d.locator.harness,
-        modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => { checkpoints[pkey] = checkpoint; saveState(); });
+        modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => saveCheckpoint(pkey, checkpoint));
       publishers.set(key, publisher);
       publisherItems.set(key, item);
     }
@@ -462,7 +462,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     if (receipt.endedAt) { stopped.add(key); log(`${key}: native completion published`); }
   } catch (e) {
     if (e instanceof SessionRefused) { refuse(key, e); return; }
-    if (e instanceof SourceRewritten) { continuations[key] = (continuations[key] ?? 0) + 1; publishers.delete(key); saveState(); log(`${key}: source rewritten; continues as ${platformKey(key)}`); sessionsDue.add(key); requestTick(); return; }
+    if (e instanceof SourceRewritten) { continueSession(key); log(`${key}: source rewritten; continues as ${platformKey(key)}`); sessionsDue.add(key); requestTick(); return; }
     // A publication its own stop cut short is not a failure: this reporter retries nothing, and its successor reads the
     // retained intent afresh (a kit handover's retiring stack aborted every publication in flight, said as failures).
     if (quitting) { log(`${key}: publication not finished: the reporter is stopping; its intent is retained`); return; }
