@@ -211,14 +211,18 @@ function loadState() {
 const CURSOR_FLUSH_MS = 10 * 60_000;
 let written = null, writtenOwed = null, writtenAt = 0, flushing = null, cursorFlushing = null, writeRefused = null;
 const owedText = () => JSON.stringify({ ...state, cursor: undefined, projectsKept: undefined });
+// A file is flushed through a handle that may write (Windows' FlushFileBuffers refuses a read-only one, EPERM), and a
+// directory only where it can be: Windows opens no directory for fsync, and NTFS journals the rename itself.
+const syncFile = (path) => { const fd = openSync(path, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); } };
+const syncDirectory = (path) => { if (process.platform === 'win32') return; const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 function flushState(strict = false) {
   clearTimeout(flushing); flushing = null;
   clearTimeout(cursorFlushing); cursorFlushing = null;
   const text = `${JSON.stringify(state)}\n`;
   if (text === written) {
     if (strict) {
-      const fd = openSync(config.stateFile, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
-      const directory = openSync(dirname(config.stateFile), 'r'); try { fsyncSync(directory); } finally { closeSync(directory); }
+      syncFile(config.stateFile);
+      syncDirectory(dirname(config.stateFile));
       if (readFileSync(config.stateFile, 'utf8') !== text) throw new Error('persisted projection state differs from memory');
     }
     return;
@@ -231,10 +235,10 @@ function flushState(strict = false) {
   const pending = `${config.stateFile}.${process.pid}.tmp`;
   try {
     writeFileSync(pending, text, { mode: 0o600 });
-    if (strict) { const fd = openSync(pending, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
+    if (strict) syncFile(pending);
     renameSync(pending, config.stateFile);
     if (strict) {
-      const fd = openSync(dirname(config.stateFile), 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+      syncDirectory(dirname(config.stateFile));
       if (readFileSync(config.stateFile, 'utf8') !== text) throw new Error('projection state did not re-read after persistence');
     }
   } catch (error) {
