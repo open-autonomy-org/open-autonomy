@@ -11,8 +11,9 @@
 #   2. each version npm lacks packed once, from the files git tracks at this commit, its workspace dependencies pinned
 #      to this checkout's versions and group/other write dropped from every file mode, into one tarballs folder;
 #   3. every tarball installed fresh and its modules resolved from that install (scripts/npm-verify-tarballs.mjs);
-#   4. the keys sweep over every file of every tarball (scripts/npm-keys-sweep.mjs: gitleaks, this machine's custody
-#      values and Teams' token forms).
+#   4. the keys sweep over every file of every tarball: supercode's scripts/npm-keys-sweep.mjs at SWEEP_COMMIT, the one
+#      sweep every Volter npm release runs (pinned gitleaks, every compressed entry opened, links refused, this machine's
+#      custody values and Teams' token forms), from a checkout of that commit made for the run and removed after it.
 # Any failure publishes nothing. Then each swept tarball, and only it, is uploaded (`npm publish <file>.tgz`), npm's
 # integrity for it is read back against the file's, and a new kit version is recorded as a `release-v<version>` tag and
 # GitHub release. npm's own login (`npm whoami`) is the publisher.
@@ -26,6 +27,16 @@ PACKAGES="packages/sdk packages/backend packages/kit-hermes packages/cli"
 REGISTRY=https://registry.npmjs.org/
 version_of() { node -p "require('./$1/package.json').version"; }
 name_of() { node -p "require('./$1/package.json').name"; }
+# The keys sweep is supercode's scripts/npm-keys-sweep.mjs at this commit, so the sweep a permission rests on is named.
+SWEEP_COMMIT=e392ca8c4b14530874bb770e574ab01413da45f9
+keys_sweep() {
+  local s status=0; s=$(mktemp -d)
+  git clone -q --filter=blob:none --no-checkout https://github.com/volter-ai/supercode.git "$s/supercode"
+  git -C "$s/supercode" sparse-checkout set --no-cone /scripts/npm-keys-sweep.mjs /sdk/volter-teams/
+  git -C "$s/supercode" checkout -q --detach "$SWEEP_COMMIT"
+  node "$s/supercode/scripts/npm-keys-sweep.mjs" "$1" </dev/null || status=$?
+  rm -rf "$s"; return "$status"
+}
 on_npm() { pnpm view "$1@$2" version --registry "$REGISTRY" --fetch-retries=0 --fetch-timeout=15000 >/dev/null 2>&1 </dev/null; }
 
 if [ "${1:-}" = "--check" ]; then
@@ -88,7 +99,7 @@ done
 
 # 3. and 4. Every tarball loads as npm will serve it, and holds no key, custody value or Teams token.
 node scripts/npm-verify-tarballs.mjs "$T" </dev/null
-node scripts/npm-keys-sweep.mjs "$T" </dev/null
+keys_sweep "$T"
 
 # Upload the swept tarballs, and only them.
 echo "publishing as $(pnpm whoami --registry "$REGISTRY" </dev/null)"
