@@ -91,7 +91,7 @@ export function savePublicationBytes(file: string, bytes: string | Buffer): void
   // A write that fails (a full disk) removes its own partial copy: every retry would otherwise leave one behind.
   try { try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); } renameSync(temporary, file); }
   catch (error) { rmSync(temporary, { force: true }); throw error; }
-  const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
+  syncDirectory(dirname(file));
 }
 export function savePublicationFile(file: string, value: unknown): void { savePublicationBytes(file, JSON.stringify(value) + '\n'); }
 // The source cache's journal (source-events.ts): the card changes and cursors committed since the cache file was last
@@ -241,7 +241,8 @@ function leaseRecord(stateFile: string): LeaseRecord {
   if (owner.handoff && (!/^[0-9a-f]{64}$/.test(owner.handoff.priorOwnerDigest) || !uuid.test(owner.handoff.priorNonce) || !/^[0-9a-f]{64}$/.test(owner.handoff.manifestDigest) || !/^[0-9a-f]{64}$/.test(owner.handoff.evidenceDigest) || !nonempty(owner.handoff.operator) || !nonempty(owner.handoff.auditFile))) throw new Error('Publication handoff provenance malformed');
   return owner;
 }
-function syncDirectory(path: string): void { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
+// A directory is flushed where it can be: Windows opens no directory for fsync, and NTFS journals the rename itself.
+function syncDirectory(path: string): void { if (process.platform === 'win32') return; const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
 function guardedLease<T>(stateFile: string, work: () => T): T {
   const { libc } = systemLease();
   // Bun's fs.openSync does not add CLOEXEC. Set it atomically, then verify it;
@@ -340,8 +341,9 @@ function privateJSON(file: string): any {
 function retainExactBytes(file: string, backup: string): void {
   if (existsSync(backup)) { if (retainedDigest(backup) !== retainedDigest(file)) throw new Error('Retained legacy backup differs from adoption input'); return; }
   copyFileSync(file, backup, constants.COPYFILE_EXCL); chmodSync(backup, 0o600);
-  const fd = openSync(backup, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
-  const parent = openSync(dirname(backup), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
+  // (a writable handle: Windows' FlushFileBuffers refuses a read-only one)
+  const fd = openSync(backup, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
+  syncDirectory(dirname(backup));
 }
 // Custody and adoption are this install's private files, beside its configuration unless a prepared install keeps them in
 // its source checkout (`localDirectory`): a prepared snapshot is the commit's tracked files alone.
@@ -609,7 +611,7 @@ export class PublicationStore {
         if (!before) line = JSON.stringify({ base: this.base }) + '\n' + line;
         try { writeFileSync(fd, line); fsyncSync(fd); } catch (error) { try { ftruncateSync(fd, before); } catch {} throw error; }
       } finally { closeSync(fd); }
-      if (created) { const parent = openSync(dirname(file), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); } }
+      if (created) syncDirectory(dirname(file));
     } catch (error) { this.durable = false; throw error; }
     this.journalBytes += Buffer.byteLength(line);
   }

@@ -45,8 +45,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   const changes = new Set<() => void>();
   const wake = () => { for (const done of changes) done(); changes.clear(); };
   const write = () => { const temporary = `${recordPath}.${process.pid}.tmp`; writeFileSync(temporary, JSON.stringify({ version: 1, owner: process.pid,
-    active: active?.selected ?? null, previous, transaction: pending, failure }) + '\n', { mode: 0o600 }); const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
-    renameSync(temporary, recordPath); const dir = openSync(home, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } };
+    active: active?.selected ?? null, previous, transaction: pending, failure }) + '\n', { mode: 0o600 }); const fd = openSync(temporary, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(temporary, recordPath); if (process.platform !== 'win32') { const dir = openSync(home, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } } };
   const envFor = (selected: Selection) => { const env = { ...process.env } as Record<string, string>; delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT; delete env.SUPERCODE_RELEASE_VERSION;
     if (selected.release) env.SUPERCODE_RELEASE_RECEIPT = selected.release;
     if (selected.source || selected.release) {
