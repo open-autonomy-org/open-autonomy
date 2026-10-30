@@ -236,7 +236,8 @@ export class BoardEventSource {
       // An append the disk refused is cut back off, so the journal never holds a torn line before a whole one.
       try { writeFileSync(fd, line); fsyncSync(fd); } catch (error) { try { ftruncateSync(fd, before); } catch {} throw error; }
     } finally { closeSync(fd); }
-    if (created) { const parent = openSync(dirname(this.journalFile), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); } }
+    // (where a directory can be flushed: Windows opens none for fsync, and NTFS journals the creation itself)
+    if (created && process.platform !== 'win32') { const parent = openSync(dirname(this.journalFile), 'r'); try { fsyncSync(parent); } finally { closeSync(parent); } }
     this.journalBytes += Buffer.byteLength(line);
   }
   // Before any effect: the observation's changed and removed cards against the committed ones (a card's native
