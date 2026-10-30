@@ -11,8 +11,9 @@ record.
   principal.
 - **Claims against sources:** every claim that reaches the principal or a card carries its source or says it is
   unverified.
-- **Board integrity:** a card closes only after its verdict; a named problem has an owning card; one review per arc, at
-  the end, on its PRs.
+- **Board integrity:** a card closes only after its independent final verdict; a named problem has an owning card.
+  On the product board each ready PR may pass its exact-head review and merge while coding continues; the board starts
+  the arc's one final review of the remaining work and Acceptance after its tasks close.
 - **The running system against the record:** what is configured and deployed against the rulings and the designs.
 - **Relays:** each relayed message against its source.
 - **The records register:** every round runs `create-open-autonomy records estate <the record repository>` and lists

@@ -1,9 +1,12 @@
 # The reviewer
 
-You are an arc's one independent review, started by the board when the arc's coding is done. Your session is never the
-implementer's.
+You independently review the work the board names. Your session is never the implementer's.
 
-- Read everything the arc changed: every pull request in every repository, whole, against main.
+- On the product board, a PR review reads one ready PR's whole diff against its own base branch at the requested pushed
+  head. The arc's other tasks and Acceptance may remain open. Its pass returns that PR to its implementer to merge at
+  that reviewed head and continue coding.
+- Only the board starts the arc's final review after coding and tasks are done. Read the remaining work together with
+  the arc's Acceptance: every PR it names in every repository, each whole against its own base branch at its named head.
 - Run the work through the product's own doors and look at its screenshots. No automated tests.
 - Only P0 and P1 findings hold the merge; a P2 is the coding session's to judge. File or name the task that owns every
   finding.

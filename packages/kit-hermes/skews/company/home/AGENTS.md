@@ -12,7 +12,7 @@ ever assigned to it; every job has its own profile under `profiles/` (docs/decis
 | `manager` | sequences and promotes drafts, keeps each arc moving, reports to the account manager |
 | `coder` (`coder-codex`, `coder-claude`) | works one card's arc; the children differ only in harness |
 | `lead` | leads one project: holds its Room's conversation, answers there, turns asks into draft cards |
-| `reviewer` | the arc's one independent review, started by the board |
+| `reviewer` | independent ready PR reviews and the arc's final review, through the board |
 | `auditor` | finds process drift every hour, and never fixes it |
 | `box-maintainer` | one resource manager across all machines; disk, hangs and working-session outages |
 | `strategy` | the daily strategic report over both lanes; asks nobody |
@@ -34,8 +34,10 @@ reads its configuration from `gtm:` in that file, and strategy from `strategy:`.
 - **Register a record before using it.** The record repository keeps the records register (`records-register.md`,
   written by `create-open-autonomy records init`): a new document, ledger or log gets its entry, with its owner and
   original, before anything reads or writes it. Its pre-commit refuses an unregistered one and stubs its entry.
-- **Review is the board's.** The dispatcher starts an arc's one review when every task is closed and its PRs are open.
-  No profile requests, starts or runs one.
+- **Review goes through the board.** On the product board, request each ready PR's review at its pushed head while
+  coding and other tasks continue; merge that PR only at the head its independent review passed. The dispatcher starts
+  the arc's one final review of the remaining work and Acceptance after every task closes. No profile requests or starts
+  the final review.
 - **Credentials stay in the organization's custody.** Read them where a door needs them; never print or copy them.
 - **Identity and ownership limits guard against mistakes; they are not security.** A refusal for acting as another
   agent, on another agent's session or main, under a person's context or key, or on a process another session started

@@ -1,5 +1,7 @@
 # Locked card/run IR: supercode docs/adr/0001-board-ir.md. Prompts live beside this file.
-description: Five card statuses, independent runs, and one review when an arc's coding is done.
+# The board performs requested acts with sensible defaults, including blank metadata.
+# Only a decision the owner's rules reserve is handed to its named decision-maker.
+description: Five card statuses, independent runs, ready PR reviews and one final review when an arc's coding is done.
 params:
   dispatch_interval_seconds: 60
   session_idle_quiet_seconds: 600
@@ -8,6 +10,7 @@ params:
   default_assignee: null
   # A review's session runs this profile, never the implementer's (RFC 0021 decision 5).
   reviewer_profile: reviewer
+  org_layer: default
   max_in_progress: null
   max_spawn: null
   max_in_progress_per_profile: null
@@ -25,7 +28,7 @@ params:
   request_rules:
     block: 'Only the manager authorizes a block; name its dependency and explain why continued work is impossible.'
     pause: 'Only the manager pauses a card; a session that wants to pause asks the manager.'
-    done: 'Only the session that created the card or the manager puts it in a terminal state. An arc still needs its one independent review, ticked Acceptance with evidence and closed tasks. Include the verdict and its artifact/screenshots and the exact PR head commit the reviewer ran.'
+    done: 'Only the session that created the card or the manager puts it in a terminal state. An arc still needs its independent final review, ticked Acceptance with evidence and closed tasks. Include the verdict and its artifact/screenshots and the exact PR head commit the reviewer ran.'
     cancelled: 'Only the session that created the card or the manager puts it in a terminal state. Cancellation is permanent; state why the work should end.'
   # The manager's session address(es): the install's own (a board asks its manager here).
   managers: []
@@ -34,7 +37,9 @@ roles:
   reviewer: card.assignee ?? params.default_assignee
   auditor: card.assignee ?? params.default_assignee
   creator: card.created_by
-initial: [{ guard: "event.review_only == true", target: review }, { target: todo }]
+initial:
+  - { guard: "event.review_only == true && card.assignee != params.org_layer", target: review }
+  - { guard: "card.assignee != params.org_layer", target: todo }
 statuses:
   todo: { description: Work has not started. }
   running: { description: Work has started., run_role: implementer }
@@ -63,9 +68,8 @@ verbs:
   block:
     - from: [todo, running, review]
       by: [manager, platform]
-      guard: "event.on != null || event.waiting_on != null"
-      description: 'Only the manager blocks cards. Use request-state --state block --reason <why> --on <card> or --waiting-on <message>. Blocked by a card or a message: "<why>" --on <card> or --waiting-on <message>.'
-      validate: [{ expr: "event.reason != null && event.reason != ''", message: A block must name what is missing. }]
+      guard: "(event.on != null || event.waiting_on != null)"
+      description: "Only the manager blocks cards. Use request-state --state block --reason <why> --on <card> or --waiting-on <message>. Blocked by a card or a message: \"<why>\" --on <card> or --waiting-on <message>. The dependency and reason identify what is missing."
       actions:
         - relation: { add: "{{event.on ?? event.waiting_on}}", reason: "{{event.reason}}" }
         - end_run: { outcome: blocked }
@@ -75,17 +79,15 @@ verbs:
     # ever run; the manager's reply to that message ends the block (blocked_by: answered).
     - from: [todo]
       by: [creator]
-      guard: "event.waiting_on != null && event.on == null && card.current_run_id == null && card.dispatch_hold"
-      description: 'A draft: block your own held card (created with --no-start) on your message to the manager: block <card> "<why>" --waiting-on <message>.'
-      validate: [{ expr: "event.reason != null && event.reason != ''", message: A block must name what is missing. }]
+      guard: "(event.waiting_on != null && event.on == null && card.current_run_id == null && card.dispatch_hold)"
+      description: "A draft: block your own held card (created with --no-start) on your message to the manager: block <card> \"<why>\" --waiting-on <message>. The dependency and reason identify what is missing."
       actions:
         - relation: { add: "{{event.waiting_on}}", reason: "{{event.reason}}" }
         - record: blocked
   unblock:
     - from: [todo, running, review]
-      by: [implementer, reviewer, arc, manager, platform, hermes]
-      description: 'What arrived: --reason "<evidence>" [--on <one blocker>].'
-      validate: [{ expr: "event.reason != null && event.reason != ''", message: Unblock must say what arrived. }]
+      by: [implementer, reviewer, auditor, arc, manager, platform, hermes]
+      description: "What arrived: --reason \"<evidence>\" [--on <one blocker>]. The reason records what arrived."
       actions:
         - relation: { remove: "{{event.hermes ? 'messages' : (event.on ?? '*')}}", reason: "{{event.reason}}" }
         - reset: [failures]
@@ -117,8 +119,7 @@ verbs:
   replace_session:
     - from: [todo, running, review]
       by: [manager, owner]
-      description: 'Explicitly let go of an unusable session: --reason "<why>".'
-      validate: [{ expr: "event.reason != null && event.reason != ''", message: Session replacement needs a reason. }]
+      description: "Explicitly let go of an unusable session: --reason \"<why>\". Replacement records why the prior session is unusable."
       actions:
         - close_session: "{{before.status == 'review' ? 'reviewer' : (card.every != null ? 'auditor' : 'worker')}}"
         - end_run: { outcome: reclaimed }
@@ -139,7 +140,7 @@ verbs:
   pause:
     - from: [todo, running, review]
       by: [manager]
-      description: 'Only the manager pauses cards. Use request-state --state pause --reason <why> --waiting-on <message>.'
+      description: 'Only the manager pauses cards. Use request-state --state pause with the requested reason and deadline.'
       actions:
         - flag: { name: paused, value: true, reason: "{{event.reason}}" }
         - close_session: "{{before.status == 'review' ? 'reviewer' : (card.every != null ? 'auditor' : 'worker')}}"
@@ -151,12 +152,18 @@ verbs:
       description: Only the manager resumes a paused card; ask the manager with your reason.
       actions: [{ flag: { name: paused, value: false } }, { reset: [failures] }, { every: "{{card.every}}" }, { record: resumed }]
   request_state:
+    # A PR pass returns only this ready PR to its implementer; it never accepts the whole arc.
+    - by: [reviewer]
+      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && (card.last_events.pr_review_requested.id ?? 0) > (card.last_events.review_requested.id ?? 0))"
+      description: "Pass the ready PR at its reviewed head; the arc's other tasks and Acceptance may remain open."
+      target: running
+      actions:
+        - end_run: { outcome: pr_review_passed, summary: "PR review passed at {{event.reviewed_sha ?? 'the reviewed head'}}: merge this PR at its reviewed head now, then keep coding. {{event.reason}}" }
+        - reset: [failures, block_recurrences]
+        - assign: { field: assignee, value: "{{card.implementer}}" }
+        - record: { kind: pr_review_pass, payload: { reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", reviewed_sha: "{{event.reviewed_sha}}" } }
     - by: [implementer, reviewer, auditor, arc, creator, hermes, manager]
-      description: 'Ask the manager: --state block|pause|done|cancelled --reason "<why>" [--on <card>|--waiting-on <message>] [--evidence "<verdict and pointers>"]. This leaves the card and run active.'
-      validate:
-        - { expr: "event.state in ['block', 'pause', 'done', 'cancelled'] && event.reason != null && event.reason != ''", message: Name the requested state and reason. }
-        - { expr: "event.state != 'block' || event.on != null || event.waiting_on != null", message: A block request names the card or message it waits on. }
-        - { expr: "!(event.state in ['done', 'cancelled']) || (event.evidence != null && event.evidence != '')", message: A terminal request includes its evidence; for done include the independent verdict and artifacts. }
+      description: "Ask the manager: --state block|pause|done|cancelled --reason \"<why>\" [--on <card>|--waiting-on <message>] [--evidence \"<verdict and pointers>\"]. This leaves the card and run active. State requests retain the requested state, reason, dependency and evidence for the manager."
       actions:
         - ask:
             to: "{{params.managers[0]}}"
@@ -165,32 +172,42 @@ verbs:
               Requester: {{requester}}; recorded creator: {{card.creator_address ?? 'unknown (manager decides)'}}
               Reason: {{event.reason}}
               Waiting on: {{event.on ?? event.waiting_on ?? 'none named'}}
+              Until: {{event.until ?? 'none requested'}}
               Deployment: {{card.ci.repository ?? 'no repository'}}@{{card.ci.commit ?? 'no code commit'}}; CI {{card.ci.workflow ?? 'missing'}} #{{card.ci.run_id ?? 'missing'}} {{card.ci.status ?? ''}}/{{card.ci.conclusion ?? ''}} {{card.ci.url ?? ''}}
               Reviewed PR head: {{event.reviewed_sha ?? event.commit ?? event.deployed_sha ?? 'not supplied'}}
               Additional deployed artifacts: {{card.ci.coverage ?? []}}
               Evidence: {{event.evidence ?? 'none supplied'}}
               Rules: {{params.request_rules[event.state]}}
               {{params.request_denial}}
-        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { state: "{{event.state}}", reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
+        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
   request_review:
     - from: [running]
       by: [platform]
-      description: 'Only the board starts a review: once every task on the arc is closed and its PR is open at its pushed head, the dispatcher requests the one review. No session or manager requests one.'
-      validate:
-        - { expr: "card.subtask_of == null && card.every == null", message: Only an arc card requests review. }
-        - { expr: "!card.review_only", message: A review-only card records its verdict with request-state done; it does not request another review. }
-        - { expr: "card.paused == null && card.blocked_by.size() == 0", message: Resume or unblock the card before requesting review. }
-        - { expr: "card.subtasks.all(t, t.status in ['done', 'cancelled'])", message: Close or drop each subtask before review. }
+      description: "Only the board starts the arc's final review: once every task on the arc is closed, it reviews the remaining work together with its Acceptance at the exact pushed PR heads. No session or manager requests the final review. Each ready PR may have its own review while coding continues. Review retains the arc’s current holds and uses an independent reviewer."
+      guard: "(card.subtask_of == null && card.every == null) && (!card.review_only) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
       target: review
       actions:
         - end_run: { outcome: review_requested }
         - assign: { field: assignee, value: "{{event.reviewer ?? params.reviewer_profile}}" }
         - record: review_requested
+    # A queued request keeps its original sender. Own-arc roles and the manager can hand a ready PR to review;
+    # this does not grant any of them the platform-only final review above.
+    - from: [running]
+      by: [implementer, reviewer, auditor, arc, creator, manager]
+      guard: "(event.review == 'pr') && (card.subtask_of == null && card.every == null) && (!card.review_only) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
+      description: "A PR review, whenever one PR is ready: request-review <arc> --pr <its URL> --pr-head <its pushed head> [--summary \"<what the PR does>\"]. Your tasks and Acceptance may remain open while you keep coding; a pass returns the arc to you to merge that PR at its reviewed head now. Review requests during another review follow it. Only the board requests the final review."
+      target: review
+      actions:
+        - end_run: { outcome: pr_review_requested, summary: "Requested the PR review of {{event.pr[0] ?? event.pr}}{{event.summary != null ? ': ' + event.summary : ''}}. Keep coding.", close_session: false }
+        - reset: [failures, block_recurrences]
+        - assign: { field: assignee, value: "{{event.reviewer ?? params.reviewer_profile}}" }
+        - record: review_requested
+        - record: pr_review_requested
   request_changes:
     - from: [review]
       by: [reviewer]
-      validate: [{ expr: "!card.review_only", message: A review-only card reports its pass or failure verdict with request-state done; file findings on the implementation arc. }]
-      description: 'Return the card for fixes: "<what must change>".'
+      guard: "(!card.review_only)"
+      description: "Return the card for fixes: \"<what must change>\". Implementation findings return to their arc; review-only cards record their verdict."
       target: running
       actions:
         - close_session: reviewer
@@ -200,13 +217,8 @@ verbs:
   finish:
     - from: [running]
       by: [implementer]
-      guard: "card.subtask_of == null && card.every == null && card.current_run_id != null"
-      description: 'Report completed work: finish <id> --result "<what was done and its evidence>". This ends your attempt, retains your role session and leaves the card for the board to select its independent review, including a no-code disposition with no PR.'
-      validate:
-        - { expr: "event.result != null && event.result != ''", message: Finish names the work done and its evidence with --result. }
-        - { expr: "card.acceptance_complete()", message: Tick every Acceptance outcome with a pointer before finishing. }
-        - { expr: "card.subtasks.all(t, t.status in ['done', 'cancelled'])", message: Close or drop every subtask before finishing. }
-        - { expr: "card.blocked_by.size() == 0 && card.paused == null", message: A blocked or paused card cannot finish. }
+      guard: "(card.subtask_of == null && card.every == null && card.current_run_id != null) && (card.acceptance_complete()) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && (card.blocked_by.size() == 0 && card.paused == null)"
+      description: "Report completed work: finish <id> --result \"<what was done and its evidence>\". This ends your attempt, retains your role session and leaves the card for the board to select its independent review, including a no-code disposition with no PR. The result carries evidence, Acceptance is complete, tasks are closed and no block or pause remains."
       actions:
         - end_run: { outcome: completed, summary: "{{event.result}}", close_session: false }
         - record: work_completed
@@ -224,13 +236,8 @@ verbs:
       actions: [{ end_run: { outcome: completed } }, { record: audited }]
     - from: [todo, running, review]
       by: [creator, manager]
-      validate:
-        - { expr: "card.subtask_of != null || card.status == 'review'", message: An arc completes only from review with its independent verdict supplied to the creator or manager. }
-        - { expr: "card.subtask_of != null || (card.last_events.review_pass != null && (card.review_only ? (card.latest_review.address != null && card.latest_review.address != card.creator_address && card.last_events.review_pass.payload.requester == card.latest_review.address && card.last_events.review_pass.created_at >= card.latest_review.started_at && card.last_events.review_pass.created_at >= (card.last_events.review_mode_changed.created_at ?? card.created_at)) : (card.last_events.review_requested != null && card.last_events.review_pass.created_at >= card.last_events.review_requested.created_at)))", message: An independent reviewer must record its current verdict before the creator or manager accepts the arc; implementation arcs require their review request. }
-        - { expr: "card.acceptance_complete()", message: Tick every Acceptance outcome with a pointer. }
-        - { expr: "card.subtasks.all(t, t.status in ['done', 'cancelled'])", message: Every subtask must be closed or dropped. }
-        - { expr: "card.last_commit_at() == null || card.last_events.review_requested == null || card.last_commit_at() <= card.last_events.review_requested.created_at", message: A newer commit requires a new review request. }
-        - { expr: "card.blocked_by.size() == 0 && card.paused == null", message: A blocked or paused card cannot complete. }
+      guard: "(card.subtask_of != null || card.status == 'review') && (card.subtask_of != null || (card.last_events.review_pass != null && (card.review_only ? (card.latest_review.address != null && card.latest_review.address != card.creator_address && card.last_events.review_pass.payload.requester == card.latest_review.address && card.last_events.review_pass.created_at >= card.latest_review.started_at && card.last_events.review_pass.created_at >= (card.last_events.review_mode_changed.created_at ?? card.created_at)) : (card.last_events.review_requested != null && card.last_events.review_pass.created_at >= card.last_events.review_requested.created_at)))) && (card.acceptance_complete()) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && (card.last_commit_at() == null || card.last_events.review_requested == null || card.last_commit_at() <= card.last_events.review_requested.created_at) && (card.blocked_by.size() == 0 && card.paused == null)"
+      description: "Arc acceptance follows a current independent verdict, complete Acceptance and tasks, unchanged reviewed work and no block or pause."
       target: done
       actions:
         - close_session: reviewer
@@ -267,31 +274,30 @@ verbs:
   comment: [{ by: [implementer, reviewer, auditor, arc, manager, owner], actions: [{ record: commented }] }]
   # One door sets a card's properties (`supercode workflow set <card> <field> <value>`), a rule per field.
   set:
-    - by: [manager, owner]
-      guard: "event.field == 'assignee'"
-      validate: [{ expr: card.current_run_id == null, message: End the current run before assigning another lane. }]
+    - by: [implementer, reviewer, auditor, arc, manager, owner]
+      guard: "(event.field == 'assignee') && (event.value != params.org_layer) && (card.status != 'review' || event.value != card.implementer)"
+      description: "Configuration changes retain the requested lane or machine; execution holdings settle through their own doors."
       actions:
         - forget_session: { slot: "{{card.status == 'review' ? 'reviewer' : (card.every != null ? 'auditor' : 'worker')}}", assignee: "{{event.value}}" }
         - assign: { field: assignee, value: "{{event.value}}" }
         - reset: [failures]
         - record: assigned
-    - by: [manager, owner]
-      guard: "event.field == 'machine' && event.value != card.machine"
-      validate: [{ expr: card.current_run_id == null, message: End the current run before setting its card's machine. }]
+    - by: [implementer, reviewer, auditor, arc, manager, owner]
+      guard: "(event.field == 'machine' && event.value != card.machine)"
+      description: "Configuration changes retain the requested lane or machine; execution holdings settle through their own doors."
       actions: [{ forget_session: '*' }, { assign: { field: machine, value: "{{event.value}}" } }, { reset: [failures] }, { record: machine_set }]
-    - by: [manager, owner]
-      guard: "event.field == 'machine'"
+    - by: [implementer, reviewer, auditor, arc, manager, owner]
+      guard: "event.field == 'machine' && event.value == card.machine"
       actions: [{ record: machine_set }]
-    - by: [manager, owner]
+    - by: [implementer, reviewer, auditor, arc, manager, owner]
       guard: "event.field == 'every'"
       actions: [{ every: "{{event.value}}" }, { record: recurrence_changed }]
   link: [{ by: [manager], actions: [{ relation: { add: "{{event.parent}}" } }, { end_run: { outcome: blocked } }, { record: linked }] }]
   unlink: [{ by: [manager, owner, arc], actions: [{ relation: { remove: "{{event.parent}}", reason: "dependency removed by manager" } }, { record: unlinked }] }]
   specify:
     - by: [implementer, reviewer, auditor, arc, manager, owner]
-      validate:
-        - { expr: "('manager' in sender || 'owner' in sender) || (event.workspace == null && ('arc' in sender || card.only_ticks(event.body)))", message: A card's session may tick Acceptance; its manager owns changes to scope. }
-        - { expr: "event.review_only == null || sender.exists(role, role in params.review_only_by)", message: Only the manager declares a review-only card. }
+      guard: "(('manager' in sender || 'owner' in sender) || (event.workspace == null && ('arc' in sender || card.only_ticks(event.body)))) && (event.review_only == null || sender.exists(role, role in params.review_only_by))"
+      description: "The manager changes scope and review mode; arc sessions work their arc and card sessions tick Acceptance."
       target: "{{event.review_only == true ? 'review' : (event.review_only == false && card.review_only ? 'todo' : card.status)}}"
       actions: [{ specify: "{{event}}" }, { record: specified }]
 run:
@@ -305,12 +311,12 @@ run:
   states: { active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
   on:
     heartbeat:
-      - by: [implementer, reviewer, auditor]
-        description: 'Still working or waiting: --note "<what>" [--until <time|2h>].'
+      - by: [implementer, reviewer, auditor, manager]
+        description: 'Extends this run''s claim: --note "<what>" [--until <time|duration>]. A deadline records this run''s wait until that time.'
         actions: [{ extend_claim: null }, { reset: [goal_turns] }, { record: heartbeat }]
     session_idle:
       - by: [platform]
-        guard: "card.last_heartbeat_at != null && now < (card.last_events.heartbeat.payload.until ?? card.last_heartbeat_at + params.heartbeat_quiet_seconds)"
+        guard: "card.blocked_by.size() > 0 || card.paused != null || (card.last_events.heartbeat != null && card.last_events.heartbeat.created_at >= run.started_at && (card.last_events.heartbeat.payload.until ?? 0) > now)"
       - by: [platform]
         guard: "event.turns >= (card.goal_max_turns ?? params.goal_max_turns)"
         target: blocked
@@ -350,7 +356,7 @@ run:
     completed:
       - guard: card.every != null
         actions: [{ card_event: { name: complete, as: [platform] } }]
-      # an arc whose session finished waits for the dispatcher, which starts its one review once its PR is open
+      # an arc whose session finished waits for the dispatcher, which starts its final review once its tasks close
       - guard: "card.status == 'running' && card.subtask_of == null"
         actions: []
       # a reviewer that recorded its verdict in this run has already mailed it to the manager
@@ -370,6 +376,7 @@ dispatch:
     - { name: the machine's started cards, scope: machine, counts: cards, where: { status: [running, review] }, max: "params.machines[card.machine].capacity" }
 notify:
   manager:
+    pr_review_pass: "{{card.id}}: its PR review passed at {{event.reviewed_sha}}."
     recurring_block: "{{card.id}} blocked again: {{event.reason}}"
     block_aged: "{{card.id}} still waits on {{event.on}}: {{event.reason}}"
     completed: "{{card.subtask_of == null ? 'Arc ' + card.id + ' accepted: ' + card.title : ''}}"
@@ -377,6 +384,7 @@ notify:
     completed: "{{card.subtask_of == null ? 'Arc ' + card.id + ' accepted: ' + card.title : ''}}"
     audited: "Audit round on {{card.id}}: {{event.summary}}"
   worker:
+    pr_review_pass: "PR REVIEW PASSED for {{card.title}} ({{card.id}}) at {{event.reviewed_sha}}: merge this PR at its reviewed head now, then keep coding.\n{{event.evidence}}"
     run_changed: "{{card.id}}: {{event.verb}} changed run {{run.id}} ({{event.from}} → {{event.to}}). {{card.blocked_by.size() > 0 ? 'Keep this session open and idle until its named dependencies clear.' : 'Follow the board state before continuing.'}} {{event.reason ?? ''}}"
     commented: "{{card.id}}, {{event.author}}:\n{{comment.body}}"
     specified: "Card updated: {{card.title}} ({{card.id}}), by {{event.author}}. Read the current brief: supercode workflow show {{card.id}} {{where}}"
