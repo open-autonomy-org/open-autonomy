@@ -30,6 +30,8 @@ const GITLEAKS_SHA256 = {
   darwin_x64: 'dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709',
   linux_arm64: 'e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080',
   linux_x64: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb',
+  windows_arm64: 'b95f5e4f5c425cedca7ee203d9afd29597e692c4924a12ed42f970537c72cc0f',
+  windows_x64: 'd29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e',
 };
 // @volter/teams, pinned with its npm integrity; only its redactor (node built-ins alone) is loaded.
 const TEAMS_VERSION = '0.2.109';
@@ -65,23 +67,29 @@ async function pinned(url, file, check, what) {
   return bytes;
 }
 
-/** Unpack `bytes` (a .tgz) into `dir`, only the `members` named. */
-function unpack(bytes, dir, members) {
+// Windows' own tar (bsdtar, in System32 since Windows 10) reads both a .tgz and gitleaks' Windows .zip; a tar earlier
+// on PATH (Git for Windows' GNU tar) reads no .zip.
+const TAR = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+
+/** Unpack `bytes` (a .tgz, or a .zip when `zip`) into `dir`, only the `members` named. */
+function unpack(bytes, dir, members, zip = false) {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'archive.tgz'), bytes);
-  execFileSync('tar', ['-xzf', 'archive.tgz', ...members], { cwd: dir, env: bare });
-  rmSync(join(dir, 'archive.tgz'));
+  const archive = zip ? 'archive.zip' : 'archive.tgz';
+  writeFileSync(join(dir, archive), bytes);
+  execFileSync(TAR, [zip ? '-xf' : '-xzf', archive, ...members], { cwd: dir, env: bare });
+  rmSync(join(dir, archive));
 }
 
 async function gitleaks(tools) {
-  const os = { darwin: 'darwin', linux: 'linux' }[process.platform];
+  const os = { darwin: 'darwin', linux: 'linux', win32: 'windows' }[process.platform];
   const asset = `${os}_${process.arch}`;
   const sha256 = GITLEAKS_SHA256[asset];
   if (!sha256) stop(`gitleaks ${GITLEAKS_VERSION} is not pinned for ${process.platform} ${process.arch}`);
-  const file = `gitleaks_${GITLEAKS_VERSION}_${asset}.tar.gz`;
+  const windows = process.platform === 'win32', file = `gitleaks_${GITLEAKS_VERSION}_${asset}.${windows ? 'zip' : 'tar.gz'}`;
   const bytes = await pinned(`https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}`, file, (b) => createHash('sha256').update(b).digest('hex') === sha256, `gitleaks ${GITLEAKS_VERSION} ${asset}`);
-  unpack(bytes, join(tools, 'gitleaks'), ['gitleaks']);
-  return join(tools, 'gitleaks', 'gitleaks');
+  const program = windows ? 'gitleaks.exe' : 'gitleaks';
+  unpack(bytes, join(tools, 'gitleaks'), [program], windows);
+  return join(tools, 'gitleaks', program);
 }
 
 async function teams(tools) {
@@ -119,7 +127,7 @@ try {
   for (const pkg of packages) {
     const dir = join(unpacked, `${pkg.name.replace('/', '+')}@${pkg.version}`);
     mkdirSync(dir);
-    execFileSync('tar', ['-xzf', pkg.tarball, '-C', dir], { env: bare });
+    execFileSync(TAR, ['-xzf', pkg.tarball, '-C', dir], { env: bare });
     const here = (path) => relative(dir, path);
     const report = join(work, `${pkg.name.replace('/', '+')}.json`);
     // From the work folder, so no .gitleaksignore or config of the caller's applies.
