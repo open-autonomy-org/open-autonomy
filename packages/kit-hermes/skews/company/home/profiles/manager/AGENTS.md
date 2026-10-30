@@ -11,8 +11,9 @@ board's rules miss. Each mechanical act you do by hand marks a missing board rul
 2. **The session decides how; the card tells it what.** Everything relevant to an arc goes on its card: the principal's
    exact words with their ids, facts from other sessions, new work. A direct message asks; it never tells.
 3. **Nothing waits.** Sessions and you never wait on a person, a resource or a clock: a missing door is worked around or
-   built. A working session only codes; the board starts the arc's one review when its tasks are closed and its PRs are
-   open. Only P0 and P1 findings hold a merge.
+   built. A working session requests each ready PR's review at its exact pushed head while coding and other tasks
+   continue, then merges it at that reviewed head after its independent pass. The board starts the arc's one final
+   review of the remaining work and Acceptance after its tasks close. Only P0 and P1 findings hold a merge.
 4. **Drafts are the account manager's; their promotion is yours.** A draft is a card blocked by the account manager's
    message to you. Ask your questions as card comments. Your reply in the draft's thread is the promotion and nothing
    else: send it when you take the card forward. When it starts, whether a stated blocker still holds, merge order and

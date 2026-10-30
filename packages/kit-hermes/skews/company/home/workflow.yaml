@@ -1,7 +1,7 @@
 # Locked card/run IR: supercode docs/adr/0001-board-ir.md. Prompts live beside this file.
 # The board performs requested acts with sensible defaults, including blank metadata.
 # Only a decision the owner's rules reserve is handed to its named decision-maker.
-description: Five card statuses, independent runs, and one review when an arc's coding is done.
+description: Five card statuses, independent runs, ready PR reviews and one final review when an arc's coding is done.
 params:
   dispatch_interval_seconds: 60
   session_idle_quiet_seconds: 600
@@ -28,7 +28,7 @@ params:
   request_rules:
     block: 'Only the manager authorizes a block; name its dependency and explain why continued work is impossible.'
     pause: 'Only the manager pauses a card; a session that wants to pause asks the manager.'
-    done: 'Only the session that created the card or the manager puts it in a terminal state. An arc still needs its one independent review, ticked Acceptance with evidence and closed tasks. Include the verdict and its artifact/screenshots and the exact PR head commit the reviewer ran.'
+    done: 'Only the session that created the card or the manager puts it in a terminal state. An arc still needs its independent final review, ticked Acceptance with evidence and closed tasks. Include the verdict and its artifact/screenshots and the exact PR head commit the reviewer ran.'
     cancelled: 'Only the session that created the card or the manager puts it in a terminal state. Cancellation is permanent; state why the work should end.'
   # The manager's session address(es): the install's own (a board asks its manager here).
   managers: []
@@ -152,6 +152,16 @@ verbs:
       description: Only the manager resumes a paused card; ask the manager with your reason.
       actions: [{ flag: { name: paused, value: false } }, { reset: [failures] }, { every: "{{card.every}}" }, { record: resumed }]
   request_state:
+    # A PR pass returns only this ready PR to its implementer; it never accepts the whole arc.
+    - by: [reviewer]
+      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && (card.last_events.pr_review_requested.id ?? 0) > (card.last_events.review_requested.id ?? 0))"
+      description: "Pass the ready PR at its reviewed head; the arc's other tasks and Acceptance may remain open."
+      target: running
+      actions:
+        - end_run: { outcome: pr_review_passed, summary: "PR review passed at {{event.reviewed_sha ?? 'the reviewed head'}}: merge this PR at its reviewed head now, then keep coding. {{event.reason}}" }
+        - reset: [failures, block_recurrences]
+        - assign: { field: assignee, value: "{{card.implementer}}" }
+        - record: { kind: pr_review_pass, payload: { reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", reviewed_sha: "{{event.reviewed_sha}}" } }
     - by: [implementer, reviewer, auditor, arc, creator, hermes, manager]
       description: "Ask the manager: --state block|pause|done|cancelled --reason \"<why>\" [--on <card>|--waiting-on <message>] [--evidence \"<verdict and pointers>\"]. This leaves the card and run active. State requests retain the requested state, reason, dependency and evidence for the manager."
       actions:
@@ -173,13 +183,26 @@ verbs:
   request_review:
     - from: [running]
       by: [platform]
-      description: "Only the board starts a review: once every task on the arc is closed and its PR is open at its pushed head, the dispatcher requests the one review. No session or manager requests one. Review retains the arc’s current holds; final review follows its closed tasks and uses an independent reviewer."
+      description: "Only the board starts the arc's final review: once every task on the arc is closed, it reviews the remaining work together with its Acceptance at the exact pushed PR heads. No session or manager requests the final review. Each ready PR may have its own review while coding continues. Review retains the arc’s current holds and uses an independent reviewer."
       guard: "(card.subtask_of == null && card.every == null) && (!card.review_only) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
       target: review
       actions:
         - end_run: { outcome: review_requested }
         - assign: { field: assignee, value: "{{event.reviewer ?? params.reviewer_profile}}" }
         - record: review_requested
+    # A queued request keeps its original sender. Own-arc roles and the manager can hand a ready PR to review;
+    # this does not grant any of them the platform-only final review above.
+    - from: [running]
+      by: [implementer, reviewer, auditor, arc, creator, manager]
+      guard: "(event.review == 'pr') && (card.subtask_of == null && card.every == null) && (!card.review_only) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
+      description: "A PR review, whenever one PR is ready: request-review <arc> --pr <its URL> --pr-head <its pushed head> [--summary \"<what the PR does>\"]. Your tasks and Acceptance may remain open while you keep coding; a pass returns the arc to you to merge that PR at its reviewed head now. Review requests during another review follow it. Only the board requests the final review."
+      target: review
+      actions:
+        - end_run: { outcome: pr_review_requested, summary: "Requested the PR review of {{event.pr[0] ?? event.pr}}{{event.summary != null ? ': ' + event.summary : ''}}. Keep coding.", close_session: false }
+        - reset: [failures, block_recurrences]
+        - assign: { field: assignee, value: "{{event.reviewer ?? params.reviewer_profile}}" }
+        - record: review_requested
+        - record: pr_review_requested
   request_changes:
     - from: [review]
       by: [reviewer]
@@ -333,7 +356,7 @@ run:
     completed:
       - guard: card.every != null
         actions: [{ card_event: { name: complete, as: [platform] } }]
-      # an arc whose session finished waits for the dispatcher, which starts its one review once its PR is open
+      # an arc whose session finished waits for the dispatcher, which starts its final review once its tasks close
       - guard: "card.status == 'running' && card.subtask_of == null"
         actions: []
       # a reviewer that recorded its verdict in this run has already mailed it to the manager
@@ -353,6 +376,7 @@ dispatch:
     - { name: the machine's started cards, scope: machine, counts: cards, where: { status: [running, review] }, max: "params.machines[card.machine].capacity" }
 notify:
   manager:
+    pr_review_pass: "{{card.id}}: its PR review passed at {{event.reviewed_sha}}."
     recurring_block: "{{card.id}} blocked again: {{event.reason}}"
     block_aged: "{{card.id}} still waits on {{event.on}}: {{event.reason}}"
     completed: "{{card.subtask_of == null ? 'Arc ' + card.id + ' accepted: ' + card.title : ''}}"
@@ -360,6 +384,7 @@ notify:
     completed: "{{card.subtask_of == null ? 'Arc ' + card.id + ' accepted: ' + card.title : ''}}"
     audited: "Audit round on {{card.id}}: {{event.summary}}"
   worker:
+    pr_review_pass: "PR REVIEW PASSED for {{card.title}} ({{card.id}}) at {{event.reviewed_sha}}: merge this PR at its reviewed head now, then keep coding.\n{{event.evidence}}"
     run_changed: "{{card.id}}: {{event.verb}} changed run {{run.id}} ({{event.from}} → {{event.to}}). {{card.blocked_by.size() > 0 ? 'Keep this session open and idle until its named dependencies clear.' : 'Follow the board state before continuing.'}} {{event.reason ?? ''}}"
     commented: "{{card.id}}, {{event.author}}:\n{{comment.body}}"
     specified: "Card updated: {{card.title}} ({{card.id}}), by {{event.author}}. Read the current brief: supercode workflow show {{card.id}} {{where}}"
