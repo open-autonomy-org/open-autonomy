@@ -311,7 +311,7 @@ run:
   states: { active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
   on:
     heartbeat:
-      - by: [implementer, reviewer, auditor]
+      - by: [implementer, reviewer, auditor, manager]
         description: 'Extends this run''s claim: --note "<what>" [--until <time|duration>]. A deadline records this run''s wait until that time.'
         actions: [{ extend_claim: null }, { reset: [goal_turns] }, { record: heartbeat }]
     session_idle:
