@@ -173,8 +173,8 @@ verbs:
   request_review:
     - from: [running]
       by: [platform]
-      description: "Only the board starts a review: once every task on the arc is closed and its PR is open at its pushed head, the dispatcher requests the one review. No session or manager requests one. Review starts on an unheld arc after its tasks close; review-only cards retain their current reviewer."
-      guard: "(card.subtask_of == null && card.every == null) && (!card.review_only) && (card.paused == null && card.blocked_by.size() == 0) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
+      description: "Only the board starts a review: once every task on the arc is closed and its PR is open at its pushed head, the dispatcher requests the one review. No session or manager requests one. Review retains the arc’s current holds; final review follows its closed tasks and uses an independent reviewer."
+      guard: "(card.subtask_of == null && card.every == null) && (!card.review_only) && (card.subtasks.all(t, t.status in ['done', 'cancelled'])) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
       target: review
       actions:
         - end_run: { outcome: review_requested }
