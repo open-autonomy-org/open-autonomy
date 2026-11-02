@@ -9,13 +9,14 @@ import { dirname, resolve } from 'node:path';
 import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
-import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
+import { machinePublishedBinding, machineSourceBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 import { readerGeneration, sameScanResourceContract, validNativeReaderHost, validRetirementSummary,
   type ReaderInventory, type ReaderRetirement, type ReaderRetirementUnavailable } from '../base/.open-autonomy/reader-retirement.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string; generation: string;
-  entry: string; publisherEntry: string; retirementCapable: boolean; retirement?: ReaderRetirement | ReaderRetirementUnavailable };
+  entry: string; publisherEntry: string; orchestratorEntry: string | null; sshAgentEntry: string | null;
+  retirementCapable: boolean; retirement?: ReaderRetirement | ReaderRetirementUnavailable };
 const json = (path: string): any => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; } };
 // The control protocol's native field is a legacy selected-program pathname.
 const sourceProgram = (path: string): string => sourceReceiptProgram(path).program;
@@ -74,6 +75,11 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   };
   const start = async (selected: Selection, progress: (phase: string) => void = () => {}): Promise<Stack> => {
     const receipt = validate(selected), generation = randomUUID(), ready = resolve(home, `.kit-ready-${generation}.json`);
+    const source = selected.source ? machineSourceBinding(envFor(selected)) : null;
+    const release = selected.release ? machinePublishedBinding(envFor(selected)) : null;
+    const orchestratorEntry = source?.root ? realpathSync(resolve(source.root, 'sdk/orchestrator/bin/orchestrator.mjs'))
+      : release?.root ? realpathSync(resolve(release.root, 'node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs')) : null;
+    const sshAgent = Bun.which('ssh-agent');
     const args = [...argv];
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
     const child = spawnWork(() => Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
@@ -81,7 +87,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
         OPEN_AUTONOMY_KIT_READY_FILE: ready, OPEN_AUTONOMY_STACK_GENERATION: generation,
         OPEN_AUTONOMY_INSTALL_OWNER_ENTRY: realpathSync(Bun.main) }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }), 'bun', { stoppedExitCodes: [75] });
     const stack: Stack = { process: child, selected, ready, generation, entry: realpathSync(receipt.entry),
-      publisherEntry: realpathSync(resolve(dirname(receipt.entry), 'publisher.ts')), retirementCapable: false }; starting = stack; restartSelection = selected;
+      publisherEntry: realpathSync(resolve(dirname(receipt.entry), 'publisher.ts')), orchestratorEntry,
+      sshAgentEntry: sshAgent ? realpathSync(sshAgent) : null, retirementCapable: false }; starting = stack; restartSelection = selected;
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
     try {
@@ -89,7 +96,12 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       while (!stopping && Date.now() < until) {
         const proof = json(ready);
         if (proof?.pid === child.pid && proof.receipt === receipt.receipt) {
-          if (proof.ready === true) { stack.retirementCapable = boundReaders(proof.scan_resource_owner, stack, false); return stack; }
+          if (proof.ready === true) {
+            const protocol = proof.scan_resource_owner;
+            stack.retirementCapable = protocol?.version === 1 && sameScanResourceContract(protocol.contract)
+              && protocol.install === receipt.receipt && protocol.stack?.generation === generation && protocol.stack.pid === child.pid;
+            return stack;
+          }
           if (Number.isSafeInteger(proof.deadline_ms) && proof.deadline_ms > observed && ['starting', 'kit-command'].includes(proof.progress)) {
             // A running setup/clone command has its own existing work bound. The readiness probe must not terminate
             // that work after eight seconds; an idle startup still has only eight seconds to answer its next phase.
@@ -107,12 +119,20 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     } finally { starting = null; }
   };
 
+  const serviceEntry = (stack: Stack, name: string): string | null => name === 'valve' || name === 'hookline'
+    ? realpathSync(resolve(dirname(stack.entry), `${name}.ts`)) : name === 'gateway' || name === 'board' || name.startsWith('channel ')
+      ? stack.orchestratorEntry : name === 'ssh-agent' ? stack.sshAgentEntry : null;
   const boundReaders = (proof: any, stack: Stack, retired: boolean): boolean => proof?.version === 1
     && sameScanResourceContract(proof.contract) && proof.install === stack.selected.receipt
     && proof.source === stack.selected.source && proof.release === (stack.selected.release ?? null)
     && proof.owner?.pid === process.pid && proof.owner.entry === realpathSync(Bun.main)
     && proof.stack?.generation === stack.generation && proof.stack.pid === stack.process.pid
     && proof.stack.entry === stack.entry
+    && Array.isArray(proof.services) && proof.services.length <= 4096
+    && proof.services.every((service: any) => typeof service?.name === 'string' && Number.isSafeInteger(service.pid)
+      && service.pid > 0 && typeof service.entry === 'string' && service.entry === serviceEntry(stack, service.name))
+    && new Set(proof.services.map((service: any) => service.pid)).size === proof.services.length
+    && (!retired || proof.services.length === 0)
     && validRetirementSummary(proof.retired_readers)
     && Array.isArray(proof.readers) && proof.readers.length <= (retired ? 64 : 4096)
     && (!retired || proof.retired_readers.count >= proof.readers.length)
@@ -120,6 +140,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       && reader.pid > 0 && reader.entry === stack.publisherEntry
       && reader.retired === retired && typeof reader.hosts_complete === 'boolean' && (!retired || reader.hosts_complete)
       && validRetirementSummary(reader.retired_hosts) && Array.isArray(reader.hosts) && reader.hosts.length <= (retired ? 64 : 5)
+      && (!retired || reader.retired_hosts.count >= reader.hosts.length)
       && reader.hosts.every((host: unknown) => validNativeReaderHost(host, retired))
       && new Set(reader.hosts.map((host: any) => host.generation)).size === reader.hosts.length)
     && new Set(proof.readers.map((reader: any) => reader.generation)).size === proof.readers.length;
@@ -171,8 +192,10 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     write(); // durable aggregate precedes readiness deletion and successor startup
     rmSync(stack.ready, { force: true });
   };
-  const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
-    selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure,
+  const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid,
+    state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : pending?.phase === 'readers_parked' ? 'parked' : 'transitioning',
+    selected: active?.selected ?? (pending && ['parking_readers', 'readers_parked'].includes(pending.phase) ? pending.predecessor : undefined),
+    previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure, capabilities: ['park-readers'],
     scan_resource_owner: currentReaders(active), reader_retirement: readerRetirement });
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
@@ -208,8 +231,23 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     if (!pending || pending.id !== request.transaction) throw new Error('kit holds no matching handover transaction');
     sourceDecision(request.transaction, pending.selected, pending.predecessor, action);
     if (action === 'rollback' || action === 'abort') return rollback(progress);
+    if (action === 'park-readers') {
+      if (pending.phase === 'readers_parked') return status();
+      if (!['prepared', 'parking_readers'].includes(pending.phase)) throw new Error('Kit readers can park only in their prepared source transaction');
+      if (!active && (!readerRetirement || readerRetirement.transaction !== pending.id
+        || readerRetirement.install !== pending.predecessor.receipt || readerRetirement.source !== pending.predecessor.source
+        || readerRetirement.release !== (pending.predecessor.release ?? null)))
+        throw new Error('Kit has no held predecessor stack or exact persisted predecessor retirement result');
+      pending.phase = 'parking_readers'; write();
+      try {
+        progress('stopping-predecessor-readers'); await stopStack(active); active = null;
+        pending.phase = 'readers_parked'; failure = null; write(); wake(); return status();
+      } catch (error) { failure = (error as Error).message; write(); throw error; }
+    }
     if (action === 'activate') {
       if (pending.phase === 'activated') return status();
+      if (!['prepared', 'readers_parked', 'activating', 'activation_failed'].includes(pending.phase))
+        throw new Error('Kit successor cannot activate before its reader park has settled');
       pending.phase = 'activating'; write();
       progress('stopping-predecessor'); await stopStack(active); active = null; progress('starting-successor');
       try { active = await start(pending.selected, progress); previous = pending.predecessor; pending.phase = 'activated'; failure = null; write(); return status(); }

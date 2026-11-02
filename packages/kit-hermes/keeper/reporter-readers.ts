@@ -4,7 +4,7 @@ import { emptyRetirementSummary, extendRetirementSummary, sameScanResourceContra
   validRetirementSummary, type NativeReaderHost, type ReaderProcess } from '../base/.open-autonomy/reader-retirement.ts';
 
 const MAX_UNRESOLVED = 4096, RECENT = 64;
-type Held = ReaderProcess & { revision: number; acknowledged: boolean; exited: boolean };
+type Held = ReaderProcess & { revision: number; acknowledged: boolean; exited: boolean; failed: boolean };
 const sameHost = (a: NativeReaderHost, b: NativeReaderHost): boolean => a.generation === b.generation
   && a.pid === b.pid && a.entry === b.entry && a.implementation_entry === b.implementation_entry;
 const hosts = (value: any, retired: boolean, limit: number): value is NativeReaderHost[] => Array.isArray(value)
@@ -20,7 +20,7 @@ export class ReporterReaders {
   register(generation: string, pid: number, entry: string): void {
     if (this.atCapacity() || this.held.has(generation)) throw new Error('Publisher reader inventory is full/already held; no new publisher admitted');
     this.held.set(generation, { generation, pid, entry, retired: false, hosts: [], hosts_complete: false,
-      retired_hosts: emptyRetirementSummary(), revision: 0, acknowledged: false, exited: false });
+      retired_hosts: emptyRetirementSummary(), revision: 0, acknowledged: false, exited: false, failed: false });
   }
   observe(generation: string, message: unknown): boolean {
     const proof = message as any, held = this.held.get(generation);
@@ -38,7 +38,7 @@ export class ReporterReaders {
       || proof.retired_hosts.count === held.retired_hosts.count && proof.retired_hosts.digest !== held.retired_hosts.digest
       || removed.some(prior => !recent.some((host: NativeReaderHost) => sameHost(prior, host)))
       || retiring && (proof.retired !== true || proof.hosts_complete !== true)) {
-      this.failed = true; held.hosts_complete = false; return true;
+      this.failed = true; held.failed = true; held.hosts_complete = false; return true;
     }
     held.revision = proof.revision; held.hosts = proof.hosts; held.hosts_complete = proof.hosts_complete;
     held.retired_hosts = proof.retired_hosts;
@@ -50,15 +50,16 @@ export class ReporterReaders {
     held.exited = true; this.settle(held);
   }
   private settle(held: Held): void {
-    if (!held.acknowledged || !held.exited) return;
+    if (held.failed || !held.acknowledged || !held.exited) return;
     const receipt: ReaderProcess = { generation: held.generation, pid: held.pid, entry: held.entry, retired: true,
       hosts: held.hosts, hosts_complete: true, retired_hosts: held.retired_hosts };
     this.retired = extendRetirementSummary(this.retired, receipt);
     this.recent.push(receipt); if (this.recent.length > RECENT) this.recent.shift();
     this.held.delete(held.generation);
   }
-  inventory() { return { readers: [...this.held.values()].map(({ revision: _revision, acknowledged: _ack, exited: _exit, ...reader }) => reader),
-    retired_readers: this.retired, complete: !this.failed && [...this.held.values()].every(reader => reader.hosts_complete) }; }
+  inventory() { return { readers: [...this.held.values()].map(({ revision: _revision, acknowledged: _ack, exited: _exit, failed: _failed, ...reader }) => reader),
+    retired_readers: this.retired, complete: !this.failed && [...this.held.values()]
+      .every(reader => reader.hosts_complete && !reader.exited && !reader.acknowledged && !reader.failed) }; }
   retirement() {
     if (this.failed || this.held.size) throw new Error(`Publisher reader retirement is incomplete; ${this.held.size} unresolved generation(s) remain`);
     return { readers: this.recent, retired_readers: this.retired };

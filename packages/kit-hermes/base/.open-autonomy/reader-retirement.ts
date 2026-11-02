@@ -13,9 +13,11 @@ export type NativeReaderHost = { generation: string; pid: number; entry: string;
 export type RetirementSummary = { count: number; digest: string };
 export type ReaderProcess = { generation: string; pid: number; entry: string; retired: boolean;
   hosts: NativeReaderHost[]; hosts_complete: boolean; retired_hosts: RetirementSummary };
+export type KitService = { name: string; pid: number; entry: string | null };
 export type ReaderInventory = { version: 1; contract: typeof SCAN_RESOURCE_CONTRACT; install: string;
   source: string | null; release: string | null; owner: { pid: number; entry: string };
-  stack: { generation: string; pid: number; entry: string }; readers: ReaderProcess[]; retired_readers: RetirementSummary; complete: boolean };
+  stack: { generation: string; pid: number; entry: string }; readers: ReaderProcess[]; services: KitService[];
+  retired_readers: RetirementSummary; complete: boolean };
 export type ReaderRetirement = Omit<ReaderInventory, 'complete'> & { transaction: string | null; retired: true };
 export type ReaderRetirementUnavailable = { version: 1; transaction: string | null; install: string; source: string | null;
   release: string | null; stack: { generation: string; pid: number; entry: string }; retired: false; reason: string };
@@ -28,7 +30,7 @@ export function extendRetirementSummary(before: RetirementSummary, receipt: unkn
   return { count: before.count + 1, digest: createHash('sha256').update(before.digest).update('\n').update(JSON.stringify(receipt)).digest('hex') };
 }
 export const validNativeReaderHost = (host: any, retired: boolean): host is NativeReaderHost => readerGeneration(host?.generation)
-  && Number.isSafeInteger(host.pid) && host.pid > 0 && typeof host.entry === 'string' && isAbsolute(host.entry)
+  && Number.isSafeInteger(host.pid) && host.pid > 0 && host.pid <= 0xffffffff && typeof host.entry === 'string' && isAbsolute(host.entry)
   && typeof host.implementation_entry === 'string' && isAbsolute(host.implementation_entry) && host.retired === retired;
 const sameHost = (a: NativeReaderHost, b: NativeReaderHost): boolean => a.pid === b.pid && a.entry === b.entry && a.implementation_entry === b.implementation_entry;
 

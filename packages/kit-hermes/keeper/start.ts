@@ -174,7 +174,7 @@ const data = resolve(home, '..', 'data');
 // Harness's activation.mjs) whichever --secrets named it; it names a path, never a credential.
 const agentEnv = (): Record<string, string> => ({ ...inherited(), AGENT_SECRETS: secrets, PATH: `${resolve(host, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, OPEN_AUTONOMY_DATA: data, HERMES_HOME: home, TERMINAL_CWD: project, ...(user ? { HOME: home, USER: user.name, LOGNAME: user.name } : {}), ...(existsSync(sock) ? { SSH_AUTH_SOCK: sock } : {}), GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o StrictHostKeyChecking=accept-new' });
 
-const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
+const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn>; entry: string | null }> = [];
 // The one-shot commands the start waits on (a fetch, a clone, the host's dependency install), so a signal reaches them too.
 const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
@@ -184,11 +184,17 @@ let nativeGatewayReady = false, stackConfigured = false;
 const stackGeneration = process.env.OPEN_AUTONOMY_STACK_GENERATION ?? randomUUID();
 if (!readerGeneration(stackGeneration)) throw new Error('Stack needs its exact owner generation');
 const readerGenerations = new ReporterReaders(stackGeneration);
-const readerInventory = (): ReaderInventory | undefined => prepared ? { version: 1, contract: SCAN_RESOURCE_CONTRACT,
+const readerInventory = (): ReaderInventory | undefined => {
+  if (!prepared) return;
+  const readers = readerGenerations.inventory();
+  const services = children.filter(child => !child.name.startsWith('reporter') && child.proc.exitCode === null && child.proc.signalCode === null)
+    .map(child => ({ name: child.name, pid: child.proc.pid, entry: child.entry }));
+  return { version: 1, contract: SCAN_RESOURCE_CONTRACT,
   install: prepared.receipt, source: prepared.source, release: prepared.release,
   owner: { pid: process.ppid, entry: process.env.OPEN_AUTONOMY_INSTALL_OWNER_ENTRY ?? '' },
   stack: { generation: stackGeneration, pid: process.pid, entry: realpathSync(Bun.main) },
-  ...readerGenerations.inventory() } : undefined;
+  ...readers, services, complete: readers.complete && services.every(service => service.entry !== null) };
+};
 const publishKit = (value: Record<string, unknown>, retiring = false) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
   if ((!ending || retiring) && prepared && file) {
@@ -210,7 +216,7 @@ process.on('exit', () => {
     try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ }
   }
 });
-function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
+function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[]; entry?: string }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
   const generation = name.startsWith('reporter') ? randomUUID() : undefined;
   if (generation && readerGenerations.atCapacity()) throw new Error('Publisher reader inventory holds 4096 unresolved generations; publisher restart is pending');
@@ -222,12 +228,13 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       if (readerGenerations.observe(generation, message)) publishReady();
     } : undefined }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
   if (generation) { readerGenerations.register(generation, proc.pid, realpathSync(cmd[1])); publishReady(); }
-  children.push({ name, proc });
+  children.push({ name, proc, entry: opts.entry ? realpathSync(opts.entry) : null }); publishReady();
   proc.exited.then(async (code) => {
     if (generation) { readerGenerations.exited(generation); publishReady(); }
     if (ending) return;
     if (name === 'board' && code === 0) {
       children.splice(children.findIndex((c) => c.proc === proc), 1);
+      publishReady();
       setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
       return;
     }
@@ -236,6 +243,7 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       // ten seconds.
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
+      publishReady();
       setTimeout(() => {
         if (!ending && name.startsWith('reporter') && readerGenerations.atCapacity()) {
           say(`${name} pending: 4096 unresolved publisher generations remain; the brain keeps running`); return;
@@ -319,7 +327,7 @@ own(data);
 const deployKey = resolve(secrets, 'deploy_key');
 if (existsSync(deployKey)) {
   rmSync(sock, { force: true });
-  spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home });
+  spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home, entry: Bun.which('ssh-agent') ?? undefined });
   const t0 = Date.now(); while (!existsSync(sock) && Date.now() - t0 < 5000) { await Bun.sleep(50); await halted(); }
   const add = await command(['ssh-add', '-q', deployKey], { cwd: home, env: { ...inherited(), SSH_AUTH_SOCK: sock }, boundMs: 30_000 });
   if (add.exitCode !== 0) { console.error(`start: ssh-add ${deployKey}: ${add.stderr.trim()}`); process.exit(1); }
@@ -598,7 +606,7 @@ if (onNative) (orgConfig?.organization?.projects ?? []).forEach((entry, i) => {
   projectReporters.push({ account: projectAccount, tag: typeof entry?.tag === 'string' && /^[\w.-]+$/.test(entry.tag) ? entry.tag : projectAccount, port,
     ...(typeof entry.reporter_config === 'string' ? { reporterConfig: entry.reporter_config } : {}) });
 });
-spawn('valve', ['bun', resolve(host, 'valve.ts'), '--loopback', ...keys], { env: valveEnv });
+spawn('valve', ['bun', resolve(host, 'valve.ts'), '--loopback', ...keys], { env: valveEnv, entry: resolve(host, 'valve.ts') });
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
@@ -743,7 +751,7 @@ else say('publication pending: waiting for the owned native gateway public readi
 // Pull request events through hookline (company RFC 0026 decision 4): where custody holds <secrets>/hookline.env (the
 // inbox, its read token, this install's socket target), hookline.ts attaches and tells the manager of each event once.
 // It reads that file itself, so the token is in no other process's environment.
-if (existsSync(resolve(secrets, 'hookline.env'))) spawn('hookline', ['bun', resolve(host, 'hookline.ts'), '--env', resolve(secrets, 'hookline.env'), '--state', resolve(home, 'hookline-told.json')], { env: { ...env, SUPERCODE_BIN: supercodeBin } });
+if (existsSync(resolve(secrets, 'hookline.env'))) spawn('hookline', ['bun', resolve(host, 'hookline.ts'), '--env', resolve(secrets, 'hookline.env'), '--state', resolve(home, 'hookline-told.json')], { env: { ...env, SUPERCODE_BIN: supercodeBin }, entry: resolve(host, 'hookline.ts') });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
@@ -752,7 +760,7 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, stoppedExitCodes: [75], env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
+  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe', entry: orchestratorBin });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
@@ -762,7 +770,7 @@ if (boardDeclared && prepared) {
   await acquireBoard(boardOptions);
   publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 }
-else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
+else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env, entry: orchestratorBin });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
 // its loaded and ready events to that exact owned launch chain, never another
 // home, once-mode output, an arbitrary descendant or a prose log sentence.
@@ -827,7 +835,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const channels = slack.channels?.length ? slack.channels : (creds.SLACK_CHANNELS ?? '').split(',').map((c) => c.trim()).filter(Boolean);
     if (!creds.SLACK_BOT_TOKEN || !creds.SLACK_APP_TOKEN || !channels.length) say(`channel ${name} slack: ${resolve(secrets, 'slack.env')} needs SLACK_BOT_TOKEN, SLACK_APP_TOKEN and the channels (agent.json or SLACK_CHANNELS); not carried`);
     else spawn(`channel ${name} slack`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
-      '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+      '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, entry: orchestratorBin });
   }
   const jira = mailAgent.channel?.jira;
   if (jira) {
@@ -835,7 +843,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const auth: Record<string, string> | undefined = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
     if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
     else spawn(`channel ${name} jira`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
-      '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+      '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, entry: orchestratorBin });
   }
 }
 // Native prepared stacks move through the coherent machine door. Other existing runtime modes retain their own

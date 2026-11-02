@@ -139,6 +139,12 @@ remain in the live inventory; none is evicted. At capacity only a new publisher/
 refused, while other services keep running. The stack's durable ready/retirement record carries
 the summaries, so ordinary restarts do not grow in-memory history without limit.
 
+The current kit inventory also names the exact tracked nonpublisher controller entries: the
+prepared valve/hookline scripts and selected native orchestrator services. Unknown entries,
+unacknowledged exited publishers and incomplete host snapshots keep the census incomplete.
+This supplies process identities for the source owner's independent OS reading, never a claim
+that an unlisted transient helper has retired or cannot allocate resources.
+
 This extends the ordinary shutdown proof, without changing ADR 0027's separate dead-parent OA
 writer recovery: recovery never infers that private SDK children have retired. OA item IDs,
 session keys, continuations, checkpoints, audience rules and frozen attribution remain unchanged.
