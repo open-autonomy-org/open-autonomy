@@ -97,7 +97,7 @@ replay, durable fsync/rename, private modes and sole-writer lease remain binding
 Missing, torn, unsupported or conflicting retained evidence refuses effects;
 opening state is not permission to discard it or enroll afresh.
 
-Before the first version-4 write, the retained kit owner admits the actual
+Ordinary version-4 writes require the retained kit owner to admit the actual
 candidate and retained rollback generation, their exact native inputs, private
 format and alias behavior. Both must retain and enforce alias holds and unknown
 outcomes, including after restart and state/journal folding. Generic JSON
@@ -109,6 +109,98 @@ handover protocol, propose and review its bootstrap before changing live state.
 No invented readability declaration, silent conversion or legacy fallback opens
 the gate. Native board/session admission and OA admission are separate.
 
+## Qualification bootstrap: review before implementation
+
+The first behavioral proof cannot depend on its own successful receipts. This
+amendment proposes distinct, scope-limited bootstrap authority; independent plan
+and constitution review must pass before its code or first effects. Existing
+ordinary admission stays closed. Bootstrap never produces a pretend ordinary
+qualification, a `qualified` flag, environment bypass or caller-supplied proof.
+
+The native retained qualification owner creates a fresh exclusive closure as a
+declared service of the ordinary World. World owns resources, network policy,
+startup and purge; this owner retains authority and operation recovery within
+its closure, not another World lifecycle or scheduler. It creates a loopback
+Teams server/team using the real local bootstrap, two machine/native homes and
+registered roots, and an isolated native board. OA's scenario supplies its real
+platform and isolated account through actual bootstrap/enrollment API doors.
+Those doors and native/model compatibility are prerequisites to demonstrate,
+not permission to insert database rows or invent identities. No production API,
+live context, existing store or production conversation is imported or changed.
+
+The owner locks and durably retains its realm ID, reviewed owner-source digest,
+exact prepared serving/rollback selections and runtimes, directory identities,
+server/team/source/machine/incarnation identities, roots, board and allowed
+operation keys. OA additionally binds account/logical API, audience, publication
+state and original native provenance. Effect/state paths stay in the closure;
+imported state, symlink escapes and unowned endpoints refuse before effects. Distinct
+pathnames alone do not qualify a rollback: both actual prepared generations must
+serve and enforce the other's newly committed holds and unknown outcomes.
+
+Each retained domain owner receives a distinct bootstrap capability over its
+owned authenticated IPC channel and delegates only to its exact child. Files
+and environment variables can locate that channel but cannot mint authority.
+Every forward authorization checks the actual intent, selected bytes, realm,
+store and resource identities against the locked scope. Normal journal, custody,
+credential, native-receipt, writer and effect fences still execute. The ordinary
+unscoped doors must refuse even inside the closure. OA's capability permits its
+own publication writes only; it cannot authorize a native migration. Restart
+revalidates the same retained scope and selections before further issuance.
+
+World enrollment uses synthetic credentials and real local platform/Teams
+bootstrap doors, protected storage and scoped expiring child credentials;
+none is printed or borrowed from production.
+World's `stripEnv: ["*"]` and synthetic model handlers remain binding. A separate
+real native-model proof needs a supported selection/delegation door for an
+existing sign-in; without it that proof stays open. No new sign-in, copied auth
+file or real-model credential injection into World supplies the missing door.
+
+First create an authorized conversation through native doors and publish its
+actual history through the OA SDK. Then perform a real keyed native move and
+read its origin, final capture, materialization and activation through the public
+SDK. Only those receipts may start OA alias reconciliation. Observe the same
+key, association, acknowledged prefix and new suffix. At genuine durable phase
+boundaries activate the candidate, roll back to the capable predecessor, restart
+the retained owners and fold/replay the journal over the same committed state.
+Native proof also reconstructs real published board documents across applicable
+backings and demonstrates held dispatch/adoption/wake/input/restore fences.
+Neither owner restores an old snapshot, repeats destination issuance or revives
+the retired source. Other OA lanes and board acknowledgement keep progressing.
+
+Make an observer outcome genuinely uncertain by ending its client transport
+after dispatch while the keyed owner continues; read status under the original
+key instead of replaying mutation. No injected timeout, failure receipt, native
+acknowledgement, transcript or remote tail establishes behavior. Mismatches and
+unknown effects/readers close new issuance and retain recovery obligations;
+failure provides no PASS. Settle through the original owners and native doors.
+
+Proof records bind the realm/owner digest, exact artifact/format/native inputs,
+keys and digest-addressed activation, rollback, restart, reconstruction and
+unknown-status readings. They grant no live access, adoption or release. An
+independent review must accept a later exact-pair qualification declaration;
+ordinary owners then revalidate their actual selections. Bind the receipt index
+in the complete install/source receipt, outside the behavior digest to avoid a
+self-hash cycle. Changed behavior or inputs invalidate affected evidence. Node qualifies neither
+Worker nor Windows; source proof does not meet released-pin Acceptance.
+
+After exact owned sessions, readers and operations settle, revoke child keys,
+disconnect/remove disposable enrollments and read back revocation. Stop owned
+services, retain sanitized evidence and a scope-retirement tombstone, then use
+World's `down --purge` for its resources. Unknown outcomes retain their original
+keys and cleanup obligations; deletion cannot manufacture a retirement receipt.
+
+Implementation owners are the native qualification/server generation owner
+(new), native board/machine admission and retained generation owners, and their
+existing migration effect guards. In OA, `keeper/install-owner.ts` owns the
+prepared pair and IPC delegation; proposed `.open-autonomy/publication-admission.ts`
+validates scoped authority. `prepare-install.ts`/`publication-inputs.ts` bind exact
+inputs; `publisher.ts` receives authority; `publication.ts` guards v4 writes.
+`native-runtime.ts`, `native-continuity.ts` and `reporting.ts` remain public SDK
+consumers. `publication-operator.ts` separately owns explicit original-provenance
+adoption and unknown-reader recovery. `world/prepare.ts`, `world/opening.ts`,
+`world/seed.ts` and manual operators own scenario enrollment/content, not fake
+native effects. Missing doors stay open work before bootstrap qualification.
+
 ## Disposition of existing decisions
 
 These citations describe OA at the exact baseline above; no proposed record
@@ -116,16 +208,18 @@ label is treated as proof of acceptance or as an owner override.
 
 | Existing decision and constraint | Disposition |
 | --- | --- |
+| [0002](0002-world-scenario.md): World owns lifecycle/environment; synthetic credentials and model handlers, no real-model mode | **Complies.** The qualification owner is a declared World service; actual platform/bootstrap APIs supply isolated state. No inherited credentials, second rehearsal lifecycle or production calls. Existing-auth native proof remains a separate prerequisite. |
 | [0005](0005-the-sdk-is-the-interface.md): “The package is the interface”; host tools belong to the kit | **Complies.** Kit adapters consume public native receipts and publish through OA SDK. No harness dependency enters the universal OA protocol or backend. |
 | [0024](0024-ecosystem-target-architecture.md): native systems own task/session execution; OA owns acknowledged publication | **Complies.** Native move authority remains external. An alias is publication evidence, never a control grant or a scheduler. |
 | [0016](0016-retained-source-publication.md): independent publication lanes/checkpoints, sole board writer and joined shutdown | **Complies.** Serialize aliases per canonical session inside one existing lane, retain independent lanes and queues, and join the exact readers before clean shutdown. No source absence supplies an end. |
 | [0025](0025-source-qualified-associations-and-replay.md): “Keep OA session keys, transcript-turn replay, continuation behavior and treasury attribution unchanged” | **Complies.** Retain keys, all checkpoints, obligations and attribution; verify actual wire prefixes before append. An unqualified move is a pending conflict rather than an automatic rewrite continuation. |
 | [0027](0027-oa-source-associations-and-publication-recovery.md), frozen session attribution: “Keep platform session keys, continuation suffixes, turn offsets, per-batch sequence/digest/end checkpoints, publication policy and treasury attribution unchanged” | **Updates only the single-native-ID restriction.** Receipt-proved instance aliases retain the frozen original and every listed invariant. Existing custody, legacy adoption, exact delivery, writer recovery and unknown-child rules remain. |
-| [0031](0031-serving-install-handovers.md): coherent complete generation, schema admission before transfer, rollback keeps committed rows | **Complies and extends admission to alias behavior.** Qualify actual serving/rollback kit and native inputs with issuance closed before state writes; no independent kit rollback or snapshot restoration. |
+| [0031](0031-serving-install-handovers.md): coherent complete generation; changes “refuse before transfer until a compatible protocol is qualified”; rollback keeps committed rows | **Updates first-qualification authority only.** A separately reviewed owner may authorize real proof effects solely in its new isolated closure before ordinary qualification exists. Ordinary/live transfer remains closed until the actual pair qualifies. Complete kit/native coordination, one writer, exact retirement and rollback retaining new rows remain binding. |
 
 No quoted owner decision or constitutional invariant is contradicted. This
-explicit OA0027 amendment needs independent review; the native plan's pass
-does not approve it.
+OA0027 and OA0031 amendments need independent review; the native plan's pass
+does not approve them. OA0005/0024 retain native/publication boundaries;
+OA0016/0025 retain independent lanes, acknowledged identity and replay.
 
 ## Alternatives, consequences and verification
 
