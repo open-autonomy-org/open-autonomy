@@ -33,6 +33,10 @@ Retained databases
 keep all committed rows; rollback never copies old storage over them. Board storage-code changes and mail schema changes
 refuse before transfer until a compatible protocol is qualified. Finalization after commit is idempotent cleanup of
 that completed selection, retained in the recovery journal when incomplete.
+Once a kit's finish lands, its keeper retires install generations as the machine retires earlier source trees: it
+keeps the serving generation, the one that generation replaced (the rollback) and any generation a running process
+uses, and removes every other generation prepared before the serving one, failed preparations included. Nothing is
+removed while running processes cannot be read, and no process is stopped to free a generation.
 
 The Codex proxy is a host service with a lifetime independent of the board and keeper generations. Bare keepers
 acquire its existing listener, identified by protocol, instance and a digest of the host Codex-home path. A missing
