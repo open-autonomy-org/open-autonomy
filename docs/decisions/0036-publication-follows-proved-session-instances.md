@@ -6,10 +6,12 @@ exact source review and manual World evidence precede acceptance and adoption.
 ## Context and sources
 
 VO-3758 (`t_04ae4f10`, task `t_a63dc399`) needs a card's conversation to survive
-a machine change. Supercode's reviewed [ADR 0257](https://github.com/volter-ai/supercode/blob/03f6c74dec64f32c66b785caf796f9ddcf546408/docs/adr/0257-card-machine-changes-continue-their-session.md)
+a machine change. Supercode's reviewed [ADR 0257](https://github.com/volter-ai/supercode/blob/d1a16ce6a8f4ac575e3945b8583262e78509ea84/docs/adr/0257-card-machine-changes-continue-their-session.md)
 proposes a fresh source-qualified native instance of the same durable session,
 with immutable ownership and a committed active-instance generation. It does
 not by itself establish that OA's acknowledged transcript matches that instance.
+Its first-qualification amendment passed native plan review in run 4467; OA's
+separate bootstrap authority below still requires its own plan review.
 
 The OA source baseline is `db104baee4037627a9db8bfdf7bc6cb5d77bdaee`.
 [publication.ts](../../packages/kit-hermes/base/.open-autonomy/publication.ts)
