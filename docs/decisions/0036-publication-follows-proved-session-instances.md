@@ -40,6 +40,10 @@ positive card association must agree with the retained binding. A receipt grants
 no access and cannot change custody. Changing the selected runtime root or
 publication custody still requires ADR 0027's explicit procedure; a session's
 remote native instance alone does not change that configuration.
+The first alias must positively bind the retained original to the receipt's
+exact old source-qualified tuple through existing binding/adoption evidence and
+public native readback. A legacy binding's raw native ID alone cannot supply
+that provenance; missing evidence leaves the alias pending.
 
 The publication store retains the original `nativeSessionId` and binding evidence,
 adding an ordered alias chain. Each entry retains the full receipt and digest,
