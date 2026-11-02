@@ -35,8 +35,9 @@ refuse before transfer until a compatible protocol is qualified. Finalization af
 that completed selection, retained in the recovery journal when incomplete.
 Once a kit's finish lands, its keeper retires install generations as the machine retires earlier source trees: it
 keeps the serving generation, the one that generation replaced (the rollback) and any generation a running process
-uses, and removes every other generation prepared before the serving one, failed preparations included. Nothing is
-removed while running processes cannot be read, and no process is stopped to free a generation.
+uses, and removes every other generation whose receipt names its home and predates the serving one's, failed
+preparations with a receipt included. The running processes are read again before each removal; nothing is removed
+while they cannot be read, and no process is stopped to free a generation.
 
 The Codex proxy is a host service with a lifetime independent of the board and keeper generations. Bare keepers
 acquire its existing listener, identified by protocol, instance and a digest of the host Codex-home path. A missing
