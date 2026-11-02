@@ -108,7 +108,8 @@ pushes `publish`, so it deploys nothing (ADR 0033) (`--check` lists what it woul
 publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
 from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
 (`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with supercode's
-`scripts/npm-keys-sweep.mjs` at the commit the script pins (gitleaks, every compressed entry opened, the machine's
+[keys-sweep script](https://github.com/volter-ai/supercode/blob/e392ca8c4b14530874bb770e574ab01413da45f9/scripts/npm-keys-sweep.mjs)
+at the commit the script pins (gitleaks, every compressed entry opened, the machine's
 supercode custody values and `@volter/teams/redact`'s token forms); any failure publishes nothing. Only
 those swept tarballs are uploaded, npm's integrity for each is read back against the file's, and a new kit version is
 recorded as a `release-v<version>` tag and GitHub release. The world proves the same publish and a `bun create
@@ -304,6 +305,9 @@ retryable. If already-published history changes, the append-only destination can
 stops for that session with an explicit reconciliation error rather than skipping or duplicating it.
 The platform retains a transcript tail; it is not the native session archive. Scheduled runs publish by
 default, with private session/job exceptions and optional chat publication controlled by project policy.
+The proposed [session-instance continuity contract](../../docs/decisions/0036-publication-follows-proved-session-instances.md)
+requires native continuity receipts and acknowledged-prefix reconciliation before a machine move can retain
+one publication key; this proposal does not enable that behavior in the current kit.
 
 The publisher's independent controller receives the owner's word for either native runtime.
 `POST /v1/agent/state {"state":"paused"}` on a `steer`-scoped key records the request on the platform. The controller
