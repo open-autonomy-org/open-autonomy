@@ -216,7 +216,7 @@ label is treated as proof of acceptance or as an owner override.
 | [0027](0027-oa-source-associations-and-publication-recovery.md), frozen session attribution: “Keep platform session keys, continuation suffixes, turn offsets, per-batch sequence/digest/end checkpoints, publication policy and treasury attribution unchanged” | **Updates only the single-native-ID restriction.** Receipt-proved instance aliases retain the frozen original and every listed invariant. Existing custody, legacy adoption, exact delivery, writer recovery and unknown-child rules remain. |
 | [0031](0031-serving-install-handovers.md): coherent complete generation; changes “refuse before transfer until a compatible protocol is qualified”; rollback keeps committed rows | **Updates first-qualification authority only.** A separately reviewed owner may authorize real proof effects solely in its new isolated closure before ordinary qualification exists. Ordinary/live transfer remains closed until the actual pair qualifies. Complete kit/native coordination, one writer, exact retirement and rollback retaining new rows remain binding. |
 
-No quoted owner decision or constitutional invariant is contradicted. This
+No quoted owner decision or constitutional invariant is contradicted. These
 OA0027 and OA0031 amendments need independent review; the native plan's pass
 does not approve them. OA0005/0024 retain native/publication boundaries;
 OA0016/0025 retain independent lanes, acknowledged identity and replay.
