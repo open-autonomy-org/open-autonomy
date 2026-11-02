@@ -193,7 +193,9 @@ const publishKit = (value: Record<string, unknown>, retiring = false) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
   if ((!ending || retiring) && prepared && file) {
     const temporary = `${file}.${process.pid}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ ...value, pid: process.pid, receipt: prepared.receipt }) + '\n', { mode: 0o600 });
+    writeFileSync(temporary, JSON.stringify({ ...value,
+      ...(kitServed && !retiring ? { ready: true, scan_resource_owner: readerInventory() } : {}),
+      pid: process.pid, receipt: prepared.receipt }) + '\n', { mode: 0o600 });
     const fd = openSync(temporary, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, file);
     const dir = openSync(dirname(file), 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
