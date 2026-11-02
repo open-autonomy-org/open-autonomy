@@ -130,6 +130,15 @@ An older stack's existing bounded stop still permits closed lifecycle adoption, 
 an explicit unavailable retirement result. It cannot qualify the first resource grant. A
 capable predecessor must supply its full receipt before its resources can be called retired.
 
+The private inventory includes every publisher's actual stdio allocation hosts, read from that
+host's capabilities reply, with its PID, canonical launch entry and implementation entry. A
+retirement reply must match that exact observed host. Unknown/missing host identity leaves the
+census incomplete. Confirmed publisher/host receipts fold into a monotonic count and SHA-256
+chain, retaining the most recent 64 exact receipts. Up to 4,096 unresolved publisher generations
+remain in the live inventory; none is evicted. At capacity only a new publisher/restart is
+refused, while other services keep running. The stack's durable ready/retirement record carries
+the summaries, so ordinary restarts do not grow in-memory history without limit.
+
 This extends the ordinary shutdown proof, without changing ADR 0027's separate dead-parent OA
 writer recovery: recovery never infers that private SDK children have retired. OA item IDs,
 session keys, continuations, checkpoints, audience rules and frozen attribution remain unchanged.

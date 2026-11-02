@@ -50,7 +50,8 @@ import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
-import { SCAN_RESOURCE_CONTRACT, sameScanResourceContract, readerGeneration, type ReaderInventory, type ReaderRetirement } from '../base/.open-autonomy/reader-retirement.ts';
+import { SCAN_RESOURCE_CONTRACT, readerGeneration, type ReaderInventory, type ReaderRetirement } from '../base/.open-autonomy/reader-retirement.ts';
+import { ReporterReaders } from './reporter-readers.ts';
 import { closeSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
@@ -182,13 +183,12 @@ let ending = false;
 let nativeGatewayReady = false, stackConfigured = false;
 const stackGeneration = process.env.OPEN_AUTONOMY_STACK_GENERATION ?? randomUUID();
 if (!readerGeneration(stackGeneration)) throw new Error('Stack needs its exact owner generation');
-const readerGenerations = new Map<string, { pid: number; entry: string; acknowledged: boolean; exited: boolean }>();
+const readerGenerations = new ReporterReaders(stackGeneration);
 const readerInventory = (): ReaderInventory | undefined => prepared ? { version: 1, contract: SCAN_RESOURCE_CONTRACT,
   install: prepared.receipt, source: prepared.source, release: prepared.release,
   owner: { pid: process.ppid, entry: process.env.OPEN_AUTONOMY_INSTALL_OWNER_ENTRY ?? '' },
   stack: { generation: stackGeneration, pid: process.pid, entry: realpathSync(Bun.main) },
-  readers: [...readerGenerations].filter(([, reader]) => !reader.acknowledged || !reader.exited)
-    .map(([generation, reader]) => ({ generation, pid: reader.pid, entry: reader.entry, retired: false })), complete: true } : undefined;
+  ...readerGenerations.inventory() } : undefined;
 const publishKit = (value: Record<string, unknown>, retiring = false) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
   if ((!ending || retiring) && prepared && file) {
@@ -213,21 +213,18 @@ process.on('exit', () => {
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
   const generation = name.startsWith('reporter') ? randomUUID() : undefined;
+  if (generation && readerGenerations.atCapacity()) throw new Error('Publisher reader inventory holds 4096 unresolved generations; publisher restart is pending');
   const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project,
     env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home,
       ...(generation ? { OPEN_AUTONOMY_READER_GENERATION: generation, OPEN_AUTONOMY_STACK_GENERATION: stackGeneration } : {}) },
     stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore',
     ipc: generation ? (message: unknown) => {
-      const proof = message as Record<string, unknown>, held = readerGenerations.get(generation);
-      if (held && proof?.type === 'reporter-retired' && proof.version === 1 && sameScanResourceContract(proof.contract)
-        && proof.generation === generation && proof.stack === stackGeneration && proof.pid === held.pid && proof.retired === true) {
-        held.acknowledged = true; publishReady();
-      }
+      if (readerGenerations.observe(generation, message)) publishReady();
     } : undefined }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
-  if (generation) { readerGenerations.set(generation, { pid: proc.pid, entry: realpathSync(cmd[1]), acknowledged: false, exited: false }); publishReady(); }
+  if (generation) { readerGenerations.register(generation, proc.pid, realpathSync(cmd[1])); publishReady(); }
   children.push({ name, proc });
   proc.exited.then(async (code) => {
-    if (generation) { readerGenerations.get(generation)!.exited = true; publishReady(); }
+    if (generation) { readerGenerations.exited(generation); publishReady(); }
     if (ending) return;
     if (name === 'board' && code === 0) {
       children.splice(children.findIndex((c) => c.proc === proc), 1);
@@ -240,6 +237,9 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
       children.splice(children.findIndex((c) => c.proc === proc), 1);
       setTimeout(() => {
+        if (!ending && name.startsWith('reporter') && readerGenerations.atCapacity()) {
+          say(`${name} pending: 4096 unresolved publisher generations remain; the brain keeps running`); return;
+        }
         if (!ending && (opts.allowRestart?.() ?? true)) spawn(name, cmd, opts);
         else if (!ending) say(`${name} pending: owning native gateway readiness is unavailable; no restart started`);
       }, 10_000);
@@ -273,13 +273,12 @@ function stopServices(code: number): Promise<void> {
       failures.push(new Error(`Owned service ${proc.pid} did not retire before the stop deadline`));
       try { stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }); } catch (error) { failures.push(error); }
     }
-    for (const [generation, reader] of readerGenerations) if (!reader.acknowledged || !reader.exited)
-      failures.push(new Error(`Publisher ${reader.pid} generation ${generation} has no joined reader retirement acknowledgement and exit`));
+    let readers: ReturnType<ReporterReaders['retirement']> | undefined;
+    try { readers = readerGenerations.retirement(); } catch (error) { failures.push(error); }
     if (!failures.length && prepared) {
       const inventory = readerInventory()!;
       const { complete: _complete, ...identity } = inventory;
-      const retirement: ReaderRetirement = { ...identity, transaction: null,
-        readers: [...readerGenerations].map(([generation, reader]) => ({ generation, pid: reader.pid, entry: reader.entry, retired: true })), retired: true };
+      const retirement: ReaderRetirement = { ...identity, ...readers!, transaction: null, retired: true };
       publishKit({ reader_retirement: retirement }, true);
     }
     if (failures.length) say(`reader retirement refused: ${failures.map(error => (error as Error).message).join('; ')}`);

@@ -10,7 +10,8 @@ import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
-import { readerGeneration, sameScanResourceContract, type ReaderInventory, type ReaderRetirement, type ReaderRetirementUnavailable } from '../base/.open-autonomy/reader-retirement.ts';
+import { readerGeneration, sameScanResourceContract, validNativeReaderHost, validRetirementSummary,
+  type ReaderInventory, type ReaderRetirement, type ReaderRetirementUnavailable } from '../base/.open-autonomy/reader-retirement.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string; generation: string;
@@ -88,7 +89,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       while (!stopping && Date.now() < until) {
         const proof = json(ready);
         if (proof?.pid === child.pid && proof.receipt === receipt.receipt) {
-          if (proof.ready === true) { stack.retirementCapable = proof.scan_resource_owner?.complete === true && boundReaders(proof.scan_resource_owner, stack, false); return stack; }
+          if (proof.ready === true) { stack.retirementCapable = boundReaders(proof.scan_resource_owner, stack, false); return stack; }
           if (Number.isSafeInteger(proof.deadline_ms) && proof.deadline_ms > observed && ['starting', 'kit-command'].includes(proof.progress)) {
             // A running setup/clone command has its own existing work bound. The readiness probe must not terminate
             // that work after eight seconds; an idle startup still has only eight seconds to answer its next phase.
@@ -112,17 +113,23 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     && proof.owner?.pid === process.pid && proof.owner.entry === realpathSync(Bun.main)
     && proof.stack?.generation === stack.generation && proof.stack.pid === stack.process.pid
     && proof.stack.entry === stack.entry
-    && Array.isArray(proof.readers) && proof.readers.length <= 4096
+    && validRetirementSummary(proof.retired_readers)
+    && Array.isArray(proof.readers) && proof.readers.length <= (retired ? 64 : 4096)
+    && (!retired || proof.retired_readers.count >= proof.readers.length)
     && proof.readers.every((reader: any) => readerGeneration(reader?.generation) && Number.isSafeInteger(reader.pid)
       && reader.pid > 0 && reader.entry === stack.publisherEntry
-      && reader.retired === retired)
+      && reader.retired === retired && typeof reader.hosts_complete === 'boolean' && (!retired || reader.hosts_complete)
+      && validRetirementSummary(reader.retired_hosts) && Array.isArray(reader.hosts) && reader.hosts.length <= (retired ? 64 : 5)
+      && reader.hosts.every((host: unknown) => validNativeReaderHost(host, retired))
+      && new Set(reader.hosts.map((host: any) => host.generation)).size === reader.hosts.length)
     && new Set(proof.readers.map((reader: any) => reader.generation)).size === proof.readers.length;
   const currentReaders = (stack: Stack | null): ReaderInventory | null => {
     if (!stack || stack.process.exitCode !== null || stack.process.signalCode !== null) return null;
     try {
       const ready = json(stack.ready), proof = ready?.scan_resource_owner;
       return ready?.pid === stack.process.pid && ready.receipt === stack.selected.receipt && ready.ready === true
-        && proof?.complete === true && boundReaders(proof, stack, false) ? proof : null;
+        && proof?.complete === true && boundReaders(proof, stack, false)
+        && proof.readers.every((reader: any) => reader.hosts_complete) ? proof : null;
     } catch { return null; } // unavailable inventory is explicit; it never supplies an empty/complete census
   };
   const stopStack = async (stack: Stack | null) => {
