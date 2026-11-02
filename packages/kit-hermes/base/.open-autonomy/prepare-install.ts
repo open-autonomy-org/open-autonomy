@@ -5,7 +5,7 @@ import { spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
@@ -157,11 +157,12 @@ export function readInstall(path: string, home: string): InstallReceipt {
 // Generation retention, run by the keeper once an activation has finished. A home keeps the generation it serves, the
 // one that serving generation replaced (its rollback) and every generation a running process still uses: its command
 // line, working directory or an open file lies inside it, the keeper's own generation included. Every other generation
-// whose receipt names this home and was written before the serving one's is removed, failed preparations with a receipt included; one
-// prepared after it waits for the next activation, and a directory with no such receipt is never touched. As ADR 0031
-// has retirement, it names exact directories and never stops a process. The running processes are read again before
-// each removal, and a reading that cannot show this process itself counts as unread: then nothing is removed. Each
-// generation gets one report line: kept, kept for now or retired.
+// whose receipt names this home and was written before the serving one's is removed, failed preparations with a
+// receipt included; one prepared after it waits for the next activation, and a directory with no such receipt is never
+// touched. As ADR 0031 has retirement, it names exact directories and exact worktree registrations, and never stops a
+// process. The running processes are read again before each removal; a reading that is not complete (a non-zero
+// answer, or one that does not show this process) counts as unread, and then nothing is removed. Each generation gets
+// one report line: kept, kept for now or retired.
 const GENERATION = /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function retireInstalls({ home, project, serving, rollback }: { home: string; project: string; serving: string; rollback: string | null }): Promise<string[]> {
   home = realpathSync(home);
@@ -181,10 +182,8 @@ export async function retireInstalls({ home, project, serving, rollback }: { hom
     if (ps.code !== 0) throw new Error(`ps answered ${ps.code}`);
     if (!ps.out.split('\n').some(line => line.trim().split(' ', 1)[0] === String(process.pid))) throw new Error('ps did not list this process');
     const lsof = await read(['lsof', '-n', '-w', '-Fpn']);
-    const self = lsof.out.split('\n').includes(`p${process.pid}`);
-    // lsof answers 1 when some process could not be read; that listing counts only when it still shows this process.
-    if (!(lsof.code === 0 || (lsof.code === 1 && self))) throw new Error(`lsof answered ${lsof.code}`);
-    if (!self) throw new Error('lsof did not list this process');
+    if (lsof.code !== 0) throw new Error(`lsof answered ${lsof.code}`);
+    if (!lsof.out.split('\n').includes(`p${process.pid}`)) throw new Error('lsof did not list this process');
     return `${ps.out}\n${lsof.out}`;
   };
   const user = (text: string, name: string): string | null => {
@@ -222,16 +221,28 @@ export async function retireInstalls({ home, project, serving, rollback }: { hom
     }
     if (pid !== null) { report.push(`kept: ${directory} (process ${pid} uses it)`); continue; }
     try {
-      // The snapshot is a detached worktree of the project. A registration this cannot remove (an earlier project, an
-      // entry already pruned) is pruned once the loop ends.
+      // The snapshot is a detached worktree of the project, registered at the admin directory its .git file names.
+      // That pointer is read before anything is removed; a snapshot without one has no registration.
       const snapshot = join(directory, 'project');
-      if (existsSync(join(snapshot, '.git'))) await run(['git', 'worktree', 'remove', '--force', '--force', snapshot], project).catch(() => {});
+      let admin: string | null = null;
+      try {
+        const pointer = readFileSync(join(snapshot, '.git'), 'utf8').match(/^gitdir: (.+)$/m)?.[1]?.trim();
+        if (pointer) admin = resolve(snapshot, pointer);
+      } catch { /* no .git file: no registration */ }
+      const unregistered = admin ? await run(['git', 'worktree', 'remove', '--force', '--force', snapshot], project).then(() => true, () => false) : true;
       await rm(directory, { recursive: true, force: true });
-      report.push(`retired: ${directory}`);
+      let note = '';
+      // A registration Git would not remove goes with its generation: exactly the admin directory the snapshot named,
+      // and only while its own gitdir file still points inside this generation. No other registration is touched.
+      if (!unregistered && admin && existsSync(admin)) {
+        let back: string | null = null;
+        try { back = resolve(admin, readFileSync(join(admin, 'gitdir'), 'utf8').trim()); } catch { /* unreadable: not provably ours */ }
+        if (basename(dirname(admin)) === 'worktrees' && back?.startsWith(`${directory}${sep}`)) await rm(admin, { recursive: true, force: true });
+        else note = `; its worktree registration ${admin} was kept, since its gitdir does not point inside this generation`;
+      }
+      report.push(`retired: ${directory}${note}`);
     } catch (error) { report.push(`kept for now: ${directory} (it could not be removed: ${(error as Error).message}; the next activation retries)`); }
   }
-  try { await run(['git', 'worktree', 'prune'], project); }
-  catch (error) { report.push(`kept for now: worktree registrations of removed generations in ${project} (${(error as Error).message}; the next activation retries)`); }
   return report;
 }
 
