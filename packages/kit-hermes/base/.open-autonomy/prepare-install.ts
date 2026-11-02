@@ -1,9 +1,11 @@
 // Prepare one immutable kit/project input before asking a serving keeper to change. No home, port or service is
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
-import { spawnSyncWork, spawnWork } from './work-ledger.ts';
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+// After an activation finishes, the keeper retires the generations no one needs any more (retireInstalls).
+import { spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
 
@@ -109,7 +111,8 @@ export async function prepareInstall({ project, home, revision, source = null, r
   if (!/^[0-9a-f]{40,64}$/.test(commit)) throw new Error('install preparation has no exact project commit');
   const directory = resolve(home, '..', 'installs', `${commit.slice(0, 12)}-${randomUUID()}`), snapshot = resolve(directory, 'project');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  // Keep failed preparation inputs for diagnosis. No existing generation is deleted, rewritten or checked out.
+  // A failed preparation stays for diagnosis until the next activation finishes. Preparation itself deletes, rewrites
+  // or checks out no existing generation.
   await run(['git', 'worktree', 'add', '--detach', snapshot, commit], project);
   const host = resolve(snapshot, '.open-autonomy');
   if (archive) {
@@ -149,6 +152,98 @@ export function readInstall(path: string, home: string): InstallReceipt {
   const status = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'status', '--porcelain', '--untracked-files=no']));
   if (status.exitCode !== 0 || status.stdout.toString().trim()) throw new Error('prepared kit tracked inputs changed');
   return receipt;
+}
+
+// Generation retention, run by the keeper once an activation has finished. A home keeps the generation it serves, the
+// one that serving generation replaced (its rollback) and every generation a running process still uses: its command
+// line, working directory or an open file lies inside it, the keeper's own generation included. Every other generation
+// whose receipt names this home and was written before the serving one's is removed, failed preparations with a
+// receipt included; one prepared after it waits for the next activation, and a directory with no such receipt is never
+// touched. As ADR 0031 has retirement, it names exact directories and exact worktree registrations, and never stops a
+// process. The running processes are read again before each removal; a reading that is not complete (a non-zero
+// answer, or one that does not show this process) counts as unread, and then nothing is removed. Each generation gets
+// one report line: kept, kept for now or retired.
+const GENERATION = /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export async function retireInstalls({ home, project, serving, rollback }: { home: string; project: string; serving: string; rollback: string | null }): Promise<string[]> {
+  home = realpathSync(home);
+  const installs = realpathSync(resolve(home, '..', 'installs'));
+  const current = dirname(realpathSync(serving)), replaced = rollback && existsSync(rollback) ? dirname(realpathSync(rollback)) : null;
+  if (dirname(current) !== installs) throw new Error(`the serving receipt ${serving} is not a generation in ${installs}`);
+  const read = async (cmd: string[]): Promise<{ out: string; code: number | null }> => {
+    const child = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' }));
+    const bound = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), 60000);
+    try { const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]); return { out, code }; }
+    finally { clearTimeout(bound); }
+  };
+  // Every running process's command line, working directory and open files, as one text. A listing that does not
+  // show this process was filtered or sandboxed and proves nothing about the others.
+  const running = async (): Promise<string> => {
+    const ps = await read(['ps', '-axww', '-o', 'pid=,command=']);
+    if (ps.code !== 0) throw new Error(`ps answered ${ps.code}`);
+    if (!ps.out.split('\n').some(line => line.trim().split(' ', 1)[0] === String(process.pid))) throw new Error('ps did not list this process');
+    const lsof = await read(['lsof', '-n', '-w', '-Fpn']);
+    if (lsof.code !== 0) throw new Error(`lsof answered ${lsof.code}`);
+    if (!lsof.out.split('\n').includes(`p${process.pid}`)) throw new Error('lsof did not list this process');
+    return `${ps.out}\n${lsof.out}`;
+  };
+  const user = (text: string, name: string): string | null => {
+    const at = text.indexOf(`${installs}${sep}${name}`);
+    if (at < 0) return null;
+    const line = text.slice(text.lastIndexOf('\n', at) + 1, at);
+    if (!line.startsWith('n')) return line.trim().split(' ', 1)[0] || 'unknown';
+    const field = text.lastIndexOf('\np', at);  // an lsof file line belongs to the process field above it
+    return field < 0 ? 'unknown' : text.slice(field + 2, text.indexOf('\n', field + 1));
+  };
+  let seen: string;
+  try { seen = await running(); }
+  catch (error) { return [`kept for now: every generation in ${installs} (the running processes could not be read: ${(error as Error).message}; the next activation retries)`]; }
+  const written = (directory: string): number | null => {
+    try {
+      const receipt = JSON.parse(readFileSync(join(directory, 'install.json'), 'utf8'));
+      return receipt?.kind === 'open-autonomy-install' && receipt.home === home ? statSync(join(directory, 'install.json')).mtimeMs : null;
+    } catch { return null; }
+  };
+  const newest = written(current);
+  if (newest === null) throw new Error(`the serving generation ${current} has no receipt for ${home}`);
+  const report: string[] = [];
+  for (const name of readdirSync(installs).sort()) {
+    const directory = join(installs, name);
+    if (directory === current) { report.push(`kept: ${directory} (serving)`); continue; }
+    if (directory === replaced) { report.push(`kept: ${directory} (the generation the serving one replaced; its rollback)`); continue; }
+    if (!GENERATION.test(name) || !lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) continue;
+    const at = written(directory);
+    if (at === null) { report.push(`kept: ${directory} (no install receipt names this home)`); continue; }
+    if (at >= newest) { report.push(`kept for now: ${directory} (prepared after the serving generation; the next activation decides)`); continue; }
+    let pid = user(seen, name);
+    if (pid === null) {
+      try { seen = await running(); pid = user(seen, name); }
+      catch (error) { report.push(`kept for now: ${directory} and every later generation (the running processes could not be read again: ${(error as Error).message}; the next activation retries)`); break; }
+    }
+    if (pid !== null) { report.push(`kept: ${directory} (process ${pid} uses it)`); continue; }
+    try {
+      // The snapshot is a detached worktree of the project, registered at the admin directory its .git file names.
+      // That pointer is read before anything is removed; a snapshot without one has no registration.
+      const snapshot = join(directory, 'project');
+      let admin: string | null = null;
+      try {
+        const pointer = readFileSync(join(snapshot, '.git'), 'utf8').match(/^gitdir: (.+)$/m)?.[1]?.trim();
+        if (pointer) admin = resolve(snapshot, pointer);
+      } catch { /* no .git file: no registration */ }
+      const unregistered = admin ? await run(['git', 'worktree', 'remove', '--force', '--force', snapshot], project).then(() => true, () => false) : true;
+      await rm(directory, { recursive: true, force: true });
+      let note = '';
+      // A registration Git would not remove goes with its generation: exactly the admin directory the snapshot named,
+      // and only while its own gitdir file still points inside this generation. No other registration is touched.
+      if (!unregistered && admin && existsSync(admin)) {
+        let back: string | null = null;
+        try { back = resolve(admin, readFileSync(join(admin, 'gitdir'), 'utf8').trim()); } catch { /* unreadable: not provably ours */ }
+        if (basename(dirname(admin)) === 'worktrees' && back?.startsWith(`${directory}${sep}`)) await rm(admin, { recursive: true, force: true });
+        else note = `; its worktree registration ${admin} was kept, since its gitdir does not point inside this generation`;
+      }
+      report.push(`retired: ${directory}${note}`);
+    } catch (error) { report.push(`kept for now: ${directory} (it could not be removed: ${(error as Error).message}; the next activation retries)`); }
+  }
+  return report;
 }
 
 if (Bun.main === import.meta.path) {
