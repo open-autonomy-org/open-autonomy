@@ -117,6 +117,8 @@ adoption; no historical aliases are inferred.
 
 Reconciliation includes intake redaction, clipping, tool results and timestamps. It checks the checkpoint and every
 available remote tail receipt before appending. An uncertain acknowledged batch must be covered by those receipts.
+Checkpoint digests retain their pre-intake turn semantics through alias appends; remote receipts are compared with
+the separately redacted and clipped wire turns. Alias reconciliation never replaces a saved digest with a wire digest.
 Short, divergent or advancing inconsistent history remains pending; migration cannot end the old publication or mint
 a continuation key. Existing ended checkpoints stay ended. Instance retirement and source absence are not canonical
 completion. The four transcript lanes remain independent; one family's reader is replaced only after the exact old

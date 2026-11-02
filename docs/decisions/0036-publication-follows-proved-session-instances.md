@@ -67,6 +67,10 @@ remote tail receipt, and accounts for any already prepared or uncertain batch
 before appending. A value-lossless native codec is insufficient if that wire
 prefix changes. Missing old-prefix evidence, a short/divergent prefix or an
 advancing inconsistent destination stays pending with exact conflict evidence.
+The existing checkpoint digest remains over the pre-intake turns, including
+after alias appends. Reconciliation checks that digest and compares each
+available remote receipt to the separately redacted and clipped wire turn;
+it never replaces a saved checkpoint digest with a wire digest.
 It cannot take the ordinary `SourceRewritten` path, mint a continuation key,
 end the old publication or resend acknowledged history to make the move pass.
 Ordinary non-migration rewrite behavior is unchanged.

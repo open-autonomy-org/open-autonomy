@@ -53,18 +53,19 @@ class PrefixDigest {
 }
 export interface PublicationCheckpoint { seq: number; digest: string; endedAt?: string }
 export type RecordedCompletion = Pick<SessionEnd, 'endedAt' | 'outcome'> & { endedAt: string };
-// This is the actual public wire policy, including intake redaction and post-redaction clipping. Ordinary
-// publication retains its existing checkpoint policy; a migration cannot call a raw native digest a wire proof.
+// This is the actual public wire policy, including intake redaction and post-redaction clipping. Checkpoints keep
+// their existing pre-intake turn digest; matching that digest and matching remote wire receipts are separate proofs.
 const clipWire = (v: string | undefined, n: number): string | undefined => !v ? undefined : v.length > n ? `${v.slice(0,n-1)}…` : v;
+function wireTurnOf(turn: Turn): Turn {
+  const t = redactDeep(turn) as Turn;
+  return { role: t.role, ...(t.ts ? { ts: t.ts } : {}),
+    ...Object.fromEntries((['text','tool','args','result'] as const).flatMap(key => {
+      const value = clipWire(t[key], key === 'text' ? 2000 : key === 'tool' ? 80 : 600);
+      return value ? [[key,value]] : [];
+    })) };
+}
 export function wireTurnsOf(message: NormalizedMessage, harness: string): Turn[] {
-  return turnsOf(message, harness).map(turn => {
-    const t = redactDeep(turn) as Turn;
-    return { role: t.role, ...(t.ts ? { ts: t.ts } : {}),
-      ...Object.fromEntries((['text','tool','args','result'] as const).flatMap(key => {
-        const value = clipWire(t[key], key === 'text' ? 2000 : key === 'tool' ? 80 : 600);
-        return value ? [[key,value]] : [];
-      })) };
-  });
+  return turnsOf(message, harness).map(wireTurnOf);
 }
 export const publicationWirePolicy = (): string => createHash('sha256')
   .update(readFileSync(new URL('./reporting.ts', import.meta.url)))
@@ -106,14 +107,15 @@ export async function verifySessionAliasPrefix(sc: WindowReader, oa: OpenAutonom
   for (;;) {
     const page = await sc.loadWindow(descriptor.locator,{...WINDOW,message_offset:offset});
     if (page.window.offset !== offset) throw new ContinuityPending('destination revision window moved');
-    for (const turn of page.session.messages.flatMap(message => wireTurnsOf(message,descriptor.locator.harness))) {
+    for (const turn of page.session.messages.flatMap(message => turnsOf(message,descriptor.locator.harness))) {
       const at = prefix.count;
       if (at >= remote.next_seq) break;
       prefix.add(turn);
       if (prefix.count === checkpoint.seq) verified = prefix.digest() === checkpoint.digest;
       const held = retained.get(at);
-      // Migration needs exact wire equality. A pending tool placeholder cannot prove a different actual result.
-      if (held) { if (canonical(held) !== canonical(turn)) throw new ContinuityPending(`destination wire prefix differs at sequence ${at}`); matched++; }
+      // The checkpoint attests the original pre-intake turns. Remote receipts attest their transformed wire values;
+      // redaction cannot replace the saved digest or make a pending tool placeholder prove a different result.
+      if (held) { if (canonical(held) !== canonical(wireTurnOf(turn))) throw new ContinuityPending(`destination wire prefix differs at sequence ${at}`); matched++; }
     }
     offset += page.window.returned;
     if (prefix.count >= remote.next_seq || !page.window.has_newer) break;
@@ -227,7 +229,7 @@ export class TranscriptPublisher {
       const page = await this.readWindow({ ...WINDOW, message_offset: offset });
       if (page.window.offset !== offset) throw new Error(`${key}: source window moved; retry reconciliation`);
       volume.windows++; volume.messages += page.window.returned;
-      for (const turn of page.session.messages.flatMap(m => this.alias ? wireTurnsOf(m,this.descriptor.locator.harness) : turnsOf(m, this.descriptor.locator.harness))) {
+      for (const turn of page.session.messages.flatMap(m => turnsOf(m, this.descriptor.locator.harness))) {
         const at = total++;
         if (standIn(turn)) { if (!standIns++ && at < seq) standInsFrom = { at, digest: prefix.digest() }; }
         else { standIns = 0; standInsFrom = undefined; }
@@ -235,7 +237,10 @@ export class TranscriptPublisher {
           prefix.add(turn);
           verifyCheckpoint();
           const held = retained.get(at);
-          if (held) { if (same(held, turn)) matched++; else diverged = true; }
+          if (held) {
+            if (this.alias ? canonical(held) === canonical(wireTurnOf(turn)) : same(held, turn)) matched++;
+            else diverged = true;
+          }
           if (prefix.count === seq) atSeq = prefix.digest();
           continue;
         }
